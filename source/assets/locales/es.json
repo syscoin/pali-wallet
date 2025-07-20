@@ -296,6 +296,7 @@
     "subtractFeeFailedDetails": "No se puede enviar la cantidad máxima. La tarifa de transacción es {{fee}} {{currency}}, pero solo {{remainingFee}} {{currency}} está disponible después de restar la cantidad.",
     "invalidFeeRate": "Tarifa de transacción inválida. Por favor ingresa una tarifa válida.",
     "invalidAmount": "Cantidad inválida. Por favor ingresa una cantidad válida.",
+    "invalidTokenId": "ID de token no válido. Por favor ingrese un ID de token válido.",
     "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
     "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}",
     "transactionSendFailed": "Error al enviar la transacción: {{message}}",

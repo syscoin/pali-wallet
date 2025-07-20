@@ -300,6 +300,7 @@
     "subtractFeeFailedDetails": "Unable to send max amount. Transaction fee is {{fee}} {{currency}}, but only {{remainingFee}} {{currency}} is available after subtracting the amount.",
     "invalidFeeRate": "Invalid fee rate. Please enter a valid fee rate.",
     "invalidAmount": "Invalid amount. Please enter a valid amount.",
+    "invalidTokenId": "Invalid token ID. Please enter a valid token ID.",
     "invalidAssetAllocation": "Invalid asset allocation. Token GUID {{guid}} not found or invalid.",
     "transactionCreationFailedWithCode": "Transaction creation failed ({{code}}): {{message}}",
     "transactionSendFailed": "Transaction failed to send: {{message}}",

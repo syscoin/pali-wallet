@@ -438,6 +438,7 @@
     "subtractFeeFailedDetails": "Maximaler Betrag kann nicht gesendet werden. Die Transaktionsgebühr beträgt {{fee}} {{currency}}, aber nur {{remainingFee}} {{currency}} ist nach Abzug des Betrags verfügbar.",
     "invalidFeeRate": "Ungültige Gebührenrate. Bitte geben Sie eine gültige Gebührenrate ein.",
     "invalidAmount": "Ungültiger Betrag. Bitte geben Sie einen gültigen Betrag ein.",
+    "invalidTokenId": "Ungültige Token-ID. Bitte geben Sie eine gültige Token-ID ein.",
     "invalidAssetAllocation": "Ungültige Asset-Zuteilung. Token GUID {{guid}} wurde nicht gefunden oder ist ungültig.",
     "transactionCreationFailedWithCode": "Transaktionserstellung fehlgeschlagen ({{code}}): {{message}}",
     "transactionSendFailed": "Transaktionsversendung fehlgeschlagen: {{message}}",

@@ -950,6 +950,25 @@ export const SendConfirm = () => {
                 );
               }
               try {
+                // Validate tokenId before conversion
+                const tokenId = basicTxValues.token.tokenId;
+                if (
+                  tokenId === undefined ||
+                  tokenId === null ||
+                  tokenId === ''
+                ) {
+                  alert.error(t('send.invalidTokenId'));
+                  setLoading(false);
+                  return;
+                }
+
+                const numericTokenId = Number(tokenId);
+                if (isNaN(numericTokenId) || numericTokenId < 0) {
+                  alert.error(t('send.invalidTokenId'));
+                  setLoading(false);
+                  return;
+                }
+
                 controllerEmitter(
                   [
                     'wallet',
@@ -961,7 +980,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
+                      tokenId: numericTokenId, // The actual NFT token ID
                       isLegacy: !isEIP1559Compatible,
                       gasPrice: ethers.utils.hexlify(gasPrice),
                       gasLimit: validateCustomGasLimit
@@ -1043,6 +1062,25 @@ export const SendConfirm = () => {
               }
 
               try {
+                // Validate tokenId before conversion
+                const tokenId = basicTxValues.token.tokenId;
+                if (
+                  tokenId === undefined ||
+                  tokenId === null ||
+                  tokenId === ''
+                ) {
+                  alert.error(t('send.invalidTokenId'));
+                  setLoading(false);
+                  return;
+                }
+
+                const numericTokenId = Number(tokenId);
+                if (isNaN(numericTokenId) || numericTokenId < 0) {
+                  alert.error(t('send.invalidTokenId'));
+                  setLoading(false);
+                  return;
+                }
+
                 controllerEmitter(
                   [
                     'wallet',
@@ -1054,7 +1092,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
+                      tokenId: numericTokenId, // The actual NFT token ID
                       tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
                       isLegacy: !isEIP1559Compatible,
                       maxPriorityFeePerGas: ethers.utils.parseUnits(
