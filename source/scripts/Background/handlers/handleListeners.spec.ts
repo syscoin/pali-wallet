@@ -96,6 +96,28 @@ jest.mock('@pollum-io/sysweb3-keyring', () => ({
   // Mock other necessary constants or types if their absence causes import errors
   CustomJsonRpcProvider: jest.fn(),
   CustomL2JsonRpcProvider: jest.fn(),
+  // Mock network utility functions used in constants.ts
+  getSyscoinUTXOMainnetNetwork: jest.fn(() => ({
+    chainId: 57,
+    url: 'https://blockbook.elint.services/',
+    label: 'Syscoin Mainnet',
+    default: true,
+    currency: 'sys',
+    slip44: 57,
+    kind: 'syscoin',
+    explorer: 'https://explorer.syscoin.org/',
+  })),
+  getBitcoinMainnetNetwork: jest.fn(() => ({
+    chainId: 0,
+    url: 'https://btc1.trezor.io/',
+    label: 'Bitcoin',
+    default: false,
+    currency: 'btc',
+    slip44: 0,
+    kind: 'syscoin',
+    explorer: 'https://btc1.trezor.io/',
+  })),
+  getDefaultUTXONetworks: jest.fn(() => ({})),
 }));
 // --- End keyring mock ---
 

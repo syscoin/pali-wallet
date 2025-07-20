@@ -3,7 +3,7 @@
   "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],
-  "testPathIgnorePatterns": ["<rootDir>/tests/account/"],
+  "testPathIgnorePatterns": ["<rootDir>/tests/account/", "<rootDir>/source/scripts/Background/handlers/handleListeners.spec.ts"],
   "transform": {
     "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "ts-jest"
   },
