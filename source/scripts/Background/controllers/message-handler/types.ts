@@ -37,7 +37,6 @@ export enum MethodRoute {
   SignTx = 'tx/sign',
   SwitchEthChain = 'switch-EthChain',
   SwitchNetwork = 'switch-network',
-  SwitchUtxo = 'switch-Utxo',
   SwitchUtxoEvm = 'switch-UtxoEvm',
   WatchAsset = 'watch-asset',
 }
