@@ -6,6 +6,7 @@ import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
+import { clearProviderCache } from './method-handlers';
 import {
   isMethodAllowedForHardwareWallet,
   methodRequiresConnection,
@@ -547,6 +548,10 @@ export const connectionMiddleware: Middleware = async (context, next) => {
           }),
         MethodRoute.Connect // Explicit route parameter
       );
+
+      // Connection successful - clear cached provider state
+      // This ensures methods like eth_accounts return fresh data after connection
+      clearProviderCache();
 
       // Connection successful, continue to method handler
       // The method handler will return the appropriate result
