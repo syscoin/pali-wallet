@@ -221,10 +221,17 @@ const MasterController = (
               // Flag is already set by atomicCheckAndSetPopup - just listen for close
               const handleWindowClose = (windowId: number) => {
                 if (windowId === newWindow!.id) {
-                  chrome.storage.local.remove([
-                    'pali-popup-open',
-                    'pali-popup-timestamp',
-                  ]);
+                  chrome.storage.local.remove(
+                    ['pali-popup-open', 'pali-popup-timestamp'],
+                    () => {
+                      if (chrome.runtime.lastError) {
+                        console.error(
+                          '[index] Failed to remove popup flags on window close:',
+                          chrome.runtime.lastError
+                        );
+                      }
+                    }
+                  );
                   chrome.windows.onRemoved.removeListener(handleWindowClose);
                 }
               };

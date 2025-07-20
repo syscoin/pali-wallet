@@ -1178,11 +1178,21 @@ class MainController {
     try {
       // Note: chromeStorage doesn't have a direct equivalent to chrome.storage.local.get(null)
       // so we'll keep this as direct chrome.storage.local for now as it's a specialized operation
-      const allItems = await new Promise<{ [key: string]: any }>((resolve) => {
-        chrome.storage.local.get(null, (items) => {
-          resolve(items);
-        });
-      });
+      const allItems = await new Promise<{ [key: string]: any }>(
+        (resolve, reject) => {
+          chrome.storage.local.get(null, (items) => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(
+                  `Failed to get all items: ${chrome.runtime.lastError.message}`
+                )
+              );
+              return;
+            }
+            resolve(items);
+          });
+        }
+      );
 
       const keysToRemove = Object.keys(allItems).filter(
         (key) =>

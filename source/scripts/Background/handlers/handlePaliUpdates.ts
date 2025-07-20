@@ -17,6 +17,15 @@ const acquireUpdateLock = async (): Promise<boolean> => {
 
   return new Promise((resolve) => {
     chrome.storage.local.get([UPDATE_LOCK_KEY], (result) => {
+      if (chrome.runtime.lastError) {
+        console.error(
+          '[acquireUpdateLock] Storage error:',
+          chrome.runtime.lastError
+        );
+        resolve(false);
+        return;
+      }
+
       const lockData = result[UPDATE_LOCK_KEY];
 
       // Check if lock exists and is still valid
@@ -37,8 +46,26 @@ const acquireUpdateLock = async (): Promise<boolean> => {
           },
         },
         () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[acquireUpdateLock] Failed to set lock:',
+              chrome.runtime.lastError
+            );
+            resolve(false);
+            return;
+          }
+
           // Double-check we still have the lock after setting it
           chrome.storage.local.get([UPDATE_LOCK_KEY], (doubleCheckResult) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                '[acquireUpdateLock] Double-check error:',
+                chrome.runtime.lastError
+              );
+              resolve(false);
+              return;
+            }
+
             const currentLock = doubleCheckResult[UPDATE_LOCK_KEY];
             if (currentLock && currentLock.instanceId === instanceId) {
               console.log(
@@ -60,7 +87,14 @@ const acquireUpdateLock = async (): Promise<boolean> => {
 
 // Helper to release lock
 const releaseUpdateLock = () => {
-  chrome.storage.local.remove([UPDATE_LOCK_KEY]);
+  chrome.storage.local.remove([UPDATE_LOCK_KEY], () => {
+    if (chrome.runtime.lastError) {
+      console.error(
+        '[releaseUpdateLock] Failed to remove lock:',
+        chrome.runtime.lastError
+      );
+    }
+  });
 };
 
 export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {

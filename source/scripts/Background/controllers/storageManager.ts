@@ -43,14 +43,24 @@ export class StorageManager {
       });
 
       // First check if migration is already completed - if so, skip vault checks
-      const migrationCompleted = await new Promise<boolean>((resolve) => {
-        chrome.storage.local.get(
-          StorageManager.MIGRATION_FLAG_KEY,
-          (result) => {
-            resolve(result[StorageManager.MIGRATION_FLAG_KEY] === true);
-          }
-        );
-      });
+      const migrationCompleted = await new Promise<boolean>(
+        (resolve, reject) => {
+          chrome.storage.local.get(
+            StorageManager.MIGRATION_FLAG_KEY,
+            (result) => {
+              if (chrome.runtime.lastError) {
+                reject(
+                  new Error(
+                    `Failed to get migration flag: ${chrome.runtime.lastError.message}`
+                  )
+                );
+                return;
+              }
+              resolve(result[StorageManager.MIGRATION_FLAG_KEY] === true);
+            }
+          );
+        }
+      );
 
       if (migrationCompleted) {
         this.isInitialized = true;
@@ -59,13 +69,29 @@ export class StorageManager {
 
       // If migration not completed, check vault data
       const [vaultKeys, vault] = await Promise.all([
-        new Promise<any>((resolve) => {
+        new Promise<any>((resolve, reject) => {
           chrome.storage.local.get('sysweb3-vault-keys', (result) => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(
+                  `Failed to get vault-keys: ${chrome.runtime.lastError.message}`
+                )
+              );
+              return;
+            }
             resolve(result['sysweb3-vault-keys']);
           });
         }),
-        new Promise<any>((resolve) => {
+        new Promise<any>((resolve, reject) => {
           chrome.storage.local.get('sysweb3-vault', (result) => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(
+                  `Failed to get vault: ${chrome.runtime.lastError.message}`
+                )
+              );
+              return;
+            }
             resolve(result['sysweb3-vault']);
           });
         }),
@@ -100,8 +126,18 @@ export class StorageManager {
             console.log(
               '[StorageManager] Migrating data from localStorage to chrome.storage'
             );
-            await new Promise<void>((resolve) => {
-              chrome.storage.local.set(itemsToMigrate, resolve);
+            await new Promise<void>((resolve, reject) => {
+              chrome.storage.local.set(itemsToMigrate, () => {
+                if (chrome.runtime.lastError) {
+                  reject(
+                    new Error(
+                      `Failed to migrate data: ${chrome.runtime.lastError.message}`
+                    )
+                  );
+                  return;
+                }
+                resolve();
+              });
             });
 
             // Clean up localStorage after successful migration
@@ -122,12 +158,22 @@ export class StorageManager {
       }
 
       // Mark migration as completed
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         chrome.storage.local.set(
           {
             [StorageManager.MIGRATION_FLAG_KEY]: true,
           },
-          resolve
+          () => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(
+                  `Failed to set migration flag: ${chrome.runtime.lastError.message}`
+                )
+              );
+              return;
+            }
+            resolve();
+          }
         );
       });
       console.log('[StorageManager] Migration check completed and marked');

@@ -8,7 +8,17 @@ const External: FC = () => {
     // Clear ONLY popup detection flags when external tab closes
     // Don't touch vault or session data
     const handleBeforeUnload = () => {
-      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+      chrome.storage.local.remove(
+        ['pali-popup-open', 'pali-popup-timestamp'],
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[External] Failed to remove popup flags on unload:',
+              chrome.runtime.lastError
+            );
+          }
+        }
+      );
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -16,7 +26,17 @@ const External: FC = () => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       // Also clear on component unmount, but be more careful
-      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+      chrome.storage.local.remove(
+        ['pali-popup-open', 'pali-popup-timestamp'],
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[External] Failed to remove popup flags on unmount:',
+              chrome.runtime.lastError
+            );
+          }
+        }
+      );
     };
   }, []);
 

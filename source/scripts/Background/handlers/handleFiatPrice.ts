@@ -16,6 +16,14 @@ export const handleFiatPrice = async () => {
 
     const attemptLock = () => {
       chrome.storage.local.get([ALARM_INIT_LOCK_KEY], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[attemptLock] Storage error:',
+            chrome.runtime.lastError
+          );
+          resolve(false);
+          return;
+        }
         const existing = result[ALARM_INIT_LOCK_KEY];
         const now = Date.now();
 
@@ -31,11 +39,28 @@ export const handleFiatPrice = async () => {
               },
             },
             () => {
+              if (chrome.runtime.lastError) {
+                console.error(
+                  '[attemptLock] Failed to set lock:',
+                  chrome.runtime.lastError
+                );
+                resolve(false);
+                return;
+              }
+
               // Double-check that we actually got the lock
               setTimeout(() => {
                 chrome.storage.local.get(
                   [ALARM_INIT_LOCK_KEY],
                   (doubleCheck) => {
+                    if (chrome.runtime.lastError) {
+                      console.error(
+                        '[attemptLock] Double-check error:',
+                        chrome.runtime.lastError
+                      );
+                      resolve(false);
+                      return;
+                    }
                     const currentLock = doubleCheck[ALARM_INIT_LOCK_KEY];
                     if (currentLock && currentLock.lockId === lockId) {
                       console.log(
@@ -103,7 +128,12 @@ export const handleFiatPrice = async () => {
 
     // Release lock after alarm check/creation
     chrome.storage.local.remove([ALARM_INIT_LOCK_KEY], () => {
-      console.log('🎯 handleFiatPrice: Released global lock');
+      if (chrome.runtime.lastError) {
+        console.error(
+          '[handleFiatPrice] Failed to remove lock:',
+          chrome.runtime.lastError
+        );
+      }
     });
   });
 };

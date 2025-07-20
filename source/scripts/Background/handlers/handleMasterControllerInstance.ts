@@ -28,8 +28,16 @@ export const handleMasterControllerInstance = async () => {
   // 🔥 FIX: Initialize hasEncryptedVault flag based on actual vault existence
   // This prevents the "wallet was forgotten" false positive on startup
   try {
-    const vault = await new Promise<any>((resolve) => {
+    const vault = await new Promise<any>((resolve, reject) => {
       chrome.storage.local.get('sysweb3-vault', (result) => {
+        if (chrome.runtime.lastError) {
+          reject(
+            new Error(
+              `Failed to get vault: ${chrome.runtime.lastError.message}`
+            )
+          );
+          return;
+        }
         resolve(result['sysweb3-vault']);
       });
     });

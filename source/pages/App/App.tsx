@@ -114,6 +114,15 @@ const App: FC = () => {
         chrome.storage.local.get(
           ['pali-popup-open', 'pali-popup-timestamp'],
           (result) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                '[App] Failed to get popup flags:',
+                chrome.runtime.lastError
+              );
+              setIsCheckingExternal(false);
+              return;
+            }
+
             const popupOpen = !!result['pali-popup-open'];
             const timestamp = result['pali-popup-timestamp'];
             const now = Date.now();
@@ -124,10 +133,17 @@ const App: FC = () => {
 
               if (now - timestamp > STALE_TIMEOUT) {
                 // Stale flag - clear it and fall back to context check
-                chrome.storage.local.remove([
-                  'pali-popup-open',
-                  'pali-popup-timestamp',
-                ]);
+                chrome.storage.local.remove(
+                  ['pali-popup-open', 'pali-popup-timestamp'],
+                  () => {
+                    if (chrome.runtime.lastError) {
+                      console.error(
+                        '[App] Failed to remove stale popup flags:',
+                        chrome.runtime.lastError
+                      );
+                    }
+                  }
+                );
               } else {
                 // Valid recent flag - external popup is active
                 setIsExternalActive(true);

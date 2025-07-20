@@ -51,6 +51,14 @@ export async function startPolling() {
 
       const attemptLock = () => {
         chrome.storage.local.get([POLLING_LOCK_KEY], (storageResult) => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[attemptLock] Storage error:',
+              chrome.runtime.lastError
+            );
+            resolve(false);
+            return;
+          }
           const existing = storageResult[POLLING_LOCK_KEY];
           const now = Date.now();
 
@@ -67,11 +75,28 @@ export async function startPolling() {
                 },
               },
               () => {
+                if (chrome.runtime.lastError) {
+                  console.error(
+                    '[attemptLock] Failed to set lock:',
+                    chrome.runtime.lastError
+                  );
+                  resolve(false);
+                  return;
+                }
+
                 // Double-check that we actually got the lock (detect race conditions)
                 setTimeout(() => {
                   chrome.storage.local.get(
                     [POLLING_LOCK_KEY],
                     (doubleCheck) => {
+                      if (chrome.runtime.lastError) {
+                        console.error(
+                          '[attemptLock] Double-check error:',
+                          chrome.runtime.lastError
+                        );
+                        resolve(false);
+                        return;
+                      }
                       const currentLock = doubleCheck[POLLING_LOCK_KEY];
                       if (currentLock && currentLock.lockId === lockId) {
                         console.log(
@@ -134,12 +159,24 @@ export async function startPolling() {
 
       // Release global lock after alarm creation
       chrome.storage.local.remove([POLLING_LOCK_KEY], () => {
-        console.log('🔓 startPolling: Released global lock');
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[startPolling] Failed to remove lock:',
+            chrome.runtime.lastError
+          );
+        }
       });
     });
   } catch (error) {
     console.error('Error in startPolling:', error);
     // Ensure lock is released even on error
-    chrome.storage.local.remove([POLLING_LOCK_KEY]);
+    chrome.storage.local.remove([POLLING_LOCK_KEY], () => {
+      if (chrome.runtime.lastError) {
+        console.error(
+          '[startPolling] Failed to remove lock on error:',
+          chrome.runtime.lastError
+        );
+      }
+    });
   }
 }

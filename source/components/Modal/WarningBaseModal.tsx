@@ -360,10 +360,20 @@ export const ConnectHardwareWallet = ({
     window.open(url, '_blank');
 
     // Set storage flag for detection
-    chrome.storage.local.set({
-      'pali-popup-open': true,
-      'pali-popup-timestamp': Date.now(),
-    });
+    chrome.storage.local.set(
+      {
+        'pali-popup-open': true,
+        'pali-popup-timestamp': Date.now(),
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[WarningBaseModal] Failed to set popup flag:',
+            chrome.runtime.lastError
+          );
+        }
+      }
+    );
 
     // Close the modal
     if (onClose) onClose(true);

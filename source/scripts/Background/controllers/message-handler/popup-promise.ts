@@ -108,7 +108,17 @@ export const popupPromise = async ({
     popup = await createPopup(route, { ...data, host, eventName });
   } catch (error) {
     // Clear the flag if popup creation failed
-    chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+    chrome.storage.local.remove(
+      ['pali-popup-open', 'pali-popup-timestamp'],
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[popup-promise] Failed to remove flags on error:',
+            chrome.runtime.lastError
+          );
+        }
+      }
+    );
     throw error;
   }
 
@@ -137,7 +147,17 @@ export const popupPromise = async ({
       resolved = true;
       cleanup();
       // Clear the storage flag when popup resolves (either success or cancelled)
-      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+      chrome.storage.local.remove(
+        ['pali-popup-open', 'pali-popup-timestamp'],
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[popup-promise] Failed to remove flags on resolve:',
+              chrome.runtime.lastError
+            );
+          }
+        }
+      );
       resolve(result);
     };
 
@@ -153,7 +173,17 @@ export const popupPromise = async ({
       }
 
       // Clear the storage flag when popup closes
-      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+      chrome.storage.local.remove(
+        ['pali-popup-open', 'pali-popup-timestamp'],
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[popup-promise] Failed to remove flags on window close:',
+              chrome.runtime.lastError
+            );
+          }
+        }
+      );
 
       // Reject with user rejection error instead of resolving with null
       // This allows null to be used as a valid success response
