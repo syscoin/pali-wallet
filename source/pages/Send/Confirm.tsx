@@ -565,7 +565,7 @@ export const SendConfirm = () => {
             }
 
             (
-              (await controllerEmitter(
+              controllerEmitter(
                 ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
                 [
                   {
@@ -599,7 +599,7 @@ export const SendConfirm = () => {
                         ),
                   },
                 ]
-              )) as Promise<ISysTransaction | IEvmTransactionResponse>
+              ) as Promise<ISysTransaction | IEvmTransactionResponse>
             )
               .then(async (response) => {
                 // Save transaction to local state for immediate visibility

@@ -137,7 +137,7 @@ export const SendNTokenTransaction = () => {
                 'getRecommendedGasPrice',
               ]);
 
-          await controllerEmitter(
+          controllerEmitter(
             ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
             [
               {
@@ -198,7 +198,7 @@ export const SendNTokenTransaction = () => {
         }
       } else {
         try {
-          await controllerEmitter(
+          controllerEmitter(
             ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
             [
               {
