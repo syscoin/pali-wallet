@@ -102,7 +102,9 @@ const VaultState = createSlice({
       }>
     ) {
       const { label, accountId, accountType } = action.payload;
-      state.accounts[accountType][accountId].label = label;
+      if (state.accounts[accountType]?.[accountId]) {
+        state.accounts[accountType][accountId].label = label;
+      }
     },
     setNetworkChange(
       state: IVaultState,
@@ -140,7 +142,9 @@ const VaultState = createSlice({
     ) {
       const { id, type } = state.activeAccount;
 
-      state.accounts[type][id].balances = action.payload;
+      if (state.accounts[type]?.[id]) {
+        state.accounts[type][id].balances = action.payload;
+      }
     },
     createAccount(
       state: IVaultState,

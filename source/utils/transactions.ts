@@ -78,7 +78,7 @@ export const getTransactionDisplayInfo = async (
       try {
         const { accounts, activeAccount, accountAssets } =
           store.getState().vault;
-        const currentAccount = accounts[activeAccount.type][activeAccount.id];
+        const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
         const userAssets =
           accountAssets[activeAccount.type]?.[activeAccount.id];
 
@@ -121,7 +121,7 @@ export const getTransactionDisplayInfo = async (
         try {
           const tokenDetails = (await controllerEmitter(
             ['wallet', 'getTokenDetails'],
-            [tokenAddress, currentAccount.address]
+            [tokenAddress, currentAccount?.address]
           )) as ITokenDetails | null;
 
           if (tokenDetails) {

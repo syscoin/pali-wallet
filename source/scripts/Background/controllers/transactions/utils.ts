@@ -351,7 +351,7 @@ export const validateAndManageUserTransactions = (
   // Safety check: validate account access path
   if (
     !accounts[activeAccount.type] ||
-    !accounts[activeAccount.type][activeAccount.id]
+    !accounts[activeAccount.type]?.[activeAccount.id]
   ) {
     console.warn(
       'validateAndManageUserTransactions: account not found',
@@ -360,7 +360,13 @@ export const validateAndManageUserTransactions = (
     return [];
   }
 
-  const account = accounts[activeAccount.type][activeAccount.id];
+  const account = accounts[activeAccount.type]?.[activeAccount.id];
+  if (!account) {
+    console.warn(
+      'validateAndManageUserTransactions: account became undefined after check'
+    );
+    return [];
+  }
   const userAddress = account.address.toLowerCase();
 
   const filteredTxs = providerTxs

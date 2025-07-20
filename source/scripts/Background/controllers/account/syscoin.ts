@@ -54,12 +54,17 @@ const SysAccountController = (
         throw new Error('Account type assets not initialized');
       }
 
-      if (!accountAssets[activeAccount.type][activeAccount.id]) {
+      if (!accountAssets[activeAccount.type]?.[activeAccount.id]) {
         throw new Error('Account assets not initialized');
       }
 
       const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
+        accountAssets[activeAccount.type]?.[activeAccount.id];
+
+      if (!activeAccountAssets.syscoin) {
+        throw new Error('Syscoin assets array not initialized');
+      }
+
       // Check for duplicate considering both assetGuid AND chainId (network-specific)
       const tokenExists = activeAccountAssets.syscoin.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
@@ -107,15 +112,19 @@ const SysAccountController = (
         throw new Error('Account type assets not initialized');
       }
 
-      if (!accountAssets[activeAccount.type][activeAccount.id]) {
+      if (!accountAssets[activeAccount.type]?.[activeAccount.id]) {
         throw new Error('Account assets not initialized');
       }
 
       const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
+        accountAssets[activeAccount.type]?.[activeAccount.id];
+
+      if (!activeAccountAssets.syscoin) {
+        throw new Error('Syscoin assets array not initialized');
+      }
 
       // Find token considering both assetGuid AND chainId (network-specific)
-      const tokenExists = activeAccountAssets.syscoin?.find(
+      const tokenExists = activeAccountAssets.syscoin.find(
         (asset: ITokenSysProps) => asset.assetGuid === assetGuid
       );
 

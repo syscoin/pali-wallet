@@ -364,9 +364,15 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     try {
       const { activeAccount, accounts, activeNetwork, accountTransactions } =
         store.getState().vault;
-      const currentAccount = accounts[activeAccount.type][activeAccount.id];
+      const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
       const currentNetworkChainId = activeNetwork?.chainId;
       const rpcForbiddenList = [10];
+
+      // Check if account exists before proceeding
+      if (!currentAccount) {
+        console.warn('[pollingEvmTransactions] Active account not found');
+        return [];
+      }
 
       let rawTransactions: IEvmTransactionResponse[] = [];
 

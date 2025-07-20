@@ -2552,9 +2552,9 @@ class MainController {
 
     const { accounts, activeAccount, accountTransactions } =
       store.getState().vault;
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     const currentAccountTxs =
-      accountTransactions[activeAccount.type][activeAccount.id];
+      accountTransactions[activeAccount.type]?.[activeAccount.id];
     const { currentPromise: transactionPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
@@ -2698,8 +2698,15 @@ class MainController {
 
     const { accounts, accountAssets } = store.getState().vault;
 
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
-    const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    const currentAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    // Check if account exists before proceeding
+    if (!currentAccount) {
+      console.warn('[updateAssetsFromCurrentAccount] Active account not found');
+      store.dispatch(setIsLoadingBalances(false));
+      return Promise.resolve();
+    }
 
     // Capture isPolling for use in the inner async function
     const isPollingUpdate = isPolling;
@@ -2718,7 +2725,7 @@ class MainController {
                 activeNetwork.url,
                 activeNetwork.chainId,
                 web3Provider,
-                currentAssets
+                currentAssets || { ethereum: [], syscoin: [] }
               );
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length < currentAssets.ethereum.length ||
@@ -2818,7 +2825,16 @@ class MainController {
     }
 
     const { accounts } = store.getState().vault;
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+
+    // Check if account exists before proceeding
+    if (!currentAccount) {
+      console.warn(
+        '[updateBalancesFromCurrentAccount] Active account not found'
+      );
+      store.dispatch(setIsLoadingBalances(false));
+      return Promise.resolve();
+    }
 
     // Capture isPolling for use in the inner async function
     const isPollingUpdate = isPolling;
@@ -2963,7 +2979,8 @@ class MainController {
 
     const { isSwitchingAccount } = store.getState().vaultGlobal;
 
-    const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
+    const activeAccountValues =
+      accounts[activeAccount.type]?.[activeAccount.id];
     if (!activeAccountValues) {
       console.warn(
         '[getLatestUpdateForCurrentAccount] Active account not found in accounts map',
@@ -3142,9 +3159,9 @@ class MainController {
       accountTransactions: finalAccountTransactions,
     } = store.getState().vault;
     const finalAccountTxs =
-      finalAccountTransactions[activeAccount.type][activeAccount.id];
+      finalAccountTransactions[activeAccount.type]?.[activeAccount.id];
     const finalStateSnapshot = JSON.stringify({
-      balances: finalAccounts[activeAccount.type][activeAccount.id].balances,
+      balances: finalAccounts[activeAccount.type]?.[activeAccount.id]?.balances,
       latestTx: getLatestTx(finalAccountTxs),
     });
 
@@ -3590,7 +3607,7 @@ class MainController {
     }
     // Get latest updates for the newly active account
     const { accounts } = store.getState().vault;
-    const activeAccountData = accounts[activeAccount.type][activeAccount.id];
+    const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
     this.handleStateChange([
       {
         method: PaliEvents.chainChanged,

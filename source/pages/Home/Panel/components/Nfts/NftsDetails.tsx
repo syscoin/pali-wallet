@@ -25,7 +25,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   } = useSelector((state: RootState) => state.vault);
 
   // Use proper selector for assets
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
+  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -59,7 +59,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   // Verify manually entered token ID
   const verifyTokenId = async (tokenId: string) => {
-    if (!currentNft || !currentAccount.address || !tokenId.trim()) {
+    if (!currentNft || !currentAccount?.address || !tokenId.trim()) {
       setVerifiedTokenBalance(null);
       setVerificationError(null);
       return;
@@ -76,7 +76,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
             ? 'verifyERC721Ownership'
             : 'verifyERC1155Ownership',
         ],
-        [currentNft.contractAddress, currentAccount.address, [tokenId]]
+        [currentNft.contractAddress, currentAccount?.address, [tokenId]]
       )) as { balance: number; tokenId: string; verified: boolean }[];
 
       if (result && result.length > 0) {
@@ -106,7 +106,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   };
 
   const loadTokenIds = async () => {
-    if (!currentNft || !currentAccount.address) return;
+    if (!currentNft || !currentAccount?.address) return;
 
     setIsLoadingTokenIds(true);
     try {
@@ -114,7 +114,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
         ['wallet', 'fetchNftTokenIds'],
         [
           currentNft.contractAddress,
-          currentAccount.address,
+          currentAccount?.address,
           currentNft.tokenStandard || 'ERC-721',
         ]
       )) as { balance: number; tokenId: string }[] & {

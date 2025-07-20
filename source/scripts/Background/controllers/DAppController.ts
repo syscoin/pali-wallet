@@ -68,9 +68,15 @@ const DAppController = (): IDAppController => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
     _dapps[dapp.host] = { activeAddress: '', hasWindow: false };
+
+    const account = accounts[dapp.accountType]?.[dapp.accountId];
+    if (!account) {
+      throw new Error('Account not found');
+    }
+
     _dapps[dapp.host].activeAddress = isBitcoinBased
-      ? accounts[dapp.accountType][dapp.accountId].xpub
-      : accounts[dapp.accountType][dapp.accountId].address;
+      ? account.xpub
+      : account.address;
 
     // Trigger connection notification
     notificationManager.notifyDappConnection(dapp.host, true);
@@ -80,7 +86,7 @@ const DAppController = (): IDAppController => {
           dapp.host,
           {
             method: PaliSyscoinEvents.xpubChanged,
-            params: accounts[dapp.accountType][dapp.accountId].xpub,
+            params: account.xpub,
           },
           PaliSyscoinEvents.xpubChanged
         )
@@ -144,17 +150,28 @@ const DAppController = (): IDAppController => {
 
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
+
+    const account = accounts[accountType]?.[accountId];
+    if (!account) {
+      console.error(
+        '[DAppController] Account not found:',
+        accountType,
+        accountId
+      );
+      return;
+    }
+
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
     _dapps[host].activeAddress = isBitcoinBased
-      ? accounts[accountType][accountId].xpub
-      : accounts[accountType][accountId].address;
+      ? account.xpub
+      : account.address;
 
     isBitcoinBased
       ? _dispatchPaliEvent(
           host,
           {
             method: PaliSyscoinEvents.xpubChanged,
-            params: accounts[accountType][accountId].xpub,
+            params: account.xpub,
           },
           PaliSyscoinEvents.xpubChanged
         )

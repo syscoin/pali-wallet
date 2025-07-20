@@ -350,7 +350,13 @@ export const networkStatusMiddleware: Middleware = async (context, next) => {
 export const hardwareWalletMiddleware: Middleware = async (context, next) => {
   const { vault } = store.getState();
   const { activeAccount, accounts } = vault;
-  const activeAccountData = accounts[activeAccount.type][activeAccount.id];
+  const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
+
+  // Check if active account exists
+  if (!activeAccountData) {
+    console.error('[hardwareWalletMiddleware] Active account not found');
+    throw new Error('Active account not found');
+  }
 
   // Check if using hardware wallet
   const isHardwareWallet =
@@ -710,7 +716,7 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   // Safety check: ensure active account exists
   if (
     !accounts[activeAccount.type] ||
-    !accounts[activeAccount.type][activeAccount.id]
+    !accounts[activeAccount.type]?.[activeAccount.id]
   ) {
     console.error('[Pipeline] Active account not found:', activeAccount);
     throw cleanErrorStack(
@@ -755,9 +761,9 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
     }
 
     // Check if we're already on the correct account
-    const activeAccountData = accounts[activeAccount.type][activeAccount.id];
+    const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
     if (
-      activeAccountData.address.toLowerCase() ===
+      activeAccountData?.address.toLowerCase() ===
       requiredFromAddress.toLowerCase()
     ) {
       // Already on the correct account
@@ -796,8 +802,8 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   }
 
   // Check if connected account matches active account
-  const activeAccountData = accounts[activeAccount.type][activeAccount.id];
-  if (activeAccountData.address === account.address) {
+  const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
+  if (activeAccountData?.address === account.address) {
     // Already on the correct account
     return next();
   }

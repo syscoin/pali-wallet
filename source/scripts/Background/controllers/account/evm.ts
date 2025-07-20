@@ -20,9 +20,18 @@ const EthAccountController = (): IEthAccountController | any => {
       store.getState().vault;
     const { chainId } = activeNetwork;
     const activeAccountAssets =
-      accountAssets[activeAccount.type][activeAccount.id];
+      accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    if (!activeAccountAssets) {
+      throw new Error('Account assets not initialized');
+    }
+
+    if (!activeAccountAssets.ethereum) {
+      throw new Error('Ethereum assets array not initialized');
+    }
+
     try {
-      const tokenExists = activeAccountAssets.ethereum?.find(
+      const tokenExists = activeAccountAssets.ethereum.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress
       );
@@ -61,9 +70,17 @@ const EthAccountController = (): IEthAccountController | any => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
       const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
+        accountAssets[activeAccount.type]?.[activeAccount.id];
 
-      const tokenExists = activeAccountAssets.ethereum?.find(
+      if (!activeAccountAssets) {
+        throw new Error('Account assets not initialized');
+      }
+
+      if (!activeAccountAssets.ethereum) {
+        throw new Error('Ethereum assets array not initialized');
+      }
+
+      const tokenExists = activeAccountAssets.ethereum.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === tokenAddress && asset.chainId === chainId
       );
