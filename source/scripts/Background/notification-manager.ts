@@ -77,8 +77,14 @@ class NotificationManager {
       const currentState = store.getState();
       const { vault } = currentState;
 
+      // Early return if vault doesn't exist
+      if (!vault) {
+        previousState = currentState;
+        return;
+      }
+
       // Check for network changes
-      if (vault.activeNetwork && previousState.vault.activeNetwork) {
+      if (vault.activeNetwork && previousState.vault?.activeNetwork) {
         if (
           vault.activeNetwork.chainId !==
           previousState.vault.activeNetwork.chainId
@@ -91,11 +97,11 @@ class NotificationManager {
       }
 
       // Check for account changes
-      if (vault.activeAccount && previousState.vault.activeAccount) {
+      if (vault.activeAccount && previousState.vault?.activeAccount) {
         const currentAccount =
           vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
         const previousAccount =
-          previousState.vault.accounts[
+          previousState.vault?.accounts?.[
             previousState.vault.activeAccount.type
           ]?.[previousState.vault.activeAccount.id];
 
@@ -110,6 +116,7 @@ class NotificationManager {
 
       // Check for transaction updates
       if (
+        previousState.vault?.accountTransactions &&
         vault.accountTransactions !== previousState.vault.accountTransactions
       ) {
         this.checkTransactionUpdates(vault, previousState.vault);
@@ -169,7 +176,9 @@ class NotificationManager {
     const currentTxs =
       currentVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
     const previousTxs =
-      previousVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
+      previousVault?.accountTransactions?.[activeAccount.type]?.[
+        activeAccount.id
+      ];
 
     // Early return if no current transactions exist for this account
     if (!currentTxs) {
