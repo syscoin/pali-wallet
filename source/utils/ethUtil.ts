@@ -5,7 +5,7 @@ import { retryableFetch } from '@pollum-io/sysweb3-network';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 import { getContractType } from '@pollum-io/sysweb3-utils';
 
-import { IDecodedTx, ITransactionParams } from 'types/transactions';
+import { ITransactionParams } from 'types/transactions';
 
 import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';

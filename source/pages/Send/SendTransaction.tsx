@@ -453,11 +453,6 @@ export const SendTransaction = () => {
             symbol: string;
           };
 
-          // Calculate user's token balance
-          const tokenBalance =
-            Number(tokenInfo.balance) /
-            Math.pow(10, Number(tokenInfo.decimals));
-
           setApprovedTokenInfos({
             tokenSymbol: tokenInfo.symbol,
             tokenDecimals: Number(tokenInfo.decimals) || 18, // Ensure it's a number
