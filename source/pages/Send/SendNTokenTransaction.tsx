@@ -29,10 +29,6 @@ import {
 import { EditPriorityModal } from './EditPriority';
 
 export const SendNTokenTransaction = () => {
-  // const {
-  //   wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
-  // }
-
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
