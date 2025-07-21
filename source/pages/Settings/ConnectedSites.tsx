@@ -1,5 +1,5 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useCallback, useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -10,12 +10,12 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
-import { truncate, ellipsis, getHost } from 'utils/index';
+import { truncate, ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 
 const ConnectedSites = () => {
   const { controllerEmitter } = useController();
-  const { alert, navigate } = useUtils();
+  const { navigate } = useUtils();
   const location = useLocation();
   const { t } = useTranslation();
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
