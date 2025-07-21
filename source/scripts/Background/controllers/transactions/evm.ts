@@ -374,6 +374,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         return [];
       }
 
+      // Check if network chain ID exists before proceeding
+      if (!currentNetworkChainId) {
+        console.warn('[pollingEvmTransactions] No network chain ID found');
+        return [];
+      }
+
       let rawTransactions: IEvmTransactionResponse[] = [];
 
       // Try to fetch from external API first (more efficient)
@@ -383,7 +389,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         );
         const apiResult = await fetchTransactionsFromAPI(
           currentAccount.address,
-          currentNetworkChainId!,
+          currentNetworkChainId,
           activeNetwork.apiUrl,
           true
         );
@@ -413,7 +419,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       // Fallback to RPC scanning if API failed or no API configured
       if (
         rawTransactions.length === 0 &&
-        !rpcForbiddenList.includes(currentNetworkChainId!)
+        !rpcForbiddenList.includes(currentNetworkChainId)
       ) {
         // Smart block scanning based on account history
         const currentAccountTxs =
@@ -421,7 +427,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
         // Check if account has any transaction history on current network
         const hasTransactionHistory =
-          currentAccountTxs?.ethereum?.[currentNetworkChainId!]?.length > 0;
+          currentAccountTxs?.ethereum?.[currentNetworkChainId]?.length > 0;
 
         // Get current balance (native token) - balances are on the account object
         const currentBalance =
@@ -461,10 +467,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         // This ensures pending transactions are tracked even if they fall outside the polling window
         if (
           !activeNetwork?.apiUrl &&
-          currentAccountTxs?.ethereum?.[currentNetworkChainId!]
+          currentAccountTxs?.ethereum?.[currentNetworkChainId]
         ) {
-          const existingTxs =
-            currentAccountTxs.ethereum[currentNetworkChainId!];
+          const existingTxs = currentAccountTxs.ethereum[currentNetworkChainId];
           const pendingTxs = existingTxs.filter(
             (tx: any) => !tx.blockNumber || !tx.blockHash
           );
