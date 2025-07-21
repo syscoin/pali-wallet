@@ -62,7 +62,24 @@ class RequestCoordinator {
 
     // If there's already an active popup request, check for deduplication
     if (this.activePopupRequest) {
-      // If it's the same route, reject with specific error
+      // For connection popups, return the existing popup's result instead of rejecting
+      if (
+        this.activePopupRoute === currentRoute &&
+        currentRoute === MethodRoute.Connect
+      ) {
+        console.log(
+          '[RequestCoordinator] Duplicate connection request detected, returning existing popup result'
+        );
+        try {
+          // Wait for the existing popup to complete and return its result
+          return await this.activePopupRequest;
+        } catch (error) {
+          // If the existing popup was rejected, throw the same error
+          throw error;
+        }
+      }
+
+      // If it's the same route (but not connection), reject with specific error
       if (this.activePopupRoute === currentRoute) {
         throw cleanErrorStack(
           ethErrors.provider.userRejectedRequest(
