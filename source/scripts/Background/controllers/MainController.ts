@@ -1281,7 +1281,7 @@ class MainController {
       }
 
       this.lockAllKeyrings();
-      const { canLogin } = await this.unlock(pwd);
+      const { canLogin, needsAccountCreation } = await this.unlock(pwd);
 
       if (!canLogin) {
         console.error('[MainController] Unlock failed - invalid password');
@@ -1289,6 +1289,47 @@ class MainController {
       }
 
       console.log('[MainController] Unlock successful');
+
+      // Check if this is a migration from old vault format that needs account creation
+      if (needsAccountCreation) {
+        console.log(
+          '[MainController] Detected migration from old vault format - creating first account'
+        );
+
+        try {
+          const keyring = this.getActiveKeyring();
+          const account = await keyring.createFirstAccount();
+
+          console.log(
+            '[MainController] Created first account after migration:',
+            account.address
+          );
+
+          // Add account to Redux state
+          store.dispatch(
+            createAccount({
+              account: account,
+              accountType: KeyringAccountType.HDAccount,
+            })
+          );
+
+          store.dispatch(
+            setActiveAccount({
+              id: account.id,
+              type: KeyringAccountType.HDAccount,
+            })
+          );
+
+          // Save the newly created account
+          this.saveWalletState('migration-account-creation', true);
+        } catch (error) {
+          console.error(
+            '[MainController] Failed to create account after migration:',
+            error
+          );
+          throw new Error('Failed to create account after migration');
+        }
+      }
 
       // REPAIR CHECK: Detect and fix accounts with missing xpub/xprv
       await this.repairCorruptedAccounts();

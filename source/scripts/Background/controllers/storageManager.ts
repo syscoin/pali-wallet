@@ -97,6 +97,16 @@ export class StorageManager {
         }),
       ]);
 
+      // Migration: Handle old vault format with currentSessionSalt
+      if (vaultKeys && vaultKeys.currentSessionSalt) {
+        console.log(
+          '[StorageManager] Detected old vault format with currentSessionSalt'
+        );
+        // Don't migrate here - let the keyring manager handle it during unlock
+        // This ensures proper decryption of session data with the old salt
+        console.log('[StorageManager] Will migrate on next unlock');
+      }
+
       // Only check localStorage if data doesn't exist in chrome storage
       if ((!vaultKeys || !vault) && typeof localStorage !== 'undefined') {
         try {

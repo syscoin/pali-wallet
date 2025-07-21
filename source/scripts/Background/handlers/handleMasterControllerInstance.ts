@@ -28,21 +28,37 @@ export const handleMasterControllerInstance = async () => {
   // 🔥 FIX: Initialize hasEncryptedVault flag based on actual vault existence
   // This prevents the "wallet was forgotten" false positive on startup
   try {
-    const vault = await new Promise<any>((resolve, reject) => {
-      chrome.storage.local.get('sysweb3-vault', (result) => {
-        if (chrome.runtime.lastError) {
-          reject(
-            new Error(
-              `Failed to get vault: ${chrome.runtime.lastError.message}`
-            )
-          );
-          return;
-        }
-        resolve(result['sysweb3-vault']);
-      });
-    });
+    const [vault, vaultKeys] = await Promise.all([
+      new Promise<any>((resolve, reject) => {
+        chrome.storage.local.get('sysweb3-vault', (result) => {
+          if (chrome.runtime.lastError) {
+            reject(
+              new Error(
+                `Failed to get vault: ${chrome.runtime.lastError.message}`
+              )
+            );
+            return;
+          }
+          resolve(result['sysweb3-vault']);
+        });
+      }),
+      new Promise<any>((resolve, reject) => {
+        chrome.storage.local.get('sysweb3-vault-keys', (result) => {
+          if (chrome.runtime.lastError) {
+            reject(
+              new Error(
+                `Failed to get vault-keys: ${chrome.runtime.lastError.message}`
+              )
+            );
+            return;
+          }
+          resolve(result['sysweb3-vault-keys']);
+        });
+      }),
+    ]);
 
-    const hasVault = !!vault;
+    // Check if vault exists - either new format or old format with currentSessionSalt
+    const hasVault = !!(vault && vaultKeys);
 
     // Set the flag in Redux to match actual vault existence
     store.dispatch(setHasEncryptedVault(hasVault));
