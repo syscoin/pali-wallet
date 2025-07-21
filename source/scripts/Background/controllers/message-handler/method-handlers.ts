@@ -303,7 +303,7 @@ export class EthMethodHandler implements IMethodHandler {
 
     const { dapp, wallet } = getController();
     const { vault } = store.getState();
-    const { activeNetwork } = vault;
+    const { activeNetwork, isBitcoinBased } = vault;
 
     // Handle special cached methods
     if (methodConfig.cacheKey) {
@@ -313,7 +313,9 @@ export class EthMethodHandler implements IMethodHandler {
             return `0x${activeNetwork.chainId.toString(16)}`;
           case 'accounts':
             const account = dapp.getAccount(host);
-            return wallet.isUnlocked() && account ? [account.address] : [];
+            return wallet.isUnlocked() && account && !isBitcoinBased
+              ? [account.address]
+              : [];
           case 'version': // net_version
             return activeNetwork.chainId.toString();
           default:
