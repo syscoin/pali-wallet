@@ -100,6 +100,20 @@ export const fetchGasAndDecodeFunction = async (
           ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
           [baseTx]
         )) as any;
+
+        // Ensure the result from getTxGasLimit is a BigNumber
+        if (!BigNumber.isBigNumber(gasLimitResult)) {
+          try {
+            gasLimitResult = BigNumber.from(gasLimitResult);
+          } catch (error) {
+            console.error(
+              'Failed to convert gasLimitResult to BigNumber:',
+              error
+            );
+            // Fallback to the previously calculated gasLimitFromCurrentBlock
+            gasLimitResult = BigNumber.from(gasLimitFromCurrentBlock);
+          }
+        }
       }
     } catch (error) {
       console.error(error);
@@ -111,6 +125,20 @@ export const fetchGasAndDecodeFunction = async (
     (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(gasLimitResult))
       ? BigNumber.from(dataTx.gas || dataTx.gasLimit)
       : gasLimitResult;
+
+  // Ensure gasLimit is always a BigNumber
+  if (!BigNumber.isBigNumber(formTx.gasLimit)) {
+    try {
+      formTx.gasLimit = BigNumber.from(
+        formTx.gasLimit || gasLimitFromCurrentBlock
+      );
+    } catch (error) {
+      console.error('Failed to convert gasLimit to BigNumber:', error);
+      // Fallback to a safe default gas limit for approvals
+      formTx.gasLimit = BigNumber.from(60000);
+    }
+  }
+
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
     baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,

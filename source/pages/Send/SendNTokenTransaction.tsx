@@ -501,7 +501,7 @@ export const SendNTokenTransaction = () => {
           )}
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+            <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               {t('send.from')}
               <span className="text-brand-royalblue text-xs">
                 <Tooltip content={tx.from} childrenClassName="flex">
@@ -517,10 +517,10 @@ export const SendNTokenTransaction = () => {
                   }
                 </Tooltip>
               </span>
-            </p>
+            </div>
 
             {tx.to && (
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('send.to')}
                 <span className="text-brand-royalblue text-xs">
                   <Tooltip content={tx.to} childrenClassName="flex">
@@ -536,7 +536,7 @@ export const SendNTokenTransaction = () => {
                     }
                   </Tooltip>
                 </span>
-              </p>
+              </div>
             )}
 
             <div className="flex flex-row items-center justify-between w-full">
