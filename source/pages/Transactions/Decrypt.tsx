@@ -279,7 +279,11 @@ const Decrypt: React.FC<ISign> = () => {
       {/* Fixed button container at bottom */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton type="button" onClick={window.close}>
+          <SecondaryButton
+            type="button"
+            disabled={loading}
+            onClick={window.close}
+          >
             {t('buttons.cancel')}
           </SecondaryButton>
 

@@ -10,6 +10,7 @@ import {
   IconButton,
   Icon,
 } from 'components/index';
+import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -27,6 +28,7 @@ const EthSign: React.FC<ISign> = () => {
   const { useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState<string>('Details');
   const [errorMsg, setErrorMsg] = useState('');
@@ -168,6 +170,26 @@ const EthSign: React.FC<ISign> = () => {
       });
     }
   };
+
+  // Handle initial data loading
+  useEffect(() => {
+    const processInitialData = async () => {
+      try {
+        // Small delay to ensure data is properly loaded
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        setInitialLoading(false);
+      } catch (error) {
+        console.error('Error processing initial data:', error);
+        setInitialLoading(false);
+      }
+    };
+
+    if (data) {
+      processInitialData();
+    } else {
+      setInitialLoading(false);
+    }
+  }, [data]);
 
   useEffect(() => {
     // Safety check: ETH signing is only for EVM networks
@@ -456,7 +478,11 @@ const EthSign: React.FC<ISign> = () => {
         }}
       />
 
-      {!loading && (
+      {initialLoading ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingComponent />
+        </div>
+      ) : (
         <div className="flex flex-col w-full h-screen">
           {/* Main scrollable content area */}
           <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
@@ -569,7 +595,11 @@ const EthSign: React.FC<ISign> = () => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <div className="flex gap-3 justify-center">
-              <SecondaryButton type="button" onClick={window.close}>
+              <SecondaryButton
+                type="button"
+                disabled={loading}
+                onClick={window.close}
+              >
                 {t('buttons.cancel')}
               </SecondaryButton>
 

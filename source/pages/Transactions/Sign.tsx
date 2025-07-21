@@ -8,6 +8,7 @@ import {
   DefaultModal,
   ErrorModal,
 } from 'components/index';
+import { LoadingComponent } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -26,6 +27,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { t } = useTranslation();
   const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isReconectModalOpen, setIsReconectModalOpen] =
@@ -36,6 +38,26 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
+
+  // Handle initial data loading
+  useEffect(() => {
+    const processInitialData = async () => {
+      try {
+        // Small delay to ensure data is properly loaded
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        setInitialLoading(false);
+      } catch (error) {
+        console.error('Error processing initial data:', error);
+        setInitialLoading(false);
+      }
+    };
+
+    if (data) {
+      processInitialData();
+    } else {
+      setInitialLoading(false);
+    }
+  }, [data]);
 
   const onSubmit = async () => {
     setLoading(true);
@@ -115,12 +137,14 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         setErrorMsg(error.message);
       }
 
+      setLoading(false);
       createTemporaryAlarm({
         delayInSeconds: 4,
         callback: () => window.close(),
       });
     }
   };
+
   // Clear navigation state when component unmounts or navigates away
   useEffect(
     () => () => {
@@ -128,6 +152,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     },
     []
   );
+
   return (
     <>
       <DefaultModal
@@ -151,7 +176,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         buttonText="Ok"
       />
 
-      {!loading && (
+      {initialLoading ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingComponent />
+        </div>
+      ) : (
         <div className="flex flex-col w-full h-screen">
           {/* Main scrollable content area */}
           <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
@@ -190,7 +219,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <div className="flex gap-3 justify-center">
-              <SecondaryButton type="button" onClick={window.close}>
+              <SecondaryButton
+                type="button"
+                disabled={loading}
+                onClick={window.close}
+              >
                 {t('buttons.cancel')}
               </SecondaryButton>
 
