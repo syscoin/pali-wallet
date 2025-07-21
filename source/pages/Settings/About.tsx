@@ -1,10 +1,12 @@
 import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 
 import packageJson from '../../../package.json';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { navigateBack } from 'utils/navigationState';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -18,6 +20,7 @@ const AboutView: FC = () => {
   };
   const { t } = useTranslation();
   const { navigate, useCopyClipboard, alert } = useUtils();
+  const location = useLocation();
   const [copied, copy] = useCopyClipboard();
 
   useEffect(() => {
@@ -82,7 +85,7 @@ const AboutView: FC = () => {
           <Button
             className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
             type="button"
-            onClick={() => navigate('/home')}
+            onClick={() => navigateBack(navigate, location)}
           >
             {t('buttons.close')}
           </Button>

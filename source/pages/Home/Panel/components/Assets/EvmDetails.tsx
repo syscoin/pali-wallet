@@ -13,6 +13,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ellipsis, formatCurrency } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
+import { navigateBack } from 'utils/navigationState';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmAssetDetailsProps {
@@ -639,7 +640,7 @@ export const EvmAssetDetails = ({
       {/* Close button - Fixed at bottom */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
         <NeutralButton
-          onClick={() => navigate('/home')}
+          onClick={() => navigateBack(navigate, location)}
           type="button"
           fullWidth={true}
         >

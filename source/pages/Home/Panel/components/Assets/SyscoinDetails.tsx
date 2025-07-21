@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { retryableFetch } from '@pollum-io/sysweb3-network';
 
@@ -21,6 +22,7 @@ import {
   adjustUrl,
   getTokenLogo,
 } from 'utils/index';
+import { navigateBack } from 'utils/navigationState';
 
 interface ISyscoinAssetDetailsProps {
   id: string;
@@ -32,6 +34,7 @@ export const SyscoinAssetDetails = ({
   navigationState,
 }: ISyscoinAssetDetailsProps) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
+  const location = useLocation();
   const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
   const [marketData, setMarketData] = useState<any>(null);
@@ -636,7 +639,7 @@ export const SyscoinAssetDetails = ({
       {/* Close button - Fixed at bottom */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
         <NeutralButton
-          onClick={() => navigate('/home')}
+          onClick={() => navigateBack(navigate, location)}
           type="button"
           fullWidth={true}
         >

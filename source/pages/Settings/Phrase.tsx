@@ -1,6 +1,7 @@
 import { Form } from 'antd';
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 
 import {
   Card,
@@ -10,6 +11,7 @@ import {
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { navigateBack } from 'utils/navigationState';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>();
@@ -22,6 +24,7 @@ const PhraseView = () => {
 
   const { t } = useTranslation();
   const { navigate, alert } = useUtils();
+  const location = useLocation();
   const { controllerEmitter } = useController();
 
   const [form] = Form.useForm();
@@ -69,8 +72,8 @@ const PhraseView = () => {
 
   // Navigation callback
   const handleClose = useCallback(() => {
-    navigate('/home');
-  }, [navigate]);
+    navigateBack(navigate, location);
+  }, [navigate, location]);
 
   return (
     <>

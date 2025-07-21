@@ -19,6 +19,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
+import { navigateBack } from 'utils/navigationState';
 
 const ManageNetworkView = () => {
   const networks = useSelector(
@@ -123,7 +124,7 @@ const ManageNetworkView = () => {
     <>
       <ul
         ref={scrollContainerRef}
-        className=" mb-4 w-full h-85 text-sm overflow-auto md:h-96"
+        className="mb-4 w-full h-85 text-sm overflow-auto md:h-96 remove-scrollbar"
       >
         <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
           UTXO
@@ -317,7 +318,7 @@ const ManageNetworkView = () => {
       <div className="w-full px-2 md:static">
         <NeutralButton
           type="button"
-          onClick={() => navigate('/home')}
+          onClick={() => navigateBack(navigate, location)}
           fullWidth={true}
         >
           {t('buttons.close')}
