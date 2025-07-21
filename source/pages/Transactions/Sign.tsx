@@ -60,9 +60,12 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             response, // Pass the signed PSBT
           ]
         );
+        // Save transaction to local state for immediate visibility
+        await controllerEmitter(
+          ['wallet', 'sendAndSaveTransaction'],
+          [response]
+        );
       }
-      // Save transaction to local state for immediate visibility
-      await controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
       // Show success toast
       alert.success(
         signOnly
