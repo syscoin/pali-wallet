@@ -461,7 +461,6 @@ export const SendTransaction = () => {
           setApprovedTokenInfos({
             tokenSymbol: tokenInfo.symbol,
             tokenDecimals: Number(tokenInfo.decimals) || 18, // Ensure it's a number
-            tokenBalance: tokenBalance,
           });
         } else if (
           approvalType === 'erc721-single' ||
