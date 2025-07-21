@@ -61,9 +61,7 @@ export const Fee = ({
       // Default case
       setCurrentFee(String(recommend || ''));
     }
-    // Remove onFeeChange from dependencies to prevent infinite loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, recommend]);
+  }, [form, recommend, handleFeeChange]);
 
   // Fee rate validation thresholds for UTXO networks (coin/byte)
   const getFeeRateThresholds = () => {
