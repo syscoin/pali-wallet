@@ -144,7 +144,7 @@ const ExternalWatchAsset = () => {
   return (
     <div className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
-      <div className="flex-1 overflow-y-auto pb-20">
+      <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
         {formatError ? (
           <div className="flex flex-col items-center justify-start w-full p-6 pt-8">
             <div className="flex flex-col items-center justify-center max-w-md mx-auto text-center">

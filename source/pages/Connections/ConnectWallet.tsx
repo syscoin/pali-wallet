@@ -288,7 +288,7 @@ export const ConnectWallet = () => {
   return (
     <div className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto remove-scrollbar">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <LoadingSvg className="w-8 h-8 text-brand-royalblue animate-spin" />

@@ -154,7 +154,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       {!loading && (
         <div className="flex flex-col w-full h-screen">
           {/* Main scrollable content area */}
-          <div className="flex-1 overflow-y-auto pb-20">
+          <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
             {/* Header Section */}
             <div className="flex flex-col w-full items-center justify-center px-6 py-8">
               <div className="w-16 h-16 relative p-4 mb-6 rounded-full bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">

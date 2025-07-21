@@ -11,7 +11,7 @@ export const TransactionDataComponent = (props: ITransactionDataProps) => {
   const { decodedTx } = props;
   const { t } = useTranslation();
   return (
-    <div className="flex p-6 rounded-[20px] flex-col items-center justify-center bg-brand-blue600 w-[400px] h-fit relative left-[-1%]">
+    <div className="flex p-6 rounded-[20px] flex-col items-center justify-center bg-brand-blue600 w-full max-w-[400px] mx-auto h-fit">
       {decodedTx.method === 'Contract Interaction' ? (
         <div
           className="flex items-center justify-center mt-2 p-4 w-full text-xs rounded-xl"

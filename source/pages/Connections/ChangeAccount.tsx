@@ -296,7 +296,7 @@ export const ChangeAccount = () => {
   return (
     <div className="flex flex-col w-full h-full">
       {/* Main scrollable content area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Header section */}
         <div className="text-center px-6 py-6 border-b border-brand-gray300">
           <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">

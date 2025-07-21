@@ -90,7 +90,7 @@ export const TransactionDetailsComponent = (
   }, [tx]);
 
   return (
-    <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
+    <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-full max-w-[400px] mx-auto text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
       <div className="flex flex-col pt-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
         {t('send.from')}
         <div className="text-white text-xs">

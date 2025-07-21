@@ -153,7 +153,7 @@ const Decrypt: React.FC<ISign> = () => {
   return (
     <div className="flex flex-col h-full">
       {/* Scrollable content area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto remove-scrollbar">
         {/* Account section */}
         <div className="bg-bkg-2 p-4 mb-4">
           <div className="flex items-center gap-4">

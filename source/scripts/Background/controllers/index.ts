@@ -213,6 +213,7 @@ const MasterController = (
             width: 400,
             height: 620,
             type: 'popup',
+            state: 'normal',
           },
           (newWindow) => {
             if (chrome.runtime.lastError) {

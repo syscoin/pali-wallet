@@ -13,6 +13,7 @@ import {
   Icon,
   IconButton,
 } from 'components/index';
+import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -93,6 +94,7 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
@@ -316,7 +318,7 @@ export const SendTransaction = () => {
         if (isExternal)
           dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
         setConfirmed(true);
-        setLoading(false);
+        // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
         const isNecessaryReconnect = error.message.includes(
@@ -375,6 +377,7 @@ export const SendTransaction = () => {
           setFee(feeDetails);
           setTx(formTx);
           setCustomNonce(nonce);
+          setInitialLoading(false);
         }
       } catch (e) {
         // Don't handle error if request was aborted
@@ -383,6 +386,7 @@ export const SendTransaction = () => {
         }
 
         if (isMounted) {
+          setInitialLoading(false);
           logError('error getting fees', 'Transaction', e);
           alert.error(t('send.txWillFail'), e);
           clearNavigationState();
@@ -412,8 +416,11 @@ export const SendTransaction = () => {
       if (isExternal) {
         // Show success toast
         alert.success(t('transactions.youCanCheckYour'));
+        // Keep loading spinner visible until window closes
         setTimeout(window.close, 2000);
       } else {
+        // For internal navigation, navigate immediately
+        // The loading spinner will disappear when component unmounts
         navigate('/home');
       }
     }
@@ -582,250 +589,257 @@ export const SendTransaction = () => {
         }}
       />
 
-      {tx?.from ? (
-        <div className="flex flex-col items-center justify-center w-full">
-          {isApproval ? (
-            // Approval-specific UI
-            <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">
-              <div className="pb-4 w-full">
-                <div className="flex flex-col gap-4 items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
-                  <div
-                    className="mb-1.5 p-3 text-xs rounded-xl"
-                    style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
-                  >
-                    <span className="text-sm font-medium font-thin">
-                      {host}
-                    </span>
-                  </div>
+      {initialLoading ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <LoadingComponent />
+        </div>
+      ) : tx?.from ? (
+        <div className="flex flex-col w-full h-screen">
+          <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
+            {isApproval ? (
+              // Approval-specific UI
+              <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">
+                <div className="pb-4 w-full">
+                  <div className="flex flex-col gap-4 items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
+                    <div
+                      className="mb-1.5 p-3 text-xs rounded-xl"
+                      style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+                    >
+                      <span className="text-sm font-medium font-thin">
+                        {host}
+                      </span>
+                    </div>
 
-                  {approvalType === 'erc20-amount' && (
-                    <>
-                      <span className="text-brand-white text-lg">
-                        {t('send.grantAccess')}{' '}
-                        <span className="text-brand-royalblue font-semibold">
-                          {approvedTokenInfos?.tokenSymbol}
-                        </span>
-                      </span>
-                      <span className="text-brand-graylight text-sm">
-                        {t('send.byGrantingPermission')}
-                      </span>
-                    </>
-                  )}
-
-                  {approvalType === 'erc721-single' && (
-                    <>
-                      <span className="text-brand-white text-lg">
-                        {t('send.approveNftTransfer')}
-                      </span>
-                      <span className="text-brand-graylight text-sm">
-                        {t('send.allowTransferOf')}{' '}
-                        {approvedTokenInfos?.tokenSymbol} #
-                        {nftInfo?.tokenId || '...'}
-                      </span>
-                    </>
-                  )}
-
-                  {approvalType === 'nft-all' && (
-                    <>
-                      <span className="text-brand-white text-lg">
-                        {decodedTxData?.inputs?.[1]
-                          ? t('send.grantCollectionAccess')
-                          : t('send.revokeCollectionAccess')}
-                      </span>
-                      <span className="text-brand-graylight text-sm">
-                        {decodedTxData?.inputs?.[1]
-                          ? `${t('send.grantCompleteControl')} ${
-                              approvedTokenInfos?.tokenSymbol || tokenStandard
-                            } tokens`
-                          : `${t('send.revokeAccessTo')} ${
-                              approvedTokenInfos?.tokenSymbol || tokenStandard
-                            } collection`}
-                      </span>
-                      {decodedTxData?.inputs?.[1] && (
-                        <div className="mt-2 p-3 bg-red-900/20 border border-red-500 rounded-lg">
-                          <span className="text-red-400 text-xs">
-                            ⚠️ {t('send.warningCollectionControl')}
+                    {approvalType === 'erc20-amount' && (
+                      <>
+                        <span className="text-brand-white text-lg">
+                          {t('send.grantAccess')}{' '}
+                          <span className="text-brand-royalblue font-semibold">
+                            {approvedTokenInfos?.tokenSymbol}
                           </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                        </span>
+                        <span className="text-brand-graylight text-sm">
+                          {t('send.byGrantingPermission')}
+                        </span>
+                      </>
+                    )}
 
-                <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
-                  <div
-                    className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
-                    style={{
-                      backgroundColor: 'rgba(22, 39, 66, 1)',
-                      maxWidth: '150px',
-                    }}
-                  >
-                    <span>{ellipsis(dataTx.to)}</span>
-                    <IconButton onClick={() => copy(dataTx.to)}>
-                      <Icon
-                        name="copy"
-                        className="text-brand-white hover:text-fields-input-borderfocus"
-                        wrapperClassname="flex items-center justify-center"
-                      />
-                    </IconButton>
+                    {approvalType === 'erc721-single' && (
+                      <>
+                        <span className="text-brand-white text-lg">
+                          {t('send.approveNftTransfer')}
+                        </span>
+                        <span className="text-brand-graylight text-sm">
+                          {t('send.allowTransferOf')}{' '}
+                          {approvedTokenInfos?.tokenSymbol} #
+                          {nftInfo?.tokenId || '...'}
+                        </span>
+                      </>
+                    )}
+
+                    {approvalType === 'nft-all' && (
+                      <>
+                        <span className="text-brand-white text-lg">
+                          {decodedTxData?.inputs?.[1]
+                            ? t('send.grantCollectionAccess')
+                            : t('send.revokeCollectionAccess')}
+                        </span>
+                        <span className="text-brand-graylight text-sm">
+                          {decodedTxData?.inputs?.[1]
+                            ? `${t('send.grantCompleteControl')} ${
+                                approvedTokenInfos?.tokenSymbol || tokenStandard
+                              } tokens`
+                            : `${t('send.revokeAccessTo')} ${
+                                approvedTokenInfos?.tokenSymbol || tokenStandard
+                              } collection`}
+                        </span>
+                        {decodedTxData?.inputs?.[1] && (
+                          <div className="mt-2 p-3 bg-red-900/20 border border-red-500 rounded-lg">
+                            <span className="text-red-400 text-xs">
+                              ⚠️ {t('send.warningCollectionControl')}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
-                  {approvalType === 'erc20-amount' && (
-                    <div>
-                      <button
-                        type="button"
-                        className="text-blue-300 text-sm"
-                        onClick={() => setOpenEditAllowanceModal(true)}
-                      >
-                        {t('send.editPermission')}
-                      </button>
+                  <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
+                    <div
+                      className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
+                      style={{
+                        backgroundColor: 'rgba(22, 39, 66, 1)',
+                        maxWidth: '150px',
+                      }}
+                    >
+                      <span>{ellipsis(dataTx.to)}</span>
+                      <IconButton onClick={() => copy(dataTx.to)}>
+                        <Icon
+                          name="copy"
+                          className="text-brand-white hover:text-fields-input-borderfocus"
+                          wrapperClassname="flex items-center justify-center"
+                        />
+                      </IconButton>
                     </div>
-                  )}
 
-                  {(approvalType === 'erc721-single' ||
-                    approvalType === 'nft-all') && (
-                    <div className="mt-2 text-center">
-                      <p className="text-brand-white text-sm">
-                        {approvalType === 'erc721-single'
-                          ? `Token ID: ${
-                              nftInfo?.tokenId || decodedTxData?.inputs?.[1]
-                            }`
-                          : `Operator: ${ellipsis(
-                              decodedTxData?.inputs?.[0] || ''
-                            )}`}
-                      </p>
-                    </div>
-                  )}
+                    {approvalType === 'erc20-amount' && (
+                      <div>
+                        <button
+                          type="button"
+                          className="text-blue-300 text-sm"
+                          onClick={() => setOpenEditAllowanceModal(true)}
+                        >
+                          {t('send.editPermission')}
+                        </button>
+                      </div>
+                    )}
+
+                    {(approvalType === 'erc721-single' ||
+                      approvalType === 'nft-all') && (
+                      <div className="mt-2 text-center">
+                        <p className="text-brand-white text-sm">
+                          {approvalType === 'erc721-single'
+                            ? `Token ID: ${
+                                nftInfo?.tokenId || decodedTxData?.inputs?.[1]
+                              }`
+                            : `Operator: ${ellipsis(
+                                decodedTxData?.inputs?.[0] || ''
+                              )}`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            // Regular transaction UI
-            <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
-              <div className="flex flex-col items-center mb-6 text-center">
-                <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-                  <img
-                    className="relative w-[30px] h-[30px]"
-                    src={'/assets/all_assets/ArrowUp.svg'}
-                    alt="Icon"
-                  />
+            ) : (
+              // Regular transaction UI
+              <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
+                <div className="flex flex-col items-center mb-6 text-center">
+                  <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+                    <img
+                      className="relative w-[30px] h-[30px]"
+                      src={'/assets/all_assets/ArrowUp.svg'}
+                      alt="Icon"
+                    />
+                  </div>
+                  <p className="text-brand-gray200 text-xs font-light">
+                    {t('buttons.send')}
+                  </p>
+                  <p className="text-white text-base">{valueAndCurrency}</p>
                 </div>
-                <p className="text-brand-gray200 text-xs font-light">
-                  {t('buttons.send')}
-                </p>
-                <p className="text-white text-base">{valueAndCurrency}</p>
+
+                <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
+                  <p>Local</p>
+                  <p>{host}</p>
+                </div>
+                <div className="py-2 text-white text-xs flex w-full justify-between">
+                  <p>{t('send.method')}</p>
+                  <p>{decodedTxData?.method}</p>
+                </div>
+
+                {hasTxDataError && (
+                  <span className="text-red-600 text-sm my-4">
+                    {t('send.contractEstimateError')}
+                  </span>
+                )}
+
+                {hasGasError && (
+                  <span className="disabled text-xs my-4 text-center">
+                    {t('send.rpcEstimateError')}
+                  </span>
+                )}
               </div>
+            )}
 
-              <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
-                <p>Local</p>
-                <p>{host}</p>
-              </div>
-              <div className="py-2 text-white text-xs flex w-full justify-between">
-                <p>{t('send.method')}</p>
-                <p>{decodedTxData?.method}</p>
-              </div>
-
-              {hasTxDataError && (
-                <span className="text-red-600 text-sm my-4">
-                  {t('send.contractEstimateError')}
-                </span>
-              )}
-
-              {hasGasError && (
-                <span className="disabled text-xs my-4 text-center">
-                  {t('send.rpcEstimateError')}
-                </span>
-              )}
-            </div>
-          )}
-
-          <div className="w-full mt-6">
-            <ul
-              className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
-              id="tabExample"
-              role="tablist"
-            >
-              {tabElements.map((tab) => (
-                <li
-                  className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
-                    tab.id === tabSelected
-                      ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
-                      : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
-                  }`}
-                  role="presentation"
-                  key={tab.id}
-                  onClick={() => setTabSelected(tab.id)}
-                >
-                  {t(`send.${tab.tabName.toLowerCase()}`)}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div id="tabContentExample" className="flex flex-col w-full">
-            {tabComponents.map((component) => (
-              <div
-                key={component.id}
-                className={`${
-                  component.id !== tabSelected
-                    ? 'hidden'
-                    : 'flex flex-col w-full justify-center items-center'
-                }`}
-                id={component.id}
-                role="tabpanel"
+            <div className="w-full mt-6">
+              <ul
+                className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
+                id="tabExample"
+                role="tablist"
               >
-                {component.component === 'details' ? (
-                  <TransactionDetailsComponent
-                    tx={tx}
-                    decodedTx={decodedTxData}
-                    setCustomNonce={setCustomNonce}
-                    setCustomFee={setCustomFee}
-                    setHaveError={() => {
-                      // No-op function since haveError is not used
-                    }}
-                    setFee={setFee}
-                    fee={fee}
-                    setIsOpen={setIsOpen}
-                    customFee={customFee}
-                  />
-                ) : component.component === 'data' ? (
-                  <TransactionDataComponent decodedTx={decodedTxData} />
-                ) : component.component === 'hex' ? (
-                  <TransactionHexComponent
-                    methodName={decodedTxData.method}
-                    dataHex={validatedDataTxWithoutType.data}
-                  />
-                ) : null}
-              </div>
-            ))}
+                {tabElements.map((tab) => (
+                  <li
+                    className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
+                      tab.id === tabSelected
+                        ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
+                        : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
+                    }`}
+                    role="presentation"
+                    key={tab.id}
+                    onClick={() => setTabSelected(tab.id)}
+                  >
+                    {t(`send.${tab.tabName.toLowerCase()}`)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div id="tabContentExample" className="flex flex-col w-full">
+              {tabComponents.map((component) => (
+                <div
+                  key={component.id}
+                  className={`${
+                    component.id !== tabSelected
+                      ? 'hidden'
+                      : 'flex flex-col w-full justify-center items-center'
+                  }`}
+                  id={component.id}
+                  role="tabpanel"
+                >
+                  {component.component === 'details' ? (
+                    <TransactionDetailsComponent
+                      tx={tx}
+                      decodedTx={decodedTxData}
+                      setCustomNonce={setCustomNonce}
+                      setCustomFee={setCustomFee}
+                      setHaveError={() => {
+                        // No-op function since haveError is not used
+                      }}
+                      setFee={setFee}
+                      fee={fee}
+                      setIsOpen={setIsOpen}
+                      customFee={customFee}
+                    />
+                  ) : component.component === 'data' ? (
+                    <TransactionDataComponent decodedTx={decodedTxData} />
+                  ) : component.component === 'hex' ? (
+                    <TransactionHexComponent
+                      methodName={decodedTxData.method}
+                      dataHex={validatedDataTxWithoutType.data}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div
-            id="buttons"
-            className="flex items-center justify-around py-8 w-full"
-          >
-            <SecondaryButton
-              type="button"
-              onClick={() => {
-                // Clear navigation state when user cancels/goes away
-                clearNavigationState();
-                if (isExternal) {
-                  window.close();
-                } else {
-                  navigate('/home');
-                }
-              }}
-            >
-              {t('buttons.cancel')}
-            </SecondaryButton>
+          {/* Fixed button container at bottom */}
+          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+            <div className="flex gap-3 justify-center">
+              <SecondaryButton
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  // Clear navigation state when user cancels/goes away
+                  clearNavigationState();
+                  if (isExternal) {
+                    window.close();
+                  } else {
+                    navigate('/home');
+                  }
+                }}
+              >
+                {t('buttons.cancel')}
+              </SecondaryButton>
 
-            <PrimaryButton
-              type="button"
-              loading={loading}
-              onClick={handleConfirm}
-            >
-              {t('buttons.confirm')}
-            </PrimaryButton>
+              <PrimaryButton
+                type="button"
+                loading={loading}
+                onClick={handleConfirm}
+              >
+                {t('buttons.confirm')}
+              </PrimaryButton>
+            </div>
           </div>
         </div>
       ) : null}
