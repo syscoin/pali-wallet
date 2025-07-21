@@ -4,7 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { DefaultModal, PrimaryButton, SecondaryButton } from 'components/index';
+import { getErc20Abi } from '@pollum-io/sysweb3-utils';
+
+import {
+  DefaultModal,
+  PrimaryButton,
+  SecondaryButton,
+  Icon,
+  IconButton,
+} from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -14,9 +22,12 @@ import {
   IFeeState,
   ITransactionParams,
   ITxState,
+  IApprovedTokenInfos,
+  ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
+import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
@@ -28,13 +39,15 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
+import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const { navigate, alert } = useUtils();
+  const { navigate, alert, useCopyClipboard } = useUtils();
+  const [copied, copy] = useCopyClipboard();
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
@@ -68,6 +81,16 @@ export const SendTransaction = () => {
     ? state.decodedTx
     : state.decodedTx;
 
+  // Extract transaction metadata
+  const txMetadata = isExternal
+    ? externalTx.txMetadata
+    : state?.txMetadata || {};
+
+  const isLegacyTransaction = txMetadata.isLegacyTx || false;
+  const isApproval = txMetadata.isApproval || false;
+  const approvalType = txMetadata.approvalType;
+  const tokenStandard = txMetadata.tokenStandard;
+
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
@@ -86,6 +109,25 @@ export const SendTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+
+  // Approval-specific state
+  const [approvedTokenInfos, setApprovedTokenInfos] =
+    useState<IApprovedTokenInfos>();
+  const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
+    useState<ICustomApprovedAllowanceAmount>({
+      isCustom: false,
+      defaultAllowanceValue: 0,
+      customAllowanceValue: null,
+    });
+  const [openEditAllowanceModal, setOpenEditAllowanceModal] =
+    useState<boolean>(false);
+
+  // NFT-specific state for approvals
+  const [nftInfo, setNftInfo] = useState<{
+    name?: string;
+    tokenId?: string;
+    tokenUri?: string;
+  }>();
 
   // Helper function to safely convert fee values to numbers and format them
   const safeToFixed = (value: any, decimals = 9): string => {
@@ -132,70 +174,140 @@ export const SendTransaction = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      setTx({
-        ...(validatedDataTxWithoutType as ITxState),
-        nonce: customNonce,
-        maxPriorityFeePerGas: ethers.utils.parseUnits(
-          String(
-            Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
-              ? safeToFixed(customFee.maxPriorityFeePerGas)
-              : safeToFixed(fee.maxPriorityFeePerGas)
-          ),
-          9
-        ),
-        maxFeePerGas: ethers.utils.parseUnits(
-          String(
-            Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-              ? safeToFixed(customFee.maxFeePerGas)
-              : safeToFixed(fee.maxFeePerGas)
-          ),
-          9
-        ),
-        gasLimit: BigNumber.from(
-          Boolean(
-            customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
-          )
-            ? customFee.gasLimit
-            : fee.gasLimit
-        ),
-      });
+      let txToSend = tx;
+
+      // Handle approval-specific data encoding
+      if (
+        isApproval &&
+        approvalType === 'erc20-amount' &&
+        customApprovedAllowanceAmount.isCustom
+      ) {
+        // Ensure we have token info
+        if (
+          !approvedTokenInfos ||
+          approvedTokenInfos.tokenDecimals === undefined
+        ) {
+          alert.error(
+            'Token information not loaded. Please wait and try again.'
+          );
+          setLoading(false);
+          return;
+        }
+
+        // Only encode custom amount for ERC-20 approvals
+        const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
+
+        // The amount is already in the smallest unit (wei)
+        let parsedAmount;
+        try {
+          // Direct wei/smallest unit input - no conversion needed
+          parsedAmount = ethers.BigNumber.from(
+            customApprovedAllowanceAmount.customAllowanceValue
+          );
+        } catch (parseError) {
+          alert.error('Invalid amount format. Please enter a valid number.');
+          setLoading(false);
+          return;
+        }
+
+        const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
+          'approve',
+          [decodedTxData?.inputs[0], parsedAmount]
+        );
+
+        txToSend = { ...tx, data: encodedDataWithCustomValue };
+      }
+      // For NFT approvals, the transaction data remains unchanged
+
       try {
-        const response = (await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
-          [
-            {
-              ...tx,
-              nonce: customNonce,
-              maxPriorityFeePerGas: ethers.utils.parseUnits(
-                String(
+        let response;
+
+        if (isLegacyTransaction) {
+          // Legacy transaction handling
+          let txWithoutType = omitTransactionObjectData(txToSend, [
+            'type',
+          ]) as ITxState;
+
+          // Remove EIP-1559 fields for legacy transactions
+          if (
+            txWithoutType.maxFeePerGas ||
+            txWithoutType.maxPriorityFeePerGas
+          ) {
+            txWithoutType = omitTransactionObjectData(txWithoutType, [
+              'maxFeePerGas',
+              'maxPriorityFeePerGas',
+            ]) as ITxState;
+          }
+
+          const getLegacyGasFee = Boolean(
+            customFee.isCustom && customFee.gasPrice > 0
+          )
+            ? customFee.gasPrice * 10 ** 9
+            : await controllerEmitter([
+                'wallet',
+                'ethereumTransaction',
+                'getRecommendedGasPrice',
+              ]);
+
+          response = await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            [
+              {
+                ...txWithoutType,
+                nonce: customNonce,
+                gasPrice: ethers.utils.hexlify(Number(getLegacyGasFee)),
+                gasLimit: BigNumber.from(
                   Boolean(
-                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    customFee.isCustom &&
+                      customFee.gasLimit &&
+                      customFee.gasLimit > 0
                   )
-                    ? safeToFixed(customFee.maxPriorityFeePerGas)
-                    : safeToFixed(fee.maxPriorityFeePerGas)
+                    ? customFee.gasLimit
+                    : fee.gasLimit
                 ),
-                9
-              ),
-              maxFeePerGas: ethers.utils.parseUnits(
-                String(
-                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? safeToFixed(customFee.maxFeePerGas)
-                    : safeToFixed(fee.maxFeePerGas)
+              },
+              isLegacyTransaction,
+            ]
+          );
+        } else {
+          // EIP-1559 transaction handling
+          response = await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            [
+              {
+                ...txToSend,
+                nonce: customNonce,
+                maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas)
+                  ),
+                  9
                 ),
-                9
-              ),
-              gasLimit: BigNumber.from(
-                Boolean(
-                  customFee.isCustom &&
-                    customFee.gasLimit &&
-                    customFee.gasLimit > 0
-                )
-                  ? customFee.gasLimit
-                  : fee.gasLimit
-              ),
-            },
-          ]
-        )) as any;
+                maxFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? safeToFixed(customFee.maxFeePerGas)
+                      : safeToFixed(fee.maxFeePerGas)
+                  ),
+                  9
+                ),
+                gasLimit: BigNumber.from(
+                  Boolean(
+                    customFee.isCustom &&
+                      customFee.gasLimit &&
+                      customFee.gasLimit > 0
+                  )
+                    ? customFee.gasLimit
+                    : fee.gasLimit
+                ),
+              },
+            ]
+          );
+        }
 
         await controllerEmitter(
           ['wallet', 'sendAndSaveTransaction'],
@@ -307,6 +419,12 @@ export const SendTransaction = () => {
     }
   }, [confirmed, alert, t, navigate, isExternal]);
 
+  // Handle copy success message
+  useEffect(() => {
+    if (!copied) return;
+    alert.success(t('home.addressCopied'));
+  }, [copied, alert, t]);
+
   // Clear navigation state when component unmounts or navigates away
   useEffect(
     () => () => {
@@ -314,6 +432,125 @@ export const SendTransaction = () => {
     },
     []
   );
+
+  // Fetch token info for approval transactions
+  useEffect(() => {
+    if (!isApproval || !dataTx?.to) return;
+
+    const abortController = new AbortController();
+
+    const getTokenInfo = async (contractAddress: string) => {
+      try {
+        if (approvalType === 'erc20-amount') {
+          // Fetch ERC-20 token info
+          const tokenInfo = (await controllerEmitter(
+            ['wallet', 'getERC20TokenInfo'],
+            [contractAddress, activeAccount.address]
+          )) as {
+            balance: string;
+            decimals: number;
+            name: string;
+            symbol: string;
+          };
+
+          // Calculate user's token balance
+          const tokenBalance =
+            Number(tokenInfo.balance) /
+            Math.pow(10, Number(tokenInfo.decimals));
+
+          setApprovedTokenInfos({
+            tokenSymbol: tokenInfo.symbol,
+            tokenDecimals: Number(tokenInfo.decimals) || 18, // Ensure it's a number
+            tokenBalance: tokenBalance,
+          });
+        } else if (
+          approvalType === 'erc721-single' ||
+          approvalType === 'nft-all'
+        ) {
+          // Fetch NFT collection info
+          const tokenDetails = (await controllerEmitter(
+            ['wallet', 'getTokenDetails'],
+            [contractAddress, activeAccount.address]
+          )) as any;
+
+          if (tokenDetails) {
+            setApprovedTokenInfos({
+              tokenSymbol: tokenDetails.symbol || 'NFT',
+              tokenDecimals: 0, // NFTs don't have decimals
+            });
+          }
+
+          // For single NFT approvals, try to get token metadata
+          if (approvalType === 'erc721-single' && decodedTxData?.inputs?.[1]) {
+            const tokenId = decodedTxData.inputs[1].toString();
+            setNftInfo({ tokenId });
+            // TODO: Fetch token URI and metadata if needed
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get token info:', error);
+      }
+    };
+
+    getTokenInfo(dataTx.to);
+
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    isApproval,
+    approvalType,
+    dataTx?.to,
+    activeAccount.address,
+    controllerEmitter,
+    decodedTxData,
+  ]);
+
+  // Calculate default allowance value for ERC-20 approvals
+  useMemo(() => {
+    if (
+      !isApproval ||
+      approvalType !== 'erc20-amount' ||
+      !decodedTxData ||
+      !approvedTokenInfos?.tokenDecimals
+    )
+      return;
+
+    // inputs[1] is the decoded amount (could be BigNumber, string, or object with _hex property)
+    const rawAmount = decodedTxData?.inputs?.[1];
+    if (!rawAmount) return;
+
+    let amountString;
+
+    // Handle different types of amount values
+    if (rawAmount._isBigNumber || rawAmount._hex) {
+      // It's an ethers BigNumber object
+      amountString = ethers.BigNumber.from(rawAmount).toString();
+    } else if (typeof rawAmount === 'object' && rawAmount.hex) {
+      // It's an object with hex property
+      amountString = ethers.BigNumber.from(rawAmount.hex).toString();
+    } else if (typeof rawAmount === 'object' && rawAmount.toString) {
+      // It's some other object with toString method
+      amountString = rawAmount.toString();
+    } else {
+      // It's already a string or number
+      amountString = String(rawAmount);
+    }
+
+    // Keep the raw amount as-is (already in smallest unit)
+    const calculatedAllowanceValue = amountString;
+
+    setCustomApprovedAllowanceAmount({
+      isCustom: false,
+      defaultAllowanceValue: calculatedAllowanceValue,
+      customAllowanceValue: null,
+    });
+  }, [
+    isApproval,
+    approvalType,
+    decodedTxData,
+    approvedTokenInfos?.tokenDecimals,
+  ]);
 
   return (
     <>
@@ -329,6 +566,17 @@ export const SendTransaction = () => {
         defaultGasLimit={100000} // General transactions can vary widely
       />
 
+      {approvalType === 'erc20-amount' && (
+        <EditApprovedAllowanceValueModal
+          showModal={openEditAllowanceModal}
+          host={host}
+          approvedTokenInfos={approvedTokenInfos}
+          customApprovedAllowanceAmount={customApprovedAllowanceAmount}
+          setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
+          setOpenEditFeeModal={setOpenEditAllowanceModal}
+        />
+      )}
+
       <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}
@@ -342,42 +590,160 @@ export const SendTransaction = () => {
 
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
-            <div className="flex flex-col items-center mb-6 text-center">
-              <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-                <img
-                  className="relative w-[30px] h-[30px]"
-                  src={'/assets/all_assets/ArrowUp.svg'}
-                  alt="Icon"
-                />
+          {isApproval ? (
+            // Approval-specific UI
+            <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">
+              <div className="pb-4 w-full">
+                <div className="flex flex-col gap-4 items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
+                  <div
+                    className="mb-1.5 p-3 text-xs rounded-xl"
+                    style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+                  >
+                    <span className="text-sm font-medium font-thin">
+                      {host}
+                    </span>
+                  </div>
+
+                  {approvalType === 'erc20-amount' && (
+                    <>
+                      <span className="text-brand-white text-lg">
+                        {t('send.grantAccess')}{' '}
+                        <span className="text-brand-royalblue font-semibold">
+                          {approvedTokenInfos?.tokenSymbol}
+                        </span>
+                      </span>
+                      <span className="text-brand-graylight text-sm">
+                        {t('send.byGrantingPermission')}
+                      </span>
+                    </>
+                  )}
+
+                  {approvalType === 'erc721-single' && (
+                    <>
+                      <span className="text-brand-white text-lg">
+                        {t('send.approveNftTransfer')}
+                      </span>
+                      <span className="text-brand-graylight text-sm">
+                        {t('send.allowTransferOf')}{' '}
+                        {approvedTokenInfos?.tokenSymbol} #
+                        {nftInfo?.tokenId || '...'}
+                      </span>
+                    </>
+                  )}
+
+                  {approvalType === 'nft-all' && (
+                    <>
+                      <span className="text-brand-white text-lg">
+                        {decodedTxData?.inputs?.[1]
+                          ? t('send.grantCollectionAccess')
+                          : t('send.revokeCollectionAccess')}
+                      </span>
+                      <span className="text-brand-graylight text-sm">
+                        {decodedTxData?.inputs?.[1]
+                          ? `${t('send.grantCompleteControl')} ${
+                              approvedTokenInfos?.tokenSymbol || tokenStandard
+                            } tokens`
+                          : `${t('send.revokeAccessTo')} ${
+                              approvedTokenInfos?.tokenSymbol || tokenStandard
+                            } collection`}
+                      </span>
+                      {decodedTxData?.inputs?.[1] && (
+                        <div className="mt-2 p-3 bg-red-900/20 border border-red-500 rounded-lg">
+                          <span className="text-red-400 text-xs">
+                            ⚠️ {t('send.warningCollectionControl')}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
+                  <div
+                    className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
+                    style={{
+                      backgroundColor: 'rgba(22, 39, 66, 1)',
+                      maxWidth: '150px',
+                    }}
+                  >
+                    <span>{ellipsis(dataTx.to)}</span>
+                    <IconButton onClick={() => copy(dataTx.to)}>
+                      <Icon
+                        name="copy"
+                        className="text-brand-white hover:text-fields-input-borderfocus"
+                        wrapperClassname="flex items-center justify-center"
+                      />
+                    </IconButton>
+                  </div>
+
+                  {approvalType === 'erc20-amount' && (
+                    <div>
+                      <button
+                        type="button"
+                        className="text-blue-300 text-sm"
+                        onClick={() => setOpenEditAllowanceModal(true)}
+                      >
+                        {t('send.editPermission')}
+                      </button>
+                    </div>
+                  )}
+
+                  {(approvalType === 'erc721-single' ||
+                    approvalType === 'nft-all') && (
+                    <div className="mt-2 text-center">
+                      <p className="text-brand-white text-sm">
+                        {approvalType === 'erc721-single'
+                          ? `Token ID: ${
+                              nftInfo?.tokenId || decodedTxData?.inputs?.[1]
+                            }`
+                          : `Operator: ${ellipsis(
+                              decodedTxData?.inputs?.[0] || ''
+                            )}`}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-brand-gray200 text-xs font-light">
-                {t('buttons.send')}
-              </p>
-              <p className="text-white text-base">{valueAndCurrency}</p>
             </div>
+          ) : (
+            // Regular transaction UI
+            <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
+              <div className="flex flex-col items-center mb-6 text-center">
+                <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+                  <img
+                    className="relative w-[30px] h-[30px]"
+                    src={'/assets/all_assets/ArrowUp.svg'}
+                    alt="Icon"
+                  />
+                </div>
+                <p className="text-brand-gray200 text-xs font-light">
+                  {t('buttons.send')}
+                </p>
+                <p className="text-white text-base">{valueAndCurrency}</p>
+              </div>
 
-            <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
-              <p>Local</p>
-              <p>{host}</p>
+              <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
+                <p>Local</p>
+                <p>{host}</p>
+              </div>
+              <div className="py-2 text-white text-xs flex w-full justify-between">
+                <p>{t('send.method')}</p>
+                <p>{decodedTxData?.method}</p>
+              </div>
+
+              {hasTxDataError && (
+                <span className="text-red-600 text-sm my-4">
+                  {t('send.contractEstimateError')}
+                </span>
+              )}
+
+              {hasGasError && (
+                <span className="disabled text-xs my-4 text-center">
+                  {t('send.rpcEstimateError')}
+                </span>
+              )}
             </div>
-            <div className="py-2 text-white text-xs flex w-full justify-between">
-              <p>{t('send.method')}</p>
-              <p>{decodedTxData?.method}</p>
-            </div>
-
-            {hasTxDataError && (
-              <span className="text-red-600 text-sm my-4">
-                {t('send.contractEstimateError')}
-              </span>
-            )}
-
-            {hasGasError && (
-              <span className="disabled text-xs my-4 text-center">
-                {t('send.rpcEstimateError')}
-              </span>
-            )}
-          </div>
+          )}
 
           <div className="w-full mt-6">
             <ul

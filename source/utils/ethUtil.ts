@@ -1,14 +1,89 @@
 import InputDataDecoder from 'ethereum-input-data-decoder';
+import { ethers } from 'ethers';
 
 import { retryableFetch } from '@pollum-io/sysweb3-network';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
+import { getContractType } from '@pollum-io/sysweb3-utils';
 
-import { ITransactionParams } from 'types/transactions';
+import { IDecodedTx, ITransactionParams } from 'types/transactions';
 
 import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
+
 export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
+// Helper function to detect approval type
+const detectApprovalType = async (
+  data: string,
+  contractAddress: string,
+  web3Provider: any
+): Promise<{
+  approvalType?: 'erc20-amount' | 'erc721-single' | 'nft-all';
+  decodedData?: any;
+  isApproval: boolean;
+  method?: string;
+  tokenStandard?: string;
+}> => {
+  try {
+    // Get contract type first
+    const contractType = await getContractType(contractAddress, web3Provider);
+
+    // Method signatures
+    const signatures = {
+      approve: ethers.utils.id('approve(address,uint256)').slice(0, 10),
+      setApprovalForAll: ethers.utils
+        .id('setApprovalForAll(address,bool)')
+        .slice(0, 10),
+    };
+
+    if (data.startsWith(signatures.approve)) {
+      if (contractType?.type === 'ERC-20' || contractType?.type === 'ERC-777') {
+        // ERC-20/777 amount approval
+        const [spender, amount] = ethers.utils.defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          '0x' + data.slice(10)
+        );
+        return {
+          isApproval: true,
+          approvalType: 'erc20-amount',
+          tokenStandard: contractType.type,
+          decodedData: { spender, amount },
+          method: 'approve',
+        };
+      } else if (contractType?.type === 'ERC-721') {
+        // ERC-721 single NFT approval
+        const [to, tokenId] = ethers.utils.defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          '0x' + data.slice(10)
+        );
+        return {
+          isApproval: true,
+          approvalType: 'erc721-single',
+          tokenStandard: 'ERC-721',
+          decodedData: { to, tokenId },
+          method: 'approve',
+        };
+      }
+    } else if (data.startsWith(signatures.setApprovalForAll)) {
+      // Works for both ERC-721 and ERC-1155
+      const [operator, approved] = ethers.utils.defaultAbiCoder.decode(
+        ['address', 'bool'],
+        '0x' + data.slice(10)
+      );
+      return {
+        isApproval: true,
+        approvalType: 'nft-all',
+        tokenStandard: contractType?.type || 'Unknown',
+        decodedData: { operator, approved },
+        method: 'setApprovalForAll',
+      };
+    }
+  } catch (error) {
+    console.error('Error detecting approval type:', error);
+  }
+
+  return { isApproval: false };
+};
 
 // Fetch function signature from 4byte.directory
 export const fetchFunctionSignature = async (
@@ -30,7 +105,11 @@ export const fetchFunctionSignature = async (
 
 export const decodeTransactionData = async (
   params: ITransactionParams,
-  validateTxToAddress: IValidateEOAAddressResponse
+  validateTxToAddress: {
+    contract: boolean | undefined;
+    wallet: boolean | undefined;
+  },
+  web3Provider?: any
 ) => {
   const contractCreationInitialBytes = '0x60806040';
   const zeroAddress = '0x0000000000000000000000000000000000000000';
@@ -45,7 +124,45 @@ export const decodeTransactionData = async (
       : null; //Data might as well be null or undefined in which case the validateTransactionDataValue will fail
 
     //Try to decode if address is contract and have Data
-    if (validateTxToAddress.contract && dataValidation) {
+    if (validateTxToAddress.contract && dataValidation && web3Provider) {
+      // First check if it's an approval transaction
+      const approvalInfo = await detectApprovalType(
+        validatedData,
+        params.to,
+        web3Provider
+      );
+      if (approvalInfo.isApproval) {
+        return {
+          method: approvalInfo.method,
+          types:
+            approvalInfo.approvalType === 'erc20-amount' ||
+            approvalInfo.approvalType === 'erc721-single'
+              ? ['address', 'uint256']
+              : ['address', 'bool'],
+          inputs:
+            approvalInfo.approvalType === 'erc20-amount'
+              ? [
+                  approvalInfo.decodedData.spender,
+                  approvalInfo.decodedData.amount,
+                ]
+              : approvalInfo.approvalType === 'erc721-single'
+              ? [approvalInfo.decodedData.to, approvalInfo.decodedData.tokenId]
+              : [
+                  approvalInfo.decodedData.operator,
+                  approvalInfo.decodedData.approved,
+                ],
+          names:
+            approvalInfo.approvalType === 'erc20-amount'
+              ? ['spender', 'amount']
+              : approvalInfo.approvalType === 'erc721-single'
+              ? ['to', 'tokenId']
+              : ['operator', 'approved'],
+          approvalType: approvalInfo.approvalType,
+          tokenStandard: approvalInfo.tokenStandard,
+        };
+      }
+
+      // Continue with existing decoding logic
       let decoderValue = erc20DataDecoder().decodeData(validatedData); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
       const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
@@ -116,8 +233,3 @@ export const decodeTransactionData = async (
     return;
   }
 };
-
-interface IValidateEOAAddressResponse {
-  contract: boolean | undefined;
-  wallet: boolean | undefined;
-}

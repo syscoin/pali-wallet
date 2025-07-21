@@ -40,33 +40,34 @@ export const EthProvider = (
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
     const decodedTx = (await decodeTransactionData(
       tx,
-      validateTxToAddress
+      validateTxToAddress,
+      web3Provider
     )) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
-    // Determine route based on transaction type
-    let route = MethodRoute.SendEthTx;
-    let eventName = 'txSend';
+    // Always use SendEthTx route, pass transaction type as metadata
+    const route = MethodRoute.SendEthTx;
+    const eventName = 'txSend';
 
-    //Open Contract Interaction component
-    if (validateTxToAddress.contract || !isLegacyTx) {
-      route = MethodRoute.SendEthTx;
-      eventName = 'txSend';
-    }
-    //Open Send Component
-    else if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
-      route = MethodRoute.SendNTokenTx;
-      eventName = 'nTokenTx';
-    } else if (
-      decodedTx.method === 'Contract Deployment' ||
-      decodedTx.method === 'Burn'
-    ) {
-      route = MethodRoute.SendNTokenTx;
-      eventName = 'nTokenTx';
-    } else if (decodedTx.method === 'approve') {
-      route = MethodRoute.SendApprove;
-      eventName = 'txApprove';
-    }
+    // Determine transaction characteristics
+    const isContractInteraction = validateTxToAddress.contract;
+    const isApproval =
+      decodedTx.method === 'approve' ||
+      decodedTx.method === 'setApprovalForAll';
+    const isDeployment = decodedTx.method === 'Contract Deployment';
+    const isBurn = decodedTx.method === 'Burn';
+
+    // Pass transaction metadata for the component to handle appropriately
+    const txMetadata = {
+      isLegacyTx,
+      isContractInteraction,
+      isApproval,
+      isDeployment,
+      isBurn,
+      decodedMethod: decodedTx.method,
+      approvalType: (decodedTx as any).approvalType,
+      tokenStandard: (decodedTx as any).tokenStandard,
+    };
 
     // Use coordinator if context is provided, otherwise direct popup
     if (context) {
@@ -75,7 +76,7 @@ export const EthProvider = (
         () =>
           popupPromise({
             host,
-            data: { tx, decodedTx, external: true },
+            data: { tx, decodedTx, txMetadata, external: true },
             route,
             eventName,
           }),
@@ -84,7 +85,7 @@ export const EthProvider = (
     } else {
       return popupPromise({
         host,
-        data: { tx, decodedTx, external: true },
+        data: { tx, decodedTx, txMetadata, external: true },
         route,
         eventName,
       });

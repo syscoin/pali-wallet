@@ -219,12 +219,6 @@ const SwitchNeworkUtxoEvm = lazy(() =>
 const SendTransaction = lazy(() =>
   import('pages').then((m) => ({ default: m.SendTransaction }))
 );
-const SendNTokenTransaction = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendNTokenTransaction }))
-);
-const ApproveTransactionComponent = lazy(() =>
-  import('pages').then((m) => ({ default: m.ApproveTransactionComponent }))
-);
 const SignAndSend = lazy(() =>
   import('pages').then((m) => ({ default: m.SignAndSend }))
 );
@@ -373,14 +367,6 @@ export const Router = () => {
               <Route path="tx">
                 <Route path="send/confirm" element={<SendConfirm />} />
                 <Route path="send/ethTx" element={<SendTransaction />} />
-                <Route
-                  path="send/nTokenTx"
-                  element={<SendNTokenTransaction />}
-                />
-                <Route
-                  path="send/approve"
-                  element={<ApproveTransactionComponent />}
-                />
                 <Route path="sign" element={<SignAndSend />} />
                 <Route path="ethSign" element={<EthSign />} />
                 <Route path="encryptKey" element={<EncryptPubKey />} />

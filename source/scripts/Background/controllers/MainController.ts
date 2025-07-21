@@ -4296,10 +4296,11 @@ class MainController {
         data: transaction.data || transaction.input, // Use 'data' field if available, otherwise use 'input'
       };
 
-      // Use the existing decodeTransactionData function
+      // Use the existing decodeTransactionData function with web3Provider
       const decodedTx = await decodeTransactionData(
         normalizedTransaction,
-        validateTxToAddress
+        validateTxToAddress,
+        this.ethereumTransaction.web3Provider
       );
 
       return decodedTx as IDecodedTx;
