@@ -383,7 +383,11 @@ const ExternalWatchAsset = () => {
             </div>
           ) : assetInfo ? (
             <div className="flex gap-6 justify-center">
-              <SecondaryButton type="button" onClick={window.close}>
+              <SecondaryButton
+                type="button"
+                disabled={loading}
+                onClick={window.close}
+              >
                 {t('buttons.cancel')}
               </SecondaryButton>
 

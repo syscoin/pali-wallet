@@ -8,12 +8,11 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 import { SecondButton } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
-import { PrimaryButton, LoadingComponent } from 'components/index';
+import { PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import cleanErrorStack from 'utils/cleanErrorStack';
 
 const SwitchChain: React.FC = () => {
   const { host, ...data } = useQueryData();
@@ -33,14 +32,17 @@ const SwitchChain: React.FC = () => {
     setLoading(true);
     try {
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
+
+      setConfirmed(true);
+      setLoading(false);
+      const type = data.eventName;
+      dispatchBackgroundEvent(`${type}.${host}`, null);
+      window.close();
     } catch (networkError) {
-      throw cleanErrorStack(ethErrors.rpc.internal());
+      console.error('Network switch failed:', networkError);
+      setLoading(false);
+      // Don't throw here - just reset the loading state so user can try again
     }
-    setConfirmed(true);
-    setLoading(false);
-    const type = data.eventName;
-    dispatchBackgroundEvent(`${type}.${host}`, null);
-    window.close();
   };
 
   const CurrentChains = () => {
@@ -72,42 +74,40 @@ const SwitchChain: React.FC = () => {
   };
   return (
     <>
-      {!loading && (
-        <div className="flex flex-col items-center justify-center w-full">
-          <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
-            <h2 className="text-center text-base">
-              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
-            </h2>
-            <div className="mt-1 px-4 w-full text-center text-sm">
-              <span className="disabled">{t('settings.thisWillSwitch')}</span>
-            </div>
-            <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
-              <CurrentChains />
-            </div>
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
+          <h2 className="text-center text-base">
+            {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
+          </h2>
+          <div className="mt-1 px-4 w-full text-center text-sm">
+            <span className="disabled">{t('settings.thisWillSwitch')}</span>
           </div>
-
-          <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
-            <SecondButton type="button" onClick={window.close} action={true}>
-              {t('buttons.reject')}
-            </SecondButton>
-
-            <PrimaryButton
-              type="submit"
-              disabled={confirmed}
-              loading={loading}
-              onClick={onSubmit}
-              action={true}
-            >
-              {t('buttons.confirm')}
-            </PrimaryButton>
+          <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
+            <CurrentChains />
           </div>
         </div>
-      )}
-      {loading && (
-        <div className="relative top-40 flex items-center justify-center w-full">
-          <LoadingComponent />
+
+        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
+          <SecondButton
+            type="button"
+            onClick={window.close}
+            action={true}
+            disabled={loading}
+          >
+            {t('buttons.reject')}
+          </SecondButton>
+
+          <PrimaryButton
+            type="submit"
+            disabled={confirmed || loading}
+            loading={loading}
+            onClick={onSubmit}
+            action={true}
+          >
+            {t('buttons.confirm')}
+          </PrimaryButton>
         </div>
-      )}
+      </div>
     </>
   );
 };

@@ -1,5 +1,5 @@
 import { toSvg } from 'jdenticon';
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -125,6 +125,7 @@ export const ChangeConnectedAccount = () => {
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const { host, eventName, connectedAccount, accountType } = useQueryData();
+  const [isChanging, setIsChanging] = useState(false);
 
   // Helper function to get tokens for an account
   const getAccountTokens = useCallback(
@@ -144,15 +145,21 @@ export const ChangeConnectedAccount = () => {
   );
 
   const handleAccept = async () => {
-    await controllerEmitter(
-      ['wallet', 'setAccount'],
-      [connectedAccount.id, accountType, true]
-    );
-    dispatchBackgroundEvent(`${eventName}.${host}`, null);
-    window.close();
+    setIsChanging(true);
+    try {
+      await controllerEmitter(
+        ['wallet', 'setAccount'],
+        [connectedAccount.id, accountType, true]
+      );
+      dispatchBackgroundEvent(`${eventName}.${host}`, null);
+      window.close();
+    } catch (error) {
+      console.error('Failed to change account:', error);
+      setIsChanging(false);
+    }
   };
 
-  const handleReject = async () => {
+  const handleReject = () => {
     window.close();
   };
 
@@ -318,11 +325,20 @@ export const ChangeConnectedAccount = () => {
       {/* Fixed button container at bottom */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton type="button" onClick={handleReject}>
+          <SecondaryButton
+            type="button"
+            onClick={handleReject}
+            disabled={isChanging}
+          >
             {t('buttons.cancel')}
           </SecondaryButton>
 
-          <PrimaryButton type="button" onClick={handleAccept}>
+          <PrimaryButton
+            type="button"
+            onClick={handleAccept}
+            loading={isChanging}
+            disabled={isChanging}
+          >
             {t('connections.switchAccount')}
           </PrimaryButton>
         </div>

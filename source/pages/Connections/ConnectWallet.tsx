@@ -158,6 +158,7 @@ export const ConnectWallet = () => {
   );
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const date = Date.now();
 
   // Helper function to get tokens for an account
@@ -189,21 +190,26 @@ export const ConnectWallet = () => {
       return;
     }
 
-    await controllerEmitter(
-      ['dapp', 'connect'],
-      [{ host, chain, chainId, accountId, accountType, date }]
-    );
+    setIsConnecting(true);
+    try {
+      await controllerEmitter(
+        ['dapp', 'connect'],
+        [{ host, chain, chainId, accountId, accountType, date }]
+      );
 
-    await controllerEmitter(
-      ['wallet', 'setAccount'],
-      [accountId, accountType, true]
-    );
+      await controllerEmitter(
+        ['wallet', 'setAccount'],
+        [accountId, accountType, true]
+      );
 
-    // Return null - the method handler will return the actual address
-    // This popup just establishes the connection
-    dispatchBackgroundEvent(`${eventName}.${host}`, null);
-
-    window.close();
+      // Return null - the method handler will return the actual address
+      // This popup just establishes the connection
+      dispatchBackgroundEvent(`${eventName}.${host}`, null);
+      window.close();
+    } catch (error) {
+      console.error('Failed to connect wallet:', error);
+      setIsConnecting(false);
+    }
   }, [
     host,
     chain,
@@ -482,13 +488,20 @@ export const ConnectWallet = () => {
       {/* Fixed button container at bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton type="button" onClick={() => window.close()}>
+          <SecondaryButton
+            type="button"
+            onClick={() => window.close()}
+            disabled={isConnecting}
+          >
             {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
             type="button"
-            disabled={accountId === null || accountType === null}
+            disabled={
+              isConnecting || accountId === null || accountType === null
+            }
+            loading={isConnecting}
             onClick={onConfirm}
           >
             {t('buttons.confirm')}
@@ -517,11 +530,18 @@ export const ConnectWallet = () => {
               width="36"
               type="button"
               onClick={() => setConfirmUntrusted(false)}
+              disabled={isConnecting}
             >
               {t('buttons.cancel')}
             </SecondaryButton>
 
-            <PrimaryButton width="36" type="button" onClick={handleConnect}>
+            <PrimaryButton
+              width="36"
+              type="button"
+              onClick={handleConnect}
+              loading={isConnecting}
+              disabled={isConnecting}
+            >
               {t('buttons.confirm')}
             </PrimaryButton>
           </div>

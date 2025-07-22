@@ -16,6 +16,7 @@ const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
@@ -256,19 +257,27 @@ const CustomRPCExternal = () => {
 
       // Add the network
       await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
-      const type = data.eventName;
 
+      // Switch to network switching state
+      setLoading(false);
+      setSwitchingNetwork(true);
+
+      // Switch to the new network
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
+
+      const type = data.eventName;
       // Signal success to the DApp
       dispatchBackgroundEvent(`${type}.${host}`, null);
+
       setConfirmed(true);
-      setLoading(false);
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
+      setSwitchingNetwork(false);
+
       // Show success and close
       alert.success(t('settings.rpcSuccessfullyAdded'));
-
       setTimeout(window.close, 2000);
     } catch (error: any) {
       setLoading(false);
+      setSwitchingNetwork(false);
       setConfirmed(false);
 
       const errorMessage = extractErrorMessage(error, 'Failed to add network');
@@ -498,17 +507,23 @@ const CustomRPCExternal = () => {
       {/* Fixed button container at bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton type="button" onClick={window.close}>
+          <SecondaryButton
+            type="button"
+            onClick={window.close}
+            disabled={loading || switchingNetwork}
+          >
             {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
             type="submit"
-            disabled={confirmed}
-            loading={loading}
+            disabled={confirmed || loading || switchingNetwork}
+            loading={loading || switchingNetwork}
             onClick={() => form.submit()}
           >
-            {t('buttons.addNetwork')}
+            {switchingNetwork
+              ? t('settings.switchingNetwork')
+              : t('buttons.addNetwork')}
           </PrimaryButton>
         </div>
       </div>

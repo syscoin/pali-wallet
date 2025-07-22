@@ -2,11 +2,7 @@ import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-  PrimaryButton,
-  SecondaryButton,
-  LoadingComponent,
-} from 'components/index';
+import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -53,80 +49,81 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
         ['wallet', 'setActiveNetwork'],
         [newNetwork, true]
       );
+
+      const type = data.eventName;
+      dispatchBackgroundEvent(`${type}.${host}`, null);
+      setConfirmed(true);
+      setLoading(false);
+      window.close();
     } catch (networkError) {
-      throw cleanErrorStack(ethErrors.rpc.internal());
+      console.error('Network switch failed:', networkError);
+      setLoading(false);
+      // Don't throw here - just reset the loading state so user can try again
     }
-    const type = data.eventName;
-    dispatchBackgroundEvent(`${type}.${host}`, null);
-    setConfirmed(true);
-    setLoading(false);
-    window.close();
   };
 
   return (
     <>
-      {!loading ? (
-        <div className="flex flex-col items-center justify-center w-full">
-          <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-            <h2 className="text-center text-lg">
-              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
-            </h2>
-            <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
-              <span>{t('settings.thisWillSwitch')}</span>
-            </div>
-            <div className="flex flex-col items-center justify-center w-full">
-              <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-                <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  {t('settings.previousChainType')}
-                  <span className="text-brand-royalblue text-xs">
-                    {previousChain}
-                  </span>
-                </p>
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+          <h2 className="text-center text-lg">
+            {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
+          </h2>
+          <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
+            <span>{t('settings.thisWillSwitch')}</span>
+          </div>
+          <div className="flex flex-col items-center justify-center w-full">
+            <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.previousChainType')}
+                <span className="text-brand-royalblue text-xs">
+                  {previousChain}
+                </span>
+              </p>
 
-                <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  {t('settings.newChainType')}
-                  <span className="text-brand-royalblue text-xs">
-                    {newChainValue}
-                  </span>
-                </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.newChainType')}
+                <span className="text-brand-royalblue text-xs">
+                  {newChainValue}
+                </span>
+              </p>
 
-                <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  {t('settings.newNetworkUrl')}
-                  <span className="text-brand-royalblue text-xs">
-                    {newNetwork?.url || 'N/A'}
-                  </span>
-                </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.newNetworkUrl')}
+                <span className="text-brand-royalblue text-xs">
+                  {newNetwork?.url || 'N/A'}
+                </span>
+              </p>
 
-                <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  {t('settings.newNetworkChainId')}
-                  <span className="text-brand-royalblue text-xs">
-                    {newNetwork?.chainId || 'N/A'}
-                  </span>
-                </p>
-              </div>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.newNetworkChainId')}
+                <span className="text-brand-royalblue text-xs">
+                  {newNetwork?.chainId || 'N/A'}
+                </span>
+              </p>
             </div>
           </div>
-
-          <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
-            <SecondaryButton type="button" onClick={window.close}>
-              {t('buttons.cancel')}
-            </SecondaryButton>
-
-            <PrimaryButton
-              type="submit"
-              disabled={confirmed}
-              loading={loading}
-              onClick={onSubmit}
-            >
-              {t('buttons.change')}
-            </PrimaryButton>
-          </div>
         </div>
-      ) : (
-        <div className="relative top-40 flex items-center justify-center w-full">
-          <LoadingComponent />
+
+        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
+          <SecondaryButton
+            type="button"
+            onClick={window.close}
+            disabled={loading}
+          >
+            {t('buttons.cancel')}
+          </SecondaryButton>
+
+          <PrimaryButton
+            type="submit"
+            disabled={confirmed || loading}
+            loading={loading}
+            onClick={onSubmit}
+          >
+            {t('buttons.change')}
+          </PrimaryButton>
         </div>
-      )}
+      </div>
     </>
   );
 };
