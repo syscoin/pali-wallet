@@ -34,7 +34,11 @@ export const TransactionsList = ({
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
+    accounts,
+    activeAccount: activeAccountMeta,
   } = useSelector((state: RootState) => state.vault);
+  const activeAccount =
+    accounts[activeAccountMeta.type]?.[activeAccountMeta.id];
   const [searchParams] = useSearchParams();
   const { getTxStatus } = useTransactionsListConfig();
   const [modalData, setModalData] = useState<{
@@ -233,8 +237,16 @@ export const TransactionsList = ({
         }
       );
 
-    // Use the direction field if available, otherwise fall back to the old logic
-    const isTxSent = tx.direction ? tx.direction === 'sent' : false;
+    // Use the direction field if available, otherwise fall back to comparing addresses for EVM
+    let isTxSent = false;
+
+    if (tx.direction) {
+      // If direction field exists, use it
+      isTxSent = tx.direction === 'sent';
+    } else if (!isBitcoinBased && tx.from && activeAccount?.address) {
+      // For EVM transactions without direction field, compare tx.from with active account address
+      isTxSent = tx.from.toLowerCase() === activeAccount.address.toLowerCase();
+    }
     const sptInfo =
       isBitcoinBased && tx.tokenType ? getSPTTypeInfo(tx.tokenType) : null;
 
