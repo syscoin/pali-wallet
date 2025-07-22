@@ -69,12 +69,8 @@
   "header": {
     "importAccount": "Importar cuenta",
     "to": "a",
-    "changeActiveAccount": "Cambiar cuenta activa",
-    "itSeemsThatYou": "Parece que estás utilizando una cuenta basada en Trezor que fue creada específicamente para esta red. Si deseas utilizar una red diferente, puedes cambiar a otra cuenta activa seleccionando una cuenta preferida de Pali.",
-    "itSeemsThatYouLedger": "Parece que estás utilizando una cuenta basada en Ledger que fue creada específicamente para esta red. Si deseas utilizar una red diferente, puedes cambiar a otra cuenta activa seleccionando una cuenta preferida de Pali.",
     "thereWasAnError": "Hubo un error al intentar cambiar de red. Inténtalo de nuevo más tarde.",
     "errorSwitching": "Error al cambiar de redes",
-    "pleaseSelect": "Por favor, selecciona una cuenta.",
     "speedUp": "Acelerar",
     "cancelTx": "Cancelar Transacción",
     "cancelTxMessage": "¿Estás seguro de que quieres cancelar esta transacción?",

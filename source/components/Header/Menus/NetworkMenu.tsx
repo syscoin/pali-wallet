@@ -3,7 +3,6 @@ import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
@@ -43,8 +42,6 @@ CheckIcon.displayName = 'CheckIcon';
 
 interface INetworkComponent {
   disabled?: boolean;
-  setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setSelectedNetwork: React.Dispatch<React.SetStateAction<INetwork>>;
 }
 
 const customSort = (a: INetwork, b: INetwork) => {
@@ -55,11 +52,7 @@ const customSort = (a: INetwork, b: INetwork) => {
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
-  const {
-    setActiveAccountModalIsOpen,
-    setSelectedNetwork,
-    disabled = false,
-  } = props;
+  const { disabled = false } = props;
   const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
@@ -70,9 +63,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
-  );
-  const activeAccountType = useSelector(
-    (state: RootState) => state.vault.activeAccount.type
   );
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
@@ -144,35 +134,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   // ✅ MEMOIZED: Network change handler
   const handleChangeNetwork = useCallback(
     async (network: INetwork, closeMenu?: () => void) => {
-      setSelectedNetwork(network);
-
       // Check if user is trying to switch to the same network that's already active
       if (activeNetworkValidator(network)) {
         // Already on this network, no need to switch
         return;
       }
 
-      const cannotContinueWithTrezorAccount =
-        // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
-        (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
-        (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
-        // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
-        (Object.keys(networks.ethereum).find(
-          (chainId) => `${activeNetwork.chainId}` === chainId
-        ) &&
-          Object.keys(networks.syscoin).find(
-            (chainId) => `${network.chainId}` === chainId
-          ) &&
-          `${network.slip44}` !== 'undefined' &&
-          (activeAccountType === KeyringAccountType.Trezor ||
-            activeAccountType === KeyringAccountType.Ledger));
-
       try {
-        if (cannotContinueWithTrezorAccount) {
-          setActiveAccountModalIsOpen(true);
-          return;
-        }
-
         // Close menu immediately after starting the switch
         if (closeMenu) {
           closeMenu();
@@ -188,16 +156,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           });
       } catch (networkError) {}
     },
-    [
-      setSelectedNetwork,
-      activeNetworkValidator,
-      isBitcoinBased,
-      activeAccountType,
-      networks,
-      activeNetwork,
-      setActiveAccountModalIsOpen,
-      controllerEmitter,
-    ]
+    [activeNetworkValidator, controllerEmitter]
   );
 
   // ✅ MEMOIZED: Navigation handlers

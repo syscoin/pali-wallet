@@ -40,12 +40,8 @@
   "header": {
     "importAccount": "导入账户",
     "to": "到",
-    "changeActiveAccount": "更改活跃账户",
-    "itSeemsThatYou": "看起来您当前正在使用专为此网络创建的基于Trezor的账户。如果您想使用不同的网络，可以通过选择首选Pali账户来切换到另一个活跃账户。",
-    "itSeemsThatYouLedger": "看起来您当前正在使用专为此网络创建的基于Ledger的账户。如果您想使用不同的网络，可以通过选择首选Pali账户来切换到另一个活跃账户。",
     "thereWasAnError": "尝试切换网络时出错。请稍后再试。",
     "errorSwitching": "切换网络时出错",
-    "pleaseSelect": "请选择一个账户。",
     "speedUp": "加速",
     "cancelTx": "取消交易",
     "cancelTxMessage": "您确定要取消此交易吗？",

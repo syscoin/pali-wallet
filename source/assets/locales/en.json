@@ -100,12 +100,8 @@
   "header": {
     "importAccount": "Import account",
     "to": "to",
-    "changeActiveAccount": "Change active account",
-    "itSeemsThatYou": "It seems that you are currently using a Trezor-based account that was created specifically for this network. If you wish to use a different network, you can switch to another active account by selecting a preferred Pali Account.",
-    "itSeemsThatYouLedger": "It seems that you are currently using a Ledger-based account that was created specifically for this network. If you wish to use a different network, you can switch to another active account by selecting a preferred Pali Account.",
     "thereWasAnError": "There was an error while trying to switch network. Try again later.",
     "errorSwitching": "Error switching networks",
-    "pleaseSelect": "Please, select an account.",
     "speedUp": "Speed Up",
     "cancelTx": "Cancel Transaction",
     "cancelTxMessage": "Are you sure that you want to cancel this transaction?",
