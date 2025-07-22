@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
-  DefaultModal,
   ErrorModal,
   PrimaryButton,
   SecondaryButton,
@@ -16,6 +15,11 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import {
+  isUserCancellationError,
+  isDeviceLockedError,
+  isBlindSigningError,
+} from 'utils/isUserCancellationError';
 import { getNetworkChain } from 'utils/network';
 
 interface ISign {
@@ -33,11 +37,8 @@ const EthSign: React.FC<ISign> = () => {
   const [state, setState] = useState<string>('Details');
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
-  const [isReconectModalOpen, setIsReconectModalOpen] =
-    useState<boolean>(false);
 
   const tabLabel = ['Details', 'Data'];
-  const url = chrome.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     ({ vault }: RootState) => vault
   );
@@ -145,22 +146,27 @@ const EthSign: React.FC<ISign> = () => {
 
       window.close();
     } catch (error: any) {
-      const isNecessaryReconnect = error.message.includes(
-        'read properties of undefined'
-      );
-      const isNecessaryBlindSigning = error.message.includes(
-        'Please enable Blind signing'
-      );
-      if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+      // Handle user cancellation gracefully
+      if (isUserCancellationError(error)) {
+        alert.info(t('transactions.transactionCancelled'));
+        setLoading(false);
+        return;
+      }
+
+      // Handle device locked
+      if (isDeviceLockedError(error)) {
+        setErrorMsg(t('settings.lockedDevice'));
+        setLoading(false);
+        return;
+      }
+
+      // Handle blind signing requirement
+      if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
         setErrorMsg(t('settings.ledgerBlindSigning'));
         setLoading(false);
         return;
       }
-      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-        setIsReconectModalOpen(true);
-        setLoading(false);
-        return;
-      }
+
       console.log(error);
       setErrorMsg(error.message);
 
@@ -465,17 +471,6 @@ const EthSign: React.FC<ISign> = () => {
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
         buttonText="Ok"
-      />
-      <DefaultModal
-        show={isReconectModalOpen}
-        title={t('settings.ledgerReconnection')}
-        buttonText={t('buttons.reconnect')}
-        description={t('settings.ledgerReconnectionMessage')}
-        onClose={() => {
-          setIsReconectModalOpen(false);
-          window.close();
-          window.open(`${url}?isReconnect=true`, '_blank');
-        }}
       />
 
       {initialLoading ? (

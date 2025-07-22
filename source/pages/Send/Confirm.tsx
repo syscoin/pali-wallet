@@ -21,13 +21,7 @@ import {
   ITxState,
   TransactionType,
 } from '../../types/transactions';
-import {
-  DefaultModal,
-  Button,
-  Icon,
-  Tooltip,
-  IconButton,
-} from 'components/index';
+import { Button, Icon, Tooltip, IconButton } from 'components/index';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -47,6 +41,11 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
+import {
+  isUserCancellationError,
+  isDeviceLockedError,
+  isBlindSigningError,
+} from 'utils/isUserCancellationError';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -55,7 +54,6 @@ export const SendConfirm = () => {
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const { getFiatAmount } = usePrice();
-  const url = chrome.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -89,7 +87,7 @@ export const SendConfirm = () => {
 
   const { isEIP1559Compatible } = useEIP1559();
   const [copied, copy] = useCopyClipboard();
-  const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
+
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   // Add fee calculation cache and debouncing
@@ -277,18 +275,15 @@ export const SendConfirm = () => {
                 // This prevents redundant API calls and timing issues
               })
               .catch((error: any) => {
-                const isNecessaryReconnect = error.message?.includes(
-                  'read properties of undefined'
-                );
-                if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                  setIsReconectModalOpen(true);
+                // Handle user cancellation gracefully
+                if (isUserCancellationError(error)) {
+                  alert.info(t('transactions.transactionCancelled'));
                   setLoading(false);
                   return;
                 }
-                const isDeviceLocked =
-                  error?.message?.includes('Locked device');
 
-                if (isDeviceLocked) {
+                // Handle device locked
+                if (isDeviceLockedError(error)) {
                   alert.warning(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
@@ -521,33 +516,30 @@ export const SendConfirm = () => {
                     // This prevents redundant API calls and timing issues
                   })
                   .catch((error: any) => {
-                    const isNecessaryReconnect = error.message.includes(
-                      'read properties of undefined'
-                    );
-                    const isNecessaryBlindSigning = error.message.includes(
-                      'Please enable Blind signing'
-                    );
+                    // Handle user cancellation gracefully
+                    if (isUserCancellationError(error)) {
+                      alert.info(t('transactions.transactionCancelled'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle device locked
+                    if (isDeviceLockedError(error)) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle blind signing requirement
                     if (
                       activeAccount.isLedgerWallet &&
-                      isNecessaryBlindSigning
+                      isBlindSigningError(error)
                     ) {
                       alert.warning(t('settings.ledgerBlindSigning'));
                       setLoading(false);
                       return;
                     }
-                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                      setIsReconectModalOpen(true);
-                      setLoading(false);
-                      return;
-                    }
-                    const isDeviceLocked =
-                      error?.message.includes('Locked device');
 
-                    if (isDeviceLocked) {
-                      alert.warning(t('settings.lockedDevice'));
-                      setLoading(false);
-                      return;
-                    }
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                     throw error;
@@ -616,26 +608,26 @@ export const SendConfirm = () => {
                 // This prevents redundant API calls and timing issues
               })
               .catch((error: any) => {
-                const isNecessaryReconnect = error.message.includes(
-                  'read properties of undefined'
-                );
-                const isNecessaryBlindSigning = error.message.includes(
-                  'Please enable Blind signing'
-                );
-                if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-                  alert.warning(t('settings.ledgerBlindSigning'));
+                // Handle user cancellation gracefully
+                if (isUserCancellationError(error)) {
+                  alert.info(t('transactions.transactionCancelled'));
                   setLoading(false);
                   return;
                 }
-                if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                  setIsReconectModalOpen(true);
-                  setLoading(false);
-                  return;
-                }
-                const isDeviceLocked = error?.message.includes('Locked device');
 
-                if (isDeviceLocked) {
+                // Handle device locked
+                if (isDeviceLockedError(error)) {
                   alert.warning(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
+
+                // Handle blind signing requirement
+                if (
+                  activeAccount.isLedgerWallet &&
+                  isBlindSigningError(error)
+                ) {
+                  alert.warning(t('settings.ledgerBlindSigning'));
                   setLoading(false);
                   return;
                 }
@@ -786,33 +778,26 @@ export const SendConfirm = () => {
                       // This prevents redundant API calls and timing issues
                     })
                     .catch((error) => {
-                      const isNecessaryReconnect = error.message.includes(
-                        'read properties of undefined'
-                      );
-                      const isNecessaryBlindSigning = error.message.includes(
-                        'Please enable Blind signing'
-                      );
+                      // Handle user cancellation gracefully
+                      if (isUserCancellationError(error)) {
+                        alert.info(t('transactions.transactionCancelled'));
+                        setLoading(false);
+                        return;
+                      }
+
+                      // Handle device locked
+                      if (isDeviceLockedError(error)) {
+                        alert.warning(t('settings.lockedDevice'));
+                        setLoading(false);
+                        return;
+                      }
+
+                      // Handle blind signing requirement
                       if (
                         activeAccount.isLedgerWallet &&
-                        isNecessaryBlindSigning
+                        isBlindSigningError(error)
                       ) {
                         alert.warning(t('settings.ledgerBlindSigning'));
-                        setLoading(false);
-                        return;
-                      }
-                      if (
-                        activeAccount.isLedgerWallet &&
-                        isNecessaryReconnect
-                      ) {
-                        setIsReconectModalOpen(true);
-                        setLoading(false);
-                        return;
-                      }
-                      const isDeviceLocked =
-                        error?.message.includes('Locked device');
-
-                      if (isDeviceLocked) {
-                        alert.warning(t('settings.lockedDevice'));
                         setLoading(false);
                         return;
                       }
@@ -896,31 +881,26 @@ export const SendConfirm = () => {
                     // This prevents redundant API calls and timing issues
                   })
                   .catch((error) => {
-                    const isNecessaryReconnect = error.message.includes(
-                      'read properties of undefined'
-                    );
-                    const isNecessaryBlindSigning = error.message.includes(
-                      'Please enable Blind signing'
-                    );
+                    // Handle user cancellation gracefully
+                    if (isUserCancellationError(error)) {
+                      alert.info(t('transactions.transactionCancelled'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle device locked
+                    if (isDeviceLockedError(error)) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle blind signing requirement
                     if (
                       activeAccount.isLedgerWallet &&
-                      isNecessaryBlindSigning
+                      isBlindSigningError(error)
                     ) {
                       alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                      setIsReconectModalOpen(true);
-                      setLoading(false);
-                      return;
-                    }
-                    logError('error send ERC20', 'Transaction', error);
-                    const isDeviceLocked =
-                      error?.message.includes('Locked device');
-
-                    if (isDeviceLocked) {
-                      alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
@@ -1007,31 +987,26 @@ export const SendConfirm = () => {
                     // This prevents redundant API calls and timing issues
                   })
                   .catch((error) => {
-                    const isNecessaryReconnect = error.message.includes(
-                      'read properties of undefined'
-                    );
-                    const isNecessaryBlindSigning = error.message.includes(
-                      'Please enable Blind signing'
-                    );
+                    // Handle user cancellation gracefully
+                    if (isUserCancellationError(error)) {
+                      alert.info(t('transactions.transactionCancelled'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle device locked
+                    if (isDeviceLockedError(error)) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle blind signing requirement
                     if (
                       activeAccount.isLedgerWallet &&
-                      isNecessaryBlindSigning
+                      isBlindSigningError(error)
                     ) {
                       alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                      setIsReconectModalOpen(true);
-                      setLoading(false);
-                      return;
-                    }
-
-                    const isDeviceLocked =
-                      error?.message.includes('Locked device');
-
-                    if (isDeviceLocked) {
-                      alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
@@ -1141,30 +1116,26 @@ export const SendConfirm = () => {
                     // This prevents redundant API calls and timing issues
                   })
                   .catch((error) => {
-                    const isNecessaryReconnect = error.message.includes(
-                      'read properties of undefined'
-                    );
-                    const isNecessaryBlindSigning = error.message.includes(
-                      'Please enable Blind signing'
-                    );
+                    // Handle user cancellation gracefully
+                    if (isUserCancellationError(error)) {
+                      alert.info(t('transactions.transactionCancelled'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle device locked
+                    if (isDeviceLockedError(error)) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+
+                    // Handle blind signing requirement
                     if (
                       activeAccount.isLedgerWallet &&
-                      isNecessaryBlindSigning
+                      isBlindSigningError(error)
                     ) {
                       alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-                      setIsReconectModalOpen(true);
-                      setLoading(false);
-                      return;
-                    }
-                    const isDeviceLocked =
-                      error?.message.includes('Locked device');
-
-                    if (isDeviceLocked) {
-                      alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
@@ -1472,17 +1443,6 @@ export const SendConfirm = () => {
         fee={fee}
         isSendLegacyTransaction={!isEIP1559Compatible}
         defaultGasLimit={basicTxValues?.defaultGasLimit || 42000}
-      />
-
-      <DefaultModal
-        show={isReconectModalOpen}
-        title={t('settings.ledgerReconnection')}
-        buttonText={t('buttons.reconnect')}
-        description={t('settings.ledgerReconnectionMessage')}
-        onClose={() => {
-          setIsReconectModalOpen(false);
-          window.open(`${url}?isReconnect=true`, '_blank');
-        }}
       />
 
       {/* Render main content only when appropriate - prevents blank screen during transaction completion */}

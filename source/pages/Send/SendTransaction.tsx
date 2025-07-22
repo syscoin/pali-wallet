@@ -7,7 +7,6 @@ import { useLocation } from 'react-router-dom';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import {
-  DefaultModal,
   PrimaryButton,
   SecondaryButton,
   Icon,
@@ -29,6 +28,11 @@ import {
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
+import {
+  isUserCancellationError,
+  isDeviceLockedError,
+  isBlindSigningError,
+} from 'utils/isUserCancellationError';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
@@ -49,10 +53,7 @@ export const SendTransaction = () => {
   const { t } = useTranslation();
   const { navigate, alert, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
-  const [isReconectModalOpen, setIsReconectModalOpen] =
-    useState<boolean>(false);
 
-  const url = chrome.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -321,24 +322,29 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
-        const isNecessaryReconnect = error.message.includes(
-          'read properties of undefined'
-        );
-        const isNecessaryBlindSigning = error.message.includes(
-          'Please enable Blind signing'
-        );
-        if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+        // Handle user cancellation gracefully
+        if (isUserCancellationError(error)) {
+          alert.info(t('transactions.transactionCancelled'));
+          setLoading(false);
+          return;
+        }
+
+        // Handle device locked
+        if (isDeviceLockedError(error)) {
+          alert.warning(t('settings.lockedDevice'));
+          setLoading(false);
+          return;
+        }
+
+        // Handle blind signing requirement
+        if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
           alert.warning(t('settings.ledgerBlindSigning'));
           setLoading(false);
           return;
         }
-        if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-          setIsReconectModalOpen(true);
-          setLoading(false);
-          return;
-        }
-        logError('error', 'Transaction', error);
 
+        // For all other errors
+        logError('error', 'Transaction', error);
         alert.error(t('send.cantCompleteTxs'));
 
         if (isExternal) {
@@ -577,17 +583,6 @@ export const SendTransaction = () => {
           setOpenEditFeeModal={setOpenEditAllowanceModal}
         />
       )}
-
-      <DefaultModal
-        show={isReconectModalOpen}
-        title={t('settings.ledgerReconnection')}
-        buttonText={t('buttons.reconnect')}
-        description={t('settings.ledgerReconnectionMessage')}
-        onClose={() => {
-          setIsReconectModalOpen(false);
-          window.open(`${url}?isReconnect=true`, '_blank');
-        }}
-      />
 
       {initialLoading ? (
         <div className="flex items-center justify-center min-h-[400px]">

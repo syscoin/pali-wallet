@@ -2507,14 +2507,10 @@ class MainController {
     return importedAccount;
   }
 
-  public async importLedgerAccountFromController(
-    isAlreadyConnected: boolean,
-    label?: string
-  ) {
+  public async importLedgerAccountFromController(label?: string) {
     let importedAccount;
     try {
       importedAccount = await this.getActiveKeyring().importLedgerAccount(
-        isAlreadyConnected,
         label
       );
     } catch (error) {

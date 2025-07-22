@@ -7,6 +7,10 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
+import {
+  isUserCancellationError,
+  isDeviceLockedError,
+} from 'utils/isUserCancellationError';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -14,7 +18,7 @@ const ConnectHardwareWalletView: FC = () => {
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState<
     string | undefined
   >();
-  const [isReconnect, setIsReconnect] = useState<boolean>(false);
+
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
   );
@@ -25,13 +29,8 @@ const ConnectHardwareWalletView: FC = () => {
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
 
-  const modalTitle = isReconnect
-    ? t('settings.ledgerConnected')
-    : t('settings.walletSelected');
-
-  const modalDescription = isReconnect
-    ? t('settings.ledgerConnectedMessage')
-    : t('settings.walletSelectedMessage');
+  const modalTitle = t('settings.walletSelected');
+  const modalDescription = t('settings.walletSelectedMessage');
 
   const trezorSelectedButtonStyle = `${
     selectedHardwareWallet === HardWallets.TREZOR
@@ -62,45 +61,14 @@ const ConnectHardwareWalletView: FC = () => {
           setIsLoading(false);
           break;
         case HardWallets.LEDGER:
-          // it only works in fullscreen mode.
-          const LEDGER_USB_VENDOR_ID = '0x2c97';
-
-          const connectedDevices = await (
-            window.navigator as any
-          ).hid.requestDevice({
-            filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
-          });
-          const webHidIsConnected = connectedDevices.some(
-            (device: any) => device.vendorId === Number(LEDGER_USB_VENDOR_ID)
+          // Ledger connection is handled internally by ensureConnection
+          await controllerEmitter(
+            ['wallet', 'importLedgerAccountFromController'],
+            []
           );
 
-          if (isReconnect) {
-            // For reconnection, connect to Ledger device first
-            await controllerEmitter([
-              'wallet',
-              'ledgerSigner',
-              'connectToLedgerDevice',
-            ]);
-
-            setIsModalOpen(true);
-            setIsLoading(false);
-            return;
-          }
-
-          if (webHidIsConnected) {
-            await controllerEmitter(
-              ['wallet', 'importLedgerAccountFromController'],
-              [false]
-            );
-
-            setIsModalOpen(true);
-            setIsLoading(false);
-          } else {
-            // No device selected or user canceled - reset states
-            setIsLoading(false);
-            setSelectedHardwareWallet(undefined);
-            alert.warning(t('settings.noDeviceSelected'));
-          }
+          setIsModalOpen(true);
+          setIsLoading(false);
           break;
       }
     } catch (error) {
@@ -109,43 +77,16 @@ const ConnectHardwareWalletView: FC = () => {
       // Log error for debugging
       console.log('Hardware wallet connection error:', error);
 
-      const errorMessage = error?.message || '';
-      const errorName = error?.name || '';
-
-      const isAlreadyConnected = errorMessage.includes('already open.');
-      const isDeviceLocked = errorMessage.includes('Locked device');
-
-      // Enhanced user cancellation detection for both Trezor and Ledger
-      const isUserCanceled =
-        errorMessage.includes('User cancelled') ||
-        errorMessage.includes('Not allowed') ||
-        errorMessage.includes('Action cancelled by user') ||
-        errorMessage.includes('Cancelled') ||
-        errorMessage.includes('cancelled') ||
-        errorMessage.includes('Permission denied') ||
-        errorMessage.includes('User rejected') ||
-        errorMessage.includes('denied') ||
-        errorMessage.includes('Transport') ||
-        errorMessage.includes('Failure_ActionCancelled') ||
-        errorName === 'NotAllowedError' ||
-        errorName === 'AbortError' ||
-        errorName === 'UserCancel' ||
-        errorName === 'TransportError';
-
-      if (isAlreadyConnected) {
-        await controllerEmitter(
-          ['wallet', 'importLedgerAccountFromController'],
-          [true]
-        );
-        setIsModalOpen(true);
-        return;
-      }
-      if (isDeviceLocked) {
+      // Handle device locked
+      if (isDeviceLockedError(error)) {
         alert.warning(t('settings.lockedDevice'));
         return;
       }
-      if (isUserCanceled) {
+
+      // Handle user cancellation gracefully
+      if (isUserCancellationError(error)) {
         // User canceled hardware wallet connection - reset selection to allow choosing again
+        alert.info(t('settings.connectionCancelled'));
         setSelectedHardwareWallet(undefined);
         return;
       }
@@ -158,34 +99,18 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   const ButtonLabel = () => {
-    switch (isReconnect) {
-      case true:
-        if (isLedger) {
-          return <p>{t('buttons.reconnect')}</p>;
-        }
-        return <p>{t('buttons.connect')}</p>;
-
-      case false:
-        if (
-          (isLedger && !ledgerAccounts.length) ||
-          (!isLedger && !trezorAccounts.length)
-        ) {
-          return <p>{t('buttons.connect')}</p>;
-        }
-        return <p>{t('buttons.addAccount')}</p>;
+    if (
+      (isLedger && !ledgerAccounts.length) ||
+      (!isLedger && !trezorAccounts.length)
+    ) {
+      return <p>{t('buttons.connect')}</p>;
     }
+    return <p>{t('buttons.addAccount')}</p>;
   };
 
   const handleHardwalletBuyNow = useCallback(() => {
     window.open(isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/');
   }, [isLedger]);
-
-  useEffect(() => {
-    const urlSearch = window.location.search;
-    if (urlSearch) {
-      setIsReconnect(true);
-    }
-  }, []);
 
   // Handle screen size changes for optimal hardware wallet experience
   useEffect(() => {

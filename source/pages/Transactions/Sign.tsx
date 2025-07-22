@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import {
-  PrimaryButton,
-  SecondaryButton,
-  DefaultModal,
-  ErrorModal,
-} from 'components/index';
+import { PrimaryButton, SecondaryButton, ErrorModal } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -15,6 +10,10 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import {
+  isUserCancellationError,
+  isDeviceLockedError,
+} from 'utils/isUserCancellationError';
 import { clearNavigationState } from 'utils/navigationState';
 
 interface ISign {
@@ -30,10 +29,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isReconectModalOpen, setIsReconectModalOpen] =
-    useState<boolean>(false);
 
-  const url = chrome.runtime.getURL('app.html');
   const { activeAccount: activeAccountData, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -100,12 +96,16 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       clearNavigationState();
       setTimeout(window.close, 2000);
     } catch (error: any) {
-      const isNecessaryReconnect = error.message?.includes(
-        'read properties of undefined'
-      );
+      // Handle user cancellation gracefully
+      if (isUserCancellationError(error)) {
+        alert.info(t('transactions.transactionCancelled'));
+        setLoading(false);
+        return;
+      }
 
-      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-        setIsReconectModalOpen(true);
+      // Handle device locked
+      if (isDeviceLockedError(error)) {
+        setErrorMsg(t('settings.lockedDevice'));
         setLoading(false);
         return;
       }
@@ -155,18 +155,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
 
   return (
     <>
-      <DefaultModal
-        show={isReconectModalOpen}
-        title={t('settings.ledgerReconnection')}
-        buttonText={t('buttons.reconnect')}
-        description={t('settings.ledgerReconnectionMessage')}
-        onClose={() => {
-          setIsReconectModalOpen(false);
-          window.close();
-          window.open(`${url}?isReconnect=true`, '_blank');
-        }}
-      />
-
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
