@@ -1,4 +1,3 @@
-import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';

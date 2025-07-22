@@ -1,4 +1,3 @@
-import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -6,7 +5,6 @@ import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
