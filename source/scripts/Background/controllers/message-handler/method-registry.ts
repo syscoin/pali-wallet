@@ -198,7 +198,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
     requiresAuth: false, // Popup handles auth
-    requiresConnection: true,
+    requiresConnection: false,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.BeforeConnection,
