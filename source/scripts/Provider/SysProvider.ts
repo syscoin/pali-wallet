@@ -36,6 +36,28 @@ export const SysProvider = (host: string) => {
     return wallet.getChangeAddress(account.id);
   };
 
+  const getCurrentAddressPubkey = (params: any[]) => {
+    const { dapp, wallet } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      throw new Error('Not connected');
+    }
+
+    const isChangeAddress = params?.[0]?.isChangeAddress || false;
+    return wallet.getCurrentAddressPubkey(account.id, isChangeAddress);
+  };
+
+  const getBip32Path = (params: any[]) => {
+    const { dapp, wallet } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      throw new Error('Not connected');
+    }
+
+    const isChangeAddress = params?.[0]?.isChangeAddress || false;
+    return wallet.getBip32Path(account.id, isChangeAddress);
+  };
+
   //* ----- Transaction Methods -----
   const getTransactions = () => {
     const { dapp } = getController();
@@ -88,6 +110,8 @@ export const SysProvider = (host: string) => {
     getNetwork,
     getPublicKey,
     getChangeAddress,
+    getCurrentAddressPubkey,
+    getBip32Path,
     // Transaction methods
     getTransactions,
     transaction,

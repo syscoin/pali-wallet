@@ -655,6 +655,14 @@ class MainController {
     return this.getActiveKeyring().getChangeAddress(id);
   }
 
+  public getCurrentAddressPubkey(id: number, isChangeAddress = false) {
+    return this.getActiveKeyring().getPubkey(id, isChangeAddress);
+  }
+
+  public getBip32Path(id: number, isChangeAddress: boolean) {
+    return this.getActiveKeyring().getBip32Path(id, isChangeAddress);
+  }
+
   public getSeed(pwd: string) {
     return this.getActiveKeyring().getSeed(pwd);
   }
