@@ -31,7 +31,8 @@ export { onMessage } from './index';
 export type {
   Message,
   MethodHandlerType,
-  NetworkRequirement,
+  NetworkPreference,
+  NetworkEnforcement,
   MethodRoute,
   IMethodConfig,
   MethodRegistry,
@@ -48,7 +49,7 @@ export {
   isMethodAllowedForHardwareWallet,
   getMethodsByHandlerType,
   getBlockingMethods,
-  getMethodsByNetworkRequirement,
+  getMethodsByNetworkPreference,
   methodHasPopup,
   getMethodPopupConfig,
   methodRequiresTabId,

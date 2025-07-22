@@ -14,7 +14,8 @@ import {
 import { popupPromise } from './popup-promise';
 import {
   IEnhancedRequestContext,
-  NetworkRequirement,
+  NetworkPreference,
+  NetworkEnforcement,
   MethodRoute,
 } from './types';
 
@@ -402,25 +403,51 @@ export const networkCompatibilityMiddleware: Middleware = async (
   const { vault } = store.getState();
   const { isBitcoinBased } = vault;
   const { methodConfig, originalRequest } = context;
+  const { dapp } = getController();
 
-  // Check network requirements from method config
-  const requiredNetwork = methodConfig.networkRequirement;
+  // Check network preferences and enforcement from method config
+  const networkPreference = methodConfig.networkPreference;
+  const networkEnforcement = methodConfig.networkEnforcement;
 
-  // If method doesn't care about network type, continue
-  if (requiredNetwork === NetworkRequirement.Any) {
+  // If method doesn't care about network type or never enforces, continue
+  if (
+    networkPreference === NetworkPreference.Any ||
+    networkEnforcement === NetworkEnforcement.Never
+  ) {
+    return next();
+  }
+
+  // Check if we should enforce based on the enforcement type
+  let shouldEnforce = false;
+
+  if (networkEnforcement === NetworkEnforcement.Always) {
+    // Always enforce network preference
+    shouldEnforce = true;
+  } else if (networkEnforcement === NetworkEnforcement.BeforeConnection) {
+    // Only enforce if this is a connection-establishing method and not yet connected
+    shouldEnforce =
+      methodRequiresConnection(originalRequest.method) &&
+      !dapp.isConnected(originalRequest.host);
+  } else {
+    // NetworkEnforcement.Never or any other case - don't enforce
+    shouldEnforce = false;
+  }
+
+  if (!shouldEnforce) {
     return next();
   }
 
   // Check if we're on the wrong network type
-  const needsEVM = requiredNetwork === NetworkRequirement.EVM && isBitcoinBased;
+  const needsEVM =
+    networkPreference === NetworkPreference.EVM && isBitcoinBased;
   const needsUTXO =
-    requiredNetwork === NetworkRequirement.UTXO && !isBitcoinBased;
+    networkPreference === NetworkPreference.UTXO && !isBitcoinBased;
 
   if (needsEVM || needsUTXO) {
     console.log(
       '[Pipeline] Network type mismatch for request: ',
       originalRequest.method,
-      ' using changeUTXOEVM to switch...'
+      ' enforcing network switch...'
     );
 
     try {

@@ -13,11 +13,19 @@ export enum MethodHandlerType {
   Wallet = 'wallet',
 }
 
-// Network requirements
-export enum NetworkRequirement {
-  Any = 'any',
-  EVM = 'evm',
-  UTXO = 'utxo',
+// Network preference - which network type the method prefers
+export enum NetworkPreference {
+  Any = 'any', // Method works on any network type
+  EVM = 'evm', // Method prefers EVM networks
+  UTXO = 'utxo', // Method prefers UTXO networks
+}
+
+// Network enforcement - when to enforce network preference
+export enum NetworkEnforcement {
+  // Enforce when establishing connection
+  Always = 'always', // Never enforce, just a preference
+  BeforeConnection = 'beforeConnection',
+  Never = 'never', // Always enforce before method execution
 }
 
 // Popup routes for methods that need UI
@@ -54,8 +62,9 @@ export interface IMethodConfig {
   // Basic info
   name: string;
 
-  // Network requirements
-  networkRequirement: NetworkRequirement;
+  networkEnforcement: NetworkEnforcement;
+  // Network configuration
+  networkPreference: NetworkPreference;
   popupEventName?: string;
   popupRoute?: MethodRoute;
 
