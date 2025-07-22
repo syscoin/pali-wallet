@@ -655,7 +655,7 @@ class MainController {
     return this.getActiveKeyring().getChangeAddress(id);
   }
 
-  public getCurrentAddressPubkey(id: number, isChangeAddress = false) {
+  public getCurrentAddressPubkey(id: number, isChangeAddress: boolean) {
     return this.getActiveKeyring().getPubkey(id, isChangeAddress);
   }
 
