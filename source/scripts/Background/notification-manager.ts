@@ -38,7 +38,13 @@ class NotificationManager {
     const currentState = store.getState();
 
     if (currentState.vault) {
-      const { activeAccount, activeNetwork, accounts } = currentState.vault;
+      const {
+        activeAccount,
+        activeNetwork,
+        accounts,
+        accountTransactions,
+        isBitcoinBased,
+      } = currentState.vault;
 
       // Initialize last network
       if (activeNetwork) {
@@ -56,6 +62,34 @@ class NotificationManager {
             address: account.address,
             label: account.label,
           };
+        }
+      }
+
+      // Initialize shownTransactionNotifications with existing transactions
+      // This prevents showing notifications for transactions that already exist on startup
+      if (activeAccount && accountTransactions) {
+        const txs = accountTransactions[activeAccount.type]?.[activeAccount.id];
+        if (txs) {
+          const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
+          const chainTxs = txs[networkType]?.[activeNetwork.chainId] || [];
+
+          chainTxs.forEach((tx: any) => {
+            const txId = tx.hash || tx.txid;
+            if (txId) {
+              const txKey = `${txId}_${activeNetwork.chainId}`;
+              // Mark all existing transactions as already shown
+              // This prevents spam on startup/restart
+              if (!isTransactionInBlock(tx)) {
+                this.state.shownTransactionNotifications.add(
+                  `${txKey}_pending`
+                );
+              } else {
+                this.state.shownTransactionNotifications.add(
+                  `${txKey}_confirmed`
+                );
+              }
+            }
+          });
         }
       }
     }
@@ -348,9 +382,14 @@ class NotificationManager {
     // Create lookup maps for previous transactions (UTXO only uses hash)
     const previousMaps = this.createTransactionMaps(previousTxs);
 
+    // Track which transactions we've seen in this update
+    const currentTxIds = new Set<string>();
+
     // Check each current transaction
     currentTxs.forEach((tx) => {
       const txKey = `${tx.txid}_${network.chainId}`;
+      currentTxIds.add(tx.txid);
+
       const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
 
       // Generic check: A transaction is confirmed if it's in a block
@@ -358,18 +397,26 @@ class NotificationManager {
       const isPreviousTxConfirmed =
         previousTx && isTransactionInBlock(previousTx);
 
-      // New pending transaction
+      // New pending transaction - only notify if we haven't seen it before
       if (
-        !previousTx &&
         !isCurrentTxConfirmed &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
+        !this.state.shownTransactionNotifications.has(`${txKey}_pending`) &&
+        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
       ) {
-        this.showUtxoTransactionNotification(tx, 'pending', account, network);
-        this.state.shownTransactionNotifications.add(`${txKey}_pending`);
+        // Additional check: only show if this is truly a new transaction
+        if (!previousTx || previousTxs.length === 0) {
+          this.showUtxoTransactionNotification(tx, 'pending', account, network);
+          this.state.shownTransactionNotifications.add(`${txKey}_pending`);
+        }
       }
 
       // Transaction just confirmed
-      if (previousTx && !isPreviousTxConfirmed && isCurrentTxConfirmed) {
+      if (
+        previousTx &&
+        !isPreviousTxConfirmed &&
+        isCurrentTxConfirmed &&
+        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
+      ) {
         this.handleConfirmedTransaction(
           tx,
           previousTx,
@@ -377,7 +424,21 @@ class NotificationManager {
           network,
           false
         );
+        this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
       }
+    });
+
+    // Clean up stale entries from shownTransactionNotifications
+    const keysToRemove: string[] = [];
+    this.state.shownTransactionNotifications.forEach((key) => {
+      const [txId] = key.split('_');
+      if (!currentTxIds.has(txId)) {
+        keysToRemove.push(key);
+      }
+    });
+
+    keysToRemove.forEach((key) => {
+      this.state.shownTransactionNotifications.delete(key);
     });
 
     // Update pending transaction badge
@@ -427,10 +488,10 @@ class NotificationManager {
       showTransactionNotification(notification);
 
       if (type === 'pending') {
-        this.state.pendingTransactions.set(
-          `${tx.hash}_${network.chainId}`,
-          notification
-        );
+        this.state.pendingTransactions.set(`${tx.hash}_${network.chainId}`, {
+          ...notification,
+          timestamp: Date.now(),
+        } as any);
       }
     } catch (error) {
       console.error(
@@ -680,10 +741,10 @@ class NotificationManager {
     showTransactionNotification(notification);
 
     if (type === 'pending') {
-      this.state.pendingTransactions.set(
-        `${tx.txid}_${network.chainId}`,
-        notification
-      );
+      this.state.pendingTransactions.set(`${tx.txid}_${network.chainId}`, {
+        ...notification,
+        timestamp: Date.now(),
+      } as any);
     }
   }
 

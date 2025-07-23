@@ -346,7 +346,6 @@ export const showDappConnectionNotification = async (
         }),
     type: 'basic',
     priority: 1,
-    requireInteraction: true,
   });
 };
 
