@@ -3,7 +3,6 @@ import isEmpty from 'lodash/isEmpty';
 
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
-import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
@@ -20,8 +19,6 @@ export interface ISysAccountController {
   deleteTokenInfo: (assetGuid: string) => void;
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
-  trezor: ISysTrezorController;
-  // tx: ISyscoinTransactions;
 }
 
 const SysAccountController = (
@@ -163,10 +160,8 @@ const SysAccountController = (
   };
 
   //todo we cannot call those fn directly we should call over keyring manager class
-  const trezor = SysTrezorController();
 
   return {
-    trezor,
     setAddress,
     saveTokenInfo,
     deleteTokenInfo,
