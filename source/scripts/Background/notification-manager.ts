@@ -95,22 +95,20 @@ class NotificationManager {
           );
         }
       }
-
       // Check for account changes
       if (vault.activeAccount && previousState.vault?.activeAccount) {
-        const currentAccount =
-          vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
-        const previousAccount =
-          previousState.vault?.accounts?.[
-            previousState.vault.activeAccount.type
-          ]?.[previousState.vault.activeAccount.id];
-
+        // Check if the active account ID or type has changed
         if (
-          currentAccount &&
-          previousAccount &&
-          currentAccount.address !== previousAccount.address
+          vault.activeAccount.id !== previousState.vault.activeAccount.id ||
+          vault.activeAccount.type !== previousState.vault.activeAccount.type
         ) {
-          this.handleAccountChange(currentAccount);
+          // Get the newly active account
+          const newActiveAccount =
+            vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+
+          if (newActiveAccount) {
+            this.handleAccountChange(newActiveAccount);
+          }
         }
       }
 

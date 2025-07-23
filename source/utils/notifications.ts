@@ -75,7 +75,6 @@ export const createNotification = async (
   if (popupOpen && !options.requireInteraction) {
     return null;
   }
-
   const notificationId = `pali_${Date.now()}_${Math.random()
     .toString(36)
     .substring(7)}`;
@@ -99,18 +98,21 @@ export const createNotification = async (
   if (options.imageUrl && options.type === 'image') {
     baseOptions.imageUrl = options.imageUrl;
   }
-
   return new Promise((resolve) => {
-    chrome.notifications.create(notificationId, baseOptions, (id) => {
-      if (chrome.runtime.lastError) {
-        console.error('Notification error:', chrome.runtime.lastError);
-        resolve(null);
-      } else {
-        // Store notification metadata for click handling
-        notificationMap.set(id, options);
-        resolve(id);
-      }
-    });
+    try {
+      chrome.notifications.create(notificationId, baseOptions, (id) => {
+        if (chrome.runtime.lastError) {
+          console.error('Notification error:', chrome.runtime.lastError);
+          resolve(null);
+        } else {
+          // Store notification metadata for click handling
+          notificationMap.set(id, options);
+          resolve(id);
+        }
+      });
+    } catch (error) {
+      resolve(null);
+    }
   });
 };
 
