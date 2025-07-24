@@ -291,7 +291,7 @@ const ConnectHardwareWalletView: FC = () => {
                 src="/assets/all_assets/hardwallet.svg"
               />
             </div>
-            <div className="scrollbar-styled px-2 flex-1 text-sm overflow-y-auto w-full max-w-md">
+            <div className="remove-scrollbar px-2 flex-1 text-sm overflow-y-auto w-full max-w-md">
               {selectedHardwareWallet ? (
                 <div className="flex flex-col text-center justify-center items-center w-full text-sm">
                   <p>

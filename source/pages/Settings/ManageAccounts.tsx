@@ -290,7 +290,7 @@ const ManageAccountsView = React.memo(() => {
     <>
       <ul
         ref={scrollContainerRef}
-        className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96"
+        className="remove-scrollbar mb-4 w-full h-80 text-sm overflow-auto md:h-96"
       >
         {accountsList.map(({ account, accountType }) =>
           renderAccount(account, accountType)

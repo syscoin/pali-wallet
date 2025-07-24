@@ -300,7 +300,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
   return (
     <div
-      className={`scrollbar-styled remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white ${bgColor} overflow-x-hidden ${
+      className={`remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white ${bgColor} overflow-x-hidden ${
         disableScroll ? '' : 'overflow-y-auto'
       }`}
     >

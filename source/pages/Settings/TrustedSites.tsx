@@ -100,7 +100,7 @@ const TrustedSitesView = () => {
         </div>
       </div>
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-2 w-full h-[19.5rem] overflow-auto">
+        <ul className="remove-scrollbar my-2 w-full h-[19.5rem] overflow-auto">
           {filteredSearch &&
             filteredSearch.map((url: string, key: number) => (
               <li

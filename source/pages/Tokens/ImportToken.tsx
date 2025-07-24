@@ -452,7 +452,7 @@ export const ImportToken: React.FC = () => {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto scrollbar-styled px-4 py-4">
+      <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
         {activeTab === 'owned' ? (
           <ImportableAssetsList
             assets={ownedAssetsForList}

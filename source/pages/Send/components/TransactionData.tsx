@@ -20,7 +20,7 @@ export const TransactionDataComponent = (props: ITransactionDataProps) => {
           <p>{t('send.decodificationNotAvailable')}</p>
         </div>
       ) : (
-        <pre className="scrollbar-styled w-full mb-6 mt-2 px-2.5 py-1 max-h-80 text-xs rounded-xl overflow-y-auto whitespace-pre-wrap">
+        <pre className="remove-scrollbar w-full mb-6 mt-2 px-2.5 py-1 max-h-80 text-xs rounded-xl overflow-y-auto whitespace-pre-wrap">
           {JSON.stringify(decodedTx, null, '\t')}
         </pre>
       )}

@@ -477,7 +477,7 @@ export const EvmAssetDetails = ({
   const RenderAsset = () => (
     <div className="flex flex-col h-full">
       {currentAsset.contractAddress ? (
-        <div className="flex-1 overflow-y-auto scrollbar-styled pb-20">
+        <div className="flex-1 overflow-y-auto remove-scrollbar pb-20">
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
             {(enhancedData?.image?.large ||
               enhancedData?.image?.small ||
