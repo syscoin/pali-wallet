@@ -249,7 +249,7 @@ export const SendTransaction = () => {
               ]);
 
           response = await controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            ['wallet', 'sendAndSaveEthTransaction'],
             [
               {
                 ...txWithoutType,
@@ -275,7 +275,7 @@ export const SendTransaction = () => {
         } else {
           // EIP-1559 transaction handling
           response = await controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            ['wallet', 'sendAndSaveEthTransaction'],
             [
               {
                 ...txToSend,
@@ -308,6 +308,7 @@ export const SendTransaction = () => {
                     : fee.gasLimit
                 ),
               },
+              false, // isLegacy = false for EIP-1559
             ],
             false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -316,10 +317,6 @@ export const SendTransaction = () => {
           );
         }
 
-        await controllerEmitter(
-          ['wallet', 'sendAndSaveTransaction'],
-          [response]
-        );
         if (isExternal)
           dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
         setConfirmed(true);
@@ -441,14 +438,6 @@ export const SendTransaction = () => {
     if (!copied) return;
     alert.success(t('home.addressCopied'));
   }, [copied, alert, t]);
-
-  // Clear navigation state when component unmounts or navigates away
-  useEffect(
-    () => () => {
-      clearNavigationState();
-    },
-    []
-  );
 
   // Fetch token info for approval transactions
   useEffect(() => {
@@ -818,9 +807,9 @@ export const SendTransaction = () => {
               <SecondaryButton
                 type="button"
                 disabled={loading}
-                onClick={() => {
+                onClick={async () => {
                   // Clear navigation state when user cancels/goes away
-                  clearNavigationState();
+                  await clearNavigationState();
                   if (isExternal) {
                     window.close();
                   } else {

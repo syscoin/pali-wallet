@@ -16,10 +16,11 @@ import {
   clearRpcCaches,
   retryableFetch,
 } from '@pollum-io/sysweb3-network';
-import { txUtils } from '@pollum-io/sysweb3-utils';
+import { txUtils, ITxid } from '@pollum-io/sysweb3-utils';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from '..';
+import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
@@ -2659,11 +2660,65 @@ class MainController {
     return transactionPromise;
   }
 
-  public async sendAndSaveTransaction(
-    tx: IEvmTransactionResponse | ISysTransaction
+  private async sendAndSaveTransaction(
+    tx: IEvmTransactionResponse | ISysTransaction | ITxid
   ) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
+    // Handle ITxid type for UTXO transactions (returned by sendTransaction)
+    if ('txid' in tx && Object.keys(tx).length === 1) {
+      // This is an ITxid, create a minimal transaction object
+      const minimalTx: Partial<ISysTransaction> = {
+        txid: tx.txid,
+        blockTime: Math.floor(Date.now() / 1000),
+        confirmations: 0,
+        blockHash: '',
+        blockHeight: 0,
+        fees: '0',
+        hex: '',
+        value: '0',
+        valueIn: '0',
+        version: 0,
+        vin: [],
+        vout: {} as any,
+      };
+
+      store.dispatch(
+        setSingleTransactionToState({
+          chainId: activeNetwork.chainId,
+          networkType: TransactionsType.Syscoin,
+          transaction: minimalTx as ISysTransaction,
+        })
+      );
+
+      // Start rapid polling for this transaction
+      try {
+        console.log(
+          `[MainController] Starting rapid polling for transaction ${tx.txid}`
+        );
+        this.startRapidTransactionPolling(tx.txid, activeNetwork.chainId, true);
+        await this.saveWalletState('send-and-save-transaction', true, true);
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to start rapid transaction polling:',
+          error
+        );
+      }
+
+      // Always clear navigation state after successfully saving transaction
+      try {
+        await clearNavigationState();
+        console.log(
+          '[MainController] Navigation state cleared after transaction'
+        );
+      } catch (e) {
+        console.error('[MainController] Failed to clear navigation state:', e);
+      }
+
+      return;
+    }
+
+    // Original logic for full transaction objects
     const txWithTimestamp = {
       ...tx,
       [`${isBitcoinBased ? 'blockTime' : 'timestamp'}`]: Math.floor(
@@ -2703,6 +2758,161 @@ class MainController {
         '[MainController] Failed to start rapid transaction polling:',
         error
       );
+    }
+
+    // Always clear navigation state after successfully saving transaction
+    try {
+      await clearNavigationState();
+      console.log(
+        '[MainController] Navigation state cleared after transaction'
+      );
+    } catch (e) {
+      console.error('[MainController] Failed to clear navigation state:', e);
+    }
+  }
+
+  /**
+   * Atomic wrapper that handles sign, send, and save in one operation
+   * This ensures the transaction completes even if the popup window loses focus
+   */
+  public async signSendAndSaveTransaction(params: {
+    isLedger?: boolean; // For UTXO transactions
+    isTrezor?: boolean;
+    pathIn?: string;
+    psbt?: any;
+  }): Promise<any> {
+    const { isBitcoinBased } = store.getState().vault;
+
+    try {
+      if (isBitcoinBased && params.psbt) {
+        // UTXO flow: sign -> send -> save
+        const controller = getController();
+
+        // Step 1: Sign the PSBT
+        const signedPsbt = await controller.wallet.syscoinTransaction.signPSBT({
+          psbt: params.psbt,
+          isTrezor: params.isTrezor,
+          isLedger: params.isLedger,
+          pathIn: params.pathIn,
+        });
+
+        // Step 2: Send the transaction
+        const txResult =
+          await controller.wallet.syscoinTransaction.sendTransaction(
+            signedPsbt
+          );
+
+        // Step 3: Save the transaction (this will also clear navigation state)
+        await this.sendAndSaveTransaction(txResult);
+
+        return txResult;
+      } else {
+        throw new Error('Unsupported transaction type for this wrapper');
+      }
+    } catch (error) {
+      // Clear navigation state on error as well
+      try {
+        await clearNavigationState();
+        console.error('[MainController] Navigation state cleared on error');
+      } catch (e) {
+        console.error(
+          '[MainController] Failed to clear navigation state on error:',
+          e
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Atomic wrapper for EVM transactions
+   * Combines send and save operations to ensure completion
+   */
+  public async sendAndSaveEthTransaction(
+    params: any,
+    isLegacy?: boolean
+  ): Promise<IEvmTransactionResponse> {
+    try {
+      const controller = getController();
+
+      // Send the formatted transaction
+      const txResponse =
+        await controller.wallet.ethereumTransaction.sendFormattedTransaction(
+          params,
+          isLegacy
+        );
+
+      // Save the transaction (this will also clear navigation state)
+      await this.sendAndSaveTransaction(txResponse);
+
+      return txResponse;
+    } catch (error) {
+      // Clear navigation state on error as well
+      try {
+        await clearNavigationState();
+        console.error('[MainController] Navigation state cleared on error');
+      } catch (e) {
+        console.error(
+          '[MainController] Failed to clear navigation state on error:',
+          e
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Atomic wrapper for token transactions (ERC20, ERC721, ERC1155)
+   * Combines send and save operations to ensure completion
+   */
+  public async sendAndSaveTokenTransaction(
+    tokenType: 'ERC20' | 'ERC721' | 'ERC1155',
+    params: any
+  ): Promise<IEvmTransactionResponse> {
+    try {
+      const controller = getController();
+      let txResponse;
+
+      // Call the appropriate method based on token type
+      switch (tokenType) {
+        case 'ERC20':
+          txResponse =
+            await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
+              params
+            );
+          break;
+        case 'ERC721':
+          txResponse =
+            await controller.wallet.ethereumTransaction.sendSignedErc721Transaction(
+              params
+            );
+          break;
+        case 'ERC1155':
+          txResponse =
+            await controller.wallet.ethereumTransaction.sendSignedErc1155Transaction(
+              params
+            );
+          break;
+        default:
+          throw new Error(`Unsupported token type: ${tokenType}`);
+      }
+
+      // Save the transaction (this will also clear navigation state)
+      await this.sendAndSaveTransaction(txResponse);
+
+      return txResponse;
+    } catch (error) {
+      // Clear navigation state on error as well
+      try {
+        await clearNavigationState();
+        console.error('[MainController] Navigation state cleared on error');
+      } catch (e) {
+        console.error(
+          '[MainController] Failed to clear navigation state on error:',
+          e
+        );
+      }
+      throw error;
     }
   }
 

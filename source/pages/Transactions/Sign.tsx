@@ -57,47 +57,60 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
 
   const onSubmit = async () => {
     setLoading(true);
+
     try {
       let response = null;
 
-      response = await controllerEmitter(
-        ['wallet', 'syscoinTransaction', 'signPSBT'],
-        [
-          {
-            psbt: data,
-            isTrezor: activeAccount.isTrezorWallet,
-            isLedger: activeAccount.isLedgerWallet,
-            pathIn: data?.pathIn,
-          },
-        ],
-        false,
-        activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-          ? 300000 // 5 minutes timeout for hardware wallet operations
-          : 10000 // Default 10 seconds for regular wallets
-      );
       if (!signOnly) {
+        // Use atomic operation for all wallets (sign + send + save)
         response = await controllerEmitter(
-          ['wallet', 'syscoinTransaction', 'sendTransaction'],
+          ['wallet', 'signSendAndSaveTransaction'],
           [
-            response, // Pass the signed PSBT
-          ]
+            {
+              psbt: data,
+              isTrezor: activeAccount.isTrezorWallet,
+              isLedger: activeAccount.isLedgerWallet,
+              pathIn: data?.pathIn,
+            },
+          ],
+          false,
+          activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            ? 300000 // 5 minutes timeout for hardware wallet operations
+            : 10000 // Default 10 seconds for regular wallets
         );
-        // Save transaction to local state for immediate visibility
-        await controllerEmitter(
-          ['wallet', 'sendAndSaveTransaction'],
-          [response]
+      } else {
+        // Sign-only flow
+        response = await controllerEmitter(
+          ['wallet', 'syscoinTransaction', 'signPSBT'],
+          [
+            {
+              psbt: data,
+              isTrezor: activeAccount.isTrezorWallet,
+              isLedger: activeAccount.isLedgerWallet,
+              pathIn: data?.pathIn,
+            },
+          ],
+          false,
+          activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            ? 300000 // 5 minutes timeout for hardware wallet operations
+            : 10000 // Default 10 seconds for regular wallets
         );
       }
+
+      // Dispatch the background event
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+
       // Show success toast
       alert.success(
         signOnly
           ? t('transactions.theDappHas')
           : t('transactions.youCanCheckYour')
       );
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+
       setConfirmed(true);
       setLoading(false);
-      clearNavigationState();
+
+      // Close window
       setTimeout(window.close, 2000);
     } catch (error: any) {
       // Handle user cancellation gracefully
@@ -149,19 +162,22 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     }
   };
 
-  // Clear navigation state when component unmounts or navigates away
-  useEffect(
-    () => () => {
-      clearNavigationState();
-    },
-    []
-  );
-
   return (
     <>
       <ErrorModal
         show={Boolean(errorMsg)}
-        onClose={window.close}
+        onClose={async () => {
+          try {
+            await clearNavigationState();
+            console.log('[Sign] Navigation state cleared on error modal close');
+          } catch (e) {
+            console.error(
+              '[Sign] Failed to clear navigation state on error modal close:',
+              e
+            );
+          }
+          window.close();
+        }}
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
@@ -214,7 +230,18 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <SecondaryButton
                 type="button"
                 disabled={loading}
-                onClick={window.close}
+                onClick={async () => {
+                  try {
+                    await clearNavigationState();
+                    console.log('[Sign] Navigation state cleared on cancel');
+                  } catch (e) {
+                    console.error(
+                      '[Sign] Failed to clear navigation state on cancel:',
+                      e
+                    );
+                  }
+                  window.close();
+                }}
               >
                 {t('buttons.cancel')}
               </SecondaryButton>

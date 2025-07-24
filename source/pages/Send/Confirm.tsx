@@ -26,10 +26,6 @@ import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
-import {
-  ISysTransaction,
-  IEvmTransactionResponse,
-} from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
   truncate,
@@ -242,12 +238,12 @@ export const SendConfirm = () => {
         // SYSCOIN/UTXO TRANSACTIONS
         case TransactionType.UTXO:
           try {
-            // Step 1: Sign the unsigned PSBT
-            const signedPsbt = await controllerEmitter(
-              ['wallet', 'syscoinTransaction', 'signPSBT'],
+            // Use atomic wrapper for all wallets
+            await controllerEmitter(
+              ['wallet', 'signSendAndSaveTransaction'],
               [
                 {
-                  psbt: basicTxValues.psbt, // Pass the unsigned PSBT
+                  psbt: basicTxValues.psbt,
                   isTrezor: activeAccount.isTrezorWallet,
                   isLedger: activeAccount.isLedgerWallet,
                 },
@@ -258,89 +254,22 @@ export const SendConfirm = () => {
                 : 10000 // Default 10 seconds for regular wallets
             );
 
-            // Step 2: Send the signed PSBT
-            controllerEmitter(
-              ['wallet', 'syscoinTransaction', 'sendTransaction'],
-              [
-                signedPsbt, // Pass the signed PSBT
-              ]
-            )
-              .then(async (response) => {
-                // Save transaction to local state for immediate visibility
-                await controllerEmitter(
-                  ['wallet', 'sendAndSaveTransaction'],
-                  [response]
-                );
-
-                setConfirmed(true);
-                setLoading(false);
-
-                // Balance will be updated when user navigates back to Home
-                // This prevents redundant API calls and timing issues
-              })
-              .catch((error: any) => {
-                // Handle user cancellation gracefully
-                if (isUserCancellationError(error)) {
-                  alert.info(t('transactions.transactionCancelled'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle device locked
-                if (isDeviceLockedError(error)) {
-                  alert.warning(t('settings.lockedDevice'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle structured errors from syscoinjs-lib sendTransaction
-                if (error.error && error.code) {
-                  const sysError = error as ISyscoinTransactionError;
-
-                  switch (sysError.code) {
-                    case 'TRANSACTION_SEND_FAILED':
-                      // Parse error message to extract meaningful part
-                      let errorMessage = sysError.message;
-                      try {
-                        // Check if the message contains JSON error details
-                        const detailsMatch =
-                          errorMessage.match(/Details:\s*({.*})/);
-                        if (detailsMatch) {
-                          const errorDetails = JSON.parse(detailsMatch[1]);
-                          if (errorDetails.error) {
-                            errorMessage = `Transaction failed: ${errorDetails.error}`;
-                          }
-                        }
-                      } catch (e) {
-                        // If parsing fails, use the original message
-                      }
-
-                      alert.error(
-                        t('send.transactionSendFailed', {
-                          message: errorMessage,
-                        })
-                      );
-                      break;
-
-                    default:
-                      alert.error(
-                        t('send.transactionCreationFailedWithCode', {
-                          code: sysError.code,
-                          message: sysError.message,
-                        })
-                      );
-                  }
-                } else {
-                  alert.error(t('send.cantCompleteTxs'));
-                }
-
-                setLoading(false);
-                throw error;
-              });
-
-            return;
+            setConfirmed(true);
+            setLoading(false);
           } catch (error: any) {
-            logError('error SYS', 'Transaction', error);
+            // Handle user cancellation gracefully
+            if (isUserCancellationError(error)) {
+              alert.info(t('transactions.transactionCancelled'));
+              setLoading(false);
+              return;
+            }
+
+            // Handle device locked
+            if (isDeviceLockedError(error)) {
+              alert.warning(t('settings.lockedDevice'));
+              setLoading(false);
+              return;
+            }
 
             // Handle structured errors from syscoinjs-lib
             if (error.error && error.code) {
@@ -417,7 +346,7 @@ export const SendConfirm = () => {
               // Fallback for non-structured errors
               if (error && basicTxValues.fee > 0.00001) {
                 alert.error(
-                  `${truncate(String(error.message), 166)} ${t(
+                  `${truncate(String(error.message || error), 166)} ${t(
                     'send.reduceFee'
                   )}`
                 );
@@ -426,24 +355,25 @@ export const SendConfirm = () => {
               }
             }
 
+            logError('error SYS', 'Transaction', error);
             setLoading(false);
           }
           break;
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case TransactionType.NATIVE_ETH:
+          const restTx = omitTransactionObjectData(txObjectState, [
+            'chainId',
+            'maxFeePerGas',
+            'maxPriorityFeePerGas',
+          ]) as ITxState;
+
+          let value = ethers.utils.parseUnits(
+            String(basicTxValues.amount),
+            'ether'
+          );
+
           try {
-            const restTx = omitTransactionObjectData(txObjectState, [
-              'chainId',
-              'maxFeePerGas',
-              'maxPriorityFeePerGas',
-            ]) as ITxState;
-
-            let value = ethers.utils.parseUnits(
-              String(basicTxValues.amount),
-              'ether'
-            );
-
             // For MAX sends, deduct gas fees from the value
             // This is required because ethers.js validates balance >= value + gas
             if (basicTxValues.isMax) {
@@ -480,8 +410,9 @@ export const SendConfirm = () => {
 
             if (isEIP1559Compatible === false) {
               try {
-                controllerEmitter(
-                  ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+                // Use atomic wrapper for legacy transactions
+                await controllerEmitter(
+                  ['wallet', 'sendAndSaveEthTransaction'],
                   [
                     {
                       ...restTx,
@@ -501,118 +432,11 @@ export const SendConfirm = () => {
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
                     : 10000 // Default 10 seconds for regular wallets
-                )
-                  .then(async (response) => {
-                    // Save transaction to local state for immediate visibility
-                    await controllerEmitter(
-                      ['wallet', 'sendAndSaveTransaction'],
-                      [response]
-                    );
-
-                    setConfirmed(true);
-
-                    setLoading(false);
-
-                    // Balance will be updated when user navigates back to Home
-                    // This prevents redundant API calls and timing issues
-                  })
-                  .catch((error: any) => {
-                    // Handle user cancellation gracefully
-                    if (isUserCancellationError(error)) {
-                      alert.info(t('transactions.transactionCancelled'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle device locked
-                    if (isDeviceLockedError(error)) {
-                      alert.warning(t('settings.lockedDevice'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle blind signing requirement
-                    if (
-                      activeAccount.isLedgerWallet &&
-                      isBlindSigningError(error)
-                    ) {
-                      alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    alert.error(t('send.cantCompleteTxs'));
-                    setLoading(false);
-                    throw error;
-                  });
-
-                return;
-              } catch (legacyError: any) {
-                logError('error', 'Transaction', legacyError);
-
-                alert.error(t('send.cantCompleteTxs'));
-
-                setLoading(false);
-                return legacyError;
-              }
-            }
-
-            (
-              controllerEmitter(
-                ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
-                [
-                  {
-                    ...restTx,
-                    value,
-                    maxPriorityFeePerGas: ethers.utils.parseUnits(
-                      String(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
-                        )
-                          ? safeToFixed(customFee.maxPriorityFeePerGas)
-                          : safeToFixed(fee.maxPriorityFeePerGas)
-                      ),
-                      9
-                    ),
-                    maxFeePerGas: ethers.utils.parseUnits(
-                      String(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? safeToFixed(customFee.maxFeePerGas)
-                          : safeToFixed(fee.maxFeePerGas)
-                      ),
-                      9
-                    ),
-                    gasLimit: validateCustomGasLimit
-                      ? BigNumber.from(customFee.gasLimit)
-                      : BigNumber.from(
-                          fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-                        ),
-                  },
-                ],
-                false,
-                activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                  ? 300000 // 5 minutes timeout for hardware wallet operations
-                  : 10000 // Default 10 seconds for regular wallets
-              ) as Promise<ISysTransaction | IEvmTransactionResponse>
-            )
-              .then(async (response) => {
-                // Save transaction to local state for immediate visibility
-                await controllerEmitter(
-                  ['wallet', 'sendAndSaveTransaction'],
-                  [response]
                 );
 
                 setConfirmed(true);
-
                 setLoading(false);
-
-                // Balance will be updated when user navigates back to Home
-                // This prevents redundant API calls and timing issues
-              })
-              .catch((error: any) => {
+              } catch (error: any) {
                 // Handle user cancellation gracefully
                 if (isUserCancellationError(error)) {
                   alert.info(t('transactions.transactionCancelled'));
@@ -637,17 +461,230 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                // For MAX sends, if we get insufficient funds error, retry with slightly less
-                if (
-                  basicTxValues.isMax &&
-                  error.message?.includes('insufficient funds')
-                ) {
-                  const reducedValue = value.sub(BigNumber.from('10000'));
+                logError('error', 'Transaction', error);
+                alert.error(t('send.cantCompleteTxs'));
+                setLoading(false);
+              }
 
-                  if (reducedValue.gt(0)) {
-                    const retryTxObject = {
-                      ...restTx,
-                      value: reducedValue,
+              return;
+            }
+
+            // Use atomic wrapper for EIP-1559 transactions
+            await controllerEmitter(
+              ['wallet', 'sendAndSaveEthTransaction'],
+              [
+                {
+                  ...restTx,
+                  value,
+                  maxPriorityFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? safeToFixed(customFee.maxPriorityFeePerGas)
+                        : safeToFixed(fee.maxPriorityFeePerGas)
+                    ),
+                    9
+                  ),
+                  maxFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? safeToFixed(customFee.maxFeePerGas)
+                        : safeToFixed(fee.maxFeePerGas)
+                    ),
+                    9
+                  ),
+                  gasLimit: validateCustomGasLimit
+                    ? BigNumber.from(customFee.gasLimit)
+                    : BigNumber.from(
+                        fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                      ),
+                },
+              ],
+              false,
+              activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                ? 300000 // 5 minutes timeout for hardware wallet operations
+                : 10000 // Default 10 seconds for regular wallets
+            );
+
+            setConfirmed(true);
+            setLoading(false);
+
+            return;
+          } catch (error: any) {
+            // Handle user cancellation gracefully
+            if (isUserCancellationError(error)) {
+              alert.info(t('transactions.transactionCancelled'));
+              setLoading(false);
+              return;
+            }
+
+            // Handle device locked
+            if (isDeviceLockedError(error)) {
+              alert.warning(t('settings.lockedDevice'));
+              setLoading(false);
+              return;
+            }
+
+            // Handle blind signing requirement
+            if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
+              alert.warning(t('settings.ledgerBlindSigning'));
+              setLoading(false);
+              return;
+            }
+
+            // For MAX sends, if we get insufficient funds error, retry with slightly less
+            if (
+              basicTxValues.isMax &&
+              error.message?.includes('insufficient funds')
+            ) {
+              const reducedValue = value.sub(BigNumber.from('10000'));
+
+              if (reducedValue.gt(0)) {
+                const retryTxObject = {
+                  ...restTx,
+                  value: reducedValue,
+                  maxPriorityFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? safeToFixed(customFee.maxPriorityFeePerGas)
+                        : safeToFixed(fee.maxPriorityFeePerGas)
+                    ),
+                    9
+                  ),
+                  maxFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? safeToFixed(customFee.maxFeePerGas)
+                        : safeToFixed(fee.maxFeePerGas)
+                    ),
+                    9
+                  ),
+                  gasLimit: BigNumber.from(
+                    validateCustomGasLimit
+                      ? customFee.gasLimit
+                      : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                  ),
+                };
+
+                try {
+                  // Use atomic wrapper for retry
+                  await controllerEmitter(
+                    ['wallet', 'sendAndSaveEthTransaction'],
+                    [retryTxObject, !isEIP1559Compatible],
+                    false,
+                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                      ? 300000 // 5 minutes timeout for hardware wallet operations
+                      : 10000 // Default 10 seconds for regular wallets
+                  );
+
+                  setConfirmed(true);
+                  setLoading(false);
+                  return; // Exit early on success
+                } catch (retryError) {
+                  // If retry also fails, show error
+                  logError('error ETH retry', 'Transaction', retryError);
+                  alert.error(t('send.cantCompleteTxs'));
+                  setLoading(false);
+                  return;
+                }
+              }
+            }
+
+            logError('error ETH', 'Transaction', error);
+            alert.error(t('send.cantCompleteTxs'));
+            setLoading(false);
+          }
+          break;
+
+        // ETHEREUM TRANSACTIONS FOR ERC20 TOKENS
+        case TransactionType.ERC20:
+        // ETHEREUM TRANSACTIONS FOR ERC721 TOKENS
+        case TransactionType.ERC721:
+        // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
+        case TransactionType.ERC1155:
+          //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
+          switch (transactionType) {
+            //HANDLE ERC20 TRANSACTION
+            case TransactionType.ERC20:
+              if (isEIP1559Compatible === false) {
+                try {
+                  // Use atomic wrapper for legacy ERC20 transactions
+                  await controllerEmitter(
+                    ['wallet', 'sendAndSaveTokenTransaction'],
+                    [
+                      'ERC20',
+                      {
+                        networkUrl: activeNetwork.url,
+                        receiver: txObjectState.to,
+                        tokenAddress: basicTxValues.token.contractAddress,
+                        tokenAmount: `${basicTxValues.amount}`,
+                        isLegacy: !isEIP1559Compatible,
+                        decimals: basicTxValues?.token?.decimals,
+                        gasPrice: ethers.utils.hexlify(gasPrice),
+                        gasLimit: validateCustomGasLimit
+                          ? BigNumber.from(customFee.gasLimit)
+                          : BigNumber.from(
+                              fee.gasLimit ||
+                                basicTxValues.defaultGasLimit ||
+                                65000
+                            ),
+                      },
+                    ],
+                    false,
+                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                      ? 300000 // 5 minutes timeout for hardware wallet operations
+                      : 10000 // Default 10 seconds for regular wallets
+                  );
+
+                  setConfirmed(true);
+                  setLoading(false);
+                  return;
+                } catch (error: any) {
+                  // Handle user cancellation gracefully
+                  if (isUserCancellationError(error)) {
+                    alert.info(t('transactions.transactionCancelled'));
+                    setLoading(false);
+                    return;
+                  }
+
+                  // Handle device locked
+                  if (isDeviceLockedError(error)) {
+                    alert.warning(t('settings.lockedDevice'));
+                    setLoading(false);
+                    return;
+                  }
+
+                  // Handle blind signing requirement
+                  if (
+                    activeAccount.isLedgerWallet &&
+                    isBlindSigningError(error)
+                  ) {
+                    alert.warning(t('settings.ledgerBlindSigning'));
+                    setLoading(false);
+                    return;
+                  }
+
+                  logError('error send ERC20', 'Transaction', error);
+                  alert.error(t('send.cantCompleteTxs'));
+                  setLoading(false);
+                }
+                break;
+              }
+              try {
+                await controllerEmitter(
+                  ['wallet', 'sendAndSaveTokenTransaction'],
+                  [
+                    'ERC20',
+                    {
+                      networkUrl: activeNetwork.url,
+                      receiver: txObjectState.to,
+                      tokenAddress: basicTxValues.token.contractAddress,
+                      tokenAmount: `${basicTxValues.amount}`,
+                      isLegacy: !isEIP1559Compatible,
+                      decimals: basicTxValues?.token?.decimals,
                       maxPriorityFeePerGas: ethers.utils.parseUnits(
                         String(
                           Boolean(
@@ -669,265 +706,50 @@ export const SendConfirm = () => {
                         ),
                         9
                       ),
-                      gasLimit: BigNumber.from(
-                        validateCustomGasLimit
-                          ? customFee.gasLimit
-                          : fee.gasLimit ||
+                      gasLimit: validateCustomGasLimit
+                        ? BigNumber.from(customFee.gasLimit)
+                        : BigNumber.from(
+                            fee.gasLimit ||
                               basicTxValues.defaultGasLimit ||
-                              42000
-                      ),
-                    };
+                              65000
+                          ),
+                    },
+                  ],
+                  false,
+                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                    ? 300000 // 5 minutes timeout for hardware wallet operations
+                    : 10000 // Default 10 seconds for regular wallets
+                );
 
-                    controllerEmitter(
-                      [
-                        'wallet',
-                        'ethereumTransaction',
-                        'sendFormattedTransaction',
-                      ],
-                      [retryTxObject, !isEIP1559Compatible],
-                      false,
-                      activeAccount.isTrezorWallet ||
-                        activeAccount.isLedgerWallet
-                        ? 300000 // 5 minutes timeout for hardware wallet operations
-                        : 10000 // Default 10 seconds for regular wallets
-                    )
-                      .then(async (response) => {
-                        // Save transaction to local state for immediate visibility
-                        await controllerEmitter(
-                          ['wallet', 'sendAndSaveTransaction'],
-                          [response]
-                        );
-
-                        setConfirmed(true);
-                        setLoading(false);
-                      })
-                      .catch((retryError) => {
-                        // If retry also fails, show error
-                        alert.error(t('send.cantCompleteTxs'));
-                        setLoading(false);
-                        throw retryError;
-                      });
-
-                    return; // Exit early, don't show error yet
-                  }
-                }
-
-                alert.error(t('send.cantCompleteTxs'));
+                setConfirmed(true);
                 setLoading(false);
-                throw error;
-              });
-
-            return;
-          } catch (error: any) {
-            logError('error ETH', 'Transaction', error);
-
-            alert.error(t('send.cantCompleteTxs'));
-
-            setLoading(false);
-          }
-          break;
-
-        // ETHEREUM TRANSACTIONS FOR ERC20 TOKENS
-        case TransactionType.ERC20:
-        // ETHEREUM TRANSACTIONS FOR ERC721 TOKENS
-        case TransactionType.ERC721:
-        // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
-        case TransactionType.ERC1155:
-          //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
-          switch (transactionType) {
-            //HANDLE ERC20 TRANSACTION
-            case TransactionType.ERC20:
-              if (isEIP1559Compatible === false) {
-                try {
-                  (
-                    controllerEmitter(
-                      [
-                        'wallet',
-                        'ethereumTransaction',
-                        'sendSignedErc20Transaction',
-                      ],
-                      [
-                        {
-                          networkUrl: activeNetwork.url,
-                          receiver: txObjectState.to,
-                          tokenAddress: basicTxValues.token.contractAddress,
-                          tokenAmount: `${basicTxValues.amount}`,
-                          isLegacy: !isEIP1559Compatible,
-                          decimals: basicTxValues?.token?.decimals,
-                          gasPrice: ethers.utils.hexlify(gasPrice),
-                          gasLimit: validateCustomGasLimit
-                            ? BigNumber.from(customFee.gasLimit)
-                            : BigNumber.from(
-                                fee.gasLimit ||
-                                  basicTxValues.defaultGasLimit ||
-                                  65000
-                              ),
-                        },
-                      ],
-                      false,
-                      activeAccount.isTrezorWallet ||
-                        activeAccount.isLedgerWallet
-                        ? 300000 // 5 minutes timeout for hardware wallet operations
-                        : 10000 // Default 10 seconds for regular wallets
-                    ) as Promise<IEvmTransactionResponse | ISysTransaction>
-                  )
-                    .then(async (response) => {
-                      // Save transaction to local state for immediate visibility
-                      await controllerEmitter(
-                        ['wallet', 'sendAndSaveTransaction'],
-                        [response]
-                      );
-
-                      setConfirmed(true);
-
-                      setLoading(false);
-
-                      // Balance will be updated when user navigates back to Home
-                      // This prevents redundant API calls and timing issues
-                    })
-                    .catch((error) => {
-                      // Handle user cancellation gracefully
-                      if (isUserCancellationError(error)) {
-                        alert.info(t('transactions.transactionCancelled'));
-                        setLoading(false);
-                        return;
-                      }
-
-                      // Handle device locked
-                      if (isDeviceLockedError(error)) {
-                        alert.warning(t('settings.lockedDevice'));
-                        setLoading(false);
-                        return;
-                      }
-
-                      // Handle blind signing requirement
-                      if (
-                        activeAccount.isLedgerWallet &&
-                        isBlindSigningError(error)
-                      ) {
-                        alert.warning(t('settings.ledgerBlindSigning'));
-                        setLoading(false);
-                        return;
-                      }
-                      logError('error send ERC20', 'Transaction', error);
-
-                      alert.error(t('send.cantCompleteTxs'));
-                      setLoading(false);
-                    });
-
-                  return;
-                } catch (_erc20Error) {
-                  logError('error send ERC20', 'Transaction', _erc20Error);
-
-                  alert.error(t('send.cantCompleteTxs'));
-
+              } catch (error: any) {
+                // Handle user cancellation gracefully
+                if (isUserCancellationError(error)) {
+                  alert.info(t('transactions.transactionCancelled'));
                   setLoading(false);
+                  return;
                 }
-                break;
-              }
-              try {
-                (
-                  controllerEmitter(
-                    [
-                      'wallet',
-                      'ethereumTransaction',
-                      'sendSignedErc20Transaction',
-                    ],
-                    [
-                      {
-                        networkUrl: activeNetwork.url,
-                        receiver: txObjectState.to,
-                        tokenAddress: basicTxValues.token.contractAddress,
-                        tokenAmount: `${basicTxValues.amount}`,
-                        isLegacy: !isEIP1559Compatible,
-                        decimals: basicTxValues?.token?.decimals,
-                        maxPriorityFeePerGas: ethers.utils.parseUnits(
-                          String(
-                            Boolean(
-                              customFee.isCustom &&
-                                customFee.maxPriorityFeePerGas > 0
-                            )
-                              ? safeToFixed(customFee.maxPriorityFeePerGas)
-                              : safeToFixed(fee.maxPriorityFeePerGas)
-                          ),
-                          9
-                        ),
-                        maxFeePerGas: ethers.utils.parseUnits(
-                          String(
-                            Boolean(
-                              customFee.isCustom && customFee.maxFeePerGas > 0
-                            )
-                              ? safeToFixed(customFee.maxFeePerGas)
-                              : safeToFixed(fee.maxFeePerGas)
-                          ),
-                          9
-                        ),
-                        gasLimit: validateCustomGasLimit
-                          ? BigNumber.from(customFee.gasLimit)
-                          : BigNumber.from(
-                              fee.gasLimit ||
-                                basicTxValues.defaultGasLimit ||
-                                65000
-                            ),
-                      },
-                    ],
-                    false,
-                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                      ? 300000 // 5 minutes timeout for hardware wallet operations
-                      : 10000 // Default 10 seconds for regular wallets
-                  ) as Promise<IEvmTransactionResponse | ISysTransaction>
-                )
 
-                  .then(async (response) => {
-                    // Save transaction to local state for immediate visibility
-                    await controllerEmitter(
-                      ['wallet', 'sendAndSaveTransaction'],
-                      [response]
-                    );
+                // Handle device locked
+                if (isDeviceLockedError(error)) {
+                  alert.warning(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
 
-                    setConfirmed(true);
-
-                    setLoading(false);
-
-                    // Balance will be updated when user navigates back to Home
-                    // This prevents redundant API calls and timing issues
-                  })
-                  .catch((error) => {
-                    // Handle user cancellation gracefully
-                    if (isUserCancellationError(error)) {
-                      alert.info(t('transactions.transactionCancelled'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle device locked
-                    if (isDeviceLockedError(error)) {
-                      alert.warning(t('settings.lockedDevice'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle blind signing requirement
-                    if (
-                      activeAccount.isLedgerWallet &&
-                      isBlindSigningError(error)
-                    ) {
-                      alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    logError('error send ERC20', 'Transaction', error);
-
-                    alert.error(t('send.cantCompleteTxs'));
-                    setLoading(false);
-                  });
-
-                return;
-              } catch (_erc20Error) {
-                logError('error send ERC20', 'Transaction', _erc20Error);
+                // Handle blind signing requirement
+                if (
+                  activeAccount.isLedgerWallet &&
+                  isBlindSigningError(error)
+                ) {
+                  alert.warning(t('settings.ledgerBlindSigning'));
+                  setLoading(false);
+                  return;
+                }
+                logError('error send ERC20', 'Transaction', error);
 
                 alert.error(t('send.cantCompleteTxs'));
-
                 setLoading(false);
               }
               break;
@@ -954,13 +776,10 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                controllerEmitter(
+                await controllerEmitter(
+                  ['wallet', 'sendAndSaveTokenTransaction'],
                   [
-                    'wallet',
-                    'ethereumTransaction',
-                    'sendSignedErc721Transaction',
-                  ],
-                  [
+                    'ERC721',
                     {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
@@ -981,56 +800,37 @@ export const SendConfirm = () => {
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
                     : 10000 // Default 10 seconds for regular wallets
-                )
-                  .then(async (response) => {
-                    // Save transaction to local state for immediate visibility
-                    await controllerEmitter(
-                      ['wallet', 'sendAndSaveTransaction'],
-                      [response]
-                    );
+                );
 
-                    setConfirmed(true);
-                    setLoading(false);
+                setConfirmed(true);
+                setLoading(false);
+              } catch (error: any) {
+                // Handle user cancellation gracefully
+                if (isUserCancellationError(error)) {
+                  alert.info(t('transactions.transactionCancelled'));
+                  setLoading(false);
+                  return;
+                }
 
-                    // Balance will be updated when user navigates back to Home
-                    // This prevents redundant API calls and timing issues
-                  })
-                  .catch((error) => {
-                    // Handle user cancellation gracefully
-                    if (isUserCancellationError(error)) {
-                      alert.info(t('transactions.transactionCancelled'));
-                      setLoading(false);
-                      return;
-                    }
+                // Handle device locked
+                if (isDeviceLockedError(error)) {
+                  alert.warning(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
 
-                    // Handle device locked
-                    if (isDeviceLockedError(error)) {
-                      alert.warning(t('settings.lockedDevice'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle blind signing requirement
-                    if (
-                      activeAccount.isLedgerWallet &&
-                      isBlindSigningError(error)
-                    ) {
-                      alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    logError('error send ERC721', 'Transaction', error);
-
-                    alert.error(t('send.cantCompleteTxs'));
-                    setLoading(false);
-                  });
-
-                return;
-              } catch (_erc721Error) {
-                logError('error send ERC721', 'Transaction', _erc721Error);
+                // Handle blind signing requirement
+                if (
+                  activeAccount.isLedgerWallet &&
+                  isBlindSigningError(error)
+                ) {
+                  alert.warning(t('settings.ledgerBlindSigning'));
+                  setLoading(false);
+                  return;
+                }
+                logError('error send ERC721', 'Transaction', error);
 
                 alert.error(t('send.cantCompleteTxs'));
-
                 setLoading(false);
               }
               break;
@@ -1057,13 +857,10 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                controllerEmitter(
+                await controllerEmitter(
+                  ['wallet', 'sendAndSaveTokenTransaction'],
                   [
-                    'wallet',
-                    'ethereumTransaction',
-                    'sendSignedErc1155Transaction',
-                  ],
-                  [
+                    'ERC1155',
                     {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
@@ -1106,56 +903,37 @@ export const SendConfirm = () => {
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
                     : 10000 // Default 10 seconds for regular wallets
-                )
-                  .then(async (response) => {
-                    // Save transaction to local state for immediate visibility
-                    await controllerEmitter(
-                      ['wallet', 'sendAndSaveTransaction'],
-                      [response]
-                    );
+                );
 
-                    setConfirmed(true);
-                    setLoading(false);
+                setConfirmed(true);
+                setLoading(false);
+              } catch (error: any) {
+                // Handle user cancellation gracefully
+                if (isUserCancellationError(error)) {
+                  alert.info(t('transactions.transactionCancelled'));
+                  setLoading(false);
+                  return;
+                }
 
-                    // Balance will be updated when user navigates back to Home
-                    // This prevents redundant API calls and timing issues
-                  })
-                  .catch((error) => {
-                    // Handle user cancellation gracefully
-                    if (isUserCancellationError(error)) {
-                      alert.info(t('transactions.transactionCancelled'));
-                      setLoading(false);
-                      return;
-                    }
+                // Handle device locked
+                if (isDeviceLockedError(error)) {
+                  alert.warning(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
 
-                    // Handle device locked
-                    if (isDeviceLockedError(error)) {
-                      alert.warning(t('settings.lockedDevice'));
-                      setLoading(false);
-                      return;
-                    }
-
-                    // Handle blind signing requirement
-                    if (
-                      activeAccount.isLedgerWallet &&
-                      isBlindSigningError(error)
-                    ) {
-                      alert.warning(t('settings.ledgerBlindSigning'));
-                      setLoading(false);
-                      return;
-                    }
-                    logError('error send ERC1155', 'Transaction', error);
-
-                    alert.error(t('send.cantCompleteTxs'));
-                    setLoading(false);
-                  });
-
-                return;
-              } catch (_erc1155Error) {
-                logError('error send ERC1155', 'Transaction', _erc1155Error);
+                // Handle blind signing requirement
+                if (
+                  activeAccount.isLedgerWallet &&
+                  isBlindSigningError(error)
+                ) {
+                  alert.warning(t('settings.ledgerBlindSigning'));
+                  setLoading(false);
+                  return;
+                }
+                logError('error send ERC1155', 'Transaction', error);
 
                 alert.error(t('send.cantCompleteTxs'));
-
                 setLoading(false);
               }
 
@@ -1164,6 +942,8 @@ export const SendConfirm = () => {
 
           break;
       }
+    } else {
+      alert.error(t('send.enoughFunds'));
     }
   };
 
@@ -1422,9 +1202,6 @@ export const SendConfirm = () => {
   // Navigate home when transaction is confirmed
   useEffect(() => {
     if (confirmed) {
-      // Clear navigation state when actually navigating
-      clearNavigationState();
-
       navigate('/home', {
         state: { fromTransaction: true },
       });
@@ -1794,8 +1571,8 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
-              onClick={() => {
-                clearNavigationState();
+              onClick={async () => {
+                await clearNavigationState();
                 navigate('/home');
               }}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
