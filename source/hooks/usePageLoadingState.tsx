@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { RootState } from 'state/store';
 
@@ -16,6 +16,7 @@ export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []
 ): IPageLoadingState => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [navigationLoading, setNavigationLoading] = useState(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -34,6 +35,14 @@ export const usePageLoadingState = (
   );
   const isPollingUpdate = useSelector(
     (state: RootState) => state.vaultGlobal.isPollingUpdate
+  );
+
+  // Only apply timeout logic on pages where users expect quick loading
+  const timeoutEnabledPages = ['/home'];
+
+  const shouldEnableTimeout = timeoutEnabledPages.some(
+    (page) =>
+      location.pathname === page || location.pathname.startsWith(`${page}/`)
   );
 
   // Determine if we're loading
@@ -57,6 +66,12 @@ export const usePageLoadingState = (
       timeoutRef.current = null;
     }
 
+    // Only set timeout if we're on a page where timeouts are enabled
+    if (!shouldEnableTimeout) {
+      setHasTimedOut(false);
+      return;
+    }
+
     // Timeout for network switching OR non-polling balance loads (like after unlock/retry) OR connecting
     if (isNetworkChanging || isNonPollingBalanceLoad || isConnecting) {
       // Set 10-second timeout for network operations
@@ -74,11 +89,28 @@ export const usePageLoadingState = (
         timeoutRef.current = null;
       }
     };
-  }, [isNetworkChanging, isNonPollingBalanceLoad, isConnecting]);
+  }, [
+    isNetworkChanging,
+    isNonPollingBalanceLoad,
+    isConnecting,
+    shouldEnableTimeout,
+  ]);
+
+  // Reset hasTimedOut when network status becomes idle
+  useEffect(() => {
+    if (networkStatus === 'idle') {
+      setHasTimedOut(false);
+    }
+  }, [networkStatus]);
 
   // Handle timeout redirect
   useEffect(() => {
     if (hasTimedOut) {
+      // Don't redirect if we're already on the error page
+      if (location.pathname === '/chain-fail-to-connect') {
+        return;
+      }
+
       // Clear the timeout immediately to prevent duplicate redirects
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -86,12 +118,12 @@ export const usePageLoadingState = (
       }
       // Small delay to ensure state is stable before redirecting
       const redirectTimer = setTimeout(() => {
-        window.location.hash = '/chain-fail-to-connect';
+        navigate('/chain-fail-to-connect');
       }, 100);
 
       return () => clearTimeout(redirectTimer);
     }
-  }, [hasTimedOut]);
+  }, [hasTimedOut, navigate, location.pathname]);
 
   // Track navigation changes
   useEffect(() => {

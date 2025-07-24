@@ -1,6 +1,7 @@
 import React, { memo, useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 
 import { Tooltip } from 'components/Tooltip';
 import { RootState } from 'state/store';
@@ -12,6 +13,7 @@ interface IConnectionStatusIndicatorProps {
 export const ConnectionStatusIndicator = memo(
   ({ className = '' }: IConnectionStatusIndicatorProps) => {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const [showSlowWarning, setShowSlowWarning] = useState(false);
     const [showCriticalError, setShowCriticalError] = useState(false);
     const [showSuccessConfirmation, setShowSuccessConfirmation] =
@@ -122,7 +124,7 @@ export const ConnectionStatusIndicator = memo(
         networkStatus === 'error' ||
         (hasCriticalErrors && !isNetworkActivity)
       ) {
-        window.location.hash = '/chain-fail-to-connect';
+        navigate('/chain-fail-to-connect');
       }
     };
 

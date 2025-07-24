@@ -36,7 +36,7 @@ export const ChainErrorPage = () => {
   useEffect(() => {
     console.log('[ChainErrorPage] Setting network status to error');
     store.dispatch(switchNetworkError());
-  }, []); // Empty deps - only run on mount
+  }, []);
 
   const handleRetryToConnect = async () => {
     console.log('[ChainErrorPage] Retry clicked');
@@ -224,6 +224,9 @@ export const ChainErrorPage = () => {
             <div
               className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
               onClick={() => {
+                // Reset network status to prevent redirect loops when navigating away
+                store.dispatch(resetNetworkStatus());
+
                 const returnContext = createNavigationContext(
                   '/chain-fail-to-connect'
                 );
