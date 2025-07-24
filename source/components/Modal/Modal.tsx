@@ -291,7 +291,7 @@ export const ErrorModal = ({
               type="button"
               onClick={() =>
                 window.open(
-                  `mailto:pali@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
+                  `mailto:support@syscoin.org?subject="Pali Error Report: Token creation"&body=${log}`
                 )
               }
             >
