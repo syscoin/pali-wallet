@@ -47,10 +47,18 @@ const ManageNetworkView = () => {
     rpcUrl: string;
   } | null>(null);
 
+  // Track if we've already restored scroll position to prevent duplicate restoration
+  const hasRestoredScrollRef = useRef(false);
+
   // Custom scroll restoration for the ul element
   useEffect(() => {
-    if (location.state?.scrollPosition !== undefined) {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredScrollRef.current
+    ) {
+      // Small delay to ensure the component has rendered before scrolling
       if (scrollContainerRef.current) {
+        hasRestoredScrollRef.current = true;
         scrollContainerRef.current.scrollTop = location.state.scrollPosition;
       }
     }

@@ -5,6 +5,7 @@ import React, {
   useDeferredValue,
   startTransition,
   useEffect,
+  useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
@@ -285,16 +286,22 @@ export const EvmAssetsList = () => {
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
-  // Handle navigation state restoration and cleanup
+  // Track if we've already restored scroll position to prevent duplicate restoration
+  const hasRestoredScrollRef = useRef(false);
+
+  // Handle navigation state restoration
   useEffect(() => {
-    if (location.state?.scrollPosition !== undefined) {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredScrollRef.current
+    ) {
+      hasRestoredScrollRef.current = true;
+
       // Restore scroll position
       window.scrollTo(0, location.state.scrollPosition);
 
-      // Clear the navigation state to prevent re-applying on subsequent renders
-      if (location.state) {
-        window.history.replaceState({}, document.title);
-      }
+      // Do NOT clear the navigation state here - we need it to persist
+      // for when the popup is closed and reopened
     }
   }, [location.state]);
 

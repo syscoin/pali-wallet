@@ -149,12 +149,19 @@ export const SendSys = () => {
     };
   }, [selectedAsset, RBF, isMaxSend, location]);
 
+  // Track if we've already restored form values to prevent duplicate restoration
+  const hasRestoredRef = useRef(false);
+
   // Restore form values if coming back from navigation
   useEffect(() => {
-    if (location.state?.scrollPosition !== undefined) {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredRef.current
+    ) {
       const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
 
       if (formValues) {
+        hasRestoredRef.current = true;
         form.setFieldsValue(formValues);
         // Also update the ref to keep it in sync
         formValuesRef.current = formValues;
@@ -165,8 +172,8 @@ export const SendSys = () => {
         }
       }
 
-      // Clear the navigation state to prevent re-applying
-      window.history.replaceState({}, document.title);
+      // Do NOT clear the navigation state here - we need it to persist
+      // for when the popup is closed and reopened
     }
   }, [location.state, form]);
 

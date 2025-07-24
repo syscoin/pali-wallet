@@ -101,11 +101,18 @@ const ManageAccountsView = React.memo(() => {
   // Ref for the scrollable ul element
   const scrollContainerRef = useRef<HTMLUListElement>(null);
 
+  // Track if we've already restored scroll position to prevent duplicate restoration
+  const hasRestoredScrollRef = useRef(false);
+
   // Custom scroll restoration for the ul element
   useEffect(() => {
-    if (location.state?.scrollPosition !== undefined) {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredScrollRef.current
+    ) {
       // Small delay to ensure the component has rendered before scrolling
       if (scrollContainerRef.current) {
+        hasRestoredScrollRef.current = true;
         scrollContainerRef.current.scrollTop = location.state.scrollPosition;
       }
     }

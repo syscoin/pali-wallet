@@ -1,10 +1,10 @@
 import { uniqueId } from 'lodash';
 import React, {
-  Fragment,
   useMemo,
   useCallback,
   useState,
   useEffect,
+  useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
@@ -46,9 +46,16 @@ export const SyscoinAssetsList = () => {
 
   const isNetworkChanging = networkStatus === 'switching';
 
+  // Track if we've already restored scroll position to prevent duplicate restoration
+  const hasRestoredScrollRef = useRef(false);
+
   // Handle navigation state restoration
   useEffect(() => {
-    if (location.state?.scrollPosition !== undefined) {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredScrollRef.current
+    ) {
+      hasRestoredScrollRef.current = true;
       window.scrollTo(0, location.state.scrollPosition);
     }
   }, [location.state]);
