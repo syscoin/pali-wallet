@@ -69,6 +69,11 @@ export const SysProvider = (host: string) => {
     // Get transactions from Redux store
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
+
+    if (!activeAccount || !activeNetwork) {
+      return [];
+    }
+
     const transactions =
       accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
         activeNetwork.chainId
@@ -86,6 +91,11 @@ export const SysProvider = (host: string) => {
     const txId = params[0];
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
+
+    if (!activeAccount || !activeNetwork) {
+      return null;
+    }
+
     const transactions =
       accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
         activeNetwork.chainId
