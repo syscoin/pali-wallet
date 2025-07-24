@@ -2495,11 +2495,9 @@ class MainController {
     );
 
     // Save wallet state after importing Trezor account
-    this.saveWalletState('import-account-trezor', true);
+    await this.saveWalletState('import-account-trezor', true, true);
 
-    setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Trezor account
-    }, 10);
+    await this.getLatestUpdateForCurrentAccount(false, true);
 
     return importedAccount;
   }
@@ -2531,11 +2529,9 @@ class MainController {
     );
 
     // Save wallet state after importing Ledger account
-    this.saveWalletState('import-account-ledger', true);
+    await this.saveWalletState('import-account-ledger', true, true);
 
-    setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Ledger account
-    }, 10);
+    await this.getLatestUpdateForCurrentAccount(false, true);
 
     return importedAccount;
   }
