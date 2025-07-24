@@ -69,7 +69,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             isLedger: activeAccount.isLedgerWallet,
             pathIn: data?.pathIn,
           },
-        ]
+        ],
+        false,
+        activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+          ? 300000 // 5 minutes timeout for hardware wallet operations
+          : 10000 // Default 10 seconds for regular wallets
       );
       if (!signOnly) {
         response = await controllerEmitter(

@@ -54,7 +54,9 @@ const ConnectHardwareWalletView: FC = () => {
           // Trezor initialization is handled internally by importTrezorAccountFromController
           await controllerEmitter(
             ['wallet', 'importTrezorAccountFromController'],
-            []
+            [],
+            false,
+            300000 // 5 minutes timeout for hardware wallet operations
           );
 
           setIsModalOpen(true);
@@ -64,7 +66,9 @@ const ConnectHardwareWalletView: FC = () => {
           // Ledger connection is handled internally by ensureConnection
           await controllerEmitter(
             ['wallet', 'importLedgerAccountFromController'],
-            []
+            [],
+            false,
+            300000 // 5 minutes timeout for hardware wallet operations
           );
 
           setIsModalOpen(true);

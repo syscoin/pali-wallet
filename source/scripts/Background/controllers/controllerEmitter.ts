@@ -20,7 +20,7 @@ const isRuntimeAvailable = (): boolean => {
 export async function controllerEmitter<
   T extends IMasterController,
   P extends Methods<T>
->(methods: P, params?: any[], importMethod = false) {
+>(methods: P, params?: any[], importMethod = false, timeout = 10000) {
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 500; // Start with 500ms to reduce spam
@@ -38,9 +38,9 @@ export async function controllerEmitter<
         }
 
         // Use a timeout to detect unresponsive service workers
-        const timeout = setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           reject(new Error('Network request timed out'));
-        }, 10000); // 10 second timeout
+        }, timeout);
 
         try {
           chrome.runtime.sendMessage(
@@ -53,7 +53,7 @@ export async function controllerEmitter<
               },
             },
             (response) => {
-              clearTimeout(timeout);
+              clearTimeout(timeoutId);
 
               // Check for runtime errors
               if (chrome.runtime.lastError) {
@@ -94,7 +94,7 @@ export async function controllerEmitter<
             }
           );
         } catch (error) {
-          clearTimeout(timeout);
+          clearTimeout(timeoutId);
           console.error('Error sending message in controllerEmitter:', error);
           reject(error);
         }

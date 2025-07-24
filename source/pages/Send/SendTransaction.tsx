@@ -266,7 +266,11 @@ export const SendTransaction = () => {
                 ),
               },
               isLegacyTransaction,
-            ]
+            ],
+            false,
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000 // 5 minutes timeout for hardware wallet operations
+              : 10000 // Default 10 seconds for regular wallets
           );
         } else {
           // EIP-1559 transaction handling
@@ -304,7 +308,11 @@ export const SendTransaction = () => {
                     : fee.gasLimit
                 ),
               },
-            ]
+            ],
+            false,
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000 // 5 minutes timeout for hardware wallet operations
+              : 10000 // Default 10 seconds for regular wallets
           );
         }
 

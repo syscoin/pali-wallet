@@ -100,12 +100,20 @@ const EthSign: React.FC<ISign> = () => {
       if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
-          [data]
+          [data],
+          false,
+          activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            ? 300000 // 5 minutes timeout for hardware wallet operations
+            : 10000 // Default 10 seconds for regular wallets
         )) as string;
       else if (data.eventName === 'personal_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-          [data]
+          [data],
+          false,
+          activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            ? 300000 // 5 minutes timeout for hardware wallet operations
+            : 10000 // Default 10 seconds for regular wallets
         )) as string;
       else {
         let typedData;
@@ -126,17 +134,29 @@ const EthSign: React.FC<ISign> = () => {
         if (data.eventName === 'eth_signTypedData') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
-            [address, typedData, 'V1']
+            [address, typedData, 'V1'],
+            false,
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000 // 5 minutes timeout for hardware wallet operations
+              : 10000 // Default 10 seconds for regular wallets
           )) as string;
         } else if (data.eventName === 'eth_signTypedData_v3') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
-            [address, typedData, 'V3']
+            [address, typedData, 'V3'],
+            false,
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000 // 5 minutes timeout for hardware wallet operations
+              : 10000 // Default 10 seconds for regular wallets
           )) as string;
         } else if (data.eventName === 'eth_signTypedData_v4') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
-            [address, typedData, 'V4']
+            [address, typedData, 'V4'],
+            false,
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000 // 5 minutes timeout for hardware wallet operations
+              : 10000 // Default 10 seconds for regular wallets
           )) as string;
         }
       }

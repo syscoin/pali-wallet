@@ -251,7 +251,11 @@ export const SendConfirm = () => {
                   isTrezor: activeAccount.isTrezorWallet,
                   isLedger: activeAccount.isLedgerWallet,
                 },
-              ]
+              ],
+              false,
+              activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                ? 300000 // 5 minutes timeout for hardware wallet operations
+                : 10000 // Default 10 seconds for regular wallets
             );
 
             // Step 2: Send the signed PSBT
@@ -492,7 +496,11 @@ export const SendConfirm = () => {
                           ),
                     },
                     !isEIP1559Compatible,
-                  ]
+                  ],
+                  false,
+                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                    ? 300000 // 5 minutes timeout for hardware wallet operations
+                    : 10000 // Default 10 seconds for regular wallets
                 )
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility
@@ -583,7 +591,11 @@ export const SendConfirm = () => {
                           fee.gasLimit || basicTxValues.defaultGasLimit || 42000
                         ),
                   },
-                ]
+                ],
+                false,
+                activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                  ? 300000 // 5 minutes timeout for hardware wallet operations
+                  : 10000 // Default 10 seconds for regular wallets
               ) as Promise<ISysTransaction | IEvmTransactionResponse>
             )
               .then(async (response) => {
@@ -672,7 +684,12 @@ export const SendConfirm = () => {
                         'ethereumTransaction',
                         'sendFormattedTransaction',
                       ],
-                      [retryTxObject, !isEIP1559Compatible]
+                      [retryTxObject, !isEIP1559Compatible],
+                      false,
+                      activeAccount.isTrezorWallet ||
+                        activeAccount.isLedgerWallet
+                        ? 300000 // 5 minutes timeout for hardware wallet operations
+                        : 10000 // Default 10 seconds for regular wallets
                     )
                       .then(async (response) => {
                         // Save transaction to local state for immediate visibility
@@ -746,7 +763,12 @@ export const SendConfirm = () => {
                                   65000
                               ),
                         },
-                      ]
+                      ],
+                      false,
+                      activeAccount.isTrezorWallet ||
+                        activeAccount.isLedgerWallet
+                        ? 300000 // 5 minutes timeout for hardware wallet operations
+                        : 10000 // Default 10 seconds for regular wallets
                     ) as Promise<IEvmTransactionResponse | ISysTransaction>
                   )
                     .then(async (response) => {
@@ -848,7 +870,11 @@ export const SendConfirm = () => {
                                 65000
                             ),
                       },
-                    ]
+                    ],
+                    false,
+                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                      ? 300000 // 5 minutes timeout for hardware wallet operations
+                      : 10000 // Default 10 seconds for regular wallets
                   ) as Promise<IEvmTransactionResponse | ISysTransaction>
                 )
 
@@ -950,7 +976,11 @@ export const SendConfirm = () => {
                               85000
                           ),
                     },
-                  ]
+                  ],
+                  false,
+                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                    ? 300000 // 5 minutes timeout for hardware wallet operations
+                    : 10000 // Default 10 seconds for regular wallets
                 )
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility
@@ -1071,7 +1101,11 @@ export const SendConfirm = () => {
                               90000
                           ),
                     },
-                  ]
+                  ],
+                  false,
+                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                    ? 300000 // 5 minutes timeout for hardware wallet operations
+                    : 10000 // Default 10 seconds for regular wallets
                 )
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility

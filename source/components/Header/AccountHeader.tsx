@@ -104,7 +104,9 @@ export const AccountHeader: React.FC = () => {
       // Use type assertion for legacy controller methods
       await (controllerEmitter as any)(
         ['wallet', signerType, 'utxo', 'verifyUtxoAddress'],
-        [activeAccount?.id, activeNetwork.currency, activeNetwork.slip44]
+        [activeAccount?.id, activeNetwork.currency, activeNetwork.slip44],
+        false,
+        300000 // 5 minutes timeout for hardware wallet operations
       );
 
       setIsLoading(false);
