@@ -428,13 +428,6 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case TransactionType.NATIVE_ETH:
-          if (activeAccount.isTrezorWallet) {
-            await controllerEmitter(
-              ['wallet', 'trezorSigner', 'init'],
-              [],
-              false
-            );
-          }
           try {
             const restTx = omitTransactionObjectData(txObjectState, [
               'chainId',
@@ -723,13 +716,6 @@ export const SendConfirm = () => {
         case TransactionType.ERC721:
         // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
         case TransactionType.ERC1155:
-          if (activeAccount.isTrezorWallet) {
-            await controllerEmitter(
-              ['wallet', 'trezorSigner', 'init'],
-              [],
-              false
-            );
-          }
           //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
           switch (transactionType) {
             //HANDLE ERC20 TRANSACTION
@@ -922,13 +908,6 @@ export const SendConfirm = () => {
 
             //HANDLE ERC721 NFT TRANSACTIONS
             case TransactionType.ERC721:
-              if (activeAccount.isTrezorWallet) {
-                await controllerEmitter(
-                  ['wallet', 'trezorSigner', 'init'],
-                  [],
-                  false
-                );
-              }
               try {
                 // Validate tokenId before conversion
                 const tokenId = basicTxValues.token.tokenId;
@@ -1028,14 +1007,6 @@ export const SendConfirm = () => {
 
             //HANDLE ERC1155 NFT TRANSACTIONS
             case TransactionType.ERC1155:
-              if (activeAccount.isTrezorWallet) {
-                await controllerEmitter(
-                  ['wallet', 'trezorSigner', 'init'],
-                  [],
-                  false
-                );
-              }
-
               try {
                 // Validate tokenId before conversion
                 const tokenId = basicTxValues.token.tokenId;
