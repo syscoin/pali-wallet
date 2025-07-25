@@ -18,8 +18,7 @@
     "unlimitedStorage",
     "offscreen",
     "scripting",
-    "notifications",
-    "webRequest"
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",

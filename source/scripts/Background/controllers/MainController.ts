@@ -4005,20 +4005,6 @@ class MainController {
     );
   }
 
-  public async updateAllEvmTokens(
-    account: any,
-    currentNetworkChainId: number,
-    web3Provider: CustomJsonRpcProvider,
-    accountAssets: ITokenEthProps[]
-  ) {
-    return this.evmAssetsController.updateAllEvmTokens(
-      account,
-      currentNetworkChainId,
-      this.ethereumTransaction.web3Provider,
-      accountAssets
-    );
-  }
-
   // Direct transaction EVM method for UI access
   public async testExplorerApi(apiUrl: string) {
     // The evmTransactionsController.testExplorerApi doesn't need a web3Provider
