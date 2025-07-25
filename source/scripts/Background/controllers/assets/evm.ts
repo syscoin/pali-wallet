@@ -17,6 +17,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 import { cleanTokenSymbol } from '@pollum-io/sysweb3-utils';
 
+import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import store from 'state/store';
 import {
@@ -540,7 +541,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             })
           );
 
-          // Combine updated current network assets with other network assets
+          // Combine updated assets with other network assets
           const allAssets = [...updatedAssets, ...otherNetworkAssets];
 
           return validateAndManageUserAssets(
@@ -548,100 +549,122 @@ const EvmAssetsController = (): IEvmAssetsController => {
             allAssets
           ) as ITokenEthProps[];
         } catch (apiError) {
-          console.warn(
-            `[EvmAssetsController] API failed, falling back to individual calls:`,
+          console.error(
+            '[EvmAssetsController] API fetch failed, falling back to multicall:',
             apiError
           );
-          // Fall through to individual call approach
+          // Fall through to multicall approach
         }
       }
 
-      // Fallback: Use individual contract calls (for networks without API)
+      // No API available or API failed - use multicall3 for batch balance fetching
       console.log(
-        `[EvmAssetsController] No API available, using individual contract calls`
+        `[EvmAssetsController] Using multicall3 for batch token balance updates`
       );
 
-      const queue = new Queue(3);
-
-      queue.execute(
-        async () =>
-          await Promise.all(
-            accountAssets.map(async (vaultAssets: ITokenEthProps) => {
-              if (vaultAssets.chainId === currentNetworkChainId) {
-                const provider = w3Provider;
-                let nftContractType = null;
-                let currentAbi = null;
-
-                currentAbi = getErc20Abi();
-
-                if (vaultAssets.isNft) {
-                  nftContractType = vaultAssets.tokenStandard || 'ERC-721';
-
-                  currentAbi =
-                    nftContractType === 'ERC-721'
-                      ? getErc21Abi()
-                      : getErc55Abi();
-                }
-
-                const contract = new ethers.Contract(
-                  vaultAssets.contractAddress,
-                  currentAbi,
-                  provider
-                );
-
-                // Handle NFT collection balance updates
-                if (vaultAssets.isNft) {
-                  if (nftContractType === 'ERC-1155') {
-                    // ERC-1155 collections cannot be updated via individual calls
-                    // because balanceOf(address, tokenId) requires specific tokenIds
-                    // which we don't store in our simplified collection architecture
-                    console.log(
-                      `[EvmAssetsController] Skipping ERC-1155 collection ${vaultAssets.contractAddress} - requires API for balance updates`
-                    );
-                    return vaultAssets; // Return unchanged
-                  }
-
-                  // ERC-721: balanceOf(address) returns total count in collection
-                  const balanceCallMethod = await contract.balanceOf(
-                    account.address
-                  );
-                  const collectionBalance = Number(balanceCallMethod);
-
-                  console.log(
-                    `[EvmAssetsController] Updated ERC-721 collection ${vaultAssets.contractAddress}: ${collectionBalance} NFTs`
-                  );
-
-                  return { ...vaultAssets, balance: collectionBalance };
-                }
-
-                // For ERC-20 tokens, use standard balanceOf call
-                const balanceCallMethod = await contract.balanceOf(
-                  account.address
-                );
-
-                const balance = `${
-                  balanceCallMethod / 10 ** Number(vaultAssets.decimals)
-                }`;
-                const formattedBalance = floor(parseFloat(balance), 4);
-
-                return { ...vaultAssets, balance: formattedBalance };
-              }
-              return null;
-            })
-          )
+      // Separate regular tokens from NFTs
+      const regularTokens = currentNetworkAssets.filter(
+        (asset) => !asset.isNft
       );
+      const nftAssets = currentNetworkAssets.filter((asset) => asset.isNft);
 
-      const results = await queue.done();
+      // Use BatchBalanceController for regular ERC-20 tokens
+      let updatedRegularTokens: ITokenEthProps[] = [];
+      if (regularTokens.length > 0) {
+        const batchController = new BatchBalanceController(w3Provider);
 
-      const updatedTokens = results
-        .filter((result) => result.success)
-        .map(({ result }) => result);
+        const balances = await batchController.getBatchTokenBalances(
+          regularTokens,
+          account.address
+        );
 
-      const tokens = updatedTokens.some((entry) => isNil(entry))
-        ? [...accountAssets]
-        : updatedTokens.filter((entry) => !isNil(entry));
+        updatedRegularTokens = regularTokens.map((token) => {
+          const balance = balances.get(token.contractAddress.toLowerCase());
+          return {
+            ...token,
+            balance: balance ? floor(parseFloat(balance), 4) : 0,
+          };
+        });
+      }
 
-      return validateAndManageUserAssets(true, tokens) as ITokenEthProps[];
+      // Handle NFTs separately (they need different ABI calls)
+      let updatedNftAssets: ITokenEthProps[] = [];
+      if (nftAssets.length > 0) {
+        // For NFTs, we still need individual calls or skip if ERC-1155
+        const queue = new Queue(3);
+        const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
+        let requestCount = 0;
+
+        // Queue each NFT individually - this ensures only 3 run at a time
+        nftAssets.forEach((nftAsset) => {
+          queue.execute(async () => {
+            // Add progressive delay for each request
+            if (requestCount > 0) {
+              await new Promise((resolve) =>
+                setTimeout(
+                  resolve,
+                  DELAY_BETWEEN_REQUESTS * Math.floor(requestCount / 3)
+                )
+              );
+            }
+            requestCount++;
+
+            const nftContractType = nftAsset.tokenStandard || 'ERC-721';
+
+            if (nftContractType === 'ERC-1155') {
+              // ERC-1155 collections cannot be updated via individual calls
+              console.log(
+                `[EvmAssetsController] Skipping ERC-1155 collection ${nftAsset.contractAddress} - requires API`
+              );
+              return nftAsset; // Return unchanged
+            }
+
+            // ERC-721: balanceOf(address) returns total count
+            const currentAbi = getErc21Abi();
+            const contract = new ethers.Contract(
+              nftAsset.contractAddress,
+              currentAbi,
+              w3Provider
+            );
+
+            try {
+              const balanceCallMethod = await contract.balanceOf(
+                account.address
+              );
+              const collectionBalance = Number(balanceCallMethod);
+
+              console.log(
+                `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
+              );
+
+              return { ...nftAsset, balance: collectionBalance };
+            } catch (error) {
+              console.error(
+                `[EvmAssetsController] Failed to fetch NFT balance for ${nftAsset.contractAddress}:`,
+                error
+              );
+              return nftAsset; // Return unchanged on error
+            }
+          });
+        });
+
+        const nftResults = await queue.done();
+        updatedNftAssets = nftResults
+          .filter((result) => result.success)
+          .map(({ result }) => result);
+      }
+
+      // Combine all updated assets
+      const allUpdatedAssets = [
+        ...updatedRegularTokens,
+        ...updatedNftAssets,
+        ...otherNetworkAssets,
+      ];
+
+      return validateAndManageUserAssets(
+        true,
+        allUpdatedAssets
+      ) as ITokenEthProps[];
     } catch (error) {
       console.error(
         "Pali utils: Couldn't update assets due to the following issue ",

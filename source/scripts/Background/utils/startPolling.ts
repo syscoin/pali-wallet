@@ -13,6 +13,9 @@ export function getPollingInterval() {
 
   // Check if there are pending transactions
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+  // Check if popup is open for more responsive updates
+  const isPopupOpen = chrome.extension.getViews({ type: 'popup' }).length > 0;
+
   if (currentAccount) {
     const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
     const transactions =
@@ -23,8 +26,8 @@ export function getPollingInterval() {
       Array.isArray(transactions) &&
       transactions.some((tx: any) => !isTransactionInBlock(tx));
 
-    // Use original fast polling when there are pending transactions
-    if (hasPendingTransactions) {
+    // Use rapid polling when there are pending transactions
+    if (hasPendingTransactions || isPopupOpen) {
       return isBitcoinBased ? 2 : 1; // Original intervals: 2 min for UTXO, 1 min for EVM
     }
   }
