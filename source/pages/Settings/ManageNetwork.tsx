@@ -159,7 +159,9 @@ const ManageNetworkView = () => {
                   network.url === activeNetwork.url && (
                     <div className="flex items-center gap-1 mt-1">
                       <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs text-green-400">Active</span>
+                      <span className="text-xs text-green-400">
+                        {t('components.activeStatus')}
+                      </span>
                     </div>
                   )}
               </div>
@@ -253,7 +255,9 @@ const ManageNetworkView = () => {
                   network.url === activeNetwork.url && (
                     <div className="flex items-center gap-1 mt-1">
                       <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs text-green-400">Active</span>
+                      <span className="text-xs text-green-400">
+                        {t('components.activeStatus')}
+                      </span>
                     </div>
                   )}
               </div>

@@ -113,7 +113,7 @@ const EditAccountView = () => {
                 <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
                   <Icon isSvg className="w-4" name="greenCheck" />
 
-                  <p className="text-sm text-white">Copied!</p>
+                  <p className="text-sm text-white">{t('components.copied')}</p>
                 </div>
               ) : (
                 <div
@@ -123,7 +123,7 @@ const EditAccountView = () => {
                   }}
                 >
                   <Icon isSvg className="w-4" name="Copy" />
-                  <p className="text-sm text-white">Copy</p>
+                  <p className="text-sm text-white">{t('buttons.copy')}</p>
                 </div>
               )}
             </div>{' '}

@@ -45,7 +45,17 @@
     "feeRateLabel": "Taxa ({{currency}}/byte)",
     "gasPriceLabel": "Preço do gás (gwei)",
     "feeRateTooltip": "Definir a taxa para sua transação em {{currency}} por byte",
-    "gasPriceTooltip": "Definir o preço do gás para sua transação em gwei"
+    "gasPriceTooltip": "Definir o preço do gás para sua transação em gwei",
+    "yourBalance": "Seu saldo:",
+    "local": "Local",
+    "activeStatus": "Ativo",
+    "imported": "Importado",
+    "copied": "Copiado!",
+    "currentBalance": "Saldo Atual",
+    "expectedFormat": "Formato esperado:",
+    "pleaseVerifyThat": "Por favor, verifique se:",
+    "contractAddressCorrect": "• O endereço do contrato está correto",
+    "assetExistsOnNetwork": "• O ativo existe na rede atual"
   },
   "generalMenu": {
     "wallet": "CARTEIRA",
@@ -454,7 +464,9 @@
     "utxoNetworkConflict": "Uma rede {{networkType}} já existe ({{existingNetworkName}}). Apenas uma rede {{networkType}} pode estar ativa por vez. Por favor, remova primeiro a rede {{networkType}} existente.",
     "confirmRemoveNetwork": "Tem certeza de que deseja remover a rede \"{{networkName}}\"?",
     "walletLoggedOut": "A carteira está desconectada",
-    "closeAndReopenPali": "Feche esta janela e reabra o Pali para autenticar e conectar sua carteira de hardware"
+    "closeAndReopenPali": "Feche esta janela e reabra o Pali para autenticar e conectar sua carteira de hardware",
+    "activeAccountNotFound": "Erro: Conta ativa não encontrada",
+    "paliWalletBrowserExtension": "Extensão do Navegador Pali Wallet"
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",

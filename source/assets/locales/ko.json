@@ -204,17 +204,29 @@
     "utxoNetworkConflict": "{{networkType}} 네트워크가 이미 존재합니다 ({{existingNetworkName}}). 한 번에 하나의 {{networkType}} 네트워크만 활성화할 수 있습니다. 먼저 기존 {{networkType}} 네트워크를 제거해주세요.",
     "confirmRemoveNetwork": "네트워크 \"{{networkName}}\"을(를) 제거하시겠습니까?",
     "walletLoggedOut": "지갑이 로그아웃되었습니다",
-    "closeAndReopenPali": "이 창을 닫고 Pali를 다시 열어서 인증하고 하드웨어 지갑을 연결하세요"
+    "closeAndReopenPali": "이 창을 닫고 Pali를 다시 열어서 인증하고 하드웨어 지갑을 연결하세요",
+    "activeAccountNotFound": "오류: 활성 계정을 찾을 수 없습니다",
+    "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장"
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 8자)",
     "confirmPassword": "비밀번호 확인",
     "atLeast": "최소 8자, 소문자 1개, 숫자 1개.",
     "doNotForget": "비밀번호를 저장하는 것을 잊지 마세요. 지갑을 잠금 해제하려면 이 비밀번호가 필요합니다.",
-    "feeRateLabel": "Fee Rate ({{currency}}/byte)",
-    "gasPriceLabel": "Gas Price (gwei)",
-    "feeRateTooltip": "Set the fee rate for your transaction in {{currency}} per byte",
-    "gasPriceTooltip": "Set the gas price for your transaction in gwei"
+    "feeRateLabel": "수수료율 ({{currency}}/바이트)",
+    "gasPriceLabel": "가스 가격 (gwei)",
+    "feeRateTooltip": "거래에 대한 수수료율을 {{currency}} 바이트 단위로 설정",
+    "gasPriceTooltip": "거래에 대한 가스 가격을 gwei 단위로 설정",
+    "yourBalance": "귀하의 잔액:",
+    "local": "로컬",
+    "activeStatus": "활성",
+    "imported": "가져옴",
+    "copied": "복사됨!",
+    "currentBalance": "현재 잔액",
+    "expectedFormat": "예상 형식:",
+    "pleaseVerifyThat": "다음을 확인해주세요:",
+    "contractAddressCorrect": "• 계약 주소가 올바른지",
+    "assetExistsOnNetwork": "• 자산이 현재 네트워크에 존재하는지"
   },
   "generalMenu": {
     "wallet": "지갑",

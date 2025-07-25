@@ -205,7 +205,9 @@
     "utxoNetworkConflict": "Сеть {{networkType}} уже существует ({{existingNetworkName}}). Только одна сеть {{networkType}} может быть активна одновременно. Пожалуйста, сначала удалите существующую сеть {{networkType}}.",
     "confirmRemoveNetwork": "Вы уверены, что хотите удалить сеть \"{{networkName}}\"?",
     "walletLoggedOut": "Кошелёк вышел из системы",
-    "closeAndReopenPali": "Закройте это окно и снова откройте Pali для аутентификации и подключения аппаратного кошелька"
+    "closeAndReopenPali": "Закройте это окно и снова откройте Pali для аутентификации и подключения аппаратного кошелька",
+    "activeAccountNotFound": "Ошибка: Активный аккаунт не найден",
+    "paliWalletBrowserExtension": "Расширение для браузера Pali Wallet"
   },
   "components": {
     "newPassword": "Новый пароль (мин. 8 символов)",
@@ -215,7 +217,17 @@
     "feeRateLabel": "Размер комиссии ({{currency}}/байт)",
     "gasPriceLabel": "Цена газа (gwei)",
     "feeRateTooltip": "Установить размер комиссии для вашей транзакции в {{currency}} за байт",
-    "gasPriceTooltip": "Установить цену газа для вашей транзакции в gwei"
+    "gasPriceTooltip": "Установить цену газа для вашей транзакции в gwei",
+    "yourBalance": "Ваш баланс:",
+    "local": "Локальный",
+    "activeStatus": "Активный",
+    "imported": "Импортировано",
+    "copied": "Скопировано!",
+    "currentBalance": "Текущий баланс",
+    "expectedFormat": "Ожидаемый формат:",
+    "pleaseVerifyThat": "Пожалуйста, убедитесь что:",
+    "contractAddressCorrect": "• Адрес контракта правильный",
+    "assetExistsOnNetwork": "• Актив существует в текущей сети"
   },
   "generalMenu": {
     "wallet": "КОШЕЛЕК",

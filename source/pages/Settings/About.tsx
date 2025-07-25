@@ -33,7 +33,9 @@ const AboutView: FC = () => {
     <>
       <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
         <PaliWhiteSmallIconSvg className="pb-6 w-16" />
-        <p className=" text-white">Pali Wallet Browser Extension</p>
+        <p className=" text-white">
+          {t('settings.paliWalletBrowserExtension')}
+        </p>
         <p className="text-brand-gray200">
           {t('settings.version')}: {packageJson.version}
         </p>

@@ -717,7 +717,7 @@ export const SendTransaction = () => {
                 </div>
 
                 <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
-                  <p>Local</p>
+                  <p>{t('components.local')}</p>
                   <p>{host}</p>
                 </div>
                 <div className="py-2 text-white text-xs flex w-full justify-between">

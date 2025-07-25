@@ -45,7 +45,17 @@
     "feeRateLabel": "Tarifa ({{currency}}/byte)",
     "gasPriceLabel": "Precio del Gas (gwei)",
     "feeRateTooltip": "Establecer la tarifa para su transacción en {{currency}} por byte",
-    "gasPriceTooltip": "Establecer el precio del gas para su transacción en gwei"
+    "gasPriceTooltip": "Establecer el precio del gas para su transacción en gwei",
+    "yourBalance": "Tu saldo:",
+    "local": "Local",
+    "activeStatus": "Activo",
+    "imported": "Importado",
+    "copied": "¡Copiado!",
+    "currentBalance": "Saldo Actual",
+    "expectedFormat": "Formato esperado:",
+    "pleaseVerifyThat": "Por favor verifica que:",
+    "contractAddressCorrect": "• La dirección del contrato es correcta",
+    "assetExistsOnNetwork": "• El activo existe en la red actual"
   },
   "tooltip": {
     "assetDetails": "Detalles del activo",
@@ -467,7 +477,9 @@
     "utxoNetworkConflict": "Ya existe una red de {{networkType}} ({{existingNetworkName}}). Solo puede estar activa una red de {{networkType}} a la vez. Por favor, elimine primero la red de {{networkType}} existente.",
     "confirmRemoveNetwork": "¿Está seguro de que desea eliminar la red \"{{networkName}}\"?",
     "walletLoggedOut": "La billetera está desconectada",
-    "closeAndReopenPali": "Cierre esta ventana y reabra Pali para autenticarse y conectar su billetera de hardware"
+    "closeAndReopenPali": "Cierre esta ventana y reabra Pali para autenticarse y conectar su billetera de hardware",
+    "activeAccountNotFound": "Error: Cuenta activa no encontrada",
+    "paliWalletBrowserExtension": "Extensión del Navegador Pali Wallet"
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

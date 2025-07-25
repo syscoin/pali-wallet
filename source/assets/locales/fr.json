@@ -204,7 +204,9 @@
     "utxoNetworkConflict": "Un réseau {{networkType}} existe déjà ({{existingNetworkName}}). Un seul réseau {{networkType}} peut être actif à la fois. Veuillez d'abord supprimer le réseau {{networkType}} existant.",
     "confirmRemoveNetwork": "Êtes-vous sûr de vouloir supprimer le réseau \"{{networkName}}\" ?",
     "walletLoggedOut": "Le portefeuille est déconnecté",
-    "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel"
+    "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel",
+    "activeAccountNotFound": "Erreur: Compte actif non trouvé",
+    "paliWalletBrowserExtension": "Extension de Navigateur Pali Wallet"
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",
@@ -214,7 +216,17 @@
     "feeRateLabel": "Tarif de frais ({{currency}}/byte)",
     "gasPriceLabel": "Prix du gaz (gwei)",
     "feeRateTooltip": "Définir le tarif de frais pour votre transaction en {{currency}} par byte",
-    "gasPriceTooltip": "Définir le prix du gaz pour votre transaction en gwei"
+    "gasPriceTooltip": "Définir le prix du gaz pour votre transaction en gwei",
+    "yourBalance": "Votre solde:",
+    "local": "Local",
+    "activeStatus": "Actif",
+    "imported": "Importé",
+    "copied": "Copié!",
+    "currentBalance": "Solde Actuel",
+    "expectedFormat": "Format attendu:",
+    "pleaseVerifyThat": "Veuillez vérifier que:",
+    "contractAddressCorrect": "• L'adresse du contrat est correcte",
+    "assetExistsOnNetwork": "• L'actif existe sur le réseau actuel"
   },
   "generalMenu": {
     "wallet": "PORTEFEUILLE",

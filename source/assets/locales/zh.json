@@ -204,17 +204,29 @@
     "utxoNetworkConflict": "{{networkType}}网络已存在（{{existingNetworkName}}）。一次只能激活一个{{networkType}}网络。请先删除现有的{{networkType}}网络。",
     "confirmRemoveNetwork": "您确定要删除网络 \"{{networkName}}\" 吗？",
     "walletLoggedOut": "钱包已注销",
-    "closeAndReopenPali": "关闭此窗口并重新打开 Pali 以进行身份验证并连接您的硬件钱包"
+    "closeAndReopenPali": "关闭此窗口并重新打开 Pali 以进行身份验证并连接您的硬件钱包",
+    "activeAccountNotFound": "错误：未找到活跃账户",
+    "paliWalletBrowserExtension": "Pali钱包浏览器扩展"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",
     "confirmPassword": "确认密码",
     "atLeast": "至少8个字符，1个小写字母和1个数字。",
     "doNotForget": "不要忘记保存您的密码。您需要此密码来解锁您的钱包。",
-    "feeRateLabel": "Fee Rate ({{currency}}/byte)",
-    "gasPriceLabel": "Gas Price (gwei)",
-    "feeRateTooltip": "Set the fee rate for your transaction in {{currency}} per byte",
-    "gasPriceTooltip": "Set the gas price for your transaction in gwei"
+    "feeRateLabel": "费率 ({{currency}}/字节)",
+    "gasPriceLabel": "燃气价格 (gwei)",
+    "feeRateTooltip": "为您的交易设置费率（{{currency}}每字节）",
+    "gasPriceTooltip": "为您的交易设置燃气价格（以gwei为单位）",
+    "yourBalance": "您的余额：",
+    "local": "本地",
+    "activeStatus": "活跃",
+    "imported": "已导入",
+    "copied": "已复制！",
+    "currentBalance": "当前余额",
+    "expectedFormat": "预期格式：",
+    "pleaseVerifyThat": "请验证：",
+    "contractAddressCorrect": "• 合约地址正确",
+    "assetExistsOnNetwork": "• 资产存在于当前网络中"
   },
   "generalMenu": {
     "wallet": "钱包",

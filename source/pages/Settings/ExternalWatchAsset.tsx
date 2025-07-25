@@ -159,7 +159,7 @@ const ExternalWatchAsset = () => {
               <p className="text-sm text-gray-400 mb-6">{formatError}</p>
 
               <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
-                <p className="mb-2">Expected format:</p>
+                <p className="mb-2">{t('components.expectedFormat')}</p>
                 <code className="text-green-400">
                   {`// ERC-20 Token
 {
@@ -197,10 +197,10 @@ const ExternalWatchAsset = () => {
               <p className="text-sm text-gray-400 mb-6">{assetError}</p>
 
               <div className="text-xs text-gray-500 mb-6 p-4 bg-gray-800/50 rounded-lg">
-                <p>Please verify that:</p>
+                <p>{t('components.pleaseVerifyThat')}</p>
                 <ul className="text-left mt-2 space-y-1">
-                  <li>• The contract address is correct</li>
-                  <li>• The asset exists on the current network</li>
+                  <li>{t('components.contractAddressCorrect')}</li>
+                  <li>{t('components.assetExistsOnNetwork')}</li>
                   <li>
                     • The contract is a valid ERC-20, ERC-721, or ERC-1155 token
                   </li>

@@ -45,7 +45,17 @@
     "feeRateLabel": "Fee Rate ({{currency}}/byte)",
     "gasPriceLabel": "Gas Price (gwei)",
     "feeRateTooltip": "Set the fee rate for your transaction in {{currency}} per byte",
-    "gasPriceTooltip": "Set the gas price for your transaction in gwei"
+    "gasPriceTooltip": "Set the gas price for your transaction in gwei",
+    "yourBalance": "Your balance:",
+    "local": "Local",
+    "activeStatus": "Active",
+    "imported": "Imported",
+    "copied": "Copied!",
+    "currentBalance": "Current Balance",
+    "expectedFormat": "Expected format:",
+    "pleaseVerifyThat": "Please verify that:",
+    "contractAddressCorrect": "• The contract address is correct",
+    "assetExistsOnNetwork": "• The asset exists on the current network"
   },
   "generalMenu": {
     "wallet": "WALLET",
@@ -467,7 +477,9 @@
     "utxoNetworkConflict": "A {{networkType}} network already exists ({{existingNetworkName}}). Only one {{networkType}} network can be active at a time. Please remove the existing {{networkType}} network first.",
     "confirmRemoveNetwork": "Are you sure you want to remove the network \"{{networkName}}\"?",
     "walletLoggedOut": "Wallet is logged out",
-    "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet"
+    "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet",
+    "activeAccountNotFound": "Error: Active account not found",
+    "paliWalletBrowserExtension": "Pali Wallet Browser Extension"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

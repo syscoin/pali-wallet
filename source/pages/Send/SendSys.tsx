@@ -627,12 +627,14 @@ export const SendSys = () => {
           </div>
           {isAccountImported && (
             <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
-              Imported
+              {t('components.imported')}
             </div>
           )}
         </div>
         <div className="flex gap-1 mt-[6px]">
-          <p className="text-brand-gray200 text-xs">Your balance:</p>
+          <p className="text-brand-gray200 text-xs">
+            {t('components.yourBalance')}
+          </p>
           <p className="text-white text-xs font-semibold">
             {selectedAsset
               ? getAssetBalance(

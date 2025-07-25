@@ -328,7 +328,9 @@ const CurrencyView = () => {
         </Menu>
 
         <div className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-4">
-          <p className="text-brand-gray200 text-xs mb-3">Current Balance</p>
+          <p className="text-brand-gray200 text-xs mb-3">
+            {t('components.currentBalance')}
+          </p>
           {activeNetwork.chainId === 5700 ? (
             <div className="flex flex-col items-center">
               <div className="flex gap-x-1 items-baseline">

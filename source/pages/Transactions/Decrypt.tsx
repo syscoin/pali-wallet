@@ -79,7 +79,7 @@ const Decrypt: React.FC<ISign> = () => {
     console.error('Active account not found:', activeAccountMeta);
     return (
       <div className="flex flex-col items-center justify-center h-full p-4">
-        <p className="text-red-500">Error: Active account not found</p>
+        <p className="text-red-500">{t('settings.activeAccountNotFound')}</p>
       </div>
     );
   }

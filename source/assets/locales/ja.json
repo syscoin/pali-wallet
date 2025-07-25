@@ -204,7 +204,9 @@
     "utxoNetworkConflict": "{{networkType}}ネットワークが既に存在します（{{existingNetworkName}}）。一度に一つの{{networkType}}ネットワークのみアクティブにできます。まず既存の{{networkType}}ネットワークを削除してください。",
     "confirmRemoveNetwork": "ネットワーク \"{{networkName}}\" を削除してもよろしいですか？",
     "walletLoggedOut": "ウォレットがログアウトしています",
-    "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください"
+    "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください",
+    "activeAccountNotFound": "エラー：アクティブなアカウントが見つかりません",
+    "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能"
   },
   "components": {
     "newPassword": "新しいパスワード（最低8文字）",
@@ -214,7 +216,17 @@
     "feeRateLabel": "手数料レート ({{currency}}/byte)",
     "gasPriceLabel": "ガス価格 (gwei)",
     "feeRateTooltip": "取引の手数料レートを{{currency}}バイト単位で設定",
-    "gasPriceTooltip": "取引のガス価格をgwei単位で設定"
+    "gasPriceTooltip": "取引のガス価格をgwei単位で設定",
+    "yourBalance": "あなたの残高：",
+    "local": "ローカル",
+    "activeStatus": "アクティブ",
+    "imported": "インポート済み",
+    "copied": "コピーしました！",
+    "currentBalance": "現在の残高",
+    "expectedFormat": "期待される形式：",
+    "pleaseVerifyThat": "以下を確認してください：",
+    "contractAddressCorrect": "• コントラクトアドレスが正しいこと",
+    "assetExistsOnNetwork": "• アセットが現在のネットワークに存在すること"
   },
   "generalMenu": {
     "wallet": "ウォレット",
