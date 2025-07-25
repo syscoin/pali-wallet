@@ -158,7 +158,7 @@ export class BatchBalanceController {
     let requestCount = 0;
 
     // Queue each token individually - this ensures only 3 run at a time
-    tokens.forEach((token, index) => {
+    tokens.forEach((token) => {
       queue.execute(async () => {
         // Add progressive delay for each request
         if (requestCount > 0) {

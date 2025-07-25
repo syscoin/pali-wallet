@@ -1,16 +1,13 @@
 import { ethers } from 'ethers';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
-import isNil from 'lodash/isNil';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { retryableFetch } from '@pollum-io/sysweb3-network';
 import {
   contractChecker,
-  getErc20Abi,
   getErc21Abi,
-  getErc55Abi,
   getTokenStandardMetadata,
   getNftStandardMetadata,
   getERC721StandardBalance,
