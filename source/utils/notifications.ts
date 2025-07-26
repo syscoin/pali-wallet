@@ -1,5 +1,7 @@
 import { i18next } from 'utils/i18n';
 
+import { checkIfPopupIsOpen } from './checkPopupOpen';
+
 export interface INotificationOptions {
   buttons?: Array<{
     title: string;
@@ -38,28 +40,6 @@ const notificationMap = new Map<string, INotificationOptions>();
 // Check if browser supports notifications
 export const isNotificationSupported = (): boolean =>
   'notifications' in chrome && chrome.notifications !== undefined;
-
-// Check if popup is open
-export const checkIfPopupIsOpen = async (): Promise<boolean> =>
-  new Promise((resolve) => {
-    if (
-      'getContexts' in chrome.runtime &&
-      typeof chrome.runtime.getContexts === 'function'
-    ) {
-      // Use getContexts directly
-      const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
-      (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
-        const popupOpen = contexts.some(
-          (ctx) =>
-            ctx.contextType === 'POPUP' &&
-            ctx.documentOrigin === ourExtensionOrigin
-        );
-        resolve(popupOpen);
-      });
-    } else {
-      return false;
-    }
-  });
 
 // Create a notification
 export const createNotification = async (

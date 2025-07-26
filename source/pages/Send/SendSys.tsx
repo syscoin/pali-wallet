@@ -1,4 +1,7 @@
 import { Switch, Menu } from '@headlessui/react';
+import { ISyscoinTransactionError } from '@sidhujag/sysweb3-keyring';
+import { INetworkType } from '@sidhujag/sysweb3-network';
+import { isValidSYSAddress } from '@sidhujag/sysweb3-utils';
 import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
@@ -9,9 +12,6 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 //todo: update with the new function
-import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
-import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';

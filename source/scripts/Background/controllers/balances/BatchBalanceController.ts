@@ -1,6 +1,5 @@
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { ethers } from 'ethers';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';

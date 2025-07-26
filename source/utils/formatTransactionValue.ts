@@ -1,4 +1,4 @@
-import { chains } from 'eth-chains';
+import { getChainById } from '@sidhujag/sysweb3-network';
 import { ethers } from 'ethers';
 
 import { IGetFiatAmount } from 'hooks/index';
@@ -13,7 +13,7 @@ export const formatTransactionValue = (
   decimals?: number
 ): { crypto: string; formattedFiatAmount: string } => {
   try {
-    const { nativeCurrency } = chains.getById(chainId);
+    const chainDetails = getChainById(chainId);
 
     const ethValue = ethers.utils.formatEther(transactionValue);
     const fiatWithDecimals = formatWithDecimals(ethValue, decimals || 2);
@@ -25,7 +25,7 @@ export const formatTransactionValue = (
     );
 
     return {
-      crypto: `${ethValue} ${nativeCurrency.symbol}`,
+      crypto: `${ethValue} ${chainDetails?.nativeCurrency?.symbol || 'ETH'}`,
       formattedFiatAmount,
     };
   } catch (error) {

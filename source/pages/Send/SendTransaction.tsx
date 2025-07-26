@@ -1,10 +1,9 @@
+import { getErc20Abi } from '@sidhujag/sysweb3-utils';
 import { BigNumber, ethers } from 'ethers';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import {
   PrimaryButton,

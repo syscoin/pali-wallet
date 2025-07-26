@@ -1,6 +1,5 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { AnyAction, Store } from 'redux';
-
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { IDAppState } from 'state/dapp/types';
 import { loadState } from 'state/paliStorage';

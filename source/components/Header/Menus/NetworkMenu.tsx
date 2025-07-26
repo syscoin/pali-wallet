@@ -1,9 +1,8 @@
 import { Disclosure, Menu } from '@headlessui/react';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {

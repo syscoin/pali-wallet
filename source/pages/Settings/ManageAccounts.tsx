@@ -1,3 +1,7 @@
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+} from '@sidhujag/sysweb3-keyring';
 import React, {
   useCallback,
   useMemo,
@@ -9,11 +13,6 @@ import { useTranslation } from 'react-i18next';
 import { RiUserReceivedLine } from 'react-icons/ri/';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';

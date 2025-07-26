@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useEffect, useState } from 'react';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   BtcChainSvg,

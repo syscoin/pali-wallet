@@ -1,7 +1,6 @@
+import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import { ethers } from 'ethers';
 import { isInteger, omit } from 'lodash';
-
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';

@@ -1,4 +1,4 @@
-import { isValidSYSAddress as _isValidSYSAddress } from '@pollum-io/sysweb3-utils';
+import { isValidSYSAddress as _isValidSYSAddress } from '@sidhujag/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
 import { isNFT as _isNFT } from 'scripts/Background/controllers/utils';

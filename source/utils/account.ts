@@ -1,7 +1,7 @@
 import {
   IKeyringAccountState,
   KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
+} from '@sidhujag/sysweb3-keyring';
 
 import { IVaultState, IOmittedVault, IOmmitedAccount } from 'state/vault/types';
 

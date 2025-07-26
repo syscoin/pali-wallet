@@ -1,8 +1,7 @@
 import { Menu } from '@headlessui/react';
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import {
   AddUserSvg,

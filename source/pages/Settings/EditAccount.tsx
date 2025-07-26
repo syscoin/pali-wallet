@@ -1,11 +1,10 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { QRCodeSVG } from 'qrcode.react';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';

@@ -1,6 +1,6 @@
 // Mock modules before imports
 jest.mock('../../source/state/store');
-jest.mock('@pollum-io/sysweb3-utils');
+jest.mock('@sidhujag/sysweb3-utils');
 
 // Mock ethers
 jest.mock('ethers', () => ({

@@ -2,7 +2,7 @@ import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
   IKeyringAccountState,
-} from '@pollum-io/sysweb3-keyring';
+} from '@sidhujag/sysweb3-keyring';
 
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';

@@ -1,12 +1,11 @@
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+} from '@sidhujag/sysweb3-keyring';
 import { toSvg } from 'jdenticon';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
 
 import { IconButton, Icon, Tooltip, ConfirmationModal } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';

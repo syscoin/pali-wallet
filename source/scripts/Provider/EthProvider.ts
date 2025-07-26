@@ -1,6 +1,5 @@
+import { validateEOAAddress } from '@sidhujag/sysweb3-utils';
 import { ethErrors } from 'helpers/errors';
-
-import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';

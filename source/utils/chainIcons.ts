@@ -1,4 +1,4 @@
-import { retryableFetch } from '@pollum-io/sysweb3-network';
+import { retryableFetch } from '@sidhujag/sysweb3-network';
 
 import ChainListService from 'scripts/Background/controllers/chainlist';
 

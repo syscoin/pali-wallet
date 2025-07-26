@@ -1,8 +1,8 @@
 import {
   IKeyringAccountState,
   KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+} from '@sidhujag/sysweb3-keyring';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 import {
   IEvmTransaction,

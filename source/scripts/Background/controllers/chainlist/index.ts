@@ -1,5 +1,5 @@
-import { INetworkType } from '@pollum-io/sysweb3-network';
-import { coins as utxoCoins, retryableFetch } from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@sidhujag/sysweb3-network';
+import { coins as utxoCoins, retryableFetch } from '@sidhujag/sysweb3-network';
 
 import { chromeStorage } from 'utils/storageAPI';
 

@@ -1,8 +1,9 @@
 import store from 'state/store';
+import { checkIfPopupIsOpen } from 'utils/checkPopupOpen';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Export the function so it can be imported elsewhere
-export function getPollingInterval() {
+export async function getPollingInterval() {
   const {
     isBitcoinBased,
     accounts,
@@ -14,7 +15,7 @@ export function getPollingInterval() {
   // Check if there are pending transactions
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
   // Check if popup is open for more responsive updates
-  const isPopupOpen = chrome.extension.getViews({ type: 'popup' }).length > 0;
+  const isPopupOpen = await checkIfPopupIsOpen();
 
   if (currentAccount) {
     const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
@@ -151,8 +152,8 @@ export async function startPolling() {
     }
 
     // Clear and recreate with new interval (needed to update polling frequency)
-    chrome.alarms.clear('check_for_updates', () => {
-      const interval = getPollingInterval();
+    chrome.alarms.clear('check_for_updates', async () => {
+      const interval = await getPollingInterval();
       console.log(
         `🎯 startPolling: Creating polling alarm with ${interval} minute interval`
       );

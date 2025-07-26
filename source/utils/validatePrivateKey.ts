@@ -1,6 +1,5 @@
+import { INetwork } from '@sidhujag/sysweb3-network';
 import { ethers } from 'ethers';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';

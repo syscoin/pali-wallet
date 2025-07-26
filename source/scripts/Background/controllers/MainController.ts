@@ -1,13 +1,11 @@
 // Removed unused import: ethErrors
-import isEmpty from 'lodash/isEmpty';
-import isNil from 'lodash/isNil';
 
 import {
   KeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
   CustomJsonRpcProvider,
-} from '@pollum-io/sysweb3-keyring';
+} from '@sidhujag/sysweb3-keyring';
 import {
   getSysRpc,
   getEthRpc,
@@ -15,9 +13,11 @@ import {
   INetworkType,
   clearRpcCaches,
   retryableFetch,
-} from '@pollum-io/sysweb3-network';
-import { txUtils, ITxid } from '@pollum-io/sysweb3-utils';
-import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
+} from '@sidhujag/sysweb3-network';
+import { txUtils, ITxid } from '@sidhujag/sysweb3-utils';
+import { validateEOAAddress } from '@sidhujag/sysweb3-utils';
+import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
 
 import { getController } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';

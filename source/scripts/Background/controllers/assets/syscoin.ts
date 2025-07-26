@@ -1,7 +1,6 @@
+import { getAsset } from '@sidhujag/sysweb3-utils';
+import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import { isNil } from 'lodash';
-
-import { getAsset } from '@pollum-io/sysweb3-utils';
-import { cleanTokenSymbol } from '@pollum-io/sysweb3-utils';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';

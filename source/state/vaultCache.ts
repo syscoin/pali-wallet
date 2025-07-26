@@ -1,4 +1,4 @@
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 import { loadSlip44State, saveSlip44State } from './paliStorage';
 import store, { saveMainState } from './store';

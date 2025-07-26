@@ -1,6 +1,5 @@
+import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
 import { ethErrors } from 'helpers/errors';
-
-import { PsbtUtils } from '@pollum-io/sysweb3-keyring';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';

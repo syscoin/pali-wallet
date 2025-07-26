@@ -1,9 +1,8 @@
+import { retryableFetch } from '@sidhujag/sysweb3-network';
+import { getErc20Abi } from '@sidhujag/sysweb3-utils';
+import { getContractType } from '@sidhujag/sysweb3-utils';
 import InputDataDecoder from 'ethereum-input-data-decoder';
 import { ethers } from 'ethers';
-
-import { retryableFetch } from '@pollum-io/sysweb3-network';
-import { getErc20Abi } from '@pollum-io/sysweb3-utils';
-import { getContractType } from '@pollum-io/sysweb3-utils';
 
 import { ITransactionParams } from 'types/transactions';
 

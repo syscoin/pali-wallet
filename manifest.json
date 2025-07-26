@@ -30,7 +30,7 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
-  "author": "pollum labs",
+  "author": "Syscoin",
   "minimum_chrome_version": "109",
   "action": {
     "default_popup": "app.html",

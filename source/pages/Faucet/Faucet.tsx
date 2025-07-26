@@ -1,8 +1,7 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { FaucetStatusResponse } from '../../types/faucet';
 // Import faucet status icons - make sure these paths are correct

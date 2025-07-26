@@ -1,6 +1,5 @@
+import { INetwork } from '@sidhujag/sysweb3-network';
 import { BigNumber } from 'ethers';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';

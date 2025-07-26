@@ -1,9 +1,8 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import { Form } from 'antd';
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   PrimaryButton,

@@ -24,7 +24,7 @@ const MV2_OPTIONS = {
     'http://localhost:8545/',
   ],
   content_security_policy: "script-src 'self'; object-src 'self'",
-  author: 'pollum labs',
+  author: 'Syscoin',
   minimum_chrome_version: '49',
   browser_action: {
     default_popup: 'app.html',
@@ -102,7 +102,7 @@ const MV3_OPTIONS = {
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'",
   },
-  author: 'pollum labs',
+  author: 'Syscoin',
   minimum_chrome_version: '109',
   action: {
     default_popup: 'app.html',

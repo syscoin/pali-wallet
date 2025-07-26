@@ -14,6 +14,9 @@
 		},
 		{
 			"path": "../../../coinselectsyscoin"
+		},
+		{
+			"path": "../../../syscoin-bridge"
 		}
 	],
 	"settings": {}

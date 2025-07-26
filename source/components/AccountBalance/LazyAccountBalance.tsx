@@ -1,7 +1,6 @@
+import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
-
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useController } from 'hooks/useController';

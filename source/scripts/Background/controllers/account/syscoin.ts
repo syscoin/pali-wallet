@@ -1,7 +1,6 @@
+import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import axios from 'axios';
 import isEmpty from 'lodash/isEmpty';
-
-import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';

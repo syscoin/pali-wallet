@@ -1,9 +1,8 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { FaucetChainIds } from '../../types/faucet';
 import { ArrowUpSvg, ArrowDownLoadSvg } from 'components/Icon/Icon';

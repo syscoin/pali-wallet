@@ -1,9 +1,8 @@
+import { INetwork } from '@sidhujag/sysweb3-network';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';

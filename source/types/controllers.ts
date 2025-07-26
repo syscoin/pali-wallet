@@ -1,5 +1,5 @@
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+import { INetwork } from '@sidhujag/sysweb3-network';
 
 import {
   PaliEvents,

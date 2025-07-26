@@ -1,8 +1,7 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { NeutralButton } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';

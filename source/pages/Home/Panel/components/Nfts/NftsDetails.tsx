@@ -1,11 +1,10 @@
 import { LoadingOutlined } from '@ant-design/icons';
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon/Icon';

@@ -4,11 +4,10 @@ import {
   Store,
   Middleware, // Import Middleware type
 } from '@reduxjs/toolkit';
+import { INetwork } from '@sidhujag/sysweb3-network';
 import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';

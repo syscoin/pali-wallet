@@ -1,5 +1,5 @@
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+import { INetworkType } from '@sidhujag/sysweb3-network';
 
 export interface IDApp {
   accountId: number;

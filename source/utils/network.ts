@@ -1,6 +1,5 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import { ethers } from 'ethers';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 

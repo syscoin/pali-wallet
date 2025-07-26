@@ -1,10 +1,9 @@
 /* eslint-disable react/prop-types */
 import { Menu } from '@headlessui/react';
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import React, { useState, useCallback, useMemo } from 'react';
 import { RiUserReceivedLine } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
-
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';

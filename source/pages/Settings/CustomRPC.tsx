@@ -1,5 +1,10 @@
 /* eslint-disable react/prop-types */
 import { Switch } from '@headlessui/react';
+import {
+  validateRpcBatchUniversal,
+  INetworkType,
+  INetwork,
+} from '@sidhujag/sysweb3-network';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { debounce } from 'lodash';
@@ -7,12 +12,6 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import {
-  validateRpcBatchUniversal,
-  INetworkType,
-  INetwork,
-} from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';

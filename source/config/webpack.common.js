@@ -47,6 +47,10 @@ module.exports = {
       hooks: resolve(__dirname, '../../source/hooks'),
       utils: resolve(__dirname, '../../source/utils'),
       helpers: resolve(__dirname, '../../source/helpers'),
+      // Ensure consistent process resolution across all modules
+      'process/browser.js': require.resolve('process/browser.js'),
+      'process/browser': require.resolve('process/browser.js'),
+      process: require.resolve('process/browser.js'),
     },
     fallback: {
       fs: false,
@@ -56,6 +60,7 @@ module.exports = {
       stream: require.resolve('stream-browserify'),
       path: false,
       os: false,
+      process: require.resolve('process/browser.js'),
     },
   },
   module: {

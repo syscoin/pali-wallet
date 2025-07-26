@@ -1,10 +1,9 @@
-import { ethers } from 'ethers';
-
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
   IKeyringAccountState,
-} from '@pollum-io/sysweb3-keyring';
+} from '@sidhujag/sysweb3-keyring';
+import { ethers } from 'ethers';
 
 import { IEvmBalanceController } from './types';
 

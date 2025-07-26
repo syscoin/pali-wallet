@@ -1,6 +1,5 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import { EventEmitter } from 'events';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import messages from './messages';
 import { getRpcPromiseCallback } from './utils';

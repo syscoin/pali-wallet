@@ -1,10 +1,9 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
+import { INetwork } from '@sidhujag/sysweb3-network';
 import React, { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {

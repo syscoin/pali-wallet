@@ -51,7 +51,7 @@ import {
 import { handleListeners, resetListenersFlag } from './handleListeners';
 
 // --- Try mocking the core keyring module ---
-jest.mock('@pollum-io/sysweb3-keyring', () => ({
+jest.mock('@sidhujag/sysweb3-keyring', () => ({
   __esModule: true,
   KeyringManager: jest.fn().mockImplementation(() => ({})),
   KeyringAccountType: {
@@ -195,7 +195,7 @@ describe('Background: handleListeners', () => {
     chrome.alarms.clear.mockClear();
 
     // Mock getPollingInterval to return a predictable value
-    (getPollingInterval as jest.Mock).mockReturnValue(5);
+    (getPollingInterval as jest.Mock).mockResolvedValue(5);
 
     // Initialize listeners with the mocked controller
     handleListeners(mockMasterController);

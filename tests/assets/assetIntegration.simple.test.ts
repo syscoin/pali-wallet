@@ -1,8 +1,8 @@
 // Mock modules before imports
 jest.mock('../../source/state/store');
-jest.mock('@pollum-io/sysweb3-utils');
+jest.mock('@sidhujag/sysweb3-utils');
 
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 // Imports removed - test file demonstrates integration patterns
 

@@ -1,7 +1,7 @@
 import {
   CustomJsonRpcProvider,
   IKeyringAccountState,
-} from '@pollum-io/sysweb3-keyring';
+} from '@sidhujag/sysweb3-keyring';
 
 import store from 'state/store';
 import { IAccountTransactions } from 'state/vault/types';

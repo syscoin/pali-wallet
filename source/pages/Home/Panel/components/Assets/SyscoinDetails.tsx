@@ -1,3 +1,4 @@
+import { retryableFetch } from '@sidhujag/sysweb3-network';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
@@ -6,8 +7,6 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { retryableFetch } from '@pollum-io/sysweb3-network';
 
 import { NeutralButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';

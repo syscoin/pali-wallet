@@ -1,3 +1,4 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { isHexString } from 'ethers/lib/utils';
 import { toSvg } from 'jdenticon';
 import React, {
@@ -9,8 +10,6 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';

@@ -1,4 +1,5 @@
 import { Menu } from '@headlessui/react';
+import { isValidEthereumAddress } from '@sidhujag/sysweb3-utils';
 import { Form, Input } from 'antd';
 import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
@@ -12,8 +13,6 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';

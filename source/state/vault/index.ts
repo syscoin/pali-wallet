@@ -1,13 +1,12 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import take from 'lodash/take';
-
 import {
   IKeyringBalances,
   initialActiveHdAccountState,
   KeyringAccountType,
   IKeyringAccountState,
-} from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+} from '@sidhujag/sysweb3-keyring';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
+import take from 'lodash/take';
 
 import {
   IEvmTransaction,

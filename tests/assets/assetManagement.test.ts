@@ -1,6 +1,6 @@
 // Mock modules before imports
 jest.mock('../../source/state/store');
-jest.mock('@pollum-io/sysweb3-utils');
+jest.mock('@sidhujag/sysweb3-utils');
 
 // Mock ethers with proper BigNumber implementation
 jest.mock('ethers', () => ({
@@ -48,7 +48,7 @@ jest.mock('ethers', () => ({
   },
 }));
 
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 // Import the mocked BigNumber
 const { BigNumber } = jest.requireMock('ethers');

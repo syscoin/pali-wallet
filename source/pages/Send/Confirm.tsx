@@ -1,4 +1,6 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import { ISyscoinTransactionError } from '@sidhujag/sysweb3-keyring';
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
 import React, {
@@ -11,9 +13,6 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-
-import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   ICustomFeeParams,

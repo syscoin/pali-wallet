@@ -1,6 +1,5 @@
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { ethers } from 'ethers';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 // ERC-721 ABI fragments
 const ERC721_ABI = [

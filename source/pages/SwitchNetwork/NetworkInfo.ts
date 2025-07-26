@@ -1,6 +1,5 @@
+import { INetworkType } from '@sidhujag/sysweb3-network';
 import React from 'react';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   EthChainDarkBlueSvg,

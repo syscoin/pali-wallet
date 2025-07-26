@@ -1,5 +1,5 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import { INetworkType, retryableFetch } from '@pollum-io/sysweb3-network';
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
 
 import store from 'state/store';
 

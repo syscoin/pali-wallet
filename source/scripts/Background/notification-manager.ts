@@ -1,4 +1,4 @@
-import { txUtils } from '@pollum-io/sysweb3-utils';
+import { txUtils } from '@sidhujag/sysweb3-utils';
 
 import { getController, getIsReady } from 'scripts/Background';
 import store from 'state/store';

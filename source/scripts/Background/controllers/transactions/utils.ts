@@ -1,10 +1,9 @@
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
 import range from 'lodash/range';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
