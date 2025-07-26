@@ -2888,10 +2888,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.498":
-  version "1.0.498"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.498.tgz#3940736afbe620a4a779f96a8b45ad32a7da78f3"
-  integrity sha512-0qSuAuHgJGFnd4GAaVJRx178kInhFN/cZfJymywwWWtU9I7xn8ZdNnVWImHSDEb7Ayecmp4T8ES1XLoobVaRpQ==
+"@sidhujag/sysweb3-keyring@^1.0.499":
+  version "1.0.499"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.499.tgz#cebe5d6bc071014d3b0e46c8734bdc53186c78bb"
+  integrity sha512-zglFNu/ALKI8507EIEFqL4mCpYrUgu0FFEioo/QrLbjdkJ92CBpprOS/SRS+wf3sFV1lhqZrlKgC6+Znl8df4w==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2900,7 +2900,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@sidhujag/sysweb3-core" "^1.0.27"
     "@sidhujag/sysweb3-network" "^1.0.102"
-    "@sidhujag/sysweb3-utils" "^1.1.243"
+    "@sidhujag/sysweb3-utils" "^1.1.244"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2928,10 +2928,10 @@
     eth-chains "^1.0.0"
     ethers "^5.7.2"
 
-"@sidhujag/sysweb3-utils@^1.1.243":
-  version "1.1.243"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.243.tgz#a8e9b80987a62cecc0002df0cf9ae6b17723bc29"
-  integrity sha512-2bEcy5WhUW9W5KEO/TFZ+ZtIEmSbMzc2mpOW1k9sAPGKs9UcUxp9kVjaG3X3CbVZ9hxb0htYRQqKyyJKpAqqHw==
+"@sidhujag/sysweb3-utils@^1.1.244":
+  version "1.1.244"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.244.tgz#459da2b01cbcf5e9a9065af4a317e57ae8229685"
+  integrity sha512-V9y72+GSOWJvLJQfRUZ/Wr93MVFg3D5PvSuwBL2dOnWtzs2Cg86uctNPDH3D9ZG9ZLfFm9x+tt/Ykn2xH8A+3w==
   dependencies:
     "@ethersproject/contracts" "^5.8.0"
     "@sidhujag/sysweb3-network" "^1.0.102"
@@ -7278,9 +7278,9 @@ eth-object@^1.0.3:
   dependencies:
     eth-util-lite "^1.0.1"
 
-"eth-object@https://github.com/syscoin/eth-object.git":
+"eth-object@git+https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
@@ -13081,10 +13081,10 @@ svgo@^3.2.0:
     csso "^5.0.5"
     picocolors "^1.0.0"
 
-syscoinjs-lib@^1.0.244:
-  version "1.0.244"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.244.tgz#46276a1b190f3a7c15c0b99311c559f442ab10a9"
-  integrity sha512-t+37a+qyx2R5wgtOXZFw7eEWjm/am1PTMRCgQRjAC62dc8C0X19uT94aNOzcRapJJs3vR9JqsrsR98DXjghA7Q==
+syscoinjs-lib@^1.0.246:
+  version "1.0.246"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.246.tgz#36da0d452eca5ca332985b8052244e9fdd0efab1"
+  integrity sha512-GB6y86Wmt7ri78x5HyGZTxVS8ZqkKjd3ECyGaUwvyDA70GfUGyDFgZI7ScTVL8SLUmXp6mLNH5wROVS9SoNC7w==
   dependencies:
     axios "^0.21.1"
     bip84 "^0.2.7"
