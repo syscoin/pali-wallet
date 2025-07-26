@@ -1,22 +1,17 @@
 {
   "collectCoverage": true,
+  "testEnvironment": "jsdom",
   "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],
   "testPathIgnorePatterns": ["<rootDir>/tests/account/", "<rootDir>/source/scripts/Background/handlers/handleListeners.spec.ts"],
   "transform": {
-    "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": [
-      "ts-jest",
-      {
-        "isolatedModules": true
-      }
-    ]
+    "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "ts-jest"
   },
   "transformIgnorePatterns": [
     "node_modules/(?!(@sidhujag/sysweb3-utils|@sidhujag/sysweb3-network|@sidhujag/sysweb3-core|@sidhujag/sysweb3-keyring|axios|syscoin/))"
   ],
   "testTimeout": 30000,
-  "testEnvironment": "jsdom",
   "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$",
   "setupFilesAfterEnv": ["./jest.setup.js", "./tests/assets/setupMocks.ts"],
   "moduleNameMapper": {
