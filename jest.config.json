@@ -1,6 +1,5 @@
 {
   "collectCoverage": true,
-  "testEnvironment": "jsdom",
   "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["node_modules"],

@@ -1,7 +1,6 @@
 module.exports = {
   displayName: 'Asset Management Tests',
   rootDir: '../../',
-  testEnvironment: 'jsdom',
   testMatch: [
     '<rootDir>/tests/assets/**/*.test.ts',
     '<rootDir>/tests/assets/**/*.test.tsx',
