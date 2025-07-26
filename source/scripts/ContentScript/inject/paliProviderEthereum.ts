@@ -1,6 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
-import { ethers } from 'ethers';
-
 import {
   BaseProvider,
   UnvalidatedJsonRpcRequest,
@@ -14,6 +11,30 @@ import {
   isValidChainId,
   isValidNetworkVersion,
 } from './utils';
+
+// Native utility to check if a string is a valid hex string
+function isHexString(value: any): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  // Must start with 0x
+  if (!value.startsWith('0x')) {
+    return false;
+  }
+
+  // Remove 0x prefix and check if remaining characters are valid hex
+  const hexPart = value.slice(2);
+
+  // Empty hex string after 0x is valid
+  if (hexPart.length === 0) {
+    return true;
+  }
+
+  // Check if all characters are valid hexadecimal
+  const hexRegex = /^[0-9a-fA-F]+$/;
+  return hexRegex.test(hexPart);
+}
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SendSyncJsonRpcRequest {
@@ -56,7 +77,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _initializationPromise: Promise<void> | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
-    super(INetworkType.Ethereum, maxEventListeners, wallet);
+    super('ethereum', maxEventListeners, wallet);
     this._metamask = this._getExperimentalApi();
     this._sendSync = this._sendSync.bind(this);
     this.send = this.send.bind(this);
@@ -372,13 +393,13 @@ export class PaliInpageProviderEth extends BaseProvider {
     const isNowConnected = accounts && accounts.length > 0;
     const isNewConnection = wasDisconnected && isNowConnected;
 
-    if (accounts.length > 0 && ethers.utils.isHexString(accounts[0])) {
+    if (accounts.length > 0 && isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
     }
 
     // handle selectedAddress
     if (this.selectedAddress !== accounts[0]) {
-      if (ethers.utils.isHexString(accounts[0])) {
+      if (isHexString(accounts[0])) {
         this.selectedAddress = (accounts[0] as string) || null;
       }
     }

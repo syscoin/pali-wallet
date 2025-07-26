@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import { EventEmitter } from 'events';
 
 import messages from './messages';
@@ -6,6 +5,9 @@ import { getRpcPromiseCallback } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
 export declare type JsonRpcVersion = '2.0';
 export type WarningEventName = keyof SentWarningsState['events'];
+// Local type to avoid pulling in sysweb3-network dependency
+export type NetworkType = 'ethereum' | 'syscoin';
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SentWarningsState {
   // methods
@@ -50,13 +52,13 @@ export interface UnvalidatedJsonRpcRequest {
 }
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface EnableLegacyPali {
-  chain: INetworkType;
+  chain: NetworkType;
   chainId?: unknown;
 }
 //TODO: switch to SafeEventEmitter
 export class BaseProvider extends EventEmitter {
   public wallet: string;
-  public chainType: INetworkType;
+  public chainType: NetworkType;
 
   private static readonly CONNECTION_ERROR_CACHE_TTL = 2000; // 2 seconds cache for connection errors
 

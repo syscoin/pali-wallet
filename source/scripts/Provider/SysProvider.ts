@@ -1,7 +1,6 @@
 import { isValidSYSAddress as _isValidSYSAddress } from '@sidhujag/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
-import { isNFT as _isNFT } from 'scripts/Background/controllers/utils';
 import store from 'state/store';
 
 export const SysProvider = (host: string) => {
@@ -105,8 +104,6 @@ export const SysProvider = (host: string) => {
   };
 
   //* ----- Validation Methods -----
-  const isNFT = (params: any[]) => _isNFT(params?.[0] as number);
-
   const isValidSYSAddress = (params: any[]) => {
     const { activeNetwork } = store.getState().vault;
     const isValid = _isValidSYSAddress(params?.[0], activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
@@ -126,7 +123,6 @@ export const SysProvider = (host: string) => {
     getTransactions,
     transaction,
     // Validation methods
-    isNFT,
     isValidSYSAddress,
   };
 };

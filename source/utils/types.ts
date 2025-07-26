@@ -45,10 +45,3 @@ export interface ITransactionOptions {
   >;
   transaction: IEvmTransaction;
 }
-
-export interface IEIP6963ProviderInfo {
-  icon: string;
-  name: string;
-  rdns: string;
-  uuid: string;
-}

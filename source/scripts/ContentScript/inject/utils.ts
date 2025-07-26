@@ -1,4 +1,9 @@
-import { IEIP6963ProviderInfo } from 'utils/types';
+export interface IEIP6963ProviderInfo {
+  icon: string;
+  name: string;
+  rdns: string;
+  uuid: string;
+}
 // resolve response.result or response, reject errors
 export const getRpcPromiseCallback =
   (resolve: (value?: any) => void, reject: (error?: Error) => void) =>

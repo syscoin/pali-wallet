@@ -1,7 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
-import { isNFT as _isNFT } from '@sidhujag/sysweb3-utils';
-import { ethers } from 'ethers';
-
 import { ISysAssetMetadata } from 'types/tokens';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
@@ -21,6 +17,29 @@ interface SysProviderState {
   isUnlocked: boolean;
   xpub: string | null;
 }
+// Native utility to check if a string is a valid hex string
+function isHexString(value: any): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  // Must start with 0x
+  if (!value.startsWith('0x')) {
+    return false;
+  }
+
+  // Remove 0x prefix and check if remaining characters are valid hex
+  const hexPart = value.slice(2);
+
+  // Empty hex string after 0x is valid
+  if (hexPart.length === 0) {
+    return true;
+  }
+
+  // Check if all characters are valid hexadecimal
+  const hexRegex = /^[0-9a-fA-F]+$/;
+  return hexRegex.test(hexPart);
+}
 
 export class PaliInpageProviderSys extends BaseProvider {
   public readonly _sys: ReturnType<PaliInpageProviderSys['_getSysAPI']>;
@@ -39,7 +58,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _isInitializing = false;
   private _initializationPromise: Promise<void> | null = null;
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
-    super(INetworkType.Syscoin, maxEventListeners, wallet);
+    super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
     // Private state
     this._sysState = {
@@ -312,7 +331,7 @@ export class PaliInpageProviderSys extends BaseProvider {
    * @param opts.isUnlocked - The latest isUnlocked value.
    */
   private _handleConnectedXpub(xpub: string | null) {
-    if (!ethers.utils.isHexString(xpub) || xpub === null) {
+    if (!isHexString(xpub) || xpub === null) {
       this._sysState.xpub = xpub;
     }
   }
@@ -366,15 +385,6 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _getSysAPI() {
     return new Proxy(
       {
-        /**
-         * Determines if asset is a NFT on syscoin UTXO.
-         *
-         * @returns Promise resolving to true if asset isNFT
-         */
-        isNFT: (guid: number) => {
-          const validated = _isNFT(guid);
-          return validated;
-        },
         /**
          * Get the minted tokens by the current connected Xpub on UTXO chain.
          *
