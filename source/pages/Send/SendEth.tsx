@@ -92,51 +92,57 @@ export const SendEth = () => {
 
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Save form state when values change
+  // Save navigation state when user completes interaction
+  const saveCurrentState = useCallback(async () => {
+    const state = {
+      formValues: formValuesRef.current,
+      selectedAsset,
+      nftTokenIds,
+      selectedNftTokenId,
+      isMaxSend,
+    };
+
+    await saveNavigationState(
+      location.pathname,
+      undefined,
+      state,
+      location.state?.returnContext
+    );
+  }, [selectedAsset, nftTokenIds, selectedNftTokenId, isMaxSend, location]);
+
+  // Update form values ref when they change (no save yet)
   const handleFormValuesChange = useCallback(
     (_changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
-
-      // Clear existing timeout
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      const hasFormData = Object.values(allValues).some(
-        (value) => value !== undefined && value !== '' && value !== null
-      );
-
-      // Only save if there's actual form data or non-default component state
-      if (
-        hasFormData ||
-        selectedAsset !== null ||
-        nftTokenIds.length > 0 ||
-        selectedNftTokenId !== null ||
-        isMaxSend !== false
-      ) {
-        saveTimeoutRef.current = setTimeout(async () => {
-          const state = {
-            formValues: allValues,
-            selectedAsset,
-            nftTokenIds,
-            selectedNftTokenId,
-            isMaxSend,
-          };
-
-          await saveNavigationState(
-            location.pathname,
-            undefined,
-            state,
-            location.state?.returnContext
-          );
-        }, 2000); // 2 second debounce
-      }
     },
-    [selectedAsset, nftTokenIds, selectedNftTokenId, isMaxSend, location]
+    []
   );
+
+  // Save state when user blurs from input fields
+  const handleFieldBlur = useCallback(() => {
+    const hasFormData = Object.values(formValuesRef.current).some(
+      (value) => value !== undefined && value !== '' && value !== null
+    );
+
+    // Only save if there's actual form data or non-default component state
+    if (
+      hasFormData ||
+      selectedAsset !== null ||
+      nftTokenIds.length > 0 ||
+      selectedNftTokenId !== null ||
+      isMaxSend !== false
+    ) {
+      saveCurrentState();
+    }
+  }, [
+    selectedAsset,
+    nftTokenIds,
+    selectedNftTokenId,
+    isMaxSend,
+    saveCurrentState,
+  ]);
 
   // Save component state when non-form state changes
   useEffect(() => {
@@ -151,34 +157,15 @@ export const SendEth = () => {
       return;
     }
 
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      const state = {
-        formValues: formValuesRef.current,
-        selectedAsset,
-        nftTokenIds,
-        selectedNftTokenId,
-        isMaxSend,
-      };
-
-      await saveNavigationState(
-        location.pathname,
-        undefined,
-        state,
-        location.state?.returnContext
-      );
-    }, 2000);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [selectedAsset, nftTokenIds, selectedNftTokenId, isMaxSend, location]);
+    // Save immediately when these state values change
+    saveCurrentState();
+  }, [
+    selectedAsset,
+    nftTokenIds,
+    selectedNftTokenId,
+    isMaxSend,
+    saveCurrentState,
+  ]);
 
   // Cleanup timeout on unmount to prevent memory leaks
   useEffect(
@@ -839,7 +826,11 @@ export const SendEth = () => {
               }),
             ]}
           >
-            <Input type="text" placeholder={t('send.receiver')} />
+            <Input
+              type="text"
+              placeholder={t('send.receiver')}
+              onBlur={handleFieldBlur}
+            />
           </Form.Item>
         </div>
 
@@ -877,6 +868,7 @@ export const SendEth = () => {
                     >
                       <Menu.Item>
                         <button
+                          type="button"
                           onClick={() => handleSelectedAsset('-1')}
                           className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                         >
@@ -895,6 +887,7 @@ export const SendEth = () => {
                                 <Menu.Item as="div">
                                   <Menu.Item>
                                     <button
+                                      type="button"
                                       onClick={() =>
                                         handleSelectedAsset(
                                           item.contractAddress
@@ -1207,6 +1200,7 @@ export const SendEth = () => {
                         setIsMaxSend(false);
                       }
                     }}
+                    onBlur={handleFieldBlur}
                   />
                 </Form.Item>
 
@@ -1327,6 +1321,7 @@ export const SendEth = () => {
                   }
                   disabled={isLoadingNftTokenIds}
                   onChange={(e) => handleManualTokenIdChange(e.target.value)}
+                  onBlur={handleFieldBlur}
                 />
               </Form.Item>
             </div>

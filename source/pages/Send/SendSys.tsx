@@ -65,48 +65,48 @@ export const SendSys = () => {
 
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Save form state when values change
+  // Save navigation state when user completes interaction
+  const saveCurrentState = useCallback(async () => {
+    const state = {
+      formValues: formValuesRef.current,
+      selectedAsset,
+      RBF,
+      isMaxSend,
+    };
+
+    await saveNavigationState(
+      location.pathname,
+      undefined,
+      state,
+      location.state?.returnContext
+    );
+  }, [selectedAsset, RBF, isMaxSend, location]);
+
+  // Update form values ref when they change (no save yet)
   const handleFormValuesChange = useCallback(
-    (_changedValues: any, allValues: any) => {
+    (changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
-
-      // Clear existing timeout
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      const hasFormData = Object.values(allValues).some(
-        (value) => value !== undefined && value !== '' && value !== null
-      );
-
-      // Only save if there's actual form data or non-default component state
-      if (
-        hasFormData ||
-        selectedAsset !== null ||
-        RBF !== true ||
-        isMaxSend !== false
-      ) {
-        saveTimeoutRef.current = setTimeout(async () => {
-          const state = {
-            formValues: allValues,
-            selectedAsset,
-            RBF,
-            isMaxSend,
-          };
-
-          await saveNavigationState(
-            location.pathname,
-            undefined,
-            state,
-            location.state?.returnContext
-          );
-        }, 2000); // 2 second debounce
-      }
     },
-    [selectedAsset, RBF, isMaxSend, location]
+    []
   );
+
+  // Save state when user blurs from input fields
+  const handleFieldBlur = useCallback(() => {
+    const hasFormData = Object.values(formValuesRef.current).some(
+      (value) => value !== undefined && value !== '' && value !== null
+    );
+
+    // Only save if there's actual form data or non-default component state
+    if (
+      hasFormData ||
+      selectedAsset !== null ||
+      RBF !== true ||
+      isMaxSend !== false
+    ) {
+      saveCurrentState();
+    }
+  }, [selectedAsset, RBF, isMaxSend, saveCurrentState]);
 
   // Save component state when non-form state changes
   useEffect(() => {
@@ -120,36 +120,13 @@ export const SendSys = () => {
       return;
     }
 
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      const state = {
-        formValues: formValuesRef.current,
-        selectedAsset,
-        RBF,
-        isMaxSend,
-      };
-
-      await saveNavigationState(
-        location.pathname,
-        undefined,
-        state,
-        location.state?.returnContext
-      );
-    }, 2000);
-
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [selectedAsset, RBF, isMaxSend, location]);
+    // Save immediately when these state values change
+    saveCurrentState();
+  }, [selectedAsset, RBF, isMaxSend, saveCurrentState]);
 
   // Track if we've already restored form values to prevent duplicate restoration
   const hasRestoredRef = useRef(false);
+  const isRestoringRef = useRef(false);
 
   // Restore form values if coming back from navigation
   useEffect(() => {
@@ -160,6 +137,7 @@ export const SendSys = () => {
       const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
 
       if (formValues) {
+        isRestoringRef.current = true;
         hasRestoredRef.current = true;
         form.setFieldsValue(formValues);
         // Also update the ref to keep it in sync
@@ -167,7 +145,13 @@ export const SendSys = () => {
 
         // If this was a max send, recalculate the max amount
         if (restoredIsMaxSend) {
-          handleMaxButton();
+          // Add a small delay to ensure form is fully initialized
+          setTimeout(() => {
+            handleMaxButton();
+            isRestoringRef.current = false;
+          }, 100);
+        } else {
+          isRestoringRef.current = false;
         }
       }
 
@@ -237,6 +221,34 @@ export const SendSys = () => {
     [selectedAsset, formattedAssetBalance, activeAccount?.balances]
   );
 
+  // Watch the amount field for changes
+  const watchedAmount = Form.useWatch('amount', form);
+
+  // Update isMaxSend based on comparison with balance
+  useEffect(() => {
+    if (watchedAmount !== undefined && watchedAmount !== null) {
+      const inputAmount = String(watchedAmount).trim();
+
+      if (inputAmount && balanceStr) {
+        // Normalize both values to handle "1.0" == "1" cases
+        // parseFloat and back to string removes trailing zeros
+        const normalizeAmount = (val: string) => {
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? val : parsed.toString();
+        };
+
+        const normalizedInput = normalizeAmount(inputAmount);
+        const normalizedBalance = normalizeAmount(String(balanceStr));
+
+        setIsMaxSend(normalizedInput === normalizedBalance);
+      } else {
+        setIsMaxSend(false);
+      }
+    } else {
+      setIsMaxSend(false);
+    }
+  }, [watchedAmount, balanceStr]);
+
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
     form.setFieldValue('amount', balanceStr);
@@ -283,6 +295,12 @@ export const SendSys = () => {
   );
 
   const nextStep = async ({ receiver, amount }: any) => {
+    // Prevent submission during restoration
+    if (isRestoringRef.current) {
+      console.log('[SendSys] Preventing submission during restoration');
+      return;
+    }
+
     try {
       setIsLoading(true);
 
@@ -692,7 +710,11 @@ export const SendSys = () => {
               }),
             ]}
           >
-            <Input type="text" placeholder={t('send.receiver')} />
+            <Input
+              type="text"
+              placeholder={t('send.receiver')}
+              onBlur={handleFieldBlur}
+            />
           </Form.Item>
         </div>
         <div className="flex gap-2 w-full items-center">
@@ -734,6 +756,7 @@ export const SendSys = () => {
                       >
                         <Menu.Item as="div" key="native-sys">
                           <button
+                            type="button"
                             onClick={() => handleSelectedAsset(-1)}
                             className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                           >
@@ -750,6 +773,7 @@ export const SendSys = () => {
                                   key={`asset-${item.assetGuid}`}
                                 >
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       handleSelectedAsset(item.assetGuid);
                                     }}
@@ -853,6 +877,7 @@ export const SendSys = () => {
                   id="with-max-button"
                   type="number"
                   placeholder={t('send.amount')}
+                  onBlur={handleFieldBlur}
                 />
               </Form.Item>
             </div>
