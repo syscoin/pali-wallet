@@ -2888,10 +2888,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.500":
-  version "1.0.500"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.500.tgz#bb1771e84f1a10bf0d009ea452b7c763b04b4a56"
-  integrity sha512-9mBA2HkfaclD7ig4sk7ezRAe9O60nvnXNf2zg2nw1/fwJhoU9UdQ555meiPVAKApQ2iEplmuctgphDhQL2kf2Q==
+"@sidhujag/sysweb3-keyring@^1.0.501":
+  version "1.0.501"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.501.tgz#2030eae771fd661b1cafa12556ecb5732230a2d3"
+  integrity sha512-mpncG4ogxZ/zlUR/MtVBXqc5sA0cCciYFQ+j/T2x8RD5MIvWwZgLp+EXWc14KlRpgZ0idMDlwKavn6ySEnB7KQ==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2900,7 +2900,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@sidhujag/sysweb3-core" "^1.0.27"
     "@sidhujag/sysweb3-network" "^1.0.102"
-    "@sidhujag/sysweb3-utils" "^1.1.244"
+    "@sidhujag/sysweb3-utils" "^1.1.245"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2928,10 +2928,10 @@
     eth-chains "^1.0.0"
     ethers "^5.7.2"
 
-"@sidhujag/sysweb3-utils@^1.1.244":
-  version "1.1.244"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.244.tgz#459da2b01cbcf5e9a9065af4a317e57ae8229685"
-  integrity sha512-V9y72+GSOWJvLJQfRUZ/Wr93MVFg3D5PvSuwBL2dOnWtzs2Cg86uctNPDH3D9ZG9ZLfFm9x+tt/Ykn2xH8A+3w==
+"@sidhujag/sysweb3-utils@^1.1.245":
+  version "1.1.245"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.245.tgz#e12deda7fdd11acd3f2e64c26a6bc0091ce32030"
+  integrity sha512-mOyINzS1C9Xx0vyZgLzsR86rmL4nrgw60FT+veFrAc4riRWH3IdMzxgL/1X/g6WpcYhTf8gWenAtmv1aJsOE+A==
   dependencies:
     "@ethersproject/contracts" "^5.8.0"
     "@sidhujag/sysweb3-network" "^1.0.102"
@@ -3424,17 +3424,17 @@
   integrity sha512-1YBOJfRHV4sXUmWsFSf5rQor4Ss82G8dQWLRbnk3GA4jeP8hQt1hxXh0tmflpC0dz3VgEv/1+qwPyLeWkQuPFA==
 
 "@testing-library/dom@^10.4.0":
-  version "10.4.0"
-  resolved "https://registry.yarnpkg.com/@testing-library/dom/-/dom-10.4.0.tgz#82a9d9462f11d240ecadbf406607c6ceeeff43a8"
-  integrity sha512-pemlzrSESWbdAloYml3bAJMEfNh1Z7EduzqPKprCH5S341frlpYnUEW0H72dLxa6IsYr+mPno20GiSm+h9dEdQ==
+  version "10.4.1"
+  resolved "https://registry.yarnpkg.com/@testing-library/dom/-/dom-10.4.1.tgz#d444f8a889e9a46e9a3b4f3b88e0fcb3efb6cf95"
+  integrity sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==
   dependencies:
     "@babel/code-frame" "^7.10.4"
     "@babel/runtime" "^7.12.5"
     "@types/aria-query" "^5.0.1"
     aria-query "5.3.0"
-    chalk "^4.1.0"
     dom-accessibility-api "^0.5.9"
     lz-string "^1.5.0"
+    picocolors "1.1.1"
     pretty-format "^27.0.2"
 
 "@testing-library/jest-dom@^6.6.3":
@@ -10791,7 +10791,7 @@ pbkdf2@^3.0.17, pbkdf2@^3.1.2:
     sha.js "^2.4.11"
     to-buffer "^1.2.0"
 
-picocolors@^1.0.0, picocolors@^1.1.0, picocolors@^1.1.1:
+picocolors@1.1.1, picocolors@^1.0.0, picocolors@^1.1.0, picocolors@^1.1.1:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/picocolors/-/picocolors-1.1.1.tgz#3d321af3eab939b083c8f929a1d12cda81c26b6b"
   integrity sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==
