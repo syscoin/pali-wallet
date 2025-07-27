@@ -1,7 +1,4 @@
 import { Switch, Menu } from '@headlessui/react';
-import { ISyscoinTransactionError } from '@sidhujag/sysweb3-keyring';
-import { INetworkType } from '@sidhujag/sysweb3-network';
-import { isValidSYSAddress } from '@sidhujag/sysweb3-utils';
 import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
@@ -20,6 +17,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
+import { ISyscoinTransactionError, INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
 import {
   truncate,
@@ -33,6 +31,7 @@ import {
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
+import { isValidSYSAddress } from 'utils/validations';
 
 export const SendSys = () => {
   const { controllerEmitter } = useController();
@@ -675,11 +674,16 @@ export const SendSys = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
-                  if (
-                    !value ||
-                    isValidSYSAddress(value, activeNetwork.chainId, true)
-                  ) {
+                async validator(_, value) {
+                  if (!value) {
+                    return Promise.resolve();
+                  }
+
+                  const isValid = await isValidSYSAddress(
+                    value,
+                    activeNetwork.chainId
+                  );
+                  if (isValid) {
                     return Promise.resolve();
                   }
 

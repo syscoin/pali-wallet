@@ -1,5 +1,4 @@
 import { Menu } from '@headlessui/react';
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +11,7 @@ import {
 } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { KeyringAccountType } from 'types/network';
 import {
   createNavigationContext,
   navigateWithContext,

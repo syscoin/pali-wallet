@@ -1,6 +1,4 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { ISyscoinTransactionError } from '@sidhujag/sysweb3-keyring';
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
 import React, {
@@ -26,6 +24,7 @@ import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
+import { ISyscoinTransactionError, INetworkType } from 'types/network';
 import {
   truncate,
   logError,

@@ -1,5 +1,4 @@
 /* eslint-disable react/prop-types */
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useEffect, useState } from 'react';
 
 import {
@@ -9,7 +8,8 @@ import {
   RolluxChainSvg,
   SysChainSvg,
 } from 'components/Icon/Icon';
-import ChainListService from 'scripts/Background/controllers/chainlist';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { INetworkType } from 'types/network';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
 const imageDataCache = new Map<number, string | null>();
@@ -153,12 +153,15 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       // Lazy load with delay to prevent blocking renderer
       const loadTimer = setTimeout(async () => {
         try {
-          // Use ChainListService to look up icon data
-          const chainListService = ChainListService.getInstance();
-          const chainInfo = await chainListService.getChainById(
-            chainId,
-            networkKind
-          );
+          // Get chain info from controller
+          const chainInfo = (await controllerEmitter(
+            ['wallet', 'getChainById'],
+            [chainId, networkKind]
+          )) as {
+            chainSlug?: string;
+            icon?: string;
+            shortName?: string;
+          } | null;
 
           // Try to get icon identifier from chainInfo
           const iconIdentifier =
@@ -210,13 +213,13 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
             return;
           }
 
-          // ChainListService doesn't have this chain, cache as null and show fallback
+          // Controller doesn't have this chain info, cache as null and show fallback
           imageDataCache.set(chainId, null);
           setError(true);
           setIsLoading(false);
         } catch (fetchError) {
           console.error(
-            'Error looking up chain in ChainListService:',
+            'Error looking up chain info from controller:',
             fetchError
           );
           // Cache as null and show fallback

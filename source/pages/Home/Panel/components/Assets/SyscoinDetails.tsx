@@ -1,4 +1,3 @@
-import { retryableFetch } from '@sidhujag/sysweb3-network';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
@@ -22,6 +21,7 @@ import {
   getTokenLogo,
 } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
+import { retryableFetch } from 'utils/retryableFetch';
 
 interface ISyscoinAssetDetailsProps {
   id: string;

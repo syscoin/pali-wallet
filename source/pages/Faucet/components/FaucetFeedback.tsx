@@ -1,7 +1,7 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React from 'react';
 
 import { ChainIcon } from 'components/ChainIcon';
+import { INetworkType } from 'types/network';
 
 type FaucetFeedbackProps = {
   chainId?: number;

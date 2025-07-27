@@ -45,6 +45,7 @@ module.exports = {
       constants: resolve(__dirname, '../../source/constants'),
       services: resolve(__dirname, '../../source/services'),
       hooks: resolve(__dirname, '../../source/hooks'),
+      types: resolve(__dirname, '../../source/types'),
       utils: resolve(__dirname, '../../source/utils'),
       helpers: resolve(__dirname, '../../source/helpers'),
       // Ensure consistent process resolution across all modules

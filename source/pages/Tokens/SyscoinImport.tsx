@@ -20,7 +20,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { ImportableAssetsList } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { ISysTokensAssetReponse } from 'scripts/Background/controllers/assets/types';
+import type { ISysTokensAssetReponse } from 'scripts/Background/controllers/assets/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
 import {

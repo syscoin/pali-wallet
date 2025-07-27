@@ -1,7 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 import { IGlobalState } from '../vault/types';
+import { INetwork, INetworkType } from 'types/network';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
 const initialState: IGlobalState = {

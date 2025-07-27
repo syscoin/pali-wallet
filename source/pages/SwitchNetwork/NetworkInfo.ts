@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React from 'react';
 
 import {
@@ -7,6 +6,7 @@ import {
   RolluxChainWhiteSvg,
   SysChainWhiteSvg,
 } from 'components/Icon/Icon';
+import { INetworkType } from 'types/network';
 
 interface INetworkInfo {
   connectedColor: string;

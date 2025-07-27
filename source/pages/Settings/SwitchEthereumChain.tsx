@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -10,6 +9,7 @@ import { PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 const SwitchChain: React.FC = () => {

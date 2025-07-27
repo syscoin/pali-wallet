@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -10,6 +9,7 @@ import loadingIcon from 'assets/all_assets/faucet-loading.svg';
 import successIcon from 'assets/all_assets/faucet-success.svg';
 import { NeutralButton } from 'components/Button';
 import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/format';
 
 import {

@@ -1,6 +1,5 @@
 /* eslint-disable react/prop-types */
 import { Menu } from '@headlessui/react';
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import React, { useState, useCallback, useMemo } from 'react';
 import { RiUserReceivedLine } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
@@ -11,6 +10,7 @@ import { PaliWhiteSmallIconSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { RootState } from 'state/store';
 import { selectActiveAccountRef } from 'state/vault';
+import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {

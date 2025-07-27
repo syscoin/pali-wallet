@@ -1,4 +1,3 @@
-import { getErc20Abi } from '@sidhujag/sysweb3-utils';
 import { BigNumber, ethers } from 'ethers';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +36,7 @@ import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
+import { getErc20Abi } from 'utils/validations';
 
 import {
   TransactionDetailsComponent,
@@ -193,7 +193,8 @@ export const SendTransaction = () => {
         }
 
         // Only encode custom amount for ERC-20 approvals
-        const erc20AbiInstance = new ethers.utils.Interface(getErc20Abi());
+        const abi = await getErc20Abi();
+        const erc20AbiInstance = new ethers.utils.Interface(abi);
 
         // The amount is already in the smallest unit (wei)
         let parsedAmount;

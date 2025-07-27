@@ -1,10 +1,10 @@
-import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import { ethers } from 'ethers';
 import { isInteger, omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
+import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
+import { IKeyringAccountState } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 

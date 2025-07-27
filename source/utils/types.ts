@@ -1,4 +1,4 @@
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
+import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 
 import { UpdateTxAction } from './transactions';
 

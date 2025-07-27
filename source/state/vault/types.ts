@@ -1,13 +1,13 @@
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@sidhujag/sysweb3-keyring';
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
-
-import {
+import type {
   IEvmTransaction,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+  INetwork,
+  INetworkType,
+} from 'types/network';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // Clean account assets structure - NFTs are included in ethereum array as assets with isNft: true

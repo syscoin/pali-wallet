@@ -1,4 +1,4 @@
-// Retry configuration for blockbook API calls
+// Retry configuration for API calls
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 
@@ -33,7 +33,7 @@ export async function retryWithBackoff<T>(
     if (isRetryableError && retryCount < MAX_RETRIES) {
       const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
       console.log(
-        `[retryWithBackoff] Blockbook API rate limited, retrying after ${delay}ms... (attempt ${
+        `[retryWithBackoff] API rate limited, retrying after ${delay}ms... (attempt ${
           retryCount + 1
         }/${MAX_RETRIES})`
       );
@@ -48,7 +48,6 @@ export async function retryWithBackoff<T>(
 
 /**
  * Helper function to create retryable fetch calls with proper error handling
- * Specifically designed for blockbook API calls
  *
  * @param url - URL to fetch
  * @param options - Fetch options (including optional timeout in ms)

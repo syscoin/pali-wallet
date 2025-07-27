@@ -10,12 +10,18 @@ import {
   getSysRpc,
   getEthRpc,
   INetwork,
-  INetworkType,
   clearRpcCaches,
   retryableFetch,
+  validateRpcBatchUniversal,
 } from '@sidhujag/sysweb3-network';
 import { txUtils, ITxid } from '@sidhujag/sysweb3-utils';
-import { validateEOAAddress } from '@sidhujag/sysweb3-utils';
+import {
+  validateEOAAddress,
+  getErc20Abi,
+  getErc21Abi,
+  getErc55Abi,
+  isValidSYSAddress,
+} from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -72,6 +78,7 @@ import {
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
 } from 'state/vaultGlobal';
+import { INetworkType } from 'types/network';
 import {
   ITokenEthProps,
   IWatchAssetTokenProps,
@@ -97,6 +104,7 @@ import { IAssetsManager } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
+import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
@@ -4501,6 +4509,66 @@ class MainController {
   }
 
   /**
+   * Validate Syscoin address for the given network
+   */
+  public validateSysAddress(address: string, chainId: number): boolean {
+    return isValidSYSAddress(address, chainId);
+  }
+
+  /**
+   * Get ERC20 ABI from sysweb3-utils
+   */
+  public getErc20Abi(): any[] {
+    return getErc20Abi();
+  }
+
+  public getErc721Abi(): any[] {
+    return getErc21Abi(); // Note: getErc21Abi returns ERC721 ABI
+  }
+
+  public getErc1155Abi(): any[] {
+    return getErc55Abi(); // Note: getErc55Abi returns ERC1155 ABI
+  }
+
+  /**
+   * Validate Ethereum EOA address
+   */
+  public async validateEOAAddress(
+    address: string,
+    provider: CustomJsonRpcProvider
+  ): Promise<{
+    contract: boolean | undefined;
+    wallet: boolean | undefined;
+  }> {
+    const result = await validateEOAAddress(address, provider);
+    return result;
+  }
+
+  /**
+   * Test RPC connection using validateRpcBatchUniversal
+   */
+  public async testRpcConnection(
+    url: string,
+    networkType: INetworkType,
+    chainId: number,
+    maxLatency: number = 5000,
+    minLatency: number = 500
+  ): Promise<{ data?: any; error?: string; success: boolean }> {
+    try {
+      const result = await validateRpcBatchUniversal(
+        url,
+        networkType,
+        chainId,
+        maxLatency,
+        minLatency
+      );
+      return result;
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Connection failed' };
+    }
+  }
+
+  /**
    * Decode EVM transaction data to determine transaction type and method
    * Used by transaction detail components to properly categorize transactions
    */
@@ -4609,6 +4677,30 @@ class MainController {
       );
       // Return 0 on error to allow UI to continue functioning
       return '0';
+    }
+  }
+
+  // Chain info methods for frontend access
+  public async getChainById(
+    chainId: number,
+    networkType?: INetworkType
+  ): Promise<any> {
+    try {
+      const chainListService = ChainListService.getInstance();
+      return await chainListService.getChainById(chainId, networkType);
+    } catch (error) {
+      console.error('[MainController] Error getting chain by ID:', error);
+      return null;
+    }
+  }
+
+  public async getChainData(networkType?: INetworkType): Promise<any[]> {
+    try {
+      const chainListService = ChainListService.getInstance();
+      return await chainListService.getChainData(networkType);
+    } catch (error) {
+      console.error('[MainController] Error getting chain data:', error);
+      return [];
     }
   }
 }

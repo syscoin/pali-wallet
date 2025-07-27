@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import { Form } from 'antd';
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +13,7 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 
 const ForgetWalletView = () => {
   const { navigate, alert } = useUtils();

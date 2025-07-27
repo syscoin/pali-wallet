@@ -1,5 +1,4 @@
 import { LoadingOutlined } from '@ant-design/icons';
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
@@ -12,6 +11,7 @@ import { TokenIcon } from 'components/TokenIcon';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 

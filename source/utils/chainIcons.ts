@@ -1,7 +1,5 @@
-import { retryableFetch } from '@sidhujag/sysweb3-network';
-
-import ChainListService from 'scripts/Background/controllers/chainlist';
-
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { retryableFetch } from 'utils/retryableFetch';
 // Cache for chain icons to avoid repeated lookups
 const chainIconCache: { [chainId: number]: string | null } = {};
 // Track failed icon loads to prevent repeated 404s
@@ -26,8 +24,11 @@ export const getChainIconUrl = async (
   }
 
   try {
-    const chainList = ChainListService.getInstance();
-    const chain = await chainList.getChainById(chainId);
+    // Get chain info from controller
+    const chain = (await controllerEmitter(
+      ['wallet', 'getChainById'],
+      [chainId]
+    )) as { chainSlug?: string; icon?: string } | null;
 
     if (chain) {
       // Try multiple icon sources in order of preference

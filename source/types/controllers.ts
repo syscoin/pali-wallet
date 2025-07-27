@@ -1,12 +1,10 @@
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
-import { INetwork } from '@sidhujag/sysweb3-network';
-
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
+import { KeyringAccountType, INetwork } from 'types/network';
 
 export interface IDAppController {
   /**

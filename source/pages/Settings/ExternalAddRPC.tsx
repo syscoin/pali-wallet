@@ -1,4 +1,3 @@
-import { INetwork } from '@sidhujag/sysweb3-network';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
@@ -7,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';

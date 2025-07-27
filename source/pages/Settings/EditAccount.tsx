@@ -1,4 +1,3 @@
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { QRCodeSVG } from 'qrcode.react';
@@ -10,6 +9,7 @@ import { Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
+import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/format';
 import { navigateBack } from 'utils/navigationState';
 

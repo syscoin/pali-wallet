@@ -1,5 +1,4 @@
 import { Disclosure, Menu } from '@headlessui/react';
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -20,6 +19,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
 import { switchNetworkError } from 'state/vaultGlobal';
+import { INetwork, INetworkType } from 'types/network';
 import {
   createNavigationContext,
   navigateWithContext,

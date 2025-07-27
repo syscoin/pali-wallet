@@ -1,4 +1,4 @@
-import { IMasterController } from '.';
+import type { IMasterController } from '.';
 
 type Methods<T> = {
   [K in keyof T]: T[K] extends (...args: any[]) => any

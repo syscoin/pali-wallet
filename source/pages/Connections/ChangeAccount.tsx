@@ -1,4 +1,3 @@
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { isHexString } from 'ethers/lib/utils';
 import { toSvg } from 'jdenticon';
 import React, {
@@ -25,6 +24,7 @@ import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
+import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 

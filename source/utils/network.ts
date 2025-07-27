@@ -1,7 +1,7 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import { ethers } from 'ethers';
 
 import store from 'state/store';
+import { INetworkType } from 'types/network';
 
 export const isActiveNetwork = (chain: INetworkType, chainId: number) => {
   const { activeNetwork } = store.getState().vault;

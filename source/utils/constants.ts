@@ -1,15 +1,15 @@
 import {
-  getDefaultUTXONetworks,
-  getSyscoinUTXOMainnetNetwork,
-  getBitcoinMainnetNetwork,
-} from '@sidhujag/sysweb3-keyring';
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
-
-import {
   FaucetChainIds,
   FaucetChainNames,
   FaucetChainSymbols,
 } from '../types/faucet';
+import { INetwork, INetworkType } from 'types/network';
+
+import {
+  getDefaultUTXONetworks,
+  getSyscoinUTXOMainnetNetwork,
+  getBitcoinMainnetNetwork,
+} from './defaultNetworks';
 
 // Chain ID Constants
 export const CHAIN_IDS = {

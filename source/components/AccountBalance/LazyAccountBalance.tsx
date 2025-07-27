@@ -1,4 +1,3 @@
-import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -6,6 +5,7 @@ import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useController } from 'hooks/useController';
 import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
+import { IKeyringAccountState } from 'types/network';
 import { formatNumber } from 'utils/index';
 
 // Cache for storing fetched balances with timestamps

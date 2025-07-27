@@ -1,5 +1,4 @@
-// import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
-import { INetworkType } from '@sidhujag/sysweb3-network';
+import { INetworkType } from 'types/network';
 
 import reducer, {
   addDApp,

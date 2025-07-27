@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+
+import { KeyringAccountType } from 'types/network';
 
 import { IDAppState, IDApp } from './types';
 

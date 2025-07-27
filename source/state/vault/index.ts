@@ -1,11 +1,4 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {
-  IKeyringBalances,
-  initialActiveHdAccountState,
-  KeyringAccountType,
-  IKeyringAccountState,
-} from '@sidhujag/sysweb3-keyring';
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 import take from 'lodash/take';
 
 import {
@@ -13,6 +6,14 @@ import {
   IEvmTransactionResponse,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
+import {
+  KeyringAccountType,
+  IKeyringAccountState,
+  INetwork,
+  INetworkType,
+  IKeyringBalances,
+  initialActiveHdAccountState,
+} from 'types/network';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 import {

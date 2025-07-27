@@ -1,5 +1,4 @@
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
-import { INetworkType } from '@sidhujag/sysweb3-network';
+import { KeyringAccountType, INetworkType } from 'types/network';
 
 export interface IDApp {
   accountId: number;

@@ -15,7 +15,7 @@ import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
+import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,

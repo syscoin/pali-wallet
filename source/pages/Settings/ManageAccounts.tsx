@@ -1,7 +1,3 @@
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@sidhujag/sysweb3-keyring';
 import React, {
   useCallback,
   useMemo,
@@ -26,6 +22,7 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
 

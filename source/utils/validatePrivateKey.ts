@@ -1,16 +1,14 @@
-import { INetwork } from '@sidhujag/sysweb3-network';
 import { ethers } from 'ethers';
 
-import { getController } from 'scripts/Background';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
+import { INetwork } from 'types/network';
 
-export const validatePrivateKeyValue = (
+export const validatePrivateKeyValue = async (
   privKey: string,
   isBitcoinBased: boolean,
   activeNetwork?: INetwork
 ) => {
-  const mainController = getController();
-
   if (!isBitcoinBased) {
     try {
       // Normalize the private key by adding '0x' prefix if missing
@@ -50,11 +48,11 @@ export const validatePrivateKeyValue = (
     }
 
     try {
-      const { isValid } = mainController.wallet.validateZprv(
-        privKey,
-        networkToValidate
-      );
-      return isValid;
+      const result = (await controllerEmitter(
+        ['wallet', 'validateZprv'],
+        [privKey, networkToValidate]
+      )) as { isValid: boolean } | undefined;
+      return result?.isValid || false;
     } catch (error) {
       console.error('validatePrivateKeyValue: Error validating zprv:', error);
       return false;

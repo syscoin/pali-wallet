@@ -1,9 +1,5 @@
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@sidhujag/sysweb3-keyring';
-
 import { IVaultState, IOmittedVault, IOmmitedAccount } from 'state/vault/types';
+import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 
 export const removeXprv = (account: IKeyringAccountState): IOmmitedAccount => {
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars

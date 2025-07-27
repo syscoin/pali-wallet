@@ -1,4 +1,3 @@
-import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -9,6 +8,7 @@ import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { INetwork, INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 

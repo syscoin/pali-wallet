@@ -1,4 +1,4 @@
-import { isValidSYSAddress as _isValidSYSAddress } from '@sidhujag/sysweb3-utils';
+// isValidSYSAddress removed - validation should use message passing to background
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
@@ -106,7 +106,10 @@ export const SysProvider = (host: string) => {
   //* ----- Validation Methods -----
   const isValidSYSAddress = (params: any[]) => {
     const { activeNetwork } = store.getState().vault;
-    const isValid = _isValidSYSAddress(params?.[0], activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
+    const isValid = getController().wallet.validateSysAddress(
+      params?.[0],
+      activeNetwork.chainId
+    );
     return isValid;
   };
 

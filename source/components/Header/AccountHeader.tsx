@@ -1,7 +1,3 @@
-import {
-  IKeyringAccountState,
-  KeyringAccountType,
-} from '@sidhujag/sysweb3-keyring';
 import { toSvg } from 'jdenticon';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +10,7 @@ import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
+import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { ellipsis, adjustUrl } from 'utils/index';
 import { isUserCancellationError } from 'utils/isUserCancellationError';
 import {

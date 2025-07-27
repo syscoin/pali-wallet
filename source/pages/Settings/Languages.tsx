@@ -6,10 +6,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { DefaultModal, NeutralButton } from 'components/index';
-import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
 import { i18next } from 'utils/i18n';
 import { navigateBack } from 'utils/navigationState';
-import { chromeStorage } from 'utils/storageAPI';
+import { chromeStorage, setLanguageInLocalStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {

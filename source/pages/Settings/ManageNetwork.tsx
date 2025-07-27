@@ -1,5 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
-import { INetwork } from '@sidhujag/sysweb3-network';
 import React, { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -16,6 +14,7 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { INetworkType, INetwork } from 'types/network';
 import { truncate } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';

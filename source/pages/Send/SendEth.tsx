@@ -1,5 +1,4 @@
 import { Menu } from '@headlessui/react';
-import { isValidEthereumAddress } from '@sidhujag/sysweb3-utils';
 import { Form, Input } from 'antd';
 import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
@@ -33,6 +32,7 @@ import {
   saveNavigationState,
 } from 'utils/index';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
+import { isValidEthereumAddress } from 'utils/validations';
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();

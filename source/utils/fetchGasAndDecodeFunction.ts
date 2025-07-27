@@ -1,8 +1,8 @@
-import { INetwork } from '@sidhujag/sysweb3-network';
 import { BigNumber } from 'ethers';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
+import { INetwork } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
 
 export const fetchGasAndDecodeFunction = async (

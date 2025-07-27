@@ -33,3 +33,11 @@ export const chromeStorage = {
       });
     }),
 };
+
+export const setLanguageInLocalStorage = async (lang: string) => {
+  try {
+    await chromeStorage.setItem('language', lang);
+  } catch (e) {
+    console.error('<!> Error saving language', e);
+  }
+};

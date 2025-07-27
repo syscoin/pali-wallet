@@ -1,10 +1,5 @@
 /* eslint-disable react/prop-types */
 import { Switch } from '@headlessui/react';
-import {
-  validateRpcBatchUniversal,
-  INetworkType,
-  INetwork,
-} from '@sidhujag/sysweb3-network';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { debounce } from 'lodash';
@@ -24,10 +19,38 @@ import {
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import ChainListService, {
-  type ChainInfo,
-} from 'scripts/Background/controllers/chainlist';
+
+interface ChainInfo {
+  chain: INetworkType;
+  chainId: number;
+  chainSlug?: string;
+  coinLabel?: string;
+  coinShortcut?: string;
+  explorers?: Array<{
+    name: string;
+    standard?: string;
+    url: string;
+  }>;
+  icon?: string;
+  infoURL?: string;
+  name: string;
+  nativeCurrency: {
+    decimals: number;
+    name: string;
+    symbol: string;
+  };
+  networkId: number;
+  rpc: Array<{
+    isOpenSource?: boolean;
+    tracking?: string;
+    url: string;
+  }>;
+  shortName?: string;
+  // Additional fields for UTXO networks
+  slip44?: number;
+}
 import { RootState } from 'state/store';
+import { INetworkType, INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
 import { navigateBack } from 'utils/navigationState';
 
@@ -534,11 +557,13 @@ const CustomRPCView = () => {
   useEffect(() => {
     const loadChains = async () => {
       try {
-        const chainListService = ChainListService.getInstance();
         const networkType = isSyscoinRpc
           ? INetworkType.Syscoin
           : INetworkType.Ethereum;
-        const chains = await chainListService.getChainData(networkType);
+        const chains = (await controllerEmitter(
+          ['wallet', 'getChainData'],
+          [networkType]
+        )) as ChainInfo[];
         setAllChains(chains);
         console.log(
           `[CustomRPC] Preloaded ${chains.length} ${
@@ -734,13 +759,23 @@ const CustomRPCView = () => {
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         // Use validateRpcBatchUniversal for both EVM and UTXO with different minimum latencies
-        const result = await validateRpcBatchUniversal(
-          rpc.url,
-          isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
-          chain.chainId,
-          5000,
-          500
-        );
+        const result = (await controllerEmitter(
+          ['wallet', 'testRpcConnection'],
+          [
+            rpc.url,
+            isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
+            chain.chainId,
+            5000,
+            500,
+          ]
+        )) as {
+          chainId?: number;
+          data?: any;
+          error?: string;
+          latency?: number;
+          requiresAuth?: boolean;
+          success: boolean;
+        };
 
         if (!result.success) {
           // Log why this RPC failed for debugging

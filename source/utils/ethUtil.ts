@@ -1,16 +1,24 @@
-import { retryableFetch } from '@sidhujag/sysweb3-network';
-import { getErc20Abi } from '@sidhujag/sysweb3-utils';
-import { getContractType } from '@sidhujag/sysweb3-utils';
 import InputDataDecoder from 'ethereum-input-data-decoder';
 import { ethers } from 'ethers';
 
 import { ITransactionParams } from 'types/transactions';
+import { retryableFetch } from 'utils/retryableFetch';
+import { getErc20Abi, getContractType } from 'utils/validations';
 
 import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
 
-export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
+// Create a cached instance of the decoder
+let erc20DecoderInstance: InputDataDecoder | null = null;
+
+export const erc20DataDecoder = async () => {
+  if (!erc20DecoderInstance) {
+    const abi = await getErc20Abi();
+    erc20DecoderInstance = new InputDataDecoder(abi);
+  }
+  return erc20DecoderInstance;
+};
 // Helper function to detect approval type
 const detectApprovalType = async (
   data: string,
@@ -24,7 +32,7 @@ const detectApprovalType = async (
   tokenStandard?: string;
 }> => {
   try {
-    // Get contract type first
+    // Get contract type using frontend detection
     const contractType = await getContractType(contractAddress, web3Provider);
 
     // Method signatures
@@ -37,7 +45,7 @@ const detectApprovalType = async (
 
     if (data.startsWith(signatures.approve)) {
       if (contractType?.type === 'ERC-20' || contractType?.type === 'ERC-777') {
-        // ERC-20/777 amount approval
+        // ERC-20/777 amount approval (default assumption for approve() calls)
         const [spender, amount] = ethers.utils.defaultAbiCoder.decode(
           ['address', 'uint256'],
           '0x' + data.slice(10)
@@ -162,7 +170,8 @@ export const decodeTransactionData = async (
       }
 
       // Continue with existing decoding logic
-      let decoderValue = erc20DataDecoder().decodeData(validatedData); //First checking if method is defined on erc20ABI
+      const decoder = await erc20DataDecoder();
+      let decoderValue = decoder.decodeData(validatedData); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
       const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
       decoderValue = decoderWrapInstance.decodeData(validatedData);

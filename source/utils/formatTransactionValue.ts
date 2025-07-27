@@ -1,4 +1,4 @@
-import { getChainById } from '@sidhujag/sysweb3-network';
+// formatTransactionValue - chain details should be passed from the frontend
 import { ethers } from 'ethers';
 
 import { IGetFiatAmount } from 'hooks/index';
@@ -7,14 +7,12 @@ import { formatWithDecimals } from './format';
 
 export const formatTransactionValue = (
   transactionValue: string,
-  chainId: number,
+  nativeCurrencySymbol: string,
   fiatAsset: string,
   getFiatAmount: IGetFiatAmount,
   decimals?: number
 ): { crypto: string; formattedFiatAmount: string } => {
   try {
-    const chainDetails = getChainById(chainId);
-
     const ethValue = ethers.utils.formatEther(transactionValue);
     const fiatWithDecimals = formatWithDecimals(ethValue, decimals || 2);
 
@@ -25,7 +23,7 @@ export const formatTransactionValue = (
     );
 
     return {
-      crypto: `${ethValue} ${chainDetails?.nativeCurrency?.symbol || 'ETH'}`,
+      crypto: `${ethValue} ${nativeCurrencySymbol || 'ETH'}`,
       formattedFiatAmount,
     };
   } catch (error) {

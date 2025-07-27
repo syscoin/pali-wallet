@@ -1,4 +1,3 @@
-import { INetworkType } from '@sidhujag/sysweb3-network';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -10,6 +9,7 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
+import { INetworkType } from 'types/network';
 import {
   createNavigationContext,
   navigateWithContext,
