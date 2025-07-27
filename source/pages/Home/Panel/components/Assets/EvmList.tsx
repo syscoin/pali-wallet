@@ -21,7 +21,11 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { truncate, navigateWithContext } from 'utils/index';
+import {
+  navigateWithContext,
+  truncate,
+  formatFullPrecisionBalance,
+} from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
@@ -191,7 +195,9 @@ const DefaultEvmAssets = ({
 
               {token?.tokenStandard !== 'ERC-1155' && (
                 <p className="flex items-center gap-x-2">
-                  <span className="text-brand-white">{token.balance}</span>
+                  <span className="text-brand-white">
+                    {formatFullPrecisionBalance(token.balance, 4)}
+                  </span>
 
                   <span
                     className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"

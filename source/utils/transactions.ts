@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { isInteger, omit } from 'lodash';
+import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
@@ -8,7 +8,7 @@ import { IKeyringAccountState } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 
-import { formatCurrency, truncate } from './format';
+import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
 
 /**
  * Get proper display information for a transaction (value, symbol, recipient, and type)
@@ -211,9 +211,7 @@ export const getAssetBalance = (
         : asset.balance
     );
 
-    return `${isInteger(value) ? value : value.toFixed(2)} ${
-      asset.tokenSymbol
-    }`;
+    return `${formatFullPrecisionBalance(value, 4)} ${asset.tokenSymbol}`;
   }
 
   const formattedBalance = truncate(

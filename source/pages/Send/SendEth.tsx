@@ -401,7 +401,10 @@ export const SendEth = () => {
     if (selectedAsset) {
       // For ERC-20 tokens, prefer verified balance if available
       if (!selectedAsset.isNft && verifiedERC20Balance !== null) {
-        const displayBalance = verifiedERC20Balance.toFixed(4);
+        const displayBalance = formatFullPrecisionBalance(
+          verifiedERC20Balance,
+          4
+        );
         return `${displayBalance} ${
           selectedAsset.tokenSymbol?.toUpperCase() || ''
         }`;
@@ -516,7 +519,23 @@ export const SendEth = () => {
       } else if (!selectedAsset.isNft) {
         // For ERC-20 tokens, REQUIRE verified balance
         if (verifiedERC20Balance === null) return; // Don't proceed if not verified
-        fullBalance = String(verifiedERC20Balance);
+
+        // Format to avoid scientific notation for very small numbers
+        const balance = verifiedERC20Balance;
+        // Use a high precision toFixed to avoid scientific notation
+        // Then use parseFloat and toString to remove trailing zeros
+        // But if the result would be in scientific notation, keep the fixed format
+        const fixedString = balance.toFixed(18);
+        const parsed = parseFloat(fixedString);
+        const parsedString = parsed.toString();
+
+        // If parsing resulted in scientific notation, use the fixed string
+        if (parsedString.includes('e') || parsedString.includes('E')) {
+          // Remove only trailing zeros after the last non-zero digit
+          fullBalance = fixedString.replace(/0+$/, '').replace(/\.$/, '');
+        } else {
+          fullBalance = parsedString;
+        }
       } else {
         // For ERC-721, this shouldn't be called (amount field is hidden)
         return;

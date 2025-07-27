@@ -10,7 +10,6 @@ import {
 } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import { ethers } from 'ethers';
-import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 
 import { BatchBalanceController } from '../balances/BatchBalanceController';
@@ -525,7 +524,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
                   ...asset,
                   balance: asset.isNft
                     ? Math.floor(apiToken.balance) // NFTs need integer balances
-                    : floor(apiToken.balance, 4),
+                    : apiToken.balance, // Keep full precision for regular tokens
                 };
               } else {
                 // Token not in API response - set balance to 0 (as requested)
@@ -588,7 +587,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           const balance = balances.get(token.contractAddress.toLowerCase());
           return {
             ...token,
-            balance: balance ? floor(parseFloat(balance), 4) : 0,
+            balance: balance ? parseFloat(balance) : 0, // Keep full precision
           };
         });
       }
@@ -859,7 +858,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       return {
         ...basicDetails,
-        balance: Math.floor(balance * 10000) / 10000,
+        balance: balance, // Keep full precision
       };
     } catch (error) {
       console.error(

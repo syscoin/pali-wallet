@@ -7,7 +7,7 @@ import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
-import { truncate, formatCurrency } from 'utils/index';
+import { truncate, formatFullPrecisionBalance } from 'utils/index';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IImportableAsset {
@@ -143,8 +143,8 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
                     <span className="text-brand-white font-medium">
                       {asset.tokenStandard === 'ERC-1155' && asset.balance === 0
                         ? '—'
-                        : formatCurrency(
-                            String(asset.balance || 0),
+                        : formatFullPrecisionBalance(
+                            asset.balance || 0,
                             Math.min(asset.decimals || 8, 4) // Limit displayed decimals
                           )}
                     </span>

@@ -121,15 +121,33 @@ export const formatFullPrecisionBalance = (
     return '0';
   }
 
+  // Handle infinity
+  if (!isFinite(numBalance)) {
+    return '∞';
+  }
+
   // For very small balances, show with < prefix like MetaMask
   const threshold = Math.pow(10, -decimals);
   if (numBalance > 0 && numBalance < threshold) {
     return `< ${threshold.toFixed(decimals)}`;
   }
 
+  // For extremely large balances (> 1e12), use scientific notation
+  // This includes trillion and above
+  if (numBalance >= 1e12) {
+    const exp = numBalance.toExponential(2);
+    // Make it more readable: 1.23e+15 → 1.23e15
+    return exp.replace('e+', 'e');
+  }
+
   // For large balances, use millions formatting
   if (numBalance >= ONE_MILLION) {
-    return formatMillionNumber(numBalance);
+    const formatted = formatMillionNumber(numBalance);
+    // Ensure compact notation doesn't exceed reasonable length
+    if (formatted.length > 10) {
+      return numBalance.toExponential(2).replace('e+', 'e');
+    }
+    return formatted;
   }
 
   // For normal balances, show up to 6 decimals but remove trailing zeros
@@ -145,6 +163,11 @@ export const formatFullPrecisionBalance = (
     if (parts[1] && parts[1].length > decimals) {
       formatted = numBalance.toFixed(decimals).replace(/\.?0+$/, '');
     }
+  }
+
+  // Final safety check - if result is still too long, use scientific notation
+  if (formatted.length > 15) {
+    return numBalance.toExponential(2).replace('e+', 'e');
   }
 
   return formatted;

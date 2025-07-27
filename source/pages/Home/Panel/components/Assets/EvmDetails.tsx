@@ -11,7 +11,11 @@ import { TokenIcon } from 'components/TokenIcon';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { ellipsis, formatCurrency } from 'utils/index';
+import {
+  ellipsis,
+  formatCurrency,
+  formatFullPrecisionBalance,
+} from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -564,7 +568,7 @@ export const EvmAssetDetails = ({
                 <p className="font-normal text-xs">{t('send.balance')}</p>
                 <p className="flex items-center font-normal gap-x-1.5 text-xs">
                   <span className="text-brand-white">
-                    {currentAsset.balance}{' '}
+                    {formatFullPrecisionBalance(currentAsset.balance, 4)}{' '}
                     {currentAsset.tokenSymbol || currentAsset.symbol}
                   </span>
                 </p>
