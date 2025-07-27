@@ -3406,11 +3406,12 @@ class MainController {
       );
       store.dispatch(switchNetworkError());
     } else {
-      // Balance succeeded - check if we need to clear connecting or switching state
+      // Balance succeeded - check if we need to clear connecting, switching, or error state
       const currentNetworkStatus = store.getState().vaultGlobal.networkStatus;
       if (
         currentNetworkStatus === 'connecting' ||
-        currentNetworkStatus === 'switching'
+        currentNetworkStatus === 'switching' ||
+        currentNetworkStatus === 'error'
       ) {
         store.dispatch(switchNetworkSuccess()); // This sets networkStatus to 'idle'
       }
