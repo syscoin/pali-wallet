@@ -11,6 +11,7 @@ const ERC20_BALANCE_ABI = [
     inputs: [{ name: '_owner', type: 'address' }],
     name: 'balanceOf',
     outputs: [{ name: 'balance', type: 'uint256' }],
+    stateMutability: 'view',
     type: 'function',
   },
 ];
@@ -40,6 +41,7 @@ const MULTICALL3_ABI = [
         type: 'tuple[]',
       },
     ],
+    stateMutability: 'view',
     type: 'function',
   },
 ];
