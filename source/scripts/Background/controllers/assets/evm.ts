@@ -94,13 +94,23 @@ const EvmAssetsController = (): IEvmAssetsController => {
       const url = new URL(apiUrl);
       const baseUrl = `${url.protocol}//${url.host}`;
 
-      // Try to extract API key from existing URL or use free tier
-      const urlParams = new URLSearchParams(url.search);
-      const apiKey = urlParams.get('apikey') || 'YourApiKeyToken';
+      // Build the token list URL using proper URL API
+      const tokenListUrl = new URL(`${baseUrl}/api`);
 
-      const tokenListUrl = `${baseUrl}/api?module=account&action=tokenlist&address=${walletAddress}&apikey=${apiKey}`;
+      // Extract API key if it's already in the original URL
+      const existingApiKey = url.searchParams.get('apikey');
 
-      const response = await retryableFetch(tokenListUrl);
+      // Build the API request
+      tokenListUrl.searchParams.set('module', 'account');
+      tokenListUrl.searchParams.set('action', 'tokenlist');
+      tokenListUrl.searchParams.set('address', walletAddress);
+
+      // Preserve the API key if it was in the original URL
+      if (existingApiKey) {
+        tokenListUrl.searchParams.set('apikey', existingApiKey);
+      }
+
+      const response = await retryableFetch(tokenListUrl.toString());
 
       if (!response.ok) {
         console.warn(

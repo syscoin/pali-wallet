@@ -8,6 +8,15 @@ import {
   findUserTxsInProviderByBlocksRange,
   validateAndManageUserTransactions,
 } from './utils';
+
+// Cache for address transaction counts to optimize Blockscout API calls
+// Key: chainId:address, Value: { hasTransactions: boolean, timestamp: number }
+// This works around a Blockscout bug (prior to v6.12) where passing offset parameter
+// on addresses with no transactions triggers a massive union query that causes rate limiting
+// We make an initial request without offset to check if address has transactions,
+// then use offset only for addresses with transactions in subsequent requests
+const addressTxCountCache = new Map<string, boolean>();
+
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     numBlocks: number,
@@ -146,8 +155,19 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('action', 'txlist');
       url.searchParams.set('address', address);
       url.searchParams.set('sort', 'desc');
-      url.searchParams.set('page', '1');
-      url.searchParams.set('offset', '50');
+
+      // Check cache to see if we know if address has transactions
+      const cacheKey = `${chainId}:${address.toLowerCase()}`;
+      const cached = addressTxCountCache.get(cacheKey);
+
+      // Only include offset if we have valid cache showing the address has transactions
+      // First time requests (no cache) won't include offset to avoid Blockscout bug
+      const shouldIncludeOffset = cached;
+
+      if (shouldIncludeOffset) {
+        url.searchParams.set('page', '1');
+        url.searchParams.set('offset', '30');
+      }
 
       // Preserve the API key if it was in the original URL
       // Reference: https://docs.blockscout.com/using-blockscout/my-account/api-keys
@@ -314,8 +334,20 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         }
       }
 
+      // Cache whether this address has transactions (only if not already cached or cache expired)
+      if (cacheKey) {
+        const hasTransactions = allTransactions.length > 0;
+        addressTxCountCache.set(cacheKey, hasTransactions);
+      }
+
+      // If we didn't use offset, limit to 30 for consistency
+      // This applies to first-time requests and addresses with no transactions
+      const finalTransactions = shouldIncludeOffset
+        ? allTransactions
+        : allTransactions.slice(0, 30);
+
       return {
-        transactions: allTransactions, // Return the array (even if empty) - empty array is valid
+        transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
         error: undefined, // No error when we get a valid response with empty results
       };
     } catch (error) {
