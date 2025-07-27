@@ -48,10 +48,14 @@ const KNOWN_CHAIN_ICONS: {
 
   // UTXO networks (chainId-networkType) - using chainId from coins.ts
   '0-syscoin': BtcChainSvg, // Bitcoin Mainnet (slip44: 0)
-  '1-syscoin': BtcChainSvg, // Bitcoin Testnet (chainId: 1)
+  '1-syscoin': SysChainSvg, // Syscoin UTXO Testnet (slip44: 1, tSYS) - default network
   '57-syscoin': SysChainSvg, // Syscoin UTXO Mainnet (slip44: 57)
   '5700-syscoin': SysChainSvg, // Syscoin Testnet (chainId: 5700)
   '10000-syscoin': BtcChainSvg, // Bitcoin Regtest (chainId: 10000)
+
+  // Note: Bitcoin testnet also uses chainId: 1, but it's not in default networks.
+  // If added manually as custom RPC, it would show Syscoin icon due to chainId conflict.
+  // This is a limitation of the current icon mapping system that only uses chainId + networkKind.
 };
 
 // Helper function to get icon with fallback
