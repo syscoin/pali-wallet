@@ -301,6 +301,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
           mergedTx,
           currency,
           tokenCache
+          // Don't skip token fetch on details page - users want full info
         );
         setTransactionDisplayInfo(displayInfo);
       }

@@ -112,7 +112,8 @@ const EvmTransactionItem = React.memo(
           const info = await getTransactionDisplayInfo(
             tx,
             currency,
-            tokenCache
+            tokenCache,
+            true // Skip fetching unknown tokens in transaction list
           );
           if (!cancelled) {
             setDisplayInfo(info);

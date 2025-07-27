@@ -454,6 +454,7 @@ class NotificationManager {
     try {
       // Use the shared utility to get transaction display info
       const displayInfo = await getTransactionDisplayInfo(tx, network.currency);
+      // Note: We don't skip token fetch here as notifications should show proper token info
 
       let value: string | undefined;
       const tokenSymbol = displayInfo.displaySymbol;

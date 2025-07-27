@@ -28,7 +28,8 @@ export const getTransactionDisplayInfo = async (
       isNft: boolean;
       symbol: string;
     }
-  >
+  >,
+  skipUnknownTokenFetch = false // New parameter to skip fetching unknown tokens
 ): Promise<{
   actualRecipient: string;
   displaySymbol: string;
@@ -117,39 +118,41 @@ export const getTransactionDisplayInfo = async (
         }
 
         // If not in user's assets, try to fetch from controller
-        try {
-          const tokenDetails = (await controllerEmitter(
-            ['wallet', 'getTokenDetails'],
-            [tokenAddress, currentAccount?.address]
-          )) as ITokenDetails | null;
+        if (!skipUnknownTokenFetch) {
+          try {
+            const tokenDetails = (await controllerEmitter(
+              ['wallet', 'getTokenDetails'],
+              [tokenAddress, currentAccount?.address]
+            )) as ITokenDetails | null;
 
-          if (tokenDetails) {
-            const isNft = tokenDetails.isNft || false;
-            const decimals = isNft ? 0 : tokenDetails.decimals || 18;
+            if (tokenDetails) {
+              const isNft = tokenDetails.isNft || false;
+              const decimals = isNft ? 0 : tokenDetails.decimals || 18;
 
-            if (isNft) {
-              // For NFTs, show count instead of formatted value
-              const nftCount = Number(tokenValue);
-              return {
-                displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
-                displaySymbol: tokenDetails.symbol.toUpperCase(),
-                isErc20Transfer: true,
-                actualRecipient: actualRecipient || tokenAddress,
-                isNft: true,
-              };
-            } else {
-              // Regular ERC-20 token
-              return {
-                displayValue: Number(tokenValue) / Math.pow(10, decimals),
-                displaySymbol: tokenDetails.symbol.toUpperCase(),
-                isErc20Transfer: true,
-                actualRecipient: actualRecipient || tokenAddress,
-                isNft: false,
-              };
+              if (isNft) {
+                // For NFTs, show count instead of formatted value
+                const nftCount = Number(tokenValue);
+                return {
+                  displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
+                  displaySymbol: tokenDetails.symbol.toUpperCase(),
+                  isErc20Transfer: true,
+                  actualRecipient: actualRecipient || tokenAddress,
+                  isNft: true,
+                };
+              } else {
+                // Regular ERC-20 token
+                return {
+                  displayValue: Number(tokenValue) / Math.pow(10, decimals),
+                  displaySymbol: tokenDetails.symbol.toUpperCase(),
+                  isErc20Transfer: true,
+                  actualRecipient: actualRecipient || tokenAddress,
+                  isNft: false,
+                };
+              }
             }
+          } catch (controllerError) {
+            console.warn('Controller token lookup failed:', controllerError);
           }
-        } catch (controllerError) {
-          console.warn('Controller token lookup failed:', controllerError);
         }
       } catch (error) {
         console.error('Error getting token info:', error);
