@@ -10,7 +10,7 @@ import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
 import { useAppReady } from 'hooks/useAppReady';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
-import { navigateBack } from 'utils/navigationState';
+import { navigateBack, clearNavigationState } from 'utils/navigationState';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders
 const BackArrowIcon = memo(() => <Icon isSvg={true} name="ArrowLeft" />);
@@ -269,7 +269,10 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   }, [location.pathname]);
 
   // Back navigation handler
-  const handleBackNavigation = useCallback(() => {
+  const handleBackNavigation = useCallback(async () => {
+    // Clear any saved navigation state when navigating back
+    await clearNavigationState();
+
     // First check for navigation context
     const hasNavigationContext = location.state?.returnContext;
 
@@ -354,7 +357,10 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           {showNavigationButtons ? (
             <IconButton
               className="z-40 cursor-pointer"
-              onClick={() => {
+              onClick={async () => {
+                // Clear any saved navigation state when closing
+                await clearNavigationState();
+
                 if (
                   networkStatus === 'error' ||
                   networkStatus === 'connecting'

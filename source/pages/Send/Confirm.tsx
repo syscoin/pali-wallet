@@ -118,6 +118,15 @@ export const SendConfirm = () => {
     saveConfirmState();
   }, [state, location.pathname]);
 
+  // Clear navigation state on unmount to prevent stale state
+  useEffect(
+    () => () => {
+      // Don't await here since this runs synchronously on unmount
+      clearNavigationState();
+    },
+    []
+  );
+
   // The confirmation screen displays the fee and total as calculated by SendSys.
   // When the user changes fee rate in SendSys and clicks "Next", SendSys recalculates
   // the transaction with the new fee rate and passes the correct values here.

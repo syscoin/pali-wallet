@@ -22,6 +22,16 @@ export const useNavigationState = () => {
   // Get auth state to determine if we should persist
   const { isUnlocked, isLoading } = useController();
 
+  // Ensure initial app load flag is cleared after a reasonable time
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      isInitialAppLoad = false;
+      console.log('[useNavigationState] Initial app load period ended');
+    }, 2000); // 2 seconds should be enough for app initialization
+
+    return () => clearTimeout(timeout);
+  }, []);
+
   // Restore navigation state on app startup
   const restoreState = useCallback(async () => {
     // Only restore once per session
@@ -85,9 +95,9 @@ export const useNavigationState = () => {
 
   // Clear navigation state on route changes (after app ready)
   useEffect(() => {
-    // Only act after app is ready and not during restoration
-    if (isAppReadyRef.current && !isRestoringNavigation && !isInitialAppLoad) {
-      // Clear any existing saved state on navigation
+    // Clear any existing saved state on navigation
+    // Don't clear during restoration to avoid clearing the state we just restored
+    if (!isRestoringNavigation && !isInitialAppLoad) {
       clearNavigationState();
     }
   }, [location.pathname]);
