@@ -19,8 +19,12 @@ import {
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { RootState } from 'state/store';
+import { INetworkType, INetwork } from 'types/network';
+import { ICustomRpcParams } from 'types/transactions';
+import { navigateBack } from 'utils/navigationState';
 
-interface ChainInfo {
+interface IChainInfo {
   chain: INetworkType;
   chainId: number;
   chainSlug?: string;
@@ -49,10 +53,6 @@ interface ChainInfo {
   // Additional fields for UTXO networks
   slip44?: number;
 }
-import { RootState } from 'state/store';
-import { INetworkType, INetwork } from 'types/network';
-import { ICustomRpcParams } from 'types/transactions';
-import { navigateBack } from 'utils/navigationState';
 
 const CustomRPCView = () => {
   const location = useLocation();
@@ -73,9 +73,11 @@ const CustomRPCView = () => {
     }
     return Boolean(isSyscoinSelected);
   });
-  const [networkSuggestions, setNetworkSuggestions] = useState<ChainInfo[]>([]);
+  const [networkSuggestions, setNetworkSuggestions] = useState<IChainInfo[]>(
+    []
+  );
   const [testingRpcs, setTestingRpcs] = useState(false);
-  const [allChains, setAllChains] = useState<ChainInfo[]>([]);
+  const [allChains, setAllChains] = useState<IChainInfo[]>([]);
   const [currentRpcTest, setCurrentRpcTest] = useState<{
     index: number;
     total: number;
@@ -563,7 +565,7 @@ const CustomRPCView = () => {
         const chains = (await controllerEmitter(
           ['wallet', 'getChainData'],
           [networkType]
-        )) as ChainInfo[];
+        )) as IChainInfo[];
         setAllChains(chains);
         console.log(
           `[CustomRPC] Preloaded ${chains.length} ${
@@ -638,7 +640,7 @@ const CustomRPCView = () => {
     }
 
     const lowerQuery = query.toLowerCase().trim();
-    const results: (ChainInfo & { score?: number })[] = [];
+    const results: (IChainInfo & { score?: number })[] = [];
 
     allChains.forEach((chain) => {
       let score = 0;
@@ -682,7 +684,7 @@ const CustomRPCView = () => {
   }, 10); // Reduced debounce for instant feel
 
   // Handle network selection from autocomplete
-  const handleNetworkSelect = async (chain: ChainInfo) => {
+  const handleNetworkSelect = async (chain: IChainInfo) => {
     // Clear suggestions immediately to close dropdown
     setNetworkSuggestions([]);
 
@@ -719,7 +721,7 @@ const CustomRPCView = () => {
   };
 
   // Try multiple RPCs/Blockbooks until we find one that works - with latency testing
-  const tryBestWorkingRpc = async (chain: ChainInfo) => {
+  const tryBestWorkingRpc = async (chain: IChainInfo) => {
     if (!chain.rpc || chain.rpc.length === 0) return;
 
     setTestingRpcs(true);
@@ -842,7 +844,7 @@ const CustomRPCView = () => {
   };
 
   // Custom icon component for autocomplete with proper caching
-  const AutoCompleteIcon: React.FC<{ chain: ChainInfo; size?: number }> =
+  const AutoCompleteIcon: React.FC<{ chain: IChainInfo; size?: number }> =
     React.memo(
       ({ chain, size = 24 }) => (
         <ChainIcon
@@ -860,7 +862,7 @@ const CustomRPCView = () => {
 
   // Memoize the suggestion item to prevent unnecessary re-renders
   const NetworkSuggestionItem = React.memo<{
-    chain: ChainInfo;
+    chain: IChainInfo;
     onSelect: () => void;
   }>(
     ({ chain, onSelect }) => {
