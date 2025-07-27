@@ -33,7 +33,7 @@ export const SyscoinAssetsList = () => {
     networkStatus,
     loadingStates: { isLoadingAssets },
   } = useSelector((state: RootState) => state.vaultGlobal);
-  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
+  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();

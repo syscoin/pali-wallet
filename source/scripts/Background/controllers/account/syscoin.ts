@@ -41,74 +41,79 @@ const SysAccountController = (
   };
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
-    try {
-      const { activeAccount, activeNetwork, accountAssets } =
-        store.getState().vault;
-
-      // Validate account type exists
-      if (!accountAssets[activeAccount.type]) {
-        throw new Error(
-          `Account type '${activeAccount.type}' not found in accountAssets`
-        );
-      }
-
-      // Validate account ID exists
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-      if (!activeAccountAssets) {
-        throw new Error(
-          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
-        );
-      }
-
-      if (!activeAccountAssets.syscoin) {
-        throw new Error('Syscoin assets array not initialized');
-      }
-
-      // Check for duplicate considering both assetGuid AND chainId (network-specific)
-      const tokenExists = activeAccountAssets.syscoin.find(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === token.assetGuid &&
-          asset.chainId === activeNetwork.chainId
-      );
-
-      if (tokenExists) throw new Error('Token already exists on this network');
-
-      // Syscoin 5 no longer uses pubData field
-      const description = token.description || '';
-      const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
-        ? description
-        : '';
-      const assetInfos = {
-        ...token,
-        chainId: activeNetwork.chainId,
-        description,
-        image: '',
-        balance: token.balance || 0, // Balance is already in correct format, don't convert
-      };
-      if (!isEmpty(ipfsUrl)) {
-        const { data } = await axios.get(ipfsUrl, config);
-
-        assetInfos.image = data && data.image ? data.image : '';
-      }
-
-      store.dispatch(
-        setAccountAssets({
-          accountId: activeAccount.id,
-          accountType: activeAccount.type,
-          property: 'syscoin',
-          value: [...activeAccountAssets.syscoin, assetInfos],
-        })
-      );
-    } catch (error) {
-      throw new Error(`Could not save token info. ${error}`);
+    const { activeAccount, activeNetwork, accountAssets } =
+      store.getState().vault;
+    // Validate accountAssets exists
+    if (!accountAssets) {
+      throw new Error('Account assets not initialized');
     }
+
+    // Validate account type exists
+    if (!accountAssets[activeAccount.type]) {
+      throw new Error(
+        `Account type '${activeAccount.type}' not found in accountAssets`
+      );
+    }
+
+    // Validate account ID exists
+    const activeAccountAssets =
+      accountAssets[activeAccount.type][activeAccount.id];
+    if (!activeAccountAssets) {
+      throw new Error(
+        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
+      );
+    }
+
+    if (!activeAccountAssets.syscoin) {
+      throw new Error('Syscoin assets array not initialized');
+    }
+
+    // Check for duplicate considering both assetGuid AND chainId (network-specific)
+    const tokenExists = activeAccountAssets.syscoin.find(
+      (asset: ITokenSysProps) =>
+        asset.assetGuid === token.assetGuid &&
+        asset.chainId === activeNetwork.chainId
+    );
+
+    if (tokenExists) throw new Error('Token already exists on this network');
+
+    // Syscoin 5 no longer uses pubData field
+    const description = token.description || '';
+    const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
+      ? description
+      : '';
+    const assetInfos = {
+      ...token,
+      chainId: activeNetwork.chainId,
+      description,
+      image: '',
+      balance: token.balance || 0, // Balance is already in correct format, don't convert
+    };
+    if (!isEmpty(ipfsUrl)) {
+      const { data } = await axios.get(ipfsUrl, config);
+
+      assetInfos.image = data && data.image ? data.image : '';
+    }
+
+    store.dispatch(
+      setAccountAssets({
+        accountId: activeAccount.id,
+        accountType: activeAccount.type,
+        property: 'syscoin',
+        value: [...activeAccountAssets.syscoin, assetInfos],
+      })
+    );
   };
 
   const deleteTokenInfo = (assetGuid: string) => {
     try {
       const { activeAccount, accountAssets, activeNetwork } =
         store.getState().vault;
+
+      // Validate accountAssets exists
+      if (!accountAssets) {
+        throw new Error('Account assets not initialized');
+      }
 
       // Validate account type exists
       if (!accountAssets[activeAccount.type]) {

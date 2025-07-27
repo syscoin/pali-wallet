@@ -20,6 +20,11 @@ const EthAccountController = (): IEthAccountController | any => {
       store.getState().vault;
     const { chainId } = activeNetwork;
 
+    // Validate accountAssets exists
+    if (!accountAssets) {
+      throw new Error('Account assets not initialized');
+    }
+
     // Validate account type exists
     if (!accountAssets[activeAccount.type]) {
       throw new Error(
@@ -79,6 +84,11 @@ const EthAccountController = (): IEthAccountController | any => {
   const deleteTokenInfo = (tokenAddress: string, chainId: number) => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
+
+      // Validate accountAssets exists
+      if (!accountAssets) {
+        throw new Error('Account assets not initialized');
+      }
 
       // Validate account type exists
       if (!accountAssets[activeAccount.type]) {

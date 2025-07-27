@@ -14,7 +14,7 @@ export const AssetsPanel = () => {
   const { t } = useTranslation();
   const { accountAssets, activeAccount, isBitcoinBased, activeNetwork } =
     useSelector((state: RootState) => state.vault);
-  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
+  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
   const { chainId } = activeNetwork;
   const [searchParams] = useSearchParams();
 

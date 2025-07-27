@@ -31,7 +31,7 @@ export const EvmAssetDetails = ({
     (state: RootState) => state.vault
   );
   const { fiat } = useSelector((state: RootState) => state.price);
-  const accountAssetData = accountAssets[activeAccount.type]?.[
+  const accountAssetData = accountAssets?.[activeAccount.type]?.[
     activeAccount.id
   ] || { ethereum: [], syscoin: [], nfts: [] };
   const { useCopyClipboard, alert, navigate } = useUtils();
@@ -46,7 +46,7 @@ export const EvmAssetDetails = ({
   const fetchingRef = React.useRef(false);
 
   // Get the full account object
-  const fullAccount = accounts[activeAccount.type]?.[activeAccount.id];
+  const fullAccount = accounts?.[activeAccount.type]?.[activeAccount.id];
 
   // Use navigation state directly for import preview, otherwise find in store
   const currentAsset = navigationState?.isImportPreview

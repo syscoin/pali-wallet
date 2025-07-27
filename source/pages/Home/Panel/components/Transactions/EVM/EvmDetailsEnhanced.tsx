@@ -70,7 +70,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       }
     >();
     const currentAccountAssets =
-      accountAssets[activeAccount.type]?.[activeAccount.id];
+      accountAssets?.[activeAccount.type]?.[activeAccount.id];
 
     if (currentAccountAssets?.ethereum) {
       currentAccountAssets.ethereum.forEach((token) => {

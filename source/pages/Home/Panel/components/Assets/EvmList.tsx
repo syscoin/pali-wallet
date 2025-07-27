@@ -57,7 +57,7 @@ const DefaultEvmAssets = ({
     activeNetwork: { chainId },
   } = useSelector((rootState: RootState) => rootState.vault);
 
-  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
+  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
 
   // Separate regular tokens from NFTs as requested
   const allAssets =

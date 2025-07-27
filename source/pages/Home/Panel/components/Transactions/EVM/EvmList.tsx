@@ -332,7 +332,7 @@ export const EvmTransactionsList = ({
       }
     >();
     const currentAccountAssets =
-      accountAssets[activeAccount.type]?.[activeAccount.id];
+      accountAssets?.[activeAccount.type]?.[activeAccount.id];
 
     if (currentAccountAssets?.ethereum) {
       currentAccountAssets.ethereum.forEach((token) => {

@@ -46,7 +46,7 @@ export const SyscoinAssetDetails = ({
     (state: RootState) => state.vault
   );
   const { fiat } = useSelector((state: RootState) => state.price);
-  const accountAssetData = accountAssets[activeAccount.type]?.[
+  const accountAssetData = accountAssets?.[activeAccount.type]?.[
     activeAccount.id
   ] || { ethereum: [], syscoin: [], nfts: [] };
 

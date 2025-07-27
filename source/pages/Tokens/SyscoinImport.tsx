@@ -71,7 +71,7 @@ export const SyscoinImport: React.FC = () => {
   } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeAccountAssets =
-    accountAssets[activeAccountMeta.type]?.[activeAccountMeta.id];
+    accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
 
   // Use deferred value for search optimization
   const deferredCustomGuid = useDeferredValue(customAssetGuid);
