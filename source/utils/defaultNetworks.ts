@@ -14,12 +14,12 @@ export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
 });
 
 export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
-  chainId: 1,
+  chainId: 5700,
   slip44: 1,
   label: 'Syscoin Testnet',
   currency: 'tsys',
-  url: 'https://blockbook-dev.elint.services/',
-  explorer: 'https://blockbook-dev.elint.services/',
+  url: 'https://blockbook-dev.syscoin.org/',
+  explorer: 'https://blockbook-dev.syscoin.org/',
   default: false,
   kind: INetworkType.Syscoin,
 });
@@ -38,6 +38,6 @@ export const getBitcoinMainnetNetwork = (): INetwork => ({
 // Return object mapping chainId to network (matches sysweb3-keyring structure)
 export const getDefaultUTXONetworks = (): { [chainId: number]: INetwork } => ({
   57: getSyscoinUTXOMainnetNetwork(),
-  1: getSyscoinUTXOTestnetNetwork(),
+  5700: getSyscoinUTXOTestnetNetwork(),
   0: getBitcoinMainnetNetwork(),
 });

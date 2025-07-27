@@ -3398,16 +3398,20 @@ class MainController {
       }
     }
 
-    // If balance failed, set network status to error to prevent green success indicator
-    if (balanceFailed) {
+    // If any core operation failed, set network status to error so timeout/error handling can trigger chain error page
+    if (balanceFailed || transactionsFailed || assetsFailed) {
       console.error(
-        '[MainController] Balance update failed - keeping error state active'
+        '[MainController] Account update failed - setting network status to error',
+        { balanceFailed, transactionsFailed, assetsFailed }
       );
       store.dispatch(switchNetworkError());
     } else {
-      // Balance succeeded - check if we need to clear connecting state (from login)
+      // Balance succeeded - check if we need to clear connecting or switching state
       const currentNetworkStatus = store.getState().vaultGlobal.networkStatus;
-      if (currentNetworkStatus === 'connecting') {
+      if (
+        currentNetworkStatus === 'connecting' ||
+        currentNetworkStatus === 'switching'
+      ) {
         store.dispatch(switchNetworkSuccess()); // This sets networkStatus to 'idle'
       }
     }

@@ -59,13 +59,18 @@ export const ChainErrorPage = () => {
 
       console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
 
-      // Call setActiveNetwork and wait for it to fully complete
+      // Call setActiveNetwork with a timeout to prevent infinite hanging
       // This method handles all validation internally and resolves when done
       // Pass true for syncUpdates to ensure all updates complete before returning
-      const result = await controllerEmitter(
-        ['wallet', 'setActiveNetwork'],
-        [selectedRpc, true]
-      );
+      const result = await Promise.race([
+        controllerEmitter(['wallet', 'setActiveNetwork'], [selectedRpc, true]),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Network retry timeout after 15 seconds')),
+            15000
+          )
+        ),
+      ]);
 
       console.log(
         '[ChainErrorPage] Network switch completed successfully:',
@@ -123,6 +128,9 @@ export const ChainErrorPage = () => {
       alert.error(errorMessage);
 
       // Reset retry state so user can try again
+      setIsRetrying(false);
+    } finally {
+      // Always reset retry state, even if something unexpected happens
       setIsRetrying(false);
     }
   };

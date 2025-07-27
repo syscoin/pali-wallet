@@ -30,7 +30,7 @@ export const usePageLoadingState = (
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
-  const { isLoadingBalances } = useSelector(
+  const { isLoadingBalances, isLoadingTxs } = useSelector(
     (state: RootState) => state.vaultGlobal.loadingStates
   );
   const isPollingUpdate = useSelector(
@@ -40,22 +40,35 @@ export const usePageLoadingState = (
   // Only apply timeout logic on pages where users expect quick loading
   const timeoutEnabledPages = ['/home'];
 
+  // Never show loading overlay on these pages - they handle their own loading states
+  const loadingExcludedPages = [
+    '/chain-fail-to-connect',
+    '/settings/networks/custom-rpc',
+  ];
+
   const shouldEnableTimeout = timeoutEnabledPages.some(
     (page) =>
       location.pathname === page || location.pathname.startsWith(`${page}/`)
   );
 
+  const isOnExcludedPage = loadingExcludedPages.some(
+    (page) => location.pathname === page
+  );
+
   // Determine if we're loading
   const isNetworkChanging = networkStatus === 'switching';
   const isConnecting = networkStatus === 'connecting';
-  // Consider balance loading (non-polling) as a network operation that should timeout
+  // Consider balance and transaction loading (non-polling) as network operations that should timeout
   const isNonPollingBalanceLoad = isLoadingBalances && !isPollingUpdate;
+  const isNonPollingTxLoad = isLoadingTxs && !isPollingUpdate;
 
   const isLoading =
     navigationLoading ||
     isNetworkChanging ||
     isConnecting ||
     isSwitchingAccount ||
+    isNonPollingBalanceLoad ||
+    isNonPollingTxLoad ||
     additionalLoadingConditions.some((condition) => condition);
 
   // Handle network operation timeout (switching or non-polling balance load)
@@ -72,8 +85,13 @@ export const usePageLoadingState = (
       return;
     }
 
-    // Timeout for network switching OR non-polling balance loads (like after unlock/retry) OR connecting
-    if (isNetworkChanging || isNonPollingBalanceLoad || isConnecting) {
+    // Timeout for network switching OR non-polling balance/transaction loads (like after unlock/retry) OR connecting
+    if (
+      isNetworkChanging ||
+      isNonPollingBalanceLoad ||
+      isNonPollingTxLoad ||
+      isConnecting
+    ) {
       // Set 10-second timeout for network operations
       timeoutRef.current = setTimeout(() => {
         setHasTimedOut(true);
@@ -92,6 +110,7 @@ export const usePageLoadingState = (
   }, [
     isNetworkChanging,
     isNonPollingBalanceLoad,
+    isNonPollingTxLoad,
     isConnecting,
     shouldEnableTimeout,
   ]);
@@ -149,7 +168,7 @@ export const usePageLoadingState = (
   }
 
   return {
-    isLoading,
+    isLoading: isOnExcludedPage ? false : isLoading,
     message,
     hasTimedOut,
   };
