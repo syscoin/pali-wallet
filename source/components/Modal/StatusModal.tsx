@@ -50,7 +50,7 @@ export const StatusModal = ({
     <Transition appear show={show} as={Fragment}>
       <Dialog
         as="div"
-        className={`fixed z-30 ${position} overflow-y-auto  rounded-[20px]`}
+        className={`fixed z-[60] ${position} overflow-y-auto  rounded-[20px]`}
         onClose={handleOnClose}
       >
         <div className="fixed z-0 -inset-0 w-full bg-transparent bg-opacity-50 transition-all duration-300 ease-in-out" />
