@@ -173,12 +173,12 @@ export const PALI_NETWORKS_STATE = {
     [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
     [CHAIN_IDS.ETHEREUM_MAINNET]: {
       chainId: CHAIN_IDS.ETHEREUM_MAINNET,
-      url: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      url: 'https://eth.llamarpc.com',
       label: 'Ethereum Mainnet',
       default: true,
       currency: 'eth',
       explorer: 'https://etherscan.io/',
-      apiUrl: 'https://api.etherscan.io/api',
+      apiUrl: 'https://eth.blockscout.com/api',
       kind: INetworkType.Ethereum,
       slip44: 60, // Ethereum
       coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
@@ -189,8 +189,8 @@ export const PALI_NETWORKS_STATE = {
       currency: 'matic',
       default: true,
       label: 'Polygon Mainnet',
-      url: 'https://polygon-rpc.com/',
-      apiUrl: 'https://api.polygonscan.com/api',
+      url: 'https://polygon-rpc.com',
+      apiUrl: 'https://polygon.blockscout.com/api',
       explorer: 'https://polygonscan.com',
       kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44
