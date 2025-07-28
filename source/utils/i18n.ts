@@ -113,7 +113,7 @@ const initI18next = async () => {
     fallbackLng: fallbackLng,
     fallbackNS: 'translation',
     keySeparator: '.',
-    interpolation: { escapeValue: false },
+    interpolation: { escapeValue: true },
     saveMissing: true,
     saveMissingTo: 'all',
     missingKeyHandler: (lng, ns, key) => {
