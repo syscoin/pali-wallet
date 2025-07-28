@@ -356,7 +356,7 @@ export const showErrorNotification = async (
   }
 
   return createNotification({
-    title: i18next.t('notifications.error'),
+    title: i18next.t('buttons.error'),
     message: context
       ? i18next.t('notifications.errorOccurred', {
           message: `${error}: ${context}`,

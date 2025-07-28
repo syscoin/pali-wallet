@@ -79,7 +79,8 @@ export const SendConfirm = () => {
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   // Removed unused haveError state
 
-  const { isEIP1559Compatible } = useEIP1559();
+  const { isEIP1559Compatible, forceRecheck: forceEIP1559Recheck } =
+    useEIP1559();
   const [copied, copy] = useCopyClipboard();
 
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
@@ -89,6 +90,10 @@ export const SendConfirm = () => {
     Map<string, any>
   >(new Map());
   const [isCalculatingFees, setIsCalculatingFees] = useState(false);
+  const [feeCalculationError, setFeeCalculationError] = useState<string | null>(
+    null
+  );
+  const [retryTrigger, setRetryTrigger] = useState(0);
 
   // Handle both normal navigation and restoration
   const basicTxValues = state.tx;
@@ -102,6 +107,33 @@ export const SendConfirm = () => {
     baseFee: 0,
     gasPrice: 0,
   });
+
+  // Manual retry function for fee calculation
+  const retryFeeCalculation = () => {
+    setFeeCalculationError(null);
+    setIsCalculatingFees(false);
+
+    // For EVM networks, also recheck EIP1559 compatibility
+    if (!isBitcoinBased) {
+      forceEIP1559Recheck();
+    }
+
+    // Force recalculation by clearing cache for current params
+    const cacheKey = JSON.stringify({
+      sender: basicTxValues.sender,
+      receivingAddress: basicTxValues.receivingAddress,
+      chainId: activeNetwork.chainId,
+      isEIP1559Compatible,
+      amount: basicTxValues.amount,
+    });
+    setFeeCalculationCache((prev) => {
+      const newCache = new Map(prev);
+      newCache.delete(cacheKey);
+      return newCache;
+    });
+    // Trigger recalculation
+    setRetryTrigger((prev) => prev + 1);
+  };
 
   // Save navigation state when confirm page loads to preserve transaction data and return context
   useEffect(() => {
@@ -136,12 +168,15 @@ export const SendConfirm = () => {
   );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {
+    if (feeCalculationError) {
+      return t('buttons.error');
+    }
     if (
       currentFee === undefined ||
       currentFee === null ||
       isNaN(Number(currentFee))
     ) {
-      return 'Calculating...';
+      return t('send.calculating');
     }
     return `${removeScientificNotation(currentFee)} ${
       activeNetwork.currency
@@ -215,7 +250,6 @@ export const SendConfirm = () => {
   // Stabilize functions to prevent useEffect re-runs
   const stableControllerEmitter = useRef(controllerEmitter);
   const stableNavigate = useRef(navigate);
-  const stableAlert = useRef(alert);
   const stableT = useRef(t);
   const stableGetLegacyGasPrice = useRef(getLegacyGasPrice);
 
@@ -223,7 +257,6 @@ export const SendConfirm = () => {
   useEffect(() => {
     stableControllerEmitter.current = controllerEmitter;
     stableNavigate.current = navigate;
-    stableAlert.current = alert;
     stableT.current = t;
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [controllerEmitter, navigate, alert, t, getLegacyGasPrice]);
@@ -972,11 +1005,16 @@ export const SendConfirm = () => {
   useEffect(() => {
     if (isBitcoinBased) return;
     if (isEIP1559Compatible === undefined) {
-      return; // Not calculate fees before being aware of EIP1559 compatibility
+      return; // Wait for EIP1559 compatibility check to complete
     }
 
     // Skip fee recalculation when using custom fees
     if (customFee.isCustom) {
+      return;
+    }
+
+    // If we have an error from a previous attempt, don't retry automatically
+    if (feeCalculationError) {
       return;
     }
 
@@ -1002,8 +1040,14 @@ export const SendConfirm = () => {
     }
 
     if (isEIP1559Compatible === false) {
+      // Don't retry if we already have an error
+      if (feeCalculationError || isCalculatingFees) {
+        return;
+      }
+
       const getLegacyFeeRecomendation = async () => {
         setIsCalculatingFees(true);
+        setFeeCalculationError(null); // Clear any previous errors
         try {
           const { gasLimit, gasPrice: _gasPrice } =
             await stableGetLegacyGasPrice.current();
@@ -1015,8 +1059,30 @@ export const SendConfirm = () => {
             gasPrice: _gasPrice,
           };
           setTxObjectState(formattedTxObject);
-        } catch (error) {
+
+          // Cache the successful result
+          setFeeCalculationCache(
+            (prev) =>
+              new Map(prev.set(cacheKey, { gasLimit, gasPrice: _gasPrice }))
+          );
+        } catch (error: any) {
           console.error('Legacy fee calculation error:', error);
+
+          // Check if this is a rate limiting error
+          const isRateLimited =
+            error.message?.includes('rate limit') ||
+            error.message?.includes('Rate limit') ||
+            error.message?.includes('<!DOCTYPE html>') ||
+            error.message?.includes('cloudflare') ||
+            error.message?.includes('Error 1015') ||
+            error.message?.includes('429') ||
+            error.message?.includes('authentication may be required');
+
+          if (isRateLimited) {
+            setFeeCalculationError(t('send.networkBusy'));
+          } else {
+            setFeeCalculationError(t('send.unableToCalculateFees'));
+          }
         } finally {
           setIsCalculatingFees(false);
         }
@@ -1062,6 +1128,7 @@ export const SendConfirm = () => {
     // Debounce fee calculation to prevent rapid successive calls
     const timeoutId = setTimeout(async () => {
       setIsCalculatingFees(true);
+      setFeeCalculationError(null); // Clear any previous errors
 
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
@@ -1122,17 +1189,11 @@ export const SendConfirm = () => {
           error.message?.includes('429');
 
         if (isRateLimited) {
-          // For rate limiting, show a more specific error and don't navigate away immediately
-          stableAlert.current.error(
-            'Network is temporarily busy. Please wait a moment and try again.'
-          );
-          console.warn(
-            'Rate limiting detected, not navigating away to allow retry'
+          setFeeCalculationError(
+            'Network is temporarily busy. Click to retry.'
           );
         } else {
-          // For other errors, show the generic fee error and navigate away
-          stableAlert.current.error(stableT.current('send.feeError'));
-          stableNavigate.current(-1);
+          setFeeCalculationError('Unable to calculate fees. Click to retry.');
         }
       } finally {
         setIsCalculatingFees(false);
@@ -1152,6 +1213,8 @@ export const SendConfirm = () => {
     customFee.isCustom,
     isCalculatingFees,
     cachedGasData,
+    feeCalculationError, // Added feeCalculationError to dependencies
+    retryTrigger, // Added retryTrigger to dependencies
     // Removed unstable dependencies: controllerEmitter, navigate, alert, t, getLegacyGasPrice
   ]);
 
@@ -1332,6 +1395,33 @@ export const SendConfirm = () => {
                   {t('send.estimatedGasFee')}
                   <span className="text-white text-xs">
                     {(() => {
+                      if (feeCalculationError) {
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
+                              <Icon
+                                name="warning"
+                                className="w-3 h-3 text-warning-error"
+                              />
+                              <span className="text-warning-error text-xs">
+                                {t('send.unableToLoad')}
+                              </span>
+                            </div>
+                            <Tooltip content={feeCalculationError}>
+                              <IconButton
+                                onClick={retryFeeCalculation}
+                                className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+                              >
+                                <Icon
+                                  name="reload"
+                                  className="w-3.5 h-3.5 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
+                                />
+                              </IconButton>
+                            </Tooltip>
+                          </div>
+                        );
+                      }
+
                       let feeAmount;
                       if (
                         basicTxValues.fee !== undefined &&
@@ -1365,21 +1455,21 @@ export const SendConfirm = () => {
                     })()}
                   </span>
                 </div>
-                {!isBitcoinBased && !basicTxValues.token?.isNft
-                  ? !isBitcoinBased &&
-                    isEIP1559Compatible && (
-                      <span
-                        className="hover:text-fields-input-borderfocus pb-[3px]"
-                        onClick={() => setIsOpenEditFeeModal(true)}
-                      >
-                        <Icon
-                          name="EditTx"
-                          isSvg
-                          className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
-                        />{' '}
-                      </span>
-                    )
-                  : null}
+                {!isBitcoinBased &&
+                  !basicTxValues.token?.isNft &&
+                  !feeCalculationError &&
+                  (isEIP1559Compatible ? (
+                    <span
+                      className="hover:text-fields-input-borderfocus pb-[3px]"
+                      onClick={() => setIsOpenEditFeeModal(true)}
+                    >
+                      <Icon
+                        name="EditTx"
+                        isSvg
+                        className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </span>
+                  ) : null)}
               </div>
             )}
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
@@ -1391,19 +1481,43 @@ export const SendConfirm = () => {
                     {(() => {
                       // For ERC20 tokens, handle differently since we can't combine token amount + ETH fee into single fiat value
                       if (basicTxValues.token && !basicTxValues.token.isNft) {
-                        const gasFeeFiat = getFeeFiatAmount(getCalculatedFee);
+                        const gasFeeFiat = feeCalculationError
+                          ? null
+                          : getFeeFiatAmount(getCalculatedFee);
 
                         return (
                           <div className="flex flex-col">
                             <span>
                               {basicTxValues.amount}{' '}
-                              {basicTxValues.token.symbol} + Gas Fee
+                              {basicTxValues.token.symbol}
+                              {t('send.plusGasFee')}
                             </span>
-                            {gasFeeFiat && (
-                              <span className="text-brand-gray200 text-xs">
-                                Gas Fee: ≈ {gasFeeFiat}
+                            {feeCalculationError ? (
+                              <span className="text-xs flex items-center gap-1 mt-1">
+                                <div className="flex items-center gap-1 px-2 py-0.5 bg-warning-error bg-opacity-10 rounded">
+                                  <Icon
+                                    name="warning"
+                                    className="w-3 h-3 text-warning-error"
+                                  />
+                                  <span className="text-warning-error">
+                                    {t('send.feeUnavailable')}
+                                  </span>
+                                </div>
+                                <IconButton
+                                  onClick={retryFeeCalculation}
+                                  className="p-0.5 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+                                >
+                                  <Icon
+                                    name="reload"
+                                    className="w-3 h-3 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
+                                  />
+                                </IconButton>
                               </span>
-                            )}
+                            ) : gasFeeFiat ? (
+                              <span className="text-brand-gray200 text-xs">
+                                {t('send.gasFeeApprox')} {gasFeeFiat}
+                              </span>
+                            ) : null}
                           </div>
                         );
                       }
@@ -1412,7 +1526,13 @@ export const SendConfirm = () => {
                       let totalAmount;
                       let totalCrypto;
 
-                      if (basicTxValues.fee !== undefined) {
+                      // If there's a fee calculation error, just show the amount without fee
+                      if (feeCalculationError) {
+                        totalAmount = basicTxValues.amount;
+                        totalCrypto = currency(basicTxValues.amount, {
+                          precision: 8,
+                        }).format({ symbol: '' });
+                      } else if (basicTxValues.fee !== undefined) {
                         // For MAX sends, don't add fee to amount since amount is already (balance - fee)
                         if (basicTxValues.isMax) {
                           totalAmount = basicTxValues.amount;
@@ -1490,8 +1610,13 @@ export const SendConfirm = () => {
                           <span>
                             {removeScientificNotation(totalCrypto)}{' '}
                             {activeNetwork.currency.toUpperCase()}
+                            {feeCalculationError && (
+                              <span className="text-xs text-brand-gray200 ml-1">
+                                {t('send.plusFees')}
+                              </span>
+                            )}
                           </span>
-                          {totalFiatAmount && (
+                          {totalFiatAmount && !feeCalculationError && (
                             <span className="text-brand-gray200 text-xs">
                               ≈ {totalFiatAmount}
                             </span>
@@ -1506,6 +1631,33 @@ export const SendConfirm = () => {
                   {t('send.fee')}
                   <span className="text-white text-xs">
                     {(() => {
+                      if (feeCalculationError) {
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
+                              <Icon
+                                name="warning"
+                                className="w-3 h-3 text-warning-error"
+                              />
+                              <span className="text-warning-error text-xs">
+                                {t('send.unableToLoad')}
+                              </span>
+                            </div>
+                            <Tooltip content={feeCalculationError}>
+                              <IconButton
+                                onClick={retryFeeCalculation}
+                                className="p-1 hover:bg-brand-blue600 rounded-full transition-all duration-200"
+                              >
+                                <Icon
+                                  name="reload"
+                                  className="w-3.5 h-3.5 text-brand-gray200 hover:text-white cursor-pointer transition-colors"
+                                />
+                              </IconButton>
+                            </Tooltip>
+                          </div>
+                        );
+                      }
+
                       let feeAmount;
 
                       if (isBitcoinBased) {
@@ -1589,7 +1741,11 @@ export const SendConfirm = () => {
 
             <Button
               type="button"
-              disabled={confirmed}
+              disabled={
+                confirmed ||
+                isCalculatingFees ||
+                (!isBitcoinBased && !!feeCalculationError)
+              }
               loading={loading}
               onClick={handleConfirm}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"

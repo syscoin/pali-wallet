@@ -9,6 +9,11 @@ import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 // Cache EIP1559 compatibility per chainId
 const eip1559Cache = new Map<number, boolean>();
 
+// Export a function to clear cache for a specific chainId
+export const clearEIP1559CacheForChain = (chainId: number) => {
+  eip1559Cache.delete(chainId);
+};
+
 export const useEIP1559 = () => {
   const { controllerEmitter } = useController();
   const { activeNetwork, isBitcoinBased } = useSelector(
@@ -19,6 +24,15 @@ export const useEIP1559 = () => {
   >(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const lastCheckedChainId = useRef<number | null>(null);
+  const [forceRecheckTrigger, setForceRecheckTrigger] = useState(0);
+
+  const forceRecheck = () => {
+    if (activeNetwork?.chainId) {
+      clearEIP1559CacheForChain(activeNetwork.chainId);
+      setIsEIP1559Compatible(undefined); // Reset to trigger loading state
+      setForceRecheckTrigger((prev) => prev + 1);
+    }
+  };
 
   useEffect(() => {
     const checkEIP1559Compatibility = async () => {
@@ -62,7 +76,12 @@ export const useEIP1559 = () => {
     };
 
     checkEIP1559Compatibility();
-  }, [activeNetwork?.chainId, isBitcoinBased, controllerEmitter]);
+  }, [
+    activeNetwork?.chainId,
+    isBitcoinBased,
+    controllerEmitter,
+    forceRecheckTrigger,
+  ]);
 
-  return { isEIP1559Compatible, isLoading };
+  return { isEIP1559Compatible, isLoading, forceRecheck };
 };
