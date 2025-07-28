@@ -651,11 +651,19 @@ class MainController {
         }
 
         // Clear any event listeners if keyring extends EventEmitter
-        if (
-          keyring &&
-          typeof (keyring as any).removeAllListeners === 'function'
-        ) {
-          (keyring as any).removeAllListeners();
+        try {
+          if (
+            keyring &&
+            typeof (keyring as any).removeAllListeners === 'function'
+          ) {
+            (keyring as any).removeAllListeners();
+          }
+        } catch (listenerError) {
+          console.error(
+            `Failed to remove listeners for keyring ${slip44}:`,
+            listenerError
+          );
+          // Continue with disposal even if listener removal fails
         }
 
         // If keyring has any other cleanup methods, call them here
@@ -1461,8 +1469,20 @@ class MainController {
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
         // Fetch fresh fiat prices immediately after successful unlock
-        this.setFiat();
-        this.getLatestUpdateForCurrentAccount(false, true); // Force update after unlock
+        Promise.all([
+          this.setFiat().catch((error) =>
+            console.error(
+              '[MainController] Failed to set fiat after unlock:',
+              error
+            )
+          ),
+          this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
+            console.error(
+              '[MainController] Failed to update account after unlock:',
+              error
+            )
+          ),
+        ]);
       }, 10);
 
       // Start auto-lock timer (always enabled)
@@ -2576,7 +2596,12 @@ class MainController {
     this.saveWalletState('import-account-private-key', true);
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing private key
+      this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
+        console.error(
+          '[MainController] Failed to update account after importing private key:',
+          error
+        )
+      );
     }, 10);
 
     return importedAccount;
