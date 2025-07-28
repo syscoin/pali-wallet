@@ -83,7 +83,11 @@ export const handleListeners = (masterController: IMasterController) => {
 
     // Handle fiat price updates - only the initial update since unlock/create wallet handle immediate updates
     if (alarm.name === 'update_fiat_price_initial') {
-      masterController.wallet.setFiat();
+      masterController.wallet
+        .setFiat()
+        .catch((error) =>
+          console.error('Error updating fiat price from alarm:', error)
+        );
     }
 
     // Handle auto-lock timer
@@ -91,7 +95,11 @@ export const handleListeners = (masterController: IMasterController) => {
       console.log(
         '🔒 handleListeners: Auto-lock timer triggered, locking wallet'
       );
-      masterController.wallet.lock();
+      try {
+        masterController.wallet.lock();
+      } catch (error) {
+        console.error('Error locking wallet from auto-lock timer:', error);
+      }
     }
   };
 

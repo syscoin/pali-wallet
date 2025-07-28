@@ -27,16 +27,13 @@ export const handleMasterControllerResponses = (
       }
 
       if (typeof targetMethod === 'function' || importMethod) {
-        new Promise(async (resolve, reject) => {
-          try {
+        Promise.resolve()
+          .then(async () => {
             const response = importMethod
               ? targetMethod
               : await (targetMethod as any)(...params);
-            resolve(response);
-          } catch (error) {
-            reject(error);
-          }
-        })
+            return response;
+          })
           .then(sendResponse)
           .catch((error) => {
             console.error('Error executing method:', error);

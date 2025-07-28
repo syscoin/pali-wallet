@@ -585,6 +585,29 @@ class MainController {
     });
   }
 
+  // Clear all pending timers to prevent memory leaks
+  private clearAllTimers(): void {
+    // Clear save timeout
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
+    // Clear auto-lock reset timeout
+    if (this.autoLockResetTimeout) {
+      clearTimeout(this.autoLockResetTimeout);
+      this.autoLockResetTimeout = null;
+    }
+
+    // Clear all rapid polling timeouts
+    this.activeRapidPolls.forEach((timeoutId) => {
+      clearTimeout(timeoutId);
+    });
+    this.activeRapidPolls.clear();
+
+    console.log('[MainController] Cleared all pending timers');
+  }
+
   // Properly dispose of keyring instances to prevent memory leaks
   private disposeAllKeyrings(): void {
     this.keyrings.forEach((keyring, slip44) => {
@@ -627,6 +650,14 @@ class MainController {
           }
         }
 
+        // Clear any event listeners if keyring extends EventEmitter
+        if (
+          keyring &&
+          typeof (keyring as any).removeAllListeners === 'function'
+        ) {
+          (keyring as any).removeAllListeners();
+        }
+
         // If keyring has any other cleanup methods, call them here
         // Note: KeyringManager doesn't have a dispose method, but we've cleaned up its major components
       } catch (error) {
@@ -637,6 +668,9 @@ class MainController {
         // Continue with other keyrings even if one fails
       }
     });
+
+    // Clear the keyrings map after disposal
+    this.keyrings.clear();
   }
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
@@ -729,7 +763,20 @@ class MainController {
   }
 
   private async setSignerNetwork(network: INetwork) {
-    // Set network switching flag for UI/logging purposes only
+    // Acquire network switch lock to prevent concurrent switches
+    const NETWORK_LOCK_KEY = 'pali_network_switch_lock';
+    const LOCK_TIMEOUT = 30000; // 30 seconds
+
+    const lockAcquired = await this.acquireNetworkSwitchLock(
+      NETWORK_LOCK_KEY,
+      LOCK_TIMEOUT
+    );
+
+    if (!lockAcquired) {
+      throw new Error('Another network switch is in progress');
+    }
+
+    // Set network switching flag for UI/logging purposes
     this.isNetworkSwitching = true;
 
     try {
@@ -743,10 +790,108 @@ class MainController {
     } finally {
       // Clear network switching flag
       this.isNetworkSwitching = false;
+
+      // Release the lock
+      await chromeStorage.removeItem(NETWORK_LOCK_KEY);
     }
   }
 
   // Fiat price fetching functionality moved from ControllerUtils
+  // Helper method to acquire a network switch lock
+  private async acquireNetworkSwitchLock(
+    lockKey: string,
+    lockTimeout: number
+  ): Promise<boolean> {
+    try {
+      const now = Date.now();
+      const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
+
+      // Check if a lock already exists
+      const existing = await chromeStorage.getItem(lockKey);
+
+      if (existing && now - existing.timestamp < lockTimeout) {
+        console.log('🔒 Network switch already in progress');
+        return false;
+      }
+
+      // Set the lock
+      await chromeStorage.setItem(lockKey, {
+        timestamp: now,
+        instance: chrome.runtime.id,
+        lockId,
+      });
+
+      // Verify we got the lock
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const verification = await chromeStorage.getItem(lockKey);
+
+      if (verification && verification.lockId === lockId) {
+        console.log('🔓 Acquired network switch lock');
+        return true;
+      }
+
+      console.log('🔒 Failed to acquire network switch lock');
+      return false;
+    } catch (error) {
+      console.error('Error acquiring network switch lock:', error);
+      return false;
+    }
+  }
+
+  // Helper method to acquire a lock with proper race condition handling
+  private async acquireFiatUpdateLock(
+    lockKey: string,
+    lockTimeout: number,
+    maxRetries: number
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const now = Date.now();
+        const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
+
+        // Atomic check-and-set using chrome.storage.sync operations
+        const storageResult = await chromeStorage.getItem(lockKey);
+        const existing = storageResult;
+
+        // Check if lock is expired or doesn't exist
+        if (!existing || now - existing.timestamp > lockTimeout) {
+          // Set the lock
+          await chromeStorage.setItem(lockKey, {
+            timestamp: now,
+            instance: chrome.runtime.id,
+            lockId,
+          });
+
+          // Verify we got the lock (small delay to let storage propagate)
+          await new Promise((resolve) => setTimeout(resolve, 50));
+
+          const verification = await chromeStorage.getItem(lockKey);
+          if (verification && verification.lockId === lockId) {
+            console.log(`🔓 Acquired global lock (attempt ${attempt + 1})`);
+            return true;
+          }
+
+          console.log(`🔒 Lost race condition (attempt ${attempt + 1})`);
+        } else {
+          console.log(
+            `🔒 Lock held by another instance (attempt ${attempt + 1})`
+          );
+        }
+
+        // Wait before retry with exponential backoff
+        if (attempt < maxRetries - 1) {
+          const delay = Math.min(100 * Math.pow(2, attempt), 1000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      } catch (error) {
+        console.error('Error acquiring lock:', error);
+      }
+    }
+
+    console.log('🔒 Max retries reached, could not acquire lock');
+    return false;
+  }
+
   public async setFiat(currency?: string): Promise<void> {
     // Use Chrome storage as a global lock across all background script instances
     const FIAT_LOCK_KEY = 'pali_setfiat_lock';
@@ -759,77 +904,11 @@ class MainController {
 
     try {
       // Check and set global lock with retry mechanism
-      const lockResult = await new Promise<boolean>((resolve) => {
-        let retryCount = 0;
-
-        const attemptLock = async () => {
-          try {
-            const storageResult = await chromeStorage.getItem(FIAT_LOCK_KEY);
-            const existing = storageResult;
-            const now = Date.now();
-
-            // If no lock exists or lock is expired, acquire it
-            if (!existing || now - existing.timestamp > LOCK_TIMEOUT) {
-              // Use a unique identifier to detect race conditions
-              const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
-              await chromeStorage.setItem(FIAT_LOCK_KEY, {
-                timestamp: now,
-                instance: chrome.runtime.id,
-                lockId,
-              });
-
-              // Double-check that we actually got the lock (detect race conditions)
-              setTimeout(async () => {
-                try {
-                  const doubleCheck = await chromeStorage.getItem(
-                    FIAT_LOCK_KEY
-                  );
-                  const currentLock = doubleCheck;
-                  if (currentLock && currentLock.lockId === lockId) {
-                    console.log(
-                      `🔓 setFiat: Acquired global lock (attempt ${
-                        retryCount + 1
-                      }), proceeding`
-                    );
-                    resolve(true);
-                  } else {
-                    console.log(
-                      `🔒 setFiat: Lost race condition (attempt ${
-                        retryCount + 1
-                      }), retrying...`
-                    );
-                    retryCount++;
-                    if (retryCount < MAX_RETRIES) {
-                      setTimeout(
-                        attemptLock,
-                        Math.floor(Math.random() * 200) + 100
-                      ); // 100-300ms delay
-                    } else {
-                      console.log('🔒 setFiat: Max retries reached, skipping');
-                      resolve(false);
-                    }
-                  }
-                } catch (error) {
-                  console.error('🔒 setFiat: Error in double-check:', error);
-                  resolve(false);
-                }
-              }, 10); // Small delay for double-check
-            } else {
-              console.log(
-                `🔒 setFiat: Global lock held by another instance (attempt ${
-                  retryCount + 1
-                }), skipping`
-              );
-              resolve(false);
-            }
-          } catch (error) {
-            console.error('🔒 setFiat: Error in attemptLock:', error);
-            resolve(false);
-          }
-        };
-
-        attemptLock();
-      });
+      const lockResult = await this.acquireFiatUpdateLock(
+        FIAT_LOCK_KEY,
+        LOCK_TIMEOUT,
+        MAX_RETRIES
+      );
 
       if (!lockResult) {
         return; // Another instance is handling it
@@ -1136,6 +1215,9 @@ class MainController {
     await this.forgetMainWallet(pwd);
 
     // Now proceed with cleanup since password is valid
+    // Clear all timers first to prevent any background operations
+    this.clearAllTimers();
+
     // Properly dispose of all keyrings to prevent memory leaks
     this.disposeAllKeyrings();
 
@@ -1744,8 +1826,21 @@ class MainController {
       this.saveWalletState('create-wallet', true);
 
       setTimeout(() => {
-        this.setFiat();
-        this.getLatestUpdateForCurrentAccount(false, true); // Force update after wallet creation
+        // Wrap in try-catch to prevent unhandled errors
+        Promise.all([
+          this.setFiat().catch((error) =>
+            console.error(
+              '[MainController] Failed to set fiat after wallet creation:',
+              error
+            )
+          ),
+          this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
+            console.error(
+              '[MainController] Failed to update account after wallet creation:',
+              error
+            )
+          ),
+        ]);
       }, 10);
     } catch (error) {
       console.error('[MainController] Failed to create wallet:', error);
@@ -1755,6 +1850,10 @@ class MainController {
 
   public lock() {
     const controller = getController();
+
+    // Clear any pending timers before locking
+    this.clearAllTimers();
+
     this.logout();
 
     // Stop auto-lock timer when wallet is locked
@@ -1861,7 +1960,12 @@ class MainController {
     }
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true); // Force update after account creation
+      this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
+        console.error(
+          '[MainController] Failed to update account after creation:',
+          error
+        )
+      );
     }, 10);
     return newAccount;
   }
