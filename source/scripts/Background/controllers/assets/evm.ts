@@ -20,6 +20,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
+import { isZeroBalance } from 'utils/balance';
 
 import {
   discoverNftTokens,
@@ -84,104 +85,87 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return [];
     }
 
-    try {
-      console.log(
-        `[EvmAssetsController] Fetching user tokens from API: ${apiUrl}`
-      );
+    console.log(
+      `[EvmAssetsController] Fetching user tokens from API: ${apiUrl}`
+    );
 
-      // Parse API URL and construct tokenlist endpoint
-      const url = new URL(apiUrl);
-      const baseUrl = `${url.protocol}//${url.host}`;
+    // Parse API URL and construct tokenlist endpoint
+    const url = new URL(apiUrl);
+    const baseUrl = `${url.protocol}//${url.host}`;
 
-      // Build the token list URL using proper URL API
-      const tokenListUrl = new URL(`${baseUrl}/api`);
+    // Build the token list URL using proper URL API
+    const tokenListUrl = new URL(`${baseUrl}/api`);
 
-      // Extract API key if it's already in the original URL
-      const existingApiKey = url.searchParams.get('apikey');
+    // Extract API key if it's already in the original URL
+    const existingApiKey = url.searchParams.get('apikey');
 
-      // Build the API request
-      tokenListUrl.searchParams.set('module', 'account');
-      tokenListUrl.searchParams.set('action', 'tokenlist');
-      tokenListUrl.searchParams.set('address', walletAddress);
+    // Build the API request
+    tokenListUrl.searchParams.set('module', 'account');
+    tokenListUrl.searchParams.set('action', 'tokenlist');
+    tokenListUrl.searchParams.set('address', walletAddress);
 
-      // Preserve the API key if it was in the original URL
-      if (existingApiKey) {
-        tokenListUrl.searchParams.set('apikey', existingApiKey);
-      }
+    // Preserve the API key if it was in the original URL
+    if (existingApiKey) {
+      tokenListUrl.searchParams.set('apikey', existingApiKey);
+    }
 
-      const response = await retryableFetch(tokenListUrl.toString());
+    const response = await retryableFetch(tokenListUrl.toString());
 
-      if (!response.ok) {
-        console.warn(
-          `[EvmAssetsController] API request failed with status ${response.status}. This may indicate the API URL is incorrect or the service is unavailable.`
-        );
-        return [];
-      }
+    if (!response.ok) {
+      throw new Error(`API request failed with status ${response.status}`);
+    }
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (data.status !== '1' || !data.result) {
-        console.warn(
-          `[EvmAssetsController] API returned error or no tokens:`,
-          data.message || 'No results'
-        );
-        return [];
-      }
-
-      const tokens = data.result;
-
-      // Helper function to detect tokens with invisible/funny characters in name
-      const hasInvisibleChars = (name: string): boolean => {
-        if (!name) return false;
-
-        // Check for zero-width spaces and other invisible Unicode characters
-        return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(
-          name
-        );
-      };
-
-      // Convert to ITokenSearchResult format and filter out tokens with funny characters
-      const results: ITokenSearchResult[] = tokens
-        .filter((token: any) => !hasInvisibleChars(token.name || '')) // Filter out tokens with invisible chars in name
-        .map((token: any) => {
-          // Check if it's an NFT based on type
-          const tokenType = token.type || 'ERC-20';
-          const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
-
-          return {
-            id: `${token.contractAddress.toLowerCase()}-${
-              activeNetwork.chainId
-            }`,
-            symbol: cleanTokenSymbol(token.symbol || 'Unknown'),
-            name: token.name || 'Unknown Token', // Keep names intact - they can have spaces
-            contractAddress: token.contractAddress,
-            balance: isNft
-              ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
-              : parseFloat(token.balance) /
-                Math.pow(10, parseInt(token.decimals) || 18),
-            decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
-            tokenStandard: tokenType,
-          };
-        });
-
-      console.log(
-        `[EvmAssetsController] Found ${
-          results.length
-        } valid tokens via API (filtered ${
-          tokens.length - results.length
-        } tokens with invisible characters)`
-      );
-      return results;
-    } catch (error) {
-      console.error(
-        `[EvmAssetsController] Error fetching tokens from API:`,
-        error
-      );
+    if (data.status !== '1' || !data.result) {
       console.warn(
-        `[EvmAssetsController] API token discovery failed for ${activeNetwork.label}. This may indicate the API URL is incorrect or the service doesn't provide token listing APIs.`
+        `[EvmAssetsController] API returned error or no tokens:`,
+        data.message || 'No results'
       );
+      // This is a legitimate "no tokens" response from the API
       return [];
     }
+
+    const tokens = data.result;
+
+    // Helper function to detect tokens with invisible/funny characters in name
+    const hasInvisibleChars = (name: string): boolean => {
+      if (!name) return false;
+
+      // Check for zero-width spaces and other invisible Unicode characters
+      return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(name);
+    };
+
+    // Convert to ITokenSearchResult format and filter out tokens with funny characters
+    const results: ITokenSearchResult[] = tokens
+      .filter((token: any) => !hasInvisibleChars(token.name || '')) // Filter out tokens with invisible chars in name
+      .map((token: any) => {
+        // Check if it's an NFT based on type
+        const tokenType = token.type || 'ERC-20';
+        const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
+
+        return {
+          id: `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
+          symbol: cleanTokenSymbol(token.symbol || 'Unknown'),
+          name: token.name || 'Unknown Token', // Keep names intact - they can have spaces
+          contractAddress: token.contractAddress,
+          balance: isNft
+            ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
+            : parseFloat(token.balance) /
+              Math.pow(10, parseInt(token.decimals) || 18),
+          decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
+          tokenStandard: tokenType,
+        };
+      });
+
+    console.log(
+      `[EvmAssetsController] Found ${
+        results.length
+      } valid tokens via API (filtered ${
+        tokens.length - results.length
+      } tokens with invisible characters)`
+    );
+    return results;
   };
 
   /**
@@ -216,77 +200,69 @@ const EvmAssetsController = (): IEvmAssetsController => {
         w3Provider
       );
 
+      // Make all calls in parallel - this is 4 ETH calls total
+      const [name, symbol, decimals, balanceRaw] = await Promise.all([
+        contract.name(),
+        contract.symbol(),
+        contract.decimals(),
+        contract.balanceOf(walletAddress),
+      ]);
+
+      // Calculate the formatted balance
+      const balance = Number(balanceRaw) / Math.pow(10, decimals);
+      const formattedBalance = Math.floor(balance * 10000) / 10000;
+
+      // Lightweight token type detection (optional, non-blocking)
+      let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
       try {
-        // Make all calls in parallel - this is 4 ETH calls total
-        const [name, symbol, decimals, balanceRaw] = await Promise.all([
-          contract.name(),
-          contract.symbol(),
-          contract.decimals(),
-          contract.balanceOf(walletAddress),
+        // Check for ERC-777 interface (0xe58e113c)
+        const [isERC777, isERC4626] = await Promise.all([
+          contract.supportsInterface('0xe58e113c').catch(() => false),
+          // Check for ERC-4626 by calling asset() function
+          contract
+            .asset()
+            .then(() => true)
+            .catch(() => false),
         ]);
 
-        // Calculate the formatted balance
-        const balance = Number(balanceRaw) / Math.pow(10, decimals);
-        const formattedBalance = Math.floor(balance * 10000) / 10000;
-
-        // Lightweight token type detection (optional, non-blocking)
-        let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
-        try {
-          // Check for ERC-777 interface (0xe58e113c)
-          const [isERC777, isERC4626] = await Promise.all([
-            contract.supportsInterface('0xe58e113c').catch(() => false),
-            // Check for ERC-4626 by calling asset() function
-            contract
-              .asset()
-              .then(() => true)
-              .catch(() => false),
-          ]);
-
-          if (isERC777) {
-            tokenStandard = 'ERC-777';
-          } else if (isERC4626) {
-            tokenStandard = 'ERC-4626';
-          }
-        } catch (interfaceError) {
-          // If interface detection fails, default to ERC-20
-          console.log(
-            '[EvmAssetsController] Interface detection failed, defaulting to ERC-20'
-          );
+        if (isERC777) {
+          tokenStandard = 'ERC-777';
+        } else if (isERC4626) {
+          tokenStandard = 'ERC-4626';
         }
-
-        // Create token details for ERC-20
-        const tokenDetails: ITokenDetails = {
-          id: `${contractAddress.toLowerCase()}-${
-            store.getState().vault.activeNetwork.chainId
-          }`,
-          symbol: cleanTokenSymbol(symbol).toUpperCase(),
-          name: name || symbol, // Keep names intact - they can have spaces
-          contractAddress,
-          decimals,
-          balance: formattedBalance,
-          chainId: store.getState().vault.activeNetwork.chainId,
-          tokenStandard,
-          isNft: false,
-          isVerified: false,
-        };
-
-        // Don't fetch CoinGecko data during validation - keep it lightweight
+      } catch (interfaceError) {
+        // If interface detection fails, default to ERC-20
         console.log(
-          `[EvmAssetsController] Validated ${tokenStandard} token ${symbol} with balance: ${formattedBalance}`
-        );
-        return tokenDetails;
-      } catch (error) {
-        // If any of the ERC-20 calls fail, it's not a valid ERC-20 token
-        throw new Error(
-          'Not a valid ERC-20 token. Please ensure the contract address is correct.'
+          '[EvmAssetsController] Interface detection failed, defaulting to ERC-20'
         );
       }
-    } catch (error) {
-      console.error(
-        '[EvmAssetsController] Error validating ERC-20 token:',
-        error
+
+      // Create token details for ERC-20
+      const tokenDetails: ITokenDetails = {
+        id: `${contractAddress.toLowerCase()}-${
+          store.getState().vault.activeNetwork.chainId
+        }`,
+        symbol: cleanTokenSymbol(symbol).toUpperCase(),
+        name: name || symbol, // Keep names intact - they can have spaces
+        contractAddress,
+        decimals,
+        balance: formattedBalance,
+        chainId: store.getState().vault.activeNetwork.chainId,
+        tokenStandard,
+        isNft: false,
+        isVerified: false,
+      };
+
+      // Don't fetch CoinGecko data during validation - keep it lightweight
+      console.log(
+        `[EvmAssetsController] Validated ${tokenStandard} token ${symbol} with balance: ${formattedBalance}`
       );
-      throw error;
+      return tokenDetails;
+    } catch (error) {
+      // If any of the ERC-20 calls fail, it's not a valid ERC-20 token
+      throw new Error(
+        'Not a valid ERC-20 token. Please ensure the contract address is correct.'
+      );
     }
   };
 
@@ -475,222 +451,189 @@ const EvmAssetsController = (): IEvmAssetsController => {
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(accountAssets)) return [];
 
-    try {
-      const { activeNetwork } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault;
 
-      // Filter assets for current network
-      const currentNetworkAssets = accountAssets.filter(
-        (asset) => asset.chainId === currentNetworkChainId
-      );
-      const otherNetworkAssets = accountAssets.filter(
-        (asset) => asset.chainId !== currentNetworkChainId
-      );
+    // Filter assets for current network
+    const currentNetworkAssets = accountAssets.filter(
+      (asset) => asset.chainId === currentNetworkChainId
+    );
+    const otherNetworkAssets = accountAssets.filter(
+      (asset) => asset.chainId !== currentNetworkChainId
+    );
 
-      // If API is available, use it for efficient batch updates
-      // Only use explicitly configured API URLs, not explorer URLs
-      const apiUrl = activeNetwork.apiUrl;
-      if (apiUrl) {
-        console.log(
-          `[EvmAssetsController] Using API for batch token update: ${apiUrl}`
-        );
-
-        try {
-          // Get all tokens from API in one call
-          const ownedTokens = await getUserOwnedTokens(account.address);
-
-          // Create a map of owned tokens for quick lookup
-          const ownedTokensMap = new Map(
-            ownedTokens.map((token) => [
-              token.contractAddress.toLowerCase(),
-              token,
-            ])
-          );
-
-          // Update existing assets with API data
-          const updatedAssets = await Promise.all(
-            currentNetworkAssets.map(async (asset) => {
-              const apiToken = ownedTokensMap.get(
-                asset.contractAddress.toLowerCase()
-              );
-
-              if (apiToken) {
-                // Token found in API - update balance
-                console.log(
-                  `[EvmAssetsController] Updating ${asset.tokenSymbol} balance from API: ${apiToken.balance}`
-                );
-
-                // For all tokens (including NFTs), use the balance from API
-                return {
-                  ...asset,
-                  balance: asset.isNft
-                    ? Math.floor(apiToken.balance) // NFTs need integer balances
-                    : apiToken.balance, // Keep full precision for regular tokens
-                };
-              } else {
-                // Token not in API response - set balance to 0 (as requested)
-                // This handles the case where API is set and balance query returns nothing
-                console.log(
-                  `[EvmAssetsController] Token ${asset.tokenSymbol} not found in API - setting balance to 0`
-                );
-
-                // Skip updating balance to 0 if it's already 0 (avoid unnecessary updates)
-                if (asset.balance === 0) {
-                  return asset;
-                }
-
-                return {
-                  ...asset,
-                  balance: 0,
-                };
-              }
-            })
-          );
-
-          // Combine updated assets with other network assets
-          const allAssets = [...updatedAssets, ...otherNetworkAssets];
-
-          return validateAndManageUserAssets(
-            true,
-            allAssets
-          ) as ITokenEthProps[];
-        } catch (apiError) {
-          console.error(
-            '[EvmAssetsController] API fetch failed, falling back to multicall:',
-            apiError
-          );
-          // Fall through to multicall approach
-        }
-      }
-
-      // No API available or API failed - use multicall3 for batch balance fetching
+    // If API is available, use it for efficient batch updates
+    // Only use explicitly configured API URLs, not explorer URLs
+    const apiUrl = activeNetwork.apiUrl;
+    if (apiUrl) {
       console.log(
-        `[EvmAssetsController] Using multicall3 for batch token balance updates`
+        `[EvmAssetsController] Using API for batch token update: ${apiUrl}`
       );
 
-      // Separate regular tokens from NFTs
-      const regularTokens = currentNetworkAssets.filter(
-        (asset) => !asset.isNft
+      // Get all tokens from API in one call
+      const ownedTokens = await getUserOwnedTokens(account.address);
+
+      // Create a map of owned tokens for quick lookup
+      const ownedTokensMap = new Map(
+        ownedTokens.map((token) => [token.contractAddress.toLowerCase(), token])
       );
-      const nftAssets = currentNetworkAssets.filter((asset) => asset.isNft);
 
-      // Use BatchBalanceController for regular ERC-20 tokens
-      let updatedRegularTokens: ITokenEthProps[] = [];
-      if (regularTokens.length > 0) {
-        const batchController = new BatchBalanceController(w3Provider);
+      // Update existing assets with API data
+      const updatedAssets = await Promise.all(
+        currentNetworkAssets.map(async (asset) => {
+          const apiToken = ownedTokensMap.get(
+            asset.contractAddress.toLowerCase()
+          );
 
-        const balances = await batchController.getBatchTokenBalances(
-          regularTokens,
-          account.address
-        );
-
-        updatedRegularTokens = regularTokens.map((token) => {
-          const balance = balances.get(token.contractAddress.toLowerCase());
-          return {
-            ...token,
-            balance: balance ? parseFloat(balance) : 0, // Keep full precision
-          };
-        });
-      }
-
-      // Handle NFTs separately (they need different ABI calls)
-      let updatedNftAssets: ITokenEthProps[] = [];
-      if (nftAssets.length > 0) {
-        // For NFTs, we still need individual calls or skip if ERC-1155
-        const queue = new Queue(3);
-        const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
-        let requestCount = 0;
-
-        // Queue each NFT individually - this ensures only 3 run at a time
-        nftAssets.forEach((nftAsset) => {
-          queue.execute(async () => {
-            // Add progressive delay for each request
-            if (requestCount > 0) {
-              await new Promise((resolve) =>
-                setTimeout(
-                  resolve,
-                  DELAY_BETWEEN_REQUESTS * Math.floor(requestCount / 3)
-                )
-              );
-            }
-            requestCount++;
-
-            const nftContractType = nftAsset.tokenStandard || 'ERC-721';
-
-            if (nftContractType === 'ERC-1155') {
-              // ERC-1155 collections cannot be updated via individual calls
-              console.log(
-                `[EvmAssetsController] Skipping ERC-1155 collection ${nftAsset.contractAddress} - requires API`
-              );
-              return nftAsset; // Return unchanged
-            }
-
-            // ERC-721: balanceOf(address) returns total count
-            const currentAbi = getErc21Abi();
-            const contract = new ethers.Contract(
-              nftAsset.contractAddress,
-              currentAbi,
-              w3Provider
+          if (apiToken) {
+            // Token found in API - update balance
+            console.log(
+              `[EvmAssetsController] Updating ${asset.tokenSymbol} balance from API: ${apiToken.balance}`
             );
 
-            try {
-              const balanceCallMethod = await contract.balanceOf(
-                account.address
-              );
-              const collectionBalance = Number(balanceCallMethod);
+            // For all tokens (including NFTs), use the balance from API
+            return {
+              ...asset,
+              balance: asset.isNft
+                ? Math.floor(apiToken.balance) // NFTs need integer balances
+                : apiToken.balance, // Keep full precision for regular tokens
+            };
+          } else {
+            // Token not in API response - set balance to 0 (as requested)
+            // This handles the case where API is set and balance query returns nothing
+            console.log(
+              `[EvmAssetsController] Token ${asset.tokenSymbol} not found in API - setting balance to 0`
+            );
 
-              console.log(
-                `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
-              );
-
-              return { ...nftAsset, balance: collectionBalance };
-            } catch (error) {
-              console.error(
-                `[EvmAssetsController] Failed to fetch NFT balance for ${nftAsset.contractAddress}:`,
-                error
-              );
-              return nftAsset; // Return unchanged on error
+            // Skip updating balance to 0 if it's already 0 (avoid unnecessary updates)
+            if (isZeroBalance(asset.balance)) {
+              return asset;
             }
-          });
-        });
 
-        const nftResults = await queue.done();
-        updatedNftAssets = nftResults
-          .filter((result) => result.success)
-          .map(({ result }) => result);
-      }
-
-      // Combine all updated assets
-      const allUpdatedAssets = [
-        ...updatedRegularTokens,
-        ...updatedNftAssets,
-        ...otherNetworkAssets,
-      ];
-
-      return validateAndManageUserAssets(
-        true,
-        allUpdatedAssets
-      ) as ITokenEthProps[];
-    } catch (error) {
-      console.error(
-        "Pali utils: Couldn't update assets due to the following issue ",
-        error
+            return {
+              ...asset,
+              balance: 0,
+            };
+          }
+        })
       );
-      return accountAssets;
+
+      // Combine updated assets with other network assets
+      const allAssets = [...updatedAssets, ...otherNetworkAssets];
+
+      return validateAndManageUserAssets(true, allAssets) as ITokenEthProps[];
     }
+
+    // No API available or API failed - use multicall3 for batch balance fetching
+    console.log(
+      `[EvmAssetsController] Using multicall3 for batch token balance updates`
+    );
+
+    // Separate regular tokens from NFTs
+    const regularTokens = currentNetworkAssets.filter((asset) => !asset.isNft);
+    const nftAssets = currentNetworkAssets.filter((asset) => asset.isNft);
+
+    // Use BatchBalanceController for regular ERC-20 tokens
+    let updatedRegularTokens: ITokenEthProps[] = [];
+    if (regularTokens.length > 0) {
+      const batchController = new BatchBalanceController(w3Provider);
+
+      const balances = await batchController.getBatchTokenBalances(
+        regularTokens,
+        account.address
+      );
+
+      updatedRegularTokens = regularTokens.map((token) => {
+        const balance = balances.get(token.contractAddress.toLowerCase());
+        return {
+          ...token,
+          balance: balance ? parseFloat(balance) : 0, // Keep full precision
+        };
+      });
+    }
+
+    // Handle NFTs separately (they need different ABI calls)
+    let updatedNftAssets: ITokenEthProps[] = [];
+    if (nftAssets.length > 0) {
+      // For NFTs, we still need individual calls or skip if ERC-1155
+      const queue = new Queue(3);
+      const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
+      let requestCount = 0;
+
+      // Queue each NFT individually - this ensures only 3 run at a time
+      nftAssets.forEach((nftAsset) => {
+        queue.execute(async () => {
+          // Add progressive delay for each request
+          if (requestCount > 0) {
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                DELAY_BETWEEN_REQUESTS * Math.floor(requestCount / 3)
+              )
+            );
+          }
+          requestCount++;
+
+          const nftContractType = nftAsset.tokenStandard || 'ERC-721';
+
+          if (nftContractType === 'ERC-1155') {
+            // ERC-1155 collections cannot be updated via individual calls
+            console.log(
+              `[EvmAssetsController] Skipping ERC-1155 collection ${nftAsset.contractAddress} - requires API`
+            );
+            return nftAsset; // Return unchanged
+          }
+
+          // ERC-721: balanceOf(address) returns total count
+          const currentAbi = getErc21Abi();
+          const contract = new ethers.Contract(
+            nftAsset.contractAddress,
+            currentAbi,
+            w3Provider
+          );
+
+          try {
+            const balanceCallMethod = await contract.balanceOf(account.address);
+            const collectionBalance = Number(balanceCallMethod);
+
+            console.log(
+              `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
+            );
+
+            return { ...nftAsset, balance: collectionBalance };
+          } catch (error) {
+            console.error(
+              `[EvmAssetsController] Failed to fetch NFT balance for ${nftAsset.contractAddress}:`,
+              error
+            );
+            return nftAsset; // Return unchanged on error
+          }
+        });
+      });
+
+      const nftResults = await queue.done();
+      updatedNftAssets = nftResults
+        .filter((result) => result.success)
+        .map(({ result }) => result);
+    }
+
+    // Combine all updated assets
+    const allUpdatedAssets = [
+      ...updatedRegularTokens,
+      ...updatedNftAssets,
+      ...otherNetworkAssets,
+    ];
+
+    return validateAndManageUserAssets(
+      true,
+      allUpdatedAssets
+    ) as ITokenEthProps[];
   };
 
   // Wrapper methods for UI components to use via controllerEmitter
   const checkContractType = async (
     contractAddress: string,
     w3Provider: CustomJsonRpcProvider
-  ) => {
-    try {
-      return await contractChecker(contractAddress, w3Provider);
-    } catch (error) {
-      console.error('Error checking contract type:', error);
-      throw error;
-    }
-  };
+  ) => await contractChecker(contractAddress, w3Provider);
 
   const getERC20TokenInfo = async (
     contractAddress: string,
@@ -1171,64 +1114,103 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
-    try {
-      console.log(
-        `[EvmAssetsController] Validating NFT contract: ${contractAddress}`
-      );
+    console.log(
+      `[EvmAssetsController] Validating NFT contract: ${contractAddress}`
+    );
 
-      // Get contract type first
-      const contractTypeResponse = await contractChecker(
-        contractAddress,
-        w3Provider
-      );
+    // Get contract type first
+    const contractTypeResponse = await contractChecker(
+      contractAddress,
+      w3Provider
+    );
 
-      if (String(contractTypeResponse).includes('Invalid contract address')) {
-        console.error(
-          `[EvmAssetsController] Invalid contract address: ${contractAddress}`
+    if (String(contractTypeResponse).includes('Invalid contract address')) {
+      console.error(
+        `[EvmAssetsController] Invalid contract address: ${contractAddress}`
+      );
+      return null;
+    }
+
+    const contractType = (contractTypeResponse as any).type;
+
+    // Only allow NFT contracts
+    if (!['ERC-721', 'ERC-1155'].includes(contractType)) {
+      throw new Error(
+        'Not an NFT contract. Please ensure the contract address is for an ERC-721 or ERC-1155 token.'
+      );
+    }
+
+    console.log(
+      `[EvmAssetsController] Detected ${contractType} NFT contract: ${contractAddress}`
+    );
+
+    const { activeNetwork } = store.getState().vault;
+    let nftDetails: ITokenDetails;
+
+    if (contractType === 'ERC-721') {
+      // ERC-721: Can get balance using balanceOf(address) - returns total count
+      try {
+        // First get NFT metadata (name/symbol) using proper NFT ABI
+        const nftMetadata = await getNftStandardMetadata(
+          contractAddress,
+          w3Provider
         );
-        return null;
-      }
 
-      const contractType = (contractTypeResponse as any).type;
-
-      // Only allow NFT contracts
-      if (!['ERC-721', 'ERC-1155'].includes(contractType)) {
-        throw new Error(
-          'Not an NFT contract. Please ensure the contract address is for an ERC-721 or ERC-1155 token.'
+        // Then get balance using ERC-721 specific balance function
+        const balance = await getERC721StandardBalance(
+          contractAddress,
+          walletAddress,
+          w3Provider
         );
-      }
 
-      console.log(
-        `[EvmAssetsController] Detected ${contractType} NFT contract: ${contractAddress}`
-      );
+        nftDetails = {
+          id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
+          symbol: cleanTokenSymbol(nftMetadata.symbol).toUpperCase(),
+          name:
+            nftMetadata.name ||
+            cleanTokenSymbol(nftMetadata.symbol).toUpperCase(), // Use name if available, fallback to symbol
+          contractAddress,
+          decimals: 0, // NFTs always have 0 decimals
+          balance: Number(balance) || 0,
+          chainId: activeNetwork.chainId,
+          tokenStandard: contractType as any,
+          isNft: true,
+          isVerified: false,
+        };
 
-      const { activeNetwork } = store.getState().vault;
-      let nftDetails: ITokenDetails;
+        console.log(
+          `[EvmAssetsController] ERC-721 balance detected: ${nftDetails.balance} NFTs, symbol: ${nftDetails.symbol}`
+        );
+      } catch (error) {
+        console.warn(
+          `[EvmAssetsController] Failed to get ERC-721 metadata/balance:`,
+          error
+        );
 
-      if (contractType === 'ERC-721') {
-        // ERC-721: Can get balance using balanceOf(address) - returns total count
+        // Fallback to manual contract calls
+        const contract = new ethers.Contract(
+          contractAddress,
+          [
+            'function name() view returns (string)',
+            'function symbol() view returns (string)',
+            'function balanceOf(address) view returns (uint256)',
+          ],
+          w3Provider
+        );
+
         try {
-          // First get NFT metadata (name/symbol) using proper NFT ABI
-          const nftMetadata = await getNftStandardMetadata(
-            contractAddress,
-            w3Provider
-          );
-
-          // Then get balance using ERC-721 specific balance function
-          const balance = await getERC721StandardBalance(
-            contractAddress,
-            walletAddress,
-            w3Provider
-          );
+          const [name, symbol, balance] = await Promise.all([
+            contract.name().catch(() => 'Unknown Collection'),
+            contract.symbol().catch(() => 'UNKNOWN'),
+            contract.balanceOf(walletAddress).catch(() => 0),
+          ]);
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: cleanTokenSymbol(nftMetadata.symbol).toUpperCase(),
-            name:
-              nftMetadata.name ||
-              cleanTokenSymbol(nftMetadata.symbol).toUpperCase(), // Use name if available, fallback to symbol
+            symbol: cleanTokenSymbol(symbol).toUpperCase(),
+            name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
             contractAddress,
-            decimals: 0, // NFTs always have 0 decimals
+            decimals: 0,
             balance: Number(balance) || 0,
             chainId: activeNetwork.chainId,
             tokenStandard: contractType as any,
@@ -1237,111 +1219,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
           };
 
           console.log(
-            `[EvmAssetsController] ERC-721 balance detected: ${nftDetails.balance} NFTs, symbol: ${nftDetails.symbol}`
+            `[EvmAssetsController] ERC-721 fallback successful: ${nftDetails.symbol}`
           );
-        } catch (error) {
-          console.warn(
-            `[EvmAssetsController] Failed to get ERC-721 metadata/balance:`,
-            error
-          );
-
-          // Fallback to manual contract calls
-          const contract = new ethers.Contract(
-            contractAddress,
-            [
-              'function name() view returns (string)',
-              'function symbol() view returns (string)',
-              'function balanceOf(address) view returns (uint256)',
-            ],
-            w3Provider
-          );
-
-          try {
-            const [name, symbol, balance] = await Promise.all([
-              contract.name().catch(() => 'Unknown Collection'),
-              contract.symbol().catch(() => 'UNKNOWN'),
-              contract.balanceOf(walletAddress).catch(() => 0),
-            ]);
-
-            nftDetails = {
-              id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-              symbol: cleanTokenSymbol(symbol).toUpperCase(),
-              name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
-              contractAddress,
-              decimals: 0,
-              balance: Number(balance) || 0,
-              chainId: activeNetwork.chainId,
-              tokenStandard: contractType as any,
-              isNft: true,
-              isVerified: false,
-            };
-
-            console.log(
-              `[EvmAssetsController] ERC-721 fallback successful: ${nftDetails.symbol}`
-            );
-          } catch (contractError) {
-            console.error(
-              `[EvmAssetsController] ERC-721 contract calls failed:`,
-              contractError
-            );
-
-            nftDetails = {
-              id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-              symbol: 'UNKNOWN',
-              name: 'Unknown Collection',
-              contractAddress,
-              decimals: 0,
-              balance: 0,
-              chainId: activeNetwork.chainId,
-              tokenStandard: contractType as any,
-              isNft: true,
-              isVerified: false,
-            };
-          }
-        }
-      } else {
-        // ERC-1155: Cannot get balance without specific token IDs
-        // Need to use basic contract metadata (name/symbol) without balance
-        const contract = new ethers.Contract(
-          contractAddress,
-          [
-            'function name() view returns (string)',
-            'function symbol() view returns (string)',
-          ],
-          w3Provider
-        );
-
-        try {
-          const [name, symbol] = await Promise.all([
-            contract.name().catch(() => 'Unknown'),
-            contract.symbol().catch(() => 'Unknown'),
-          ]);
-
-          nftDetails = {
-            id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: cleanTokenSymbol(symbol).toUpperCase(),
-            name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
-            contractAddress,
-            decimals: 0, // NFTs always have 0 decimals
-            balance: 0, // ERC-1155 balance requires specific token IDs - will be updated when user enters them
-            chainId: activeNetwork.chainId,
-            tokenStandard: contractType as any,
-            isNft: true,
-            isVerified: false,
-          };
-
-          console.log(
-            `[EvmAssetsController] ERC-1155 contract detected - balance requires token IDs`
-          );
-        } catch (error) {
-          console.warn(
-            `[EvmAssetsController] Failed to get ERC-1155 basic metadata:`,
-            error
+        } catch (contractError) {
+          console.error(
+            `[EvmAssetsController] ERC-721 contract calls failed:`,
+            contractError
           );
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: 'Unknown',
+            symbol: 'UNKNOWN',
             name: 'Unknown Collection',
             contractAddress,
             decimals: 0,
@@ -1353,23 +1241,70 @@ const EvmAssetsController = (): IEvmAssetsController => {
           };
         }
       }
-
-      // Don't fetch CoinGecko data during validation - keep it lightweight
-      console.log(`[EvmAssetsController] NFT contract validation complete:`, {
-        contract: contractAddress,
-        type: contractType,
-        balance: nftDetails.balance,
-        symbol: nftDetails.symbol,
-      });
-
-      return nftDetails;
-    } catch (error) {
-      console.error(
-        '[EvmAssetsController] Error validating NFT contract:',
-        error
+    } else {
+      // ERC-1155: Cannot get balance without specific token IDs
+      // Need to use basic contract metadata (name/symbol) without balance
+      const contract = new ethers.Contract(
+        contractAddress,
+        [
+          'function name() view returns (string)',
+          'function symbol() view returns (string)',
+        ],
+        w3Provider
       );
-      throw error;
+
+      try {
+        const [name, symbol] = await Promise.all([
+          contract.name().catch(() => 'Unknown'),
+          contract.symbol().catch(() => 'Unknown'),
+        ]);
+
+        nftDetails = {
+          id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
+          symbol: cleanTokenSymbol(symbol).toUpperCase(),
+          name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
+          contractAddress,
+          decimals: 0, // NFTs always have 0 decimals
+          balance: 0, // ERC-1155 balance requires specific token IDs - will be updated when user enters them
+          chainId: activeNetwork.chainId,
+          tokenStandard: contractType as any,
+          isNft: true,
+          isVerified: false,
+        };
+
+        console.log(
+          `[EvmAssetsController] ERC-1155 contract detected - balance requires token IDs`
+        );
+      } catch (error) {
+        console.warn(
+          `[EvmAssetsController] Failed to get ERC-1155 basic metadata:`,
+          error
+        );
+
+        nftDetails = {
+          id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
+          symbol: 'Unknown',
+          name: 'Unknown Collection',
+          contractAddress,
+          decimals: 0,
+          balance: 0,
+          chainId: activeNetwork.chainId,
+          tokenStandard: contractType as any,
+          isNft: true,
+          isVerified: false,
+        };
+      }
     }
+
+    // Don't fetch CoinGecko data during validation - keep it lightweight
+    console.log(`[EvmAssetsController] NFT contract validation complete:`, {
+      contract: contractAddress,
+      type: contractType,
+      balance: nftDetails.balance,
+      symbol: nftDetails.symbol,
+    });
+
+    return nftDetails;
   };
 
   return {

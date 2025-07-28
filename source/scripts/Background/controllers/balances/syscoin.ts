@@ -11,89 +11,81 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
-    try {
-      const requestDetails = 'details=basic&pageSize=0';
+    const requestDetails = 'details=basic&pageSize=0';
 
-      const accountData = await fetchBackendAccountCached(
-        networkUrl,
-        currentAccount.xpub,
-        requestDetails,
-        true
-      );
+    const accountData = await fetchBackendAccountCached(
+      networkUrl,
+      currentAccount.xpub,
+      requestDetails,
+      true
+    );
 
-      // Validate and parse balance values with proper error handling
-      const parseBalance = (value: any): number => {
-        // Handle missing or invalid values
-        if (value === undefined || value === null) {
-          console.warn(
-            '[SyscoinBalanceController] Missing balance value, defaulting to 0'
-          );
-          return 0;
-        }
-
-        // Convert to string and trim whitespace
-        const stringValue = String(value).trim();
-
-        // Handle empty strings
-        if (stringValue === '') {
-          console.warn(
-            '[SyscoinBalanceController] Empty balance value, defaulting to 0'
-          );
-          return 0;
-        }
-
-        // Parse the number
-        const parsed = Number(stringValue);
-
-        // Check for NaN or invalid numbers
-        if (isNaN(parsed) || !isFinite(parsed)) {
-          console.error(
-            '[SyscoinBalanceController] Invalid balance value:',
-            value
-          );
-          return 0;
-        }
-
-        return parsed;
-      };
-
-      // Parse balance and unconfirmedBalance safely
-      const confirmedBalance = parseBalance(accountData?.balance);
-      const unconfirmedBalance = parseBalance(accountData?.unconfirmedBalance);
-
-      // Convert from satoshis to SYS
-      const confirmedBalanceInSys = confirmedBalance / 1e8;
-      const unconfirmedBalanceInSys = unconfirmedBalance / 1e8;
-
-      // For display purposes, show the total spendable balance
-      // This includes confirmed balance + pending incoming (positive unconfirmed)
-      // but excludes pending outgoing (negative unconfirmed) to avoid confusion
-      let displayBalance: number;
-
-      if (unconfirmedBalanceInSys >= 0) {
-        // Positive unconfirmed means incoming transaction - add to total
-        displayBalance = confirmedBalanceInSys + unconfirmedBalanceInSys;
-      } else {
-        // Negative unconfirmed means outgoing transaction
-        // Show only confirmed balance to avoid confusion
-        // The pending transaction might fail or be replaced
-        displayBalance = confirmedBalanceInSys;
+    // Validate and parse balance values with proper error handling
+    const parseBalance = (value: any): number => {
+      // Handle missing or invalid values
+      if (value === undefined || value === null) {
+        console.warn(
+          '[SyscoinBalanceController] Missing balance value, defaulting to 0'
+        );
+        return 0;
       }
 
-      // Ensure balance is not negative (should not happen with the logic above)
-      const formattedBalance = Math.max(0, displayBalance);
+      // Convert to string and trim whitespace
+      const stringValue = String(value).trim();
 
-      //Prevent to send undefined from verifyZeros when formattedBalance is 0
-      return formattedBalance > 0
-        ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
-        : '0';
-    } catch (error) {
-      console.error(
-        '[SyscoinBalanceController] Failed to fetch balance:',
-        error
-      );
-      throw error; // Properly propagate the error instead of masking it
+      // Handle empty strings
+      if (stringValue === '') {
+        console.warn(
+          '[SyscoinBalanceController] Empty balance value, defaulting to 0'
+        );
+        return 0;
+      }
+
+      // Parse the number
+      const parsed = Number(stringValue);
+
+      // Check for NaN or invalid numbers
+      if (isNaN(parsed) || !isFinite(parsed)) {
+        console.error(
+          '[SyscoinBalanceController] Invalid balance value:',
+          value
+        );
+        return 0;
+      }
+
+      return parsed;
+    };
+
+    // Parse balance and unconfirmedBalance safely
+    const confirmedBalance = parseBalance(accountData?.balance);
+    const unconfirmedBalance = parseBalance(accountData?.unconfirmedBalance);
+
+    // Convert from satoshis to SYS
+    const confirmedBalanceInSys = confirmedBalance / 1e8;
+    const unconfirmedBalanceInSys = unconfirmedBalance / 1e8;
+
+    // For display purposes, show the total spendable balance
+    // This includes confirmed balance + pending incoming (positive unconfirmed)
+    // but excludes pending outgoing (negative unconfirmed) to avoid confusion
+    let displayBalance: number;
+
+    if (unconfirmedBalanceInSys >= 0) {
+      // Positive unconfirmed means incoming transaction - add to total
+      displayBalance = confirmedBalanceInSys + unconfirmedBalanceInSys;
+    } else {
+      // Negative unconfirmed means outgoing transaction
+      // Show only confirmed balance to avoid confusion
+      // The pending transaction might fail or be replaced
+      displayBalance = confirmedBalanceInSys;
     }
+
+    // Ensure balance is not negative (should not happen with the logic above)
+    const formattedBalance = Math.max(0, displayBalance);
+
+    //Prevent to send undefined from verifyZeros when formattedBalance is 0
+    return formattedBalance > 0
+      ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
+      : '0';
   };
 
   return {

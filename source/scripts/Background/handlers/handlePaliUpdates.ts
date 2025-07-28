@@ -97,7 +97,10 @@ const releaseUpdateLock = () => {
   });
 };
 
-export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {
+export async function checkForUpdates(
+  isPolling?: boolean,
+  isRapidPolling?: boolean
+): Promise<boolean> {
   // Try to acquire cross-context lock
   const hasLock = await acquireUpdateLock();
   if (!hasLock) {
@@ -132,7 +135,11 @@ export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {
     // Always use direct controller call since we're already in the background
     // This avoids unnecessary errors when popup is closed
     try {
-      await getController().wallet.getLatestUpdateForCurrentAccount(isPolling);
+      await getController().wallet.getLatestUpdateForCurrentAccount(
+        isPolling,
+        false, // forceUpdate
+        isRapidPolling
+      );
 
       // Save main state after successful update (excludes vault data)
       await saveMainState();

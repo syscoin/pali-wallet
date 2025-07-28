@@ -227,7 +227,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
         onBalanceLoad(balanceValue);
       }
     } catch (err) {
-      console.error('Failed to fetch balance:', err);
       setError('Failed to load balance');
       setIsLoading(false);
       setBalance('0'); // Default to 0 on error

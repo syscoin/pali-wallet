@@ -86,6 +86,7 @@ import {
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
+import { areBalancesDifferent } from 'utils/balance';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
@@ -2589,10 +2590,12 @@ class MainController {
     isBitcoinBased,
     activeNetwork,
     isPolling = false,
+    isRapidPolling = false,
   }: {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean;
+    isRapidPolling?: boolean;
   }) {
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
@@ -2630,7 +2633,8 @@ class MainController {
                 activeNetwork.url,
                 web3Provider,
                 currentAccountTxs,
-                isPolling
+                isPolling,
+                isRapidPolling
               );
 
             // Dispatch transactions for both UTXO and EVM
@@ -2652,7 +2656,6 @@ class MainController {
             }
             resolve();
           } catch (error) {
-            console.error('Error fetching transactions:', error);
             reject(error);
             // Don't clear loading state on error - let it stay until successful update
           }
@@ -2970,7 +2973,7 @@ class MainController {
     // Check if account exists before proceeding
     if (!currentAccount) {
       console.warn('[updateAssetsFromCurrentAccount] Active account not found');
-      store.dispatch(setIsLoadingBalances(false));
+      store.dispatch(setIsLoadingAssets(false));
       return Promise.resolve();
     }
 
@@ -3157,8 +3160,9 @@ class MainController {
             const actualUserBalance = isBitcoinBased
               ? currentAccount.balances[INetworkType.Syscoin]
               : currentAccount.balances[INetworkType.Ethereum];
-            const validateIfCanDispatch = Boolean(
-              Number(actualUserBalance) !== parseFloat(updatedBalance)
+            const validateIfCanDispatch = areBalancesDifferent(
+              actualUserBalance,
+              updatedBalance
             );
 
             if (validateIfCanDispatch) {
@@ -3193,11 +3197,6 @@ class MainController {
               })
             );
 
-            console.error(
-              `[MainController] Balance update failed after ${latency}ms:`,
-              error
-            );
-
             reject(error);
             // Don't clear loading state on error - let it stay until successful update
             // This keeps the status indicator visible when RPC is failing
@@ -3217,7 +3216,8 @@ class MainController {
 
   public async getLatestUpdateForCurrentAccount(
     isPolling = false,
-    forceUpdate = false // Force update even if just unlocked
+    forceUpdate = false, // Force update even if just unlocked
+    isRapidPolling = false // Skip expensive operations for rapid polling
   ): Promise<boolean> {
     // Set polling state early so getActiveKeyring knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
@@ -3348,6 +3348,7 @@ class MainController {
         isBitcoinBased,
         activeNetwork,
         isPolling,
+        isRapidPolling,
       }),
       this.updateUserNativeBalance({
         isBitcoinBased,
@@ -3366,12 +3367,6 @@ class MainController {
 
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
-        const updateNames = ['assets', 'transactions', 'balance'];
-        console.error(
-          `[MainController] Failed to update ${updateNames[index]}:`,
-          result.reason
-        );
-
         // Track which specific operations failed
         if (index === 0) assetsFailed = true;
         if (index === 1) transactionsFailed = true;
@@ -3399,11 +3394,14 @@ class MainController {
     }
 
     // If any core operation failed, set network status to error so timeout/error handling can trigger chain error page
+    // But only for non-polling updates - we don't want to show error UI during background polling
     if (balanceFailed || transactionsFailed || assetsFailed) {
-      console.error(
-        '[MainController] Account update failed - setting network status to error',
-        { balanceFailed, transactionsFailed, assetsFailed }
-      );
+      console.error('[MainController] Account update failed', {
+        balanceFailed,
+        transactionsFailed,
+        assetsFailed,
+        isPolling,
+      });
       store.dispatch(switchNetworkError());
     } else {
       // Balance succeeded - check if we need to clear connecting, switching, or error state
@@ -3497,7 +3495,9 @@ class MainController {
       );
 
       try {
-        await checkForUpdates(false);
+        // Pass true for isPolling to handle errors silently
+        // Pass true for isRapidPolling to skip expensive RPC scanning
+        await checkForUpdates(true, true);
         // Check current transaction state before polling
         const { accountTransactions, activeAccount, activeNetwork } =
           store.getState().vault;
@@ -4672,10 +4672,6 @@ class MainController {
 
       return balance;
     } catch (error) {
-      console.error(
-        '[MainController] Failed to fetch balance for account:',
-        error
-      );
       // Return 0 on error to allow UI to continue functioning
       return '0';
     }

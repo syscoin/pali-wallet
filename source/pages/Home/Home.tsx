@@ -18,6 +18,7 @@ import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
+import { toNumericBalance } from 'utils/balance';
 import {
   formatMillionNumber,
   formatFullPrecisionBalance,
@@ -214,15 +215,15 @@ export const Home = () => {
   );
 
   const moreThanMillion = useMemo(
-    () => parseFloat(actualBalance) >= ONE_MILLION,
+    () => toNumericBalance(actualBalance) >= ONE_MILLION,
     [actualBalance]
   );
 
   const fiatPriceValue = useMemo(() => {
-    const numBalance = parseFloat(actualBalance);
-    if (!numBalance) return '';
+    const numBalance = toNumericBalance(actualBalance);
+    // Always return fiat amount, even for zero balance
     return getFiatAmount(
-      numBalance > 0 ? numBalance : 0,
+      numBalance,
       4,
       String(fiatAsset).toUpperCase(),
       true,
@@ -270,7 +271,7 @@ export const Home = () => {
   useEffect(() => {
     const canShowFaucet =
       isFaucetAvailable &&
-      parseFloat(actualBalance) === 0 &&
+      toNumericBalance(actualBalance) === 0 &&
       !isLoadingBalance &&
       !isSwitchingAccount &&
       !isPostNetworkSwitchLoading && // Don't show during post-switch loading

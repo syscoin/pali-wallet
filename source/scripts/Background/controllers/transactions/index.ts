@@ -46,7 +46,8 @@ const TransactionsManager = (): ITransactionsManager => {
     activeNetworkUrl: string,
     web3Provider: CustomJsonRpcProvider,
     accountTransactions?: IAccountTransactions,
-    isPolling?: boolean
+    isPolling?: boolean,
+    isRapidPolling?: boolean
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -74,38 +75,33 @@ const TransactionsManager = (): ITransactionsManager => {
         return cachedResult.data;
       }
     }
-    try {
-      let result;
-      if (isBitcoinBased) {
-        result = await SysTransactionController().pollingSysTransactions(
-          currentAccount.xpub,
-          activeNetworkUrl
-        );
-      } else {
-        if (!web3Provider) {
-          console.error('No valid web3Provider for EVM transaction polling');
-          return [];
-        }
-        result = await EvmTransactionsController().pollingEvmTransactions(
-          web3Provider,
-          isPolling
-        );
+    let result;
+    if (isBitcoinBased) {
+      result = await SysTransactionController().pollingSysTransactions(
+        currentAccount.xpub,
+        activeNetworkUrl
+      );
+    } else {
+      if (!web3Provider) {
+        console.error('No valid web3Provider for EVM transaction polling');
+        return [];
       }
-      // Cache the result only if no pending transactions
-      // This prevents caching stale confirmation data
-      if (!hasUnconfirmedTxs) {
-        transactionCache.set(cacheKey, {
-          data: result,
-          timestamp: Date.now(),
-        });
-      }
-
-      return result;
-    } catch (error) {
-      console.error('Transaction polling error:', error);
-      // Re-throw the error so it propagates up and keeps loading state active
-      throw error;
+      result = await EvmTransactionsController().pollingEvmTransactions(
+        web3Provider,
+        isPolling,
+        isRapidPolling
+      );
     }
+    // Cache the result only if no pending transactions
+    // This prevents caching stale confirmation data
+    if (!hasUnconfirmedTxs) {
+      transactionCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now(),
+      });
+    }
+
+    return result;
   };
   const clearCache = () => {
     transactionCache.clear();

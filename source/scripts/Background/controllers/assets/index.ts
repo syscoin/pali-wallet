@@ -20,47 +20,39 @@ const AssetsManager = (): IAssetsManager => {
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
-        try {
-          const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
-            currentAccount.xpub,
-            activeNetworkUrl,
-            networkChainId
-          );
+        const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
+          currentAccount.xpub,
+          activeNetworkUrl,
+          networkChainId
+        );
 
-          return {
-            ...currentAssets,
-            syscoin: getSysAssets,
-          };
-        } catch (sysUpdateError) {
-          return sysUpdateError;
-        }
+        return {
+          ...currentAssets,
+          syscoin: getSysAssets,
+        };
 
       case false:
-        try {
-          if (!web3Provider) {
-            console.error('No valid web3Provider for EVM assets fetching');
-            return {
-              ...currentAssets,
-              ethereum: [],
-            };
-          }
-
-          // Create EVM controller fresh with current provider
-          const assetsController = EvmAssetsController();
-          const getEvmAssets = await assetsController.updateAllEvmTokens(
-            currentAccount,
-            networkChainId,
-            web3Provider,
-            currentAssets.ethereum || []
-          );
-
+        if (!web3Provider) {
+          console.error('No valid web3Provider for EVM assets fetching');
           return {
             ...currentAssets,
-            ethereum: getEvmAssets,
+            ethereum: [],
           };
-        } catch (evmUpdateError) {
-          return evmUpdateError;
         }
+
+        // Create EVM controller fresh with current provider
+        const assetsController = EvmAssetsController();
+        const getEvmAssets = await assetsController.updateAllEvmTokens(
+          currentAccount,
+          networkChainId,
+          web3Provider,
+          currentAssets.ethereum || []
+        );
+
+        return {
+          ...currentAssets,
+          ethereum: getEvmAssets,
+        };
     }
   };
 

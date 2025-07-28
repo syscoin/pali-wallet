@@ -193,11 +193,6 @@ export class BatchBalanceController {
             balance: formattedBalance,
           };
         } catch (error) {
-          console.error(
-            `[BatchBalanceController] Failed to fetch balance for ${token.tokenSymbol}:`,
-            error
-          );
-
           // Store 0 balance on error
           balances.set(token.contractAddress.toLowerCase(), '0');
 

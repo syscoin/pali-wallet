@@ -15,6 +15,7 @@ import {
   setNetworks,
 } from 'state/vaultGlobal';
 import { IDAppController } from 'types/controllers';
+import { INetwork } from 'types/network';
 import {
   ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_UTXO_MAINNET_NETWORK,
@@ -124,7 +125,7 @@ const MasterController = (
       Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
         externalStore.dispatch(
           setNetwork({
-            network: network,
+            network: network as INetwork,
             isEdit: true, // Mark as edit to preserve existing custom networks
           })
         );
