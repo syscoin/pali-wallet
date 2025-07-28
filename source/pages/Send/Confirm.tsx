@@ -24,7 +24,7 @@ import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
-import { ISyscoinTransactionError, INetworkType } from 'types/network';
+import { INetworkType } from 'types/network';
 import {
   truncate,
   logError,
@@ -40,6 +40,11 @@ import {
   isDeviceLockedError,
   isBlindSigningError,
 } from 'utils/isUserCancellationError';
+import {
+  sanitizeSyscoinError,
+  sanitizeErrorMessage,
+  isSyscoinLibError,
+} from 'utils/syscoinErrorSanitizer';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -312,14 +317,14 @@ export const SendConfirm = () => {
             }
 
             // Handle structured errors from syscoinjs-lib
-            if (error.error && error.code) {
-              const sysError = error as ISyscoinTransactionError;
+            if (isSyscoinLibError(error)) {
+              const sanitizedError = sanitizeSyscoinError(error);
 
-              switch (sysError.code) {
+              switch (sanitizedError.code) {
                 case 'INSUFFICIENT_FUNDS':
                   alert.error(
                     t('send.insufficientFundsDetails', {
-                      shortfall: sysError.shortfall?.toFixed(8) || '0',
+                      shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
                       currency: activeNetwork.currency.toUpperCase(),
                     })
                   );
@@ -328,8 +333,9 @@ export const SendConfirm = () => {
                 case 'SUBTRACT_FEE_FAILED':
                   alert.error(
                     t('send.subtractFeeFailedDetails', {
-                      fee: sysError.fee?.toFixed(8) || '0',
-                      remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                      fee: sanitizedError.fee?.toFixed(8) || '0',
+                      remainingFee:
+                        sanitizedError.remainingFee?.toFixed(8) || '0',
                       currency: activeNetwork.currency.toUpperCase(),
                     })
                   );
@@ -344,19 +350,22 @@ export const SendConfirm = () => {
                   break;
 
                 case 'TRANSACTION_SEND_FAILED':
-                  // Parse error message to extract meaningful part
-                  let errorMsg = sysError.message;
+                  // Parse error message to extract meaningful part - sanitized message is already safe
+                  let errorMsg = sanitizedError.message || '';
                   try {
-                    // Check if the message contains JSON error details
+                    // Check if the sanitized message contains JSON error details
                     const detailsMatch = errorMsg.match(/Details:\s*({.*})/);
                     if (detailsMatch) {
                       const errorDetails = JSON.parse(detailsMatch[1]);
                       if (errorDetails.error) {
-                        errorMsg = `Transaction failed: ${errorDetails.error}`;
+                        // Re-sanitize the extracted error in case it contains unsafe content
+                        errorMsg = `Transaction failed: ${sanitizeErrorMessage(
+                          errorDetails.error
+                        )}`;
                       }
                     }
                   } catch (e) {
-                    // If parsing fails, use the original message
+                    // If parsing fails, use the sanitized message
                   }
 
                   alert.error(
@@ -369,26 +378,22 @@ export const SendConfirm = () => {
                 default:
                   if (basicTxValues.fee > 0.00001) {
                     alert.error(
-                      `${truncate(String(sysError.message), 166)} ${t(
+                      `${truncate(sanitizedError.message || '', 166)} ${t(
                         'send.reduceFee'
                       )}`
                     );
                   } else {
-                    alert.error(
-                      t('send.transactionCreationFailedWithCode', {
-                        code: sysError.code,
-                        message: sysError.message,
-                      })
-                    );
+                    // Bypass i18n interpolation to prevent additional encoding
+                    const confirmErrorMessage = `Transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
+                    alert.error(confirmErrorMessage);
                   }
               }
             } else {
               // Fallback for non-structured errors
+              const sanitizedMessage = sanitizeErrorMessage(error);
               if (error && basicTxValues.fee > 0.00001) {
                 alert.error(
-                  `${truncate(String(error.message || error), 166)} ${t(
-                    'send.reduceFee'
-                  )}`
+                  `${truncate(sanitizedMessage, 166)} ${t('send.reduceFee')}`
                 );
               } else {
                 alert.error(t('send.cantCompleteTxs'));

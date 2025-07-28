@@ -447,7 +447,6 @@
     "invalidAmount": "Ungültiger Betrag. Bitte geben Sie einen gültigen Betrag ein.",
     "invalidTokenId": "Ungültige Token-ID. Bitte geben Sie eine gültige Token-ID ein.",
     "invalidAssetAllocation": "Ungültige Asset-Zuteilung. Token GUID {{guid}} wurde nicht gefunden oder ist ungültig.",
-    "transactionCreationFailedWithCode": "Transaktionserstellung fehlgeschlagen ({{code}}): {{message}}",
     "transactionSendFailed": "Transaktionsversendung fehlgeschlagen: {{message}}",
     "networkBusy": "Das Netzwerk ist vorübergehend ausgelastet. Klicken Sie zum Wiederholen.",
     "unableToCalculateFees": "Gebühren können nicht berechnet werden. Klicken Sie zum Wiederholen.",

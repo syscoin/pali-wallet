@@ -17,7 +17,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
-import { ISyscoinTransactionError, INetworkType } from 'types/network';
+import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
 import {
   truncate,
@@ -31,6 +31,11 @@ import {
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
+import {
+  sanitizeSyscoinError,
+  sanitizeErrorMessage,
+  isSyscoinLibError,
+} from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
 export const SendSys = () => {
@@ -350,14 +355,14 @@ export const SendSys = () => {
           setIsLoading(false);
 
           // Handle structured errors from syscoinjs-lib
-          if (error.error && error.code) {
-            const sysError = error as ISyscoinTransactionError;
+          if (isSyscoinLibError(error)) {
+            const sanitizedError = sanitizeSyscoinError(error);
 
-            switch (sysError.code) {
+            switch (sanitizedError.code) {
               case 'INSUFFICIENT_FUNDS':
                 alert.error(
                   t('send.insufficientFundsDetails', {
-                    shortfall: sysError.shortfall?.toFixed(8) || '0',
+                    shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
                     currency: activeNetwork.currency.toUpperCase(),
                   })
                 );
@@ -366,8 +371,9 @@ export const SendSys = () => {
               case 'SUBTRACT_FEE_FAILED':
                 alert.error(
                   t('send.subtractFeeFailedDetails', {
-                    fee: sysError.fee?.toFixed(8) || '0',
-                    remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                    fee: sanitizedError.fee?.toFixed(8) || '0',
+                    remainingFee:
+                      sanitizedError.remainingFee?.toFixed(8) || '0',
                     currency: activeNetwork.currency.toUpperCase(),
                   })
                 );
@@ -382,18 +388,18 @@ export const SendSys = () => {
                 break;
 
               default:
-                alert.error(
-                  t('send.transactionCreationFailedWithCode', {
-                    code: sysError.code,
-                    message: sysError.message,
-                  })
-                );
+                // Bypass i18n interpolation to prevent additional encoding
+                const errorMessage = `Transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
+                alert.error(errorMessage);
             }
           } else {
             // Fallback for non-structured errors
+            const sanitizedMessage = sanitizeErrorMessage(error);
             alert.error(
-              t('send.transactionCreationFailed', { error: error.message }) ||
-                `Failed to create transaction: ${error.message}. Please try again.`
+              t('send.transactionCreationFailed', {
+                error: sanitizedMessage,
+              }) ||
+                `Failed to create transaction: ${sanitizedMessage}. Please try again.`
             );
           }
           return;
@@ -482,14 +488,14 @@ export const SendSys = () => {
           setIsLoading(false);
 
           // Handle structured errors from syscoinjs-lib
-          if (error.error && error.code) {
-            const sysError = error as ISyscoinTransactionError;
+          if (isSyscoinLibError(error)) {
+            const sanitizedError = sanitizeSyscoinError(error);
 
-            switch (sysError.code) {
+            switch (sanitizedError.code) {
               case 'INSUFFICIENT_FUNDS':
                 alert.error(
                   t('send.insufficientFundsDetails', {
-                    shortfall: sysError.shortfall?.toFixed(8) || '0',
+                    shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
                     currency: activeNetwork.currency.toUpperCase(),
                   })
                 );
@@ -498,8 +504,9 @@ export const SendSys = () => {
               case 'SUBTRACT_FEE_FAILED':
                 alert.error(
                   t('send.subtractFeeFailedDetails', {
-                    fee: sysError.fee?.toFixed(8) || '0',
-                    remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                    fee: sanitizedError.fee?.toFixed(8) || '0',
+                    remainingFee:
+                      sanitizedError.remainingFee?.toFixed(8) || '0',
                     currency: activeNetwork.currency.toUpperCase(),
                   })
                 );
@@ -516,24 +523,24 @@ export const SendSys = () => {
               case 'INVALID_ASSET_ALLOCATION':
                 alert.error(
                   t('send.invalidAssetAllocation', {
-                    guid: error.details?.guid || 'Unknown',
+                    guid: sanitizedError.details || 'Unknown',
                   })
                 );
                 break;
 
               default:
-                alert.error(
-                  t('send.transactionCreationFailedWithCode', {
-                    code: sysError.code,
-                    message: sysError.message,
-                  })
-                );
+                // Bypass i18n interpolation to prevent additional encoding
+                const tokenErrorMessage = `Token transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
+                alert.error(tokenErrorMessage);
             }
           } else {
             // Fallback for non-structured errors
+            const sanitizedMessage = sanitizeErrorMessage(error);
             alert.error(
-              t('send.transactionCreationFailed', { error: error.message }) ||
-                `Failed to create token transaction: ${error.message}. Please try again.`
+              t('send.transactionCreationFailed', {
+                error: sanitizedMessage,
+              }) ||
+                `Failed to create token transaction: ${sanitizedMessage}. Please try again.`
             );
           }
           return;

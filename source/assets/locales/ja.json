@@ -447,7 +447,6 @@
     "invalidAmount": "無効な金額です。有効な金額を入力してください。",
     "invalidTokenId": "無効なトークンIDです。有効なトークンIDを入力してください。",
     "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
-    "transactionCreationFailedWithCode": "トランザクションの作成に失敗しました ({{code}}): {{message}}",
     "transactionSendFailed": "トランザクションの送信に失敗しました: {{message}}",
     "networkBusy": "ネットワークが一時的に混雑しています。クリックして再試行してください。",
     "unableToCalculateFees": "手数料を計算できません。クリックして再試行してください。",

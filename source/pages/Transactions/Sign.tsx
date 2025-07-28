@@ -15,6 +15,11 @@ import {
   isDeviceLockedError,
 } from 'utils/isUserCancellationError';
 import { clearNavigationState } from 'utils/navigationState';
+import {
+  sanitizeSyscoinError,
+  sanitizeErrorMessage,
+  isSyscoinLibError,
+} from 'utils/syscoinErrorSanitizer';
 
 interface ISign {
   signOnly?: boolean;
@@ -128,30 +133,35 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       }
 
       // Handle structured errors from syscoinjs-lib
-      if (error.error && error.code) {
-        switch (error.code) {
+      if (isSyscoinLibError(error)) {
+        const sanitizedError = sanitizeSyscoinError(error);
+        switch (sanitizedError.code) {
           case 'TRANSACTION_SEND_FAILED':
-            // Parse error message to extract meaningful part
-            let cleanErrorMsg = error.message;
+            // Parse error message to extract meaningful part - sanitized message is already safe
+            let cleanErrorMsg = sanitizedError.message || '';
             try {
-              // Check if the message contains JSON error details
+              // Check if the sanitized message contains JSON error details
               const detailsMatch = cleanErrorMsg.match(/Details:\s*({.*})/);
               if (detailsMatch) {
                 const errorDetails = JSON.parse(detailsMatch[1]);
                 if (errorDetails.error) {
-                  cleanErrorMsg = errorDetails.error;
+                  // Re-sanitize the extracted error in case it contains unsafe content
+                  cleanErrorMsg = sanitizeErrorMessage(errorDetails.error);
                 }
               }
             } catch (e) {
-              // If parsing fails, use the original message
+              // If parsing fails, use the sanitized message
             }
             setErrorMsg(`Transaction failed to send: ${cleanErrorMsg}`);
             break;
           default:
-            setErrorMsg(`Transaction error (${error.code}): ${error.message}`);
+            setErrorMsg(
+              `Transaction error (${sanitizedError.code}): ${sanitizedError.message}`
+            );
         }
       } else {
-        setErrorMsg(error.message);
+        const sanitizedMessage = sanitizeErrorMessage(error);
+        setErrorMsg(sanitizedMessage);
       }
 
       setLoading(false);

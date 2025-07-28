@@ -600,7 +600,6 @@
     "invalidAmount": "无效的金额。请输入有效的金额。",
     "invalidTokenId": "无效的代币ID。请输入有效的代币ID。",
     "invalidAssetAllocation": "无效的资产分配。代币 GUID {{guid}} 未找到或无效。",
-    "transactionCreationFailedWithCode": "创建交易失败 ({{code}}): {{message}}",
     "transactionSendFailed": "发送交易失败: {{message}}",
     "networkBusy": "网络暂时繁忙。点击重试。",
     "unableToCalculateFees": "无法计算费用。点击重试。",

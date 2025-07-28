@@ -442,7 +442,6 @@
     "invalidAmount": "Montant invalide. Veuillez entrer un montant valide.",
     "invalidTokenId": "ID de jeton invalide. Veuillez entrer un ID de jeton valide.",
     "invalidAssetAllocation": "Allocation d'actifs invalide. Token GUID {{guid}} introuvable ou invalide.",
-    "transactionCreationFailedWithCode": "Échec de la création de la transaction ({{code}}): {{message}}",
     "transactionSendFailed": "Échec de l'envoi de la transaction: {{message}}",
     "networkBusy": "Le réseau est temporairement occupé. Cliquez pour réessayer.",
     "unableToCalculateFees": "Impossible de calculer les frais. Cliquez pour réessayer.",

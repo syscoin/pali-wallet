@@ -308,7 +308,6 @@
     "invalidAmount": "Cantidad inválida. Por favor ingresa una cantidad válida.",
     "invalidTokenId": "ID de token no válido. Por favor ingrese un ID de token válido.",
     "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
-    "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}",
     "transactionSendFailed": "Error al enviar la transacción: {{message}}",
     "networkBusy": "La red está temporalmente ocupada. Haz clic para reintentar.",
     "unableToCalculateFees": "No se pueden calcular las tarifas. Haz clic para reintentar.",

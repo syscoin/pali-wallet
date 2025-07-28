@@ -312,7 +312,6 @@
     "invalidAmount": "Invalid amount. Please enter a valid amount.",
     "invalidTokenId": "Invalid token ID. Please enter a valid token ID.",
     "invalidAssetAllocation": "Invalid asset allocation. Token GUID {{guid}} not found or invalid.",
-    "transactionCreationFailedWithCode": "Transaction creation failed ({{code}}): {{message}}",
     "transactionSendFailed": "Transaction failed to send: {{message}}",
     "networkBusy": "Network is temporarily busy. Click to retry.",
     "unableToCalculateFees": "Unable to calculate fees. Click to retry.",

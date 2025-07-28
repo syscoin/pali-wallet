@@ -536,7 +536,6 @@
     "invalidAmount": "Valor inválido. Por favor, insira um valor válido.",
     "invalidTokenId": "ID de token inválido. Por favor, insira um ID de token válido.",
     "invalidAssetAllocation": "Alocação de ativo inválida. Token GUID {{guid}} não encontrado ou inválido.",
-    "transactionCreationFailedWithCode": "Falha na criação da transação ({{code}}): {{message}}",
     "transactionSendFailed": "Falha no envio da transação: {{message}}",
     "networkBusy": "A rede está temporariamente ocupada. Clique para tentar novamente.",
     "unableToCalculateFees": "Não foi possível calcular as taxas. Clique para tentar novamente.",
