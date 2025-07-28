@@ -158,7 +158,7 @@ class MainController {
   private saveTimeout: NodeJS.Timeout | null = null;
 
   // Track active rapid polls to avoid duplicates
-  private activeRapidPolls = new Map<string, NodeJS.Timeout>();
+  private activeRapidPolls = new Map<string, number>();
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
@@ -3540,7 +3540,7 @@ class MainController {
           console.log(
             `[RapidPoll] Transaction ${txHash} still pending, scheduling next poll...`
           );
-          const timeoutId = setTimeout(poll, pollInterval);
+          const timeoutId = setTimeout(poll, pollInterval) as unknown as number;
           this.activeRapidPolls.set(pollKey, timeoutId);
         } else {
           console.log(
@@ -3555,7 +3555,7 @@ class MainController {
     };
 
     // Start the first poll after a delay
-    const timeoutId = setTimeout(poll, pollInterval);
+    const timeoutId = setTimeout(poll, pollInterval) as unknown as number;
     this.activeRapidPolls.set(pollKey, timeoutId);
   }
 

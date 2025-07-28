@@ -43,12 +43,13 @@ export class Queue {
       this.queue.push(this.runFn(fn));
     } else {
       this.queue.push(
-        new Promise(async (resolve) => {
-          await new Promise<void>((resolvePromise) =>
+        new Promise((resolve) => {
+          new Promise<void>((resolvePromise) =>
             this.waiting.push(resolvePromise)
-          );
-          const result = await this.runFn(fn);
-          return resolve(result);
+          ).then(async () => {
+            const result = await this.runFn(fn);
+            resolve(result);
+          });
         })
       );
     }

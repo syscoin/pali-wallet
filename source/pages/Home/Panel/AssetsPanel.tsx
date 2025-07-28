@@ -18,16 +18,20 @@ export const AssetsPanel = () => {
   const { chainId } = activeNetwork;
   const [searchParams] = useSearchParams();
 
+  // Ensure assets exists before filtering
+  const ethereumAssets = assets?.ethereum || [];
+  const syscoinAssets = assets?.syscoin || [];
+
   const ethTokensValidation =
-    assets?.ethereum?.filter((token: any) => token?.chainId === chainId)
+    ethereumAssets.filter((token: any) => token?.chainId === chainId)
       ?.length === 0;
 
   const sysAssetsValidation =
-    assets?.syscoin?.filter((asset) => asset.chainId === chainId)?.length === 0;
+    syscoinAssets.filter((asset) => asset.chainId === chainId)?.length === 0;
 
   const filterValidation = isBitcoinBased
-    ? assets?.syscoin?.length === 0 || sysAssetsValidation
-    : assets?.ethereum?.length === 0 || ethTokensValidation;
+    ? syscoinAssets.length === 0 || sysAssetsValidation
+    : ethereumAssets.length === 0 || ethTokensValidation;
 
   const { navigate } = useUtils();
 
