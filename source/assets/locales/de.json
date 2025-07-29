@@ -596,7 +596,9 @@
     "networkQualitySlow": "Netzwerk-Antwortzeit ist langsam ({{latency}})",
     "operationCompletedSlow": "Vorgang abgeschlossen, aber langsam ({{latency}})",
     "networkCriticalError": "Netzwerk antwortet nicht ordnungsgemäß ({{latency}})",
-    "operationCompletedCritical": "Vorgang mit kritischen Verzögerungen abgeschlossen ({{latency}})"
+    "operationCompletedCritical": "Vorgang mit kritischen Verzögerungen abgeschlossen ({{latency}})",
+    "stillConnecting": "Versuche immer noch zu verbinden",
+    "slowConnection": "Die Verbindung dauert länger als gewöhnlich"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",

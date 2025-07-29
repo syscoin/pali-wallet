@@ -596,7 +596,9 @@
     "networkQualitySlow": "네트워크 응답 시간이 느립니다 ({{latency}})",
     "operationCompletedSlow": "작업이 완료되었지만 느렸습니다 ({{latency}})",
     "networkCriticalError": "네트워크가 제대로 응답하지 않습니다 ({{latency}})",
-    "operationCompletedCritical": "작업이 심각한 지연으로 완료되었습니다 ({{latency}})"
+    "operationCompletedCritical": "작업이 심각한 지연으로 완료되었습니다 ({{latency}})",
+    "stillConnecting": "아직 연결 시도 중",
+    "slowConnection": "연결이 평소보다 오래 걸리고 있습니다"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "가져온 계정은 초기 Pali 계정 비밀 복구 구문에 연결되지 않습니다",

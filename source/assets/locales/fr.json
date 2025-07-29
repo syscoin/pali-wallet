@@ -596,7 +596,9 @@
     "networkQualitySlow": "Le temps de réponse du réseau est lent ({{latency}})",
     "operationCompletedSlow": "Opération terminée mais lente ({{latency}})",
     "networkCriticalError": "Le réseau ne répond pas correctement ({{latency}})",
-    "operationCompletedCritical": "Opération terminée avec des retards critiques ({{latency}})"
+    "operationCompletedCritical": "Opération terminée avec des retards critiques ({{latency}})",
+    "stillConnecting": "Tentative de connexion en cours",
+    "slowConnection": "La connexion prend plus de temps que d'habitude"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",

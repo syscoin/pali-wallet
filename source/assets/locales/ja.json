@@ -596,7 +596,9 @@
     "networkQualitySlow": "ネットワークの応答時間が遅いです ({{latency}})",
     "operationCompletedSlow": "操作は完了しましたが遅かったです ({{latency}})",
     "networkCriticalError": "ネットワークが正しく応答していません ({{latency}})",
-    "operationCompletedCritical": "操作は重大な遅延で完了しました ({{latency}})"
+    "operationCompletedCritical": "操作は重大な遅延で完了しました ({{latency}})",
+    "stillConnecting": "まだ接続を試みています",
+    "slowConnection": "接続に通常より時間がかかっています"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",

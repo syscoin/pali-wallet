@@ -370,7 +370,9 @@
     "networkQualitySlow": "网络响应时间缓慢 ({{latency}})",
     "operationCompletedSlow": "操作已完成但速度缓慢 ({{latency}})",
     "networkCriticalError": "网络响应不正常 ({{latency}})",
-    "operationCompletedCritical": "操作以严重延迟完成 ({{latency}})"
+    "operationCompletedCritical": "操作以严重延迟完成 ({{latency}})",
+    "stillConnecting": "仍在尝试连接",
+    "slowConnection": "连接时间比平常长"
   },
   "transactions": {
     "messageCopied": "消息复制成功",

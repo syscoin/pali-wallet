@@ -30,6 +30,8 @@ export const ChainErrorPage = () => {
   const displayNetwork = networkTarget || activeNetwork;
 
   const [isRetrying, setIsRetrying] = useState(false);
+  const [retryStartTime, setRetryStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Always set error state when this page mounts
   useEffect(() => {
@@ -37,9 +39,26 @@ export const ChainErrorPage = () => {
     store.dispatch(switchNetworkError());
   }, []);
 
+  // Timer to track elapsed time
+  useEffect(() => {
+    if (isRetrying && retryStartTime) {
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - retryStartTime) / 1000);
+        setElapsedSeconds(elapsed);
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      // Reset when not retrying
+      setElapsedSeconds(0);
+    }
+  }, [isRetrying, retryStartTime]);
+
   const handleRetryToConnect = async () => {
     console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
+    setRetryStartTime(Date.now());
+    setElapsedSeconds(0);
 
     // Clear any previous error state to ensure a fresh retry
     store.dispatch(resetNetworkStatus());
@@ -59,18 +78,14 @@ export const ChainErrorPage = () => {
 
       console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
 
-      // Call setActiveNetwork with a timeout to prevent infinite hanging
-      // This method handles all validation internally and resolves when done
+      // Call setActiveNetwork without arbitrary timeout
+      // Let the network operation take as long as it needs
+      // Users can navigate away or retry if desired
       // Pass true for syncUpdates to ensure all updates complete before returning
-      const result = await Promise.race([
-        controllerEmitter(['wallet', 'setActiveNetwork'], [selectedRpc, true]),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Network retry timeout after 15 seconds')),
-            15000
-          )
-        ),
-      ]);
+      const result = await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [selectedRpc, true]
+      );
 
       console.log(
         '[ChainErrorPage] Network switch completed successfully:',
@@ -84,6 +99,7 @@ export const ChainErrorPage = () => {
           '[ChainErrorPage] Network is still in error state, not navigating'
         );
         setIsRetrying(false);
+        setRetryStartTime(null);
         // Show error alert to user
         alert.error(t('chainError.connectionError'));
         return;
@@ -92,6 +108,7 @@ export const ChainErrorPage = () => {
       // If we get here, everything succeeded - navigate to home
       alert.success(t('networkConnection.operationCompleted'));
       setIsRetrying(false);
+      setRetryStartTime(null);
       navigate('/home');
     } catch (error) {
       console.error('[ChainErrorPage] Retry failed:', error);
@@ -129,9 +146,11 @@ export const ChainErrorPage = () => {
 
       // Reset retry state so user can try again
       setIsRetrying(false);
+      setRetryStartTime(null);
     } finally {
       // Always reset retry state, even if something unexpected happens
       setIsRetrying(false);
+      setRetryStartTime(null);
     }
   };
 
@@ -217,11 +236,77 @@ export const ChainErrorPage = () => {
     <div className="flex flex-col items-center justify-start min-h-full px-4 py-6 overflow-y-auto">
       <div className="flex flex-col items-center gap-4 w-full max-w-[22rem]">
         <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+          {isRetrying ? (
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+          ) : (
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          )}
         </div>
-        <span className="text-sm font-normal text-white text-center">
-          {t('chainError.connectionTooLong')}
-        </span>
+        {/* Status Text - Shows error message or connection progress */}
+        <div
+          className="text-center w-full max-w-[22rem]"
+          style={{ minHeight: '32px' }}
+        >
+          {!isRetrying ? (
+            <span className="text-sm font-normal text-white">
+              {t('chainError.connectionTooLong')}
+            </span>
+          ) : (
+            <div className="text-sm text-brand-gray200 transition-opacity duration-500">
+              {elapsedSeconds < 3 &&
+                t('networkConnection.connecting', {
+                  network: displayNetwork.label,
+                })}
+              {elapsedSeconds >= 3 && elapsedSeconds < 7 && (
+                <>
+                  {t('networkConnection.stillConnecting')}
+                  <span className="ml-2 text-brand-gray400 text-xs">
+                    ({elapsedSeconds}s)
+                  </span>
+                </>
+              )}
+              {elapsedSeconds >= 7 && (
+                <div className="text-yellow-400">
+                  {t('networkConnection.slowConnection')}
+                  <span className="ml-2 text-brand-gray400 text-xs">
+                    ({elapsedSeconds}s)
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Progress Bar - Always reserve space but fade in/out */}
+        <div
+          className={`w-full max-w-[22rem] mt-3 transition-all duration-300 ${
+            isRetrying ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{ height: '6px' }}
+        >
+          <div className="bg-brand-gray600 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-brand-blue400 to-brand-deepPink100 h-full transition-all duration-1000 ease-linear"
+              style={{
+                width: isRetrying
+                  ? `${Math.min((elapsedSeconds / 10) * 100, 100)}%`
+                  : '0%',
+              }}
+            />
+          </div>
+        </div>
         <div className="rounded-[20px] bg-brand-blue500 p-5 w-full">
           <div className="relative flex mb-4">
             <CurrentChains />

@@ -150,10 +150,18 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           .then(() => {
             // Success is already handled by the controller via setNetworkChange
           })
-          .catch(() => {
+          .catch((error) => {
+            console.error('[NetworkMenu] Network switch failed:', error);
             store.dispatch(switchNetworkError());
           });
-      } catch (networkError) {}
+      } catch (networkError) {
+        // Log any synchronous errors from controllerEmitter
+        console.error(
+          '[NetworkMenu] Error initiating network switch:',
+          networkError
+        );
+        store.dispatch(switchNetworkError());
+      }
     },
     [activeNetworkValidator, controllerEmitter]
   );

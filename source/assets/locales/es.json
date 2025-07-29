@@ -596,7 +596,9 @@
     "networkQualitySlow": "El tiempo de respuesta de la red es lento ({{latency}})",
     "operationCompletedSlow": "Operación completada pero fue lenta ({{latency}})",
     "networkCriticalError": "La red no está respondiendo correctamente ({{latency}})",
-    "operationCompletedCritical": "Operación completada con retrasos críticos ({{latency}})"
+    "operationCompletedCritical": "Operación completada con retrasos críticos ({{latency}})",
+    "stillConnecting": "Aún intentando conectar",
+    "slowConnection": "La conexión está tardando más de lo habitual"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",

@@ -2,7 +2,6 @@
   "buttons": {
     "cancel": "Отмена",
     "change": "Изменить",
-
     "connected": "Подключено",
     "active": "Активно",
     "send": "Отправить",
@@ -597,7 +596,9 @@
     "networkQualitySlow": "Время отклика сети медленное ({{latency}})",
     "operationCompletedSlow": "Операция завершена, но была медленной ({{latency}})",
     "networkCriticalError": "Сеть не отвечает должным образом ({{latency}})",
-    "operationCompletedCritical": "Операция завершена с критическими задержками ({{latency}})"
+    "operationCompletedCritical": "Операция завершена с критическими задержками ({{latency}})",
+    "stillConnecting": "Все еще пытаюсь подключиться",
+    "slowConnection": "Подключение занимает больше времени, чем обычно"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Импортированные аккаунты не будут связаны с вашей исходной секретной фразой восстановления аккаунта Pali",
