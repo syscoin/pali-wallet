@@ -43,10 +43,16 @@ export const isValidSYSAddress = async (
 /**
  * Get ERC20 ABI from backend service
  * Returns the full JSON ABI format needed for InputDataDecoder
+ * @param controller - Optional controller instance for background context calls
  */
-export const getErc20Abi = async (): Promise<any[]> => {
+export const getErc20Abi = async (controller?: any): Promise<any[]> => {
   try {
-    // Use controllerEmitter to get the proper JSON ABI from backend
+    // If controller is provided (background context), use direct call
+    if (controller?.wallet?.getErc20Abi) {
+      return controller.wallet.getErc20Abi();
+    }
+
+    // Otherwise use controllerEmitter for frontend contexts
     const abi = await controllerEmitter(['wallet', 'getErc20Abi'], []);
 
     return Array.isArray(abi) ? abi : [];
@@ -59,9 +65,16 @@ export const getErc20Abi = async (): Promise<any[]> => {
 
 /**
  * Get ERC721 ABI from backend service
+ * @param controller - Optional controller instance for background context calls
  */
-export const getErc721Abi = async (): Promise<any[]> => {
+export const getErc721Abi = async (controller?: any): Promise<any[]> => {
   try {
+    // If controller is provided (background context), use direct call
+    if (controller?.wallet?.getErc721Abi) {
+      return controller.wallet.getErc721Abi();
+    }
+
+    // Otherwise use controllerEmitter for frontend contexts
     const abi = await controllerEmitter(['wallet', 'getErc721Abi'], []);
     return Array.isArray(abi) ? abi : [];
   } catch (error) {
@@ -72,9 +85,16 @@ export const getErc721Abi = async (): Promise<any[]> => {
 
 /**
  * Get ERC1155 ABI from backend service
+ * @param controller - Optional controller instance for background context calls
  */
-export const getErc1155Abi = async (): Promise<any[]> => {
+export const getErc1155Abi = async (controller?: any): Promise<any[]> => {
   try {
+    // If controller is provided (background context), use direct call
+    if (controller?.wallet?.getErc1155Abi) {
+      return controller.wallet.getErc1155Abi();
+    }
+
+    // Otherwise use controllerEmitter for frontend contexts
     const abi = await controllerEmitter(['wallet', 'getErc1155Abi'], []);
     return Array.isArray(abi) ? abi : [];
   } catch (error) {
@@ -85,10 +105,11 @@ export const getErc1155Abi = async (): Promise<any[]> => {
 
 export const getContractType = async (
   contractAddress: string,
-  web3Provider: any
+  web3Provider: any,
+  controller?: any
 ): Promise<ISupportsInterfaceProps | undefined> => {
   try {
-    const erc721Abi = await getErc721Abi();
+    const erc721Abi = await getErc721Abi(controller);
     const contractERC721 = new ethers.Contract(
       contractAddress,
       erc721Abi,
@@ -105,7 +126,7 @@ export const getContractType = async (
     throw new Error('ERC-721');
   } catch (e) {
     try {
-      const erc1155Abi = await getErc1155Abi();
+      const erc1155Abi = await getErc1155Abi(controller);
       const contractERC1155 = new ethers.Contract(
         contractAddress,
         erc1155Abi,
@@ -120,7 +141,7 @@ export const getContractType = async (
       throw new Error('ERC-1155');
     } catch (e1) {
       try {
-        const erc20Abi = await getErc20Abi();
+        const erc20Abi = await getErc20Abi(controller);
         const contractERC20 = new ethers.Contract(
           contractAddress,
           erc20Abi,

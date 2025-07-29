@@ -12,9 +12,9 @@ import { wrapABI } from './wrapABI';
 // Create a cached instance of the decoder
 let erc20DecoderInstance: InputDataDecoder | null = null;
 
-export const erc20DataDecoder = async () => {
+export const erc20DataDecoder = async (controller?: any) => {
   if (!erc20DecoderInstance) {
-    const abi = await getErc20Abi();
+    const abi = await getErc20Abi(controller);
     erc20DecoderInstance = new InputDataDecoder(abi);
   }
   return erc20DecoderInstance;
@@ -23,7 +23,8 @@ export const erc20DataDecoder = async () => {
 const detectApprovalType = async (
   data: string,
   contractAddress: string,
-  web3Provider: any
+  web3Provider: any,
+  controller?: any
 ): Promise<{
   approvalType?: 'erc20-amount' | 'erc721-single' | 'nft-all';
   decodedData?: any;
@@ -33,7 +34,11 @@ const detectApprovalType = async (
 }> => {
   try {
     // Get contract type using frontend detection
-    const contractType = await getContractType(contractAddress, web3Provider);
+    const contractType = await getContractType(
+      contractAddress,
+      web3Provider,
+      controller
+    );
 
     // Method signatures
     const signatures = {
@@ -116,7 +121,8 @@ export const decodeTransactionData = async (
     contract: boolean | undefined;
     wallet: boolean | undefined;
   },
-  web3Provider?: any
+  web3Provider?: any,
+  controller?: any
 ) => {
   const contractCreationInitialBytes = '0x60806040';
   const zeroAddress = '0x0000000000000000000000000000000000000000';
@@ -136,7 +142,8 @@ export const decodeTransactionData = async (
       const approvalInfo = await detectApprovalType(
         validatedData,
         params.to,
-        web3Provider
+        web3Provider,
+        controller
       );
       if (approvalInfo.isApproval) {
         return {
@@ -170,7 +177,7 @@ export const decodeTransactionData = async (
       }
 
       // Continue with existing decoding logic
-      const decoder = await erc20DataDecoder();
+      const decoder = await erc20DataDecoder(controller);
       let decoderValue = decoder.decodeData(validatedData); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
       const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));

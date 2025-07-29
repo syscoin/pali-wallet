@@ -4684,7 +4684,8 @@ class MainController {
       const decodedTx = await decodeTransactionData(
         normalizedTransaction,
         validateTxToAddress,
-        this.ethereumTransaction.web3Provider
+        this.ethereumTransaction.web3Provider,
+        this
       );
 
       return decodedTx as IDecodedTx;

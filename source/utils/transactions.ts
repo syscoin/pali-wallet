@@ -16,6 +16,8 @@ import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
  * @param tx Transaction object
  * @param currency Network currency (e.g., 'ETH', 'NEVM')
  * @param tokenCache Cache of known token info by contract address
+ * @param skipUnknownTokenFetch New parameter to skip fetching unknown tokens
+ * @param controller Optional controller instance for background context calls
  * @returns Object with displayValue, displaySymbol, isErc20Transfer, actualRecipient, isNft, and hasUnknownDecimals
  */
 export const getTransactionDisplayInfo = async (
@@ -29,7 +31,8 @@ export const getTransactionDisplayInfo = async (
       symbol: string;
     }
   >,
-  skipUnknownTokenFetch = false // New parameter to skip fetching unknown tokens
+  skipUnknownTokenFetch = false, // New parameter to skip fetching unknown tokens
+  controller?: any
 ): Promise<{
   actualRecipient: string;
   displaySymbol: string;
@@ -120,10 +123,21 @@ export const getTransactionDisplayInfo = async (
         // If not in user's assets, try to fetch from controller
         if (!skipUnknownTokenFetch) {
           try {
-            const tokenDetails = (await controllerEmitter(
-              ['wallet', 'getTokenDetails'],
-              [tokenAddress, currentAccount?.address]
-            )) as ITokenDetails | null;
+            let tokenDetails: ITokenDetails | null;
+
+            // If controller is provided (background context), use direct call
+            if (controller?.wallet?.getTokenDetails) {
+              tokenDetails = await controller.wallet.getTokenDetails(
+                tokenAddress,
+                currentAccount?.address
+              );
+            } else {
+              // Otherwise use controllerEmitter for frontend contexts
+              tokenDetails = (await controllerEmitter(
+                ['wallet', 'getTokenDetails'],
+                [tokenAddress, currentAccount?.address]
+              )) as ITokenDetails | null;
+            }
 
             if (tokenDetails) {
               const isNft = tokenDetails.isNft || false;

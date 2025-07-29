@@ -43,7 +43,8 @@ export const EthProvider = (
     const decodedTx = (await decodeTransactionData(
       tx,
       validateTxToAddress,
-      web3Provider
+      web3Provider,
+      getController()
     )) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
