@@ -86,6 +86,7 @@ import {
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
+import { fiatPriceMutex, networkSwitchMutex } from 'utils/asyncMutex';
 import { areBalancesDifferent } from 'utils/balance';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -854,157 +855,33 @@ class MainController {
   }
 
   private async setSignerNetwork(network: INetwork) {
-    // Acquire network switch lock to prevent concurrent switches
-    const NETWORK_LOCK_KEY = 'pali_network_switch_lock';
-    const LOCK_TIMEOUT = 30000; // 30 seconds
+    // Use AsyncMutex for cross-context synchronization
+    // This prevents concurrent network switches across all contexts
+    return networkSwitchMutex.runExclusive(async () => {
+      // Set network switching flag for UI/logging purposes
+      this.isNetworkSwitching = true;
 
-    const lockAcquired = await this.acquireNetworkSwitchLock(
-      NETWORK_LOCK_KEY,
-      LOCK_TIMEOUT
-    );
+      try {
+        // switchActiveKeyring handles everything: creating keyring if needed and setting up network
+        await this.switchActiveKeyring(network);
 
-    if (!lockAcquired) {
-      throw new Error('Another network switch is in progress');
-    }
-
-    // Set network switching flag for UI/logging purposes
-    this.isNetworkSwitching = true;
-
-    try {
-      // switchActiveKeyring handles everything: creating keyring if needed and setting up network
-      await this.switchActiveKeyring(network);
-
-      // Return the current wallet state from the keyring
-      return {
-        success: true,
-      };
-    } finally {
-      // Clear network switching flag
-      this.isNetworkSwitching = false;
-
-      // Release the lock
-      await chromeStorage.removeItem(NETWORK_LOCK_KEY);
-    }
+        // Return the current wallet state from the keyring
+        return {
+          success: true,
+        };
+      } finally {
+        // Clear network switching flag
+        this.isNetworkSwitching = false;
+      }
+    });
   }
 
   // Fiat price fetching functionality moved from ControllerUtils
-  // Helper method to acquire a network switch lock
-  private async acquireNetworkSwitchLock(
-    lockKey: string,
-    lockTimeout: number
-  ): Promise<boolean> {
-    try {
-      const now = Date.now();
-      const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
-
-      // Check if a lock already exists
-      const existing = await chromeStorage.getItem(lockKey);
-
-      if (existing && now - existing.timestamp < lockTimeout) {
-        console.log('🔒 Network switch already in progress');
-        return false;
-      }
-
-      // Set the lock
-      await chromeStorage.setItem(lockKey, {
-        timestamp: now,
-        instance: chrome.runtime.id,
-        lockId,
-      });
-
-      // Verify we got the lock
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const verification = await chromeStorage.getItem(lockKey);
-
-      if (verification && verification.lockId === lockId) {
-        console.log('🔓 Acquired network switch lock');
-        return true;
-      }
-
-      console.log('🔒 Failed to acquire network switch lock');
-      return false;
-    } catch (error) {
-      console.error('Error acquiring network switch lock:', error);
-      return false;
-    }
-  }
-
-  // Helper method to acquire a lock with proper race condition handling
-  private async acquireFiatUpdateLock(
-    lockKey: string,
-    lockTimeout: number,
-    maxRetries: number
-  ): Promise<boolean> {
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const now = Date.now();
-        const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
-
-        // Atomic check-and-set using chrome.storage.sync operations
-        const storageResult = await chromeStorage.getItem(lockKey);
-        const existing = storageResult;
-
-        // Check if lock is expired or doesn't exist
-        if (!existing || now - existing.timestamp > lockTimeout) {
-          // Set the lock
-          await chromeStorage.setItem(lockKey, {
-            timestamp: now,
-            instance: chrome.runtime.id,
-            lockId,
-          });
-
-          // Verify we got the lock (small delay to let storage propagate)
-          await new Promise((resolve) => setTimeout(resolve, 50));
-
-          const verification = await chromeStorage.getItem(lockKey);
-          if (verification && verification.lockId === lockId) {
-            console.log(`🔓 Acquired global lock (attempt ${attempt + 1})`);
-            return true;
-          }
-
-          console.log(`🔒 Lost race condition (attempt ${attempt + 1})`);
-        } else {
-          console.log(
-            `🔒 Lock held by another instance (attempt ${attempt + 1})`
-          );
-        }
-
-        // Wait before retry with exponential backoff
-        if (attempt < maxRetries - 1) {
-          const delay = Math.min(100 * Math.pow(2, attempt), 1000);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      } catch (error) {
-        console.error('Error acquiring lock:', error);
-      }
-    }
-
-    console.log('🔒 Max retries reached, could not acquire lock');
-    return false;
-  }
 
   public async setFiat(currency?: string): Promise<void> {
-    // Use Chrome storage as a global lock across all background script instances
-    const FIAT_LOCK_KEY = 'pali_setfiat_lock';
-    const LOCK_TIMEOUT = 30000; // 30 seconds timeout
-    const MAX_RETRIES = 3;
-
-    // Add random delay to prevent race conditions between multiple instances
-    const randomDelay = Math.floor(Math.random() * 100) + 50; // 50-150ms
-    await new Promise((resolve) => setTimeout(resolve, randomDelay));
-
-    try {
-      // Check and set global lock with retry mechanism
-      const lockResult = await this.acquireFiatUpdateLock(
-        FIAT_LOCK_KEY,
-        LOCK_TIMEOUT,
-        MAX_RETRIES
-      );
-
-      if (!lockResult) {
-        return; // Another instance is handling it
-      }
-
+    // Use AsyncMutex for cross-context synchronization
+    // This ensures only one price update runs at a time across all contexts
+    return fiatPriceMutex.runExclusive(async () => {
       if (!currency) {
         const storeCurrency = store.getState().price.fiat.asset;
         currency = storeCurrency || 'usd';
@@ -1064,15 +941,7 @@ class MainController {
           }
           break;
       }
-    } finally {
-      // Release global lock
-      try {
-        await chromeStorage.removeItem(FIAT_LOCK_KEY);
-        console.log('🔓 setFiat: Released global lock');
-      } catch (error) {
-        console.error('🔓 setFiat: Error releasing global lock:', error);
-      }
-    }
+    });
   }
 
   public setHasEthProperty(exist: boolean) {

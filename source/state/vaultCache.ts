@@ -1,4 +1,5 @@
 import { INetwork, INetworkType } from 'types/network';
+import { emergencySaveMutex } from 'utils/asyncMutex';
 
 import { loadSlip44State, saveSlip44State } from './paliStorage';
 import store, { saveMainState } from './store';
@@ -54,35 +55,11 @@ function validateVaultSlip44(
   return true;
 }
 
-// Simple async mutex implementation
-class AsyncMutex {
-  private mutex = Promise.resolve();
-
-  async runExclusive<T>(callback: () => Promise<T>): Promise<T> {
-    const oldMutex = this.mutex;
-
-    let release: () => void;
-    this.mutex = new Promise((resolve) => {
-      release = resolve;
-    });
-
-    await oldMutex;
-    try {
-      return await callback();
-    } finally {
-      release!();
-    }
-  }
-}
-
 /**
  * Simplified vault cache system for lazy loading slip44-specific vault states
  */
 class VaultCache {
   private slip44Cache: Map<number, ISlip44State> = new Map();
-
-  // Use mutex instead of simple flag to prevent concurrent emergency saves
-  private emergencySaveMutex = new AsyncMutex();
 
   /**
    * Get slip44-specific vault state, loading it if not cached
@@ -163,7 +140,7 @@ class VaultCache {
     console.log('[VaultCache] 🚨 Emergency save triggered');
 
     // Use mutex to ensure only one emergency save runs at a time
-    return this.emergencySaveMutex.runExclusive(async () => {
+    return emergencySaveMutex.runExclusive(async () => {
       const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
       const liveVaultState = store.getState().vault;
 
