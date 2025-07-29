@@ -896,10 +896,7 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
   const controller = getController();
   const isUnlocked = controller.wallet.isUnlocked();
 
-  // Check if ANY keyring is unlocked (for network switching scenarios)
-  const isAnyKeyringUnlocked = controller.wallet.isAnyKeyringUnlocked();
-
-  if (!requiresAuth || hasPopup || isUnlocked || isAnyKeyringUnlocked) {
+  if (!requiresAuth || hasPopup || isUnlocked) {
     return next();
   }
 
