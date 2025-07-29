@@ -17,9 +17,20 @@ export function handleObserveStateChanges() {
           data: nextState,
         },
         () => {
-          // ignore errors when sending message and the extension is closed
+          // Check for quota exceeded error
           if (chrome.runtime.lastError) {
-            // no-op
+            if (
+              chrome.runtime.lastError.message?.includes('exceeded') ||
+              chrome.runtime.lastError.message?.includes('quota') ||
+              chrome.runtime.lastError.message?.includes('too large')
+            ) {
+              console.error(
+                '[State] State too large to send:',
+                chrome.runtime.lastError.message
+              );
+              // Could implement chunking or send minimal state here
+            }
+            // ignore other errors when extension is closed
           }
         }
       );

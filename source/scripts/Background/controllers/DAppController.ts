@@ -71,6 +71,9 @@ const DAppController = (): IDAppController => {
 
     const account = accounts[dapp.accountType]?.[dapp.accountId];
     if (!account) {
+      // Clean up invalid connection
+      delete _dapps[dapp.host];
+      store.dispatch(removeDApp(dapp.host));
       throw new Error('Account not found');
     }
 

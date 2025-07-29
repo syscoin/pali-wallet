@@ -849,8 +849,13 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
     return next();
   }
 
-  // Check if connected account matches active account
-  const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
+  // Capture state atomically to prevent race conditions
+  const currentVaultState = store.getState().vault;
+  const activeAccountData =
+    currentVaultState.accounts[currentVaultState.activeAccount.type]?.[
+      currentVaultState.activeAccount.id
+    ];
+
   if (activeAccountData?.address === account.address) {
     // Already on the correct account
     return next();
