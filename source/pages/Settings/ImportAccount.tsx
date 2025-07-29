@@ -121,7 +121,9 @@ const ImportAccountView = () => {
                     return Promise.resolve();
                   }
                   setValidPrivateKey(false);
-                  return Promise.reject();
+                  return Promise.reject(
+                    new Error('Invalid private key format')
+                  );
                 },
               }),
             ]}

@@ -111,7 +111,7 @@ const ImportPhrase: React.FC = () => {
                     seedLength: value.seedLength,
                     seedLengthError: value.seedLengthError,
                   });
-                  return Promise.reject();
+                  return Promise.reject(new Error('Invalid seed phrase'));
                 });
               },
             }),

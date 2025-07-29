@@ -840,7 +840,7 @@ export const SendEth = () => {
                     return Promise.resolve();
                   }
 
-                  return Promise.reject();
+                  return Promise.reject(new Error('Invalid Ethereum address'));
                 },
               }),
             ]}
@@ -1319,11 +1319,15 @@ export const SendEth = () => {
                   {
                     validator: (_, value) => {
                       if (!value || value.trim() === '') {
-                        return Promise.reject();
+                        return Promise.reject(
+                          new Error('Token ID is required')
+                        );
                       }
                       // Basic validation for token ID format
                       if (!/^\d+$/.test(value)) {
-                        return Promise.reject();
+                        return Promise.reject(
+                          new Error('Token ID must be a number')
+                        );
                       }
                       return Promise.resolve();
                     },

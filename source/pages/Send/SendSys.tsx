@@ -712,7 +712,7 @@ export const SendSys = () => {
                     return Promise.resolve();
                   }
 
-                  return Promise.reject();
+                  return Promise.reject(new Error('Invalid Syscoin address'));
                 },
               }),
             ]}

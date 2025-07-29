@@ -288,251 +288,256 @@ class MainController {
     // 🔥 FIX: Determine if we're switching slip44 BEFORE activeSlip44 gets updated
     const isSwitchingSlip44 = slip44 !== activeSlip44;
 
-    // 🔥 FIX: Capture unlocked keyring reference BEFORE any state changes
-    // This ensures we have a valid keyring to transfer session from
-    const anyUnlockedKeyring = isSwitchingSlip44
-      ? Array.from(this.keyrings.values()).find((kr) => {
-          try {
-            return kr.isUnlocked();
-          } catch (error) {
-            console.warn(
-              `[MainController] Error checking keyring unlock status:`,
-              error
-            );
-            return false;
-          }
-        })
-      : null;
+    // Create a state transaction to ensure atomic updates
+    const stateTransaction: {
+      deferredSaveData: { slip44: number; vaultState: any } | null;
+      needsSessionTransfer: boolean;
+      sourceKeyring: KeyringManager | null;
+      sourceSlip44: number | null;
+      targetKeyring: KeyringManager | null;
+    } = {
+      sourceKeyring: null,
+      sourceSlip44: null,
+      targetKeyring: null,
+      deferredSaveData: null,
+      needsSessionTransfer: false,
+    };
 
-    if (isSwitchingSlip44 && !anyUnlockedKeyring) {
-      console.warn(
-        `[MainController] WARNING: Switching slip44 but no unlocked keyring found! This will fail.`
-      );
-    }
-
-    // Capture current vault state for deferred save (non-blocking)
-    let deferredSaveData: { slip44: number; vaultState: any } | null = null;
-
-    // CRITICAL: Defer activeSlip44 update if we need session transfer
-    // This prevents getActiveKeyring() from returning the wrong (locked) keyring
-    const shouldDeferActiveSlip44 = isSwitchingSlip44 && !!anyUnlockedKeyring;
-
-    if (isSwitchingSlip44) {
-      console.log(
-        `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
-      );
-
-      // Create shallow copy of current state for deferred save (fast, relies on Redux immutability)
-      const currentState = store.getState().vault;
-      if (currentState && activeSlip44 !== null) {
-        // Shallow copy - safe because Redux state updates are immutable
-        // The old state tree remains unchanged after loadAndActivateSlip44Vault dispatches
-        const vaultStateCopy = { ...currentState };
-        deferredSaveData = { slip44: activeSlip44, vaultState: vaultStateCopy };
-      }
-
-      // Load vault state for target slip44
-
-      try {
-        hasExistingVaultState = await loadAndActivateSlip44Vault(
-          slip44,
-          network,
-          shouldDeferActiveSlip44 // Defer if session transfer needed
-        );
-      } catch (vaultLoadError) {
-        console.error(
-          `[MainController] Failed to load vault for slip44 ${slip44}:`,
-          vaultLoadError
-        );
-        // Continue anyway - we'll create a new vault
-        hasExistingVaultState = false;
-      }
-
-      // Update vault state with correct network info
-      store.dispatch(setNetworkChange({ activeNetwork: network }));
-
-      // 🔥 FIX: Re-check if source keyring is still unlocked after state changes
-      if (anyUnlockedKeyring && !anyUnlockedKeyring.isUnlocked()) {
-        console.error(
-          `[MainController] ERROR: Source keyring became locked during state update! Session transfer will fail.`
-        );
-      }
-    }
-
-    // Ensure the target keyring exists
-    let targetKeyring = this.keyrings.get(slip44);
-    let keyringWasJustCreated = false;
-    let needsAccountRepair = false;
-
-    if (!targetKeyring) {
-      console.log('[MainController] Creating new keyring on demand');
-      targetKeyring = this.createKeyringOnDemand();
-      keyringWasJustCreated = true;
-      // Store the new keyring immediately so it's available for subsequent operations
-      this.keyrings.set(slip44, targetKeyring);
-    }
-
-    // Check if we need to repair corrupted accounts (using the flag we set earlier)
-    if (hasExistingVaultState) {
-      const { accounts } = store.getState().vault;
-
-      // Quick check for missing xpub in HD accounts
-      if (accounts.HDAccount) {
-        for (const account of Object.values(accounts.HDAccount)) {
-          if (!account.xpub || account.xpub === '') {
-            needsAccountRepair = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
-    // BUT skip if keyring was just created (already has session from createKeyringOnDemand)
-    const needsSessionTransfer =
-      isSwitchingSlip44 &&
-      anyUnlockedKeyring &&
-      (!keyringWasJustCreated || !targetKeyring.isUnlocked());
-
-    if (!targetKeyring) {
-      throw new Error(`Failed to get keyring for slip44: ${slip44}`);
-    }
-
-    // Handle session transfer if needed
-    if (needsSessionTransfer && anyUnlockedKeyring) {
-      try {
-        const sourceSlip44 = Array.from(this.keyrings.entries()).find(
-          ([, kr]) => kr === anyUnlockedKeyring
-        )?.[0];
-
-        // Double-check source keyring is still valid before transfer
-        if (!anyUnlockedKeyring.isUnlocked()) {
-          throw new Error(
-            `Source keyring (slip44: ${sourceSlip44}) became locked before session transfer!`
-          );
-        }
-
-        anyUnlockedKeyring.transferSessionTo(targetKeyring);
-
-        // NOW it's safe to update activeSlip44 after session transfer
-        if (shouldDeferActiveSlip44) {
-          console.log(
-            `[MainController] Setting activeSlip44 to ${slip44} after session transfer`
-          );
-          store.dispatch(setActiveSlip44(slip44));
-        }
-
-        // Create accounts if no existing vault state OR if vault exists but has no accounts
-        let shouldCreateFirstAccount = !hasExistingVaultState;
-
-        if (hasExistingVaultState) {
-          // Check if the vault has any HD accounts
-          const { accounts } = store.getState().vault;
-          const hasHDAccounts =
-            accounts.HDAccount && Object.keys(accounts.HDAccount).length > 0;
-
-          if (!hasHDAccounts) {
-            console.log(
-              '[MainController] Existing vault state found but no HD accounts exist, will create first account'
-            );
-            shouldCreateFirstAccount = true;
-          }
-        }
-
-        if (shouldCreateFirstAccount) {
-          // Ensure the keyring is properly unlocked before creating account
-          if (!targetKeyring.isUnlocked()) {
-            throw new Error(
-              `Target keyring is not unlocked after session transfer! This should not happen.`
-            );
-          }
-
-          // Create first account
-          // Session data was already transferred, so we can create the first account directly
-          const account = await targetKeyring.createFirstAccount();
-          console.log(
-            '[MainController] Created new keyring account',
-            account.address
-          );
-
-          store.dispatch(
-            createAccount({
-              account: account,
-              accountType: KeyringAccountType.HDAccount,
-            })
-          );
-
-          // This ensures setSignerNetwork() finds the correct account
-          store.dispatch(
-            setActiveAccount({
-              id: account.id,
-              type: KeyringAccountType.HDAccount,
-            })
-          );
-        }
-      } catch (error) {
-        console.error(`[MainController] Error transferring session:`, error);
-        throw new Error(
-          `Failed to transfer session to new keyring: ${error.message}`
-        );
-      }
-    } else if (!targetKeyring.isUnlocked()) {
-      // If target keyring is not unlocked and we didn't transfer session
+    try {
+      // 🔥 FIX: Capture unlocked keyring reference BEFORE any state changes
+      // This ensures we have a valid keyring to transfer session from
       if (isSwitchingSlip44) {
-        // This is a critical error - we're switching keyrings but can't unlock the target
-        console.error(
-          `[MainController] No unlocked keyring found to transfer session from. Available keyrings: ${Array.from(
-            this.keyrings.keys()
-          )}`
+        const unlockedKeyringEntry = Array.from(this.keyrings.entries()).find(
+          ([, kr]) => {
+            try {
+              return kr.isUnlocked();
+            } catch (error) {
+              console.warn(
+                `[MainController] Error checking keyring unlock status:`,
+                error
+              );
+              return false;
+            }
+          }
         );
-        throw new Error(
-          `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
-        );
+
+        if (unlockedKeyringEntry) {
+          const [sourceSlip44, unlockedKeyring] = unlockedKeyringEntry;
+          stateTransaction.sourceKeyring = unlockedKeyring;
+          stateTransaction.sourceSlip44 = sourceSlip44;
+          stateTransaction.needsSessionTransfer = true;
+        } else {
+          console.warn(
+            `[MainController] WARNING: Switching slip44 but no unlocked keyring found! This will fail.`
+          );
+        }
       }
-      // For same slip44, the keyring should already be unlocked from previous operations
-    }
 
-    await targetKeyring.setSignerNetwork(network as any);
-
-    // activeSlip44 is already set correctly by loadAndActivateSlip44Vault
-    // No need to set it again - that could trigger unnecessary state updates
-
-    // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
-    this.keyrings.set(slip44, targetKeyring);
-
-    // Repair corrupted accounts if needed (after session transfer is complete)
-    if (needsAccountRepair && targetKeyring.isUnlocked()) {
-      console.log(
-        `[MainController] Starting account repair for slip44 ${slip44} after network switch`
-      );
-
-      try {
-        // We need the password to repair accounts, but we don't have it here
-        // Instead, we can try to repair using the existing session
-        await this.repairCorruptedAccountsWithSession(targetKeyring);
-      } catch (error) {
-        console.error(
-          `[MainController] Failed to repair accounts during network switch:`,
-          error
-        );
-        // Don't throw - continue with network switch even if repair fails
-      }
-    }
-
-    // Perform deferred save of previous vault state (non-blocking)
-    if (deferredSaveData) {
-      this.performDeferredVaultSave(deferredSaveData);
-    }
-    // Lock all other keyrings for security AFTER everything is complete
-    // This prevents interfering with the session transfer or state updates
-    this.keyrings.forEach((keyring, keyringSlip44) => {
-      if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
+      // Capture current vault state for deferred save (non-blocking)
+      if (isSwitchingSlip44) {
         console.log(
-          `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
+          `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
         );
-        keyring.lockWallet();
+
+        // Create shallow copy of current state for deferred save (fast, relies on Redux immutability)
+        const currentState = store.getState().vault;
+        if (currentState && activeSlip44 !== null) {
+          // Shallow copy - safe because Redux state updates are immutable
+          // The old state tree remains unchanged after loadAndActivateSlip44Vault dispatches
+          const vaultStateCopy = { ...currentState };
+          stateTransaction.deferredSaveData = {
+            slip44: activeSlip44,
+            vaultState: vaultStateCopy,
+          };
+        }
+
+        // Load vault state for target slip44
+        try {
+          hasExistingVaultState = await loadAndActivateSlip44Vault(
+            slip44,
+            network,
+            false // Never defer activeSlip44 update anymore - we handle it atomically
+          );
+        } catch (vaultLoadError) {
+          console.error(
+            `[MainController] Failed to load vault for slip44 ${slip44}:`,
+            vaultLoadError
+          );
+          // Continue anyway - we'll create a new vault
+          hasExistingVaultState = false;
+        }
+
+        // Update vault state with correct network info
+        store.dispatch(setNetworkChange({ activeNetwork: network }));
       }
-    });
+
+      // Ensure the target keyring exists
+      let targetKeyring = this.keyrings.get(slip44);
+      let keyringWasJustCreated = false;
+      let needsAccountRepair = false;
+
+      if (!targetKeyring) {
+        console.log('[MainController] Creating new keyring on demand');
+        targetKeyring = this.createKeyringOnDemand();
+        keyringWasJustCreated = true;
+        // Store the new keyring immediately so it's available for subsequent operations
+        this.keyrings.set(slip44, targetKeyring);
+      }
+
+      stateTransaction.targetKeyring = targetKeyring;
+
+      // Check if we need to repair corrupted accounts (using the flag we set earlier)
+      if (hasExistingVaultState) {
+        const { accounts } = store.getState().vault;
+
+        // Quick check for missing xpub in HD accounts
+        if (accounts.HDAccount) {
+          for (const account of Object.values(accounts.HDAccount)) {
+            if (!account.xpub || account.xpub === '') {
+              needsAccountRepair = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // 🔥 FIX: Transfer session using the source keyring reference we captured
+      const needsSessionTransfer =
+        isSwitchingSlip44 &&
+        stateTransaction.needsSessionTransfer &&
+        stateTransaction.sourceKeyring &&
+        (!keyringWasJustCreated || !targetKeyring.isUnlocked());
+
+      if (!targetKeyring) {
+        throw new Error(`Failed to get keyring for slip44: ${slip44}`);
+      }
+
+      // Handle session transfer if needed
+      if (needsSessionTransfer && stateTransaction.sourceKeyring) {
+        try {
+          // Double-check source keyring is still valid before transfer
+          if (!stateTransaction.sourceKeyring.isUnlocked()) {
+            throw new Error(
+              `Source keyring (slip44: ${stateTransaction.sourceSlip44}) became locked before session transfer!`
+            );
+          }
+
+          // Transfer session directly from source to target
+          stateTransaction.sourceKeyring.transferSessionTo(targetKeyring);
+
+          // Create accounts if no existing vault state OR if vault exists but has no accounts
+          let shouldCreateFirstAccount = !hasExistingVaultState;
+
+          if (hasExistingVaultState) {
+            // Check if the vault has any HD accounts
+            const { accounts } = store.getState().vault;
+            const hasHDAccounts =
+              accounts.HDAccount && Object.keys(accounts.HDAccount).length > 0;
+
+            if (!hasHDAccounts) {
+              console.log(
+                '[MainController] Existing vault state found but no HD accounts exist, will create first account'
+              );
+              shouldCreateFirstAccount = true;
+            }
+          }
+
+          if (shouldCreateFirstAccount) {
+            // Ensure the keyring is properly unlocked before creating account
+            if (!targetKeyring.isUnlocked()) {
+              throw new Error(
+                `Target keyring is not unlocked after session transfer! This should not happen.`
+              );
+            }
+
+            // Create first account
+            // Session data was already transferred, so we can create the first account directly
+            const account = await targetKeyring.createFirstAccount();
+            console.log(
+              '[MainController] Created new keyring account',
+              account.address
+            );
+
+            store.dispatch(
+              createAccount({
+                account: account,
+                accountType: KeyringAccountType.HDAccount,
+              })
+            );
+
+            // This ensures setSignerNetwork() finds the correct account
+            store.dispatch(
+              setActiveAccount({
+                id: account.id,
+                type: KeyringAccountType.HDAccount,
+              })
+            );
+          }
+        } catch (error) {
+          console.error(`[MainController] Error transferring session:`, error);
+          throw new Error(
+            `Failed to transfer session to new keyring: ${error.message}`
+          );
+        }
+      } else if (!targetKeyring.isUnlocked()) {
+        // If target keyring is not unlocked and we didn't transfer session
+        if (isSwitchingSlip44) {
+          // This is a critical error - we're switching keyrings but can't unlock the target
+          console.error(
+            `[MainController] No unlocked keyring found to transfer session from. Available keyrings: ${Array.from(
+              this.keyrings.keys()
+            )}`
+          );
+          throw new Error(
+            `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
+          );
+        }
+        // For same slip44, the keyring should already be unlocked from previous operations
+      }
+
+      await targetKeyring.setSignerNetwork(network);
+
+      // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
+      this.keyrings.set(slip44, targetKeyring);
+
+      // Repair corrupted accounts if needed (after session transfer is complete)
+      if (needsAccountRepair && targetKeyring.isUnlocked()) {
+        console.log(
+          `[MainController] Starting account repair for slip44 ${slip44} after network switch`
+        );
+
+        try {
+          // We need the password to repair accounts, but we don't have it here
+          // Instead, we can try to repair using the existing session
+          await this.repairCorruptedAccountsWithSession(targetKeyring);
+        } catch (error) {
+          console.error(
+            `[MainController] Failed to repair accounts during network switch:`,
+            error
+          );
+          // Don't throw - continue with network switch even if repair fails
+        }
+      }
+
+      // Perform deferred save of previous vault state (non-blocking)
+      if (stateTransaction.deferredSaveData) {
+        this.performDeferredVaultSave(stateTransaction.deferredSaveData);
+      }
+
+      // Lock all other keyrings for security AFTER everything is complete
+      // This prevents interfering with the session transfer or state updates
+      this.keyrings.forEach((keyring, keyringSlip44) => {
+        if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
+          console.log(
+            `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
+          );
+          keyring.lockWallet();
+        }
+      });
+    } catch (error) {
+      console.error('[MainController] Error in switchActiveKeyring:', error);
+      throw error;
+    }
   }
 
   // Create a keyring on demand with storage access
@@ -610,43 +615,70 @@ class MainController {
 
   // Properly dispose of keyring instances to prevent memory leaks
   private disposeAllKeyrings(): void {
+    const disposalErrors: Array<{ error: any; slip44: number }> = [];
+
     this.keyrings.forEach((keyring, slip44) => {
       try {
         console.log(`[MainController] Disposing keyring for slip44: ${slip44}`);
 
         // Lock the keyring first to clear session data
-        if (keyring.isUnlocked()) {
-          keyring.lockWallet();
+        try {
+          if (keyring.isUnlocked()) {
+            keyring.lockWallet();
+          }
+        } catch (lockError) {
+          console.warn(
+            `[MainController] Failed to lock keyring ${slip44} during disposal:`,
+            lockError
+          );
+          // Continue with disposal even if lock fails
         }
-
-        // Dispose of Trezor resources
-        if (
-          keyring.trezorSigner &&
-          typeof keyring.trezorSigner.dispose === 'function'
-        ) {
-          keyring.trezorSigner.dispose();
-        }
-
         // Clean up Web3 providers if they exist
         if (
           keyring.ethereumTransaction &&
           keyring.ethereumTransaction.web3Provider
         ) {
           try {
-            // Remove all listeners from Web3 provider if it has removeAllListeners method
             const provider = keyring.ethereumTransaction.web3Provider;
+
+            // Remove all listeners from Web3 provider
             if (typeof provider.removeAllListeners === 'function') {
-              provider.removeAllListeners();
+              try {
+                provider.removeAllListeners();
+                console.log(
+                  `[MainController] Removed Web3 provider listeners for slip44 ${slip44}`
+                );
+              } catch (listenerError) {
+                console.warn(
+                  `[MainController] Failed to remove Web3 provider listeners for slip44 ${slip44}:`,
+                  listenerError
+                );
+              }
             }
+
             // Destroy provider if it has a destroy method
             if (typeof provider.destroy === 'function') {
-              provider.destroy();
+              try {
+                provider.destroy();
+                console.log(
+                  `[MainController] Destroyed Web3 provider for slip44 ${slip44}`
+                );
+              } catch (destroyError) {
+                console.warn(
+                  `[MainController] Failed to destroy Web3 provider for slip44 ${slip44}:`,
+                  destroyError
+                );
+              }
             }
+
+            // Clear the provider reference
+            keyring.ethereumTransaction.web3Provider = null;
           } catch (providerError) {
-            console.warn(
+            console.error(
               `[MainController] Error disposing Web3 provider for slip44 ${slip44}:`,
               providerError
             );
+            disposalErrors.push({ slip44, error: providerError });
           }
         }
 
@@ -657,28 +689,51 @@ class MainController {
             typeof (keyring as any).removeAllListeners === 'function'
           ) {
             (keyring as any).removeAllListeners();
+            console.log(
+              `[MainController] Removed event listeners for keyring slip44 ${slip44}`
+            );
           }
         } catch (listenerError) {
           console.error(
-            `Failed to remove listeners for keyring ${slip44}:`,
+            `[MainController] Failed to remove listeners for keyring ${slip44}:`,
             listenerError
           );
-          // Continue with disposal even if listener removal fails
+          disposalErrors.push({ slip44, error: listenerError });
         }
 
-        // If keyring has any other cleanup methods, call them here
-        // Note: KeyringManager doesn't have a dispose method, but we've cleaned up its major components
+        // Clear any remaining references
+        if (keyring.syscoinTransaction) {
+          keyring.syscoinTransaction = null;
+        }
+        if (keyring.ethereumTransaction) {
+          keyring.ethereumTransaction = null;
+        }
+
+        console.log(
+          `[MainController] Successfully disposed keyring for slip44: ${slip44}`
+        );
       } catch (error) {
         console.error(
           `[MainController] Error disposing keyring for slip44 ${slip44}:`,
           error
         );
-        // Continue with other keyrings even if one fails
+        disposalErrors.push({ slip44, error });
       }
     });
 
     // Clear the keyrings map after disposal
     this.keyrings.clear();
+    console.log('[MainController] Cleared all keyrings from memory');
+
+    // Log summary of disposal errors if any occurred
+    if (disposalErrors.length > 0) {
+      console.error(
+        `[MainController] Keyring disposal completed with ${disposalErrors.length} errors:`,
+        disposalErrors
+      );
+    } else {
+      console.log('[MainController] All keyrings disposed successfully');
+    }
   }
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
@@ -744,7 +799,22 @@ class MainController {
   }
 
   public async unlock(pwd: string) {
-    return this.getActiveKeyring().unlock(pwd);
+    console.log('[MainController] Attempting to unlock wallet');
+    try {
+      const keyring = this.getActiveKeyring();
+      const result = await keyring.unlock(pwd);
+
+      if (result.canLogin) {
+        console.log('[MainController] Wallet unlocked successfully');
+      } else {
+        console.warn('[MainController] Wallet unlock returned canLogin=false');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('[MainController] Error during wallet unlock:', error);
+      throw error;
+    }
   }
 
   public isUnlocked() {
@@ -1766,7 +1836,7 @@ class MainController {
       }
 
       // Ensure the active keyring network matches the current network
-      await keyring.setSignerNetwork(activeNetwork as any);
+      await keyring.setSignerNetwork(activeNetwork);
 
       // Save the repaired wallet state
       this.saveWalletState('repair-corrupted-accounts');

@@ -147,8 +147,22 @@ export function serializeError(
         (serialized as IEthereumRpcErrorHandlerSerialized).code
       );
 
-      // TODO: Verify that the original error is serializable.
-      serialized.data = { originalError: assignOriginalError(error) } as Json;
+      // Verify that the original error is serializable
+      const originalError = assignOriginalError(error);
+      try {
+        JSON.stringify(originalError);
+        serialized.data = { originalError } as Json;
+      } catch (e) {
+        // If not serializable, convert to a safe format
+        const errorLike = originalError as any;
+        serialized.data = {
+          originalError: {
+            message: String(errorLike?.message || 'Unknown error'),
+            name: String(errorLike?.name || 'Error'),
+            stack: String(errorLike?.stack || ''),
+          },
+        } as Json;
+      }
     }
   } else {
     serialized.code = fallbackError.code;
@@ -158,8 +172,22 @@ export function serializeError(
     serialized.message =
       message && typeof message === 'string' ? message : fallbackError.message;
 
-    // TODO: Verify that the original error is serializable.
-    serialized.data = { originalError: assignOriginalError(error) } as Json;
+    // Verify that the original error is serializable
+    const originalError = assignOriginalError(error);
+    try {
+      JSON.stringify(originalError);
+      serialized.data = { originalError } as Json;
+    } catch (e) {
+      // If not serializable, convert to a safe format
+      const errorLike = originalError as any;
+      serialized.data = {
+        originalError: {
+          message: String(errorLike?.message || 'Unknown error'),
+          name: String(errorLike?.name || 'Error'),
+          stack: String(errorLike?.stack || ''),
+        },
+      } as Json;
+    }
   }
 
   const stack = (error as any)?.stack;

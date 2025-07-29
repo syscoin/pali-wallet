@@ -72,6 +72,8 @@ export const rehydrateStore = async (
     return Promise.resolve();
   } catch (error) {
     console.log({ error });
-    return Promise.reject();
+    return Promise.reject(
+      new Error(`Failed to rehydrate state: ${error.message || error}`)
+    );
   }
 };
