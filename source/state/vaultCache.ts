@@ -54,14 +54,35 @@ function validateVaultSlip44(
   return true;
 }
 
+// Simple async mutex implementation
+class AsyncMutex {
+  private mutex = Promise.resolve();
+
+  async runExclusive<T>(callback: () => Promise<T>): Promise<T> {
+    const oldMutex = this.mutex;
+
+    let release: () => void;
+    this.mutex = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await oldMutex;
+    try {
+      return await callback();
+    } finally {
+      release!();
+    }
+  }
+}
+
 /**
  * Simplified vault cache system for lazy loading slip44-specific vault states
  */
 class VaultCache {
   private slip44Cache: Map<number, ISlip44State> = new Map();
 
-  // 🔥 Simple flag to prevent double emergency saves
-  private emergencySaveInProgress = false;
+  // Use mutex instead of simple flag to prevent concurrent emergency saves
+  private emergencySaveMutex = new AsyncMutex();
 
   /**
    * Get slip44-specific vault state, loading it if not cached
@@ -141,46 +162,39 @@ class VaultCache {
   async emergencySave(): Promise<void> {
     console.log('[VaultCache] 🚨 Emergency save triggered');
 
-    // 🔥 Simple flag check to prevent double execution
-    if (this.emergencySaveInProgress) {
-      console.log(
-        '[VaultCache] ⚡ Emergency save already in progress, skipping...'
-      );
-      return;
-    }
-    this.emergencySaveInProgress = true;
+    // Use mutex to ensure only one emergency save runs at a time
+    return this.emergencySaveMutex.runExclusive(async () => {
+      const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+      const liveVaultState = store.getState().vault;
 
-    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-    const liveVaultState = store.getState().vault;
+      try {
+        // Always save main state (vaultGlobal, dapp, price) - settings could have changed
+        await saveMainState();
 
-    try {
-      // Always save main state (vaultGlobal, dapp, price) - settings could have changed
-      await saveMainState();
+        if (activeSlip44 !== null && liveVaultState) {
+          // During emergency save, use the vault's actual network slip44
+          // This handles cases where network is switching and activeSlip44 doesn't match yet
+          const vaultNetworkSlip44 = liveVaultState.activeNetwork
+            ? getSlip44ForNetwork(liveVaultState.activeNetwork)
+            : activeSlip44;
 
-      if (activeSlip44 !== null && liveVaultState) {
-        // During emergency save, use the vault's actual network slip44
-        // This handles cases where network is switching and activeSlip44 doesn't match yet
-        const vaultNetworkSlip44 = liveVaultState.activeNetwork
-          ? getSlip44ForNetwork(liveVaultState.activeNetwork)
-          : activeSlip44;
+          // Save to the slip44 that matches the vault's current network
+          // This prevents slip44 mismatch errors during network switches
+          this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
+          await saveSlip44State(vaultNetworkSlip44, liveVaultState);
 
-        // Save to the slip44 that matches the vault's current network
-        // This prevents slip44 mismatch errors during network switches
-        this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
-        await saveSlip44State(vaultNetworkSlip44, liveVaultState);
-
-        console.log(
-          `[VaultCache] ✅ Emergency save completed for slip44: ${vaultNetworkSlip44} (vault network slip44)`
-        );
-      } else {
-        console.log(`[VaultCache] Emergency save: no active slip44 to save`);
+          console.log(
+            `[VaultCache] ✅ Emergency save completed for slip44: ${vaultNetworkSlip44} (vault network slip44)`
+          );
+        } else {
+          console.log(`[VaultCache] Emergency save: no active slip44 to save`);
+        }
+      } catch (error) {
+        console.error('[VaultCache] ❌ Emergency save failed:', error);
+        // Re-throw to let caller know save failed
+        throw error;
       }
-    } catch (error) {
-      console.error('[VaultCache] ❌ Emergency save failed:', error);
-    } finally {
-      // Always reset flag so subsequent calls can work (in case of partial failure)
-      this.emergencySaveInProgress = false;
-    }
+    });
   }
 }
 

@@ -158,7 +158,7 @@ class MainController {
   private saveTimeout: NodeJS.Timeout | null = null;
 
   // Track active rapid polls to avoid duplicates
-  private activeRapidPolls = new Map<string, number>();
+  private activeRapidPolls = new Map<string, NodeJS.Timeout>();
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
@@ -642,7 +642,7 @@ class MainController {
             const provider = keyring.ethereumTransaction.web3Provider;
 
             // Remove all listeners from Web3 provider
-            if (typeof provider.removeAllListeners === 'function') {
+            if (provider && typeof provider.removeAllListeners === 'function') {
               try {
                 provider.removeAllListeners();
                 console.log(
@@ -652,6 +652,19 @@ class MainController {
                 console.warn(
                   `[MainController] Failed to remove Web3 provider listeners for slip44 ${slip44}:`,
                   listenerError
+                );
+              }
+            } else if (provider && provider._events) {
+              // Fallback: Try to clear events object directly for providers that don't have removeAllListeners
+              try {
+                provider._events = {};
+                console.log(
+                  `[MainController] Cleared _events for Web3 provider slip44 ${slip44}`
+                );
+              } catch (eventError) {
+                console.warn(
+                  `[MainController] Could not clear events for slip44 ${slip44}:`,
+                  eventError
                 );
               }
             }
@@ -3739,7 +3752,7 @@ class MainController {
           console.log(
             `[RapidPoll] Transaction ${txHash} still pending, scheduling next poll...`
           );
-          const timeoutId = setTimeout(poll, pollInterval) as unknown as number;
+          const timeoutId = setTimeout(poll, pollInterval);
           this.activeRapidPolls.set(pollKey, timeoutId);
         } else {
           console.log(
@@ -3754,7 +3767,7 @@ class MainController {
     };
 
     // Start the first poll after a delay
-    const timeoutId = setTimeout(poll, pollInterval) as unknown as number;
+    const timeoutId = setTimeout(poll, pollInterval);
     this.activeRapidPolls.set(pollKey, timeoutId);
   }
 
