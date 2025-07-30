@@ -44,7 +44,7 @@ export const EthProvider = (
       tx,
       validateTxToAddress,
       web3Provider,
-      getController()
+      getController().wallet
     )) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
