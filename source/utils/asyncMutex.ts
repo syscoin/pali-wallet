@@ -50,6 +50,7 @@ export const networkSwitchMutex = new AsyncMutex();
 export const fiatAlarmMutex = new AsyncMutex();
 export const pollingMutex = new AsyncMutex();
 export const emergencySaveMutex = new AsyncMutex();
+export const accountSwitchMutex = new AsyncMutex();
 
 // Helper function to create named mutexes on demand
 const namedMutexes = new Map<string, AsyncMutex>();

@@ -141,7 +141,8 @@ class VaultCache {
 
     // Use mutex to ensure only one emergency save runs at a time
     return emergencySaveMutex.runExclusive(async () => {
-      const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+      const globalState = store.getState().vaultGlobal;
+      const activeSlip44 = globalState.activeSlip44;
       const liveVaultState = store.getState().vault;
 
       try {
@@ -149,19 +150,44 @@ class VaultCache {
         await saveMainState();
 
         if (activeSlip44 !== null && liveVaultState) {
-          // During emergency save, use the vault's actual network slip44
-          // This handles cases where network is switching and activeSlip44 doesn't match yet
-          const vaultNetworkSlip44 = liveVaultState.activeNetwork
-            ? getSlip44ForNetwork(liveVaultState.activeNetwork)
-            : activeSlip44;
+          // During emergency save, we need to handle potential slip44 mismatches carefully
+          const targetSlip44 = activeSlip44;
 
-          // Save to the slip44 that matches the vault's current network
-          // This prevents slip44 mismatch errors during network switches
-          this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
-          await saveSlip44State(vaultNetworkSlip44, liveVaultState);
+          // If vault has an active network, verify slip44 consistency
+          if (liveVaultState.activeNetwork) {
+            const vaultNetworkSlip44 = getSlip44ForNetwork(
+              liveVaultState.activeNetwork
+            );
+
+            // Check if we're in the middle of a network switch
+            if (vaultNetworkSlip44 !== activeSlip44) {
+              console.warn(
+                `[VaultCache] ⚠️  Slip44 mismatch detected during emergency save: ` +
+                  `activeSlip44=${activeSlip44}, vaultNetworkSlip44=${vaultNetworkSlip44}. ` +
+                  `Network switch may be in progress.`
+              );
+
+              // In case of mismatch, save to both locations to prevent data loss
+              // This ensures data is preserved regardless of which state wins
+              this.slip44Cache.set(activeSlip44, liveVaultState);
+              await saveSlip44State(activeSlip44, liveVaultState);
+
+              this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
+              await saveSlip44State(vaultNetworkSlip44, liveVaultState);
+
+              console.log(
+                `[VaultCache] ✅ Emergency save completed for both slip44s: ${activeSlip44} and ${vaultNetworkSlip44}`
+              );
+              return;
+            }
+          }
+
+          // Normal case - save to the target slip44
+          this.slip44Cache.set(targetSlip44, liveVaultState);
+          await saveSlip44State(targetSlip44, liveVaultState);
 
           console.log(
-            `[VaultCache] ✅ Emergency save completed for slip44: ${vaultNetworkSlip44} (vault network slip44)`
+            `[VaultCache] ✅ Emergency save completed for slip44: ${targetSlip44}`
           );
         } else {
           console.log(`[VaultCache] Emergency save: no active slip44 to save`);

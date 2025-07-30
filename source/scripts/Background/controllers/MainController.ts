@@ -86,7 +86,11 @@ import {
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
-import { fiatPriceMutex, networkSwitchMutex } from 'utils/asyncMutex';
+import {
+  fiatPriceMutex,
+  networkSwitchMutex,
+  accountSwitchMutex,
+} from 'utils/asyncMutex';
 import { areBalancesDifferent } from 'utils/balance';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -1795,7 +1799,8 @@ class MainController {
       store.dispatch(setLastLogin());
 
       // Save vault state to persistent storage after creating the first account
-      this.saveWalletState('create-wallet', true);
+      // Use sync=true to ensure save completes before continuing
+      await this.saveWalletState('create-wallet', true, true);
 
       setTimeout(() => {
         // Wrap in try-catch to prevent unhandled errors
@@ -1911,7 +1916,8 @@ class MainController {
     );
 
     // Save wallet state after creating account
-    this.saveWalletState('create-account', true);
+    // Use sync=true to ensure save completes before verification
+    await this.saveWalletState('create-account', true, true);
 
     // Double-check the account was stored correctly
     const { accounts } = store.getState().vault;
@@ -1947,46 +1953,42 @@ class MainController {
     type: KeyringAccountType,
     sync = false
   ): Promise<void> {
-    try {
-      // Prevent concurrent account switching
-      if (this.isAccountSwitching) {
-        console.log('Account switching already in progress, ignoring request');
-        return;
-      }
+    // Use AsyncMutex for cross-context synchronization
+    // This prevents concurrent account switches across all contexts
+    return accountSwitchMutex.runExclusive(async () => {
+      try {
+        // Cancel any pending async operations before switching accounts
+        if (this.cancellablePromises.transactionPromise) {
+          this.cancellablePromises.transactionPromise.cancel();
+        }
+        if (this.cancellablePromises.assetsPromise) {
+          this.cancellablePromises.assetsPromise.cancel();
+        }
+        if (this.cancellablePromises.balancePromise) {
+          this.cancellablePromises.balancePromise.cancel();
+        }
+        if (this.cancellablePromises.nftsPromise) {
+          this.cancellablePromises.nftsPromise.cancel();
+        }
 
-      this.isAccountSwitching = true;
+        // Set switching account loading state
+        store.dispatch(setIsSwitchingAccount(true));
 
-      // Cancel any pending async operations before switching accounts
-      if (this.cancellablePromises.transactionPromise) {
-        this.cancellablePromises.transactionPromise.cancel();
-      }
-      if (this.cancellablePromises.assetsPromise) {
-        this.cancellablePromises.assetsPromise.cancel();
-      }
-      if (this.cancellablePromises.balancePromise) {
-        this.cancellablePromises.balancePromise.cancel();
-      }
-      if (this.cancellablePromises.nftsPromise) {
-        this.cancellablePromises.nftsPromise.cancel();
-      }
+        // Set active account
+        store.dispatch(setActiveAccount({ id, type }));
 
-      // Set switching account loading state
-      store.dispatch(setIsSwitchingAccount(true));
-
-      // Set active account
-      store.dispatch(setActiveAccount({ id, type }));
-
-      // Defer heavy operations to prevent blocking the UI
-      if (sync) {
-        await this.performPostAccountSwitchOperations();
-      } else {
-        this.performPostAccountSwitchOperations();
+        // Defer heavy operations to prevent blocking the UI
+        if (sync) {
+          await this.performPostAccountSwitchOperations();
+        } else {
+          this.performPostAccountSwitchOperations();
+        }
+      } catch (error) {
+        console.error('Failed to set active account:', error);
+        // Re-throw to let the UI handle the error
+        throw error;
       }
-    } catch (error) {
-      console.error('Failed to set active account:', error);
-      // Re-throw to let the UI handle the error
-      throw error;
-    }
+    });
   }
 
   private async performPostAccountSwitchOperations() {
@@ -2006,7 +2008,6 @@ class MainController {
       console.error('Error in post-account-switch operations:', error);
     } finally {
       store.dispatch(setIsSwitchingAccount(false));
-      this.isAccountSwitching = false;
       await this.saveWalletState('account-switch', true, true); // sync=true for immediate save
     }
   }
@@ -2366,7 +2367,8 @@ class MainController {
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
     // Save wallet state after adding custom network
-    this.saveWalletState('add-custom-network', true);
+    // Use sync=true to ensure save completes before returning
+    await this.saveWalletState('add-custom-network', true, true);
 
     return networkWithCustomParams;
   }
@@ -2398,7 +2400,10 @@ class MainController {
     this.saveWalletState('edit-account-label', true);
   }
 
-  public removeAccount(accountId: number, accountType: KeyringAccountType) {
+  public async removeAccount(
+    accountId: number,
+    accountType: KeyringAccountType
+  ) {
     const { accounts, activeAccount } = store.getState().vault;
 
     // Safety check: Don't allow removing the active account
@@ -2448,10 +2453,10 @@ class MainController {
       }
     });
     // Save wallet state after removing account
-    this.saveWalletState('remove-account', true);
+    await this.saveWalletState('remove-account', true, true);
   }
 
-  public removeKeyringNetwork(
+  public async removeKeyringNetwork(
     chain: INetworkType,
     chainId: number,
     rpcUrl: string,
@@ -2486,7 +2491,7 @@ class MainController {
     store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
 
     // Save wallet state after removing network
-    this.saveWalletState('remove-network', true);
+    await this.saveWalletState('remove-network', true, true);
   }
 
   private async clearSlip44VaultState(slip44: number): Promise<void> {
@@ -2545,7 +2550,8 @@ class MainController {
     );
 
     // Save wallet state after importing account from private key
-    this.saveWalletState('import-account-private-key', true);
+    // Use sync=true to ensure save completes before continuing
+    await this.saveWalletState('import-account-private-key', true, true);
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
