@@ -158,10 +158,16 @@ export const useFaucetComponentStates = () => {
     }
   }, [chainId, account.address, controllerEmitter]);
 
-  const handleFaucetButton = useCallback(
-    () => navigate('/faucet-info'),
-    [navigate]
-  );
+  const handleFaucetButton = useCallback(() => {
+    if (
+      state.status === FaucetStatusResponse.REQUEST ||
+      state.status === FaucetStatusResponse.ERROR
+    ) {
+      handleRequestFaucet();
+    } else if (state.status === FaucetStatusResponse.SUCCESS) {
+      navigate('/home');
+    }
+  }, [state.status, handleRequestFaucet, navigate]);
 
   useEffect(() => {
     if (chainId === FaucetChainIds.RolluxMainnet) {
