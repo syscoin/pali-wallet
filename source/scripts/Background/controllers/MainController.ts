@@ -1427,12 +1427,15 @@ class MainController {
         .handleStateChange(PaliEvents.lockStateChanged, {
           method: PaliEvents.lockStateChanged,
           params: {
-            accounts: [],
-            isUnlocked: this.isUnlocked(),
+            // Don't send accounts array - let DAppController determine accounts per dapp
+            isUnlocked: true, // We just unlocked successfully
           },
         })
         .catch((error) => {
-          console.error('Unlock', error);
+          console.error(
+            '[MainController] Failed to notify dapps about unlock:',
+            error
+          );
           // Non-critical - popup update failure doesn't affect unlock success
         });
 
@@ -1897,12 +1900,14 @@ class MainController {
 
     store.dispatch(setLastLogin());
 
+    // Send lockStateChanged event which will trigger accountsChanged internally
+    // The provider will call _handleUnlockStateChanged which then calls _handleAccountsChanged
     controller.dapp
       .handleStateChange(PaliEvents.lockStateChanged, {
         method: PaliEvents.lockStateChanged,
         params: {
-          accounts: [],
-          isUnlocked: this.isUnlocked(),
+          // Don't send accounts array - DAppController will set it to empty when isUnlocked is false
+          isUnlocked: false, // Explicitly set to false when locking
         },
       })
       .catch((error) => {

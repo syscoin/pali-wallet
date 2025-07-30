@@ -91,20 +91,6 @@ export class BaseProvider extends EventEmitter {
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
     this.wallet = wallet;
-
-    // Listen for network changes to clear cache
-    this._setupNetworkChangeListener();
-  }
-
-  /**
-   * Sets up listener for network change events to clear the cache
-   */
-  private _setupNetworkChangeListener(): void {
-    // Also listen for disconnect events to invalidate caches
-    this.on('disconnect', () => {
-      this._isBackgroundConnected = false;
-      this._lastConnectionError = Date.now();
-    });
   }
 
   //====================

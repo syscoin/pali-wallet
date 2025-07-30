@@ -348,7 +348,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_requestAccounts',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: false, // Connection popup handles auth internally
+    requiresAuth: true, // Must be authenticated before connecting
     requiresConnection: true,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
@@ -1052,7 +1052,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_requestAccounts',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: false, // Connection popup handles auth internally
+    requiresAuth: true, // Must be authenticated before connecting
     requiresConnection: true,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.UTXO,

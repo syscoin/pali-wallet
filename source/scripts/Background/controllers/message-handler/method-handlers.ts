@@ -330,23 +330,23 @@ export class EthMethodHandler implements IMethodHandler {
           case 'chainId':
             return `0x${activeNetwork.chainId.toString(16)}`;
           case 'accounts':
-            // For eth_accounts, return accounts if wallet is unlocked
-            // This allows dapps to check if accounts are available before connecting
+            // For eth_accounts, return accounts only if:
+            // 1. Wallet is unlocked
+            // 2. On EVM network
+            // 3. Dapp is connected
+            // This matches MetaMask behavior - when locked, return empty array
             if (!wallet.isUnlocked() || isBitcoinBased) {
               return [];
             }
 
-            // First check if dapp is already connected
+            // Check if dapp is connected
             const connectedAccount = dapp.getAccount(host);
             if (connectedAccount) {
               return [connectedAccount.address];
             }
 
-            // If not connected but wallet is unlocked, return the active account
-            // This matches standard wallet behavior where eth_accounts shows available accounts
-            const { activeAccount, accounts } = store.getState().vault;
-            const account = accounts[activeAccount.type]?.[activeAccount.id];
-            return account?.address ? [account.address] : [];
+            // Not connected - return empty array
+            return [];
           case 'version': // net_version
             return activeNetwork.chainId.toString();
           default:
@@ -359,6 +359,7 @@ export class EthMethodHandler implements IMethodHandler {
     // Handle requestAccounts - connection middleware ensures we're connected
     if (methodName === 'requestAccounts') {
       const account = dapp.getAccount(host);
+
       if (!account) {
         throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
       }
@@ -434,6 +435,7 @@ export class SysMethodHandler implements IMethodHandler {
     if (methodName === 'requestAccounts') {
       const { dapp } = getController();
       const account = dapp.getAccount(host);
+
       if (!account) {
         throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
       }

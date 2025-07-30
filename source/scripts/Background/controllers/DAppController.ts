@@ -64,8 +64,10 @@ const DAppController = (): IDAppController => {
     }
   };
 
-  const connect = (dapp: IDApp, isDappConnected = false) => {
-    !isDappConnected && store.dispatch(addDApp(dapp));
+  const connect = (dapp: IDApp) => {
+    // Always update the connection in the store to ensure fresh state
+    store.dispatch(addDApp(dapp));
+
     const { accounts, isBitcoinBased } = store.getState().vault;
     _dapps[dapp.host] = { activeAddress: '', hasWindow: false };
 
@@ -81,9 +83,10 @@ const DAppController = (): IDAppController => {
       ? account.xpub
       : account.address;
 
-    // Trigger connection notification
+    // Always trigger connection notification for user feedback
     notificationManager.notifyDappConnection(dapp.host, true);
 
+    // Always dispatch events to ensure dapp state is updated
     isBitcoinBased
       ? _dispatchPaliEvent(
           dapp.host,
@@ -112,10 +115,16 @@ const DAppController = (): IDAppController => {
 
     store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
 
-    const { accounts } = store.getState().vault;
+    const { accounts, isBitcoinBased } = store.getState().vault;
     const account = accounts[accountType][accountId];
 
     if (!account) return null;
+
+    // Ensure dapp session exists
+    if (!_dapps[host]) {
+      _dapps[host] = { activeAddress: '', hasWindow: false };
+    }
+
     const response: any = [{}];
     response[0].caveats = [
       { type: 'restrictReturnedAccounts', value: [account] },
@@ -125,9 +134,13 @@ const DAppController = (): IDAppController => {
     response[0].invoker = host;
     response[0].parentCapability = 'eth_accounts';
 
-    _dapps[host].activeAddress = account.address;
+    _dapps[host].activeAddress = isBitcoinBased
+      ? account.xpub
+      : account.address;
 
     _dispatchEvent(host, 'requestPermissions', response);
+
+    // Dispatch accountsChanged event to notify dapp of new permissions
     _dispatchPaliEvent(
       host,
       {
@@ -412,9 +425,13 @@ const DAppController = (): IDAppController => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
     if (!dapp) return null;
-    const account = accounts[dapp.accountType][dapp.accountId];
 
-    if (!dapp || !account) return null;
+    // Safely check if account type exists before accessing account
+    const accountsByType = accounts[dapp.accountType];
+    if (!accountsByType) return null;
+
+    const account = accountsByType[dapp.accountId];
+    if (!account) return null;
 
     return removeXprv(account);
   };

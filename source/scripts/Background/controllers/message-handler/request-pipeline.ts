@@ -3,6 +3,7 @@ import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
+import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 import { clearProviderCache } from './method-handlers';
@@ -571,37 +572,40 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   const { originalRequest } = context;
 
   // Use helper method to check if method requires connection
-  if (
-    methodRequiresConnection(originalRequest.method) &&
-    !dapp.isConnected(originalRequest.host)
-  ) {
-    // Open connection popup directly - the router will handle auth if needed
-    try {
-      await requestCoordinator.coordinatePopupRequest(
-        context,
-        () =>
-          popupPromise({
-            host: originalRequest.host,
-            route: MethodRoute.Connect, // Always use Connect route for connection
-            eventName: 'connect', // Always use connect event for connection
-            data: {
-              chain: isBitcoinBased ? 'syscoin' : 'ethereum',
-              chainId: activeNetwork.chainId,
-            },
-          }),
-        MethodRoute.Connect // Explicit route parameter
-      );
+  if (methodRequiresConnection(originalRequest.method)) {
+    const isConnected = dapp.isConnected(originalRequest.host);
 
-      // Connection successful - clear cached provider state
-      // This ensures methods like eth_accounts return fresh data after connection
-      clearProviderCache();
+    if (!isConnected) {
+      // Not connected - open connection popup
+      try {
+        await requestCoordinator.coordinatePopupRequest(
+          context,
+          () =>
+            popupPromise({
+              host: originalRequest.host,
+              route: MethodRoute.Connect, // Always use Connect route for connection
+              eventName: 'connect', // Always use connect event for connection
+              data: {
+                chain: isBitcoinBased
+                  ? INetworkType.Syscoin
+                  : INetworkType.Ethereum,
+                chainId: activeNetwork.chainId,
+              },
+            }),
+          MethodRoute.Connect // Explicit route parameter
+        );
 
-      // Connection successful, continue to method handler
-      // The method handler will return the appropriate result
-    } catch (error) {
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized('Connection required')
-      );
+        // Connection successful - clear cached provider state
+        // This ensures methods like eth_accounts return fresh data after connection
+        clearProviderCache();
+
+        // Connection successful, continue to method handler
+        // The method handler will return the appropriate result
+      } catch (error) {
+        throw cleanErrorStack(
+          ethErrors.provider.unauthorized('Connection required')
+        );
+      }
     }
   }
 
@@ -932,10 +936,10 @@ export function createDefaultPipeline(): RequestPipeline {
     .use(networkStatusMiddleware) // Check network status first
     .use(hardwareWalletMiddleware)
     .use(networkCompatibilityMiddleware)
-    .use(utxoEvmSwitchMiddleware) // Add the new middleware here
-    .use(connectionMiddleware)
-    .use(accountSwitchingMiddleware)
-    .use(authenticationMiddleware); // Auth check last - other middleware handle auth in their popups
+    .use(utxoEvmSwitchMiddleware) // Handle network switching
+    .use(authenticationMiddleware) // Auth check before connection
+    .use(connectionMiddleware) // Connection after auth
+    .use(accountSwitchingMiddleware);
   // Method handler middleware is added in requests.ts
 }
 

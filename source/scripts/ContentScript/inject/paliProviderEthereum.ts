@@ -86,6 +86,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     this._handleConnect = this._handleConnect.bind(this);
     this._handleChainChanged = this._handleChainChanged.bind(this);
     this._handleDisconnect = this._handleDisconnect.bind(this);
+    this._handleAccountDisconnect = this._handleAccountDisconnect.bind(this);
     this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
     // Private state
     this._state = {
@@ -156,7 +157,7 @@ export class PaliInpageProviderEth extends BaseProvider {
                 : params
                 ? [params]
                 : [];
-              this._handleAccountsChanged(accountsParams, false);
+              this._handleAccountsChanged(accountsParams);
               break;
             case 'pali_unlockStateChanged':
               this._handleUnlockStateChanged(params);
@@ -308,10 +309,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       ) {
         // handle accounts changing
         cb = (err: Error, res: JsonRpcSuccessStruct) => {
-          this._handleAccountsChanged(
-            res?.result || [],
-            payload.method === 'eth_accounts'
-          );
+          this._handleAccountsChanged(res?.result || []);
           callback(err, res);
         };
       }
@@ -387,8 +385,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _handleAccountsChanged(
-    currentAccounts: unknown[] | null | undefined,
-    isEthAccounts = false
+    currentAccounts: unknown[] | null | undefined
   ): void {
     // Handle edge case of undefined being passed
     if (currentAccounts === undefined) {
@@ -435,19 +432,34 @@ export class PaliInpageProviderEth extends BaseProvider {
       JSON.stringify(previousAccounts) !== JSON.stringify(accounts);
 
     // Check if we're transitioning from no accounts to having accounts (new connection)
+    const wasConnected = previousAccounts && previousAccounts.length > 0;
+    const isNowDisconnected = !accounts || accounts.length === 0;
     const wasDisconnected = !previousAccounts || previousAccounts.length === 0;
     const isNowConnected = accounts && accounts.length > 0;
     const isNewConnection = wasDisconnected && isNowConnected;
+    const isDisconnection = wasConnected && isNowDisconnected;
 
+    // Update state before emitting events
     if (accounts.length > 0 && isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
+    } else {
+      // Clear accounts when empty
+      this._state.accounts = [];
     }
 
     // handle selectedAddress
     if (this.selectedAddress !== accounts[0]) {
-      if (isHexString(accounts[0])) {
+      if (accounts.length > 0 && isHexString(accounts[0])) {
         this.selectedAddress = (accounts[0] as string) || null;
+      } else {
+        this.selectedAddress = null;
       }
+    }
+
+    // If this is a disconnection (accounts went from having accounts to empty),
+    // emit disconnect event
+    if (this._state.initialized && isDisconnection) {
+      this._handleAccountDisconnect();
     }
 
     // If this is a new connection (accounts went from empty to having accounts),
@@ -458,10 +470,8 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     // finally, after all state has been updated, emit the event
-    if (this._state.initialized) {
+    if (this._state.initialized && accountsChanged) {
       this.emit('accountsChanged', accounts);
-    } else if (this._state.initialized && isEthAccounts && !accountsChanged) {
-      // Skip duplicate emissions from eth_accounts calls
     }
   }
 
@@ -477,6 +487,19 @@ export class PaliInpageProviderEth extends BaseProvider {
       this._state.isConnected = true;
       this.emit('connect', { chainId });
       console.debug(messages.info.connected(chainId));
+    }
+  }
+
+  /**
+   * When accounts are disconnected, emit disconnect event
+   * This is different from _handleDisconnect which handles connection errors
+   *
+   * @emits PaliInpageProvider#disconnect
+   */
+  private _handleAccountDisconnect() {
+    if (this._state.isConnected) {
+      this._state.isConnected = false;
+      this.emit('disconnect', { code: 4900, message: 'User disconnected' });
     }
   }
 
