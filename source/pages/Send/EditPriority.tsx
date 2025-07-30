@@ -50,6 +50,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [form] = Form.useForm();
 
   // Validation states for visual feedback
+  // Start with null to avoid showing validation errors before user interaction
   const [gasLimitValid, setGasLimitValid] = useState<boolean | null>(null);
   const [priorityFeeValid, setPriorityFeeValid] = useState<boolean | null>(
     null
@@ -57,37 +58,114 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [maxFeeValid, setMaxFeeValid] = useState<boolean | null>(null);
   const [gasPriceValid, setGasPriceValid] = useState<boolean | null>(null);
 
+  // Track specific validation errors
+  const [priorityFeeError, setPriorityFeeError] = useState<string | null>(null);
+  const [maxFeeError, setMaxFeeError] = useState<string | null>(null);
+
   const maxFeePerGas = fee?.maxFeePerGas || 0;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas || 0;
   const gasPrice = fee?.gasPrice || 0;
   // ALWAYS have a gas limit - use custom, then fee, then default
   const gasLimit = customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
 
+  // Validation functions
+  const validateGasLimit = (value: number) => {
+    const isValid = value >= 42000;
+    setGasLimitValid(isValid);
+    return isValid;
+  };
+
+  const validatePriorityFee = (value: number) => {
+    const maxFee = form.getFieldValue('maxFeePerGas');
+    // Allow 0 priority fee for networks like Arbitrum
+
+    if (value < 0) {
+      setPriorityFeeValid(false);
+      setPriorityFeeError('priorityFeeMustBePositive');
+      return false;
+    }
+
+    if (maxFee && value > maxFee) {
+      setPriorityFeeValid(false);
+      setPriorityFeeError('priorityFeeTooHigh');
+      return false;
+    }
+
+    setPriorityFeeValid(true);
+    setPriorityFeeError(null);
+    return true;
+  };
+
+  const validateMaxFee = (value: number) => {
+    const priorityFee = form.getFieldValue('maxPriorityFeePerGas');
+    // Max fee must be greater than or equal to priority fee
+
+    if (value <= 0) {
+      setMaxFeeValid(false);
+      setMaxFeeError('maxFeeMustBePositive');
+      return false;
+    }
+
+    if (priorityFee > 0 && value < priorityFee) {
+      setMaxFeeValid(false);
+      setMaxFeeError('maxFeeTooLow');
+      return false;
+    }
+
+    setMaxFeeValid(true);
+    setMaxFeeError(null);
+    return true;
+  };
+
+  const validateGasPrice = (value: number) => {
+    const isValid = value > 0;
+    setGasPriceValid(isValid);
+    return isValid;
+  };
+
   // Initialize form when modal opens
   React.useEffect(() => {
     if (!showModal) return;
 
-    // Always ensure we have valid gas limit
-    const validGasLimit =
-      customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
+    // Always ensure we have valid gas limit (minimum 42000)
+    const feeGasLimit = fee?.gasLimit || defaultGasLimit;
+    const validGasLimit = Math.max(customFee.gasLimit || feeGasLimit, 42000);
 
     // If we have custom values, use them
     if (customFee.isCustom) {
       if (isSendLegacyTransaction) {
-        const validGasPrice = customFee.gasPrice || gasPrice || 0;
+        const validGasPrice = Number(
+          removeScientificNotation(customFee.gasPrice || gasPrice || 0)
+        );
         form.setFieldsValue({
           gasLimit: validGasLimit,
           gasPrice: validGasPrice,
         });
+        // Validate after setting values with a small delay to ensure form is updated
+        setTimeout(() => {
+          validateGasLimit(validGasLimit);
+          validateGasPrice(validGasPrice);
+        }, 0);
       } else {
-        const validMaxPriorityFeePerGas =
-          customFee.maxPriorityFeePerGas || maxPriorityFeePerGas || 0;
-        const validMaxFeePerGas = customFee.maxFeePerGas || maxFeePerGas || 0;
+        const validMaxPriorityFeePerGas = Number(
+          removeScientificNotation(
+            customFee.maxPriorityFeePerGas || maxPriorityFeePerGas || 0
+          )
+        );
+        const validMaxFeePerGas = Number(
+          removeScientificNotation(customFee.maxFeePerGas || maxFeePerGas || 0)
+        );
         form.setFieldsValue({
           gasLimit: validGasLimit,
           maxPriorityFeePerGas: validMaxPriorityFeePerGas,
           maxFeePerGas: validMaxFeePerGas,
         });
+        // Validate after setting values with a small delay to ensure form is updated
+        setTimeout(() => {
+          validateGasLimit(validGasLimit);
+          validatePriorityFee(validMaxPriorityFeePerGas);
+          validateMaxFee(validMaxFeePerGas);
+        }, 0);
       }
     } else {
       // Use default values with current priority multiplier
@@ -106,6 +184,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
           gasLimit: validGasLimit, // Always set gas limit
           gasPrice: finalGasPrice,
         });
+        // Validate after setting values with a small delay to ensure form is updated
+        setTimeout(() => {
+          validateGasLimit(validGasLimit);
+          validateGasPrice(finalGasPrice);
+        }, 0);
       } else {
         const validMaxPriorityFeePerGas = maxPriorityFeePerGas || 0;
         const validMaxFeePerGas = maxFeePerGas || 0;
@@ -127,6 +210,12 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
           maxPriorityFeePerGas: finalPriorityFee,
           maxFeePerGas: finalMaxFee,
         });
+        // Validate after setting values with a small delay to ensure form is updated
+        setTimeout(() => {
+          validateGasLimit(validGasLimit);
+          validatePriorityFee(finalPriorityFee);
+          validateMaxFee(finalMaxFee);
+        }, 0);
       }
     }
   }, [showModal, customFee.isCustom, defaultGasLimit]); // Only run when modal visibility changes
@@ -136,8 +225,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     if (!showModal || customFee.isCustom) return;
 
     const multiplier = priority === 0 ? 0.8 : priority === 2 ? 1.2 : 1;
-    const validGasLimit =
-      customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
+    const feeGasLimit = fee?.gasLimit || defaultGasLimit;
+    const validGasLimit = Math.max(customFee.gasLimit || feeGasLimit, 42000);
 
     if (isSendLegacyTransaction) {
       const validGasPrice = gasPrice || 0;
@@ -150,6 +239,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         gasLimit: validGasLimit, // Always ensure gas limit is set
         gasPrice: finalGasPrice,
       });
+      // Validate after setting values with a small delay to ensure form is updated
+      setTimeout(() => {
+        validateGasLimit(validGasLimit);
+        validateGasPrice(finalGasPrice);
+      }, 0);
     } else {
       const validMaxPriorityFeePerGas = maxPriorityFeePerGas || 0;
       const validMaxFeePerGas = maxFeePerGas || 0;
@@ -171,10 +265,17 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         maxPriorityFeePerGas: finalPriorityFee,
         maxFeePerGas: finalMaxFee,
       });
+      // Validate after setting values with a small delay to ensure form is updated
+      setTimeout(() => {
+        validateGasLimit(validGasLimit);
+        validatePriorityFee(finalPriorityFee);
+        validateMaxFee(finalMaxFee);
+      }, 0);
     }
   }, [priority]);
 
   // Check if all fields are valid
+  // Allow form submission if no field is explicitly invalid (false)
   const isFormValid = () => {
     if (isSendLegacyTransaction) {
       return gasLimitValid !== false && gasPriceValid !== false;
@@ -213,15 +314,12 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     setPriority(value);
     const multiplier = value === 0 ? 0.8 : value === 2 ? 1.2 : 1;
 
-    // Reset validation states when changing priority
-    setGasLimitValid(null);
-    setPriorityFeeValid(null);
-    setMaxFeeValid(null);
-    setGasPriceValid(null);
+    // Don't reset validation states - we'll update them after setting new values
 
-    // Always ensure gas limit is set
-    const validGasLimit =
+    // Always ensure gas limit is set (minimum 42000)
+    const currentGasLimit =
       form.getFieldValue('gasLimit') || gasLimit || defaultGasLimit;
+    const validGasLimit = Math.max(currentGasLimit, 42000);
 
     if (isSendLegacyTransaction) {
       const newGasPrice = Number(
@@ -231,6 +329,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       const validGasPrice = isNaN(newGasPrice) ? 0 : newGasPrice;
       form.setFieldValue('gasLimit', validGasLimit); // Always set gas limit
       form.setFieldValue('gasPrice', validGasPrice);
+      // Validate after setting values with a small delay to ensure form is updated
+      setTimeout(() => {
+        validateGasLimit(validGasLimit);
+        validateGasPrice(validGasPrice);
+      }, 0);
       setCustomFee((prev) => ({
         ...prev,
         isCustom: value !== 1,
@@ -253,6 +356,13 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       form.setFieldValue('maxPriorityFeePerGas', validPriorityFee);
       form.setFieldValue('maxFeePerGas', validMaxFee);
 
+      // Validate after setting values with a small delay to ensure form is updated
+      setTimeout(() => {
+        validateGasLimit(validGasLimit);
+        validatePriorityFee(validPriorityFee);
+        validateMaxFee(validMaxFee);
+      }, 0);
+
       setCustomFee((prev) => ({
         ...prev,
         isCustom: value !== 1,
@@ -269,9 +379,13 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     const numValue = value === '' ? 0 : Number(value);
     validNumValue = isNaN(numValue) ? 0 : numValue;
 
-    // Special handling for gas limit to ensure it's never 0 or undefined
-    if (field === 'gasLimit' && validNumValue === 0) {
-      validNumValue = defaultGasLimit;
+    // Special handling for gas limit to ensure it's never below minimum
+    if (field === 'gasLimit') {
+      if (validNumValue === 0) {
+        validNumValue = defaultGasLimit;
+      }
+      // Don't enforce minimum while typing, but validate it
+      // This allows users to type values like "4" before typing "42000"
     }
 
     form.setFieldValue(field, validNumValue);
@@ -326,36 +440,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     setPriorityFeeValid(null);
     setMaxFeeValid(null);
     setGasPriceValid(null);
+    setPriorityFeeError(null);
+    setMaxFeeError(null);
     setIsOpen(false);
-  };
-
-  // Validation functions
-  const validateGasLimit = (value: number) => {
-    const isValid = value >= 42000;
-    setGasLimitValid(isValid);
-    return isValid;
-  };
-
-  const validatePriorityFee = (value: number) => {
-    const maxFee = form.getFieldValue('maxFeePerGas');
-    // Allow 0 priority fee for networks like Arbitrum
-    const isValid = value >= 0 && (!maxFee || value < maxFee);
-    setPriorityFeeValid(isValid);
-    return isValid;
-  };
-
-  const validateMaxFee = (value: number) => {
-    const priorityFee = form.getFieldValue('maxPriorityFeePerGas');
-    // Max fee must be greater than priority fee (unless priority is 0)
-    const isValid = value > 0 && (priorityFee === 0 || value > priorityFee);
-    setMaxFeeValid(isValid);
-    return isValid;
-  };
-
-  const validateGasPrice = (value: number) => {
-    const isValid = value > 0;
-    setGasPriceValid(isValid);
-    return isValid;
   };
 
   return (
@@ -448,7 +535,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                                 new Error(t('send.priorityFeeMustBePositive'))
                               );
                             }
-                            if (value > 0 && maxFee > 0 && value >= maxFee) {
+                            if (value > 0 && maxFee > 0 && value > maxFee) {
                               return Promise.reject(
                                 new Error(t('send.priorityFeeTooHigh'))
                               );
@@ -467,7 +554,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                           }`}
                           style={{ paddingRight: '3.5rem' }}
                           value={
-                            form.getFieldValue('maxPriorityFeePerGas') || ''
+                            form.getFieldValue('maxPriorityFeePerGas')
+                              ? removeScientificNotation(
+                                  form.getFieldValue('maxPriorityFeePerGas')
+                                )
+                              : ''
                           }
                           onChange={(e) =>
                             handleFieldChange(
@@ -489,9 +580,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         )}
                       </div>
                     </Form.Item>
-                    {priorityFeeValid === false && (
+                    {priorityFeeValid === false && priorityFeeError && (
                       <p className="text-red-400 text-xs mt-1">
-                        {t('send.priorityFeeTooHigh')}
+                        {t(`send.${priorityFeeError}`)}
                       </p>
                     )}
                   </div>
@@ -515,7 +606,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                                 new Error(t('send.maxFeeMustBePositive'))
                               );
                             }
-                            if (priorityFee > 0 && value <= priorityFee) {
+                            if (priorityFee > 0 && value < priorityFee) {
                               return Promise.reject(
                                 new Error(t('send.maxFeeTooLow'))
                               );
@@ -533,7 +624,13 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                             maxFeeValid === false ? 'border-red-500' : ''
                           }`}
                           style={{ paddingRight: '3.5rem' }}
-                          value={form.getFieldValue('maxFeePerGas') || ''}
+                          value={
+                            form.getFieldValue('maxFeePerGas')
+                              ? removeScientificNotation(
+                                  form.getFieldValue('maxFeePerGas')
+                                )
+                              : ''
+                          }
                           onChange={(e) =>
                             handleFieldChange('maxFeePerGas', e.target.value)
                           }
@@ -551,9 +648,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         )}
                       </div>
                     </Form.Item>
-                    {maxFeeValid === false && (
+                    {maxFeeValid === false && maxFeeError && (
                       <p className="text-red-400 text-xs mt-1">
-                        {t('send.maxFeeTooLow')}
+                        {t(`send.${maxFeeError}`)}
                       </p>
                     )}
                   </div>
@@ -587,7 +684,13 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                           gasPriceValid === false ? 'border-red-500' : ''
                         }`}
                         style={{ paddingRight: '3.5rem' }}
-                        value={form.getFieldValue('gasPrice') || ''}
+                        value={
+                          form.getFieldValue('gasPrice')
+                            ? removeScientificNotation(
+                                form.getFieldValue('gasPrice')
+                              )
+                            : ''
+                        }
                         onChange={(e) =>
                           handleFieldChange('gasPrice', e.target.value)
                         }

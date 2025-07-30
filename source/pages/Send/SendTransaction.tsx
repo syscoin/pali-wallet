@@ -69,7 +69,6 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
-
   const dataTx: ITransactionParams = isExternal
     ? externalTx.tx
     : state.external
@@ -567,6 +566,7 @@ export const SendTransaction = () => {
           // No-op function since haveError is not used
         }}
         fee={fee}
+        isSendLegacyTransaction={isLegacyTransaction}
         defaultGasLimit={100000} // General transactions can vary widely
       />
 

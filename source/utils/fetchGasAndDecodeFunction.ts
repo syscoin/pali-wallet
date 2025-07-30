@@ -73,19 +73,25 @@ export const fetchGasAndDecodeFunction = async (
   } else {
     // verify tx data
     try {
-      // if it run successfully, the contract data is all right.
-      const clonedTx = { ...dataTx };
-      delete clonedTx.gasLimit;
-      delete clonedTx.gas;
-      delete clonedTx.maxPriorityFeePerGas;
-      delete clonedTx.maxFeePerGas;
-      if (!dataTx.to) {
-        delete clonedTx.to;
+      // Skip eth_call validation for simple ETH transfers (no data)
+      const isSimpleTransfer =
+        !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
+
+      if (!isSimpleTransfer) {
+        // if it run successfully, the contract data is all right.
+        const clonedTx = { ...dataTx };
+        delete clonedTx.gasLimit;
+        delete clonedTx.gas;
+        delete clonedTx.maxPriorityFeePerGas;
+        delete clonedTx.maxFeePerGas;
+        if (!dataTx.to) {
+          delete clonedTx.to;
+        }
+        await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+          ['eth_call', [clonedTx, 'latest']]
+        );
       }
-      await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
-        ['eth_call', [clonedTx, 'latest']]
-      );
     } catch (error) {
       if (!error.message.includes('reverted')) {
         isInvalidTxData = true;
@@ -138,10 +144,18 @@ export const fetchGasAndDecodeFunction = async (
     }
   }
 
+  // Get gas price for legacy transactions
+  const gasPrice = (await controllerEmitter([
+    'wallet',
+    'ethereumTransaction',
+    'getRecommendedGasPrice',
+  ])) as number;
+
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
     baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
     maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 9,
+    gasPrice: gasPrice / 10 ** 9, // Add gasPrice for legacy transactions
     gasLimit: formTx.gasLimit.toNumber(),
   };
 
