@@ -28,6 +28,7 @@ import isNil from 'lodash/isNil';
 import { getController } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
+import { notificationManager } from '../notification-manager';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -1196,6 +1197,9 @@ class MainController {
     // Clear all timers first to prevent any background operations
     this.clearAllTimers();
 
+    // Clean up notification manager to prevent memory leaks
+    notificationManager.cleanup();
+
     // Properly dispose of all keyrings to prevent memory leaks
     this.disposeAllKeyrings();
 
@@ -1845,14 +1849,20 @@ class MainController {
     // Clear any pending timers before locking
     this.clearAllTimers();
 
+    // Clean up notification manager to prevent memory leaks
+    notificationManager.cleanup();
+
     this.logout();
 
     // Stop auto-lock timer when wallet is locked
+    // This is best-effort - don't let timer cleanup failures prevent wallet lock
     this.stopAutoLockTimer().catch((error) => {
       console.error(
         '[MainController] Failed to stop auto-lock timer on lock:',
         error
       );
+      // Continue with lock even if timer cleanup fails
+      // The timer will be cleared on next unlock anyway
     });
 
     // Emergency save any dirty vaults before clearing cache
@@ -1870,18 +1880,9 @@ class MainController {
     this.stopAllRapidPolling();
 
     // Clear notification state when wallet is locked
-    import('../notification-manager')
-      .then(({ notificationManager }) => {
-        // Preserve pending transaction tracking when wallet is locked
-        // This allows notifications to still show when transactions confirm
-        notificationManager.clearState(true);
-      })
-      .catch((error) => {
-        console.error(
-          '[MainController] Failed to clear notification state:',
-          error
-        );
-      });
+    // Preserve pending transaction tracking when wallet is locked
+    // This allows notifications to still show when transactions confirm
+    notificationManager.clearState(true);
 
     store.dispatch(setLastLogin());
 
@@ -1952,12 +1953,14 @@ class MainController {
     }
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
+      this.getLatestUpdateForCurrentAccount(false, true).catch((error) => {
         console.error(
           '[MainController] Failed to update account after creation:',
           error
-        )
-      );
+        );
+        // This is non-critical - account was created successfully
+        // The balance/transaction update will happen on next poll
+      });
     }, 10);
     return newAccount;
   }
@@ -2035,6 +2038,9 @@ class MainController {
       this.currentPromise.cancel();
       this.currentPromise = null;
     }
+
+    // Cancel any in-progress rapid polling
+    this.stopAllRapidPolling();
 
     // Cancel any pending async operations upfront before switching networks
     if (this.cancellablePromises.transactionPromise) {
@@ -2586,9 +2592,23 @@ class MainController {
         label
       );
     } catch (error) {
-      console.error(error);
+      console.error('[MainController] Trezor import failed:', error);
+
+      // Provide more specific error messages
+      if (error.message?.includes('device is in use')) {
+        throw new Error(
+          'Trezor device is being used by another application. Please close other apps and try again.'
+        );
+      } else if (error.message?.includes('cancelled')) {
+        throw new Error('Trezor operation was cancelled by the user.');
+      } else if (error.message?.includes('disconnected')) {
+        throw new Error(
+          'Trezor device was disconnected. Please reconnect and try again.'
+        );
+      }
+
       throw new Error(
-        'Could not import your account, please try again: ' + error.message
+        'Could not import your account. Please ensure your Trezor is connected and unlocked.'
       );
     }
 
@@ -2608,7 +2628,16 @@ class MainController {
     // Save wallet state after importing Trezor account
     await this.saveWalletState('import-account-trezor', true, true);
 
-    await this.getLatestUpdateForCurrentAccount(false, true);
+    // Update account with initial data
+    try {
+      await this.getLatestUpdateForCurrentAccount(false, true);
+    } catch (updateError) {
+      console.error(
+        '[MainController] Failed to update Trezor account after import:',
+        updateError
+      );
+      // Non-critical - account exists, just initial update failed
+    }
 
     return importedAccount;
   }
@@ -2620,9 +2649,27 @@ class MainController {
         label
       );
     } catch (error) {
-      console.error(error);
+      console.error('[MainController] Ledger import failed:', error);
+
+      // Provide more specific error messages
+      if (error.message?.includes('Ledger device locked')) {
+        throw new Error(
+          'Ledger device is locked. Please unlock it and open the Syscoin app.'
+        );
+      } else if (error.message?.includes('app not open')) {
+        throw new Error(
+          'Please open the app on your Ledger device and try again.'
+        );
+      } else if (error.message?.includes('disconnected')) {
+        throw new Error(
+          'Ledger device was disconnected. Please reconnect and try again.'
+        );
+      } else if (error.message?.includes('cancelled')) {
+        throw new Error('Ledger operation was cancelled by the user.');
+      }
+
       throw new Error(
-        'Could not import your account, please try again: ' + error.message
+        'Could not import your account. Please ensure your Ledger is connected and the Syscoin app is open.'
       );
     }
 
@@ -2642,7 +2689,16 @@ class MainController {
     // Save wallet state after importing Ledger account
     await this.saveWalletState('import-account-ledger', true, true);
 
-    await this.getLatestUpdateForCurrentAccount(false, true);
+    // Update account with initial data
+    try {
+      await this.getLatestUpdateForCurrentAccount(false, true);
+    } catch (updateError) {
+      console.error(
+        '[MainController] Failed to update Ledger account after import:',
+        updateError
+      );
+      // Non-critical - account exists, just initial update failed
+    }
 
     return importedAccount;
   }

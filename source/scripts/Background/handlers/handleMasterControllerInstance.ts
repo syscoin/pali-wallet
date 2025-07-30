@@ -137,7 +137,20 @@ export const handleMasterControllerInstance = async () => {
         console.log(
           '[EmergencySave] Extension starting up - previous session may have crashed'
         );
-        // Don't save on startup, but log for debugging
+        // Clear any stale popup flags from previous session
+        chrome.storage.local.remove(
+          ['pali-popup-open', 'pali-popup-timestamp'],
+          () => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                '[Startup] Failed to clear popup flags:',
+                chrome.runtime.lastError
+              );
+            } else {
+              console.log('[Startup] Cleared stale popup flags');
+            }
+          }
+        );
       });
       console.log(
         '[handleMasterControllerInstance] ✅ onStartup listener registered'

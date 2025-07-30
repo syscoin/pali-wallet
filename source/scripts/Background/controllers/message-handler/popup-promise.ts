@@ -235,6 +235,9 @@ function atomicCheckAndSetPopup(): Promise<boolean> {
               const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
               if (now - timestamp > STALE_TIMEOUT) {
+                console.warn(
+                  '[atomicCheckAndSetPopup] Stale popup flag detected, clearing and proceeding'
+                );
                 // Stale flag - clear it and set new one atomically
                 chrome.storage.local.set(
                   {
