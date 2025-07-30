@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -26,7 +26,6 @@ export const Faucet: React.FC = () => {
     account,
     status,
     handleFaucetButton,
-    faucetButtonLabel,
     isLoading,
     faucetRequestDetails,
     errorMessage,
@@ -36,6 +35,20 @@ export const Faucet: React.FC = () => {
   const {
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
+
+  // Define button label based on status
+  const faucetButtonLabel = useMemo(() => {
+    switch (status) {
+      case FaucetStatusResponse.REQUEST:
+        return t('faucet.requestNow');
+      case FaucetStatusResponse.SUCCESS:
+        return t('faucet.Close');
+      case FaucetStatusResponse.ERROR:
+        return t('faucet.tryAgain');
+      default:
+        return '';
+    }
+  }, [status, t]);
 
   const renderFaucetContent = () => {
     switch (status) {
