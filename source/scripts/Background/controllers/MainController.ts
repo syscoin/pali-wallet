@@ -1431,7 +1431,10 @@ class MainController {
             isUnlocked: this.isUnlocked(),
           },
         })
-        .catch((error) => console.error('Unlock', error));
+        .catch((error) => {
+          console.error('Unlock', error);
+          // Non-critical - popup update failure doesn't affect unlock success
+        });
 
       // No need to update xprv in Redux store - private keys should only be accessed
       // through KeyringManager methods for security
@@ -1530,25 +1533,13 @@ class MainController {
         `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
       );
 
-      // Clear all HD accounts from Redux
-      // We'll recreate them all to ensure proper state
-      // NOTE: This only removes from Redux, not from keyring's internal state
-      // The keyring might still have references to these accounts
-      Object.keys(oldAccounts).forEach((idStr) => {
-        const id = parseInt(idStr);
-        store.dispatch(
-          removeAccount({
-            id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-      });
+      // Store accounts to recreate in a transaction array
+      const recreatedAccounts: Array<{
+        account: IKeyringAccountState;
+        accountType: KeyringAccountType;
+      }> = [];
 
-      // IMPORTANT: The keyring still has the accounts internally
-      // When we call createFirstAccount/addNewAccount, it will return existing accounts
-      // This is actually what we want - we're just refreshing the Redux state
-
-      // Recreate all accounts in order
+      // First, validate we can recreate all accounts before modifying state
       for (let i = 0; i <= maxAccountId; i++) {
         try {
           const oldAccount = oldAccounts[i];
@@ -1576,13 +1567,11 @@ class MainController {
             addressMatch: newAccount.address === oldAccount?.address,
           });
 
-          // Add the recreated account to Redux
-          store.dispatch(
-            createAccount({
-              account: newAccount,
-              accountType: KeyringAccountType.HDAccount,
-            })
-          );
+          // Store for later commit
+          recreatedAccounts.push({
+            account: newAccount,
+            accountType: KeyringAccountType.HDAccount,
+          });
 
           // Warn if address changed (shouldn't happen with same seed)
           if (oldAccount && newAccount.address !== oldAccount.address) {
@@ -1598,6 +1587,28 @@ class MainController {
           throw error; // Stop the repair process on error
         }
       }
+
+      // Now commit all changes atomically
+      // Clear all HD accounts from Redux
+      Object.keys(oldAccounts).forEach((idStr) => {
+        const id = parseInt(idStr);
+        store.dispatch(
+          removeAccount({
+            id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      });
+
+      // Add all recreated accounts
+      recreatedAccounts.forEach(({ account, accountType }) => {
+        store.dispatch(
+          createAccount({
+            account,
+            accountType,
+          })
+        );
+      });
 
       // Save the repaired wallet state
       this.saveWalletState('repair-corrupted-accounts');
@@ -1894,7 +1905,13 @@ class MainController {
           isUnlocked: this.isUnlocked(),
         },
       })
-      .catch((error) => console.error(error));
+      .catch((error) => {
+        console.error(
+          '[MainController] Failed to notify dapps about lock state:',
+          error
+        );
+        // Non-critical - dapp notification failure doesn't prevent wallet lock
+      });
     return;
   }
 
