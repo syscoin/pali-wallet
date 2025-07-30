@@ -14,6 +14,8 @@ export const useController = () => {
   // Use refs for intervals to maintain stable references
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lockedPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Flag to prevent recursive polling starts
+  const isStartingPolling = useRef<boolean>(false);
 
   // Get hasEncryptedVault from global state to distinguish between locked and forgotten states
   const hasEncryptedVault = useSelector(
@@ -202,6 +204,16 @@ export const useController = () => {
     if (isLoading) return;
 
     const startPolling = () => {
+      // Prevent recursive calls
+      if (isStartingPolling.current) {
+        console.log(
+          '[useController] Polling start already in progress, skipping'
+        );
+        return;
+      }
+
+      isStartingPolling.current = true;
+
       // Clear any existing intervals
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -233,6 +245,8 @@ export const useController = () => {
                     clearInterval(lockedPollIntervalRef.current);
                     lockedPollIntervalRef.current = null;
                   }
+                  // Reset the flag before starting normal polling
+                  isStartingPolling.current = false;
                   startPolling();
                 }
               } catch (error: any) {
@@ -252,12 +266,16 @@ export const useController = () => {
           }
         }
       }, 10000); // 10 seconds for normal polling
+
+      // Reset the flag after setup is complete
+      isStartingPolling.current = false;
     };
 
     startPolling();
 
     // Cleanup
     return () => {
+      isStartingPolling.current = false;
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;

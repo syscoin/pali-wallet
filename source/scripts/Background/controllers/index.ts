@@ -34,8 +34,14 @@ export interface IMasterController {
     data?: object
   ) => Promise<chrome.windows.Window>;
   dapp: Readonly<IDAppController>;
+  getInitializationStatus?: () => {
+    attempts: number;
+    isReady: boolean;
+    maxAttempts: number;
+  };
   refresh: () => void;
   rehydrate: () => void;
+  retryInitialization?: () => Promise<{ retrying: boolean }>;
   wallet: MainController;
 }
 
@@ -263,6 +269,13 @@ const MasterController = (
     refresh,
     callGetLatestUpdateForAccount,
     wallet,
+    // These will be overridden in the background script if initialization fails
+    getInitializationStatus: () => ({
+      isReady: true,
+      attempts: 0,
+      maxAttempts: 3,
+    }),
+    retryInitialization: async () => ({ retrying: false }),
   };
 };
 

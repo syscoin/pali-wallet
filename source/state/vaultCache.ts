@@ -167,17 +167,26 @@ class VaultCache {
                   `Network switch may be in progress.`
               );
 
-              // In case of mismatch, save to both locations to prevent data loss
-              // This ensures data is preserved regardless of which state wins
-              this.slip44Cache.set(activeSlip44, liveVaultState);
-              await saveSlip44State(activeSlip44, liveVaultState);
+              // CRITICAL FIX: Don't save mismatched data - this prevents corruption
+              // If we're in the middle of a network switch, the vault state might be
+              // partially updated and saving it could corrupt data
 
-              this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
-              await saveSlip44State(vaultNetworkSlip44, liveVaultState);
+              // Check if we have a cached state for the activeSlip44
+              const cachedState = this.slip44Cache.get(activeSlip44);
+              if (cachedState) {
+                // Save the cached state which should be consistent
+                await saveSlip44State(activeSlip44, cachedState);
+                console.log(
+                  `[VaultCache] ✅ Emergency save completed using cached state for slip44: ${activeSlip44}`
+                );
+              } else {
+                // If no cached state and there's a mismatch, skip saving to prevent corruption
+                console.error(
+                  `[VaultCache] ❌ Skipping emergency save due to slip44 mismatch and no cached state. ` +
+                    `This prevents data corruption but may lose recent changes.`
+                );
+              }
 
-              console.log(
-                `[VaultCache] ✅ Emergency save completed for both slip44s: ${activeSlip44} and ${vaultNetworkSlip44}`
-              );
               return;
             }
           }

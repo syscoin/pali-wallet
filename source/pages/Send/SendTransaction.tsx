@@ -368,6 +368,7 @@ export const SendTransaction = () => {
   useEffect(() => {
     const abortController = new AbortController();
     let isMounted = true;
+    let closeTimeoutId: NodeJS.Timeout | null = null;
 
     const getGasAndFunction = async () => {
       try {
@@ -397,7 +398,7 @@ export const SendTransaction = () => {
           logError('error getting fees', 'Transaction', e);
           alert.error(t('send.txWillFail'), e);
           clearNavigationState();
-          setTimeout(window.close, 3000);
+          closeTimeoutId = setTimeout(window.close, 3000);
         }
       }
     };
@@ -407,6 +408,9 @@ export const SendTransaction = () => {
     return () => {
       isMounted = false;
       abortController.abort();
+      if (closeTimeoutId) {
+        clearTimeout(closeTimeoutId);
+      }
     };
   }, [validatedDataTxWithoutType, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
 

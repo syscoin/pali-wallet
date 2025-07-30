@@ -773,9 +773,16 @@ class NotificationManager {
     updatePendingTransactionBadge(pendingCount);
   }
 
+  private pendingCheckInterval: NodeJS.Timeout | null = null;
+
   private startPendingTransactionCheck() {
+    // Clear any existing interval to prevent duplicates
+    if (this.pendingCheckInterval) {
+      clearInterval(this.pendingCheckInterval);
+    }
+
     // Check every 30 seconds for stuck pending transactions
-    setInterval(() => {
+    this.pendingCheckInterval = setInterval(() => {
       const now = Date.now();
       const TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
@@ -787,6 +794,14 @@ class NotificationManager {
         }
       });
     }, 30000);
+  }
+
+  // Public cleanup method
+  public cleanup() {
+    if (this.pendingCheckInterval) {
+      clearInterval(this.pendingCheckInterval);
+      this.pendingCheckInterval = null;
+    }
   }
 
   // Public methods for manual notification triggering

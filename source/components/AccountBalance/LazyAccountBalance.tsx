@@ -105,6 +105,9 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     return validTimestamps.length < MAX_REQUESTS_PER_WINDOW;
   }, []);
 
+  // Abort controller for cancelling requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Fetch balance from backend
   const fetchBalance = useCallback(async (): Promise<string> => {
     const cacheKey = getCacheKey();
@@ -263,6 +266,24 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   // Calculate fiat value
   const fiatValue =
     showFiat && nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
+
+  // Cleanup effect - cancel any pending requests on unmount
+  useEffect(
+    () => () => {
+      // Cancel any pending request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+
+      // Clear from pending requests map
+      const cacheKey = getCacheKey();
+      if (pendingRequests.has(cacheKey)) {
+        pendingRequests.delete(cacheKey);
+      }
+    },
+    [getCacheKey]
+  );
 
   // Show skeleton if loading OR if we don't have a balance yet (and existing balance is -1)
   const shouldShowSkeleton =

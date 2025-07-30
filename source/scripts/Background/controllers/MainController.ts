@@ -358,10 +358,12 @@ class MainController {
 
         // Load vault state for target slip44
         try {
+          // CRITICAL FIX: Defer activeSlip44 update to ensure atomic state change
+          // This prevents the race condition where activeSlip44 is updated before vault is loaded
           hasExistingVaultState = await loadAndActivateSlip44Vault(
             slip44,
             network,
-            false // Never defer activeSlip44 update anymore - we handle it atomically
+            true // Defer activeSlip44 update until after session transfer
           );
         } catch (vaultLoadError) {
           console.error(
@@ -429,6 +431,12 @@ class MainController {
 
           // Transfer session directly from source to target
           stateTransaction.sourceKeyring.transferSessionTo(targetKeyring);
+
+          // CRITICAL FIX: Only update activeSlip44 AFTER successful session transfer
+          // This ensures atomic state change to prevent race conditions
+          if (isSwitchingSlip44) {
+            store.dispatch(setActiveSlip44(slip44));
+          }
 
           // Create accounts if no existing vault state OR if vault exists but has no accounts
           let shouldCreateFirstAccount = !hasExistingVaultState;
@@ -1128,8 +1136,14 @@ class MainController {
         this.resetAutoLockTimer();
       }
 
-      // If sync is true, save immediately and return promise
+      // If sync is true, save immediately
       if (sync) {
+        // Clear any pending debounced save to prevent duplicate saves
+        if (this.saveTimeout) {
+          clearTimeout(this.saveTimeout);
+          this.saveTimeout = null;
+        }
+
         try {
           await this.performSave(operation);
         } catch (error) {
@@ -2379,7 +2393,7 @@ class MainController {
     store.dispatch(setNetwork({ network, isEdit: true }));
 
     // Save wallet state after editing network
-    this.saveWalletState('edit-network', true);
+    await this.saveWalletState('edit-network', true, true);
     return network;
   }
 
@@ -4342,7 +4356,7 @@ class MainController {
     }
 
     // Save wallet state after deleting token
-    this.saveWalletState('delete-token', true);
+    await this.saveWalletState('delete-token', true, true);
 
     return result;
   }
