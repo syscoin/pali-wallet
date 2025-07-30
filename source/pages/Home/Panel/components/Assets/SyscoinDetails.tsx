@@ -1,6 +1,6 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
@@ -73,31 +73,34 @@ export const SyscoinAssetDetails = ({
   }
 
   // All hooks must be called before any early returns
-  // Calculate formattedAsset and assetSymbol before using them in hooks
-  const formattedAsset = [];
-  if (asset) {
-    for (const [key, value] of Object.entries(asset)) {
-      // Check if the key is one of the keys of interest
-      if (!syscoinKeysOfInterest.includes(key)) continue;
+  // Memoize formattedAsset and assetSymbol calculation
+  const { formattedAsset, assetSymbol } = useMemo(() => {
+    const formatted = [];
+    if (asset) {
+      for (const [key, value] of Object.entries(asset)) {
+        // Check if the key is one of the keys of interest
+        if (!syscoinKeysOfInterest.includes(key)) continue;
 
-      const formattedKey = camelCaseToText(key);
-      const isValid =
-        typeof value !== 'object' && value !== null && value !== '';
+        const formattedKey = camelCaseToText(key);
+        const isValid =
+          typeof value !== 'object' && value !== null && value !== '';
 
-      if (isValid) {
-        // Create an object with the key and value and unshift it into the array
-        const keyValueObject = {
-          key: formattedKey,
-          value: value,
-          originalKey: key,
-        };
+        if (isValid) {
+          // Create an object with the key and value and unshift it into the array
+          const keyValueObject = {
+            key: formattedKey,
+            value: value,
+            originalKey: key,
+          };
 
-        formattedAsset.unshift(keyValueObject);
+          formatted.unshift(keyValueObject);
+        }
       }
     }
-  }
 
-  const assetSymbol = formattedAsset.find((item) => item.key === 'Symbol');
+    const symbol = formatted.find((item) => item.key === 'Symbol');
+    return { formattedAsset: formatted, assetSymbol: symbol };
+  }, [asset]);
 
   // Reset fetch state when asset changes
   useEffect(() => {

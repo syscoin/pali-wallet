@@ -32,17 +32,12 @@ const PrivateKeyView = () => {
   const [form] = Form.useForm();
 
   const getDecryptedPrivateKey = async (key: string) => {
-    try {
-      const privateKey = (await controllerEmitter(
-        ['wallet', 'getPrivateKeyByAccountId'],
-        [activeAccountMeta.id, activeAccountMeta.type, key]
-      )) as string;
+    const privateKey = (await controllerEmitter(
+      ['wallet', 'getPrivateKeyByAccountId'],
+      [activeAccountMeta.id, activeAccountMeta.type, key]
+    )) as string;
 
-      return privateKey;
-    } catch (e) {
-      console.log('Wrong password', e);
-      throw e;
-    }
+    return privateKey;
   };
 
   useEffect(() => {

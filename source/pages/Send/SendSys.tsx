@@ -163,7 +163,7 @@ export const SendSys = () => {
       // Do NOT clear the navigation state here - we need it to persist
       // for when the popup is closed and reopened
     }
-  }, [location.state, form]);
+  }, [location.state?.scrollPosition, form]); // Removed handleMaxButton from dependencies
 
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {

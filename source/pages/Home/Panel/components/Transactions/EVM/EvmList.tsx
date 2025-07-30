@@ -363,9 +363,6 @@ export const EvmTransactionsList = ({
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  const [groupedTransactions, setGroupedTransactions] = useState<{
-    [date: string]: ITransactionInfoEvm[];
-  }>({});
 
   // Track the previous confirmation state locally (like UTXO implementation)
   const prevConfirmationState = useRef<{ [hash: string]: number }>({});
@@ -458,8 +455,9 @@ export const EvmTransactionsList = ({
     [alert, chainId]
   );
 
-  useEffect(() => {
-    const grouped = {};
+  // Memoize grouped transactions
+  const groupedTransactions = useMemo(() => {
+    const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
 
     filteredTransactions.forEach((tx) => {
       const formattedDate = formatTimeStamp(tx?.timestamp);
@@ -469,7 +467,7 @@ export const EvmTransactionsList = ({
       grouped[formattedDate].push(tx);
     });
 
-    setGroupedTransactions(grouped);
+    return grouped;
   }, [filteredTransactions, formatTimeStamp]);
 
   return (

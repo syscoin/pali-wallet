@@ -56,20 +56,19 @@ export const TransactionsPanel = () => {
     setPreviousTransactions(newTransactions);
   }, []);
 
+  // Use a stable reference for transactions update
   useEffect(() => {
-    if (
-      !isLoadingTxs &&
-      transactions.length === 0 &&
-      previousTransactions.length > 0
-    ) {
-      updatePreviousTransactions(transactions);
-    } else if (transactions.length > 0) {
-      updatePreviousTransactions(transactions);
+    if (!isLoadingTxs) {
+      if (transactions.length === 0 && previousTransactions.length > 0) {
+        updatePreviousTransactions([]);
+      } else if (transactions.length > 0) {
+        updatePreviousTransactions(transactions);
+      }
     }
   }, [
     isLoadingTxs,
-    transactions,
-    previousTransactions,
+    transactions.length, // Use length instead of the array itself
+    previousTransactions.length, // Use length for stable comparison
     updatePreviousTransactions,
   ]);
 

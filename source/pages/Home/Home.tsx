@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import React, { useCallback, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -140,7 +140,6 @@ export const Home = () => {
     const dismissed = localStorage.getItem('hardwareWalletModalDismissed');
     return dismissed !== 'true';
   });
-  const [shouldShowFaucet, setShouldShowFaucet] = useState(false);
 
   // ALL useEffect hooks
 
@@ -267,30 +266,24 @@ export const Home = () => {
     networkStatus === 'connecting' ||
     networkStatus === 'switching';
 
-  // Debounced faucet modal display to prevent flashing during network/account switches
-  useEffect(() => {
-    const canShowFaucet =
+  // Derived state for faucet visibility
+  const shouldShowFaucet = useMemo(
+    () =>
       isFaucetAvailable &&
       toNumericBalance(actualBalance) === 0 &&
       !isLoadingBalance &&
       !isSwitchingAccount &&
-      !isPostNetworkSwitchLoading && // Don't show during post-switch loading
-      currentAccount;
-
-    if (canShowFaucet) {
-      setShouldShowFaucet(true);
-    } else {
-      // Immediately hide the faucet modal if conditions aren't met
-      setShouldShowFaucet(false);
-    }
-  }, [
-    isFaucetAvailable,
-    actualBalance,
-    isLoadingBalance,
-    isSwitchingAccount,
-    isPostNetworkSwitchLoading,
-    currentAccount,
-  ]);
+      !isPostNetworkSwitchLoading &&
+      currentAccount,
+    [
+      isFaucetAvailable,
+      actualBalance,
+      isLoadingBalance,
+      isSwitchingAccount,
+      isPostNetworkSwitchLoading,
+      currentAccount,
+    ]
+  );
 
   // Early returns only AFTER all hooks are called
   if (!accounts || !activeAccount || !activeNetwork || !currentAccount) {

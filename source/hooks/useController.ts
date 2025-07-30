@@ -11,12 +11,6 @@ export const useController = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Use refs for intervals to maintain stable references
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lockedPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  // Flag to prevent recursive polling starts
-  const isStartingPolling = useRef<boolean>(false);
-
   // Get hasEncryptedVault from global state to distinguish between locked and forgotten states
   const hasEncryptedVault = useSelector(
     (state: RootState) => state.vaultGlobal.hasEncryptedVault
@@ -203,89 +197,67 @@ export const useController = () => {
     // Don't start polling until initial load is complete
     if (isLoading) return;
 
+    let pollInterval: NodeJS.Timeout | null = null;
+    let isPollingFast = false;
+
     const startPolling = () => {
-      // Prevent recursive calls
-      if (isStartingPolling.current) {
-        console.log(
-          '[useController] Polling start already in progress, skipping'
-        );
-        return;
+      // Clear any existing interval
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
       }
 
-      isStartingPolling.current = true;
-
-      // Clear any existing intervals
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-      if (lockedPollIntervalRef.current) {
-        clearInterval(lockedPollIntervalRef.current);
-        lockedPollIntervalRef.current = null;
-      }
-
-      pollIntervalRef.current = setInterval(async () => {
+      // Use a single interval that adjusts its behavior based on lock state
+      const poll = async () => {
         try {
           const currentlyUnlocked = await checkUnlockStatus();
 
-          // If we're locked, check more frequently to detect unlock quickly
-          if (!currentlyUnlocked) {
-            if (pollIntervalRef.current) {
-              clearInterval(pollIntervalRef.current);
-              pollIntervalRef.current = null;
+          // Adjust polling speed based on lock state
+          if (!currentlyUnlocked && !isPollingFast) {
+            // Switch to fast polling when locked
+            isPollingFast = true;
+            if (pollInterval) {
+              clearInterval(pollInterval);
             }
-
-            // Start faster polling when locked (every 2 seconds)
-            lockedPollIntervalRef.current = setInterval(async () => {
-              try {
-                const stillLocked = !(await checkUnlockStatus());
-                if (!stillLocked) {
-                  // When unlocked, switch back to normal polling
-                  if (lockedPollIntervalRef.current) {
-                    clearInterval(lockedPollIntervalRef.current);
-                    lockedPollIntervalRef.current = null;
-                  }
-                  // Reset the flag before starting normal polling
-                  isStartingPolling.current = false;
-                  startPolling();
-                }
-              } catch (error: any) {
-                // Ignore connection errors during locked polling
-              }
-            }, 2000);
+            pollInterval = setInterval(poll, 2000); // 2 seconds when locked
+          } else if (currentlyUnlocked && isPollingFast) {
+            // Switch back to normal polling when unlocked
+            isPollingFast = false;
+            if (pollInterval) {
+              clearInterval(pollInterval);
+            }
+            pollInterval = setInterval(poll, 30000); // 30 seconds when unlocked
           }
         } catch (error: any) {
           // Only log non-connection errors
           if (
-            !error.message?.includes('Could not establish connection') &&
-            !error.message?.includes('Receiving end does not exist') &&
-            !error.message?.includes('Network request timed out') &&
-            !error.message?.includes('Failed to connect to service worker')
+            !error?.message?.includes('Extension context invalidated') &&
+            !error?.message?.includes('Could not establish connection')
           ) {
             console.error('[useController] Polling error:', error);
           }
         }
-      }, 10000); // 10 seconds for normal polling
+      };
 
-      // Reset the flag after setup is complete
-      isStartingPolling.current = false;
+      // Start with appropriate interval based on current state
+      const initialPollRate = isUnlocked ? 30000 : 2000;
+      isPollingFast = !isUnlocked;
+      pollInterval = setInterval(poll, initialPollRate);
+
+      // Also run immediately
+      poll();
     };
 
     startPolling();
 
-    // Cleanup
+    // Cleanup function
     return () => {
-      isStartingPolling.current = false;
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-      if (lockedPollIntervalRef.current) {
-        clearInterval(lockedPollIntervalRef.current);
-        lockedPollIntervalRef.current = null;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
       }
     };
-  }, [isLoading, checkUnlockStatus]); // checkUnlockStatus is now stable
+  }, [isLoading, checkUnlockStatus]); // Only depend on stable references
 
   // Reset auto-lock timer on route changes (user navigation activity)
   useEffect(() => {

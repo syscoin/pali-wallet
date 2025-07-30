@@ -151,6 +151,16 @@ const ManageAccountsView = React.memo(() => {
     [activeAccountRef?.id, activeAccountRef?.type]
   );
 
+  // Memoize total accounts calculation
+  const totalAccounts = useMemo(
+    () =>
+      Object.values(accounts).reduce(
+        (total, typeAccounts) => total + Object.keys(typeAccounts).length,
+        0
+      ),
+    [accounts]
+  );
+
   // Check if account can be removed
   const canRemoveAccount = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
@@ -158,10 +168,6 @@ const ManageAccountsView = React.memo(() => {
       if (isActiveAccount(account, accountType)) return false;
 
       // Check if this is the last account overall
-      const totalAccounts = Object.values(accounts).reduce(
-        (total, typeAccounts) => total + Object.keys(typeAccounts).length,
-        0
-      );
       if (totalAccounts <= 1) return false;
 
       // For HD accounts, must keep at least one
@@ -172,7 +178,7 @@ const ManageAccountsView = React.memo(() => {
 
       return true;
     },
-    [accounts, isActiveAccount]
+    [accounts, isActiveAccount, totalAccounts]
   );
 
   const handleRemoveClick = useCallback(
