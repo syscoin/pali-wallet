@@ -133,38 +133,6 @@ export const SendSys = () => {
   const hasRestoredRef = useRef(false);
   const isRestoringRef = useRef(false);
 
-  // Restore form values if coming back from navigation
-  useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredRef.current
-    ) {
-      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
-
-      if (formValues) {
-        isRestoringRef.current = true;
-        hasRestoredRef.current = true;
-        form.setFieldsValue(formValues);
-        // Also update the ref to keep it in sync
-        formValuesRef.current = formValues;
-
-        // If this was a max send, recalculate the max amount
-        if (restoredIsMaxSend) {
-          // Add a small delay to ensure form is fully initialized
-          setTimeout(() => {
-            handleMaxButton();
-            isRestoringRef.current = false;
-          }, 100);
-        } else {
-          isRestoringRef.current = false;
-        }
-      }
-
-      // Do NOT clear the navigation state here - we need it to persist
-      // for when the popup is closed and reopened
-    }
-  }, [location.state?.scrollPosition, form, handleMaxButton]);
-
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
     setFeeRate(newFee);
@@ -226,6 +194,45 @@ export const SendSys = () => {
     [selectedAsset, formattedAssetBalance, activeAccount?.balances]
   );
 
+  const handleMaxButton = useCallback(() => {
+    // Simply fill in the full balance
+    form.setFieldValue('amount', balanceStr);
+    setIsMaxSend(true);
+    form.validateFields(['amount']); // Trigger validation after setting value
+  }, [balanceStr, form]);
+
+  // Restore form values if coming back from navigation
+  useEffect(() => {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredRef.current
+    ) {
+      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
+
+      if (formValues) {
+        isRestoringRef.current = true;
+        hasRestoredRef.current = true;
+        form.setFieldsValue(formValues);
+        // Also update the ref to keep it in sync
+        formValuesRef.current = formValues;
+
+        // If this was a max send, recalculate the max amount
+        if (restoredIsMaxSend) {
+          // Add a small delay to ensure form is fully initialized
+          setTimeout(() => {
+            handleMaxButton();
+            isRestoringRef.current = false;
+          }, 100);
+        } else {
+          isRestoringRef.current = false;
+        }
+      }
+
+      // Do NOT clear the navigation state here - we need it to persist
+      // for when the popup is closed and reopened
+    }
+  }, [location.state?.scrollPosition, form, handleMaxButton]);
+
   // Watch the amount field for changes
   const watchedAmount = Form.useWatch('amount', form);
 
@@ -253,13 +260,6 @@ export const SendSys = () => {
       setIsMaxSend(false);
     }
   }, [watchedAmount, balanceStr]);
-
-  const handleMaxButton = useCallback(() => {
-    // Simply fill in the full balance
-    form.setFieldValue('amount', balanceStr);
-    setIsMaxSend(true);
-    form.validateFields(['amount']); // Trigger validation after setting value
-  }, [balanceStr, form]);
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
