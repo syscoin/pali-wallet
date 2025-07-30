@@ -48,8 +48,8 @@ export const isValidSYSAddress = async (
 export const getErc20Abi = async (controller?: any): Promise<any[]> => {
   try {
     // If controller is provided (background context), use direct call
-    if (controller?.wallet?.getErc20Abi) {
-      return controller.wallet.getErc20Abi();
+    if (controller?.getErc20Abi) {
+      return controller.getErc20Abi();
     }
 
     // Otherwise use controllerEmitter for frontend contexts
@@ -70,8 +70,8 @@ export const getErc20Abi = async (controller?: any): Promise<any[]> => {
 export const getErc721Abi = async (controller?: any): Promise<any[]> => {
   try {
     // If controller is provided (background context), use direct call
-    if (controller?.wallet?.getErc721Abi) {
-      return controller.wallet.getErc721Abi();
+    if (controller?.getErc721Abi) {
+      return controller.getErc721Abi();
     }
 
     // Otherwise use controllerEmitter for frontend contexts
@@ -90,8 +90,8 @@ export const getErc721Abi = async (controller?: any): Promise<any[]> => {
 export const getErc1155Abi = async (controller?: any): Promise<any[]> => {
   try {
     // If controller is provided (background context), use direct call
-    if (controller?.wallet?.getErc1155Abi) {
-      return controller.wallet.getErc1155Abi();
+    if (controller?.getErc1155Abi) {
+      return controller.getErc1155Abi();
     }
 
     // Otherwise use controllerEmitter for frontend contexts
