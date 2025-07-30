@@ -214,8 +214,14 @@ export const injectScriptFile = (file: string, id: string) => {
         if (removeProperty) removeProperty.remove();
         break;
       case 'inpage':
+        // Skip injection if inpage script already exists (don't remove and re-inject)
+        if (inpage) {
+          console.log(
+            '[Content Script] Inpage script already injected, skipping'
+          );
+          return;
+        }
         // remove removeEth script for not inject the same thing many times
-        if (inpage) inpage.remove();
         if (removeProperty) removeProperty.remove();
         break;
       case 'pali':
@@ -272,28 +278,41 @@ window.addEventListener('beforeunload', () => {
   chrome.runtime.onMessage.removeListener(backgroundMessageListener);
 });
 
-// Initial setup - inject providers immediately at document_start
-if (shouldInjectProvider()) {
-  // Always inject pali provider first
-  injectScriptFile('js/pali.bundle.js', 'pali');
-
-  // Then check if ethereum should be injected after a small delay
-  // This ensures pali is loaded before ethereum to avoid conflicts
-  setTimeout(() => {
-    sendToBackground(
-      { action: 'isInjected', type: 'pw-msg-background' },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn(
-            'Error checking ethereum injection status:',
-            chrome.runtime.lastError
-          );
-          return;
-        }
-        handleEthInjection(response);
-      }
+// Only inject providers in the top frame to avoid duplicates from iframes
+if (window !== window.top) {
+  console.log(
+    '[Content Script] Running in iframe, skipping provider injection'
+  );
+} else {
+  // Guard against multiple content script executions in the same frame
+  if ((window as any).__paliContentScriptInitialized) {
+    console.log(
+      '[Content Script] Already initialized, skipping duplicate execution'
     );
-  }, 10); // Small delay to ensure pali loads first
+  } else {
+    (window as any).__paliContentScriptInitialized = true;
+
+    // Initial setup - inject providers immediately at document_start
+    if (shouldInjectProvider()) {
+      // Always inject pali provider first
+      injectScriptFile('js/pali.bundle.js', 'pali');
+
+      // Check if ethereum should be injected immediately (no delay)
+      sendToBackground(
+        { action: 'isInjected', type: 'pw-msg-background' },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              'Error checking ethereum injection status:',
+              chrome.runtime.lastError
+            );
+            return;
+          }
+          handleEthInjection(response);
+        }
+      );
+    }
+  }
 }
 
 start();

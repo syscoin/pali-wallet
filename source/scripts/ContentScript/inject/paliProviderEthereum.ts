@@ -220,6 +220,29 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   /**
+   * Returns whether the provider has been initialized.
+   */
+  isInitialized(): boolean {
+    return this._state.initialized;
+  }
+
+  /**
+   * Returns the current accounts if available.
+   * This is used by dapps to check connection state.
+   */
+  get accounts(): string[] {
+    return this._state.accounts || [];
+  }
+
+  /**
+   * Connect method for Web3Modal and other libraries.
+   * This is a convenience method that wraps eth_requestAccounts.
+   */
+  async connect(): Promise<string[]> {
+    return this.request({ method: 'eth_requestAccounts' }) as Promise<string[]>;
+  }
+
+  /**
    * Internal backwards compatibility method, used in send.
    *
    * @deprecated
@@ -305,11 +328,34 @@ export class PaliInpageProviderEth extends BaseProvider {
     let result;
     switch (payload.method) {
       case 'eth_accounts':
-        result = this.selectedAddress ? [this.selectedAddress] : [];
+        // If provider is not initialized yet, we should wait or return empty
+        // This prevents Web3Modal from getting incomplete state
+        if (!this._state.initialized) {
+          console.warn(
+            'Pali: eth_accounts called before provider initialization'
+          );
+          result = [];
+        } else if (this._state.accounts && this._state.accounts.length > 0) {
+          // Return accounts from state if available
+          result = this._state.accounts;
+        } else if (this.selectedAddress) {
+          result = [this.selectedAddress];
+        } else {
+          result = [];
+        }
         break;
 
       case 'eth_coinbase':
-        result = this.selectedAddress || null;
+        // Return first account from state if selectedAddress isn't set
+        if (!this._state.initialized) {
+          result = null;
+        } else if (this.selectedAddress) {
+          result = this.selectedAddress;
+        } else if (this._state.accounts && this._state.accounts.length > 0) {
+          result = this._state.accounts[0];
+        } else {
+          result = null;
+        }
         break;
 
       case 'eth_uninstallFilter':

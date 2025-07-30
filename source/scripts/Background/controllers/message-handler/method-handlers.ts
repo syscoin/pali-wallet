@@ -193,8 +193,26 @@ export class WalletMethodHandler implements IMethodHandler {
           return null;
 
         case 'getProviderState':
+          // Return accounts if wallet is unlocked, similar to eth_accounts
+          let providerAccounts = [];
+          if (wallet.isUnlocked() && !isBitcoinBased) {
+            // First check if dapp is already connected
+            if (account) {
+              providerAccounts = [account.address];
+            } else {
+              // If not connected but wallet is unlocked, return the active account
+              const vaultAccounts = store.getState().vault.accounts;
+              const vaultActiveAccount = store.getState().vault.activeAccount;
+              const activeAccountData =
+                vaultAccounts[vaultActiveAccount.type]?.[vaultActiveAccount.id];
+              if (activeAccountData?.address) {
+                providerAccounts = [activeAccountData.address];
+              }
+            }
+          }
+
           return {
-            accounts: account ? [account.address] : [],
+            accounts: providerAccounts,
             chainId: `0x${activeNetwork.chainId.toString(16)}`,
             isUnlocked: wallet.isUnlocked(),
             networkVersion: activeNetwork.chainId,
@@ -312,10 +330,23 @@ export class EthMethodHandler implements IMethodHandler {
           case 'chainId':
             return `0x${activeNetwork.chainId.toString(16)}`;
           case 'accounts':
-            const account = dapp.getAccount(host);
-            return wallet.isUnlocked() && account && !isBitcoinBased
-              ? [account.address]
-              : [];
+            // For eth_accounts, return accounts if wallet is unlocked
+            // This allows dapps to check if accounts are available before connecting
+            if (!wallet.isUnlocked() || isBitcoinBased) {
+              return [];
+            }
+
+            // First check if dapp is already connected
+            const connectedAccount = dapp.getAccount(host);
+            if (connectedAccount) {
+              return [connectedAccount.address];
+            }
+
+            // If not connected but wallet is unlocked, return the active account
+            // This matches standard wallet behavior where eth_accounts shows available accounts
+            const { activeAccount, accounts } = store.getState().vault;
+            const account = accounts[activeAccount.type]?.[activeAccount.id];
+            return account?.address ? [account.address] : [];
           case 'version': // net_version
             return activeNetwork.chainId.toString();
           default:

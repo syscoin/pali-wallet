@@ -59,9 +59,11 @@ export const announceProvider = (provider: any, uuid: string) => {
     uuid,
   };
 
+  const detail = { info: providerInfo, provider };
+
   window.dispatchEvent(
     new CustomEvent('eip6963:announceProvider', {
-      detail: Object.freeze({ info: providerInfo, provider }),
+      detail: detail,
     })
   );
 };
