@@ -8,6 +8,7 @@ import 'react-toastify/dist/ReactToastify.css';
 
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
+import { clearNavigationState } from 'utils/navigationState';
 import 'assets/styles/index.css';
 import 'assets/styles/custom-input-password.css';
 import 'assets/styles/custom-input-normal.css';
@@ -41,17 +42,23 @@ const toastOptions = {
 };
 
 if (externalRootElement) {
-  rehydrateStore(store).then(() => {
-    const root = ReactDOM.createRoot(externalRootElement);
-    root.render(
-      <React.StrictMode>
-        <Provider store={store}>
-          <External />
-          <ToastContainer {...toastOptions} />
-        </Provider>
-      </React.StrictMode>
-    );
-  });
+  // Clear navigation state for external popups to ensure they don't restore state
+  clearNavigationState()
+    .then(() => {
+      console.log('[External] Cleared navigation state for external popup');
+      return rehydrateStore(store);
+    })
+    .then(() => {
+      const root = ReactDOM.createRoot(externalRootElement);
+      root.render(
+        <React.StrictMode>
+          <Provider store={store}>
+            <External />
+            <ToastContainer {...toastOptions} />
+          </Provider>
+        </React.StrictMode>
+      );
+    });
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");
 }
