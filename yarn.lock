@@ -2888,10 +2888,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.507":
-  version "1.0.507"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.507.tgz#5a6824fd5eec1d27b46f61fe020769b99aba56d7"
-  integrity sha512-yfWZsj8gPVnVq1ymA67svGeGSN0UDMpPwtluudKCOeo2+0adQ/I+hNup1op/ZDrGOByRN3T9P4eDwnAt57pspA==
+"@sidhujag/sysweb3-keyring@^1.0.509":
+  version "1.0.509"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.509.tgz#4d7e84725cb504e5f10b3b1da0f676c8bee5b5ac"
+  integrity sha512-8zECVOa80C54D5V/xX6zGOYUmzv7I1AD0D78/lDkHb2eu/S0czZoZXQX7AUhlTmG91sZbFNjHO2JDQS3lVmyBg==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2900,7 +2900,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@sidhujag/sysweb3-core" "^1.0.27"
     "@sidhujag/sysweb3-network" "^1.0.102"
-    "@sidhujag/sysweb3-utils" "^1.1.247"
+    "@sidhujag/sysweb3-utils" "^1.1.248"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2928,10 +2928,10 @@
     eth-chains "^1.0.0"
     ethers "^5.7.2"
 
-"@sidhujag/sysweb3-utils@^1.1.247":
-  version "1.1.247"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.247.tgz#d9bdbd7eed5f0e775b3d587b0a8076c5ae8fa297"
-  integrity sha512-G4lWscXbdwu56zRb2cU2TXkmbo7BwM7HiFKkF76PilWaTU6krmyscFmjd96FNnR2JVMc7z7ELuShBUTw5L6Dbw==
+"@sidhujag/sysweb3-utils@^1.1.248":
+  version "1.1.248"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.248.tgz#39cb66219159982083a782db0378542c3c4ebf45"
+  integrity sha512-tU2c90Xo07FeF4VinXodaOjCgS1weH83AcTzPcj7wq6Tv5wP9Uln+k0ghcEzDnHEy5OCWtXsZiJB/qadqpSDHg==
   dependencies:
     "@ethersproject/contracts" "^5.8.0"
     "@sidhujag/sysweb3-network" "^1.0.102"
@@ -5043,9 +5043,9 @@ babel-plugin-transform-remove-debugger@^6.9.4:
   integrity sha512-Kd+eTBYlXfwoFzisburVwrngsrz4xh9I0ppoJnU/qlLysxVBRgI4Pj+dk3X8F5tDiehp3hhP8oarRMT9v2Z3lw==
 
 babel-preset-current-node-syntax@^1.0.0:
-  version "1.1.1"
-  resolved "https://registry.yarnpkg.com/babel-preset-current-node-syntax/-/babel-preset-current-node-syntax-1.1.1.tgz#204c610030f7e74d4cb1ad7d0ff3c044abf48688"
-  integrity sha512-23fWKohMTvS5s0wwJKycOe0dBdCwQ6+iiLaNR9zy8P13mtFRFM9qLLX6HJX5DL2pi/FNDf3fCQHM4FIMoHH/7w==
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/babel-preset-current-node-syntax/-/babel-preset-current-node-syntax-1.2.0.tgz#20730d6cdc7dda5d89401cab10ac6a32067acde6"
+  integrity sha512-E/VlAEzRrsLEb2+dv8yp3bo4scof3l9nR4lrld+Iy5NyVqgVYUJnDAmunkhPMisRI32Qc4iRiz425d8vM++2fg==
   dependencies:
     "@babel/plugin-syntax-async-generators" "^7.8.4"
     "@babel/plugin-syntax-bigint" "^7.8.3"
