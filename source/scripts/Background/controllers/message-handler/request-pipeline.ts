@@ -930,6 +930,180 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
   }
 };
 
+// Middleware: Popup Optimization - Skip unnecessary popups
+export const popupOptimizationMiddleware: Middleware = async (
+  context,
+  next
+) => {
+  const { methodConfig, originalRequest } = context;
+  const { method, host, params } = originalRequest;
+
+  // Only process methods that have popups
+  if (!methodConfig.hasPopup) {
+    return next();
+  }
+
+  const { dapp } = getController();
+  const { vault } = store.getState();
+  const methodName = method.split('_')[1] || method;
+
+  // Check if we can skip the popup for this method
+  switch (methodName) {
+    case 'ENABLE':
+    case 'requestAccounts':
+      // Skip connect popup if already connected
+      if (dapp.isConnected(host)) {
+        const account = dapp.getAccount(host);
+        if (account) {
+          // Return the expected result without showing popup
+          if (
+            methodName === 'requestAccounts' ||
+            method === 'eth_requestAccounts'
+          ) {
+            return [account.address];
+          }
+          // For ENABLE, return the connected account
+          return account;
+        }
+      }
+      break;
+
+    case 'requestPermissions':
+      // Check if permissions already exist
+      const requestedPermissions = params?.[0] || {};
+      const hasEthAccounts = 'eth_accounts' in requestedPermissions;
+
+      if (hasEthAccounts && dapp.isConnected(host)) {
+        // Already have account permissions, return current permissions
+        const account = dapp.getAccount(host);
+        const dappInfo = dapp.get(host);
+
+        if (account && dappInfo) {
+          const permissions = [
+            {
+              id: '1',
+              parentCapability: 'eth_accounts',
+              invoker: host,
+              caveats: [
+                {
+                  type: 'restrictReturnedAccounts',
+                  value: [account.address],
+                },
+              ],
+              date: dappInfo.date,
+            },
+          ];
+
+          // Add chain permissions for EVM
+          if (vault && !vault.isBitcoinBased) {
+            permissions.push({
+              id: '2',
+              parentCapability: 'endowment:permitted-chains',
+              invoker: host,
+              caveats: [
+                {
+                  type: 'restrictNetworkSwitching',
+                  value: [`0x${vault.activeNetwork.chainId.toString(16)}`],
+                },
+              ],
+              date: dappInfo.date,
+            });
+          }
+
+          return permissions;
+        }
+      }
+      break;
+
+    case 'switchEthereumChain':
+      // Already handled by middleware, but double-check
+      const targetChainId = Number(params?.[0]?.chainId);
+      if (vault.activeNetwork.chainId === targetChainId) {
+        return null; // Already on correct chain
+      }
+      break;
+
+    case 'addEthereumChain':
+      // Check if chain already exists
+      const chainConfig = params?.[0];
+      if (chainConfig?.chainId) {
+        const chainId = Number(chainConfig.chainId);
+        const { vaultGlobal } = store.getState();
+
+        // Check if we're trying to add the current network
+        if (vault.activeNetwork.chainId === chainId) {
+          // Network already active, no need to add
+          return null;
+        }
+
+        // Check if chain exists in available networks
+        const ethereumNetworks = vaultGlobal.networks?.ethereum || {};
+        const chainExists = ethereumNetworks[chainId] !== undefined;
+
+        if (chainExists) {
+          // Chain already exists, no need to add
+          return null;
+        }
+      }
+      break;
+
+    case 'watchAsset':
+      // Check if asset already exists
+      const assetParams = params?.[0];
+      if (assetParams?.options?.address) {
+        const activeAccount = vault.activeAccount;
+        const { accountAssets } = vault;
+
+        if (activeAccount && accountAssets) {
+          const accountAsset =
+            accountAssets[activeAccount.type]?.[activeAccount.id];
+
+          if (accountAsset && accountAsset.ethereum) {
+            const assetExists = accountAsset.ethereum.some(
+              (asset: any) =>
+                asset.contractAddress?.toLowerCase() ===
+                assetParams.options.address.toLowerCase()
+            );
+
+            if (assetExists) {
+              // Asset already added
+              return true;
+            }
+          }
+        }
+      }
+      break;
+
+    case 'changeAccount':
+      // Check if we're already using the requested account
+      if (params && dapp.isConnected(host)) {
+        const requestedAccountId = params[0]?.currentAccountId;
+        const requestedAccountType = params[0]?.currentAccountType;
+        const dappInfo = dapp.get(host);
+
+        if (
+          dappInfo &&
+          requestedAccountId !== undefined &&
+          requestedAccountType !== undefined &&
+          dappInfo.accountId === requestedAccountId &&
+          dappInfo.accountType === requestedAccountType
+        ) {
+          // Already using this account, no need to change
+          // Return the expected format for changeAccount
+          const account = dapp.getAccount(host);
+          return account;
+        }
+      }
+      break;
+
+    // For sign/send methods, we always need user approval
+    // So we don't skip these popups
+  }
+
+  // Continue to next middleware (popup will be shown)
+  return next();
+};
+
 // Create the default pipeline
 export function createDefaultPipeline(): RequestPipeline {
   return new RequestPipeline()
@@ -937,6 +1111,7 @@ export function createDefaultPipeline(): RequestPipeline {
     .use(hardwareWalletMiddleware)
     .use(networkCompatibilityMiddleware)
     .use(utxoEvmSwitchMiddleware) // Handle network switching
+    .use(popupOptimizationMiddleware) // Skip unnecessary popups BEFORE auth/connection checks
     .use(authenticationMiddleware) // Auth check before connection
     .use(connectionMiddleware) // Connection after auth
     .use(accountSwitchingMiddleware);
