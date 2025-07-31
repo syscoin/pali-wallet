@@ -3052,6 +3052,21 @@ class MainController {
   }
 
   /**
+   * Get recommended nonce for batch transactions
+   * Safely calls the ethereum transaction method to get the next nonce
+   */
+  public async getRecommendedNonceForBatch(address: string): Promise<number> {
+    try {
+      const controller = getController();
+      return await controller.wallet.ethereumTransaction.getRecommendedNonce(
+        address
+      );
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Atomic wrapper for token transactions (ERC20, ERC721, ERC1155)
    * Combines send and save operations to ensure completion
    */

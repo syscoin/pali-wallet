@@ -314,6 +314,57 @@ export const METHOD_REGISTRY: MethodRegistry = {
     hasPopup: false,
   },
 
+  wallet_sendCalls: {
+    name: 'wallet_sendCalls',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false, // Popup handles auth
+    requiresConnection: true,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: true,
+    popupRoute: MethodRoute.SendCalls,
+    popupEventName: 'wallet_sendCalls',
+    isBlocking: true,
+  },
+
+  wallet_getCapabilities: {
+    name: 'wallet_getCapabilities',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: true,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+
+  wallet_getCallsStatus: {
+    name: 'wallet_getCallsStatus',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: true,
+    requiresConnection: false,
+    allowHardwareWallet: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+
+  wallet_showCallsStatus: {
+    name: 'wallet_showCallsStatus',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+
   // ===== Ethereum Methods =====
   eth_chainId: {
     name: 'eth_chainId',

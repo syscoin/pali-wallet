@@ -219,6 +219,9 @@ const SwitchNeworkUtxoEvm = lazy(() =>
 const SendTransaction = lazy(() =>
   import('pages').then((m) => ({ default: m.SendTransaction }))
 );
+const SendCalls = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendCalls }))
+);
 const SignAndSend = lazy(() =>
   import('pages').then((m) => ({ default: m.SignAndSend }))
 );
@@ -367,6 +370,7 @@ export const Router = () => {
               <Route path="tx">
                 <Route path="send/confirm" element={<SendConfirm />} />
                 <Route path="send/ethTx" element={<SendTransaction />} />
+                <Route path="send/calls" element={<SendCalls />} />
                 <Route path="sign" element={<SignAndSend />} />
                 <Route path="ethSign" element={<EthSign />} />
                 <Route path="encryptKey" element={<EncryptPubKey />} />

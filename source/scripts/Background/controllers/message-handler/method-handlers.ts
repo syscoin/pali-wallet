@@ -339,6 +339,45 @@ export class WalletMethodHandler implements IMethodHandler {
           }
           return wallet.getSysAssetMetadata(params[0], params[1]);
 
+        case 'getCallsStatus':
+          if (!params || params.length < 1 || typeof params[0] !== 'string') {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams(
+                'getCallsStatus requires a call bundle ID'
+              )
+            );
+          }
+
+          // Since we don't store batch data, always return unknown bundle
+          const error = new Error('Unknown bundle id');
+          (error as any).code = 5730;
+          throw cleanErrorStack(error);
+
+        case 'getCapabilities':
+          // Return capabilities for the wallet
+          // For now, we don't support atomic batching
+          const chainId = `0x${activeNetwork.chainId.toString(16)}`;
+          const capabilities = {
+            [chainId]: {
+              atomic: {
+                status: 'unsupported',
+              },
+            },
+          };
+
+          return capabilities;
+
+        case 'showCallsStatus':
+          if (!params || params.length < 1 || typeof params[0] !== 'string') {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams(
+                'showCallsStatus requires a call bundle ID'
+              )
+            );
+          }
+          // Simply return null as per spec - no UI is shown
+          return null;
+
         default:
           throw cleanErrorStack(ethErrors.rpc.methodNotFound());
       }
@@ -391,6 +430,9 @@ export class WalletMethodHandler implements IMethodHandler {
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
+      case 'sendCalls':
+        // Parse the sendCalls parameters
+        return params?.[0] || {};
       default:
         return {};
     }

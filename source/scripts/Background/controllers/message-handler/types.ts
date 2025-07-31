@@ -38,6 +38,7 @@ export enum MethodRoute {
   EncryptKey = 'tx/encryptKey',
   EthSign = 'tx/ethSign',
   Login = 'login',
+  SendCalls = 'tx/send/calls',
   SendEthTx = 'tx/send/ethTx',
   SignPsbt = 'tx/sign-psbt',
   SignTx = 'tx/sign',

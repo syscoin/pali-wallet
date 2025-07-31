@@ -71,6 +71,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       '/external/tx/sign',
       '/external/tx/sign-psbt',
       '/external/tx/send/ethTx',
+      '/external/tx/send/calls',
       '/external/tx/decrypt',
       '/external/tx/encryptKey',
     ];
@@ -134,6 +135,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     // External transaction routes
     if (path === '/external/tx/send/confirm') return t('send.confirm');
     if (path === '/external/tx/send/ethTx') return t('send.send');
+    if (path === '/external/tx/send/calls') return t('send.batchTransaction');
     if (path === '/external/tx/sign') return t('send.sign');
     if (path === '/external/tx/ethSign') return t('send.sign');
     if (path === '/external/tx/encryptKey') return t('send.encryptKey');
@@ -236,6 +238,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       // External transaction routes
       '/external/tx/send/confirm',
       '/external/tx/send/ethTx',
+      '/external/tx/send/calls',
       '/external/tx/sign',
       '/external/tx/ethSign',
       '/external/tx/encryptKey',
