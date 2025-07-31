@@ -201,7 +201,9 @@ export class BaseProvider extends EventEmitter {
     let error = null;
     let result = null;
     let formatedResult = null;
+
     if (!Array.isArray(payload)) {
+      // Single request
       try {
         result = await this.proxy('METHOD_REQUEST', payload);
         formatedResult = {
@@ -215,13 +217,39 @@ export class BaseProvider extends EventEmitter {
         error = _error;
       }
       return callback(error, formatedResult);
+    } else {
+      // Batch request - process each request individually
+      try {
+        const batchResults = await Promise.all(
+          payload.map(async (request) => {
+            try {
+              const requestResult = await this.proxy('METHOD_REQUEST', request);
+              return {
+                id: request.id || 1,
+                jsonrpc: '2.0' as JsonRpcVersion,
+                result: requestResult,
+              };
+            } catch (requestError) {
+              // Return error response for this specific request
+              return {
+                id: request.id || 1,
+                jsonrpc: '2.0' as JsonRpcVersion,
+                error: requestError,
+              };
+            }
+          })
+        );
+        return callback(null, batchResults);
+      } catch (batchError) {
+        // General batch processing error
+        error = {
+          code: -32603,
+          message: 'Internal error processing batch request',
+          data: batchError,
+        };
+        return callback(error, null);
+      }
     }
-    error = {
-      code: 123,
-      message: messages.errors.invalidBatchRequest(),
-      data: null,
-    };
-    return callback(error, result);
   }
   private proxy = (
     type: string,

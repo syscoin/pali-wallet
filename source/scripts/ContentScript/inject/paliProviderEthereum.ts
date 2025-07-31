@@ -250,9 +250,24 @@ export class PaliInpageProviderEth extends BaseProvider {
    */
   sendAsync(
     payload: any,
-    callback: (error: Error | null, result?: any) => void
-  ): void {
-    this._rpcRequest(payload, callback);
+    callback?: (error: Error | null, result?: any) => void
+  ): void | Promise<any> {
+    // Support both callback and promise-based patterns
+    if (callback && typeof callback === 'function') {
+      // Traditional callback pattern
+      this._rpcRequest(payload, callback);
+    } else {
+      // Promise-based pattern (like MetaMask)
+      return new Promise((resolve, reject) => {
+        this._rpcRequest(payload, (error, result) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+    }
   }
 
   /**

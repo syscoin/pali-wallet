@@ -136,6 +136,31 @@ export const SendTransaction = () => {
     return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
   };
 
+  // Helper function to convert BigNumber or similar objects to string
+  const convertBigNumberToString = (value: any): string => {
+    if (!value) return '';
+
+    // Handle different types of BigNumber values
+    if (value._isBigNumber || value._hex) {
+      // It's an ethers BigNumber object
+      return ethers.BigNumber.from(value).toString();
+    } else if (typeof value === 'object' && value.hex) {
+      // It's an object with hex property
+      return ethers.BigNumber.from(value.hex).toString();
+    } else if (typeof value === 'object' && value.toString) {
+      // Try to handle as BigNumber if it has proper methods
+      try {
+        return ethers.BigNumber.from(value).toString();
+      } catch {
+        // Fallback to basic toString if BigNumber conversion fails
+        return value.toString();
+      }
+    } else {
+      // It's already a string or number
+      return String(value);
+    }
+  };
+
   const formattedValueAndCurrency = `${removeScientificNotation(
     Number(tx?.value ? tx?.value : 0) / 10 ** 18
   )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
@@ -485,8 +510,10 @@ export const SendTransaction = () => {
 
           // For single NFT approvals, try to get token metadata
           if (approvalType === 'erc721-single' && decodedTxData?.inputs?.[1]) {
-            const tokenId = decodedTxData.inputs[1].toString();
-            setNftInfo({ tokenId });
+            const tokenIdString = convertBigNumberToString(
+              decodedTxData.inputs[1]
+            );
+            setNftInfo({ tokenId: tokenIdString });
             // TODO: Fetch token URI and metadata if needed
           }
         }
@@ -692,7 +719,10 @@ export const SendTransaction = () => {
                         <p className="text-brand-white text-sm">
                           {approvalType === 'erc721-single'
                             ? `Token ID: ${
-                                nftInfo?.tokenId || decodedTxData?.inputs?.[1]
+                                nftInfo?.tokenId ||
+                                convertBigNumberToString(
+                                  decodedTxData?.inputs?.[1]
+                                )
                               }`
                             : `Operator: ${ellipsis(
                                 decodedTxData?.inputs?.[0] || ''
