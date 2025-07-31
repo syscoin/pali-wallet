@@ -452,6 +452,15 @@ class NotificationManager {
     network: any
   ) {
     try {
+      // Check if controller is ready before proceeding
+      if (!getIsReady()) {
+        console.warn(
+          '[NotificationManager] Controller not ready, skipping EVM transaction notification for:',
+          tx.hash
+        );
+        return;
+      }
+
       // Use the shared utility to get transaction display info
       const displayInfo = await getTransactionDisplayInfo(
         tx,
@@ -836,7 +845,7 @@ class NotificationManager {
     try {
       // Check if controller is ready
       if (!getIsReady()) {
-        console.error(
+        console.warn(
           '[NotificationManager] Controller not ready yet for asset metadata fetch'
         );
         return null;
