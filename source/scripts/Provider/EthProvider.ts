@@ -32,7 +32,21 @@ export const EthProvider = (
       );
     }
 
-    const tx = params;
+    // Inject the connected account's address as 'from' if missing
+    const tx = { ...params };
+    if (!tx.from) {
+      const { dapp } = getController();
+      const connectedAccount = dapp.getAccount(host);
+      if (connectedAccount) {
+        tx.from = connectedAccount.address;
+      } else {
+        throw cleanErrorStack(
+          ethErrors.provider.unauthorized(
+            'No account connected. Please connect your wallet first.'
+          )
+        );
+      }
+    }
     const validateTxToAddress = await getController().wallet.validateEOAAddress(
       tx.to,
       web3Provider
