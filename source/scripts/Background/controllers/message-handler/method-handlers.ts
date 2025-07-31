@@ -80,10 +80,38 @@ export class WalletMethodHandler implements IMethodHandler {
     const methodName = method.split('_')[1] || method;
 
     const { dapp, wallet } = getController();
-    const { vault, vaultGlobal } = store.getState();
-    const { activeAccount, activeNetwork, isBitcoinBased, accountAssets } =
-      vault;
-    const { networks } = vaultGlobal;
+    const state = store.getState();
+
+    // Special handling for provider initialization methods
+    const isProviderInitMethod = [
+      'getProviderState',
+      'getSysProviderState',
+    ].includes(methodName);
+
+    // Safety check for vault state initialization
+    if (!state.vault || !state.vaultGlobal) {
+      if (!isProviderInitMethod) {
+        throw cleanErrorStack(
+          new Error(
+            'Vault state not initialized. Please try again in a moment.'
+          )
+        );
+      }
+      // For provider init methods, we'll handle this gracefully in the switch cases
+    }
+
+    const { vault, vaultGlobal } = state;
+    // Don't destructure these variables if vault is not initialized
+    let activeAccount, activeNetwork, isBitcoinBased, accountAssets, networks;
+
+    if (vault) {
+      ({ activeAccount, activeNetwork, isBitcoinBased, accountAssets } = vault);
+    }
+
+    if (vaultGlobal) {
+      ({ networks } = vaultGlobal);
+    }
+
     const account = dapp.getAccount(host);
 
     // Validate active account if required
@@ -171,28 +199,86 @@ export class WalletMethodHandler implements IMethodHandler {
           return account.address;
 
         case 'getTokens':
-          return accountAssets[activeAccount.type]?.[activeAccount.id];
+          if (!activeAccount || !accountAssets) {
+            return [];
+          }
+          return accountAssets[activeAccount.type]?.[activeAccount.id] || [];
 
         case 'estimateFee':
           return wallet.getRecommendedFee();
 
         case 'getPermissions':
-          return [
+          // Check if dapp is actually connected
+          const dappInfo = dapp.get(host);
+          if (!dappInfo) {
+            // No permissions if not connected
+            return [];
+          }
+
+          // Get the current network info
+          const network = dapp.getNetwork();
+
+          const permissions = [
             {
-              caveats: [{ type: 'restrictReturnedAccounts', value: [account] }],
-              date: dapp.get(host).date,
-              invoker: host,
+              id: '1', // Add id field that test dapp expects
               parentCapability: 'eth_accounts',
+              invoker: host,
+              caveats: [
+                {
+                  type: 'restrictReturnedAccounts',
+                  value: [account.address], // Ensure we return address, not full account object
+                },
+              ],
+              date: dappInfo.date,
             },
           ];
 
+          // Add endowment:permitted-chains permission for EVM networks
+          if (vault && !vault.isBitcoinBased) {
+            permissions.push({
+              id: '2',
+              parentCapability: 'endowment:permitted-chains',
+              invoker: host,
+              caveats: [
+                {
+                  type: 'restrictNetworkSwitching',
+                  value: [`0x${network.chainId.toString(16)}`], // Convert to hex format
+                },
+              ],
+              date: dappInfo.date,
+            });
+          }
+
+          return permissions;
+
         case 'revokePermissions':
-          // Disconnect the dapp (removes all permissions)
-          dapp.disconnect(host);
+          // Check params to see which permissions to revoke
+          // params[0] should be an object with permission names as keys
+          // e.g., { eth_accounts: {} } to revoke account access
+          const permissionsToRevoke = params?.[0] || {};
+
+          // For now, any revocation request will disconnect the dapp entirely
+          // This matches the current behavior but avoids reconnection loops
+          if (Object.keys(permissionsToRevoke).length > 0) {
+            dapp.disconnect(host);
+          }
+
           // Return null per EIP-2255 spec
           return null;
 
         case 'getProviderState':
+          // Special handling for provider initialization
+          if (!vault || isBitcoinBased === undefined || !activeNetwork) {
+            // Return safe defaults during initialization
+            return {
+              accounts: [],
+              chainId: '0x39', // Default to Syscoin mainnet
+              isUnlocked: false,
+              networkVersion: 57,
+              isBitcoinBased: false, // Default for Ethereum provider
+            };
+          }
+
           // Return accounts if wallet is unlocked, similar to eth_accounts
           let providerAccounts = [];
           if (wallet.isUnlocked() && !isBitcoinBased) {
@@ -201,12 +287,16 @@ export class WalletMethodHandler implements IMethodHandler {
               providerAccounts = [account.address];
             } else {
               // If not connected but wallet is unlocked, return the active account
-              const vaultAccounts = store.getState().vault.accounts;
-              const vaultActiveAccount = store.getState().vault.activeAccount;
-              const activeAccountData =
-                vaultAccounts[vaultActiveAccount.type]?.[vaultActiveAccount.id];
-              if (activeAccountData?.address) {
-                providerAccounts = [activeAccountData.address];
+              const vaultAccounts = store.getState().vault?.accounts;
+              const vaultActiveAccount = store.getState().vault?.activeAccount;
+              if (vaultAccounts && vaultActiveAccount) {
+                const activeAccountData =
+                  vaultAccounts[vaultActiveAccount.type]?.[
+                    vaultActiveAccount.id
+                  ];
+                if (activeAccountData?.address) {
+                  providerAccounts = [activeAccountData.address];
+                }
               }
             }
           }
@@ -220,6 +310,18 @@ export class WalletMethodHandler implements IMethodHandler {
           };
 
         case 'getSysProviderState':
+          // Special handling for provider initialization
+          // This method is called very early when the page loads
+          if (!vault || isBitcoinBased === undefined || !activeNetwork) {
+            // Return safe defaults during initialization
+            return {
+              xpub: null,
+              blockExplorerURL: null,
+              isUnlocked: false,
+              isBitcoinBased: true, // Default to true for Syscoin provider
+            };
+          }
+
           return {
             xpub: account?.xpub || null,
             blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,

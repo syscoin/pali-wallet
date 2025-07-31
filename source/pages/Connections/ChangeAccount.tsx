@@ -266,7 +266,11 @@ export const ChangeAccount = () => {
       return;
     }
 
-    if (accountId === currentAccountId && accountType === currentAccountType) {
+    if (
+      accountId === currentAccountId &&
+      accountType === currentAccountType &&
+      eventName !== 'requestPermissions'
+    ) {
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
       return;
@@ -277,15 +281,19 @@ export const ChangeAccount = () => {
     try {
       //this should be passed to constant instead of being hardcoded
       if (eventName === 'requestPermissions') {
-        await controllerEmitter(
+        const permissions = await controllerEmitter(
           ['dapp', 'requestPermissions'],
           [host, accountId, accountType]
         );
+        // Dispatch the actual permissions response
+        dispatchBackgroundEvent(`${eventName}.${host}`, permissions || []);
       } else {
         await controllerEmitter(
           ['dapp', 'changeAccount'],
           [host, accountId, accountType]
         );
+        // For changeAccount, dispatch null to indicate completion
+        dispatchBackgroundEvent(`${eventName}.${host}`, null);
       }
 
       await controllerEmitter(
@@ -293,7 +301,6 @@ export const ChangeAccount = () => {
         [accountId, accountType, true]
       );
 
-      dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (error) {
       console.error('Failed to change account:', error);

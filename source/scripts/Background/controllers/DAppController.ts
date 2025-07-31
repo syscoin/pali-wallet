@@ -112,33 +112,78 @@ const DAppController = (): IDAppController => {
     accountType: KeyringAccountType
   ) => {
     const date = Date.now();
+    const network = getNetwork();
 
-    store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
+    // Check if dapp exists, if not create it first
+    const state = store.getState();
+    const existingDapp = state.dapp.dapps[host];
+
+    if (!existingDapp) {
+      // Create the dapp first
+      store.dispatch(
+        addDApp({
+          host,
+          accountId,
+          accountType,
+          date,
+          chain: network.kind,
+          chainId: network.chainId,
+        })
+      );
+    } else {
+      // Update existing dapp
+      store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
+    }
 
     const { accounts, isBitcoinBased } = store.getState().vault;
-    const account = accounts[accountType][accountId];
 
-    if (!account) return null;
+    const account = accounts[accountType]?.[accountId];
+
+    if (!account) {
+      // Return empty permissions array instead of null
+      // Don't dispatch here - the popup will handle it
+      return [];
+    }
 
     // Ensure dapp session exists
     if (!_dapps[host]) {
       _dapps[host] = { activeAddress: '', hasWindow: false };
     }
 
-    const response: any = [{}];
-    response[0].caveats = [
-      { type: 'restrictReturnedAccounts', value: [account] },
+    const response: any = [
+      {
+        id: '1',
+        parentCapability: 'eth_accounts',
+        invoker: host,
+        caveats: [
+          {
+            type: 'restrictReturnedAccounts',
+            value: [account.address], // Return address string, not full account object
+          },
+        ],
+        date: date,
+      },
     ];
 
-    response[0].date = date;
-    response[0].invoker = host;
-    response[0].parentCapability = 'eth_accounts';
+    // Add endowment:permitted-chains permission for EVM networks
+    if (!isBitcoinBased) {
+      response.push({
+        id: '2',
+        parentCapability: 'endowment:permitted-chains',
+        invoker: host,
+        caveats: [
+          {
+            type: 'restrictNetworkSwitching',
+            value: [`0x${network.chainId.toString(16)}`], // Convert to hex format with 0x prefix
+          },
+        ],
+        date: date,
+      });
+    }
 
     _dapps[host].activeAddress = isBitcoinBased
       ? account.xpub
       : account.address;
-
-    _dispatchEvent(host, 'requestPermissions', response);
 
     // Dispatch accountsChanged event to notify dapp of new permissions
     _dispatchPaliEvent(
@@ -149,6 +194,9 @@ const DAppController = (): IDAppController => {
       },
       PaliEvents.accountsChanged
     );
+
+    // Return the response for the popup promise
+    return response;
   };
 
   const changeAccount = (
@@ -404,16 +452,6 @@ const DAppController = (): IDAppController => {
     } catch (error) {
       console.error('[DAppController] Error in _dispatchPaliEvent:', error);
     }
-  };
-
-  const _dispatchEvent = async (
-    host: string,
-    eventName: string,
-    data?: any
-  ) => {
-    // dispatch the event locally
-    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    window.dispatchEvent(event);
   };
 
   //* ----- Getters/Setters -----

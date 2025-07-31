@@ -211,13 +211,13 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getPermissions',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
-    requiresConnection: true,
+    requiresAuth: false, // Should not require auth per EIP-2255
+    requiresConnection: false, // Can check permissions without being connected
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.BeforeConnection,
     hasPopup: false,
-    requiresActiveAccount: true,
+    requiresActiveAccount: false, // Don't require active account to check permissions
   },
 
   wallet_revokePermissions: {
@@ -225,7 +225,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
     requiresAuth: false,
-    requiresConnection: true,
+    requiresConnection: false,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.BeforeConnection,
