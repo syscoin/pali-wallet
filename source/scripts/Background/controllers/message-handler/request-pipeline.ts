@@ -14,6 +14,7 @@ import {
   isMethodAllowedForHardwareWallet,
   methodRequiresConnection,
 } from './method-registry';
+import { spamFilterMiddleware } from './middleware/spamFilterMiddleware';
 import { popupPromise } from './popup-promise';
 import {
   IEnhancedRequestContext,
@@ -1280,6 +1281,7 @@ export const blacklistCheckingMiddleware: Middleware = async (
 export function createDefaultPipeline(): RequestPipeline {
   return new RequestPipeline()
     .use(networkStatusMiddleware) // Check network status first
+    .use(spamFilterMiddleware) // Check spam filter early to block spam requests
     .use(hardwareWalletMiddleware)
     .use(networkCompatibilityMiddleware)
     .use(utxoEvmSwitchMiddleware) // Handle network switching

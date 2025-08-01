@@ -15,6 +15,7 @@ import { handleStartPolling } from 'scripts/Background/handlers/handleStartPolli
 import { handleObserveStateChanges } from 'scripts/Background/handlers/handleStateChanges';
 
 import { IMasterController } from './controllers';
+import { startSpamFilterCleanup } from './controllers/spamFilterCleanup';
 import { notificationManager } from './notification-manager';
 
 declare global {
@@ -60,6 +61,9 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
     handleObserveStateChanges();
     handleStartPolling();
     handleFiatPrice();
+
+    // Start spam filter cleanup
+    startSpamFilterCleanup();
 
     // Reset attempt counter on success
     initializationAttempts = 0;

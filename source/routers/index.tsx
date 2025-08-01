@@ -213,6 +213,9 @@ const CustomRPCExternal = lazy(() =>
 const SwitchChain = lazy(() =>
   import('pages').then((m) => ({ default: m.SwitchChain }))
 );
+const SpamWarning = lazy(() =>
+  import('pages/External/SpamWarning').then((m) => ({ default: m.SpamWarning }))
+);
 const SwitchNeworkUtxoEvm = lazy(() =>
   import('pages').then((m) => ({ default: m.SwitchNeworkUtxoEvm }))
 );
@@ -287,6 +290,9 @@ export const Router = () => {
 
           {/* Special route for switch-network that needs different handling */}
           <Route path="switch-network" element={<SwitchNetwork />} />
+
+          {/* Spam filter routes - rendered without AppLayout header */}
+          <Route path="/external/spam-warning" element={<SpamWarning />} />
 
           {/* All protected routes wrapped in AppLayout for persistent header */}
           <Route element={<ProtectedRoute element={<AppLayout />} />}>

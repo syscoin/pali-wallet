@@ -9,12 +9,14 @@ import isEqual from 'lodash/isEqual';
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
 import { INetwork } from 'types/network';
+import { ISpamFilterState } from 'types/security';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
 import { loadState, saveState } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
+import spamFilter from './spamFilter';
 import { IPersistState } from './types';
 import vault, {
   rehydrate as vaultRehydrate,
@@ -32,6 +34,7 @@ const reducers = combineReducers({
   price,
   vault,
   vaultGlobal,
+  spamFilter,
 });
 
 const nodeEnv = process.env.NODE_ENV;
@@ -50,6 +53,7 @@ customMiddlewareToAdd.push(thunk as ThunkMiddleware<any, any>); // Using any for
 const store: Store<{
   dapp: IDAppState;
   price: IPriceState;
+  spamFilter: ISpamFilterState;
   vault: IVaultState;
   vaultGlobal: IGlobalState;
   // _persist: IPersistState; // If _persist is part of the direct store state, include it here

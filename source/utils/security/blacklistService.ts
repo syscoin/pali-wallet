@@ -255,8 +255,27 @@ class BlacklistService {
       .replace(/\/$/, '');
   }
 
+  /**
+   * Check if blacklist data is currently loaded
+   * Useful for UI to show loading states or warnings
+   */
+  isDataLoaded(): boolean {
+    return this.addressBlacklist.size > 0 || this.urlBlacklist.size > 0;
+  }
+
+  /**
+   * Get the last fetch timestamp
+   * Returns 0 if never fetched
+   */
+  getLastFetchTime(): number {
+    return this.lastFetch;
+  }
+
   async checkAddress(address: string): Promise<IBlacklistCheckResult> {
-    await this.ensureDataLoaded();
+    // Trigger data loading in background without waiting
+    this.ensureDataLoaded().catch((err) =>
+      console.error('[BlacklistService] Background fetch failed:', err)
+    );
 
     const normalized = address.toLowerCase();
     const comment = this.addressBlacklist.get(normalized);
@@ -276,7 +295,10 @@ class BlacklistService {
   }
 
   async checkUrl(url: string): Promise<IBlacklistCheckResult> {
-    await this.ensureDataLoaded();
+    // Trigger data loading in background without waiting
+    this.ensureDataLoaded().catch((err) =>
+      console.error('[BlacklistService] Background fetch failed:', err)
+    );
 
     const normalized = this.normalizeUrl(url);
 
@@ -428,12 +450,6 @@ class BlacklistService {
         ? new Date(this.lastFetch + this.REFETCH_INTERVAL)
         : null,
     };
-  }
-
-  // Force refresh data
-  async forceRefresh() {
-    this.lastFetch = 0;
-    await this.ensureDataLoaded();
   }
 }
 
