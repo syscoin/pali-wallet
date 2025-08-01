@@ -15,11 +15,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import {
-  isUserCancellationError,
-  isDeviceLockedError,
-  isBlindSigningError,
-} from 'utils/isUserCancellationError';
+import { handleTransactionError } from 'utils/errorHandling';
 import { getNetworkChain } from 'utils/network';
 
 interface ISign {
@@ -166,30 +162,32 @@ const EthSign: React.FC<ISign> = () => {
 
       window.close();
     } catch (error: any) {
-      // Handle user cancellation gracefully
-      if (isUserCancellationError(error)) {
-        alert.info(t('transactions.transactionCancelled'));
-        setLoading(false);
-        return;
+      // Create custom alert object that routes to appropriate display method
+      const customAlert = {
+        error: (msg: string) => setErrorMsg(msg),
+        info: (msg: string) => alert.info(msg),
+        warning: (msg: string) => setErrorMsg(msg),
+        success: (msg: string) => alert.success(msg),
+      };
+
+      // Handle all errors with centralized handler
+      const wasHandledSpecifically = handleTransactionError(
+        error,
+        customAlert,
+        t,
+        activeAccount,
+        activeNetwork,
+        undefined, // basicTxValues not available in this context (SignEth.tsx doesn't have fee/amount info)
+        undefined // sanitizeErrorMessage not needed for ETH transactions
+      );
+
+      if (!wasHandledSpecifically) {
+        // Fallback for non-structured errors
+        console.log(error);
+        setErrorMsg(error.message);
       }
 
-      // Handle device locked
-      if (isDeviceLockedError(error)) {
-        setErrorMsg(t('settings.lockedDevice'));
-        setLoading(false);
-        return;
-      }
-
-      // Handle blind signing requirement
-      if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
-        setErrorMsg(t('settings.ledgerBlindSigning'));
-        setLoading(false);
-        return;
-      }
-
-      console.log(error);
-      setErrorMsg(error.message);
-
+      setLoading(false);
       createTemporaryAlarm({
         delayInSeconds: 40,
         callback: () => window.close(),

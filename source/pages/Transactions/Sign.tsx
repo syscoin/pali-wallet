@@ -10,16 +10,9 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import {
-  isUserCancellationError,
-  isDeviceLockedError,
-} from 'utils/isUserCancellationError';
+import { handleTransactionError } from 'utils/errorHandling';
 import { clearNavigationState } from 'utils/navigationState';
-import {
-  sanitizeSyscoinError,
-  sanitizeErrorMessage,
-  isSyscoinLibError,
-} from 'utils/syscoinErrorSanitizer';
+import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 
 interface ISign {
   signOnly?: boolean;
@@ -39,6 +32,9 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   // Handle initial data loading
   useEffect(() => {
@@ -118,48 +114,27 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       // Close window
       setTimeout(window.close, 2000);
     } catch (error: any) {
-      // Handle user cancellation gracefully
-      if (isUserCancellationError(error)) {
-        alert.info(t('transactions.transactionCancelled'));
-        setLoading(false);
-        return;
-      }
+      // Create custom alert object that routes to appropriate display method
+      const customAlert = {
+        error: (msg: string) => setErrorMsg(msg),
+        info: (msg: string) => alert.info(msg),
+        warning: (msg: string) => setErrorMsg(msg),
+        success: (msg: string) => alert.success(msg),
+      };
 
-      // Handle device locked
-      if (isDeviceLockedError(error)) {
-        setErrorMsg(t('settings.lockedDevice'));
-        setLoading(false);
-        return;
-      }
+      // Handle all errors with centralized handler
+      const wasHandledSpecifically = handleTransactionError(
+        error,
+        customAlert,
+        t,
+        activeAccount,
+        activeNetwork,
+        undefined, // basicTxValues not available in this context (Sign.tsx doesn't have fee/amount info)
+        sanitizeErrorMessage
+      );
 
-      // Handle structured errors from syscoinjs-lib
-      if (isSyscoinLibError(error)) {
-        const sanitizedError = sanitizeSyscoinError(error);
-        switch (sanitizedError.code) {
-          case 'TRANSACTION_SEND_FAILED':
-            // Parse error message to extract meaningful part - sanitized message is already safe
-            let cleanErrorMsg = sanitizedError.message || '';
-            try {
-              // Check if the sanitized message contains JSON error details
-              const detailsMatch = cleanErrorMsg.match(/Details:\s*({.*})/);
-              if (detailsMatch) {
-                const errorDetails = JSON.parse(detailsMatch[1]);
-                if (errorDetails.error) {
-                  // Re-sanitize the extracted error in case it contains unsafe content
-                  cleanErrorMsg = sanitizeErrorMessage(errorDetails.error);
-                }
-              }
-            } catch (e) {
-              // If parsing fails, use the sanitized message
-            }
-            setErrorMsg(`Transaction failed to send: ${cleanErrorMsg}`);
-            break;
-          default:
-            setErrorMsg(
-              `Transaction error (${sanitizedError.code}): ${sanitizedError.message}`
-            );
-        }
-      } else {
+      if (!wasHandledSpecifically) {
+        // Fallback for non-structured errors
         const sanitizedMessage = sanitizeErrorMessage(error);
         setErrorMsg(sanitizedMessage);
       }

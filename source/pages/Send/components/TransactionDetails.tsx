@@ -17,6 +17,7 @@ import {
 } from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
+import { blacklistService } from 'utils/security/blacklistService';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -48,6 +49,11 @@ export const TransactionDetailsComponent = (
   const { alert, useCopyClipboard } = useUtils();
   const [, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<number>(0);
+  const [blacklistWarning, setBlacklistWarning] = useState<{
+    isBlacklisted: boolean;
+    reason?: string;
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+  }>({ isBlacklisted: false });
   const { t } = useTranslation();
 
   const activeNetwork = useSelector(
@@ -89,6 +95,30 @@ export const TransactionDetailsComponent = (
     }
   }, [tx]);
 
+  // Check recipient address against blacklist
+  useEffect(() => {
+    const checkBlacklist = async () => {
+      if (!tx?.to) return;
+
+      try {
+        const result = await blacklistService.checkAddress(tx.to);
+        if (result.isBlacklisted) {
+          setBlacklistWarning({
+            isBlacklisted: true,
+            reason: result.reason,
+            severity: result.severity,
+          });
+        } else {
+          setBlacklistWarning({ isBlacklisted: false });
+        }
+      } catch (error) {
+        console.error('Failed to check blacklist:', error);
+      }
+    };
+
+    checkBlacklist();
+  }, [tx?.to]);
+
   return (
     <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-full max-w-[400px] mx-auto text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
       <div className="flex flex-col pt-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
@@ -121,6 +151,35 @@ export const TransactionDetailsComponent = (
             }
           </Tooltip>
         </div>
+        {blacklistWarning.isBlacklisted && (
+          <div
+            className={`mt-2 p-2 rounded-md text-xs ${
+              blacklistWarning.severity === 'critical'
+                ? 'bg-red-900 text-red-100'
+                : blacklistWarning.severity === 'high'
+                ? 'bg-orange-900 text-orange-100'
+                : 'bg-yellow-900 text-yellow-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Icon name="Warning" className="w-4 h-4" />
+              <span className="font-semibold">
+                {blacklistWarning.severity === 'critical'
+                  ? t('blacklist.blacklistCriticalWarning')
+                  : blacklistWarning.severity === 'high'
+                  ? t('blacklist.blacklistHighRisk')
+                  : t('blacklist.blacklistWarning')}
+              </span>
+            </div>
+            <p className="mt-1">
+              {blacklistWarning.reason ||
+                t('blacklist.blacklistDefaultWarning')}
+            </p>
+            <p className="mt-1 font-semibold">
+              {t('blacklist.blacklistWarningDiscouraged')}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">

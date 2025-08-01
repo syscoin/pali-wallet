@@ -5,6 +5,9 @@ import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { detectApprovalType } from 'utils/ethUtil';
+import { blacklistService } from 'utils/security/blacklistService';
+import { getERC20Recipient } from 'utils/transactions';
 
 import { clearProviderCache } from './method-handlers';
 import {
@@ -564,7 +567,7 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   return next();
 };
 
-// Middleware: Connection Check
+// Middleware: Connection Check with URL Blacklist
 export const connectionMiddleware: Middleware = async (context, next) => {
   const { dapp } = getController();
   const { vault } = store.getState();
@@ -576,7 +579,45 @@ export const connectionMiddleware: Middleware = async (context, next) => {
     const isConnected = dapp.isConnected(originalRequest.host);
 
     if (!isConnected) {
-      // Not connected - open connection popup
+      // Check if the dapp URL is blacklisted before allowing connection
+      try {
+        const blacklistResult = await blacklistService.checkUrl(
+          originalRequest.host
+        );
+
+        if (blacklistResult.isBlacklisted) {
+          // Log the blocked connection attempt
+          console.error(
+            `[ConnectionMiddleware] Blocked connection to blacklisted dapp: ${originalRequest.host}`,
+            {
+              reason: blacklistResult.reason,
+              severity: blacklistResult.severity,
+            }
+          );
+
+          // Throw error with user-friendly message
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              `Connection blocked: ${
+                blacklistResult.reason ||
+                'This site has been flagged as potentially malicious'
+              }. For your safety, connection has been denied.`
+            )
+          );
+        }
+      } catch (error) {
+        // If it's already our blacklist error, re-throw it
+        if (error.message?.includes('Connection blocked:')) {
+          throw error;
+        }
+        // Otherwise, log the error but continue (fail open rather than fail closed)
+        console.error(
+          '[ConnectionMiddleware] Error checking URL blacklist:',
+          error
+        );
+      }
+
+      // Not connected and not blacklisted - open connection popup
       try {
         await requestCoordinator.coordinatePopupRequest(
           context,
@@ -1104,6 +1145,137 @@ export const popupOptimizationMiddleware: Middleware = async (
   return next();
 };
 
+// Middleware: Blacklist Checking for Transaction Methods
+export const blacklistCheckingMiddleware: Middleware = async (
+  context,
+  next
+) => {
+  const { originalRequest } = context;
+
+  // Only check for transaction methods
+  if (
+    originalRequest.method === 'eth_sendTransaction' &&
+    originalRequest.params?.[0]
+  ) {
+    const txParams = originalRequest.params[0];
+
+    // Fast local check: Is this an approval transaction?
+    let approvalInfo;
+    if (txParams.data && txParams.to) {
+      try {
+        const controller = getController().wallet;
+        approvalInfo = await detectApprovalType(
+          txParams.data,
+          txParams.to,
+          controller.ethereumTransaction.web3Provider,
+          controller
+        );
+      } catch (error) {
+        console.debug('[Blacklist] Could not parse transaction data:', error);
+      }
+    }
+
+    // Decide which address to check based on transaction type
+    let addressToCheck: string;
+    let checkContext: {
+      approvalType?: string;
+      method?: string;
+      type: 'approval' | 'token-recipient' | 'recipient';
+    };
+
+    if (approvalInfo?.isApproval && approvalInfo.decodedData) {
+      // For approvals: Check the SPENDER address (who can steal tokens)
+      if (approvalInfo.approvalType === 'erc20-amount') {
+        addressToCheck = approvalInfo.decodedData.spender;
+      } else if (approvalInfo.approvalType === 'erc721-single') {
+        addressToCheck = approvalInfo.decodedData.to;
+      } else if (approvalInfo.approvalType === 'nft-all') {
+        addressToCheck = approvalInfo.decodedData.operator;
+      } else {
+        return next(); // Unknown approval type, skip blacklist check
+      }
+
+      checkContext = {
+        type: 'approval',
+        method: approvalInfo.method,
+        approvalType: approvalInfo.approvalType,
+      };
+    } else {
+      // Check if it's a token transfer (ERC-20 transfer/transferFrom)
+      const tokenRecipient = txParams.data
+        ? getERC20Recipient({
+            input: txParams.data,
+            to: txParams.to,
+          } as any)
+        : null;
+
+      if (tokenRecipient) {
+        // For token transfers: Check the token recipient (who receives tokens)
+        addressToCheck = tokenRecipient;
+        checkContext = { type: 'token-recipient' };
+      } else if (txParams.to) {
+        // For other transactions: Check the recipient address (ETH transfers, contract calls)
+        addressToCheck = txParams.to;
+        checkContext = { type: 'recipient' };
+      } else {
+        return next(); // No address to check (e.g., contract deployment)
+      }
+    }
+
+    // Single blacklist check
+    const blacklistResult = await blacklistService.checkAddress(addressToCheck);
+
+    if (
+      blacklistResult.isBlacklisted &&
+      (blacklistResult.severity === 'critical' ||
+        blacklistResult.severity === 'high')
+    ) {
+      console.warn(
+        `[Blacklist] ${
+          checkContext.type === 'approval'
+            ? 'Token approval'
+            : checkContext.type === 'token-recipient'
+            ? 'Token transfer'
+            : 'Transaction'
+        } blocked:`,
+        {
+          type: checkContext.type,
+          method: checkContext.method,
+          approvalType: checkContext.approvalType,
+          address: addressToCheck,
+          reason: blacklistResult.reason,
+          severity: blacklistResult.severity,
+        }
+      );
+
+      let errorMessage: string;
+      if (checkContext.type === 'approval') {
+        errorMessage = `Token approval blocked (${checkContext.method}): ${
+          blacklistResult.reason || 'The spender address is blacklisted'
+        }. Severity: ${
+          blacklistResult.severity
+        }. This could be an attempt to steal your tokens.`;
+      } else if (checkContext.type === 'token-recipient') {
+        errorMessage = `Token transfer blocked: ${
+          blacklistResult.reason || 'The recipient address is blacklisted'
+        }. Severity: ${
+          blacklistResult.severity
+        }. Please verify the token recipient address before proceeding.`;
+      } else {
+        errorMessage = `Transaction blocked: ${
+          blacklistResult.reason || 'This address is blacklisted'
+        }. Severity: ${
+          blacklistResult.severity
+        }. Please verify the recipient address before proceeding.`;
+      }
+
+      throw cleanErrorStack(ethErrors.provider.unauthorized(errorMessage));
+    }
+  }
+
+  return next();
+};
+
 // Create the default pipeline
 export function createDefaultPipeline(): RequestPipeline {
   return new RequestPipeline()
@@ -1114,7 +1286,8 @@ export function createDefaultPipeline(): RequestPipeline {
     .use(popupOptimizationMiddleware) // Skip unnecessary popups BEFORE auth/connection checks
     .use(authenticationMiddleware) // Auth check before connection
     .use(connectionMiddleware) // Connection after auth
-    .use(accountSwitchingMiddleware);
+    .use(accountSwitchingMiddleware)
+    .use(blacklistCheckingMiddleware); // Check blacklist before executing transaction
   // Method handler middleware is added in requests.ts
 }
 

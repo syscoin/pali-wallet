@@ -24,13 +24,9 @@ import {
   ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { handleTransactionError } from 'utils/errorHandling';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
-import {
-  isUserCancellationError,
-  isDeviceLockedError,
-  isBlindSigningError,
-} from 'utils/isUserCancellationError';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
@@ -347,28 +343,22 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
-        // Handle user cancellation gracefully
-        if (isUserCancellationError(error)) {
-          alert.info(t('transactions.transactionCancelled'));
+        // Handle specific errors (blacklist, cancellation, device issues, etc.)
+        const wasHandledSpecifically = handleTransactionError(
+          error,
+          alert,
+          t,
+          activeAccount,
+          activeNetwork
+        );
+
+        // For errors that were handled specifically, just stop loading
+        if (wasHandledSpecifically) {
           setLoading(false);
           return;
         }
 
-        // Handle device locked
-        if (isDeviceLockedError(error)) {
-          alert.warning(t('settings.lockedDevice'));
-          setLoading(false);
-          return;
-        }
-
-        // Handle blind signing requirement
-        if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
-          alert.warning(t('settings.ledgerBlindSigning'));
-          setLoading(false);
-          return;
-        }
-
-        // For all other errors
+        // For all other unhandled errors, show generic message
         logError('error', 'Transaction', error);
         alert.error(t('send.cantCompleteTxs'));
 
@@ -634,7 +624,8 @@ export const SendTransaction = () => {
                         <span className="text-brand-white text-lg">
                           {t('send.grantAccess')}{' '}
                           <span className="text-brand-royalblue font-semibold">
-                            {approvedTokenInfos?.tokenSymbol}
+                            {approvedTokenInfos?.tokenSymbol ||
+                              `Unknown Token (${dataTx?.to?.slice(0, 8)}...)`}
                           </span>
                         </span>
                         <span className="text-brand-graylight text-sm">
@@ -650,8 +641,9 @@ export const SendTransaction = () => {
                         </span>
                         <span className="text-brand-graylight text-sm">
                           {t('send.allowTransferOf')}{' '}
-                          {approvedTokenInfos?.tokenSymbol} #
-                          {nftInfo?.tokenId || '...'}
+                          {approvedTokenInfos?.tokenSymbol ||
+                            `Unknown NFT (${dataTx?.to?.slice(0, 8)}...)`}{' '}
+                          #{nftInfo?.tokenId || '...'}
                         </span>
                       </>
                     )}

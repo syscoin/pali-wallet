@@ -25,6 +25,7 @@ import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
+import { handleTransactionError } from 'utils/errorHandling';
 import {
   truncate,
   logError,
@@ -35,16 +36,7 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
-import {
-  isUserCancellationError,
-  isDeviceLockedError,
-  isBlindSigningError,
-} from 'utils/isUserCancellationError';
-import {
-  sanitizeSyscoinError,
-  sanitizeErrorMessage,
-  isSyscoinLibError,
-} from 'utils/syscoinErrorSanitizer';
+import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -302,94 +294,18 @@ export const SendConfirm = () => {
             setConfirmed(true);
             setLoading(false);
           } catch (error: any) {
-            // Handle user cancellation gracefully
-            if (isUserCancellationError(error)) {
-              alert.info(t('transactions.transactionCancelled'));
-              setLoading(false);
-              return;
-            }
+            // Handle all errors with centralized handler
+            const wasHandledSpecifically = handleTransactionError(
+              error,
+              alert,
+              t,
+              activeAccount,
+              activeNetwork,
+              basicTxValues,
+              sanitizeErrorMessage
+            );
 
-            // Handle device locked
-            if (isDeviceLockedError(error)) {
-              alert.warning(t('settings.lockedDevice'));
-              setLoading(false);
-              return;
-            }
-
-            // Handle structured errors from syscoinjs-lib
-            if (isSyscoinLibError(error)) {
-              const sanitizedError = sanitizeSyscoinError(error);
-
-              switch (sanitizedError.code) {
-                case 'INSUFFICIENT_FUNDS':
-                  alert.error(
-                    t('send.insufficientFundsDetails', {
-                      shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
-                      currency: activeNetwork.currency.toUpperCase(),
-                    })
-                  );
-                  break;
-
-                case 'SUBTRACT_FEE_FAILED':
-                  alert.error(
-                    t('send.subtractFeeFailedDetails', {
-                      fee: sanitizedError.fee?.toFixed(8) || '0',
-                      remainingFee:
-                        sanitizedError.remainingFee?.toFixed(8) || '0',
-                      currency: activeNetwork.currency.toUpperCase(),
-                    })
-                  );
-                  break;
-
-                case 'INVALID_FEE_RATE':
-                  alert.error(t('send.invalidFeeRate'));
-                  break;
-
-                case 'INVALID_AMOUNT':
-                  alert.error(t('send.invalidAmount'));
-                  break;
-
-                case 'TRANSACTION_SEND_FAILED':
-                  // Parse error message to extract meaningful part - sanitized message is already safe
-                  let errorMsg = sanitizedError.message || '';
-                  try {
-                    // Check if the sanitized message contains JSON error details
-                    const detailsMatch = errorMsg.match(/Details:\s*({.*})/);
-                    if (detailsMatch) {
-                      const errorDetails = JSON.parse(detailsMatch[1]);
-                      if (errorDetails.error) {
-                        // Re-sanitize the extracted error in case it contains unsafe content
-                        errorMsg = `Transaction failed: ${sanitizeErrorMessage(
-                          errorDetails.error
-                        )}`;
-                      }
-                    }
-                  } catch (e) {
-                    // If parsing fails, use the sanitized message
-                  }
-
-                  alert.error(
-                    t('send.transactionSendFailed', {
-                      message: errorMsg,
-                    })
-                  );
-                  break;
-
-                default:
-                  if (basicTxValues.fee > 0.00001) {
-                    alert.error(
-                      `${truncate(sanitizedError.message || '', 166)} ${t(
-                        'send.reduceFee'
-                      )}`
-                    );
-                  } else {
-                    // Bypass i18n interpolation to prevent additional encoding
-                    const confirmErrorMessage = `Transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
-                    alert.error(confirmErrorMessage);
-                  }
-              }
-            } else {
-              // Fallback for non-structured errors
+            if (!wasHandledSpecifically) {
               const sanitizedMessage = sanitizeErrorMessage(error);
               if (error && basicTxValues.fee > 0.00001) {
                 alert.error(
@@ -398,9 +314,9 @@ export const SendConfirm = () => {
               } else {
                 alert.error(t('send.cantCompleteTxs'));
               }
+              logError('error SYS', 'Transaction', error);
             }
 
-            logError('error SYS', 'Transaction', error);
             setLoading(false);
           }
           break;
@@ -482,30 +398,23 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle user cancellation gracefully
-                if (isUserCancellationError(error)) {
-                  alert.info(t('transactions.transactionCancelled'));
+                // Handle specific errors (blacklist, cancellation, device issues, etc.)
+                const wasHandledSpecifically = handleTransactionError(
+                  error,
+                  alert,
+                  t,
+                  activeAccount,
+                  activeNetwork,
+                  basicTxValues
+                );
+
+                // For errors that were handled specifically, just stop loading
+                if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // Handle device locked
-                if (isDeviceLockedError(error)) {
-                  alert.warning(t('settings.lockedDevice'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle blind signing requirement
-                if (
-                  activeAccount.isLedgerWallet &&
-                  isBlindSigningError(error)
-                ) {
-                  alert.warning(t('settings.ledgerBlindSigning'));
-                  setLoading(false);
-                  return;
-                }
-
+                // For all other unhandled errors, show generic message
                 logError('error', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -557,27 +466,6 @@ export const SendConfirm = () => {
 
             return;
           } catch (error: any) {
-            // Handle user cancellation gracefully
-            if (isUserCancellationError(error)) {
-              alert.info(t('transactions.transactionCancelled'));
-              setLoading(false);
-              return;
-            }
-
-            // Handle device locked
-            if (isDeviceLockedError(error)) {
-              alert.warning(t('settings.lockedDevice'));
-              setLoading(false);
-              return;
-            }
-
-            // Handle blind signing requirement
-            if (activeAccount.isLedgerWallet && isBlindSigningError(error)) {
-              alert.warning(t('settings.ledgerBlindSigning'));
-              setLoading(false);
-              return;
-            }
-
             // For MAX sends, if we get insufficient funds error, retry with slightly less
             if (
               basicTxValues.isMax &&
@@ -629,17 +517,43 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return; // Exit early on success
                 } catch (retryError) {
-                  // If retry also fails, show error
-                  logError('error ETH retry', 'Transaction', retryError);
-                  alert.error(t('send.cantCompleteTxs'));
+                  // If retry also fails, handle with specific error messages
+                  const wasHandledSpecifically = handleTransactionError(
+                    retryError,
+                    alert,
+                    t,
+                    activeAccount,
+                    activeNetwork,
+                    basicTxValues
+                  );
+
+                  if (!wasHandledSpecifically) {
+                    logError('error ETH retry', 'Transaction', retryError);
+                    alert.error(t('send.cantCompleteTxs'));
+                  }
+
                   setLoading(false);
                   return;
                 }
               }
             }
 
-            logError('error ETH', 'Transaction', error);
-            alert.error(t('send.cantCompleteTxs'));
+            // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
+            const wasHandledSpecifically = handleTransactionError(
+              error,
+              alert,
+              t,
+              activeAccount,
+              activeNetwork,
+              basicTxValues
+            );
+
+            if (!wasHandledSpecifically) {
+              // Only show generic error if no specific handling occurred
+              logError('error ETH', 'Transaction', error);
+              alert.error(t('send.cantCompleteTxs'));
+            }
+
             setLoading(false);
           }
           break;
@@ -688,32 +602,21 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return;
                 } catch (error: any) {
-                  // Handle user cancellation gracefully
-                  if (isUserCancellationError(error)) {
-                    alert.info(t('transactions.transactionCancelled'));
-                    setLoading(false);
-                    return;
+                  // Handle specific errors with detailed messages
+                  const wasHandledSpecifically = handleTransactionError(
+                    error,
+                    alert,
+                    t,
+                    activeAccount,
+                    activeNetwork,
+                    basicTxValues
+                  );
+
+                  if (!wasHandledSpecifically) {
+                    logError('error send ERC20', 'Transaction', error);
+                    alert.error(t('send.cantCompleteTxs'));
                   }
 
-                  // Handle device locked
-                  if (isDeviceLockedError(error)) {
-                    alert.warning(t('settings.lockedDevice'));
-                    setLoading(false);
-                    return;
-                  }
-
-                  // Handle blind signing requirement
-                  if (
-                    activeAccount.isLedgerWallet &&
-                    isBlindSigningError(error)
-                  ) {
-                    alert.warning(t('settings.ledgerBlindSigning'));
-                    setLoading(false);
-                    return;
-                  }
-
-                  logError('error send ERC20', 'Transaction', error);
-                  alert.error(t('send.cantCompleteTxs'));
                   setLoading(false);
                 }
                 break;
@@ -769,31 +672,25 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle user cancellation gracefully
-                if (isUserCancellationError(error)) {
-                  alert.info(t('transactions.transactionCancelled'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle device locked
-                if (isDeviceLockedError(error)) {
-                  alert.warning(t('settings.lockedDevice'));
-                  setLoading(false);
-                  return;
-                }
-
                 // Handle blind signing requirement
-                if (
-                  activeAccount.isLedgerWallet &&
-                  isBlindSigningError(error)
-                ) {
-                  alert.warning(t('settings.ledgerBlindSigning'));
+                // Handle specific errors (blacklist, cancellation, device issues, etc.)
+                const wasHandledSpecifically = handleTransactionError(
+                  error,
+                  alert,
+                  t,
+                  activeAccount,
+                  activeNetwork,
+                  basicTxValues
+                );
+
+                // For errors that were handled specifically, just stop loading
+                if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
-                logError('error send ERC20', 'Transaction', error);
 
+                // For all other unhandled errors, show generic message
+                logError('error send ERC20', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
               }
@@ -850,31 +747,25 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle user cancellation gracefully
-                if (isUserCancellationError(error)) {
-                  alert.info(t('transactions.transactionCancelled'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle device locked
-                if (isDeviceLockedError(error)) {
-                  alert.warning(t('settings.lockedDevice'));
-                  setLoading(false);
-                  return;
-                }
-
                 // Handle blind signing requirement
-                if (
-                  activeAccount.isLedgerWallet &&
-                  isBlindSigningError(error)
-                ) {
-                  alert.warning(t('settings.ledgerBlindSigning'));
+                // Handle specific errors (blacklist, cancellation, device issues, etc.)
+                const wasHandledSpecifically = handleTransactionError(
+                  error,
+                  alert,
+                  t,
+                  activeAccount,
+                  activeNetwork,
+                  basicTxValues
+                );
+
+                // For errors that were handled specifically, just stop loading
+                if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
-                logError('error send ERC721', 'Transaction', error);
 
+                // For all other unhandled errors, show generic message
+                logError('error send ERC721', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
               }
@@ -953,31 +844,24 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle user cancellation gracefully
-                if (isUserCancellationError(error)) {
-                  alert.info(t('transactions.transactionCancelled'));
+                // Handle specific errors (blacklist, cancellation, device issues, etc.)
+                const wasHandledSpecifically = handleTransactionError(
+                  error,
+                  alert,
+                  t,
+                  activeAccount,
+                  activeNetwork,
+                  basicTxValues
+                );
+
+                // For errors that were handled specifically, just stop loading
+                if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // Handle device locked
-                if (isDeviceLockedError(error)) {
-                  alert.warning(t('settings.lockedDevice'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Handle blind signing requirement
-                if (
-                  activeAccount.isLedgerWallet &&
-                  isBlindSigningError(error)
-                ) {
-                  alert.warning(t('settings.ledgerBlindSigning'));
-                  setLoading(false);
-                  return;
-                }
+                // For all other unhandled errors, show generic message
                 logError('error send ERC1155', 'Transaction', error);
-
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
               }

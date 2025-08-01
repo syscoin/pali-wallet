@@ -9,6 +9,14 @@ import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
 
+// Shared approval method signatures for consistent detection across the app
+export const APPROVAL_METHOD_SIGNATURES = {
+  approve: '0x095ea7b3', // approve(address,uint256)
+  increaseAllowance: '0x39509351', // increaseAllowance(address,uint256)
+  decreaseAllowance: '0xa457c2d7', // decreaseAllowance(address,uint256)
+  setApprovalForAll: '0xa22cb465', // setApprovalForAll(address,bool)
+} as const;
+
 // Create a cached instance of the decoder
 let erc20DecoderInstance: InputDataDecoder | null = null;
 
@@ -19,8 +27,8 @@ export const erc20DataDecoder = async (controller?: any) => {
   }
   return erc20DecoderInstance;
 };
-// Helper function to detect approval type
-const detectApprovalType = async (
+// Export approval detection for use in blacklist middleware and UI components
+export const detectApprovalType = async (
   data: string,
   contractAddress: string,
   web3Provider: any,
@@ -40,30 +48,26 @@ const detectApprovalType = async (
       controller
     );
 
-    // Method signatures
-    const signatures = {
-      approve: ethers.utils.id('approve(address,uint256)').slice(0, 10),
-      setApprovalForAll: ethers.utils
-        .id('setApprovalForAll(address,bool)')
-        .slice(0, 10),
-    };
+    if (
+      data.startsWith(APPROVAL_METHOD_SIGNATURES.approve) ||
+      data.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance) ||
+      data.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
+    ) {
+      // Determine method name
+      let methodName = 'approve';
+      if (data.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance)) {
+        methodName = 'increaseAllowance';
+      } else if (
+        data.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
+      ) {
+        methodName = 'decreaseAllowance';
+      }
 
-    if (data.startsWith(signatures.approve)) {
-      if (contractType?.type === 'ERC-20' || contractType?.type === 'ERC-777') {
-        // ERC-20/777 amount approval (default assumption for approve() calls)
-        const [spender, amount] = ethers.utils.defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          '0x' + data.slice(10)
-        );
-        return {
-          isApproval: true,
-          approvalType: 'erc20-amount',
-          tokenStandard: contractType.type,
-          decodedData: { spender, amount },
-          method: 'approve',
-        };
-      } else if (contractType?.type === 'ERC-721') {
-        // ERC-721 single NFT approval
+      // If we have approve/increaseAllowance/decreaseAllowance(address, uint256), it's obviously a token contract
+      // Default to ERC-20 if contract type detection fails or returns unknown
+      if (contractType?.type === 'ERC-721' && methodName === 'approve') {
+        // Only special case: if we positively detect ERC-721 AND it's the basic approve method, treat as NFT approval
+        // Note: increaseAllowance/decreaseAllowance don't exist for ERC-721, so they're always ERC-20
         const [to, tokenId] = ethers.utils.defaultAbiCoder.decode(
           ['address', 'uint256'],
           '0x' + data.slice(10)
@@ -73,10 +77,24 @@ const detectApprovalType = async (
           approvalType: 'erc721-single',
           tokenStandard: 'ERC-721',
           decodedData: { to, tokenId },
-          method: 'approve',
+          method: methodName,
+        };
+      } else {
+        // Default to ERC-20 for approve/increaseAllowance/decreaseAllowance(address, uint256) - most common case
+        // This includes: ERC-20, ERC-777, unknown tokens, failed detection, etc.
+        const [spender, amount] = ethers.utils.defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          '0x' + data.slice(10)
+        );
+        return {
+          isApproval: true,
+          approvalType: 'erc20-amount',
+          tokenStandard: contractType?.type || 'ERC-20', // Default to ERC-20 if unknown
+          decodedData: { spender, amount },
+          method: methodName,
         };
       }
-    } else if (data.startsWith(signatures.setApprovalForAll)) {
+    } else if (data.startsWith(APPROVAL_METHOD_SIGNATURES.setApprovalForAll)) {
       // Works for both ERC-721 and ERC-1155
       const [operator, approved] = ethers.utils.defaultAbiCoder.decode(
         ['address', 'bool'],
@@ -117,10 +135,6 @@ export const fetchFunctionSignature = async (
 
 export const decodeTransactionData = async (
   params: ITransactionParams,
-  validateTxToAddress: {
-    contract: boolean | undefined;
-    wallet: boolean | undefined;
-  },
   web3Provider?: any,
   controller?: any
 ) => {
@@ -137,7 +151,7 @@ export const decodeTransactionData = async (
       : null; //Data might as well be null or undefined in which case the validateTransactionDataValue will fail
 
     //Try to decode if address is contract and have Data
-    if (validateTxToAddress.contract && dataValidation && web3Provider) {
+    if (dataValidation && web3Provider) {
       // First check if it's an approval transaction
       const approvalInfo = await detectApprovalType(
         validatedData,
@@ -199,7 +213,7 @@ export const decodeTransactionData = async (
     }
 
     //Return Contract Interaction if address is contract but don't have Data
-    if (validateTxToAddress.contract && !dataValidation) {
+    if (!dataValidation) {
       const emptyDecoderObject = {
         method: 'Contract Interaction',
         types: [],
@@ -210,7 +224,7 @@ export const decodeTransactionData = async (
     }
 
     // Return Send Method if address is a wallet
-    if (validateTxToAddress.wallet) {
+    if (params?.to && params?.to !== zeroAddress) {
       const emptyDecoderObject = {
         method: 'Send',
         types: [],
@@ -220,27 +234,37 @@ export const decodeTransactionData = async (
       return emptyDecoderObject;
     }
 
-    if (dataValidation) {
-      const initialBytes = data.slice(0, 10); //Get the first four bytes of data + 0x
-      if (initialBytes === contractCreationInitialBytes) {
-        const emptyDecoderObject = {
+    // Handle contract deployment: no 'to' address + contract bytecode
+    if (!params?.to) {
+      if (
+        dataValidation &&
+        data.slice(0, 10) === contractCreationInitialBytes
+      ) {
+        return {
           method: 'Contract Deployment',
           types: [],
           inputs: [],
           names: [],
         };
-        return emptyDecoderObject;
+      } else {
+        // No 'to' address but not contract deployment - probably malformed
+        return {
+          method: 'Transaction',
+          types: [],
+          inputs: [],
+          names: [],
+        };
       }
     }
 
-    if (!params?.to || params?.to === zeroAddress) {
-      const emptyDecoderObject = {
+    // Handle explicit zero address (burning)
+    if (params?.to === zeroAddress) {
+      return {
         method: 'Burn',
         types: [],
         inputs: [],
         names: [],
       };
-      return emptyDecoderObject;
     }
 
     return;

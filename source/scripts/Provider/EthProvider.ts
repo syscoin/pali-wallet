@@ -47,16 +47,11 @@ export const EthProvider = (
         );
       }
     }
-    const validateTxToAddress = await getController().wallet.validateEOAAddress(
-      tx.to,
-      web3Provider
-    );
     // Get current block to check EIP1559 compatibility
     const currentBlock = await web3Provider.getBlock('latest');
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
     const decodedTx = (await decodeTransactionData(
       tx,
-      validateTxToAddress,
       web3Provider,
       getController().wallet
     )) as IDecodedTx;
@@ -67,9 +62,11 @@ export const EthProvider = (
     const eventName = 'txSend';
 
     // Determine transaction characteristics
-    const isContractInteraction = validateTxToAddress.contract;
+    const isContractInteraction = decodedTx.method === 'Contract Interaction';
     const isApproval =
       decodedTx.method === 'approve' ||
+      decodedTx.method === 'increaseAllowance' ||
+      decodedTx.method === 'decreaseAllowance' ||
       decodedTx.method === 'setApprovalForAll';
     const isDeployment = decodedTx.method === 'Contract Deployment';
     const isBurn = decodedTx.method === 'Burn';

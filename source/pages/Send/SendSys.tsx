@@ -19,6 +19,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
+import { handleTransactionError } from 'utils/errorHandling';
 import {
   truncate,
   isNFT,
@@ -31,11 +32,7 @@ import {
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
-import {
-  sanitizeSyscoinError,
-  sanitizeErrorMessage,
-  isSyscoinLibError,
-} from 'utils/syscoinErrorSanitizer';
+import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
 export const SendSys = () => {
@@ -354,45 +351,24 @@ export const SendSys = () => {
         } catch (error: any) {
           setIsLoading(false);
 
-          // Handle structured errors from syscoinjs-lib
-          if (isSyscoinLibError(error)) {
-            const sanitizedError = sanitizeSyscoinError(error);
+          // Create transaction values object for centralized error handling
+          const basicTxValues = {
+            fee: feeRate / 100000000, // Convert from satoshis to SYS
+            amount: Number(amount),
+          };
 
-            switch (sanitizedError.code) {
-              case 'INSUFFICIENT_FUNDS':
-                alert.error(
-                  t('send.insufficientFundsDetails', {
-                    shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
-                    currency: activeNetwork.currency.toUpperCase(),
-                  })
-                );
-                break;
+          // Handle all errors with centralized handler
+          const wasHandledSpecifically = handleTransactionError(
+            error,
+            alert,
+            t,
+            activeAccount,
+            activeNetwork,
+            basicTxValues,
+            sanitizeErrorMessage
+          );
 
-              case 'SUBTRACT_FEE_FAILED':
-                alert.error(
-                  t('send.subtractFeeFailedDetails', {
-                    fee: sanitizedError.fee?.toFixed(8) || '0',
-                    remainingFee:
-                      sanitizedError.remainingFee?.toFixed(8) || '0',
-                    currency: activeNetwork.currency.toUpperCase(),
-                  })
-                );
-                break;
-
-              case 'INVALID_FEE_RATE':
-                alert.error(t('send.invalidFeeRate'));
-                break;
-
-              case 'INVALID_AMOUNT':
-                alert.error(t('send.invalidAmount'));
-                break;
-
-              default:
-                // Bypass i18n interpolation to prevent additional encoding
-                const errorMessage = `Transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
-                alert.error(errorMessage);
-            }
-          } else {
+          if (!wasHandledSpecifically) {
             // Fallback for non-structured errors
             const sanitizedMessage = sanitizeErrorMessage(error);
             alert.error(
@@ -487,53 +463,24 @@ export const SendSys = () => {
         } catch (error: any) {
           setIsLoading(false);
 
-          // Handle structured errors from syscoinjs-lib
-          if (isSyscoinLibError(error)) {
-            const sanitizedError = sanitizeSyscoinError(error);
+          // Create transaction values object for centralized error handling
+          const basicTxValues = {
+            fee: feeRate / 100000000, // Convert from satoshis to SYS
+            amount: Number(amount),
+          };
 
-            switch (sanitizedError.code) {
-              case 'INSUFFICIENT_FUNDS':
-                alert.error(
-                  t('send.insufficientFundsDetails', {
-                    shortfall: sanitizedError.shortfall?.toFixed(8) || '0',
-                    currency: activeNetwork.currency.toUpperCase(),
-                  })
-                );
-                break;
+          // Handle all errors with centralized handler
+          const wasHandledSpecifically = handleTransactionError(
+            error,
+            alert,
+            t,
+            activeAccount,
+            activeNetwork,
+            basicTxValues,
+            sanitizeErrorMessage
+          );
 
-              case 'SUBTRACT_FEE_FAILED':
-                alert.error(
-                  t('send.subtractFeeFailedDetails', {
-                    fee: sanitizedError.fee?.toFixed(8) || '0',
-                    remainingFee:
-                      sanitizedError.remainingFee?.toFixed(8) || '0',
-                    currency: activeNetwork.currency.toUpperCase(),
-                  })
-                );
-                break;
-
-              case 'INVALID_FEE_RATE':
-                alert.error(t('send.invalidFeeRate'));
-                break;
-
-              case 'INVALID_AMOUNT':
-                alert.error(t('send.invalidAmount'));
-                break;
-
-              case 'INVALID_ASSET_ALLOCATION':
-                alert.error(
-                  t('send.invalidAssetAllocation', {
-                    guid: sanitizedError.details || 'Unknown',
-                  })
-                );
-                break;
-
-              default:
-                // Bypass i18n interpolation to prevent additional encoding
-                const tokenErrorMessage = `Token transaction creation failed (${sanitizedError.code}): ${sanitizedError.message}`;
-                alert.error(tokenErrorMessage);
-            }
-          } else {
+          if (!wasHandledSpecifically) {
             // Fallback for non-structured errors
             const sanitizedMessage = sanitizeErrorMessage(error);
             alert.error(

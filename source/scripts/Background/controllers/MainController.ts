@@ -97,6 +97,7 @@ import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
+import { blacklistService } from 'utils/security/blacklistService';
 import { chromeStorage } from 'utils/storageAPI';
 import {
   isTransactionInBlock,
@@ -254,6 +255,21 @@ class MainController {
     };
 
     this.bindMethods();
+
+    // Initialize blacklist service
+    this.initializeBlacklistService();
+  }
+
+  private async initializeBlacklistService() {
+    try {
+      await blacklistService.initialize();
+      console.log('[MainController] Blacklist service initialized');
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to initialize blacklist service:',
+        error
+      );
+    }
   }
 
   // Initialize a keyring for a specific slip44
@@ -3025,6 +3041,22 @@ class MainController {
     try {
       const controller = getController();
 
+      // Check recipient address against blacklist
+      if (params.to) {
+        const blacklistResult = await blacklistService.checkAddress(params.to);
+        if (
+          blacklistResult.isBlacklisted &&
+          (blacklistResult.severity === 'critical' ||
+            blacklistResult.severity === 'high')
+        ) {
+          throw new Error(
+            `Transaction blocked: ${
+              blacklistResult.reason || 'Recipient address is blacklisted'
+            }. Severity: ${blacklistResult.severity}`
+          );
+        }
+      }
+
       // Send the formatted transaction
       const txResponse =
         await controller.wallet.ethereumTransaction.sendFormattedTransaction(
@@ -3076,6 +3108,27 @@ class MainController {
   ): Promise<IEvmTransactionResponse> {
     try {
       const controller = getController();
+
+      // Check token recipient address against blacklist
+      if (params.receiver) {
+        const blacklistResult = await blacklistService.checkAddress(
+          params.receiver
+        );
+        if (
+          blacklistResult.isBlacklisted &&
+          (blacklistResult.severity === 'critical' ||
+            blacklistResult.severity === 'high')
+        ) {
+          throw new Error(
+            `Token transfer blocked: ${
+              blacklistResult.reason || 'The recipient address is blacklisted'
+            }. Severity: ${
+              blacklistResult.severity
+            }. Please verify the token recipient address before proceeding.`
+          );
+        }
+      }
+
       let txResponse;
 
       // Call the appropriate method based on token type
@@ -4782,11 +4835,6 @@ class MainController {
         };
       }
 
-      const validateTxToAddress = await validateEOAAddress(
-        transaction.to,
-        this.ethereumTransaction.web3Provider
-      );
-
       // Normalize transaction data - decodeTransactionData expects 'data' field
       const normalizedTransaction = {
         ...transaction,
@@ -4796,7 +4844,6 @@ class MainController {
       // Use the existing decodeTransactionData function with web3Provider
       const decodedTx = await decodeTransactionData(
         normalizedTransaction,
-        validateTxToAddress,
         this.ethereumTransaction.web3Provider,
         this
       );

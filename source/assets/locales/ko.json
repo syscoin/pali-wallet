@@ -90,8 +90,7 @@
     "minutes": "분",
     "enableAutolock": "자동 잠금 활성화",
     "connectedSites": "연결된 사이트",
-    "isConnected": "이러한 사이트에 연결되어 있습니다. 계정의 공개 정보를 볼 수 있습니다.",
-    "isNotConnected": "어떤 사이트에도 연결되지 않았습니다. Pali 호환 dApp에 연결하려면 해당 사이트의 연결 버튼을 찾으세요.",
+    "isConnected": "이것들은 연결하고 계정의 공개 정보를 공유할 수 있는 신뢰할 수 있는 사이트입니다.",
     "editConnection": "연결 편집",
     "deleteConnected": "연결된 사이트 삭제",
     "permissions": "권한",
@@ -675,5 +674,12 @@
     "network": "네트워크",
     "item": "아이템",
     "items": "아이템"
+  },
+  "blacklist": {
+    "blacklistWarning": "블랙리스트 경고",
+    "blacklistCriticalWarning": "중요 경고",
+    "blacklistHighRisk": "고위험",
+    "blacklistDefaultWarning": "이 주소는 잠재적으로 악의적인 것으로 표시되었습니다.",
+    "blacklistWarningDiscouraged": "이 주소로 보내는 것은 강력히 권장되지 않으며 자금 손실로 이어질 수 있습니다."
   }
 }

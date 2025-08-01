@@ -90,8 +90,7 @@
     "minutes": "分",
     "enableAutolock": "自動ロックを有効にする",
     "connectedSites": "接続済みサイト",
-    "isConnected": "これらのサイトに接続されています。アカウントの公開情報を表示できます。",
-    "isNotConnected": "どのサイトにも接続されていません。Pali対応dAppに接続するには、そのサイトの接続ボタンを見つけてください。",
+    "isConnected": "これらは接続してアカウントの公開情報を共有できる信頼できるサイトです。",
     "editConnection": "接続を編集",
     "deleteConnected": "接続済みサイトを削除",
     "permissions": "権限",
@@ -675,5 +674,12 @@
     "network": "ネットワーク",
     "item": "アイテム",
     "items": "アイテム"
+  },
+  "blacklist": {
+    "blacklistWarning": "ブラックリスト警告",
+    "blacklistCriticalWarning": "重要警告",
+    "blacklistHighRisk": "高リスク",
+    "blacklistDefaultWarning": "このアドレスは悪意のある可能性があるとしてフラグが立てられています。",
+    "blacklistWarningDiscouraged": "このアドレスへの送信は強く推奨されておらず、資金の損失につながる可能性があります。"
   }
 }

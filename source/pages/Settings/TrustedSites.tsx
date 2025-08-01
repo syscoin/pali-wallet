@@ -1,10 +1,9 @@
 import uniq from 'lodash/uniq';
 import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
-import { selectActiveAccount } from 'state/vault/selectors';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
@@ -38,11 +37,10 @@ const NOT_TRUSTED_WALLET_STYLE = {
 };
 
 const TrustedSitesView = () => {
+  const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
   const [status, setStatus] = useState(EMPTY_STATE);
-
-  const activeAccount = useSelector(selectActiveAccount);
 
   const handleSearch = (typed) => {
     if (!typed) setStatus({ name: '', icon: '', color: '', size: '' });
@@ -81,8 +79,7 @@ const TrustedSitesView = () => {
   return (
     <>
       <p className="text-white text-sm font-normal pb-6">
-        {activeAccount?.label} is connected to these site. They can view your
-        account address.
+        {t('settings.isConnected')}
       </p>
       <div className="relative">
         <input

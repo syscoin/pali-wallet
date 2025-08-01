@@ -90,8 +90,7 @@
     "minutes": "Minuten",
     "enableAutolock": "Automatische Sperre aktivieren",
     "connectedSites": "VERBUNDENE SEITEN",
-    "isConnected": "ist mit diesen Seiten verbunden. Sie können Ihre öffentlichen Kontoinformationen einsehen.",
-    "isNotConnected": "ist mit keinen Seiten verbunden. Um sich mit einer Pali-kompatiblen dApp zu verbinden, finden Sie die Verbindungsschaltfläche auf deren Seite.",
+    "isConnected": "Dies sind vertrauenswürdige Websites, mit denen Sie sich verbinden und Ihre öffentlichen Kontoinformationen teilen können.",
     "editConnection": "Verbindung bearbeiten",
     "deleteConnected": "Verbundene Seite löschen",
     "permissions": "Berechtigungen",
@@ -675,5 +674,12 @@
     "network": "Netzwerk",
     "item": "Element",
     "items": "Elemente"
+  },
+  "blacklist": {
+    "blacklistWarning": "Blacklist-Warnung",
+    "blacklistCriticalWarning": "KRITISCHE WARNUNG",
+    "blacklistHighRisk": "HOHES RISIKO",
+    "blacklistDefaultWarning": "Diese Adresse wurde als potenziell bösartig markiert.",
+    "blacklistWarningDiscouraged": "Das Senden an diese Adresse wird dringend abgeraten und kann zu Geldverlusten führen."
   }
 }

@@ -393,8 +393,7 @@
     "minutes": "Minutes",
     "enableAutolock": "Enable autolock",
     "connectedSites": "CONNECTED SITES",
-    "isConnected": "is connected to these sites. They can view your account public information.",
-    "isNotConnected": "is not connected to any sites. To connect to a Pali compatible dApp, find the connect button on their site.",
+    "isConnected": "These are trusted sites you can connect to and share your public account information with.",
     "editConnection": "Edit connection",
     "deleteConnected": "Delete connected site",
     "permissions": "Permissions",
@@ -675,5 +674,12 @@
     "network": "Network",
     "item": "item",
     "items": "items"
+  },
+  "blacklist": {
+    "blacklistWarning": "Blacklist Warning",
+    "blacklistCriticalWarning": "CRITICAL WARNING",
+    "blacklistHighRisk": "HIGH RISK",
+    "blacklistDefaultWarning": "This address has been flagged as potentially malicious.",
+    "blacklistWarningDiscouraged": "Sending to this address is strongly discouraged and may result in loss of funds."
   }
 }

@@ -393,8 +393,7 @@
     "minutes": "Minutos",
     "enableAutolock": "Habilitar bloqueo automático",
     "connectedSites": "SITIOS CONECTADOS",
-    "isConnected": "está conectado a estos sitios. Pueden ver información pública de tu cuenta.",
-    "isNotConnected": "no está conectado a ningún sitio. Para conectarte a una aplicación compatible con Pali, busca el botón de conexión en su sitio.",
+    "isConnected": "Estos son sitios de confianza a los que puedes conectarte y compartir la información pública de tu cuenta.",
     "editConnection": "Editar conexión",
     "deleteConnected": "Eliminar sitio conectado",
     "permissions": "Permisos",
@@ -675,5 +674,12 @@
     "network": "Red",
     "item": "elemento",
     "items": "elementos"
+  },
+  "blacklist": {
+    "blacklistWarning": "Advertencia de Lista Negra",
+    "blacklistCriticalWarning": "ADVERTENCIA CRÍTICA",
+    "blacklistHighRisk": "ALTO RIESGO",
+    "blacklistDefaultWarning": "Esta dirección ha sido marcada como potencialmente maliciosa.",
+    "blacklistWarningDiscouraged": "Se desaconseja encarecidamente enviar a esta dirección y puede resultar en la pérdida de fondos."
   }
 }

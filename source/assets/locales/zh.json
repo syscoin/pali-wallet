@@ -90,8 +90,7 @@
     "minutes": "分钟",
     "enableAutolock": "启用自动锁定",
     "connectedSites": "已连接网站",
-    "isConnected": "已连接到这些网站。它们可以查看您的账户公共信息。",
-    "isNotConnected": "未连接到任何网站。要连接到Pali兼容的dApp，请在其网站上找到连接按钮。",
+    "isConnected": "这些是您可以连接并与之分享账户公共信息的可信网站。",
     "editConnection": "编辑连接",
     "deleteConnected": "删除已连接的网站",
     "permissions": "权限",
@@ -675,5 +674,12 @@
     "network": "网络",
     "item": "项目",
     "items": "项目"
+  },
+  "blacklist": {
+    "blacklistWarning": "黑名单警告",
+    "blacklistCriticalWarning": "严重警告",
+    "blacklistHighRisk": "高风险",
+    "blacklistDefaultWarning": "此地址已被标记为可能恶意。",
+    "blacklistWarningDiscouraged": "强烈不建议向此地址发送，可能导致资金损失。"
   }
 }

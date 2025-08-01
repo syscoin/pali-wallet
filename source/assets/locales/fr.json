@@ -90,8 +90,7 @@
     "minutes": "Minutes",
     "enableAutolock": "Activer le verrouillage automatique",
     "connectedSites": "SITES CONNECTÉS",
-    "isConnected": "est connecté à ces sites. Ils peuvent voir les informations publiques de votre compte.",
-    "isNotConnected": "n'est connecté à aucun site. Pour vous connecter à une dApp compatible Pali, trouvez le bouton de connexion sur leur site.",
+    "isConnected": "Voici des sites de confiance auxquels vous pouvez vous connecter et partager les informations publiques de votre compte.",
     "editConnection": "Modifier la connexion",
     "deleteConnected": "Supprimer le site connecté",
     "permissions": "Permissions",
@@ -675,5 +674,12 @@
     "network": "Réseau",
     "item": "élément",
     "items": "éléments"
+  },
+  "blacklist": {
+    "blacklistWarning": "Avertissement de Liste Noire",
+    "blacklistCriticalWarning": "AVERTISSEMENT CRITIQUE",
+    "blacklistHighRisk": "RISQUE ÉLEVÉ",
+    "blacklistDefaultWarning": "Cette adresse a été signalée comme potentiellement malveillante.",
+    "blacklistWarningDiscouraged": "L'envoi vers cette adresse est fortement déconseillé et peut entraîner une perte de fonds."
   }
 }

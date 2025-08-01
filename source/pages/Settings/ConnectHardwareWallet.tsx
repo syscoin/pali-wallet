@@ -7,10 +7,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
-import {
-  isUserCancellationError,
-  isDeviceLockedError,
-} from 'utils/isUserCancellationError';
+import { handleTransactionError } from 'utils/errorHandling';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -81,24 +78,36 @@ const ConnectHardwareWalletView: FC = () => {
       // Log error for debugging
       console.log('Hardware wallet connection error:', error);
 
-      // Handle device locked
-      if (isDeviceLockedError(error)) {
-        alert.warning(t('settings.lockedDevice'));
-        return;
-      }
+      // Create custom alert object that handles hardware wallet specific behavior
+      const customAlert = {
+        error: (msg: string) => {
+          setSelectedHardwareWallet(undefined); // Reset selection on error
+          alert.error(msg);
+        },
+        info: (msg: string) => {
+          setSelectedHardwareWallet(undefined); // Reset selection on cancellation
+          alert.info(msg);
+        },
+        warning: (msg: string) => alert.warning(msg),
+        success: (msg: string) => alert.success(msg),
+      };
 
-      // Handle user cancellation gracefully
-      if (isUserCancellationError(error)) {
-        // User canceled hardware wallet connection - reset selection to allow choosing again
-        alert.info(t('settings.connectionCancelled'));
+      // Handle all errors with centralized handler
+      const wasHandledSpecifically = handleTransactionError(
+        error,
+        customAlert,
+        t,
+        undefined, // activeAccount not available in hardware wallet creation context
+        undefined, // activeNetwork not needed for hardware wallet errors
+        undefined, // basicTxValues not available in this context
+        undefined // sanitizeErrorMessage not needed for hardware wallet errors
+      );
+
+      if (!wasHandledSpecifically) {
+        // For any other errors, also reset selection to prevent getting stuck
         setSelectedHardwareWallet(undefined);
-        return;
+        alert.error(t('settings.errorCreatingHardWallet'));
       }
-
-      // For any other errors, also reset selection to prevent getting stuck
-      // This ensures user can always try again
-      setSelectedHardwareWallet(undefined);
-      alert.error(t('settings.errorCreatingHardWallet'));
     }
   };
 
