@@ -15,6 +15,7 @@ import {
   methodRequiresConnection,
 } from './method-registry';
 import { spamFilterMiddleware } from './middleware/spamFilterMiddleware';
+import { typedDataValidationMiddleware } from './middleware/typedDataValidationMiddleware';
 import { popupPromise } from './popup-promise';
 import {
   IEnhancedRequestContext,
@@ -1292,6 +1293,7 @@ export function createDefaultPipeline(): RequestPipeline {
     .use(authenticationMiddleware) // Auth check before connection
     .use(connectionMiddleware) // Connection after auth
     .use(accountSwitchingMiddleware)
+    .use(typedDataValidationMiddleware) // Validate typed data before showing popup
     .use(blacklistCheckingMiddleware); // Check blacklist before executing transaction
   // Method handler middleware is added in requests.ts
 }
