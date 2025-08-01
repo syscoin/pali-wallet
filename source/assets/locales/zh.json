@@ -663,7 +663,8 @@
     "expectedFormat": "[消息, 地址] 或 [地址, 消息]",
     "messageSigningNotAvailable": "消息签署在UTXO网络中不可用",
     "ethSigningNotAvailable": "ETH签署在UTXO网络中不可用",
-    "signingForWrongAddress": "为错误地址签署",
+    "signingForWrongAddress": "此网站要求您使用错误的账户登录。",
+    "suspiciousSignInRequest": "发出请求的网站不是您要登录的网站。这可能是盗取您登录凭据的企图。",
     "invalidParameters": "无效参数",
     "invalidEthSignFormat": "无效的eth_sign消息格式。期望32字节十六进制字符串（64个字符），得到：\"{{message}}\"。要签署任意文本，dapp应使用personal_sign。"
   },

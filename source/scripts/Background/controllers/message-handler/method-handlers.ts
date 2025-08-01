@@ -486,7 +486,7 @@ export class EthMethodHandler implements IMethodHandler {
             // Check if dapp is connected
             const connectedAccount = dapp.getAccount(host);
             if (connectedAccount) {
-              return [connectedAccount.address];
+              return [connectedAccount.address.toLowerCase()];
             }
 
             // Not connected - return empty array
@@ -507,7 +507,7 @@ export class EthMethodHandler implements IMethodHandler {
       if (!account) {
         throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
       }
-      return [account.address];
+      return [account.address.toLowerCase()];
     }
 
     // Handle changeUTXOEVM - already processed by middleware

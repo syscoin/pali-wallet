@@ -508,7 +508,8 @@
     "expectedFormat": "[메시지, 주소] 또는 [주소, 메시지]",
     "messageSigningNotAvailable": "메시지 서명은 UTXO 네트워크에서 사용할 수 없습니다",
     "ethSigningNotAvailable": "ETH 서명은 UTXO 네트워크에서 사용할 수 없습니다",
-    "signingForWrongAddress": "잘못된 주소에 서명",
+    "signingForWrongAddress": "이 사이트에서 잘못된 계정으로 로그인하도록 요청하고 있습니다.",
+    "suspiciousSignInRequest": "요청하는 사이트가 로그인하려는 사이트가 아닙니다. 이는 로그인 자격 증명을 도용하려는 시도일 수 있습니다.",
     "invalidParameters": "유효하지 않은 매개변수",
     "invalidEthSignFormat": "유효하지 않은 eth_sign 메시지 형식입니다. 32바이트 hex 문자열(64자)이 예상되었지만 \"{{message}}\"를 받았습니다. 임의의 텍스트에 서명하려면 dapp에서 personal_sign을 사용해야 합니다."
   },

@@ -240,9 +240,37 @@ const EthSign: React.FC<ISign> = () => {
       setErrorMsg(t('send.ethSigningNotAvailable'));
       return;
     }
-
     if (data.eventName === 'personal_sign') {
-      const msg = data[0] === activeAccount.address ? data[1] : data[0];
+      let msg = '';
+      let requestedAddress = '';
+
+      // Standard parameter order for personal_sign is [message, address]
+      // Some dapps may send [address, message] for compatibility
+      // Check if first param looks like an Ethereum address
+      const isFirstParamAddress =
+        data[0] &&
+        typeof data[0] === 'string' &&
+        data[0].startsWith('0x') &&
+        data[0].length === 42;
+
+      if (isFirstParamAddress) {
+        // Non-standard order: [address, message]
+        requestedAddress = data[0];
+        msg = data[1] || '';
+      } else {
+        // Standard order: [message, address]
+        msg = data[0] || '';
+        requestedAddress = data[1] || '';
+      }
+
+      // Validate that the requested address matches the active account
+      if (
+        requestedAddress &&
+        requestedAddress.toLowerCase() !== activeAccount.address.toLowerCase()
+      ) {
+        setErrorMsg(t('send.signingForWrongAddress'));
+        return;
+      }
 
       // Check if the message is hex encoded UTF-8 text or just a string starting with 0x
       if (msg.startsWith('0x') && msg.length > 2) {
@@ -261,6 +289,33 @@ const EthSign: React.FC<ISign> = () => {
               // Only use parsed result if it contains readable text
               if (res && /^[\x20-\x7E\s]*$/.test(res)) {
                 setMessage(res);
+
+                // Check for SIWE (Sign-In With Ethereum) messages
+                // These messages contain an embedded address that should match the signing account
+                const siwePattern =
+                  /wants you to sign in with your Ethereum account:\s*\n\s*(0x[a-fA-F0-9]{40})/i;
+                const match = res.match(siwePattern);
+
+                if (match && match[1]) {
+                  const embeddedAddress = match[1];
+                  if (
+                    embeddedAddress.toLowerCase() !==
+                    activeAccount.address.toLowerCase()
+                  ) {
+                    setErrorMsg(t('send.signingForWrongAddress'));
+                  }
+                }
+
+                // Check if domain in SIWE message matches the requesting domain
+                const domainPattern = /^([^\s]+)\s+wants you to sign in/i;
+                const domainMatch = res.match(domainPattern);
+
+                if (domainMatch && domainMatch[1]) {
+                  const messageDomain = domainMatch[1];
+                  if (messageDomain.toLowerCase() !== host.toLowerCase()) {
+                    setErrorMsg(t('send.suspiciousSignInRequest'));
+                  }
+                }
               } else {
                 // Parsed result is not readable text, show original
                 setMessage(msg);
@@ -274,24 +329,78 @@ const EthSign: React.FC<ISign> = () => {
       } else {
         // Message is plain text, show it directly
         setMessage(msg);
+
+        // Check for SIWE messages in plain text too
+        const siwePattern =
+          /wants you to sign in with your Ethereum account:\s*\n\s*(0x[a-fA-F0-9]{40})/i;
+        const match = msg.match(siwePattern);
+
+        if (match && match[1]) {
+          const embeddedAddress = match[1];
+          if (
+            embeddedAddress.toLowerCase() !==
+            activeAccount.address.toLowerCase()
+          ) {
+            setErrorMsg(t('send.signingForWrongAddress'));
+          }
+        }
+
+        // Check if domain in SIWE message matches the requesting domain
+        const domainPattern = /^([^\s]+)\s+wants you to sign in/i;
+        const domainMatch = msg.match(domainPattern);
+
+        if (domainMatch && domainMatch[1]) {
+          const messageDomain = domainMatch[1];
+          if (messageDomain.toLowerCase() !== host.toLowerCase()) {
+            setErrorMsg(
+              t('send.suspiciousSignInRequest') ||
+                "The site making the request is not the site you're signing into. This could be an attempt to steal your login credentials."
+            );
+          }
+        }
       }
     }
 
     if (data.eventName === 'eth_sign') {
       // eth_sign parameters should be [address, message]
       let messageToSign = '';
+      let requestedAddress = '';
 
-      if (data[0] === activeAccount.address) {
-        // Correct order: [address, message]
-        messageToSign = data[1];
-      } else if (data[1] === activeAccount.address) {
-        // Reversed order: [message, address] - fix it
-        messageToSign = data[0];
+      // Standard parameter order for eth_sign is [address, message]
+      // Check if params follow the standard order
+      const isFirstParamAddress =
+        data[0] &&
+        typeof data[0] === 'string' &&
+        data[0].startsWith('0x') &&
+        data[0].length === 42;
+
+      const isSecondParamAddress =
+        data[1] &&
+        typeof data[1] === 'string' &&
+        data[1].startsWith('0x') &&
+        data[1].length === 42;
+
+      if (isFirstParamAddress && !isSecondParamAddress) {
+        // Standard order: [address, message]
+        requestedAddress = data[0];
+        messageToSign = data[1] || '';
+      } else if (!isFirstParamAddress && isSecondParamAddress) {
+        // Non-standard order: [message, address]
+        messageToSign = data[0] || '';
+        requestedAddress = data[1];
       } else {
-        // Neither parameter matches current address
-        // For your case: params = ['Hello World!', '0x']
-        // Since neither matches address, show the first parameter as message
-        messageToSign = data[0] || t('send.invalidParameters');
+        // Ambiguous - default to standard order
+        requestedAddress = data[0] || '';
+        messageToSign = data[1] || '';
+      }
+
+      // Validate that the requested address matches the active account
+      if (
+        requestedAddress &&
+        requestedAddress.toLowerCase() !== activeAccount.address.toLowerCase()
+      ) {
+        setErrorMsg(t('send.signingForWrongAddress'));
+        return;
       }
 
       // Validate that the message is a proper 32-byte hex string for eth_sign

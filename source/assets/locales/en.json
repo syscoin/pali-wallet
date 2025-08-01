@@ -370,7 +370,8 @@
     "expectedFormat": "[message, address] or [address, message]",
     "messageSigningNotAvailable": "Message signing is not available on UTXO networks",
     "ethSigningNotAvailable": "ETH signing is not available on UTXO networks",
-    "signingForWrongAddress": "Signing for wrong address",
+    "signingForWrongAddress": "This site is asking you to sign in using the wrong account.",
+    "suspiciousSignInRequest": "The site making the request is not the site you're signing into. This could be an attempt to steal your login credentials.",
     "invalidParameters": "Invalid parameters",
     "invalidEthSignFormat": "Invalid eth_sign message format. Expected 32-byte hex string (64 characters), got: \"{{message}}\". For signing arbitrary text, the dapp should use personal_sign instead."
   },

@@ -349,7 +349,8 @@
     "expectedFormat": "[mensagem, endereço] ou [endereço, mensagem]",
     "messageSigningNotAvailable": "A assinatura de mensagens não está disponível em redes UTXO",
     "ethSigningNotAvailable": "A assinatura ETH não está disponível em redes UTXO",
-    "signingForWrongAddress": "Assinando para endereço incorreto",
+    "signingForWrongAddress": "Este site está pedindo para você fazer login usando a conta errada.",
+    "suspiciousSignInRequest": "O site que está fazendo a solicitação não é o site em que você está fazendo login. Isso pode ser uma tentativa de roubar suas credenciais de login.",
     "invalidParameters": "Parâmetros inválidos",
     "invalidEthSignFormat": "Formato de mensagem eth_sign inválido. Esperava-se string hex de 32 bytes (64 caracteres), obtido: \"{{message}}\". Para assinar texto arbitrário, o dapp deveria usar personal_sign."
   },

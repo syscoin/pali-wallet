@@ -18,8 +18,8 @@ import '@testing-library/jest-dom';
 import { TextEncoder, TextDecoder } from 'util';
 
 // Polyfill for crypto
-global.TextEncoder = TextEncoder;
-global.TextDecoder = TextDecoder;
+global.TextEncoder = TextEncoder as any;
+global.TextDecoder = TextDecoder as any;
 
 // Mock crypto for Node.js environment
 if (typeof global.crypto === 'undefined') {

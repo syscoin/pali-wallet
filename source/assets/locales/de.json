@@ -508,7 +508,8 @@
     "expectedFormat": "[Nachricht, Adresse] oder [Adresse, Nachricht]",
     "messageSigningNotAvailable": "Nachrichtensignierung ist in UTXO-Netzwerken nicht verfügbar",
     "ethSigningNotAvailable": "ETH-Signierung ist in UTXO-Netzwerken nicht verfügbar",
-    "signingForWrongAddress": "Signierung für falsche Adresse",
+    "signingForWrongAddress": "Diese Website fordert Sie auf, sich mit dem falschen Konto anzumelden.",
+    "suspiciousSignInRequest": "Die anfragende Website ist nicht die Website, bei der Sie sich anmelden. Dies könnte ein Versuch sein, Ihre Anmeldedaten zu stehlen.",
     "invalidParameters": "Ungültige Parameter",
     "invalidEthSignFormat": "Ungültiges eth_sign-Nachrichtenformat. 32-Byte-Hex-String (64 Zeichen) erwartet, erhalten: \"{{message}}\". Für die Signierung beliebigen Texts sollte die dApp personal_sign verwenden."
   },
