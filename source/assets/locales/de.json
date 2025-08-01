@@ -691,5 +691,11 @@
     "zoneWarning": "Der Zonen-Validierungsvertrag steht auf der Blacklist. Dies könnte die Ausführung von bösartigem Code während des Handels ermöglichen.",
     "feeRecipientWarning": "Eine Gebührenempfänger-Adresse steht auf der Blacklist. Geld könnte durch übermäßige oder versteckte Gebühren gestohlen werden.",
     "considerationRecipientWarning": "Ein Gegenleistungsempfänger steht auf der Blacklist. Ihre Assets könnten an eine bösartige Adresse gesendet werden."
+  },
+  "spamWarning": {
+    "title": "Wir haben mehrere Anfragen bemerkt",
+    "description": "Wenn Sie mit mehreren Anfragen belästigt werden, können Sie die Website vorübergehend blockieren.",
+    "blockDuration": "Blockierungsdauer: {{duration}}",
+    "blockTemporarily": "Vorübergehend blockieren"
   }
 }

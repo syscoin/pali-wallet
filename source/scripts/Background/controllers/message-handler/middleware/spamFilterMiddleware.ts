@@ -63,7 +63,6 @@ export const spamFilterMiddleware: Middleware = async (context, next) => {
             route: 'spam-warning' as any,
             eventName: 'spamWarningResponse',
             data: {
-              host,
               requestCount:
                 updatedState.spamFilter.dapps[host]?.requests.length || 0,
             },

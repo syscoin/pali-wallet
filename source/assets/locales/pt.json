@@ -691,5 +691,11 @@
     "zoneWarning": "O contrato de validação de zona está na lista negra. Isso pode permitir a execução de código malicioso durante a negociação.",
     "feeRecipientWarning": "Um endereço de destinatário de taxa está na lista negra. Fundos podem ser roubados através de taxas excessivas ou ocultas.",
     "considerationRecipientWarning": "Um destinatário de consideração está na lista negra. Seus ativos podem ser enviados para um endereço malicioso."
+  },
+  "spamWarning": {
+    "title": "Notamos múltiplas solicitações",
+    "description": "Se você está sendo incomodado com múltiplas solicitações, pode bloquear temporariamente o site.",
+    "blockDuration": "Duração do bloqueio: {{duration}}",
+    "blockTemporarily": "Bloquear temporariamente"
   }
 }

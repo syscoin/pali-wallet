@@ -691,5 +691,11 @@
     "zoneWarning": "区域验证合约已被列入黑名单。这可能允许在交易期间执行恶意代码。",
     "feeRecipientWarning": "手续费接收地址已被列入黑名单。资金可能通过过高或隐藏的手续费被窃取。",
     "considerationRecipientWarning": "对价接收者已被列入黑名单。您的资产可能被发送到恶意地址。"
+  },
+  "spamWarning": {
+    "title": "我们注意到多个请求",
+    "description": "如果您正在被多个请求骚扰，您可以临时屏蔽该网站。",
+    "blockDuration": "屏蔽持续时间：{{duration}}",
+    "blockTemporarily": "临时屏蔽"
   }
 }

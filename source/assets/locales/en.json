@@ -691,5 +691,11 @@
     "zoneWarning": "The zone validation contract is blacklisted. This could allow malicious code execution during the trade.",
     "feeRecipientWarning": "A fee recipient address is blacklisted. Funds may be stolen through excessive or hidden fees.",
     "considerationRecipientWarning": "A consideration recipient is blacklisted. Your assets may be sent to a malicious address."
+  },
+  "spamWarning": {
+    "title": "We've noticed multiple requests",
+    "description": "If you're being spammed with multiple requests, you can temporarily block the site.",
+    "blockDuration": "Block duration: {{duration}}",
+    "blockTemporarily": "Block temporarily"
   }
 }

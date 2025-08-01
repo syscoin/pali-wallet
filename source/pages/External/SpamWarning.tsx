@@ -8,6 +8,7 @@ import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 interface ISpamWarningData {
+  eventName: string;
   host: string;
   requestCount: number;
 }
@@ -20,7 +21,6 @@ export const SpamWarning: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState<string>('1 minute');
 
   const spamConfig = useSelector((state: RootState) => state.spamFilter.config);
-
   useEffect(() => {
     if (!popupData?.host) {
       console.error('No popup data provided');
@@ -45,7 +45,7 @@ export const SpamWarning: React.FC = () => {
     setIsLoading(true);
     try {
       // Send response to background
-      dispatchBackgroundEvent(`spamWarningResponse.${popupData.host}`, {
+      dispatchBackgroundEvent(`${popupData.eventName}.${popupData.host}`, {
         action: 'block',
       });
 
@@ -61,7 +61,7 @@ export const SpamWarning: React.FC = () => {
     setIsLoading(true);
     try {
       // Send response to background
-      dispatchBackgroundEvent(`spamWarningResponse.${popupData.host}`, {
+      dispatchBackgroundEvent(`${popupData.eventName}.${popupData.host}`, {
         action: 'allow',
       });
 
@@ -113,7 +113,7 @@ export const SpamWarning: React.FC = () => {
 
           {/* Title */}
           <h1 className="text-xl font-bold text-center text-white">
-            {t('spamWarning.title', "We've noticed multiple requests")}
+            {t('spamWarning.title')}
           </h1>
 
           {/* Site Info */}
@@ -136,14 +136,11 @@ export const SpamWarning: React.FC = () => {
           {/* Description and Block Duration Combined */}
           <div className="space-y-2">
             <p className="text-sm text-center text-gray-600 dark:text-gray-300">
-              {t(
-                'spamWarning.description',
-                "If you're being spammed with multiple requests, you can temporarily block the site."
-              )}
+              {t('spamWarning.description')}
             </p>
 
             <p className="text-sm text-center font-medium text-orange-600 dark:text-orange-400">
-              {t('spamWarning.blockDuration', 'Block duration: {{duration}}', {
+              {t('spamWarning.blockDuration', {
                 duration: timeRemaining,
               })}
             </p>
@@ -174,7 +171,7 @@ export const SpamWarning: React.FC = () => {
                     d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
                   />
                 </svg>
-                {t('spamWarning.blockTemporarily', 'Block temporarily')}
+                {t('spamWarning.blockTemporarily')}
               </>
             )}
           </button>
@@ -184,7 +181,7 @@ export const SpamWarning: React.FC = () => {
             disabled={isLoading}
             className="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('common.cancel', 'Cancel')}
+            {t('buttons.cancel')}
           </button>
         </div>
       </div>

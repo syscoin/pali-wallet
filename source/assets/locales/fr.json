@@ -691,5 +691,11 @@
     "zoneWarning": "Le contrat de validation de zone est sur liste noire. Cela pourrait permettre l'exécution de code malveillant pendant l'échange.",
     "feeRecipientWarning": "Une adresse de destinataire de frais est sur liste noire. Les fonds peuvent être volés par des frais excessifs ou cachés.",
     "considerationRecipientWarning": "Un destinataire de contrepartie est sur liste noire. Vos actifs peuvent être envoyés à une adresse malveillante."
+  },
+  "spamWarning": {
+    "title": "Nous avons remarqué plusieurs demandes",
+    "description": "Si vous êtes harcelé par plusieurs demandes, vous pouvez bloquer temporairement le site.",
+    "blockDuration": "Durée du blocage : {{duration}}",
+    "blockTemporarily": "Bloquer temporairement"
   }
 }
