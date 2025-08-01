@@ -161,7 +161,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     pendingRequests.set(cacheKey, fetchPromise);
 
     return fetchPromise;
-  }, [account, isBitcoinBased, activeNetwork, controllerEmitter, getCacheKey]);
+  }, [account, isBitcoinBased, activeNetwork, getCacheKey]);
 
   // Load balance with caching and rate limiting
   const loadBalance = useCallback(async () => {

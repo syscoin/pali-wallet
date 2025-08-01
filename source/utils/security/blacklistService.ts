@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { IBlacklistCheckResult } from 'types/security';
+
 /**
  * Blacklist Service for Pali Wallet - Memory-Only Implementation
  *
@@ -20,13 +22,6 @@ import axios from 'axios';
  * - MetaMask phishing detector provides domain lists
  * - All reasons/comments are preserved and shown to users
  */
-
-// Simple types since we don't store metadata
-interface IBlacklistCheckResult {
-  isBlacklisted: boolean;
-  reason?: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-}
 
 class BlacklistService {
   // In-memory caches - cleared when service worker terminates

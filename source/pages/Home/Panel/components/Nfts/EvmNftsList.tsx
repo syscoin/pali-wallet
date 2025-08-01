@@ -71,7 +71,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
     setShowDeleteConfirmation(false);
     setItemToDelete(null);
-  }, [itemToDelete, controllerEmitter]);
+  }, [itemToDelete]);
 
   const handleCancelDelete = useCallback(() => {
     setShowDeleteConfirmation(false);

@@ -156,7 +156,7 @@ export const useFaucetComponentStates = () => {
         errorMessage: error.message || 'An error occurred',
       });
     }
-  }, [chainId, account.address, controllerEmitter]);
+  }, [chainId, account.address]);
 
   const handleFaucetButton = useCallback(() => {
     if (

@@ -7,8 +7,10 @@ import { useSelector } from 'react-redux';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { IBlacklistCheckResult } from 'types/security';
 import {
   ICustomFeeParams,
   IDecodedTx,
@@ -17,7 +19,6 @@ import {
 } from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
-import { blacklistService } from 'utils/security/blacklistService';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -47,6 +48,7 @@ export const TransactionDetailsComponent = (
 ) => {
   const { tx, setCustomNonce, fee, customFee, setIsOpen } = props;
   const { alert, useCopyClipboard } = useUtils();
+  const { controllerEmitter } = useController();
   const [, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<number>(0);
   const [blacklistWarning, setBlacklistWarning] = useState<{
@@ -101,7 +103,10 @@ export const TransactionDetailsComponent = (
       if (!tx?.to) return;
 
       try {
-        const result = await blacklistService.checkAddress(tx.to);
+        const result = (await controllerEmitter(
+          ['wallet', 'checkAddressBlacklist'],
+          [tx.to]
+        )) as IBlacklistCheckResult;
         if (result.isBlacklisted) {
           setBlacklistWarning({
             isBlacklisted: true,

@@ -67,7 +67,7 @@ export const useRouterLogic = () => {
           setProviderStatus({ serverHasAnError: false, errorMessage: '' });
         });
     }
-  }, [controllerEmitter, isBitcoinBased, isLoading, isNetworkChanging]);
+  }, [isBitcoinBased, isLoading, isNetworkChanging]);
 
   // Debounced navigation function to prevent rapid navigation
   const debouncedNavigate = useCallback(

@@ -49,16 +49,13 @@ const ForgetWalletView = () => {
   const [form] = Form.useForm();
 
   // Password validation function for ValidatedPasswordInput
-  const validatePassword = useCallback(
-    async (password: string) => {
-      const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
-      if (!seed) {
-        throw new Error('Invalid password');
-      }
-      return seed;
-    },
-    [controllerEmitter]
-  );
+  const validatePassword = useCallback(async (password: string) => {
+    const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
+    if (!seed) {
+      throw new Error('Invalid password');
+    }
+    return seed;
+  }, []);
 
   // Handle successful password validation
   const handleValidationSuccess = useCallback(
@@ -115,7 +112,7 @@ const ForgetWalletView = () => {
         setIsSubmitting(false);
       }
     },
-    [controllerEmitter, navigate]
+    [navigate]
   );
 
   // Navigation callbacks

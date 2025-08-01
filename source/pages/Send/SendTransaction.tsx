@@ -9,6 +9,7 @@ import {
   SecondaryButton,
   Icon,
   IconButton,
+  WarningModal,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -125,6 +126,12 @@ export const SendTransaction = () => {
     tokenId?: string;
     tokenUri?: string;
   }>();
+
+  // Contract warning state
+  const [showContractWarning, setShowContractWarning] =
+    useState<boolean>(false);
+  const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
+  const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
 
   // Helper function to safely convert fee values to numbers and format them
   const safeToFixed = (value: any, decimals = 9): string => {
@@ -428,6 +435,61 @@ export const SendTransaction = () => {
     };
   }, [validatedDataTxWithoutType, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
 
+  // Check for contract interaction with non-contract address
+  useEffect(() => {
+    const checkContract = async () => {
+      // Only check once per transaction
+      if (
+        hasCheckedContract ||
+        !dataTx?.to ||
+        !dataTx?.data ||
+        isCheckingContract
+      ) {
+        return;
+      }
+
+      // Skip if no data or data is just '0x' (simple transfer)
+      const hasCallData =
+        dataTx.data && dataTx.data !== '0x' && dataTx.data.length > 2;
+      if (!hasCallData) {
+        return;
+      }
+
+      // Skip contract deployments (no 'to' address)
+      if (
+        !dataTx.to ||
+        dataTx.to === '0x0000000000000000000000000000000000000000'
+      ) {
+        return;
+      }
+
+      setIsCheckingContract(true);
+
+      try {
+        // Check if address is a contract
+        const isContract = await controllerEmitter(
+          ['wallet', 'isContractAddress'],
+          [dataTx.to]
+        );
+
+        // Show warning if sending call data to non-contract address
+        if (!isContract) {
+          setShowContractWarning(true);
+        }
+      } catch (error) {
+        console.error('Error checking contract address:', error);
+        // In case of error, don't show warning to avoid false positives
+      } finally {
+        setIsCheckingContract(false);
+        setHasCheckedContract(true);
+      }
+    };
+
+    if (!initialLoading && dataTx?.to) {
+      checkContract();
+    }
+  }, [dataTx?.to, dataTx?.data, hasCheckedContract, initialLoading]);
+
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);
   }, [tx]);
@@ -597,6 +659,17 @@ export const SendTransaction = () => {
           setOpenEditFeeModal={setOpenEditAllowanceModal}
         />
       )}
+
+      <WarningModal
+        show={showContractWarning}
+        onClose={() => setShowContractWarning(false)}
+        title={t('send.potentialMistake')}
+        description={t('send.contractDataToNonContract')}
+        warningMessage={`${t('nftDetails.network')}: ${
+          activeNetwork.label || activeNetwork.url
+        }\n${t('send.address')}: ${ellipsis(dataTx?.to || '', 6, 4)}`}
+        buttonText={t('settings.gotIt')}
+      />
 
       {initialLoading ? (
         <div className="flex items-center justify-center min-h-[400px]">

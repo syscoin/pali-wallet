@@ -43,7 +43,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
       controllerEmitter(['wallet', 'resolveError']);
     }
-  }, [error, t, controllerEmitter]);
+  }, [error, t]);
 
   return (
     <>

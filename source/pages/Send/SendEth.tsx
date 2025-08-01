@@ -493,7 +493,7 @@ export const SendEth = () => {
     } finally {
       setIsCalculatingGas(false);
     }
-  }, [selectedAsset, controllerEmitter, isCalculatingGas]);
+  }, [selectedAsset, isCalculatingGas]);
 
   const calculateMaxAmount = useCallback((): string => {
     if (selectedAsset) {
@@ -607,7 +607,7 @@ export const SendEth = () => {
         setIsVerifyingTokenId(false);
       }
     },
-    [selectedAsset, activeAccount.address, controllerEmitter]
+    [selectedAsset, activeAccount.address]
   );
 
   // Handle manual token ID input with debounced verification
@@ -665,7 +665,7 @@ export const SendEth = () => {
     } finally {
       setIsVerifyingERC20(false);
     }
-  }, [selectedAsset, activeAccount.address, controllerEmitter]);
+  }, [selectedAsset, activeAccount.address]);
 
   // Verify ERC-20 balance when asset changes
   useEffect(() => {

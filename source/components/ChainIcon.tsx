@@ -218,7 +218,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
                   };
                   reader.readAsDataURL(blob);
                 });
-              } catch (error) {
+              } catch (_blank) {
                 // Try next URL
                 continue;
               }

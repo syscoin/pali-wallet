@@ -433,6 +433,8 @@
     "atomicNotSupportedDescription": "Le portefeuille Pali ne prend pas encore en charge l'exécution atomique par lot. Les transactions seront envoyées individuellement.",
     "noCallsProvided": "Aucun Appel par Lot Fourni",
     "noCallsProvidedDescription": "L'application n'a fourni aucun appel à exécuter. Cela pourrait être un problème avec l'application demandeur.",
+    "potentialMistake": "Erreur potentielle",
+    "contractDataToNonContract": "Vous envoyez des données d'appel à une adresse qui n'est pas un contrat. Cela pourrait vous faire perdre des fonds. Assurez-vous d'utiliser la bonne adresse et le bon réseau avant de continuer.",
     "call": "Appel",
     "value": "Valeur",
     "totalValue": "Valeur Totale",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "AVERTISSEMENT CRITIQUE",
     "blacklistHighRisk": "RISQUE ÉLEVÉ",
     "blacklistDefaultWarning": "Cette adresse a été signalée comme potentiellement malveillante.",
-    "blacklistWarningDiscouraged": "L'envoi vers cette adresse est fortement déconseillé et peut entraîner une perte de fonds."
+    "blacklistWarningDiscouraged": "L'envoi vers cette adresse est fortement déconseillé et peut entraîner une perte de fonds.",
+    "permitSpenderWarning": "Ce permis permettrait à une adresse sur liste noire de dépenser vos tokens. L'adresse du dépensier a été signalée comme malveillante.",
+    "typedDataAddressWarning": "L'adresse {{field}} dans ce message a été signalée comme malveillante.",
+    "makerWarning": "L'adresse du créateur de cet ordre d'échange NFT est sur liste noire. Cela pourrait être un ordre malveillant tentant de voler vos actifs.",
+    "takerWarning": "L'adresse du preneur spécifiée dans cet ordre est sur liste noire. Cet ordre peut être conçu pour voler des actifs.",
+    "offererWarning": "L'adresse de l'offrant créant cet ordre Seaport est sur liste noire. Cet ordre peut tenter de voler vos NFTs ou tokens.",
+    "zoneWarning": "Le contrat de validation de zone est sur liste noire. Cela pourrait permettre l'exécution de code malveillant pendant l'échange.",
+    "feeRecipientWarning": "Une adresse de destinataire de frais est sur liste noire. Les fonds peuvent être volés par des frais excessifs ou cachés.",
+    "considerationRecipientWarning": "Un destinataire de contrepartie est sur liste noire. Vos actifs peuvent être envoyés à une adresse malveillante."
   }
 }

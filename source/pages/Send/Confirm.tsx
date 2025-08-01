@@ -252,11 +252,10 @@ export const SendConfirm = () => {
 
   // Update refs when values change
   useEffect(() => {
-    stableControllerEmitter.current = controllerEmitter;
     stableNavigate.current = navigate;
     stableT.current = t;
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
-  }, [controllerEmitter, navigate, alert, t, getLegacyGasPrice]);
+  }, [navigate, alert, t, getLegacyGasPrice]);
 
   const handleConfirm = async () => {
     const balance = isBitcoinBased

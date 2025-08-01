@@ -153,7 +153,7 @@ export const SendSys = () => {
       }
     };
     fetchInitialFee();
-  }, [activeNetwork.chainId, form, controllerEmitter]);
+  }, [activeNetwork.chainId, form]);
 
   // ✅ MEMOIZED: Computed values
   const isAccountImported = useMemo(

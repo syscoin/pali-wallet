@@ -306,6 +306,8 @@
     "atomicNotSupportedDescription": "Pali wallet doesn't support atomic batch execution yet. Transactions will be sent individually.",
     "noCallsProvided": "No Batch Calls Provided",
     "noCallsProvidedDescription": "The application did not provide any calls to execute. This might be an issue with the requesting application.",
+    "potentialMistake": "Potential mistake",
+    "contractDataToNonContract": "You're sending call data to an address that isn't a contract. This could cause you to lose funds. Make sure you're using the correct address and network before continuing.",
     "call": "Call",
     "value": "Value",
     "totalValue": "Total Value",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "CRITICAL WARNING",
     "blacklistHighRisk": "HIGH RISK",
     "blacklistDefaultWarning": "This address has been flagged as potentially malicious.",
-    "blacklistWarningDiscouraged": "Sending to this address is strongly discouraged and may result in loss of funds."
+    "blacklistWarningDiscouraged": "Sending to this address is strongly discouraged and may result in loss of funds.",
+    "permitSpenderWarning": "This permit would allow a blacklisted address to spend your tokens. The spender address has been flagged as malicious.",
+    "typedDataAddressWarning": "The {{field}} address in this message has been flagged as malicious.",
+    "makerWarning": "The maker address creating this NFT trade order is blacklisted. This could be a malicious order attempting to steal your assets.",
+    "takerWarning": "The taker address specified in this order is blacklisted. This order may be designed to steal assets.",
+    "offererWarning": "The offerer address creating this Seaport order is blacklisted. This order may be attempting to steal your NFTs or tokens.",
+    "zoneWarning": "The zone validation contract is blacklisted. This could allow malicious code execution during the trade.",
+    "feeRecipientWarning": "A fee recipient address is blacklisted. Funds may be stolen through excessive or hidden fees.",
+    "considerationRecipientWarning": "A consideration recipient is blacklisted. Your assets may be sent to a malicious address."
   }
 }

@@ -205,7 +205,7 @@ const ManageAccountsView = React.memo(() => {
     } finally {
       setIsRemoving(false);
     }
-  }, [accountToRemove, controllerEmitter, alert, t]);
+  }, [accountToRemove, alert, t]);
 
   const handleCancelRemove = useCallback(() => {
     setAccountToRemove(null);

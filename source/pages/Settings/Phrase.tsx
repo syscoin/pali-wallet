@@ -30,16 +30,13 @@ const PhraseView = () => {
   const [form] = Form.useForm();
 
   // Password validation function for the ValidatedPasswordInput
-  const validatePassword = useCallback(
-    async (password: string) => {
-      const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
-      if (!seed) {
-        throw new Error('Invalid password');
-      }
-      return seed;
-    },
-    [controllerEmitter]
-  );
+  const validatePassword = useCallback(async (password: string) => {
+    const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
+    if (!seed) {
+      throw new Error('Invalid password');
+    }
+    return seed;
+  }, []);
 
   // Handle successful password validation
   const handleValidationSuccess = useCallback((seed: string) => {

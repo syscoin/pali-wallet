@@ -281,6 +281,8 @@
     "atomicNotSupportedDescription": "A carteira Pali ainda não suporta execução atômica em lote. Transações serão enviadas individualmente.",
     "noCallsProvided": "Nenhuma Chamada em Lote Fornecida",
     "noCallsProvidedDescription": "A aplicação não forneceu nenhuma chamada para executar. Isso pode ser um problema com a aplicação solicitante.",
+    "potentialMistake": "Erro potencial",
+    "contractDataToNonContract": "Você está enviando dados de chamada para um endereço que não é um contrato. Isso pode fazer você perder fundos. Certifique-se de que está usando o endereço e rede corretos antes de continuar.",
     "call": "Chamada",
     "value": "Valor",
     "totalValue": "Valor Total",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "AVISO CRÍTICO",
     "blacklistHighRisk": "ALTO RISCO",
     "blacklistDefaultWarning": "Este endereço foi sinalizado como potencialmente malicioso.",
-    "blacklistWarningDiscouraged": "Enviar para este endereço é fortemente desencorajado e pode resultar em perda de fundos."
+    "blacklistWarningDiscouraged": "Enviar para este endereço é fortemente desencorajado e pode resultar em perda de fundos.",
+    "permitSpenderWarning": "Esta permissão permitiria que um endereço da lista negra gaste seus tokens. O endereço do gastador foi sinalizado como malicioso.",
+    "typedDataAddressWarning": "O endereço {{field}} nesta mensagem foi sinalizado como malicioso.",
+    "makerWarning": "O endereço do criador desta ordem de negociação de NFT está na lista negra. Esta pode ser uma ordem maliciosa tentando roubar seus ativos.",
+    "takerWarning": "O endereço do aceitante especificado nesta ordem está na lista negra. Esta ordem pode estar projetada para roubar ativos.",
+    "offererWarning": "O endereço do ofertante criando esta ordem Seaport está na lista negra. Esta ordem pode estar tentando roubar seus NFTs ou tokens.",
+    "zoneWarning": "O contrato de validação de zona está na lista negra. Isso pode permitir a execução de código malicioso durante a negociação.",
+    "feeRecipientWarning": "Um endereço de destinatário de taxa está na lista negra. Fundos podem ser roubados através de taxas excessivas ou ocultas.",
+    "considerationRecipientWarning": "Um destinatário de consideração está na lista negra. Seus ativos podem ser enviados para um endereço malicioso."
   }
 }

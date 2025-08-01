@@ -299,6 +299,8 @@
     "atomicNotSupportedDescription": "La billetera Pali aún no soporta la ejecución atómica por lotes. Las transacciones se enviarán individualmente.",
     "noCallsProvided": "No se Proporcionaron Llamadas por Lotes",
     "noCallsProvidedDescription": "La aplicación no proporcionó ninguna llamada para ejecutar. Esto podría ser un problema con la aplicación solicitante.",
+    "potentialMistake": "Error potencial",
+    "contractDataToNonContract": "Estás enviando datos de llamada a una dirección que no es un contrato. Esto podría causar que pierdas fondos. Asegúrate de que estés usando la dirección y red correctas antes de continuar.",
     "call": "Llamada",
     "value": "Valor",
     "totalValue": "Valor Total",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "ADVERTENCIA CRÍTICA",
     "blacklistHighRisk": "ALTO RIESGO",
     "blacklistDefaultWarning": "Esta dirección ha sido marcada como potencialmente maliciosa.",
-    "blacklistWarningDiscouraged": "Se desaconseja encarecidamente enviar a esta dirección y puede resultar en la pérdida de fondos."
+    "blacklistWarningDiscouraged": "Se desaconseja encarecidamente enviar a esta dirección y puede resultar en la pérdida de fondos.",
+    "permitSpenderWarning": "Este permiso permitiría a una dirección en lista negra gastar sus tokens. La dirección del gastador ha sido marcada como maliciosa.",
+    "typedDataAddressWarning": "La dirección {{field}} en este mensaje ha sido marcada como maliciosa.",
+    "makerWarning": "La dirección del creador de esta orden de intercambio de NFT está en lista negra. Esto podría ser una orden maliciosa que intenta robar sus activos.",
+    "takerWarning": "La dirección del tomador especificada en esta orden está en lista negra. Esta orden puede estar diseñada para robar activos.",
+    "offererWarning": "La dirección del oferente que crea esta orden de Seaport está en lista negra. Esta orden puede estar intentando robar sus NFTs o tokens.",
+    "zoneWarning": "El contrato de validación de zona está en lista negra. Esto podría permitir la ejecución de código malicioso durante el intercambio.",
+    "feeRecipientWarning": "Una dirección de destinatario de comisión está en lista negra. Los fondos pueden ser robados a través de comisiones excesivas u ocultas.",
+    "considerationRecipientWarning": "Un destinatario de consideración está en lista negra. Sus activos pueden ser enviados a una dirección maliciosa."
   }
 }

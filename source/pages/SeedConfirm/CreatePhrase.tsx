@@ -21,7 +21,7 @@ export const CreatePhrase = ({ password }: { password: string }) => {
     controllerEmitter(['wallet', 'createNewSeed']).then((response: string) => {
       setSeed(response);
     });
-  }, [controllerEmitter]);
+  }, []);
 
   const handleCopyToClipboard = useCallback(async (seedPhrase: string) => {
     try {

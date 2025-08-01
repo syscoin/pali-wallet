@@ -170,7 +170,7 @@ export const Home = () => {
         [{ chainId: activeNetwork.chainId, isOpen: false }]
       );
     }
-  }, [activeNetwork?.chainId, controllerEmitter]);
+  }, [activeNetwork?.chainId]);
 
   // ALL useMemo hooks - must be called before any early returns
   const shouldShowFaucetFirstModal = useMemo(

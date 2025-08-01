@@ -80,6 +80,7 @@ import {
   setPostNetworkSwitchLoading,
 } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { IBlacklistCheckResult } from 'types/security';
 import {
   ITokenEthProps,
   IWatchAssetTokenProps,
@@ -257,11 +258,14 @@ class MainController {
     this.bindMethods();
 
     // Initialize blacklist service
-    this.initializeBlacklistService();
+    setTimeout(() => {
+      this.initializeBlacklistService();
+    }, 1000);
   }
 
   private async initializeBlacklistService() {
     try {
+      // Initialize blacklist service asynchronously without blocking startup
       await blacklistService.initialize();
       console.log('[MainController] Blacklist service initialized');
     } catch (error) {
@@ -4855,6 +4859,34 @@ class MainController {
     }
   }
 
+  /**
+   * Check if an address is a contract address for EVM networks
+   * @param address - The address to check
+   * @returns true if the address is a contract, false otherwise
+   */
+  public async isContractAddress(address: string): Promise<boolean> {
+    try {
+      // Check if we're on an EVM network
+      const { isBitcoinBased } = store.getState().vault;
+      if (isBitcoinBased) {
+        throw new Error('isContractAddress is only available for EVM networks');
+      }
+
+      // Get the web3Provider from ethereumTransaction
+      const web3Provider = this.ethereumTransaction?.web3Provider;
+      if (!web3Provider) {
+        throw new Error('Web3 provider not available');
+      }
+
+      // Check if the address has code
+      const code = await web3Provider.getCode(address);
+      return code && code !== '0x';
+    } catch (error) {
+      console.error('Error checking if address is contract:', error);
+      return false;
+    }
+  }
+
   // Manual cleanup utility for vault data in main state
   public async cleanupMainStateVault() {
     try {
@@ -4940,6 +4972,26 @@ class MainController {
     } catch (error) {
       console.error('[MainController] Error getting chain data:', error);
       return [];
+    }
+  }
+
+  /**
+   * Check if an address is blacklisted
+   * @param address The address to check
+   * @returns Blacklist check result with severity and reason
+   */
+  public async checkAddressBlacklist(
+    address: string
+  ): Promise<IBlacklistCheckResult> {
+    try {
+      return await blacklistService.checkAddress(address);
+    } catch (error) {
+      console.error('Error checking address blacklist:', error);
+      // Return safe default on error
+      return {
+        isBlacklisted: false,
+        severity: 'low',
+      };
     }
   }
 }

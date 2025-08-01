@@ -257,7 +257,7 @@ export const ConnectWallet = () => {
         setIsLoading(false);
       }
     })();
-  }, [host, controllerEmitter, id, type]);
+  }, [host, id, type]);
 
   // Remove the auto-close effect - let user make the choice
 

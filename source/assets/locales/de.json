@@ -438,6 +438,8 @@
     "atomicNotSupportedDescription": "Pali Wallet unterstützt noch keine atomare Batch-Ausführung. Transaktionen werden einzeln gesendet.",
     "noCallsProvided": "Keine Batch-Aufrufe bereitgestellt",
     "noCallsProvidedDescription": "Die Anwendung hat keine Aufrufe zum Ausführen bereitgestellt. Dies könnte ein Problem mit der anfragenden Anwendung sein.",
+    "potentialMistake": "Möglicher Fehler",
+    "contractDataToNonContract": "Sie senden Call-Daten an eine Adresse, die kein Vertrag ist. Dies könnte dazu führen, dass Sie Geld verlieren. Stellen Sie sicher, dass Sie die richtige Adresse und das richtige Netzwerk verwenden, bevor Sie fortfahren.",
     "call": "Aufruf",
     "value": "Wert",
     "totalValue": "Gesamtwert",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "KRITISCHE WARNUNG",
     "blacklistHighRisk": "HOHES RISIKO",
     "blacklistDefaultWarning": "Diese Adresse wurde als potenziell bösartig markiert.",
-    "blacklistWarningDiscouraged": "Das Senden an diese Adresse wird dringend abgeraten und kann zu Geldverlusten führen."
+    "blacklistWarningDiscouraged": "Das Senden an diese Adresse wird dringend abgeraten und kann zu Geldverlusten führen.",
+    "permitSpenderWarning": "Diese Berechtigung würde einer auf der Blacklist stehenden Adresse erlauben, Ihre Token auszugeben. Die Ausgeber-Adresse wurde als bösartig markiert.",
+    "typedDataAddressWarning": "Die {{field}}-Adresse in dieser Nachricht wurde als bösartig markiert.",
+    "makerWarning": "Die Ersteller-Adresse dieses NFT-Handelsauftrags steht auf der Blacklist. Dies könnte ein bösartiger Auftrag sein, der versucht, Ihre Assets zu stehlen.",
+    "takerWarning": "Die in diesem Auftrag angegebene Abnehmer-Adresse steht auf der Blacklist. Dieser Auftrag könnte darauf ausgelegt sein, Assets zu stehlen.",
+    "offererWarning": "Die Anbieter-Adresse, die diesen Seaport-Auftrag erstellt, steht auf der Blacklist. Dieser Auftrag könnte versuchen, Ihre NFTs oder Token zu stehlen.",
+    "zoneWarning": "Der Zonen-Validierungsvertrag steht auf der Blacklist. Dies könnte die Ausführung von bösartigem Code während des Handels ermöglichen.",
+    "feeRecipientWarning": "Eine Gebührenempfänger-Adresse steht auf der Blacklist. Geld könnte durch übermäßige oder versteckte Gebühren gestohlen werden.",
+    "considerationRecipientWarning": "Ein Gegenleistungsempfänger steht auf der Blacklist. Ihre Assets könnten an eine bösartige Adresse gesendet werden."
   }
 }

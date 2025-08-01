@@ -163,7 +163,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         store.dispatch(switchNetworkError());
       }
     },
-    [activeNetworkValidator, controllerEmitter]
+    [activeNetworkValidator]
   );
 
   // ✅ MEMOIZED: Navigation handlers

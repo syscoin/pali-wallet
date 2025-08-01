@@ -593,6 +593,8 @@
     "atomicNotSupportedDescription": "Pali钱包尚不支持原子批执行。交易将单独发送。",
     "noCallsProvided": "未提供批量调用",
     "noCallsProvidedDescription": "应用程序未提供任何要执行的调用。这可能是请求应用程序的问题。",
+    "potentialMistake": "潜在错误",
+    "contractDataToNonContract": "您正在向非合约地址发送调用数据。这可能导致您损失资金。在继续之前，请确保您使用的是正确的地址和网络。",
     "call": "调用",
     "value": "值",
     "totalValue": "总值",
@@ -680,6 +682,14 @@
     "blacklistCriticalWarning": "严重警告",
     "blacklistHighRisk": "高风险",
     "blacklistDefaultWarning": "此地址已被标记为可能恶意。",
-    "blacklistWarningDiscouraged": "强烈不建议向此地址发送，可能导致资金损失。"
+    "blacklistWarningDiscouraged": "强烈不建议向此地址发送，可能导致资金损失。",
+    "permitSpenderWarning": "此许可将允许黑名单地址使用您的代币。支出者地址已被标记为恶意。",
+    "typedDataAddressWarning": "此消息中的{{field}}地址已被标记为恶意。",
+    "makerWarning": "创建此NFT交易订单的制造者地址已被列入黑名单。这可能是试图窃取您资产的恶意订单。",
+    "takerWarning": "此订单中指定的接受者地址已被列入黑名单。此订单可能旨在窃取资产。",
+    "offererWarning": "创建此Seaport订单的出价者地址已被列入黑名单。此订单可能试图窃取您的NFT或代币。",
+    "zoneWarning": "区域验证合约已被列入黑名单。这可能允许在交易期间执行恶意代码。",
+    "feeRecipientWarning": "手续费接收地址已被列入黑名单。资金可能通过过高或隐藏的手续费被窃取。",
+    "considerationRecipientWarning": "对价接收者已被列入黑名单。您的资产可能被发送到恶意地址。"
   }
 }
