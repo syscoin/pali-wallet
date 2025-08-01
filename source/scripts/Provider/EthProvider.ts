@@ -1,4 +1,5 @@
 // validateEOAAddress removed - validation should be done through background service
+import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
@@ -135,6 +136,17 @@ export const EthProvider = (
       );
     }
 
+    // Handle personal_ecRecover here since it's an unrestricted method
+    if (method === 'personal_ecRecover') {
+      // verifyPersonalMessage returns the address, but we need to checksum it
+      const recoveredAddress = ethereumTransaction.verifyPersonalMessage(
+        params[0],
+        params[1]
+      );
+      // Convert to checksummed address format using ethers
+      return ethers.utils.getAddress(recoveredAddress);
+    }
+
     // Handle subscription methods (not supported)
     if (method === 'eth_subscribe' || method === 'eth_unsubscribe') {
       throw cleanErrorStack(
@@ -189,24 +201,10 @@ export const EthProvider = (
   const restrictedRPCMethods = async (method: string, params: any[]) => {
     // Get ethereumTransaction once at the beginning
     const { ethereumTransaction } = getController().wallet;
-
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
       // Popup-based methods are now handled by the method handler with coordinator
-      // Keeping only non-popup restricted methods here
-      case 'personal_ecRecover':
-        // Safety check: ensure web3Provider exists for EVM networks
-        if (!ethereumTransaction?.web3Provider) {
-          throw cleanErrorStack(
-            ethErrors.provider.unauthorized(
-              'EthProvider methods are not available on UTXO networks'
-            )
-          );
-        }
-        return await ethereumTransaction.web3Provider.getAddress(
-          ethereumTransaction.verifyPersonalMessage(params[0], params[1])
-        );
       default:
         try {
           // Safety check: ensure web3Provider exists for EVM networks
@@ -234,10 +232,6 @@ export const EthProvider = (
   return {
     send,
     sendTransaction,
-    // Popup-based methods removed - handled by coordinator in method handler
-    // signTypedData,
-    // signTypedDataV3,
-    // signTypedDataV4,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
   };
