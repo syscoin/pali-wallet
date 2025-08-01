@@ -250,41 +250,19 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (host: string) => {
-    const previousConnectedDapps = getAll();
-    const isInActiveSession = Boolean(_dapps[host]);
+    try {
+      const previousConnectedDapps = getAll();
+      const isInActiveSession = Boolean(_dapps[host]);
 
-    switch (isInActiveSession) {
-      case true:
-        _dapps[host].activeAddress = null;
-        store.dispatch(removeDApp(host));
-
-        // Trigger disconnection notification
-        notificationManager.notifyDappConnection(host, false);
-
-        _dispatchPaliEvent(
-          host,
-          {
-            method: PaliEvents.accountsChanged,
-            params: [],
-          },
-          PaliEvents.accountsChanged
-        );
-        _dispatchPaliEvent(
-          host,
-          {
-            method: PaliSyscoinEvents.xpubChanged,
-            params: null,
-          },
-          PaliSyscoinEvents.xpubChanged
-        );
-        break;
-      case false:
-        if (previousConnectedDapps[host]) {
+      switch (isInActiveSession) {
+        case true:
+          _dapps[host].activeAddress = null;
           store.dispatch(removeDApp(host));
 
           // Trigger disconnection notification
           notificationManager.notifyDappConnection(host, false);
 
+          // Dispatch events but don't await them to prevent blocking
           _dispatchPaliEvent(
             host,
             {
@@ -292,7 +270,13 @@ const DAppController = (): IDAppController => {
               params: [],
             },
             PaliEvents.accountsChanged
-          );
+          ).catch((error) => {
+            console.warn(
+              `[DAppController] Failed to dispatch accountsChanged on disconnect:`,
+              error
+            );
+          });
+
           _dispatchPaliEvent(
             host,
             {
@@ -300,11 +284,60 @@ const DAppController = (): IDAppController => {
               params: null,
             },
             PaliSyscoinEvents.xpubChanged
-          );
-        } else {
-          throw new Error('DApp not connected');
-        }
-        break;
+          ).catch((error) => {
+            console.warn(
+              `[DAppController] Failed to dispatch xpubChanged on disconnect:`,
+              error
+            );
+          });
+          break;
+        case false:
+          if (previousConnectedDapps[host]) {
+            store.dispatch(removeDApp(host));
+
+            // Trigger disconnection notification
+            notificationManager.notifyDappConnection(host, false);
+
+            // Dispatch events but don't await them to prevent blocking
+            _dispatchPaliEvent(
+              host,
+              {
+                method: PaliEvents.accountsChanged,
+                params: [],
+              },
+              PaliEvents.accountsChanged
+            ).catch((error) => {
+              console.warn(
+                `[DAppController] Failed to dispatch accountsChanged on disconnect:`,
+                error
+              );
+            });
+
+            _dispatchPaliEvent(
+              host,
+              {
+                method: PaliSyscoinEvents.xpubChanged,
+                params: null,
+              },
+              PaliSyscoinEvents.xpubChanged
+            ).catch((error) => {
+              console.warn(
+                `[DAppController] Failed to dispatch xpubChanged on disconnect:`,
+                error
+              );
+            });
+          } else {
+            throw new Error('DApp not connected');
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('[DAppController] Error in disconnect:', error);
+      // Re-throw only if it's a known error that should be handled upstream
+      if (error.message === 'DApp not connected') {
+        throw error;
+      }
+      // Otherwise, log and continue to prevent service worker crashes
     }
   };
   //HandleStateChange purpose is to dispatch notifications that are meant to be globally
@@ -387,6 +420,14 @@ const DAppController = (): IDAppController => {
     }
 
     try {
+      // Check if chrome APIs are available (service worker might be terminating)
+      if (!chrome.tabs || !chrome.scripting || !chrome.runtime?.id) {
+        console.warn(
+          '[DAppController] Chrome APIs not available - service worker may be terminating'
+        );
+        return;
+      }
+
       // For hosts with ports, we need to query with specific protocols
       const queryPatterns: string[] = [];
 
@@ -402,20 +443,27 @@ const DAppController = (): IDAppController => {
       const allTabs: chrome.tabs.Tab[] = [];
 
       for (const pattern of queryPatterns) {
-        const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-          chrome.tabs.query({ url: pattern }, (result) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                `[DAppController] Warning querying tabs for ${pattern}:`,
-                chrome.runtime.lastError.message
-              );
-              resolve([]);
-              return;
-            }
-            resolve(result || []);
+        try {
+          const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+            chrome.tabs.query({ url: pattern }, (result) => {
+              if (chrome.runtime.lastError) {
+                console.warn(
+                  `[DAppController] Warning querying tabs for ${pattern}:`,
+                  chrome.runtime.lastError.message
+                );
+                resolve([]);
+                return;
+              }
+              resolve(result || []);
+            });
           });
-        });
-        allTabs.push(...tabs);
+          allTabs.push(...tabs);
+        } catch (queryError) {
+          console.warn(
+            `[DAppController] Error querying tabs for ${pattern}:`,
+            queryError
+          );
+        }
       }
 
       // Remove duplicates (in case a tab matches multiple patterns)
@@ -424,10 +472,25 @@ const DAppController = (): IDAppController => {
       );
 
       if (uniqueTabs.length > 0) {
-        for (const tab of uniqueTabs) {
-          if (tab.id) {
+        // Use Promise.allSettled to handle individual tab failures gracefully
+        const injectionResults = await Promise.allSettled(
+          uniqueTabs.map(async (tab) => {
+            if (!tab.id) {
+              return Promise.reject(new Error('Tab has no ID'));
+            }
+
             try {
-              await chrome.scripting.executeScript({
+              // Skip chrome:// URLs and other protected pages
+              if (
+                tab.url &&
+                (tab.url.startsWith('chrome://') ||
+                  tab.url.startsWith('chrome-extension://') ||
+                  tab.url.startsWith('edge://'))
+              ) {
+                return Promise.reject(new Error('Protected URL'));
+              }
+
+              return await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 world: 'MAIN',
                 func: (eventData) => {
@@ -439,18 +502,43 @@ const DAppController = (): IDAppController => {
                 args: [{ id, data }],
               });
             } catch (error) {
-              console.error(
-                `[DAppController] Failed to inject event into tab ${tab.id}:`,
+              // Don't let individual tab failures crash the service worker
+              console.debug(
+                `[DAppController] Could not inject event into tab ${tab.id}:`,
                 error
               );
+              return Promise.reject(error);
             }
-          }
+          })
+        );
+
+        // Log summary of results
+        const successful = injectionResults.filter(
+          (r) => r.status === 'fulfilled'
+        ).length;
+        const failed = injectionResults.filter(
+          (r) => r.status === 'rejected'
+        ).length;
+
+        if (successful > 0) {
+          console.debug(
+            `[DAppController] Event dispatched to ${successful} tab(s) for ${host}`
+          );
+        }
+        if (failed > 0) {
+          console.debug(
+            `[DAppController] Failed to dispatch to ${failed} tab(s) for ${host} (this is normal for protected pages)`
+          );
         }
       } else {
-        console.warn(`[DAppController] No tabs found for host ${host}`);
+        console.debug(`[DAppController] No tabs found for host ${host}`);
       }
     } catch (error) {
-      console.error('[DAppController] Error in _dispatchPaliEvent:', error);
+      // Catch any unexpected errors to prevent service worker crash
+      console.error(
+        '[DAppController] Unexpected error in _dispatchPaliEvent:',
+        error
+      );
     }
   };
 

@@ -65,6 +65,9 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
     // Start spam filter cleanup
     startSpamFilterCleanup();
 
+    // Start keepalive mechanism to prevent service worker termination
+    startKeepalive();
+
     // Reset attempt counter on success
     initializationAttempts = 0;
   } catch (error) {
@@ -132,3 +135,59 @@ export const getInitializationStatus = () => ({
 export { notificationManager };
 
 // Removed keep-alive port listener - Chrome alarms handle critical functions
+
+// Keepalive mechanism to prevent service worker termination
+let keepaliveInterval: NodeJS.Timeout | null = null;
+let lastActivity = Date.now();
+
+function startKeepalive() {
+  // Clear any existing interval
+  if (keepaliveInterval) {
+    clearInterval(keepaliveInterval);
+  }
+
+  // Set up a heartbeat every 20 seconds
+  keepaliveInterval = setInterval(() => {
+    const now = Date.now();
+    const timeSinceLastActivity = now - lastActivity;
+
+    // If there's been recent activity (within 2 minutes), keep the service worker alive
+    if (timeSinceLastActivity < 2 * 60 * 1000) {
+      // Perform a minimal operation to keep the service worker active
+      chrome.storage.local.get('keepalive', () => {
+        // Just reading from storage is enough to keep the worker alive
+        if (chrome.runtime.lastError) {
+          console.debug(
+            '[Keepalive] Storage read error:',
+            chrome.runtime.lastError
+          );
+        }
+      });
+    } else {
+      // No recent activity, stop the keepalive to allow natural termination
+      console.debug(
+        '[Keepalive] No recent activity, allowing service worker to sleep'
+      );
+      if (keepaliveInterval) {
+        clearInterval(keepaliveInterval);
+        keepaliveInterval = null;
+      }
+    }
+  }, 20000); // Every 20 seconds
+
+  console.log('[Background] Keepalive mechanism started');
+}
+
+// Track activity from message handlers
+chrome.runtime.onMessage.addListener(() => {
+  lastActivity = Date.now();
+
+  // Restart keepalive if it was stopped
+  if (!keepaliveInterval && isReady) {
+    console.debug('[Keepalive] Activity detected, restarting keepalive');
+    startKeepalive();
+  }
+
+  // Return false to indicate we're not sending a response
+  return false;
+});

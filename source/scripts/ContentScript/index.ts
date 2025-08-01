@@ -11,55 +11,95 @@ const emitter = new EventEmitter();
 let lastConnectionAttempt = 0;
 const CONNECTION_CHECK_INTERVAL = 5000; // 5 seconds
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [100, 500, 1000]; // Progressive delays in ms
+
 /**
- * Send message to background script with simple error handling
+ * Send message to background script with retry logic and error handling
  */
-const sendToBackground = (
+const sendToBackground = async (
   message: any,
-  handleResponse?: (response: any) => void
-) => {
-  chrome.runtime.sendMessage(message, (response) => {
-    // Capture error immediately to avoid race conditions
-    const currentError = chrome.runtime.lastError
-      ? { ...chrome.runtime.lastError }
-      : null;
+  handleResponse?: (response: any) => void,
+  retryCount = 0
+): Promise<void> =>
+  new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        // Capture error immediately to avoid race conditions
+        const currentError = chrome.runtime.lastError
+          ? { ...chrome.runtime.lastError }
+          : null;
 
-    if (currentError) {
-      const errorMessage = currentError.message || '';
+        if (currentError) {
+          const errorMessage = currentError.message || '';
 
-      // Check if this is a connection error
-      const isConnectionError =
-        errorMessage.includes('message port closed') ||
-        errorMessage.includes('Receiving end does not exist');
+          // Check if this is a connection error
+          const isConnectionError =
+            errorMessage.includes('message port closed') ||
+            errorMessage.includes('Receiving end does not exist') ||
+            errorMessage.includes('Extension context invalidated');
 
-      // Rate-limit error logging to reduce spam
-      if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
-        console.error('Content script connection error:', currentError);
-        lastConnectionAttempt = Date.now();
-      }
+          if (isConnectionError && retryCount < MAX_RETRIES) {
+            // Service worker might be starting up, retry with delay
+            const delay = RETRY_DELAYS[retryCount] || 1000;
+            console.debug(
+              `[Content Script] Background not ready, retrying in ${delay}ms (attempt ${
+                retryCount + 1
+              }/${MAX_RETRIES})`
+            );
 
-      // Call response handler with error
+            setTimeout(() => {
+              sendToBackground(message, handleResponse, retryCount + 1)
+                .then(resolve)
+                .catch(() => resolve()); // Prevent unhandled rejection
+            }, delay);
+            return;
+          }
+
+          // Rate-limit error logging to reduce spam
+          if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
+            console.error('Content script connection error:', currentError);
+            lastConnectionAttempt = Date.now();
+          }
+
+          // Call response handler with error
+          if (handleResponse) {
+            handleResponse({
+              error: {
+                message: `Pali: ${
+                  isConnectionError
+                    ? 'Background script temporarily unavailable'
+                    : 'Message processing failed'
+                }.`,
+                code: -32603,
+              },
+            });
+          }
+          resolve();
+          return;
+        }
+
+        // Success - call response handler
+        if (handleResponse) {
+          handleResponse(response);
+        }
+        resolve();
+      });
+    } catch (error) {
+      // Handle any synchronous errors
+      console.error('[Content Script] Error sending message:', error);
       if (handleResponse) {
         handleResponse({
           error: {
-            message: `Pali: ${
-              isConnectionError
-                ? 'Background script temporarily unavailable'
-                : 'Message processing failed'
-            }.`,
+            message: 'Pali: Message processing failed.',
             code: -32603,
           },
         });
       }
-      return;
-    }
-
-    // Success - call response handler
-    if (handleResponse) {
-      handleResponse(response);
+      resolve();
     }
   });
-};
 
 const handleEthInjection = (message: any) => {
   const isInjected = message?.isInjected;
