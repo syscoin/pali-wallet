@@ -8,6 +8,9 @@ import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 // Cache for actual image data URLs (base64) to prevent any network requests
 const tokenImageCache = new Map<string, string | null>();
 
+// Track in-flight requests to prevent duplicate fetches
+const pendingTokenRequests = new Map<string, Promise<string | null>>();
+
 /**
  * Token Icon Cache Strategy:
  *
@@ -109,8 +112,23 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         return;
       }
 
-      // Load and convert to data URL
-      const loadImage = async () => {
+      // Check if there's already a pending request
+      const existingRequest = pendingTokenRequests.get(cacheKey);
+      if (existingRequest) {
+        existingRequest.then((dataUrl) => {
+          if (dataUrl) {
+            setIconUrl(dataUrl);
+            setError(false);
+          } else {
+            setError(true);
+          }
+          setIsLoading(false);
+        });
+        return;
+      }
+
+      // Create fetch promise for deduplication
+      const fetchIcon = async (): Promise<string | null> => {
         try {
           const response = await fetch(logo);
           if (!response.ok) throw new Error('Failed to fetch');
@@ -118,31 +136,50 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           const blob = await response.blob();
           const reader = new FileReader();
 
-          reader.onloadend = () => {
-            const dataUrl = reader.result as string;
-            tokenImageCache.set(cacheKey, dataUrl);
-            setIconUrl(dataUrl);
-            setError(false);
-            setIsLoading(false);
-          };
+          return new Promise<string>((resolve) => {
+            reader.onloadend = () => {
+              const dataUrl = reader.result as string;
+              tokenImageCache.set(cacheKey, dataUrl);
+              resolve(dataUrl);
+            };
 
-          reader.onerror = () => {
-            tokenImageCache.set(cacheKey, null);
-            setError(true);
-            setIsLoading(false);
-          };
+            reader.onerror = () => {
+              tokenImageCache.set(cacheKey, null);
+              resolve(null);
+            };
 
-          reader.readAsDataURL(blob);
+            reader.readAsDataURL(blob);
+          });
         } catch (err) {
           // Cache the failure to prevent repeated attempts
           tokenImageCache.set(cacheKey, null);
-          setError(true);
-          setIsLoading(false);
+          return null;
         }
       };
 
       // Small delay to prevent blocking render
-      const timer = setTimeout(loadImage, 50);
+      const timer = setTimeout(() => {
+        const promise = fetchIcon();
+        pendingTokenRequests.set(cacheKey, promise);
+
+        promise
+          .then((dataUrl) => {
+            if (dataUrl) {
+              setIconUrl(dataUrl);
+              setError(false);
+            } else {
+              setError(true);
+            }
+            setIsLoading(false);
+            pendingTokenRequests.delete(cacheKey); // Clean up
+          })
+          .catch(() => {
+            setError(true);
+            setIsLoading(false);
+            pendingTokenRequests.delete(cacheKey); // Clean up
+          });
+      }, 50);
+
       return () => clearTimeout(timer);
     }, [logo, cacheKey]);
 
@@ -227,24 +264,44 @@ export const preloadTokenIcons = async (logoUrls: string[]) => {
   const promises = logoUrls.map(async (url) => {
     if (!url || tokenImageCache.has(url)) return;
 
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return;
-
-      const blob = await response.blob();
-      const reader = new FileReader();
-
-      return new Promise<void>((resolve) => {
-        reader.onloadend = () => {
-          tokenImageCache.set(url, reader.result as string);
-          resolve();
-        };
-        reader.onerror = () => resolve();
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      // Ignore errors in preloading
+    // Check if already being fetched
+    const existingRequest = pendingTokenRequests.get(url);
+    if (existingRequest) {
+      return existingRequest;
     }
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return null;
+
+        const blob = await response.blob();
+        const reader = new FileReader();
+
+        return new Promise<string | null>((resolve) => {
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            tokenImageCache.set(url, dataUrl);
+            resolve(dataUrl);
+          };
+          reader.onerror = () => {
+            tokenImageCache.set(url, null);
+            resolve(null);
+          };
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        // Ignore errors in preloading
+        return null;
+      }
+    })();
+
+    pendingTokenRequests.set(url, fetchPromise);
+    fetchPromise.finally(() => {
+      pendingTokenRequests.delete(url);
+    });
+
+    return fetchPromise;
   });
 
   await Promise.all(promises);

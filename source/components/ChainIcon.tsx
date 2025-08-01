@@ -14,6 +14,9 @@ import { INetworkType } from 'types/network';
 // Cache for actual image data URLs (base64) to prevent any network requests
 const imageDataCache = new Map<number, string | null>();
 
+// Track in-flight requests to prevent duplicate fetches
+const pendingRequests = new Map<number, Promise<string | null>>();
+
 /**
  * Simple Cache Strategy:
  *
@@ -150,8 +153,23 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
         return;
       }
 
-      // Lazy load with delay to prevent blocking renderer
-      const loadTimer = setTimeout(async () => {
+      // Check if there's already a pending request for this chainId
+      const existingRequest = pendingRequests.get(chainId);
+      if (existingRequest) {
+        existingRequest.then((dataUrl) => {
+          if (dataUrl) {
+            setIconUrl(dataUrl);
+            setError(false);
+          } else {
+            setError(true);
+          }
+          setIsLoading(false);
+        });
+        return;
+      }
+
+      // Create a new fetch promise and track it
+      const fetchIconPromise = async (): Promise<string | null> => {
         try {
           // Get chain info from controller
           const chainInfo = (await controllerEmitter(
@@ -180,53 +198,64 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
               `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${iconIdentifier}/info/logo.png`,
             ];
 
-            const tryIconUrl = (index: number) => {
-              if (index >= iconUrls.length) {
-                // All icon sources failed, cache as null and show fallback
-                imageDataCache.set(chainId, null);
-                setError(true);
-                setIsLoading(false);
-                return;
-              }
+            // Try each URL in sequence
+            for (let index = 0; index < iconUrls.length; index++) {
+              try {
+                const response = await fetch(iconUrls[index]);
+                if (!response.ok) continue; // Try next URL
 
-              // Load image and convert to data URL for permanent caching
-              fetch(iconUrls[index])
-                .then((response) => {
-                  if (!response.ok) throw new Error('Failed to fetch');
-                  return response.blob();
-                })
-                .then((blob) => {
-                  const reader = new FileReader();
+                const blob = await response.blob();
+                const reader = new FileReader();
+
+                return new Promise<string>((resolve) => {
                   reader.onloadend = () => {
                     const dataUrl = reader.result as string;
                     imageDataCache.set(chainId, dataUrl);
-                    setIconUrl(dataUrl);
-                    setError(false);
-                    setIsLoading(false);
+                    resolve(dataUrl);
+                  };
+                  reader.onerror = () => {
+                    resolve(null);
                   };
                   reader.readAsDataURL(blob);
-                })
-                .catch(() => tryIconUrl(index + 1));
-            };
-
-            tryIconUrl(0);
-            return;
+                });
+              } catch (error) {
+                // Try next URL
+                continue;
+              }
+            }
           }
 
-          // Controller doesn't have this chain info, cache as null and show fallback
+          // All attempts failed or no icon identifier
           imageDataCache.set(chainId, null);
-          setError(true);
-          setIsLoading(false);
+          return null;
         } catch (fetchError) {
-          console.error(
-            'Error looking up chain info from controller:',
-            fetchError
-          );
-          // Cache as null and show fallback
+          console.error('Error fetching chain icon:', fetchError);
           imageDataCache.set(chainId, null);
-          setError(true);
-          setIsLoading(false);
+          return null;
         }
+      };
+
+      // Lazy load with delay to prevent blocking renderer
+      const loadTimer = setTimeout(() => {
+        const promise = fetchIconPromise();
+        pendingRequests.set(chainId, promise);
+
+        promise
+          .then((dataUrl) => {
+            if (dataUrl) {
+              setIconUrl(dataUrl);
+              setError(false);
+            } else {
+              setError(true);
+            }
+            setIsLoading(false);
+            pendingRequests.delete(chainId); // Clean up
+          })
+          .catch(() => {
+            setError(true);
+            setIsLoading(false);
+            pendingRequests.delete(chainId); // Clean up
+          });
       }, 50); // Reduced from 150ms to 50ms for better UX while still preventing blocking
 
       return () => {
