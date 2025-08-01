@@ -83,6 +83,10 @@ class BlacklistService {
       'https://raw.githubusercontent.com/MyEtherWallet/ethereum-lists/master/src/urls/urls-darklist.json',
     METAMASK_PHISHING:
       'https://raw.githubusercontent.com/MetaMask/eth-phishing-detect/master/src/config.json',
+    SCAMSNIFFER_ADDRESSES:
+      'https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/address.json',
+    SCAMSNIFFER_DOMAINS:
+      'https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/domains.json',
   };
 
   async initialize() {
@@ -112,10 +116,18 @@ class BlacklistService {
 
     try {
       // Fetch all sources in parallel
-      const [mewAddresses, mewUrls, metamaskConfig] = await Promise.allSettled([
+      const [
+        mewAddresses,
+        mewUrls,
+        metamaskConfig,
+        scamSnifferAddresses,
+        scamSnifferDomains,
+      ] = await Promise.allSettled([
         this.axiosInstance.get(this.BLACKLIST_SOURCES.MEW_ADDRESSES),
         this.axiosInstance.get(this.BLACKLIST_SOURCES.MEW_URLS),
         this.axiosInstance.get(this.BLACKLIST_SOURCES.METAMASK_PHISHING),
+        this.axiosInstance.get(this.BLACKLIST_SOURCES.SCAMSNIFFER_ADDRESSES),
+        this.axiosInstance.get(this.BLACKLIST_SOURCES.SCAMSNIFFER_DOMAINS),
       ]);
 
       // Clear existing data
@@ -186,6 +198,51 @@ class BlacklistService {
           `[BlacklistService] Loaded ${this.urlBlacklist.size} blacklisted URLs, ${this.legitimateSites.length} legitimate sites for fuzzy matching`
         );
       }
+
+      // Add local malicious domains
+      this.LOCAL_MALICIOUS_DOMAINS.forEach((entry) => {
+        this.urlBlacklist.set(this.normalizeUrl(entry.url), entry.reason);
+      });
+
+      // Process Scam Sniffer addresses
+      if (
+        scamSnifferAddresses.status === 'fulfilled' &&
+        Array.isArray(scamSnifferAddresses.value.data)
+      ) {
+        scamSnifferAddresses.value.data.forEach((address: string) => {
+          if (address) {
+            this.addressBlacklist.set(
+              address.toLowerCase(),
+              'Scam Sniffer: Known malicious address'
+            );
+          }
+        });
+        console.log(
+          `[BlacklistService] Loaded ${scamSnifferAddresses.value.data.length} addresses from Scam Sniffer`
+        );
+      }
+
+      // Process Scam Sniffer domains
+      if (
+        scamSnifferDomains.status === 'fulfilled' &&
+        Array.isArray(scamSnifferDomains.value.data)
+      ) {
+        scamSnifferDomains.value.data.forEach((domain: string) => {
+          if (domain) {
+            this.urlBlacklist.set(
+              this.normalizeUrl(domain),
+              'Scam Sniffer: Known phishing domain'
+            );
+          }
+        });
+        console.log(
+          `[BlacklistService] Loaded ${scamSnifferDomains.value.data.length} domains from Scam Sniffer`
+        );
+      }
+
+      console.log(
+        `[BlacklistService] Total loaded: ${this.addressBlacklist.size} addresses, ${this.urlBlacklist.size} domains`
+      );
 
       this.lastFetch = Date.now();
     } catch (error) {
