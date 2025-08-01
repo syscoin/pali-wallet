@@ -93,6 +93,7 @@ export const SendTransaction = () => {
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
+  const [txResponse, setTxResponse] = useState<string | null>(null);
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   // Removed unused haveError state
@@ -344,9 +345,12 @@ export const SendTransaction = () => {
           );
         }
 
-        if (isExternal)
-          dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
         setConfirmed(true);
+
+        // Store the response data for dispatch later
+        if (isExternal) {
+          setTxResponse(response.hash);
+        }
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
@@ -503,15 +507,21 @@ export const SendTransaction = () => {
       if (isExternal) {
         // Show success toast
         alert.success(t('transactions.youCanCheckYour'));
-        // Keep loading spinner visible until window closes
-        setTimeout(window.close, 2000);
+        // Close window after showing success message
+        setTimeout(() => {
+          if (txResponse) {
+            // Dispatch event right before closing
+            dispatchBackgroundEvent(`${eventName}.${host}`, txResponse);
+          }
+          window.close();
+        }, 2000);
       } else {
         // For internal navigation, navigate immediately
         // The loading spinner will disappear when component unmounts
         navigate('/home');
       }
     }
-  }, [confirmed, alert, t, navigate, isExternal]);
+  }, [confirmed, alert, t, navigate, isExternal, txResponse, eventName, host]);
 
   // Handle copy success message
   useEffect(() => {

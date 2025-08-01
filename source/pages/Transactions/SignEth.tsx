@@ -174,10 +174,11 @@ const EthSign: React.FC<ISign> = () => {
           )) as string;
         }
       }
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       setConfirmed(true);
       setLoading(false);
 
+      // Dispatch event right before closing
+      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
       // Create custom alert object that routes to appropriate display method

@@ -129,8 +129,11 @@ class RequestCoordinator {
     } catch (error) {
       throw error;
     } finally {
+      // Clean up active request tracking
       this.activePopupRequest = null;
       this.activePopupRoute = null;
+
+      // Process next request in queue
       this.processQueue();
     }
   }

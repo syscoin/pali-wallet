@@ -151,6 +151,7 @@ export const ChangeConnectedAccount = () => {
         ['wallet', 'setAccount'],
         [connectedAccount.id, accountType, true]
       );
+      // Dispatch event right before closing
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (error) {

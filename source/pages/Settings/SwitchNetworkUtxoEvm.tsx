@@ -49,9 +49,9 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
       );
 
       const type = data.eventName;
-      dispatchBackgroundEvent(`${type}.${host}`, null);
       setConfirmed(true);
       setLoading(false);
+      dispatchBackgroundEvent(`${type}.${host}`, null);
       window.close();
     } catch (networkError) {
       console.error('Network switch failed:', networkError);

@@ -115,11 +115,11 @@ export const SendCalls = () => {
         capabilities: {},
       };
 
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
-
       // Close window after a short delay
       setTimeout(() => {
         clearNavigationState();
+        // Dispatch event right before closing
+        dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
     }

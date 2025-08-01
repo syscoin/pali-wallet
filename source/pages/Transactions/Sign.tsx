@@ -97,10 +97,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             : 10000 // Default 10 seconds for regular wallets
         );
       }
-
-      // Dispatch the background event
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
-
       // Show success toast
       alert.success(
         signOnly
@@ -112,7 +108,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setLoading(false);
 
       // Close window
-      setTimeout(window.close, 2000);
+      setTimeout(() => {
+        dispatchBackgroundEvent(`${eventName}.${host}`, response);
+        window.close();
+      }, 2000);
     } catch (error: any) {
       // Create custom alert object that routes to appropriate display method
       const customAlert = {

@@ -104,13 +104,14 @@ const ExternalWatchAsset = () => {
 
       const type = data.eventName;
 
-      dispatchBackgroundEvent(`${type}.${host}`, true);
-
       setConfirmed(true);
 
       setLoading(false);
       alert.info(t('settings.tokenSuccessfullyAdded'));
-      setTimeout(window.close, 2000);
+      setTimeout(() => {
+        dispatchBackgroundEvent(`${type}.${host}`, true);
+        window.close();
+      }, 2000);
     } catch (error: any) {
       alert.error(error.message);
 

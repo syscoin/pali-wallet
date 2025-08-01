@@ -139,10 +139,10 @@ const Decrypt: React.FC<ISign> = () => {
         [decryptParams]
       );
 
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       setConfirmed(true);
 
       setLoading(false);
+      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
       setErrorMsg(error.message || 'Failed to decrypt message');
