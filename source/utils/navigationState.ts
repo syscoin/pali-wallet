@@ -76,12 +76,16 @@ export const loadNavigationState =
       const autoLockMinutes =
         typeof advancedSettings?.autolock === 'number'
           ? advancedSettings.autolock
-          : 5; // Default 5 minutes if not set or not a number
-      const autoLockTimeout = autoLockMinutes * 60 * 1000; // Convert minutes to milliseconds
+          : 0; // Default 0 (disabled)
+      // If autolock is disabled (0), use a reasonable default timeout for navigation state (30 minutes)
+      const navigationTimeout =
+        autoLockMinutes === 0
+          ? 30 * 60 * 1000 // 30 minutes when autolock is disabled
+          : autoLockMinutes * 60 * 1000; // Use autolock time when enabled
 
-      // Check if state is fresh (less than autolock timeout)
+      // Check if state is fresh (less than timeout)
       // Add a small buffer (30 seconds) to ensure we don't restore state right before autolock
-      const stateTimeout = autoLockTimeout - 30 * 1000;
+      const stateTimeout = navigationTimeout - 30 * 1000;
       if (Date.now() - state.timestamp > stateTimeout) {
         await clearNavigationState();
         return null;

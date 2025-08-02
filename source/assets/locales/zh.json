@@ -89,6 +89,8 @@
     "enableRefresh": "启用钱包刷新按钮",
     "minutes": "分钟",
     "enableAutolock": "启用自动锁定",
+    "autolockDisabled": "自动锁定已禁用",
+    "autolockHint": "0 禁用，5-120 分钟启用",
     "connectedSites": "已连接网站",
     "isConnected": "这些是您可以连接并与之分享账户公共信息的可信网站。",
     "editConnection": "编辑连接",

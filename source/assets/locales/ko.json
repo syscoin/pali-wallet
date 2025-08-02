@@ -89,6 +89,8 @@
     "enableRefresh": "지갑 새로고침 버튼 활성화",
     "minutes": "분",
     "enableAutolock": "자동 잠금 활성화",
+    "autolockDisabled": "자동 잠금 비활성화",
+    "autolockHint": "0으로 비활성화, 5-120분으로 활성화",
     "connectedSites": "연결된 사이트",
     "isConnected": "이것들은 연결하고 계정의 공개 정보를 공유할 수 있는 신뢰할 수 있는 사이트입니다.",
     "editConnection": "연결 편집",

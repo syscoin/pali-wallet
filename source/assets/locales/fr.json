@@ -89,6 +89,8 @@
     "enableRefresh": "Activer le bouton d'actualisation du portefeuille",
     "minutes": "Minutes",
     "enableAutolock": "Activer le verrouillage automatique",
+    "autolockDisabled": "Verrouillage automatique désactivé",
+    "autolockHint": "0 pour désactiver, 5-120 minutes pour activer",
     "connectedSites": "SITES CONNECTÉS",
     "isConnected": "Voici des sites de confiance auxquels vous pouvez vous connecter et partager les informations publiques de votre compte.",
     "editConnection": "Modifier la connexion",

@@ -9,7 +9,7 @@ const initialState: IGlobalState = {
   advancedSettings: {
     refresh: false,
     ledger: false,
-    autolock: 5, // default 5 minutes timer
+    autolock: 0, // default 0 (disabled)
   },
   lastLogin: 0,
   hasEncryptedVault: false,
@@ -96,7 +96,7 @@ const vaultGlobalSlice = createSlice({
         state.advancedSettings = {
           refresh: false,
           ledger: false,
-          autolock: 5, // default 5 minutes timer
+          autolock: 0, // default 0 (disabled)
         };
       }
 

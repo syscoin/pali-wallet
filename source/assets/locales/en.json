@@ -395,6 +395,8 @@
     "enableRefresh": "Enable wallet refresh button",
     "minutes": "Minutes",
     "enableAutolock": "Enable autolock",
+    "autolockDisabled": "Auto-lock disabled",
+    "autolockHint": "0 to disable, 5-120 minutes to enable",
     "connectedSites": "CONNECTED SITES",
     "isConnected": "These are trusted sites you can connect to and share your public account information with.",
     "editConnection": "Edit connection",

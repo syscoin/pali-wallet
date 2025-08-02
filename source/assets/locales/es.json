@@ -395,6 +395,8 @@
     "enableRefresh": "Habilitar botón de actualización del monedero",
     "minutes": "Minutos",
     "enableAutolock": "Habilitar bloqueo automático",
+    "autolockDisabled": "Bloqueo automático deshabilitado",
+    "autolockHint": "0 para deshabilitar, 5-120 minutos para habilitar",
     "connectedSites": "SITIOS CONECTADOS",
     "isConnected": "Estos son sitios de confianza a los que puedes conectarte y compartir la información pública de tu cuenta.",
     "editConnection": "Editar conexión",

@@ -374,6 +374,8 @@
     "enableRefresh": "Ativar botão de atualização da carteira",
     "minutes": "Minutos",
     "enableAutolock": "Ativar bloqueio automático",
+    "autolockDisabled": "Bloqueio automático desativado",
+    "autolockHint": "0 para desativar, 5-120 minutos para ativar",
     "connectedSites": "SITES CONECTADOS",
     "isConnected": "Estes são sites confiáveis aos quais você pode se conectar e compartilhar as informações públicas da sua conta.",
     "editConnection": "Editar conexão",

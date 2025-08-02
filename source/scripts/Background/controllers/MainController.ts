@@ -999,15 +999,21 @@ class MainController {
     // Save wallet state after changing settings - this is user activity
     this.saveWalletState('update-settings', true);
 
-    // If this is the autolock setting, restart the timer
+    // If this is the autolock setting, handle timer
     if (advancedProperty === 'autolock' && typeof value === 'number') {
-      // Validate timer range (5-120 minutes)
-      if (value < 5 || value > 120) {
-        throw new Error('Auto-lock timer must be between 5 and 120 minutes');
+      // Validate timer range (0 to disable, or 5-120 minutes)
+      if (value !== 0 && (value < 5 || value > 120)) {
+        throw new Error(
+          'Auto-lock timer must be 0 (disabled) or between 5 and 120 minutes'
+        );
       }
 
-      // Always restart the timer since auto-lock is always enabled
-      await this.startAutoLockTimer();
+      // If value is 0, stop the timer. Otherwise, restart it
+      if (value === 0) {
+        await this.stopAutoLockTimer();
+      } else {
+        await this.startAutoLockTimer();
+      }
     }
   }
 
@@ -1015,8 +1021,14 @@ class MainController {
     try {
       const vaultGlobalState = store.getState().vaultGlobal;
 
-      // Auto-lock is always enabled, just get the timer value from advancedSettings
-      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock || 5;
+      // Get the timer value from advancedSettings
+      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock ?? 0; // Use 0 (disabled) as default
+
+      // If autolock is 0, it's disabled - don't start the timer
+      if (autoLockTimer === 0) {
+        console.log('[MainController] Auto-lock is disabled (set to 0)');
+        return;
+      }
 
       if (!this.isUnlocked()) {
         return;
@@ -1071,10 +1083,12 @@ class MainController {
         try {
           const vaultGlobalState = store.getState().vaultGlobal;
 
-          // Auto-lock is always enabled, just get the timer value from advancedSettings
-          const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock;
+          // Get the timer value from advancedSettings
+          const autoLockTimer =
+            vaultGlobalState?.advancedSettings?.autolock ?? 0; // Use 0 (disabled) as default
 
-          if (autoLockTimer && this.isUnlocked()) {
+          // Only restart timer if it's enabled (not 0) and wallet is unlocked
+          if (autoLockTimer !== 0 && this.isUnlocked()) {
             // Restart the timer
             this.startAutoLockTimer().catch((error) => {
               console.error(
@@ -1485,9 +1499,9 @@ class MainController {
         ]);
       }, 10);
 
-      // Start auto-lock timer (always enabled)
+      // Start auto-lock timer if enabled (not 0)
       const { advancedSettings } = store.getState().vaultGlobal;
-      if (advancedSettings?.autolock) {
+      if (advancedSettings?.autolock && advancedSettings.autolock !== 0) {
         await this.startAutoLockTimer();
       }
 
@@ -1853,6 +1867,12 @@ class MainController {
       // Save vault state to persistent storage after creating the first account
       // Use sync=true to ensure save completes before continuing
       await this.saveWalletState('create-wallet', true, true);
+
+      // Start auto-lock timer if enabled (not 0)
+      const { advancedSettings } = store.getState().vaultGlobal;
+      if (advancedSettings?.autolock && advancedSettings.autolock !== 0) {
+        await this.startAutoLockTimer();
+      }
 
       setTimeout(() => {
         // Wrap in try-catch to prevent unhandled errors

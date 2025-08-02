@@ -89,6 +89,8 @@
     "enableRefresh": "ウォレット更新ボタンを有効にする",
     "minutes": "分",
     "enableAutolock": "自動ロックを有効にする",
+    "autolockDisabled": "自動ロック無効",
+    "autolockHint": "0で無効、5〜120分で有効",
     "connectedSites": "接続済みサイト",
     "isConnected": "これらは接続してアカウントの公開情報を共有できる信頼できるサイトです。",
     "editConnection": "接続を編集",

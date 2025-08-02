@@ -173,68 +173,80 @@ const Advanced = () => {
 
               {propName === 'autolock' ? (
                 // Number input for autolock timer
-                <div className="flex items-center gap-3 ml-2">
-                  <input
-                    type="number"
-                    value={
-                      enabledProperties.autolock === undefined
-                        ? ''
-                        : (enabledProperties.autolock as number)
-                    }
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        // Allow empty state
+                <>
+                  <div className="flex items-center gap-3 ml-2">
+                    <input
+                      type="number"
+                      value={
+                        enabledProperties.autolock === undefined
+                          ? ''
+                          : (enabledProperties.autolock as number)
+                      }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') {
+                          // Allow empty state
+                          setEnabledProperties((prevState) => ({
+                            ...prevState,
+                            autolock: undefined,
+                          }));
+                          return;
+                        }
+                        const numValue = Number(value);
+                        if (!isNaN(numValue)) {
+                          setEnabledProperties((prevState) => ({
+                            ...prevState,
+                            autolock: numValue,
+                          }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Respect empty field state
+                        const value = e.target.value;
+                        if (value === '') {
+                          // Keep it undefined if user cleared the field
+                          return;
+                        }
+                        // Only constrain if there's an actual value
+                        const numValue = Number(value);
+                        // Allow 0 to disable, or 5-120 minutes
+                        let constrainedValue = numValue;
+                        if (numValue !== 0) {
+                          constrainedValue = Math.max(
+                            5,
+                            Math.min(120, numValue)
+                          );
+                        }
                         setEnabledProperties((prevState) => ({
                           ...prevState,
-                          autolock: undefined,
+                          autolock: constrainedValue,
                         }));
-                        return;
-                      }
-                      const numValue = Number(value);
-                      if (!isNaN(numValue)) {
-                        setEnabledProperties((prevState) => ({
-                          ...prevState,
-                          autolock: numValue,
-                        }));
-                      }
-                    }}
-                    onBlur={(e) => {
-                      // Respect empty field state
-                      const value = e.target.value;
-                      if (value === '') {
-                        // Keep it undefined if user cleared the field
-                        return;
-                      }
-                      // Only constrain if there's an actual value
-                      const numValue = Number(value);
-                      const constrainedValue = Math.max(
-                        5,
-                        Math.min(120, numValue)
-                      );
-                      setEnabledProperties((prevState) => ({
-                        ...prevState,
-                        autolock: constrainedValue,
-                      }));
-                    }}
-                    min={5}
-                    max={120}
-                    className="text-center text-white outline-none"
-                    style={{
-                      width: '60px',
-                      height: '32px',
-                      padding: '6px 8px',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      backgroundColor: '#162742',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                    }}
-                  />
-                  <span className="text-sm text-gray-400">
-                    {t('settings.minutes')}
-                  </span>
-                </div>
+                      }}
+                      min={0}
+                      max={120}
+                      className="text-center text-white outline-none"
+                      style={{
+                        width: '60px',
+                        height: '32px',
+                        padding: '6px 8px',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        backgroundColor: '#162742',
+                        fontSize: '14px',
+                        fontWeight: '500',
+                      }}
+                    />
+                    <span className="text-sm text-gray-400">
+                      {t('settings.minutes')}
+                    </span>
+                  </div>
+                  {/* Helper text for autolock */}
+                  <div className="text-xs text-gray-500 mt-1">
+                    {enabledProperties.autolock === 0
+                      ? t('settings.autolockDisabled')
+                      : t('settings.autolockHint')}
+                  </div>
+                </>
               ) : (
                 // Toggle switch for other settings
                 <Switch

@@ -89,6 +89,8 @@
     "enableRefresh": "Wallet-Aktualisierungsschaltfläche aktivieren",
     "minutes": "Minuten",
     "enableAutolock": "Automatische Sperre aktivieren",
+    "autolockDisabled": "Automatische Sperre deaktiviert",
+    "autolockHint": "0 zum Deaktivieren, 5-120 Minuten zum Aktivieren",
     "connectedSites": "VERBUNDENE SEITEN",
     "isConnected": "Dies sind vertrauenswürdige Websites, mit denen Sie sich verbinden und Ihre öffentlichen Kontoinformationen teilen können.",
     "editConnection": "Verbindung bearbeiten",
