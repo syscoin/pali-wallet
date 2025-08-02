@@ -90,8 +90,8 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
       nftAssets.map((nft) => ({
         id: nft.id, // Include the original asset id for navigation
         contractAddress: nft.contractAddress,
-        name: nft.name || 'Unknown Collection',
-        symbol: nft.tokenSymbol || 'Unknown', // Use tokenSymbol for display
+        name: nft.name || 'NFT Collection',
+        symbol: nft.tokenSymbol || 'NFT', // Use tokenSymbol for display
         tokenStandard: nft.tokenStandard || 'ERC-721',
         chainId: nft.chainId,
         totalBalance: nft.balance, // This is already the total count

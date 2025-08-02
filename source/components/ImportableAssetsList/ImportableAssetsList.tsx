@@ -143,6 +143,10 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
                     <span className="text-brand-white font-medium">
                       {asset.tokenStandard === 'ERC-1155' && asset.balance === 0
                         ? '—'
+                        : asset.tokenStandard === 'ERC-1155'
+                        ? `${asset.balance} ${
+                            asset.balance === 1 ? 'item' : 'items'
+                          }`
                         : formatFullPrecisionBalance(
                             asset.balance || 0,
                             Math.min(asset.decimals || 8, 4) // Limit displayed decimals

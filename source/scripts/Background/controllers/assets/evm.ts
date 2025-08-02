@@ -146,8 +146,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         return {
           id: `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-          symbol: cleanTokenSymbol(token.symbol || 'Unknown'),
-          name: token.name || 'Unknown Token', // Keep names intact - they can have spaces
+          symbol: cleanTokenSymbol(token.symbol || (isNft ? 'NFT' : 'Unknown')),
+          name: token.name || (isNft ? 'NFT Collection' : 'Unknown Token'), // Keep names intact - they can have spaces
           contractAddress: token.contractAddress,
           balance: isNft
             ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
@@ -477,9 +477,49 @@ const EvmAssetsController = (): IEvmAssetsController => {
         ownedTokens.map((token) => [token.contractAddress.toLowerCase(), token])
       );
 
+      // For ERC-1155, count unique token IDs per contract
+      const erc1155TokenCounts = new Map<string, number>();
+      ownedTokens.forEach((token) => {
+        if (token.tokenStandard === 'ERC-1155') {
+          const contractKey = token.contractAddress.toLowerCase();
+          erc1155TokenCounts.set(
+            contractKey,
+            (erc1155TokenCounts.get(contractKey) || 0) + 1
+          );
+        }
+      });
+
       // Update existing assets with API data
       const updatedAssets = await Promise.all(
         currentNetworkAssets.map(async (asset) => {
+          // For ERC-1155 collections, use the count of unique token IDs
+          if (asset.tokenStandard === 'ERC-1155' && asset.isNft) {
+            const tokenCount =
+              erc1155TokenCounts.get(asset.contractAddress.toLowerCase()) || 0;
+
+            if (tokenCount > 0) {
+              console.log(
+                `[EvmAssetsController] Updating ERC-1155 collection ${asset.tokenSymbol}: ${tokenCount} unique items`
+              );
+
+              return {
+                ...asset,
+                balance: tokenCount, // Use count of unique token IDs
+              };
+            } else {
+              // No tokens found for this ERC-1155 collection
+              if (isZeroBalance(asset.balance)) {
+                return asset;
+              }
+
+              return {
+                ...asset,
+                balance: 0,
+              };
+            }
+          }
+
+          // For other tokens (ERC-20, ERC-721), use the regular logic
           const apiToken = ownedTokensMap.get(
             asset.contractAddress.toLowerCase()
           );
@@ -1258,8 +1298,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         try {
           const [name, symbol, balance] = await Promise.all([
-            contract.name().catch(() => 'Unknown Collection'),
-            contract.symbol().catch(() => 'UNKNOWN'),
+            contract.name().catch(() => 'NFT Collection'),
+            contract.symbol().catch(() => 'NFT'),
             contract.balanceOf(walletAddress).catch(() => 0),
           ]);
 
@@ -1287,8 +1327,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: 'UNKNOWN',
-            name: 'Unknown Collection',
+            symbol: 'NFT',
+            name: 'NFT Collection',
             contractAddress,
             decimals: 0,
             balance: 0,
@@ -1313,8 +1353,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       try {
         const [name, symbol] = await Promise.all([
-          contract.name().catch(() => 'Unknown'),
-          contract.symbol().catch(() => 'Unknown'),
+          contract.name().catch(() => 'NFT Collection'),
+          contract.symbol().catch(() => 'NFT'),
         ]);
 
         nftDetails = {
@@ -1341,8 +1381,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         nftDetails = {
           id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-          symbol: 'Unknown',
-          name: 'Unknown Collection',
+          symbol: 'NFT',
+          name: 'NFT Collection',
           contractAddress,
           decimals: 0,
           balance: 0,

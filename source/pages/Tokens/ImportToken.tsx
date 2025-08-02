@@ -121,8 +121,42 @@ export const ImportToken: React.FC = () => {
         [activeAccount.address]
       )) as ITokenSearchResult[];
 
-      // Filter out already imported tokens BUT keep recently imported ones for UI consistency
-      const filteredResults = results.filter((token) => {
+      // Group tokens by contract address to combine duplicates
+      const groupedByContract = new Map<string, ITokenSearchResult>();
+      const erc1155TokenCounts = new Map<string, number>(); // Track unique token IDs per contract
+
+      results.forEach((token) => {
+        const contractKey = token.contractAddress?.toLowerCase() || '';
+        const existing = groupedByContract.get(contractKey);
+
+        if (existing) {
+          if (token.tokenStandard === 'ERC-1155') {
+            // For ERC-1155, count unique token IDs instead of summing balances
+            erc1155TokenCounts.set(
+              contractKey,
+              (erc1155TokenCounts.get(contractKey) || 1) + 1
+            );
+            // Don't sum balances for ERC-1155 - keep the count of unique items
+            existing.balance = erc1155TokenCounts.get(contractKey) || 1;
+          } else {
+            // For other tokens, combine balances
+            existing.balance = (existing.balance || 0) + (token.balance || 0);
+          }
+          // Keep the first token's metadata (name, symbol, etc.)
+        } else {
+          if (token.tokenStandard === 'ERC-1155') {
+            // For ERC-1155, always use count instead of balance
+            groupedByContract.set(contractKey, { ...token, balance: 1 });
+            erc1155TokenCounts.set(contractKey, 1);
+          } else {
+            groupedByContract.set(contractKey, { ...token });
+          }
+        }
+      });
+
+      // Convert back to array
+      const groupedResults = Array.from(groupedByContract.values());
+      const filteredResults = groupedResults.filter((token) => {
         const tokenId = `${token.contractAddress?.toLowerCase() || ''}-${
           activeNetwork.chainId
         }`;
