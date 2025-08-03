@@ -2,32 +2,126 @@
 import { truncate } from 'utils/index';
 import { sanitizeSyscoinError } from 'utils/syscoinErrorSanitizer';
 
+/**
+ * Error detection utilities for Pali wallet
+ *
+ * These functions use a hybrid approach:
+ * 1. Check standardized error codes first (e.g., 4001 for user rejection)
+ * 2. Fall back to message pattern matching for hardware wallets and legacy errors
+ *
+ * We can't use exact matching everywhere because:
+ * - Hardware wallet errors vary by manufacturer, browser API, and locale
+ * - Some errors come from third-party libraries we don't control
+ * - Error messages may be translated or vary by browser
+ *
+ * Security note: We limit pattern matching to specific known patterns
+ * to avoid false positives that could be exploited. Where possible,
+ * we use word boundaries (\b) and limit the scope of matches.
+ *
+ * Error codes reference:
+ * - 4001: User rejected request (EIP-1193)
+ * - TRANSACTION_CREATION_FAILED: Syscoin transaction building failed
+ * - TRANSACTION_SEND_FAILED: Syscoin transaction broadcast failed
+ * - INSUFFICIENT_FUNDS: Not enough balance for transaction + fee
+ */
+
 export const isBlacklistError = (error: any): boolean =>
   error?.message?.includes('Transaction blocked:') ||
   error?.message?.includes('Token approval blocked:') ||
   error?.message?.includes('Token transfer blocked:') ||
   error?.message?.includes('Connection blocked:');
 
-export const isUserCancellationError = (error: any): boolean =>
-  error?.message?.toLowerCase().includes('user rejected') ||
-  error?.message?.toLowerCase().includes('user denied') ||
-  error?.message?.toLowerCase().includes('cancelled') ||
-  error?.code === 4001;
+export const isUserCancellationError = (error: any): boolean => {
+  // Standard EIP-1193 user rejection error (most reliable)
+  if (error?.code === 4001) return true;
 
-export const isDeviceLockedError = (error: any): boolean =>
-  error?.message?.toLowerCase().includes('device locked') ||
-  error?.message?.toLowerCase().includes('unlock');
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
 
-export const isBlindSigningError = (error: any): boolean =>
-  error?.message?.toLowerCase().includes('blind signing') ||
-  error?.message?.toLowerCase().includes('enable contract data');
+  // Check for specific messages used by ethErrors.provider.userRejectedRequest
+  if (
+    message === 'User rejected the request.' ||
+    message === 'User closed popup window'
+  ) {
+    return true;
+  }
+
+  // Hardware wallet specific patterns
+  // We need substring matching here because hardware wallet errors vary by:
+  // - Device manufacturer (Ledger vs Trezor)
+  // - Browser API (WebUSB vs WebHID)
+  // - Language/locale
+  // But we limit to specific known patterns to avoid false positives
+  if (
+    // User action patterns
+    lowerMessage.includes('user rejected') ||
+    lowerMessage.includes('user cancelled') ||
+    lowerMessage.includes('user canceled') ||
+    lowerMessage.includes('denied by the user') ||
+    lowerMessage.includes('action cancelled') ||
+    // Single word patterns but only at word boundaries to avoid false matches
+    /\bcancelled\b/.test(lowerMessage) ||
+    /\bcanceled\b/.test(lowerMessage)
+  ) {
+    return true;
+  }
+
+  // Check error names for hardware wallet cancellations
+  const errorName = error?.name || '';
+  if (
+    errorName === 'TransportError' ||
+    errorName === 'NotAllowedError' ||
+    errorName === 'AbortError' ||
+    errorName === 'UserCancel' ||
+    errorName === 'DOMException'
+  ) {
+    // WebHID cancellation
+    return true;
+  }
+
+  return false;
+};
+
+export const isDeviceLockedError = (error: any): boolean => {
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
+
+  // Check for specific locked device messages found in codebase
+  return (
+    lowerMessage.includes('locked device') ||
+    lowerMessage.includes('ledger device locked') ||
+    lowerMessage.includes('ledger device is locked') ||
+    message === 'Device is locked' ||
+    message === 'Please unlock your device'
+  );
+};
+
+export const isBlindSigningError = (error: any): boolean => {
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
+
+  // Check for blind signing messages (maintain original patterns from codebase)
+  return (
+    lowerMessage.includes('please enable blind signing') ||
+    lowerMessage.includes('blind signing') ||
+    lowerMessage.includes('enable contract data')
+  );
+};
 
 export const isSyscoinLibError = (error: any): boolean =>
-  // Check for common Syscoin library errors that have specific handling
-  error?.message?.toLowerCase().includes('syscoin') ||
-  error?.message?.toLowerCase().includes('utxo') ||
+  // Check for structured Syscoin library errors
   error?.code === 'SYSCOIN_ERROR' ||
-  error?.type === 'SyscoinLibError';
+  error?.type === 'SyscoinLibError' ||
+  // Check for specific error codes from syscoinjs-lib
+  [
+    'INSUFFICIENT_FUNDS',
+    'SUBTRACT_FEE_FAILED',
+    'TRANSACTION_CREATION_FAILED',
+    'TRANSACTION_SEND_FAILED',
+    'INVALID_INPUTS',
+    'INVALID_ADDRESS',
+    'NETWORK_ERROR',
+  ].includes(error?.code);
 
 /**
  * Handle transaction errors with specific messaging for all known error types

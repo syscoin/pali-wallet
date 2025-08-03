@@ -6,6 +6,7 @@ import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
+import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
   const { controllerEmitter } = useController();
@@ -43,14 +44,25 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
+      // Initiate network switch
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         [newNetwork, true]
       );
 
+      // Wait for state to actually update with the new network
+      try {
+        await waitForNetworkSwitch(newNetwork.chainId, 3000);
+      } catch (stateError) {
+        console.warn('State update confirmation timed out, proceeding anyway');
+      }
+
       const type = data.eventName;
       setConfirmed(true);
       setLoading(false);
+
+      // Dispatch event and close window immediately to avoid race condition
+      // where the dapp might trigger another popup in response
       dispatchBackgroundEvent(`${type}.${host}`, null);
       window.close();
     } catch (networkError) {

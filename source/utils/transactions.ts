@@ -186,8 +186,17 @@ export const getTransactionDisplayInfo = async (
 
       // Fallback: show raw value with truncated contract address as symbol
       // Since we don't know if it's an NFT or the decimals, flag it
+      // For unknown tokens, we'll show the raw value with a warning
+      // and format it as if it might be 18 decimals (most common)
+      const possibleFormattedValue = Number(tokenValue) / Math.pow(10, 18);
+      const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
+
       return {
-        displayValue: tokenValue.toString(), // Keep as raw value since decimals unknown
+        displayValue: isLikelyWholeNumber
+          ? tokenValue.toString() // Likely an NFT or low decimal token
+          : possibleFormattedValue < 0.000001
+          ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
+          : `~${possibleFormattedValue.toFixed(6)}`, // Regular amount with ~ to indicate uncertainty
         displaySymbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
           -4
         )}`,

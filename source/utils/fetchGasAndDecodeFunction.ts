@@ -5,6 +5,8 @@ import store from 'state/store';
 import { INetwork } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
 
+import { safeBigNumber } from './safeBigNumber';
+
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetwork
@@ -107,42 +109,48 @@ export const fetchGasAndDecodeFunction = async (
         )) as any;
 
         // Ensure the result from getTxGasLimit is a BigNumber
-        if (!BigNumber.isBigNumber(gasLimitResult)) {
-          try {
-            gasLimitResult = BigNumber.from(gasLimitResult);
-          } catch (error) {
-            console.error(
-              'Failed to convert gasLimitResult to BigNumber:',
-              error
-            );
-            // Fallback to the previously calculated gasLimitFromCurrentBlock
-            gasLimitResult = BigNumber.from(gasLimitFromCurrentBlock);
-          }
-        }
+        gasLimitResult = safeBigNumber(
+          gasLimitResult,
+          gasLimitFromCurrentBlock,
+          'Gas limit estimation result'
+        );
       }
     } catch (error) {
       console.error(error);
       gasLimitError = true;
     }
   }
-  formTx.gasLimit =
-    (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
-    (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(gasLimitResult))
-      ? BigNumber.from(dataTx.gas || dataTx.gasLimit)
-      : gasLimitResult;
+  // Determine the appropriate gas limit
+  const userProvidedGasLimit = dataTx?.gas || dataTx?.gasLimit;
+  if (userProvidedGasLimit) {
+    const userGasLimitBN = safeBigNumber(
+      userProvidedGasLimit,
+      null,
+      'User provided gas limit'
+    );
+    const gasLimitResultBN = safeBigNumber(
+      gasLimitResult,
+      gasLimitFromCurrentBlock,
+      'Estimated gas limit'
+    );
 
-  // Ensure gasLimit is always a BigNumber
-  if (!BigNumber.isBigNumber(formTx.gasLimit)) {
-    try {
-      formTx.gasLimit = BigNumber.from(
-        formTx.gasLimit || gasLimitFromCurrentBlock
-      );
-    } catch (error) {
-      console.error('Failed to convert gasLimit to BigNumber:', error);
-      // Fallback to a safe default gas limit for approvals
-      formTx.gasLimit = BigNumber.from(60000);
-    }
+    formTx.gasLimit = userGasLimitBN.gt(gasLimitResultBN)
+      ? userGasLimitBN
+      : gasLimitResultBN;
+  } else {
+    formTx.gasLimit = safeBigNumber(
+      gasLimitResult,
+      gasLimitFromCurrentBlock,
+      'Gas limit'
+    );
   }
+
+  // Final validation - ensure we have a valid gas limit
+  formTx.gasLimit = safeBigNumber(
+    formTx.gasLimit,
+    60000, // Safe default for contract interactions
+    'Final gas limit validation'
+  );
 
   // Get gas price for legacy transactions
   const gasPrice = (await controllerEmitter([
@@ -151,12 +159,27 @@ export const fetchGasAndDecodeFunction = async (
     'getRecommendedGasPrice',
   ])) as number;
 
+  // Use BigNumber for all calculations to avoid precision loss
+  const gweiFactor = BigNumber.from(10).pow(9);
+
+  // Safely convert gas price to BigNumber
+  const gasPriceBigNumber = safeBigNumber(
+    gasPrice,
+    BigNumber.from(10).pow(9), // 1 Gwei fallback
+    'Gas price'
+  );
+
   const feeDetails = {
-    maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
-    baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-    maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 9,
-    gasPrice: gasPrice / 10 ** 9, // Add gasPrice for legacy transactions
-    gasLimit: formTx.gasLimit.toNumber(),
+    // Convert to Gwei but keep as string to preserve precision
+    maxFeePerGas: parseFloat(maxFeePerGas.div(gweiFactor).toString()),
+    baseFee: parseFloat(
+      maxFeePerGas.sub(maxPriorityFeePerGas).div(gweiFactor).toString()
+    ),
+    maxPriorityFeePerGas: parseFloat(
+      maxPriorityFeePerGas.div(gweiFactor).toString()
+    ),
+    gasPrice: parseFloat(gasPriceBigNumber.div(gweiFactor).toString()),
+    gasLimit: parseInt(formTx.gasLimit.toString()),
   };
 
   return {
