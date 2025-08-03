@@ -5,14 +5,14 @@ import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 
-import { IconButton } from 'components/index';
+import { IconButton, TokenIcon } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
-import { truncate, navigateWithContext } from 'utils/index';
+import { truncate, navigateWithContext, ellipsis } from 'utils/index';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 
 interface IEvmNftsListProps {
@@ -38,6 +38,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
   const [itemToDelete, setItemToDelete] = useState<{
     contractAddress: string;
     name?: string;
+    tokenId?: string;
     type: 'collection' | 'nft';
   } | null>(null);
 
@@ -45,11 +46,12 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
   // Handle delete clicks
   const handleDeleteCollection = useCallback(
-    (contractAddress: string, symbol: string) => {
+    (contractAddress: string, symbol: string, tokenId?: string) => {
       setItemToDelete({
         type: 'collection',
         contractAddress,
         name: symbol, // Using symbol but keeping 'name' field for consistency with modal
+        tokenId,
       });
       setShowDeleteConfirmation(true);
     },
@@ -63,7 +65,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
       // Always delete the entire collection entry
       await controllerEmitter(
         ['wallet', 'deleteTokenInfo'],
-        [itemToDelete.contractAddress, chainId]
+        [itemToDelete.contractAddress, chainId, itemToDelete.tokenId]
       );
     } catch (error) {
       console.error('Error deleting NFT:', error);
@@ -95,6 +97,8 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
         tokenStandard: nft.tokenStandard || 'ERC-721',
         chainId: nft.chainId,
         totalBalance: nft.balance, // This is already the total count
+        tokenId: nft.tokenId,
+        logo: nft.logo, // Include logo if available
       })),
     [nftAssets]
   );
@@ -145,27 +149,65 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     <>
       {collections.map((collection) => (
         <li
-          key={collection.contractAddress}
+          key={collection.id}
           className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
         >
           <div className="flex gap-3 items-center justify-start flex-1">
-            {/* Collection Info */}
-            <div className="flex items-center gap-x-2">
-              <span className="text-brand-white">
-                {collection.totalBalance}{' '}
-                {collection.totalBalance === 1
-                  ? t('nftDetails.item')
-                  : t('nftDetails.items')}
-              </span>
-              <span
-                className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                onClick={() => handleNftClick(collection)}
+            {/* NFT Icon */}
+            {collection.logo ? (
+              <TokenIcon
+                logo={collection.logo}
+                contractAddress={collection.contractAddress}
+                symbol={collection.symbol}
+                size={24}
+                className="hover:shadow-md hover:scale-110 transition-all duration-200"
+              />
+            ) : (
+              <div
+                className="w-6 h-6 rounded bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                            flex items-center justify-center hover:shadow-md hover:scale-110 
+                            transition-all duration-200 flex-shrink-0"
               >
-                {truncate(collection.symbol, 10).toUpperCase()}
-              </span>
-              <span className="text-brand-gray200 text-[10px]">
-                {collection.tokenStandard}
-              </span>
+                <span className="text-white text-[10px] font-bold">NFT</span>
+              </div>
+            )}
+
+            {/* Collection Info */}
+            <div className="flex flex-col gap-y-1 flex-1 text-left">
+              <div className="flex items-center gap-x-2">
+                <span className="text-brand-white">
+                  {collection.totalBalance}{' '}
+                  {collection.totalBalance === 1
+                    ? t('nftDetails.item')
+                    : t('nftDetails.items')}
+                </span>
+                <span
+                  className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                  onClick={() => handleNftClick(collection)}
+                >
+                  {truncate(collection.symbol, 10).toUpperCase()}
+                </span>
+                <span className="text-brand-gray200 text-[10px]">
+                  {collection.tokenStandard}
+                </span>
+              </div>
+              {(collection.tokenStandard === 'ERC-721' ||
+                (collection.tokenStandard === 'ERC-1155' &&
+                  collection.tokenId)) && (
+                <span className="text-brand-gray200 text-xs font-mono">
+                  {ellipsis(collection.contractAddress, 4, 4)}
+                  {collection.tokenStandard === 'ERC-1155' &&
+                    collection.tokenId && (
+                      <>
+                        {' '}
+                        • #
+                        {collection.tokenId.length > 16
+                          ? ellipsis(collection.tokenId, 8, 6)
+                          : collection.tokenId}
+                      </>
+                    )}
+                </span>
+              )}
             </div>
           </div>
 
@@ -189,7 +231,8 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
                 onClick={() =>
                   handleDeleteCollection(
                     collection.contractAddress,
-                    collection.symbol
+                    collection.symbol,
+                    collection.tokenId
                   )
                 }
                 className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"

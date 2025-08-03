@@ -700,7 +700,7 @@ export const SendSys = () => {
 
                       <Menu.Items
                         as="div"
-                        className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                        className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
@@ -714,8 +714,14 @@ export const SendSys = () => {
                             onClick={() => handleSelectedAsset(-1)}
                             className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                           >
-                            <p>SYS</p>
-                            <small>{t('send.native')}</small>
+                            <div className="flex flex-col items-start flex-1 overflow-hidden">
+                              <p className="truncate max-w-[100px]">SYS</p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-500 bg-opacity-80 text-white">
+                                {t('send.native')}
+                              </span>
+                            </div>
                           </button>
                         </Menu.Item>
 
@@ -733,11 +739,29 @@ export const SendSys = () => {
                                     }}
                                     className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                   >
-                                    <p>{item?.symbol}</p>
-
-                                    <small>
-                                      {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
-                                    </small>
+                                    <div className="flex flex-col items-start flex-1 overflow-hidden">
+                                      <p className="truncate max-w-[100px]">
+                                        {item?.symbol?.length > 8
+                                          ? item.symbol.slice(0, 8) + '...'
+                                          : item?.symbol}
+                                      </p>
+                                      {isNFT(item.assetGuid) && (
+                                        <span className="text-[10px] text-brand-gray200 font-mono">
+                                          GUID: {item.assetGuid.slice(0, 8)}...
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                          isNFT(item.assetGuid)
+                                            ? 'bg-gray-500 bg-opacity-80 text-white'
+                                            : 'bg-blue-500 bg-opacity-80 text-white'
+                                        }`}
+                                      >
+                                        {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                                      </span>
+                                    </div>
                                   </button>
                                 </Menu.Item>
                               ) : null

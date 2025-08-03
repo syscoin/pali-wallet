@@ -1,5 +1,7 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
+import { Contract } from '@ethersproject/contracts';
+import { formatUnits } from '@ethersproject/units';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
-import { ethers } from 'ethers';
 
 import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';
@@ -72,7 +74,7 @@ export class BatchBalanceController {
 
     try {
       // Prepare multicall
-      const multicall = new ethers.Contract(
+      const multicall = new Contract(
         this.multicallAddress!,
         MULTICALL3_ABI,
         this.provider
@@ -80,7 +82,7 @@ export class BatchBalanceController {
 
       // Prepare calls
       const calls = tokens.map((token) => {
-        const tokenContract = new ethers.Contract(
+        const tokenContract = new Contract(
           token.contractAddress,
           ERC20_BALANCE_ABI,
           this.provider
@@ -105,15 +107,12 @@ export class BatchBalanceController {
         const token = tokens[index];
         if (result.success && result.returnData !== '0x') {
           try {
-            const decoded = ethers.utils.defaultAbiCoder.decode(
+            const decoded = defaultAbiCoder.decode(
               ['uint256'],
               result.returnData
             );
             const balance = decoded[0];
-            const formattedBalance = ethers.utils.formatUnits(
-              balance,
-              token.decimals
-            );
+            const formattedBalance = formatUnits(balance, token.decimals);
             balances.set(token.contractAddress.toLowerCase(), formattedBalance);
           } catch (decodeError) {
             console.error(
@@ -173,16 +172,13 @@ export class BatchBalanceController {
         requestCount++;
 
         try {
-          const contract = new ethers.Contract(
+          const contract = new Contract(
             token.contractAddress,
             ERC20_BALANCE_ABI,
             this.provider
           );
           const balance = await contract.balanceOf(userAddress);
-          const formattedBalance = ethers.utils.formatUnits(
-            balance,
-            token.decimals
-          );
+          const formattedBalance = formatUnits(balance, token.decimals);
 
           // Store the balance directly in our map
           balances.set(token.contractAddress.toLowerCase(), formattedBalance);

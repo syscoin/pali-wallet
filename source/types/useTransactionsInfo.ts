@@ -50,6 +50,7 @@ export interface ITransactionInfoEvm {
   hash: string;
   input: string;
   isCanceled?: boolean;
+  isError?: string | null;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
   nonce: string;
@@ -58,6 +59,8 @@ export interface ITransactionInfoEvm {
   timestamp: number;
   to: string;
   transactionIndex: string;
+  // Transaction status fields
+  txreceipt_status?: string | null;
   type: string;
   v: string;
   value: string | valuePending;

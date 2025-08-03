@@ -18,6 +18,11 @@ import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import {
+  isContractInteraction,
+  getTransactionTypeLabel,
+  getTransactionTypeDisplayLabel,
+} from 'utils/commonMethodSignatures';
+import {
   getTransactionDisplayInfo,
   handleUpdateTransaction,
 } from 'utils/transactions';
@@ -77,6 +82,10 @@ const EvmTransactionItem = React.memo(
     const isConfirmed = isTransactionInBlock(tx);
     const isTxSent =
       tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
+    const isContractCall = isContractInteraction(tx);
+    // Check transaction status from API
+    // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
+    const isFailed = tx.txreceipt_status === '0' || tx.isError === '1';
 
     // Add loading state
     const [isLoadingDisplayInfo, setIsLoadingDisplayInfo] =
@@ -88,6 +97,7 @@ const EvmTransactionItem = React.memo(
       hasUnknownDecimals?: boolean;
       isErc20Transfer: boolean;
       isNft: boolean;
+      tokenId?: string;
     }>({
       displayValue: 0,
       displaySymbol: currency.toUpperCase(),
@@ -155,13 +165,19 @@ const EvmTransactionItem = React.memo(
       return (
         <div className="flex flex-col justify-end items-end">
           <div className="text-white text-xs font-normal">
-            {displayInfo.isNft
-              ? displayInfo.displayValue
-              : displayInfo.hasUnknownDecimals
+            {displayInfo.hasUnknownDecimals
               ? `${finalSymbol} Transfer`
+              : displayInfo.isNft && displayInfo.tokenId
+              ? `${Number(finalTxValue)} ${finalSymbol} #${
+                  displayInfo.tokenId.length > 8
+                    ? displayInfo.tokenId.substring(0, 6) + '...'
+                    : displayInfo.tokenId
+                }`
               : `${
                   isNaN(Number(finalTxValue))
                     ? '0.0000'
+                    : displayInfo.isNft
+                    ? Number(finalTxValue)
                     : Number(finalTxValue).toFixed(4)
                 } ${finalSymbol}`}
           </div>
@@ -189,10 +205,14 @@ const EvmTransactionItem = React.memo(
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
-                {getTxType(tx, isTxSent)}
+                {getTransactionTypeDisplayLabel(
+                  getTransactionTypeLabel(tx, isTxSent),
+                  t,
+                  currency
+                )}
               </div>
               <div className="text-warning-error text-xs">
-                {t('transactions.replaced')}
+                {isFailed ? t('send.failed') : t('transactions.replaced')}
               </div>
             </div>
           </div>
@@ -221,10 +241,14 @@ const EvmTransactionItem = React.memo(
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
-                {getTxType(tx, isTxSent)}
+                {getTransactionTypeDisplayLabel(
+                  getTransactionTypeLabel(tx, isTxSent),
+                  t,
+                  currency
+                )}
               </div>
               <div className="text-warning-error text-xs">
-                {t('send.canceled')}
+                {isFailed ? t('send.failed') : t('send.canceled')}
               </div>
             </div>
           </div>
@@ -251,15 +275,69 @@ const EvmTransactionItem = React.memo(
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col ">
-              <div className="text-white text-xs font-normal">
-                {getTxType(tx, isTxSent)}
+              <div className="flex items-center gap-2">
+                <span className="text-white text-xs font-normal">
+                  {getTransactionTypeDisplayLabel(
+                    getTransactionTypeLabel(tx, isTxSent),
+                    t,
+                    currency
+                  )}
+                </span>
+                {isContractCall && tx.to && (
+                  <Tooltip
+                    content={
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-white">
+                          Contract Address
+                        </span>
+                        <span className="text-xs font-mono text-brand-gray300">
+                          {tx.to}
+                        </span>
+                      </div>
+                    }
+                  >
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-pointer transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105">
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="text-brand-blue"
+                      >
+                        <path
+                          d="M2 4.5A2.5 2.5 0 014.5 2h7A2.5 2.5 0 0114 4.5v7a2.5 2.5 0 01-2.5 2.5h-7A2.5 2.5 0 012 11.5v-7z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        />
+                        <path
+                          d="M5 7h6M5 9h4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span className="text-brand-blue text-[10px] font-medium">
+                        Contract
+                      </span>
+                    </span>
+                  </Tooltip>
+                )}
                 {isSpeedUp && (
-                  <span className="text-warning-success ml-1">
+                  <span className="text-warning-success ml-1 text-xs">
                     ({t('header.speedUp')})
                   </span>
                 )}
               </div>
-              <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
+              <div className="flex items-center gap-2 mt-1">
+                {isFailed && isConfirmed ? (
+                  <p className="text-xs font-normal text-warning-error">
+                    {t('send.failed')}
+                  </p>
+                ) : (
+                  getTxStatus(isTxCanceled, isConfirmed)
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-4">

@@ -6,9 +6,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { DefaultModal, NeutralButton } from 'components/index';
-import { i18next } from 'utils/i18n';
+import { changeLanguage } from 'utils/i18n';
 import { navigateBack } from 'utils/navigationState';
-import { chromeStorage, setLanguageInLocalStorage } from 'utils/storageAPI';
+import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
@@ -107,8 +107,7 @@ const Languages = () => {
 
   const onSubmit = async () => {
     // Only save when explicitly clicking save button
-    await setLanguageInLocalStorage(selectedLang);
-    await i18next.changeLanguage(selectedLang);
+    await changeLanguage(selectedLang);
     setSavedLang(selectedLang); // Update saved state
     setConfirmed(true);
   };

@@ -1,4 +1,4 @@
-import { isHexString } from 'ethers/lib/utils';
+import { isHexString } from '@ethersproject/bytes';
 import { toSvg } from 'jdenticon';
 import React, {
   useState,
@@ -135,7 +135,9 @@ const TokenIconStack = React.memo(
         <div className="flex">
           {visibleTokens.map((token, index) => (
             <div
-              key={token.contractAddress || token.assetGuid || index}
+              key={
+                token.id || token.contractAddress || token.assetGuid || index
+              }
               className="relative"
               style={{
                 marginLeft: index > 0 ? '-8px' : '0',

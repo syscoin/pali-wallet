@@ -1,18 +1,14 @@
-import React, {
-  Fragment,
-  useEffect,
-  useState,
-  memo,
-  useMemo,
-  useRef,
-} from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { EnhancedEvmTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
-import { Tooltip } from 'components/Tooltip';
+import {
+  TransactionHeader,
+  TransactionDetailsList,
+  TransactionEventLogs,
+  DecodedTransactionParams,
+} from 'components/TransactionDetails';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
@@ -23,27 +19,18 @@ import {
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { IDecodedTx } from 'types/transactions';
-import {
-  camelCaseToText,
-  ellipsis,
-  removeScientificNotation,
-} from 'utils/index';
+import { formatMethodName } from 'utils/commonMethodSignatures';
+import { camelCaseToText } from 'utils/index';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Transaction details cache with TTL (5 minutes)
 const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
+const decodedTxCache = new Map<
+  string,
+  { data: IDecodedTx | null; timestamp: number }
+>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-// Memoize copy icon to prevent unnecessary re-renders
-const CopyIcon = memo(() => (
-  <Icon
-    wrapperClassname="flex items-center justify-center"
-    name="copy"
-    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-  />
-));
-CopyIcon.displayName = 'CopyIcon';
 
 export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const { controllerEmitter } = useController();
@@ -106,6 +93,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     displayValue: number | string;
     isErc20Transfer: boolean;
     isNft: boolean;
+    tokenId?: string;
   } | null>(null);
 
   let isTxCanceled: boolean;
@@ -216,6 +204,15 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {
     const processTransactionDecoding = async () => {
+      // Check cache first
+      const cached = decodedTxCache.get(hash);
+      const now = Date.now();
+
+      if (cached && now - cached.timestamp < CACHE_TTL) {
+        setDecodedTxData(cached.data);
+        return;
+      }
+
       const ethereumTransactions = accountTransactions[
         TransactionsType.Ethereum
       ][chainId] as IEvmTransaction[];
@@ -232,34 +229,48 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
             ? { ...currentTransaction, ...enhancedDetails }
             : currentTransaction;
 
-          // Skip expensive decoding for known transaction types
-          if (transactionDisplayInfo?.isErc20Transfer) {
-            // ERC-20/NFT transfers - we already know what they are
-            setDecodedTxData({
-              method: transactionDisplayInfo.isNft
-                ? 'NFT Transfer'
-                : 'Token Transfer',
-              types: [],
-              inputs: [],
-              names: [],
-            });
-          } else if (!mergedTx.input || mergedTx.input === '0x') {
-            // Simple ETH transfers with no input data - avoid getcode call
-            setDecodedTxData({
+          let decodedData: IDecodedTx | null = null;
+
+          // Always decode transactions with input data to get full parameter details
+          // This ensures we show decoded data even if transactionDisplayInfo isn't ready yet
+          if (!mergedTx.input || mergedTx.input === '0x') {
+            // Simple ETH transfers with no input data
+            decodedData = {
               method: 'Send',
               types: [],
               inputs: [],
               names: [],
-            });
+            };
           } else {
-            // Complex transactions with input data - need to decode
-            const decodedTx = (await controllerEmitter(
-              ['wallet', 'decodeEvmTransactionData'],
-              [mergedTx]
-            )) as IDecodedTx;
-
-            setDecodedTxData(decodedTx);
+            // Always decode transactions with input data to get full details
+            try {
+              decodedData = (await controllerEmitter(
+                ['wallet', 'decodeEvmTransactionData'],
+                [mergedTx]
+              )) as IDecodedTx;
+            } catch (decodeError) {
+              console.error('Failed to decode transaction data:', decodeError);
+              // Fallback based on what we know
+              if (transactionDisplayInfo?.isErc20Transfer) {
+                decodedData = {
+                  method: transactionDisplayInfo.isNft
+                    ? 'NFT Transfer'
+                    : 'Token Transfer',
+                  types: [],
+                  inputs: [],
+                  names: [],
+                };
+              }
+            }
           }
+
+          // Cache the result
+          decodedTxCache.set(hash, {
+            data: decodedData,
+            timestamp: now,
+          });
+
+          setDecodedTxData(decodedData);
         } catch (error) {
           console.error('Error decoding transaction:', error);
           setDecodedTxData(null);
@@ -278,6 +289,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     accountTransactions,
     enhancedDetails,
     transactionDisplayInfo,
+    // controllerEmitter is omitted as it's a stable reference from useController
   ]);
 
   const formattedTransaction = [];
@@ -340,7 +352,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
     for (const [key, value] of Object.entries(mergedTx)) {
       const formattedKey = camelCaseToText(key);
-      const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
+      const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
 
       // For ERC-20 transfers, replace the "to" field with actual recipient
       let finalValue = value;
@@ -383,6 +395,13 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
         formattedValue.value = finalValue
           ? new Date(Number(finalValue) * 1000).toLocaleString()
           : 'N/A';
+      } else if (key === 'method' && finalValue) {
+        // Apply translation for method names
+        formattedValue.value = formatMethodName(
+          String(finalValue),
+          currency.toUpperCase(),
+          t
+        );
       }
 
       if (String(finalValue).length >= 20 && key !== 'image') {
@@ -407,100 +426,32 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       (a, b) => labelsToUse.indexOf(a.label) - labelsToUse.indexOf(b.label)
     );
 
-  const RenderTransaction = () => (
+  // Handle copy actions with appropriate messages
+  const handleCopy = (value: string, label: string) => {
+    copy(value ?? '');
+    alert.info(getCopyMessage(label));
+  };
+
+  return (
     <>
-      <div className="flex flex-col justify-center items-center w-full mb-2">
-        {getTxStatusIcons(getTxType(transactionTx, isTxSent), true)}
-        <p className="text-brand-gray200 text-xs font-light">
-          {getTxType(transactionTx, isTxSent)}
-        </p>
-        <p className="text-white text-base">
-          {!transactionDisplayInfo
-            ? '...'
-            : transactionDisplayInfo.isNft
-            ? transactionDisplayInfo.displayValue
-            : `${
-                isNaN(Number(transactionDisplayInfo.displayValue))
-                  ? '0'
-                  : removeScientificNotation(
-                      Number(transactionDisplayInfo.displayValue)
-                    )
-              } ${transactionDisplayInfo.displaySymbol}`}
-        </p>
-        <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
-        {isLoadingDetails && (
-          <div className="flex justify-center py-4">
-            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-royalblue"></div>
-          </div>
-        )}
-      </div>
-      {formattedTransactionDetails.map(
-        ({ label, value, canCopy, className }: any, index: number) => (
-          <Fragment key={`${hash}-detail-${index}`}>
-            {label.length > 0 && value !== undefined && (
-              <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-                <p className="text-xs font-normal text-white">{label}</p>
-                <span className={className || ''}>
-                  {String(value).length >= 20 ? (
-                    <Tooltip content={value} childrenClassName="flex">
-                      <p
-                        className={`text-xs font-normal ${
-                          className || 'text-white'
-                        }`}
-                      >
-                        {ellipsis(String(value), 2, 4)}
-                      </p>
-                      {canCopy && (
-                        <IconButton
-                          onClick={() => {
-                            copy(value ?? '');
-                            // Show appropriate message immediately
-                            alert.info(getCopyMessage(label));
-                          }}
-                        >
-                          <CopyIcon />
-                        </IconButton>
-                      )}
-                    </Tooltip>
-                  ) : (
-                    <p
-                      className={`text-xs font-normal ${
-                        className || 'text-white'
-                      }`}
-                    >
-                      {value}
-                    </p>
-                  )}
-                </span>
-              </div>
-            )}
-          </Fragment>
-        )
-      )}
-      {enhancedDetails?.logs && enhancedDetails.logs.length > 0 && (
-        <div className="mt-4">
-          <p className="text-sm font-semibold text-white mb-2">
-            Event Logs ({enhancedDetails.logs.length})
-          </p>
-          <div className="max-h-40 overflow-y-auto">
-            {enhancedDetails.logs.map((log: any, index: number) => (
-              <div key={index} className="mb-2 p-2 bg-bkg-2 rounded text-xs">
-                <p className="text-brand-gray200">Log #{index + 1}</p>
-                <p className="text-white break-all">
-                  Address: {ellipsis(log.address, 6, 4)}
-                </p>
-                {log.topics && log.topics.length > 0 && (
-                  <p className="text-white break-all mt-1">
-                    Topics: {log.topics.length}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <TransactionHeader
+        txType={getTxType(transactionTx, isTxSent)}
+        statusIcon={getTxStatusIcons(getTxType(transactionTx, isTxSent), true)}
+        displayInfo={transactionDisplayInfo}
+        txStatus={getTxStatus(isTxCanceled, isConfirmed)}
+        isLoading={isLoadingDetails}
+      />
+
+      <TransactionDetailsList
+        details={formattedTransactionDetails}
+        onCopy={handleCopy}
+      />
+
+      {/* Display decoded transaction parameters */}
+      <DecodedTransactionParams decodedData={decodedTxData} />
+
+      {/* Display event logs */}
+      <TransactionEventLogs logs={enhancedDetails?.logs} />
     </>
   );
-
-  return <RenderTransaction />;
 };

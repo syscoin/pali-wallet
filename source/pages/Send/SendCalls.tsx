@@ -1,4 +1,5 @@
-import { ethers } from 'ethers';
+import { BigNumber } from '@ethersproject/bignumber';
+import { formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -75,11 +76,11 @@ export const SendCalls = () => {
       .reduce((sum, call, index) => {
         if (!selectedCalls[index] || !call.value) return sum;
         try {
-          return sum.add(ethers.BigNumber.from(call.value));
+          return sum.add(BigNumber.from(call.value));
         } catch {
           return sum;
         }
-      }, ethers.BigNumber.from(0))
+      }, BigNumber.from(0))
       .toString();
   }, [callsData.calls, selectedCalls]);
 
@@ -432,8 +433,7 @@ export const SendCalls = () => {
                         {t('send.value')}:
                       </p>
                       <p className="text-sm text-brand-white">
-                        {ethers.utils.formatEther(call.value)}{' '}
-                        {activeNetwork.currency}
+                        {formatEther(call.value)} {activeNetwork.currency}
                       </p>
                     </div>
                   )}
@@ -481,7 +481,7 @@ export const SendCalls = () => {
                 {t('send.totalValue')}:
               </p>
               <p className="text-lg font-bold text-brand-white">
-                {ethers.utils.formatEther(totalValue)} {activeNetwork.currency}
+                {formatEther(totalValue)} {activeNetwork.currency}
               </p>
             </div>
           </div>

@@ -1,7 +1,8 @@
 // Frontend-safe validation utilities
 // These are lightweight implementations that don't pull in sysweb3 dependencies
 
-import { ethers } from 'ethers';
+import { isAddress } from '@ethersproject/address';
+import { Contract } from '@ethersproject/contracts';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 
@@ -11,7 +12,7 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 export const isValidEthereumAddress = (address: string): boolean => {
   try {
     // Use ethers.js which is already in the bundle
-    return ethers.utils.isAddress(address);
+    return isAddress(address);
   } catch {
     return false;
   }
@@ -110,7 +111,7 @@ export const getContractType = async (
 ): Promise<ISupportsInterfaceProps | undefined> => {
   try {
     const erc721Abi = await getErc721Abi(controller);
-    const contractERC721 = new ethers.Contract(
+    const contractERC721 = new Contract(
       contractAddress,
       erc721Abi,
       web3Provider
@@ -127,7 +128,7 @@ export const getContractType = async (
   } catch (e) {
     try {
       const erc1155Abi = await getErc1155Abi(controller);
-      const contractERC1155 = new ethers.Contract(
+      const contractERC1155 = new Contract(
         contractAddress,
         erc1155Abi,
         web3Provider
@@ -142,7 +143,7 @@ export const getContractType = async (
     } catch (e1) {
       try {
         const erc20Abi = await getErc20Abi(controller);
-        const contractERC20 = new ethers.Contract(
+        const contractERC20 = new Contract(
           contractAddress,
           erc20Abi,
           web3Provider

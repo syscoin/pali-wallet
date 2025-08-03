@@ -39,10 +39,22 @@ const vaultGlobalSlice = createSlice({
       const restoredNetworks = action.payload.networks;
       let mergedNetworks = { ethereum: {}, syscoin: {} };
 
-      // First, add only default networks from PALI_NETWORKS_STATE
+      // First, add all networks from restored state (preserving any modifications)
+      if (restoredNetworks) {
+        mergedNetworks = {
+          ethereum: { ...restoredNetworks.ethereum },
+          syscoin: { ...restoredNetworks.syscoin },
+        };
+      }
+
+      // Then, add any missing default networks from PALI_NETWORKS_STATE
+      // This ensures new default networks added in updates are included
       Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(
         ([chainId, network]) => {
-          if (network.default === true) {
+          if (
+            network.default === true &&
+            !mergedNetworks.ethereum[Number(chainId)]
+          ) {
             mergedNetworks.ethereum[Number(chainId)] = network;
           }
         }
@@ -50,29 +62,18 @@ const vaultGlobalSlice = createSlice({
 
       Object.entries(PALI_NETWORKS_STATE.syscoin).forEach(
         ([chainId, network]) => {
-          if (network.default === true) {
+          if (
+            network.default === true &&
+            !mergedNetworks.syscoin[Number(chainId)]
+          ) {
             mergedNetworks.syscoin[Number(chainId)] = network;
           }
         }
       );
 
-      // Then, add all networks from restored state (including custom ones and non-default ones that weren't removed)
-      if (restoredNetworks) {
-        mergedNetworks = {
-          ethereum: {
-            ...mergedNetworks.ethereum,
-            ...restoredNetworks.ethereum,
-          },
-          syscoin: {
-            ...mergedNetworks.syscoin,
-            ...restoredNetworks.syscoin,
-          },
-        };
-      }
-
       return {
         ...action.payload,
-        // Use merged networks to preserve custom ones
+        // Use merged networks to preserve custom ones and modifications
         networks: mergedNetworks,
       };
     },
@@ -194,6 +195,10 @@ const vaultGlobalSlice = createSlice({
             }),
             ...(existingNetwork.coingeckoPlatformId && {
               coingeckoPlatformId: existingNetwork.coingeckoPlatformId,
+            }),
+            // Preserve default flag to prevent re-adding during rehydration
+            ...(existingNetwork.default !== undefined && {
+              default: existingNetwork.default,
             }),
           };
         }

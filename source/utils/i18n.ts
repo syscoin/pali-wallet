@@ -2,15 +2,8 @@
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
-import deTranslations from 'assets/locales/de.json';
+// Only import the default language statically
 import enTranslations from 'assets/locales/en.json';
-import esTranslations from 'assets/locales/es.json';
-import frTranslations from 'assets/locales/fr.json';
-import jaTranslations from 'assets/locales/ja.json';
-import koTranslations from 'assets/locales/ko.json';
-import ptBrTranslations from 'assets/locales/pt.json';
-import ruTranslations from 'assets/locales/ru.json';
-import zhTranslations from 'assets/locales/zh.json';
 import { chromeStorage } from 'utils/storageAPI';
 
 export const availableLanguages = [
@@ -25,6 +18,58 @@ export const availableLanguages = [
   'ru',
 ];
 export const defaultLocale = 'en';
+
+// Cache for loaded languages
+const loadedLanguages: { [key: string]: any } = {
+  en: enTranslations, // English is always loaded
+};
+
+// Lazy load language translations
+const loadLanguage = async (lng: string): Promise<any> => {
+  // Return cached language if already loaded
+  if (loadedLanguages[lng]) {
+    return loadedLanguages[lng];
+  }
+
+  try {
+    let translations;
+    switch (lng) {
+      case 'es':
+        translations = await import('assets/locales/es.json');
+        break;
+      case 'pt':
+        translations = await import('assets/locales/pt.json');
+        break;
+      case 'fr':
+        translations = await import('assets/locales/fr.json');
+        break;
+      case 'de':
+        translations = await import('assets/locales/de.json');
+        break;
+      case 'zh':
+        translations = await import('assets/locales/zh.json');
+        break;
+      case 'ja':
+        translations = await import('assets/locales/ja.json');
+        break;
+      case 'ko':
+        translations = await import('assets/locales/ko.json');
+        break;
+      case 'ru':
+        translations = await import('assets/locales/ru.json');
+        break;
+      default:
+        return enTranslations;
+    }
+
+    // Cache the loaded language
+    loadedLanguages[lng] = translations.default || translations;
+    return loadedLanguages[lng];
+  } catch (error) {
+    console.error(`[i18n] Failed to load language ${lng}:`, error);
+    return enTranslations;
+  }
+};
 
 const determineLngFn = async (code: string): Promise<string> => {
   // Start with default locale immediately
@@ -74,38 +119,14 @@ const determineLngFn = async (code: string): Promise<string> => {
 const initI18next = async () => {
   const fallbackLng = await determineLngFn('');
 
-  i18next.use(initReactI18next).init({
+  await i18next.use(initReactI18next).init({
     react: {
       useSuspense: false,
     },
     resources: {
-      // Bundle all language translations directly
+      // Only bundle English by default
       en: {
         translation: enTranslations,
-      },
-      es: {
-        translation: esTranslations,
-      },
-      pt: {
-        translation: ptBrTranslations,
-      },
-      fr: {
-        translation: frTranslations,
-      },
-      de: {
-        translation: deTranslations,
-      },
-      zh: {
-        translation: zhTranslations,
-      },
-      ja: {
-        translation: jaTranslations,
-      },
-      ko: {
-        translation: koTranslations,
-      },
-      ru: {
-        translation: ruTranslations,
       },
     },
     load: 'languageOnly',
@@ -120,6 +141,31 @@ const initI18next = async () => {
       console.warn(`Missing translation key: ${key} for language: ${lng}`);
     },
   });
+
+  // Load the user's language if it's not English
+  if (fallbackLng !== 'en') {
+    await changeLanguage(fallbackLng);
+  }
+};
+
+// Function to change language and load translations if needed
+export const changeLanguage = async (lng: string): Promise<void> => {
+  if (!availableLanguages.includes(lng)) {
+    console.warn(`[i18n] Language ${lng} not available`);
+    return;
+  }
+
+  // Load language if not already loaded
+  if (!i18next.hasResourceBundle(lng, 'translation')) {
+    const translations = await loadLanguage(lng);
+    i18next.addResourceBundle(lng, 'translation', translations, true, true);
+  }
+
+  // Change the language
+  await i18next.changeLanguage(lng);
+
+  // Save to storage
+  await chromeStorage.setItem('language', lng);
 };
 
 initI18next();

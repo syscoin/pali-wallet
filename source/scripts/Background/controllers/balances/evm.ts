@@ -1,9 +1,9 @@
+import { formatEther } from '@ethersproject/units';
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
-import { ethers } from 'ethers';
 
 import { IEvmBalanceController } from './types';
 
@@ -19,7 +19,7 @@ const EvmBalanceController = (
 
     // Always return the full precision balance as a string
     // Formatting for display should happen in the UI components
-    const fullPrecisionBalance = ethers.utils.formatEther(getBalance);
+    const fullPrecisionBalance = formatEther(getBalance);
 
     return fullPrecisionBalance;
   };

@@ -61,13 +61,15 @@ export const ImportToken: React.FC = () => {
   const [customTokenDetails, setCustomTokenDetails] =
     useState<ITokenDetails | null>(location.state?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
+  const [customTokenId, setCustomTokenId] = useState('');
+  const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
+  const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
+    number | null
+  >(null);
 
   // Common state
   const [currentlyImporting, setCurrentlyImporting] = useState<string | null>(
     null
-  );
-  const [recentlyImportedIds, setRecentlyImportedIds] = useState<Set<string>>(
-    new Set()
   );
   const [fetchingLogos, setFetchingLogos] = useState<Set<string>>(new Set());
 
@@ -83,6 +85,7 @@ export const ImportToken: React.FC = () => {
 
   // Use deferred value for search optimization
   const deferredCustomAddress = useDeferredValue(customContractAddress);
+  const deferredTokenId = useDeferredValue(customTokenId);
 
   // Refs for stable debounce
   const debouncedValidationRef = useRef<ReturnType<typeof debounce> | null>(
@@ -97,18 +100,21 @@ export const ImportToken: React.FC = () => {
       activeAccountAssets.ethereum
         .filter((token) => token.chainId === activeNetwork.chainId)
         .forEach((token) => {
-          // Use the same ID format: contractAddress-chainId
-          ids.add(`${token.contractAddress.toLowerCase()}-${token.chainId}`);
+          // For ERC-1155 tokens, include tokenId in the ID format to allow different tokenIds from same contract
+          if (token.tokenStandard === 'ERC-1155' && token.tokenId) {
+            ids.add(
+              `${token.contractAddress.toLowerCase()}-${token.chainId}-${
+                token.tokenId
+              }`
+            );
+          } else {
+            // Use the standard format for non-ERC-1155 tokens: contractAddress-chainId
+            ids.add(`${token.contractAddress.toLowerCase()}-${token.chainId}`);
+          }
         });
     }
-    // Also add recently imported IDs (these should also use the same format)
-    recentlyImportedIds.forEach((id) => ids.add(id));
     return ids;
-  }, [
-    activeAccountAssets?.ethereum,
-    activeNetwork.chainId,
-    recentlyImportedIds,
-  ]);
+  }, [activeAccountAssets?.ethereum, activeNetwork.chainId]);
 
   // PATH 1: Load tokens user actually owns
   const loadOwnedTokens = useCallback(async () => {
@@ -120,49 +126,11 @@ export const ImportToken: React.FC = () => {
         ['wallet', 'getUserOwnedTokens'],
         [activeAccount.address]
       )) as ITokenSearchResult[];
-
-      // Group tokens by contract address to combine duplicates
-      const groupedByContract = new Map<string, ITokenSearchResult>();
-      const erc1155TokenCounts = new Map<string, number>(); // Track unique token IDs per contract
-
-      results.forEach((token) => {
-        const contractKey = token.contractAddress?.toLowerCase() || '';
-        const existing = groupedByContract.get(contractKey);
-
-        if (existing) {
-          if (token.tokenStandard === 'ERC-1155') {
-            // For ERC-1155, count unique token IDs instead of summing balances
-            erc1155TokenCounts.set(
-              contractKey,
-              (erc1155TokenCounts.get(contractKey) || 1) + 1
-            );
-            // Don't sum balances for ERC-1155 - keep the count of unique items
-            existing.balance = erc1155TokenCounts.get(contractKey) || 1;
-          } else {
-            // For other tokens, combine balances
-            existing.balance = (existing.balance || 0) + (token.balance || 0);
-          }
-          // Keep the first token's metadata (name, symbol, etc.)
-        } else {
-          if (token.tokenStandard === 'ERC-1155') {
-            // For ERC-1155, always use count instead of balance
-            groupedByContract.set(contractKey, { ...token, balance: 1 });
-            erc1155TokenCounts.set(contractKey, 1);
-          } else {
-            groupedByContract.set(contractKey, { ...token });
-          }
-        }
-      });
-
-      // Convert back to array
-      const groupedResults = Array.from(groupedByContract.values());
-      const filteredResults = groupedResults.filter((token) => {
-        const tokenId = `${token.contractAddress?.toLowerCase() || ''}-${
-          activeNetwork.chainId
-        }`;
-        return (
-          !importedAssetIds.has(tokenId) || recentlyImportedIds.has(tokenId)
-        );
+      // Filter out already imported tokens
+      const filteredResults = results.filter((token) => {
+        // Match the ID format used in getUserOwnedTokens
+        const tokenId = token.id; // Use the ID directly from the API response
+        return !importedAssetIds.has(tokenId);
       });
 
       setOwnedTokens(filteredResults);
@@ -175,7 +143,6 @@ export const ImportToken: React.FC = () => {
   }, [
     activeAccount?.address,
     importedAssetIds,
-    recentlyImportedIds,
     controllerEmitter,
     alert,
     t,
@@ -257,7 +224,6 @@ export const ImportToken: React.FC = () => {
     controllerEmitter,
     activeAccountAssets,
     activeNetwork.chainId,
-    recentlyImportedIds,
   ]);
 
   // Handle custom contract input change
@@ -268,6 +234,57 @@ export const ImportToken: React.FC = () => {
       setCustomTokenDetails(null);
     }
   }, [deferredCustomAddress]);
+
+  // Verify ERC1155 token ID balance
+  const verifyERC1155TokenId = useCallback(
+    async (tokenId: string) => {
+      if (!customTokenDetails || !activeAccount.address || !tokenId.trim()) {
+        setVerifiedTokenBalance(null);
+        return;
+      }
+
+      if (customTokenDetails.tokenStandard !== 'ERC-1155') {
+        return;
+      }
+
+      setIsVerifyingTokenId(true);
+
+      try {
+        const result = (await controllerEmitter(
+          ['wallet', 'verifyERC1155Ownership'],
+          [customTokenDetails.contractAddress, activeAccount.address, [tokenId]]
+        )) as { balance: number; tokenId: string; verified: boolean }[];
+
+        if (result && result.length > 0) {
+          const tokenInfo = result[0];
+          if (tokenInfo.verified) {
+            // Token ID format is valid - set balance even if it's 0
+            setVerifiedTokenBalance(tokenInfo.balance);
+          } else {
+            // Token ID format is invalid or contract call failed
+            setVerifiedTokenBalance(-1);
+          }
+        } else {
+          // No result - set to -1
+          setVerifiedTokenBalance(-1);
+        }
+      } catch (error) {
+        console.error('Error verifying token ID:', error);
+        // Set to -1 to indicate error/invalid tokenId
+        setVerifiedTokenBalance(-1);
+      } finally {
+        setIsVerifyingTokenId(false);
+      }
+    },
+    [customTokenDetails, activeAccount.address, controllerEmitter]
+  );
+
+  // Verify token ID when it changes
+  useEffect(() => {
+    if (customTokenDetails?.tokenStandard === 'ERC-1155' && deferredTokenId) {
+      verifyERC1155TokenId(deferredTokenId);
+    }
+  }, [customTokenDetails, deferredTokenId, verifyERC1155TokenId]);
 
   // Convert token data to ImportableAsset format
   const convertToImportableAssets = useCallback(
@@ -291,8 +308,18 @@ export const ImportToken: React.FC = () => {
         const isNft = isSearchResult
           ? ['ERC-721', 'ERC-1155'].includes(tokenStandard || '') // For API results, derive from tokenStandard
           : (token as ITokenDetails).isNft || false; // For ITokenDetails, use the existing field
+        // Generate appropriate ID format based on token standard
+        const baseId = `${normalizedAddress}-${activeNetwork.chainId}`;
+        const tokenId = isSearchResult
+          ? (token as ITokenSearchResult).tokenId
+          : (token as any).tokenId; // For custom tokens, tokenId is added dynamically
+        const id =
+          tokenStandard === 'ERC-1155' && tokenId
+            ? `${baseId}-${tokenId}`
+            : baseId;
+
         return {
-          id: `${normalizedAddress}-${activeNetwork.chainId}`, // Keep the contractAddress-chainId format
+          id,
           symbol: token.symbol,
           name: token.name, // Keep names intact - they can have spaces
           balance: token.balance || 0,
@@ -302,6 +329,8 @@ export const ImportToken: React.FC = () => {
           chainId: activeNetwork.chainId,
           tokenStandard,
           isNft,
+          // Preserve tokenId for ERC-1155 tokens from search results or details
+          ...(tokenId && { tokenId }),
           // Enhanced data will be fetched in asset details if needed
         };
       }),
@@ -309,88 +338,125 @@ export const ImportToken: React.FC = () => {
   );
 
   // Handle import
-  const handleImport = async (asset: any) => {
-    setCurrentlyImporting(asset.id);
+  const handleImport = useCallback(
+    async (asset: any) => {
+      setCurrentlyImporting(asset.id);
 
-    try {
-      let tokenLogo = asset.logo || PaliLogo;
+      try {
+        let tokenLogo = asset.logo || PaliLogo;
 
-      // If token doesn't have a logo or is using default Pali logo, try to fetch from CoinGecko
-      if (!asset.logo || asset.logo === PaliLogo) {
-        try {
-          // Add to fetching logos set for UI feedback
-          setFetchingLogos((prev) => new Set(prev).add(asset.id));
-
-          console.log(
-            `[ImportToken] Fetching CoinGecko data for token without logo: ${asset.contractAddress}`
-          );
-
-          const enhancedDetails = (await controllerEmitter(
-            ['wallet', 'getOnlyMarketData'],
-            [asset.contractAddress]
-          )) as any;
-
-          if (enhancedDetails?.image) {
-            // Use CoinGecko image if available
-            tokenLogo =
-              enhancedDetails.image?.large ||
-              enhancedDetails.image?.small ||
-              enhancedDetails.image?.thumb ||
-              enhancedDetails.image ||
-              PaliLogo;
+        // If token doesn't have a logo or is using default Pali logo, try to fetch from CoinGecko
+        if (!asset.logo || asset.logo === PaliLogo) {
+          try {
+            // Add to fetching logos set for UI feedback
+            setFetchingLogos((prev) => new Set(prev).add(asset.id));
 
             console.log(
-              `[ImportToken] Successfully fetched CoinGecko logo for ${asset.symbol}`
+              `[ImportToken] Fetching CoinGecko data for token without logo: ${asset.contractAddress}`
             );
-          } else {
+
+            const enhancedDetails = (await controllerEmitter(
+              ['wallet', 'getOnlyMarketData'],
+              [asset.contractAddress]
+            )) as any;
+
+            if (enhancedDetails?.image) {
+              // Use CoinGecko image if available
+              tokenLogo =
+                enhancedDetails.image?.large ||
+                enhancedDetails.image?.small ||
+                enhancedDetails.image?.thumb ||
+                enhancedDetails.image ||
+                PaliLogo;
+
+              console.log(
+                `[ImportToken] Successfully fetched CoinGecko logo for ${asset.symbol}`
+              );
+            } else {
+              console.log(
+                `[ImportToken] No CoinGecko logo found for ${asset.symbol}, using default`
+              );
+            }
+          } catch (logoError) {
             console.log(
-              `[ImportToken] No CoinGecko logo found for ${asset.symbol}, using default`
+              `[ImportToken] Failed to fetch CoinGecko logo for ${asset.symbol}:`,
+              logoError
             );
+            // Continue with default logo
+          } finally {
+            // Remove from fetching logos set
+            setFetchingLogos((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(asset.id);
+              return newSet;
+            });
           }
-        } catch (logoError) {
-          console.log(
-            `[ImportToken] Failed to fetch CoinGecko logo for ${asset.symbol}:`,
-            logoError
-          );
-          // Continue with default logo
-        } finally {
-          // Remove from fetching logos set
-          setFetchingLogos((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(asset.id);
-            return newSet;
-          });
         }
+
+        // For ERC1155, require tokenId and use verified balance
+        // For owned tokens, tokenId comes from asset. For custom tokens, it comes from customTokenId
+        const tokenId = activeTab === 'custom' ? customTokenId : asset.tokenId;
+
+        if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
+          alert.error(t('tokens.tokenIdRequired'));
+          setCurrentlyImporting(null);
+          return;
+        }
+
+        // For custom ERC-1155 tokens, check if tokenId format is valid
+        if (
+          asset.tokenStandard === 'ERC-1155' &&
+          activeTab === 'custom' &&
+          verifiedTokenBalance === -1
+        ) {
+          alert.error(t('tokens.invalidTokenId'));
+          setCurrentlyImporting(null);
+          return;
+        }
+
+        // Allow adding ERC-1155 tokens even with 0 balance (but not invalid ones)
+
+        const tokenToSave: ITokenEthProps = {
+          tokenSymbol: asset.symbol.toUpperCase(),
+          contractAddress: asset.contractAddress,
+          decimals: asset.decimals || 18,
+          isNft:
+            asset.isNft ??
+            ['ERC-721', 'ERC-1155'].includes(asset.tokenStandard || 'ERC-20'),
+          balance:
+            asset.tokenStandard === 'ERC-1155' && activeTab === 'custom'
+              ? verifiedTokenBalance ?? 0 // Use verified balance for custom ERC-1155 tokens
+              : asset.balance || 0, // Use asset balance for owned tokens or non-ERC-1155
+          chainId: activeNetwork.chainId,
+          name: asset.name || asset.symbol,
+          logo: tokenLogo,
+          tokenStandard: asset.tokenStandard || 'ERC-20',
+          ...(asset.tokenStandard === 'ERC-1155' && tokenId ? { tokenId } : {}),
+        };
+
+        await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
+
+        // Show success alert
+        alert.success(
+          t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
+        );
+      } catch (error: any) {
+        console.error('Import error:', error);
+        alert.error(error.message || t('tokens.tokenNotAdded'));
+      } finally {
+        setCurrentlyImporting(null);
       }
-
-      const tokenToSave: ITokenEthProps = {
-        tokenSymbol: asset.symbol.toUpperCase(),
-        contractAddress: asset.contractAddress,
-        decimals: asset.decimals || 18,
-        isNft: asset.isNft || false,
-        balance: asset.balance || 0,
-        chainId: activeNetwork.chainId,
-        name: asset.name || asset.symbol,
-        logo: tokenLogo,
-        tokenStandard: asset.tokenStandard || 'ERC-20',
-      };
-
-      await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
-
-      // Add to recently imported for immediate UI feedback - use the full ID format
-      setRecentlyImportedIds((prev) => new Set(prev).add(asset.id));
-
-      // Show success alert
-      alert.success(
-        t('tokens.hasBeenAddedToYourWallet', { token: asset.symbol })
-      );
-    } catch (error) {
-      console.error('Import error:', error);
-      alert.error(error.message || t('tokens.tokenNotAdded'));
-    } finally {
-      setCurrentlyImporting(null);
-    }
-  };
+    },
+    [
+      activeTab,
+      activeNetwork.chainId,
+      t,
+      alert,
+      customTokenId,
+      verifiedTokenBalance,
+      currentlyImporting,
+    ]
+  );
 
   // Update URL when tab changes
   const updateTabInUrl = (tab: string) => {
@@ -410,29 +476,38 @@ export const ImportToken: React.FC = () => {
   }, [searchParams]);
 
   // Handle details click with navigation context
-  const handleDetailsClick = (asset: any) => {
-    // Prepare component state to preserve
-    const state = {
+  const handleDetailsClick = useCallback(
+    (asset: any) => {
+      // Prepare component state to preserve
+      const state = {
+        customContractAddress,
+        customTokenDetails,
+      };
+
+      const returnContext = {
+        ...createNavigationContext('/tokens/add', activeTab, state),
+        // Include existing return context to make it recursive
+        returnContext: location.state?.returnContext,
+      };
+
+      navigateWithContext(
+        navigate,
+        '/home/details',
+        {
+          ...asset,
+          isImportPreview: true,
+        },
+        returnContext
+      );
+    },
+    [
+      activeTab,
       customContractAddress,
       customTokenDetails,
-    };
-
-    const returnContext = {
-      ...createNavigationContext('/tokens/add', activeTab, state),
-      // Include existing return context to make it recursive
-      returnContext: location.state?.returnContext,
-    };
-
-    navigateWithContext(
+      location.state?.returnContext,
       navigate,
-      '/home/details',
-      {
-        ...asset,
-        isImportPreview: true,
-      },
-      returnContext
-    );
-  };
+    ]
+  );
 
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
@@ -441,6 +516,8 @@ export const ImportToken: React.FC = () => {
     if (tab === 'custom') {
       setCustomContractAddress('');
       setCustomTokenDetails(null);
+      setCustomTokenId('');
+      setVerifiedTokenBalance(null);
     }
   };
 
@@ -450,11 +527,35 @@ export const ImportToken: React.FC = () => {
     [ownedTokens, convertToImportableAssets]
   );
 
-  const customAssetsForList = useMemo(
-    () =>
-      customTokenDetails ? convertToImportableAssets([customTokenDetails]) : [],
-    [customTokenDetails, convertToImportableAssets]
-  );
+  const customAssetsForList = useMemo(() => {
+    if (!customTokenDetails) return [];
+
+    // For ERC-1155, don't show tokens with invalid tokenId formats
+    if (
+      customTokenDetails.tokenStandard === 'ERC-1155' &&
+      verifiedTokenBalance === -1
+    ) {
+      return [];
+    }
+
+    // For ERC-1155, use verified balance and tokenId if available
+    const tokenWithCorrectBalance =
+      customTokenDetails.tokenStandard === 'ERC-1155' &&
+      verifiedTokenBalance !== null
+        ? {
+            ...customTokenDetails,
+            balance: verifiedTokenBalance,
+            ...(customTokenId && { tokenId: customTokenId }),
+          }
+        : customTokenDetails;
+
+    return convertToImportableAssets([tokenWithCorrectBalance]);
+  }, [
+    customTokenDetails,
+    convertToImportableAssets,
+    verifiedTokenBalance,
+    customTokenId,
+  ]);
 
   return (
     <div className="flex flex-col h-full bg-bkg-3 text-brand-white font-poppins">
@@ -489,6 +590,7 @@ export const ImportToken: React.FC = () => {
       <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
         {activeTab === 'owned' ? (
           <ImportableAssetsList
+            key={`owned-${currentlyImporting || 'none'}`}
             assets={ownedAssetsForList}
             isLoading={isLoadingOwned}
             onImport={handleImport}
@@ -524,9 +626,61 @@ export const ImportToken: React.FC = () => {
               </div>
             </div>
 
+            {/* Token ID Input for ERC-1155 */}
+            {customTokenDetails?.tokenStandard === 'ERC-1155' && (
+              <div className="relative max-w-lg mx-auto">
+                <input
+                  className="w-full h-12 px-6 pr-14 bg-brand-blue800 border border-bkg-white200/30 
+                              rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
+                              focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
+                              transition-all duration-200"
+                  placeholder={t('send.enterTokenId')}
+                  value={customTokenId}
+                  onChange={(e) => setCustomTokenId(e.target.value)}
+                />
+                <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
+                  {isVerifyingTokenId ? (
+                    <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
+                  ) : verifiedTokenBalance !== null && customTokenId ? (
+                    verifiedTokenBalance >= 0 ? (
+                      <CheckCircleOutlined
+                        className={
+                          verifiedTokenBalance === 0
+                            ? 'text-brand-gray200 text-sm'
+                            : 'text-warning-success text-sm'
+                        }
+                        title={
+                          verifiedTokenBalance === 0
+                            ? `${t('tokens.balanceForTokenId', {
+                                balance: 0,
+                              })} ${t('tokens.verifyTokenExists')}`
+                            : t('tokens.balanceForTokenId', {
+                                balance: verifiedTokenBalance,
+                              })
+                        }
+                      />
+                    ) : (
+                      <CloseCircleOutlined
+                        className="text-warning-error text-sm"
+                        title="Invalid token ID format"
+                      />
+                    )
+                  ) : null}
+                </div>
+              </div>
+            )}
+            {customTokenDetails?.tokenStandard === 'ERC-1155' &&
+              customTokenId &&
+              verifiedTokenBalance === 0 && (
+                <p className="text-xs text-brand-gray200 mt-1 px-5">
+                  {t('tokens.erc1155ZeroBalanceNote')}
+                </p>
+              )}
+
             {/* Custom token details */}
             {customTokenDetails && (
               <ImportableAssetsList
+                key={`custom-${currentlyImporting || 'none'}`}
                 assets={customAssetsForList}
                 isLoading={false}
                 onImport={handleImport}

@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { Block } from '@ethersproject/providers';
 
 import store from 'state/store';
 import { INetworkType } from 'types/network';
@@ -19,9 +19,7 @@ export const isActiveNetwork = (chain: INetworkType, chainId: number) => {
 export const networkChain = () =>
   getNetworkChain(store.getState().vault.isBitcoinBased);
 
-export const verifyNetworkEIP1559Compatibility = async (
-  stateBlock?: ethers.providers.Block
-) => {
+export const verifyNetworkEIP1559Compatibility = async (stateBlock?: Block) => {
   try {
     // We should always have a block from state
     // Components are updated to only call this when currentBlock is available

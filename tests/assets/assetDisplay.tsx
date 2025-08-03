@@ -51,7 +51,9 @@ describe('Asset Display Components - Comprehensive Testing', () => {
     it('should validate token ID format', () => {
       const token = mockErc20Tokens[0];
       // Verify ID follows contractAddress-chainId format
-      expect(token.id).toBe(`${token.contractAddress}-${token.chainId}`);
+      expect(token.id).toBe(
+        `${token.contractAddress.toLowerCase()}-${token.chainId}`
+      );
       expect(token.id).toMatch(/^0x[a-fA-F0-9]{40}-\d+$/);
     });
   });

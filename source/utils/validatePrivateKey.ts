@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { Wallet } from '@ethersproject/wallet';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
@@ -14,7 +14,7 @@ export const validatePrivateKeyValue = async (
       // Normalize the private key by adding '0x' prefix if missing
       const normalizedKey =
         privKey.slice(0, 2) === '0x' ? privKey : `0x${privKey}`;
-      new ethers.Wallet(normalizedKey);
+      new Wallet(normalizedKey);
       return true;
     } catch (error) {
       return false;

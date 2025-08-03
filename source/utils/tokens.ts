@@ -33,36 +33,26 @@ export const getTokenLogo = (
  * @param includeBorder - Whether to include border classes (default: false)
  * @returns CSS classes for the token type badge
  */
-export const getTokenTypeBadgeColor = (
-  type: string | undefined,
-  includeBorder = false
-): string => {
-  const borderSuffix = includeBorder ? ' border-blue-400' : '';
-  const borderSuffixPurple = includeBorder ? ' border-purple-400' : '';
-  const borderSuffixYellow = includeBorder ? ' border-yellow-400' : '';
-  const borderSuffixGreen = includeBorder ? ' border-green-400' : '';
-  const borderSuffixOrange = includeBorder ? ' border-orange-400' : '';
-  const borderSuffixGray = includeBorder ? ' border-gray-400' : '';
-
+export const getTokenTypeBadgeColor = (type: string | undefined): string => {
   switch (type?.toLowerCase()) {
     // EVM Token Standards
     case 'erc-20':
-      return `bg-blue-500 text-white${borderSuffix}`;
+      return `bg-blue-500 bg-opacity-80 text-white`;
     case 'erc-721':
-      return `bg-purple-500 text-white${borderSuffixPurple}`;
+      return `bg-purple-500 bg-opacity-80 text-white`;
     case 'erc-1155':
-      return `bg-yellow-500 text-white${borderSuffixYellow}`;
+      return `bg-yellow-500 bg-opacity-80 text-white`;
     case 'erc-777':
-      return `bg-green-500 text-white${borderSuffixGreen}`;
+      return `bg-green-500 bg-opacity-80 text-white`;
     case 'erc-4626':
-      return `bg-orange-500 text-white${borderSuffixOrange}`;
+      return `bg-orange-500 bg-opacity-80 text-white`;
 
     // Syscoin Token Types
     case 'sptallocated':
-      return `bg-blue-500 text-white${borderSuffix}`;
+      return `bg-blue-500 bg-opacity-80 text-white`;
 
     // Default
     default:
-      return `bg-gray-500 text-white${borderSuffixGray}`;
+      return `bg-gray-500 bg-opacity-80 text-white`;
   }
 };

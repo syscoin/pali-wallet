@@ -1,5 +1,5 @@
 // formatTransactionValue - chain details should be passed from the frontend
-import { ethers } from 'ethers';
+import { formatEther } from '@ethersproject/units';
 
 import { IGetFiatAmount } from 'hooks/index';
 
@@ -13,7 +13,7 @@ export const formatTransactionValue = (
   decimals?: number
 ): { crypto: string; formattedFiatAmount: string } => {
   try {
-    const ethValue = ethers.utils.formatEther(transactionValue);
+    const ethValue = formatEther(transactionValue);
     const fiatWithDecimals = formatWithDecimals(ethValue, decimals || 2);
 
     const formattedFiatAmount = getFiatAmount(

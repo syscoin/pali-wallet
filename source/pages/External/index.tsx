@@ -22,6 +22,9 @@ import 'assets/styles/custom-import-token-input.css';
 import 'assets/fonts/index.css';
 import 'assets/styles/custom-send-utxo-input.css';
 
+// Initialize i18n for external pages
+import 'utils/i18n';
+
 import External from './External';
 
 const externalRootElement = document.getElementById('external-root');

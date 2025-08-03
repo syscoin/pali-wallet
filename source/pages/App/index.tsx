@@ -24,6 +24,9 @@ import { ToastContainer } from 'react-toastify';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
+// Initialize i18n for the app
+import 'utils/i18n';
+
 import App from './App';
 
 // Make this file a module to satisfy TypeScript's isolatedModules

@@ -17,7 +17,6 @@ import {
 import { IDAppController } from 'types/controllers';
 import { INetwork } from 'types/network';
 import {
-  ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_UTXO_MAINNET_NETWORK,
   CHAIN_IDS,
   PALI_NETWORKS_STATE,
@@ -76,20 +75,6 @@ const MasterController = (
     // Now safely check for specific networks
     const globalNetworks = externalStore.getState().vaultGlobal.networks;
 
-    // Only add missing default networks, don't overwrite existing ones
-    if (
-      !globalNetworks ||
-      !globalNetworks[TransactionsType.Ethereum] ||
-      !globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ROLLUX_MAINNET]
-    ) {
-      // Only add this specific network if missing, don't overwrite entire state
-      externalStore.dispatch(
-        setNetwork({
-          network: ROLLUX_DEFAULT_NETWORK.network,
-        })
-      );
-    }
-
     const currentRpcSysUtxoMainnet =
       globalNetworks &&
       globalNetworks[TransactionsType.Syscoin] &&
@@ -119,24 +104,26 @@ const MasterController = (
       externalStore.dispatch(setActiveNetwork(SYSCOIN_UTXO_MAINNET_NETWORK));
     }
 
-    const isNetworkOldState =
-      (globalNetworks &&
-        globalNetworks[TransactionsType.Ethereum] &&
-        globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ETHEREUM_MAINNET]
-          ?.default) ??
-      false;
-
-    if (isNetworkOldState) {
-      // Only update default networks individually, preserve custom ones
-      Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
-        externalStore.dispatch(
-          setNetwork({
-            network: network as INetwork,
-            isEdit: true, // Mark as edit to preserve existing custom networks
-          })
-        );
-      });
-    }
+    // Migration: Add any missing default networks from PALI_NETWORKS_STATE
+    // This only adds networks that don't exist, doesn't overwrite existing ones
+    Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(
+      ([chainId, network]) => {
+        const chainIdNum = Number(chainId);
+        if (
+          network.default === true &&
+          (!globalNetworks ||
+            !globalNetworks[TransactionsType.Ethereum] ||
+            !globalNetworks[TransactionsType.Ethereum][chainIdNum])
+        ) {
+          // Network is missing, add it
+          externalStore.dispatch(
+            setNetwork({
+              network: network as INetwork,
+            })
+          );
+        }
+      }
+    );
 
     if (externalStore.getState().vault?.accounts?.Ledger === undefined) {
       externalStore.dispatch(

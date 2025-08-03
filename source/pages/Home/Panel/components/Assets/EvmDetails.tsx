@@ -516,7 +516,7 @@ export const EvmAssetDetails = ({
                 </span>
                 {(isNft || tokenStandard !== 'ERC-20') && (
                   <span
-                    className={`px-2 py-1 bg-opacity-80 text-xs rounded ${getTokenTypeBadgeColor(
+                    className={`px-2 py-1 bg-opacity-80 text-xs rounded border ${getTokenTypeBadgeColor(
                       tokenStandard
                     )}`}
                   >
@@ -524,6 +524,17 @@ export const EvmAssetDetails = ({
                   </span>
                 )}
               </div>
+              {/* Display tokenId for ERC-1155 tokens */}
+              {is1155 && currentAsset.tokenId && (
+                <div className="text-[10px] text-brand-gray300 flex items-center">
+                  <span>
+                    #
+                    {currentAsset.tokenId.length > 20
+                      ? ellipsis(currentAsset.tokenId, 12, 8)
+                      : currentAsset.tokenId}
+                  </span>
+                </div>
+              )}
               {/* Only show full name if it's meaningfully different from symbol */}
               {(() => {
                 const symbol =
@@ -581,7 +592,7 @@ export const EvmAssetDetails = ({
                 <p className="font-normal text-xs">
                   {t('settings.contractAddress')}
                 </p>
-                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                <div className="flex items-center font-normal gap-x-1.5 text-xs">
                   <span className="text-brand-white">
                     {ellipsis(currentAsset.contractAddress)}
                   </span>
@@ -592,7 +603,7 @@ export const EvmAssetDetails = ({
                     color="text-brand-white"
                     onClick={() => copy(currentAsset.contractAddress ?? '')}
                   />
-                </p>
+                </div>
               </li>
             </div>
           )}
@@ -607,7 +618,7 @@ export const EvmAssetDetails = ({
                 <p className="font-normal text-xs">
                   {t('settings.contractAddress')}
                 </p>
-                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                <div className="flex items-center font-normal gap-x-1.5 text-xs">
                   <span className="text-brand-white">
                     {ellipsis(currentAsset.contractAddress)}
                   </span>
@@ -618,7 +629,7 @@ export const EvmAssetDetails = ({
                     color="text-brand-white"
                     onClick={() => copy(currentAsset.contractAddress ?? '')}
                   />
-                </p>
+                </div>
               </li>
             </div>
           )}

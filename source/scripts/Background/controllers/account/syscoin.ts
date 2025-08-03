@@ -75,7 +75,7 @@ const SysAccountController = (
         asset.chainId === activeNetwork.chainId
     );
 
-    if (tokenExists) throw new Error('Token already exists on this network');
+    if (tokenExists) throw new Error('Token already exists');
 
     // Syscoin 5 no longer uses pubData field
     const description = token.description || '';

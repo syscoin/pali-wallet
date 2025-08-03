@@ -1,4 +1,4 @@
-import { BigNumber } from 'ethers';
+import { BigNumber } from '@ethersproject/bignumber';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';

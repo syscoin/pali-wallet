@@ -2,8 +2,8 @@
 jest.mock('../../source/state/store');
 jest.mock('@sidhujag/sysweb3-utils');
 
-// Mock ethers with proper BigNumber implementation
-jest.mock('ethers', () => ({
+// Mock individual ethers packages
+jest.mock('@ethersproject/bignumber', () => ({
   BigNumber: {
     from: (value: string) => ({
       toString: () => {
@@ -21,37 +21,39 @@ jest.mock('ethers', () => ({
       _hex: value,
     }),
   },
-  ethers: {
-    utils: {
-      parseEther: (value: string) => ({
-        _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
-      }),
-      parseUnits: (value: string, unit: string | number) => {
-        const decimals =
-          typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
-        return {
-          _hex:
-            '0x' + (parseFloat(value) * Math.pow(10, decimals)).toString(16),
-        };
-      },
-      formatUnits: (value: any, unit: string | number) => {
-        const decimals =
-          typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
-        const num = BigInt(value._hex || value);
-        return (Number(num) / Math.pow(10, decimals)).toString();
-      },
-    },
-    Contract: jest.fn(),
-    providers: {
-      JsonRpcProvider: jest.fn(),
-    },
+}));
+
+jest.mock('@ethersproject/units', () => ({
+  parseEther: (value: string) => ({
+    _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
+  }),
+  parseUnits: (value: string, unit: string | number) => {
+    const decimals =
+      typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
+    return {
+      _hex: '0x' + (parseFloat(value) * Math.pow(10, decimals)).toString(16),
+    };
   },
+  formatUnits: (value: any, unit: string | number) => {
+    const decimals =
+      typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
+    const num = BigInt(value._hex || value);
+    return (Number(num) / Math.pow(10, decimals)).toString();
+  },
+}));
+
+jest.mock('@ethersproject/contracts', () => ({
+  Contract: jest.fn(),
+}));
+
+jest.mock('@ethersproject/providers', () => ({
+  JsonRpcProvider: jest.fn(),
 }));
 
 import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 // Import the mocked BigNumber
-const { BigNumber } = jest.requireMock('ethers');
+const { BigNumber } = jest.requireMock('@ethersproject/bignumber');
 
 // Import types from actual source
 import { ITokenEthProps } from '../../source/types/tokens';
@@ -632,10 +634,14 @@ describe('Asset Management Comprehensive Test Suite', () => {
     it('should validate token ID format consistency', () => {
       // Test that token IDs follow contractAddress-chainId format
       expect(mockErc20Token.id).toBe(
-        `${mockErc20Token.contractAddress}-${mockErc20Token.chainId}`
+        `${mockErc20Token.contractAddress.toLowerCase()}-${
+          mockErc20Token.chainId
+        }`
       );
       expect(mockNftCollection.id).toBe(
-        `${mockNftCollection.contractAddress}-${mockNftCollection.chainId}`
+        `${mockNftCollection.contractAddress.toLowerCase()}-${
+          mockNftCollection.chainId
+        }`
       );
 
       // Test regex pattern for ID format

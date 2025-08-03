@@ -1,4 +1,3 @@
-import uniqueId from 'lodash/uniqueId';
 import React, {
   Fragment,
   useCallback,
@@ -252,7 +251,7 @@ export const TransactionsList = ({
 
     return (
       tx[blocktime] && (
-        <Fragment key={uniqueId(tx[txid])}>
+        <Fragment key={tx[txid]}>
           {isShowedGroupBar(tx, idx) && (
             <li className="my-3 text-center text-sm bg-bkg-1">
               {formatDate(new Date(tx[blocktime] * 1000).toDateString())}

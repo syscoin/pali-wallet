@@ -1,3 +1,4 @@
+import { Contract } from '@ethersproject/contracts';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import { retryableFetch } from '@sidhujag/sysweb3-network';
@@ -9,7 +10,6 @@ import {
   getERC721StandardBalance,
 } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
-import { ethers } from 'ethers';
 import isEmpty from 'lodash/isEmpty';
 
 import { BatchBalanceController } from '../balances/BatchBalanceController';
@@ -144,8 +144,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
         const tokenType = token.type || 'ERC-20';
         const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
 
+        // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
+        const tokenId =
+          tokenType === 'ERC-1155' && token.id ? token.id : undefined;
+        const uniqueId = tokenId
+          ? `${token.contractAddress.toLowerCase()}-${
+              activeNetwork.chainId
+            }-${tokenId}`
+          : `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`;
+
         return {
-          id: `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
+          id: uniqueId,
           symbol: cleanTokenSymbol(token.symbol || (isNft ? 'NFT' : 'Unknown')),
           name: token.name || (isNft ? 'NFT Collection' : 'Unknown Token'), // Keep names intact - they can have spaces
           contractAddress: token.contractAddress,
@@ -155,6 +164,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
               Math.pow(10, parseInt(token.decimals) || 18),
           decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
           tokenStandard: tokenType,
+          ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
         };
       });
 
@@ -194,11 +204,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         'function asset() view returns (address)',
       ];
 
-      const contract = new ethers.Contract(
-        contractAddress,
-        erc20Abi,
-        w3Provider
-      );
+      const contract = new Contract(contractAddress, erc20Abi, w3Provider);
 
       // Make all calls in parallel - this is 4 ETH calls total
       const [name, symbol, decimals, balanceRaw] = await Promise.all([
@@ -473,56 +479,27 @@ const EvmAssetsController = (): IEvmAssetsController => {
       const ownedTokens = await getUserOwnedTokens(account.address);
 
       // Create a map of owned tokens for quick lookup
+      // For ERC-1155, include tokenId in the key
       const ownedTokensMap = new Map(
-        ownedTokens.map((token) => [token.contractAddress.toLowerCase(), token])
+        ownedTokens.map((token) => {
+          const key =
+            token.tokenStandard === 'ERC-1155' && token.tokenId
+              ? `${token.contractAddress.toLowerCase()}-${token.tokenId}`
+              : token.contractAddress.toLowerCase();
+          return [key, token];
+        })
       );
-
-      // For ERC-1155, count unique token IDs per contract
-      const erc1155TokenCounts = new Map<string, number>();
-      ownedTokens.forEach((token) => {
-        if (token.tokenStandard === 'ERC-1155') {
-          const contractKey = token.contractAddress.toLowerCase();
-          erc1155TokenCounts.set(
-            contractKey,
-            (erc1155TokenCounts.get(contractKey) || 0) + 1
-          );
-        }
-      });
 
       // Update existing assets with API data
       const updatedAssets = await Promise.all(
         currentNetworkAssets.map(async (asset) => {
-          // For ERC-1155 collections, use the count of unique token IDs
-          if (asset.tokenStandard === 'ERC-1155' && asset.isNft) {
-            const tokenCount =
-              erc1155TokenCounts.get(asset.contractAddress.toLowerCase()) || 0;
+          // Create lookup key based on token standard
+          const lookupKey =
+            asset.tokenStandard === 'ERC-1155' && asset.tokenId
+              ? `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`
+              : asset.contractAddress.toLowerCase();
 
-            if (tokenCount > 0) {
-              console.log(
-                `[EvmAssetsController] Updating ERC-1155 collection ${asset.tokenSymbol}: ${tokenCount} unique items`
-              );
-
-              return {
-                ...asset,
-                balance: tokenCount, // Use count of unique token IDs
-              };
-            } else {
-              // No tokens found for this ERC-1155 collection
-              if (isZeroBalance(asset.balance)) {
-                return asset;
-              }
-
-              return {
-                ...asset,
-                balance: 0,
-              };
-            }
-          }
-
-          // For other tokens (ERC-20, ERC-721), use the regular logic
-          const apiToken = ownedTokensMap.get(
-            asset.contractAddress.toLowerCase()
-          );
+          const apiToken = ownedTokensMap.get(lookupKey);
 
           if (apiToken) {
             // Token found in API - update balance
@@ -594,13 +571,82 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Handle NFTs separately (they need different ABI calls)
     let updatedNftAssets: ITokenEthProps[] = [];
     if (nftAssets.length > 0) {
-      // For NFTs, we still need individual calls or skip if ERC-1155
+      // Separate ERC-721 and ERC-1155 tokens for different processing
+      const erc721Assets = nftAssets.filter(
+        (asset) => (asset.tokenStandard || 'ERC-721') === 'ERC-721'
+      );
+      const erc1155Assets = nftAssets.filter(
+        (asset) => asset.tokenStandard === 'ERC-1155'
+      );
+
+      // Process ERC-1155 tokens with batching by contract address
+      const updatedErc1155Assets: ITokenEthProps[] = [];
+      if (erc1155Assets.length > 0) {
+        // Group ERC-1155 tokens by contract address for batch calls
+        const erc1155ByContract = new Map<string, ITokenEthProps[]>();
+        erc1155Assets.forEach((asset) => {
+          if (asset.tokenId) {
+            const contractKey = asset.contractAddress.toLowerCase();
+            if (!erc1155ByContract.has(contractKey)) {
+              erc1155ByContract.set(contractKey, []);
+            }
+            erc1155ByContract.get(contractKey)!.push(asset);
+          } else {
+            console.warn(
+              `[EvmAssetsController] ERC-1155 token ${asset.contractAddress} missing tokenId`
+            );
+            updatedErc1155Assets.push(asset); // Keep unchanged if no tokenId
+          }
+        });
+
+        // Process each contract's tokens in batch
+        for (const [contractAddress, contractAssets] of erc1155ByContract) {
+          try {
+            const tokenIds = contractAssets.map((asset) => asset.tokenId!);
+            const ownershipInfo = await verifyERC1155OwnershipHelper(
+              contractAddress,
+              account.address,
+              tokenIds,
+              w3Provider
+            );
+
+            console.log(
+              `[EvmAssetsController] Batch updated ${ownershipInfo.length} ERC-1155 tokens from ${contractAddress}`
+            );
+
+            // Map results back to assets
+            contractAssets.forEach((asset, index) => {
+              const info = ownershipInfo[index];
+              if (info && info.verified) {
+                updatedErc1155Assets.push({
+                  ...asset,
+                  balance: info.balance,
+                });
+              } else {
+                console.warn(
+                  `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
+                );
+                updatedErc1155Assets.push(asset); // Keep unchanged
+              }
+            });
+          } catch (error) {
+            console.error(
+              `[EvmAssetsController] Error batch updating ERC-1155 tokens from ${contractAddress}:`,
+              error
+            );
+            // Add all assets unchanged on error
+            updatedErc1155Assets.push(...contractAssets);
+          }
+        }
+      }
+
+      // Process ERC-721 tokens individually with queue
       const queue = new Queue(3);
       const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
       let requestCount = 0;
 
-      // Queue each NFT individually - this ensures only 3 run at a time
-      nftAssets.forEach((nftAsset) => {
+      // Queue each ERC-721 NFT individually - this ensures only 3 run at a time
+      erc721Assets.forEach((nftAsset) => {
         queue.execute(async () => {
           // Add progressive delay for each request
           if (requestCount > 0) {
@@ -613,19 +659,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
           }
           requestCount++;
 
-          const nftContractType = nftAsset.tokenStandard || 'ERC-721';
-
-          if (nftContractType === 'ERC-1155') {
-            // ERC-1155 collections cannot be updated via individual calls
-            console.log(
-              `[EvmAssetsController] Skipping ERC-1155 collection ${nftAsset.contractAddress} - requires API`
-            );
-            return nftAsset; // Return unchanged
-          }
-
           // ERC-721: balanceOf(address) returns total count
           const currentAbi = getErc21Abi();
-          const contract = new ethers.Contract(
+          const contract = new Contract(
             nftAsset.contractAddress,
             currentAbi,
             w3Provider
@@ -650,10 +686,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
         });
       });
 
-      const nftResults = await queue.done();
-      updatedNftAssets = nftResults
+      const erc721Results = await queue.done();
+      const updatedErc721Assets = erc721Results
         .filter((result) => result.success)
         .map(({ result }) => result);
+
+      // Combine ERC-721 and ERC-1155 results
+      updatedNftAssets = [...updatedErc1155Assets, ...updatedErc721Assets];
     }
 
     // Combine all updated assets
@@ -692,7 +731,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       'function balanceOf(address) view returns (uint256)',
     ];
 
-    const contract = new ethers.Contract(contractAddress, erc20Abi, w3Provider);
+    const contract = new Contract(contractAddress, erc20Abi, w3Provider);
 
     const [name, symbol, decimals, balance] = await Promise.all([
       contract.name(),
@@ -719,7 +758,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
     // Check cache first - no balance needed, so cache is more effective
-    const cacheKey = `${contractAddress}-${
+    const cacheKey = `${contractAddress.toLowerCase()}-${
       store.getState().vault.activeNetwork.chainId
     }`;
     const cached = tokenDetailsCache.get(cacheKey);
@@ -919,7 +958,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
     // Check cache first for enhanced data
-    const cacheKey = `${contractAddress}-${getCurrentNetworkPlatform()}`;
+    const cacheKey = `${contractAddress.toLowerCase()}-${getCurrentNetworkPlatform()}`;
     const cached = tokenDetailsCache.get(cacheKey);
     const now = Date.now();
 
@@ -1013,7 +1052,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     contractAddress: string
   ): Promise<any | null> => {
     // Check cache first
-    const cacheKey = `${contractAddress}-${getCurrentNetworkPlatform()}-marketonly`;
+    const cacheKey = `${contractAddress.toLowerCase()}-${getCurrentNetworkPlatform()}-marketonly`;
     const cached = tokenDetailsCache.get(cacheKey);
     const now = Date.now();
 
@@ -1286,7 +1325,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         );
 
         // Fallback to manual contract calls
-        const contract = new ethers.Contract(
+        const contract = new Contract(
           contractAddress,
           [
             'function name() view returns (string)',
@@ -1342,7 +1381,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     } else {
       // ERC-1155: Cannot get balance without specific token IDs
       // Need to use basic contract metadata (name/symbol) without balance
-      const contract = new ethers.Contract(
+      const contract = new Contract(
         contractAddress,
         [
           'function name() view returns (string)',

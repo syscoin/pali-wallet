@@ -1,5 +1,5 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
 import InputDataDecoder from 'ethereum-input-data-decoder';
-import { ethers } from 'ethers';
 
 import { ITransactionParams } from 'types/transactions';
 import { retryableFetch } from 'utils/retryableFetch';
@@ -68,7 +68,7 @@ export const detectApprovalType = async (
       if (contractType?.type === 'ERC-721' && methodName === 'approve') {
         // Only special case: if we positively detect ERC-721 AND it's the basic approve method, treat as NFT approval
         // Note: increaseAllowance/decreaseAllowance don't exist for ERC-721, so they're always ERC-20
-        const [to, tokenId] = ethers.utils.defaultAbiCoder.decode(
+        const [to, tokenId] = defaultAbiCoder.decode(
           ['address', 'uint256'],
           '0x' + data.slice(10)
         );
@@ -82,7 +82,7 @@ export const detectApprovalType = async (
       } else {
         // Default to ERC-20 for approve/increaseAllowance/decreaseAllowance(address, uint256) - most common case
         // This includes: ERC-20, ERC-777, unknown tokens, failed detection, etc.
-        const [spender, amount] = ethers.utils.defaultAbiCoder.decode(
+        const [spender, amount] = defaultAbiCoder.decode(
           ['address', 'uint256'],
           '0x' + data.slice(10)
         );
@@ -96,7 +96,7 @@ export const detectApprovalType = async (
       }
     } else if (data.startsWith(APPROVAL_METHOD_SIGNATURES.setApprovalForAll)) {
       // Works for both ERC-721 and ERC-1155
-      const [operator, approved] = ethers.utils.defaultAbiCoder.decode(
+      const [operator, approved] = defaultAbiCoder.decode(
         ['address', 'bool'],
         '0x' + data.slice(10)
       );

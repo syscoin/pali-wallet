@@ -86,7 +86,9 @@ const TokenIconStack = React.memo(
         <div className="flex">
           {visibleTokens.map((token, index) => (
             <div
-              key={token.contractAddress || token.assetGuid || index}
+              key={
+                token.id || token.contractAddress || token.assetGuid || index
+              }
               className="relative"
               style={{
                 marginLeft: index > 0 ? '-8px' : '0',

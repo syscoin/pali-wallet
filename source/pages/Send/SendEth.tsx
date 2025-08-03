@@ -1,6 +1,7 @@
+import { BigNumber } from '@ethersproject/bignumber';
+import { parseEther, parseUnits } from '@ethersproject/units';
 import { Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
-import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
 import React, {
   useEffect,
@@ -28,6 +29,7 @@ import {
   adjustUrl,
   formatFullPrecisionBalance,
   createNavigationContext,
+  getTokenTypeBadgeColor,
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
@@ -59,6 +61,8 @@ export const SendEth = () => {
   const initialNftTokenIds = location.state?.nftTokenIds || [];
   const initialSelectedNftTokenId = location.state?.selectedNftTokenId || null;
   const initialIsMaxSend = location.state?.isMaxSend || false;
+  const initialVerifiedTokenBalance =
+    location.state?.verifiedTokenBalance ?? null;
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenEthProps | null>(
     initialSelectedAsset
@@ -77,7 +81,7 @@ export const SendEth = () => {
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
     number | null
-  >(null);
+  >(initialVerifiedTokenBalance);
   const [verificationError, setVerificationError] = useState<string | null>(
     null
   );
@@ -102,6 +106,7 @@ export const SendEth = () => {
       nftTokenIds,
       selectedNftTokenId,
       isMaxSend,
+      verifiedTokenBalance,
     };
 
     await saveNavigationState(
@@ -110,7 +115,14 @@ export const SendEth = () => {
       state,
       location.state?.returnContext
     );
-  }, [selectedAsset, nftTokenIds, selectedNftTokenId, isMaxSend, location]);
+  }, [
+    selectedAsset,
+    nftTokenIds,
+    selectedNftTokenId,
+    isMaxSend,
+    verifiedTokenBalance,
+    location,
+  ]);
 
   // Update form values ref when they change (no save yet)
   const handleFormValuesChange = useCallback(
@@ -132,7 +144,8 @@ export const SendEth = () => {
       selectedAsset !== null ||
       nftTokenIds.length > 0 ||
       selectedNftTokenId !== null ||
-      isMaxSend !== false
+      isMaxSend !== false ||
+      verifiedTokenBalance !== null
     ) {
       saveCurrentState();
     }
@@ -141,6 +154,7 @@ export const SendEth = () => {
     nftTokenIds,
     selectedNftTokenId,
     isMaxSend,
+    verifiedTokenBalance,
     saveCurrentState,
   ]);
 
@@ -152,6 +166,7 @@ export const SendEth = () => {
       nftTokenIds.length === 0 &&
       selectedNftTokenId === null &&
       isMaxSend === false &&
+      verifiedTokenBalance === null &&
       Object.keys(formValuesRef.current).length === 0
     ) {
       return;
@@ -164,6 +179,7 @@ export const SendEth = () => {
     nftTokenIds,
     selectedNftTokenId,
     isMaxSend,
+    verifiedTokenBalance,
     saveCurrentState,
   ]);
 
@@ -226,40 +242,52 @@ export const SendEth = () => {
           setCachedFeeData(null);
           setIsMaxSend(false);
 
-          // If it's an NFT, fetch token IDs
+          // If it's an NFT, handle based on token standard
           if (getAsset.isNft) {
-            setIsLoadingNftTokenIds(true);
-            // Set amount to 1 for NFTs
-            form.setFieldValue('amount', '1');
-            // Initialize the NFT token ID field with empty string to make it controlled from the start
-            form.setFieldValue('nftTokenId', '');
-            try {
-              const result = (await controllerEmitter(
-                ['wallet', 'fetchNftTokenIds'],
-                [
-                  getAsset.contractAddress,
-                  activeAccount.address,
-                  getAsset.tokenStandard || 'ERC-721',
-                ]
-              )) as { balance: number; tokenId: string }[] & {
-                hasMore?: boolean;
-                requiresManualEntry?: boolean;
-              };
-
-              setNftTokenIds(result || []);
-
-              // Auto-select first token if only one
-              if (result && result.length === 1) {
-                setSelectedNftTokenId(result[0].tokenId);
-                // Also set it in the form
-                form.setFieldValue('nftTokenId', result[0].tokenId);
-              }
-            } catch (error) {
-              console.error('Error loading NFT token IDs:', error);
-              setNftTokenIds([]);
-              alert.error(t('send.errorLoadingNfts'));
-            } finally {
+            if (getAsset.tokenStandard === 'ERC-1155') {
+              // ERC-1155 always has stored tokenId
+              setSelectedNftTokenId(getAsset.tokenId);
+              form.setFieldValue('nftTokenId', getAsset.tokenId);
+              form.setFieldValue('amount', '1');
+              // Set the balance from the stored token (already specific to this tokenId)
+              setVerifiedTokenBalance(getAsset.balance);
+              setNftTokenIds([]); // No need to fetch token IDs
               setIsLoadingNftTokenIds(false);
+            } else {
+              // ERC-721 flow - enumerate token IDs
+              setIsLoadingNftTokenIds(true);
+              // Set amount to 1 for NFTs
+              form.setFieldValue('amount', '1');
+              // Initialize the NFT token ID field with empty string to make it controlled from the start
+              form.setFieldValue('nftTokenId', '');
+              try {
+                const result = (await controllerEmitter(
+                  ['wallet', 'fetchNftTokenIds'],
+                  [
+                    getAsset.contractAddress,
+                    activeAccount.address,
+                    getAsset.tokenStandard || 'ERC-721',
+                  ]
+                )) as { balance: number; tokenId: string }[] & {
+                  hasMore?: boolean;
+                  requiresManualEntry?: boolean;
+                };
+
+                setNftTokenIds(result || []);
+
+                // Auto-select first token if only one
+                if (result && result.length === 1) {
+                  setSelectedNftTokenId(result[0].tokenId);
+                  // Also set it in the form
+                  form.setFieldValue('nftTokenId', result[0].tokenId);
+                }
+              } catch (error) {
+                console.error('Error loading NFT token IDs:', error);
+                setNftTokenIds([]);
+                alert.error(t('send.errorLoadingNfts'));
+              } finally {
+                setIsLoadingNftTokenIds(false);
+              }
             }
           } else {
             setNftTokenIds([]);
@@ -288,6 +316,11 @@ export const SendEth = () => {
 
   const finalSymbolToNextStep = useMemo(() => {
     if (selectedAsset?.isNft) {
+      // For ERC-1155, always use stored tokenId
+      if (selectedAsset?.tokenStandard === 'ERC-1155') {
+        return `#${selectedAsset.tokenId}`;
+      }
+      // For ERC-721, use selected tokenId
       return selectedNftTokenId
         ? `#${selectedNftTokenId}`
         : selectedAsset?.name || 'NFT';
@@ -320,8 +353,8 @@ export const SendEth = () => {
           const balanceEth = String(activeAccount?.balances?.ethereum || 0);
 
           try {
-            const amountBN = ethers.utils.parseEther(values.amount);
-            const balanceBN = ethers.utils.parseEther(balanceEth);
+            const amountBN = parseEther(values.amount);
+            const balanceBN = parseEther(balanceEth);
             isMax = amountBN.eq(balanceBN);
           } catch {
             // If parsing fails, it's not a MAX send
@@ -338,6 +371,7 @@ export const SendEth = () => {
           nftTokenIds,
           selectedNftTokenId,
           isMaxSend: isMax, // Use the calculated isMax value
+          verifiedTokenBalance,
         };
 
         // Create navigation context for returning from confirm
@@ -359,11 +393,11 @@ export const SendEth = () => {
               token: selectedAsset
                 ? {
                     ...selectedAsset,
-                    symbol:
-                      selectedAsset.isNft && values.nftTokenId
-                        ? `#${values.nftTokenId}`
-                        : finalSymbolToNextStep,
-                    tokenId: values.nftTokenId, // Include token ID for NFTs
+                    symbol: finalSymbolToNextStep,
+                    tokenId:
+                      selectedAsset.tokenStandard === 'ERC-1155'
+                        ? selectedAsset.tokenId // For ERC-1155, use the tokenId from the asset itself
+                        : values.nftTokenId, // For ERC-721, use the form field value
                   }
                 : null,
               // Pass cached gas data to avoid recalculation on confirm screen
@@ -549,14 +583,23 @@ export const SendEth = () => {
     form.setFieldValue('amount', fullBalance);
     setIsMaxSend(true);
 
+    // Update the form values ref immediately
+    formValuesRef.current = { ...formValuesRef.current, amount: fullBalance };
+
     // Force validation to run after setting the value
     form.validateFields(['amount']);
+
+    // Save state immediately after MAX is set
+    setTimeout(() => {
+      saveCurrentState();
+    }, 0);
   }, [
     calculateMaxAmount,
     selectedAsset,
     verifiedTokenBalance,
     verifiedERC20Balance,
     form,
+    saveCurrentState,
   ]);
 
   // Verify manually entered NFT token ID
@@ -877,7 +920,7 @@ export const SendEth = () => {
 
                     <Menu.Items
                       as="div"
-                      className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                      className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-56 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
@@ -891,17 +934,23 @@ export const SendEth = () => {
                           onClick={() => handleSelectedAsset('-1')}
                           className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                         >
-                          <p>
-                            {activeNetwork?.currency.toUpperCase() || 'SYS'}
-                          </p>
-                          <small>{t('send.native')}</small>
+                          <div className="flex flex-col items-start flex-1 overflow-hidden">
+                            <p className="truncate max-w-[100px]">
+                              {activeNetwork?.currency.toUpperCase() || 'SYS'}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-500 bg-opacity-80 text-white">
+                              {t('send.native')}
+                            </span>
+                          </div>
                         </button>
                       </Menu.Item>
 
                       {hasAccountAssets &&
                         Object.values(activeAccountAssets.ethereum).map(
                           (item: ITokenEthProps) => (
-                            <div key={item.contractAddress}>
+                            <div key={item.id}>
                               {item.chainId === activeNetwork.chainId ? (
                                 <Menu.Item as="div">
                                   <Menu.Item>
@@ -914,10 +963,47 @@ export const SendEth = () => {
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
-                                      <p>{item.tokenSymbol}</p>
-                                      <small>
-                                        {item.isNft ? 'NFT' : 'Token'}
-                                      </small>
+                                      <div className="flex flex-col items-start flex-1 overflow-hidden">
+                                        <p className="truncate max-w-[100px]">
+                                          {item.tokenSymbol.length > 8
+                                            ? item.tokenSymbol.slice(0, 8) +
+                                              '...'
+                                            : item.tokenSymbol}
+                                        </p>
+                                        {item.isNft && (
+                                          <span className="text-[10px] text-brand-gray200 font-mono">
+                                            {ellipsis(
+                                              item.contractAddress,
+                                              4,
+                                              4
+                                            )}
+                                            {item.tokenStandard ===
+                                              'ERC-1155' &&
+                                              item.tokenId && (
+                                                <>
+                                                  {' '}
+                                                  • #
+                                                  {item.tokenId.length > 8
+                                                    ? ellipsis(
+                                                        item.tokenId,
+                                                        4,
+                                                        3
+                                                      )
+                                                    : item.tokenId}
+                                                </>
+                                              )}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col items-end">
+                                        <span
+                                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getTokenTypeBadgeColor(
+                                            item.tokenStandard || 'ERC-20'
+                                          )}`}
+                                        >
+                                          {item.tokenStandard || 'ERC-20'}
+                                        </span>
+                                      </div>
                                     </button>
                                   </Menu.Item>
                                 </Menu.Item>
@@ -986,7 +1072,7 @@ export const SendEth = () => {
                         let valueBN: BigNumber;
                         try {
                           // Parse the input value to wei for comparison
-                          valueBN = ethers.utils.parseEther(String(value));
+                          valueBN = parseEther(String(value));
                         } catch (e) {
                           // Invalid number format
                           return Promise.reject('');
@@ -1041,11 +1127,11 @@ export const SendEth = () => {
                           }
 
                           try {
-                            const tokenBalanceBN = ethers.utils.parseUnits(
+                            const tokenBalanceBN = parseUnits(
                               String(verifiedERC20Balance),
                               selectedAsset.decimals || 18
                             );
-                            const tokenValueBN = ethers.utils.parseUnits(
+                            const tokenValueBN = parseUnits(
                               String(value),
                               selectedAsset.decimals || 18
                             );
@@ -1077,7 +1163,7 @@ export const SendEth = () => {
                           const balanceEth = String(
                             activeAccount?.balances?.ethereum || 0
                           );
-                          const balanceBN = ethers.utils.parseEther(balanceEth);
+                          const balanceBN = parseEther(balanceEth);
 
                           // First check if amount exceeds total balance
                           if (valueBN.gt(balanceBN)) {
@@ -1114,8 +1200,7 @@ export const SendEth = () => {
                                   activeNetwork.chainId === 570
                                     ? '0.00001'
                                     : '0.001';
-                                estimatedGasCost =
-                                  ethers.utils.parseEther(conservativeFee);
+                                estimatedGasCost = parseEther(conservativeFee);
                               }
 
                               // Check if balance minus amount leaves enough for gas
@@ -1158,16 +1243,11 @@ export const SendEth = () => {
                     type="number"
                     step={
                       selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
+                      selectedAsset?.tokenStandard === 'ERC-721'
                         ? '1'
                         : 'any'
                     }
-                    min={
-                      selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155'
-                        ? '1'
-                        : undefined
-                    }
+                    min={selectedAsset?.isNft ? '1' : undefined}
                     max={
                       selectedAsset?.isNft &&
                       selectedAsset?.tokenStandard === 'ERC-1155' &&
@@ -1205,8 +1285,8 @@ export const SendEth = () => {
                         );
 
                         try {
-                          const inputBN = ethers.utils.parseEther(inputValue);
-                          const balanceBN = ethers.utils.parseEther(balanceEth);
+                          const inputBN = parseEther(inputValue);
+                          const balanceBN = parseEther(balanceEth);
 
                           // Set isMaxSend based on whether value equals balance
                           setIsMaxSend(inputBN.eq(balanceBN));
@@ -1269,147 +1349,140 @@ export const SendEth = () => {
           )}
         </div>
 
-        {/* NFT Token ID Selector */}
-        {selectedAsset?.isNft && (
-          <div className="w-full md:max-w-md">
-            <div className="mb-2">
-              <label className="text-brand-gray200 text-xs">
-                {selectedAsset?.tokenStandard === 'ERC-1155'
-                  ? `${t('send.tokenId')}:`
-                  : t('send.selectNft')}
-              </label>
-            </div>
-
-            {/* Quick select buttons for discovered tokens */}
-            {nftTokenIds.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {nftTokenIds.map((nft) => (
-                  <button
-                    key={nft.tokenId}
-                    type="button"
-                    onClick={() => {
-                      setSelectedNftTokenId(nft.tokenId);
-                      form.setFieldValue('nftTokenId', nft.tokenId);
-                      setVerifiedTokenBalance(nft.balance); // Already verified from enumeration
-                      setVerificationError(null);
-                    }}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                      selectedNftTokenId === nft.tokenId
-                        ? 'bg-brand-royalblue text-white'
-                        : 'bg-fields-input-primary border border-fields-input-border text-brand-gray200 hover:border-brand-royalblue hover:text-white'
-                    }`}
-                  >
-                    #{nft.tokenId}
-                    {nft.balance > 1 && ` (${nft.balance}x)`}
-                  </button>
-                ))}
+        {/* NFT Token ID Selector - Only show for ERC-721 */}
+        {selectedAsset?.isNft &&
+          selectedAsset?.tokenStandard !== 'ERC-1155' && (
+            <div className="w-full md:max-w-md">
+              <div className="mb-2">
+                <label className="text-brand-gray200 text-xs">
+                  {t('send.selectNft')}
+                </label>
               </div>
-            )}
 
-            {/* Manual token ID input */}
-            <div className="sender-custom-input">
-              <Form.Item
-                name="nftTokenId"
-                hasFeedback
-                rules={[
-                  {
-                    required: true,
-                    message: '',
-                  },
-                  {
-                    validator: (_, value) => {
-                      if (!value || value.trim() === '') {
-                        return Promise.reject(
-                          new Error('Token ID is required')
-                        );
-                      }
-                      // Basic validation for token ID format
-                      if (!/^\d+$/.test(value)) {
-                        return Promise.reject(
-                          new Error('Token ID must be a number')
-                        );
-                      }
-                      return Promise.resolve();
-                    },
-                  },
-                ]}
-              >
-                <Input
-                  type="text"
-                  value={form.getFieldValue('nftTokenId') || ''}
-                  placeholder={
-                    isLoadingNftTokenIds
-                      ? t('networkConnection.loadingNfts')
-                      : t('send.enterTokenId')
-                  }
-                  disabled={isLoadingNftTokenIds}
-                  onChange={(e) => handleManualTokenIdChange(e.target.value)}
-                  onBlur={handleFieldBlur}
-                />
-              </Form.Item>
-            </div>
-
-            {/* Verification status display */}
-            {selectedNftTokenId &&
-              !nftTokenIds.find(
-                (nft) => nft.tokenId === selectedNftTokenId
-              ) && (
-                <div className="mt-2">
-                  {isVerifyingTokenId ? (
-                    <p className="text-xs text-brand-royalblue flex items-center justify-center">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      {t('send.verifyingOwnership')}
-                    </p>
-                  ) : verificationError ? (
-                    <p className="text-xs text-red-400 text-center">
-                      ❌ {verificationError}
-                    </p>
-                  ) : verifiedTokenBalance !== null ? (
-                    verifiedTokenBalance > 0 ? (
-                      <p className="text-xs text-green-400 text-center">
-                        ✅ {t('send.youOwnThisToken')}
-                        {selectedAsset?.tokenStandard === 'ERC-1155' &&
-                        verifiedTokenBalance > 1
-                          ? ` (${verifiedTokenBalance} available)`
-                          : ''}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-red-400 text-center">
-                        ❌ {t('send.youDontOwnThisToken')}
-                      </p>
-                    )
-                  ) : null}
+              {/* Quick select buttons for discovered tokens */}
+              {nftTokenIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {nftTokenIds.map((nft) => (
+                    <button
+                      key={nft.tokenId}
+                      type="button"
+                      onClick={() => {
+                        setSelectedNftTokenId(nft.tokenId);
+                        form.setFieldValue('nftTokenId', nft.tokenId);
+                        setVerifiedTokenBalance(nft.balance); // Already verified from enumeration
+                        setVerificationError(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        selectedNftTokenId === nft.tokenId
+                          ? 'bg-brand-royalblue text-white'
+                          : 'bg-fields-input-primary border border-fields-input-border text-brand-gray200 hover:border-brand-royalblue hover:text-white'
+                      }`}
+                    >
+                      #{nft.tokenId}
+                      {nft.balance > 1 && ` (${nft.balance}x)`}
+                    </button>
+                  ))}
                 </div>
               )}
 
-            <p className="text-brand-gray200 text-[10px] mt-1 text-center">
-              {nftTokenIds.length > 0
-                ? t('send.clickTokenOrEnterManually')
-                : selectedAsset?.tokenStandard === 'ERC-1155'
-                ? t('send.erc1155RequiresManualEntry')
-                : t('send.enterNftTokenId')}
-            </p>
-          </div>
-        )}
+              {/* Manual token ID input */}
+              <div className="sender-custom-input">
+                <Form.Item
+                  name="nftTokenId"
+                  hasFeedback
+                  rules={[
+                    {
+                      required: true,
+                      message: '',
+                    },
+                    {
+                      validator: (_, value) => {
+                        if (!value || value.trim() === '') {
+                          return Promise.reject(
+                            new Error(t('tokens.tokenIdIsRequired'))
+                          );
+                        }
+                        // Basic validation for token ID format
+                        if (!/^\d+$/.test(value)) {
+                          return Promise.reject(
+                            new Error(t('tokens.tokenIdMustBeNumber'))
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <Input
+                    type="text"
+                    value={form.getFieldValue('nftTokenId') || ''}
+                    placeholder={
+                      isLoadingNftTokenIds
+                        ? t('networkConnection.loadingNfts')
+                        : t('send.enterTokenId')
+                    }
+                    disabled={isLoadingNftTokenIds}
+                    onChange={(e) => handleManualTokenIdChange(e.target.value)}
+                    onBlur={handleFieldBlur}
+                  />
+                </Form.Item>
+              </div>
+
+              {/* Verification status display */}
+              {selectedNftTokenId &&
+                !nftTokenIds.find(
+                  (nft) => nft.tokenId === selectedNftTokenId
+                ) && (
+                  <div className="mt-2">
+                    {isVerifyingTokenId ? (
+                      <p className="text-xs text-brand-royalblue flex items-center justify-center">
+                        <svg
+                          className="animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue"
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        {t('send.verifyingOwnership')}
+                      </p>
+                    ) : verificationError ? (
+                      <p className="text-xs text-red-400 text-center">
+                        ❌ {verificationError}
+                      </p>
+                    ) : verifiedTokenBalance !== null ? (
+                      verifiedTokenBalance > 0 ? (
+                        <p className="text-xs text-green-400 text-center">
+                          ✅ {t('send.youOwnThisToken')}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-400 text-center">
+                          ❌ {t('send.youDontOwnThisToken')}
+                        </p>
+                      )
+                    ) : null}
+                  </div>
+                )}
+
+              <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+                {nftTokenIds.length > 0
+                  ? t('send.clickTokenOrEnterManually')
+                  : t('send.enterNftTokenId')}
+              </p>
+            </div>
+          )}
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <NeutralButton

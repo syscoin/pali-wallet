@@ -4436,6 +4436,8 @@ class MainController {
         // Normalize to match Enhanced component expectations
         success: isSuccess,
         isError: isSuccess === null ? null : isSuccess ? '0' : '1',
+        // eslint-disable-next-line camelcase
+        txreceipt_status: isSuccess === null ? null : isSuccess ? '1' : '0',
         logs: receipt ? receipt.logs || [] : [], // Actual logs from receipt
         revertReason: null, // Not available from provider
         maxFeePerGas: this.convertHexValue(tx.maxFeePerGas),
@@ -4506,7 +4508,11 @@ class MainController {
     return result;
   }
 
-  public async deleteTokenInfo(tokenToDelete: any, chainId?: number) {
+  public async deleteTokenInfo(
+    tokenToDelete: any,
+    chainId?: number,
+    tokenId?: string
+  ) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
     const currentChainId = chainId ?? activeNetwork.chainId;
     let result;
@@ -4518,7 +4524,8 @@ class MainController {
     ) {
       result = await this.account.eth.deleteTokenInfo(
         tokenToDelete,
-        currentChainId
+        currentChainId,
+        tokenId
       );
     } else {
       // Handle Syscoin tokens (tokenToDelete is assetGuid string)

@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { formatBytes32String } from '@ethersproject/strings';
 
 export const validateTransactionDataValue = (data: string | undefined) => {
   if (!data) return '';
@@ -6,6 +6,6 @@ export const validateTransactionDataValue = (data: string | undefined) => {
   return data.length > 0
     ? data.substring(0, 2) === '0x'
       ? data
-      : ethers.utils.formatBytes32String(data)
+      : formatBytes32String(data)
     : '';
 };

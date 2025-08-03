@@ -7,6 +7,7 @@ export interface ITokenEthProps {
   isNft: boolean;
   logo?: string;
   name?: string;
+  tokenId?: string; // For ERC-1155 tokens, stores the specific tokenId
   tokenStandard?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626';
   tokenSymbol: string;
 }
@@ -76,6 +77,7 @@ export interface ITokenSearchResult {
   name: string;
   priceChange24h?: number;
   symbol: string;
+  tokenId?: string; // For ERC-1155 tokens
   tokenStandard?:
     | 'ERC-20'
     | 'ERC-721'

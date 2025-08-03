@@ -1,4 +1,5 @@
-import { ethers } from 'ethers';
+import { defaultAbiCoder } from '@ethersproject/abi';
+import { id } from '@ethersproject/hash';
 import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -38,16 +39,25 @@ export const getTransactionDisplayInfo = async (
   displaySymbol: string;
   displayValue: number | string;
   hasUnknownDecimals?: boolean;
-  isErc20Transfer: boolean;
+  isErc20Transfer: boolean; // Note: This includes all token transfers (ERC20/721/1155), not just ERC20
   isNft: boolean;
+  tokenId?: string; // Token ID for NFTs
 }> => {
-  const isErc20Tx = isERC20Transfer(tx);
+  const isTokenTx = isTokenTransfer(tx);
 
-  if (isErc20Tx) {
+  if (isTokenTx) {
     // This is an ERC-20/ERC-721/ERC-1155 transfer
-    const tokenValue = getERC20TransferValue(tx);
-    const tokenAddress = tx.to; // The 'to' address is the token contract for ERC20 transfers
-    const actualRecipient = getERC20Recipient(tx); // Extract the actual recipient from input data
+    const isErc1155Tx = isERC1155Transfer(tx);
+    const tokenValue = isErc1155Tx
+      ? getERC1155TransferValue(tx)
+      : getERC20TransferValue(tx);
+    const tokenAddress = tx.to; // The 'to' address is the token contract for token transfers
+    const actualRecipient = isErc1155Tx
+      ? getERC1155Recipient(tx)
+      : getERC20Recipient(tx); // Extract the actual recipient from input data
+
+    // Get token ID for NFTs
+    const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
 
     if (tokenValue && tokenAddress) {
       // First check enhanced cache for this contract address
@@ -56,14 +66,15 @@ export const getTransactionDisplayInfo = async (
         const { symbol, decimals, isNft } = cachedToken;
 
         if (isNft) {
-          // For NFTs, show count instead of formatted value
+          // For NFTs, show count as numeric value (same as ERC20 tokens)
           const nftCount = Number(tokenValue);
           return {
-            displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
+            displayValue: nftCount,
             displaySymbol: symbol.toUpperCase(),
-            isErc20Transfer: true,
+            isErc20Transfer: true, // This includes all token transfers (ERC20/721/1155)
             actualRecipient: actualRecipient || tokenAddress,
             isNft: true,
+            tokenId: tokenId || undefined,
           };
         } else {
           // Regular ERC-20 token with known decimals
@@ -98,14 +109,15 @@ export const getTransactionDisplayInfo = async (
             const decimals = Number(token.decimals) || (isNft ? 0 : 18);
 
             if (isNft) {
-              // For NFTs, show count instead of formatted value
+              // For NFTs, show count as numeric value (same as cached tokens)
               const nftCount = Number(tokenValue);
               return {
-                displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
+                displayValue: nftCount,
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
                 isNft: true,
+                tokenId: tokenId || undefined,
               };
             } else {
               // Regular ERC-20 token
@@ -179,7 +191,7 @@ export const getTransactionDisplayInfo = async (
         displaySymbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
           -4
         )}`,
-        isErc20Transfer: true,
+        isErc20Transfer: true, // This includes all token transfers (ERC20/721/1155)
         actualRecipient: actualRecipient || tokenAddress,
         isNft: false,
         hasUnknownDecimals: true, // Flag that we don't know the decimals
@@ -385,9 +397,10 @@ export const handleUpdateTransaction = async ({
 };
 
 export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
-  const safeTransferFromSelector = ethers.utils
-    .id('safeTransferFrom(address,address,uint256,uint256,bytes)')
-    .slice(0, 10);
+  // ERC1155 uses safeTransferFrom with 5 parameters: from, to, id, amount, data
+  const safeTransferFromSelector = id(
+    'safeTransferFrom(address,address,uint256,uint256,bytes)'
+  ).slice(0, 10);
 
   if (tx?.input) {
     return tx.input.startsWith(safeTransferFromSelector);
@@ -397,17 +410,25 @@ export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
 };
 
 export const isERC20Transfer = (tx: IEvmTransactionResponse) => {
-  const transferSelector = ethers.utils
-    .id('transfer(address,uint256)')
-    .slice(0, 10);
-  const transferFromSelector = ethers.utils
-    .id('transferFrom(address,address,uint256)')
-    .slice(0, 10);
+  // This detects ERC20 and ERC721 transfers (they use the same method signatures)
+  const transferSelector = id('transfer(address,uint256)').slice(0, 10);
+  const transferFromSelector = id(
+    'transferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  // ERC721 also has safeTransferFrom methods
+  const safeTransferFrom3Selector = id(
+    'safeTransferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom4Selector = id(
+    'safeTransferFrom(address,address,uint256,bytes)'
+  ).slice(0, 10);
 
   if (tx?.input) {
     return (
       tx.input.startsWith(transferSelector) ||
-      tx.input.startsWith(transferFromSelector)
+      tx.input.startsWith(transferFromSelector) ||
+      tx.input.startsWith(safeTransferFrom3Selector) ||
+      tx.input.startsWith(safeTransferFrom4Selector)
     );
   }
 
@@ -418,53 +439,134 @@ export const isTokenTransfer = (tx: IEvmTransactionResponse) =>
   isERC20Transfer(tx) || isERC1155Transfer(tx);
 
 export const getERC20TransferValue = (tx: IEvmTransactionResponse) => {
-  const transferMethodSignature = ethers.utils
-    .id('transfer(address,uint256)')
-    .slice(0, 10);
-  const transferFromMethodSignature = ethers.utils
-    .id('transferFrom(address,address,uint256)')
-    .slice(0, 10);
+  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
+  const transferFromMethodSignature = id(
+    'transferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom3Selector = id(
+    'safeTransferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom4Selector = id(
+    'safeTransferFrom(address,address,uint256,bytes)'
+  ).slice(0, 10);
 
   if (tx?.input) {
     if (tx.input.startsWith(transferMethodSignature)) {
-      const decodedInput = ethers.utils.defaultAbiCoder.decode(
+      const decodedInput = defaultAbiCoder.decode(
         ['address', 'uint256'],
         '0x' + tx.input.slice(10)
       );
       return decodedInput[1]; // the second element is the value transferred
     } else if (tx.input.startsWith(transferFromMethodSignature)) {
-      const decodedInput = ethers.utils.defaultAbiCoder.decode(
+      const decodedInput = defaultAbiCoder.decode(
         ['address', 'address', 'uint256'],
         '0x' + tx.input.slice(10)
       );
       return decodedInput[2]; // the third element is the value transferred
+    } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
+      const decodedInput = defaultAbiCoder.decode(
+        ['address', 'address', 'uint256'],
+        '0x' + tx.input.slice(10)
+      );
+      return decodedInput[2]; // the third element is the tokenId (for ERC721)
+    } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
+      const decodedInput = defaultAbiCoder.decode(
+        ['address', 'address', 'uint256', 'bytes'],
+        '0x' + tx.input.slice(10)
+      );
+      return decodedInput[2]; // the third element is the tokenId (for ERC721)
     }
   }
 
   return null; // return null if the transaction is not a token transfer
 };
 
-export const getERC20Recipient = (
+export const getERC721TokenId = (
   tx: IEvmTransactionResponse
 ): string | null => {
-  const transferMethodSignature = ethers.utils
-    .id('transfer(address,uint256)')
-    .slice(0, 10);
-  const transferFromMethodSignature = ethers.utils
-    .id('transferFrom(address,address,uint256)')
-    .slice(0, 10);
+  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
+  const transferFromMethodSignature = id(
+    'transferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom3Selector = id(
+    'safeTransferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom4Selector = id(
+    'safeTransferFrom(address,address,uint256,bytes)'
+  ).slice(0, 10);
 
   if (tx?.input) {
     try {
       if (tx.input.startsWith(transferMethodSignature)) {
-        const decodedInput = ethers.utils.defaultAbiCoder.decode(
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[1].toString(); // the second element is the tokenId
+      } else if (tx.input.startsWith(transferFromMethodSignature)) {
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[2].toString(); // the third element is the tokenId
+      } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[2].toString(); // the third element is the tokenId
+      } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256', 'bytes'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[2].toString(); // the third element is the tokenId
+      }
+    } catch (error) {
+      console.error('Error parsing ERC721 token ID:', error);
+    }
+  }
+
+  return null;
+};
+
+export const getERC20Recipient = (
+  tx: IEvmTransactionResponse
+): string | null => {
+  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
+  const transferFromMethodSignature = id(
+    'transferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom3Selector = id(
+    'safeTransferFrom(address,address,uint256)'
+  ).slice(0, 10);
+  const safeTransferFrom4Selector = id(
+    'safeTransferFrom(address,address,uint256,bytes)'
+  ).slice(0, 10);
+
+  if (tx?.input) {
+    try {
+      if (tx.input.startsWith(transferMethodSignature)) {
+        const decodedInput = defaultAbiCoder.decode(
           ['address', 'uint256'],
           '0x' + tx.input.slice(10)
         );
         return decodedInput[0]; // the first element is the recipient
       } else if (tx.input.startsWith(transferFromMethodSignature)) {
-        const decodedInput = ethers.utils.defaultAbiCoder.decode(
+        const decodedInput = defaultAbiCoder.decode(
           ['address', 'address', 'uint256'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[1]; // the second element is the recipient
+      } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256'],
+          '0x' + tx.input.slice(10)
+        );
+        return decodedInput[1]; // the second element is the recipient
+      } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
+        const decodedInput = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256', 'bytes'],
           '0x' + tx.input.slice(10)
         );
         return decodedInput[1]; // the second element is the recipient
@@ -475,4 +577,68 @@ export const getERC20Recipient = (
   }
 
   return null; // return null if the transaction is not a token transfer
+};
+
+export const getERC1155TransferValue = (tx: IEvmTransactionResponse) => {
+  const safeTransferFromSelector = id(
+    'safeTransferFrom(address,address,uint256,uint256,bytes)'
+  ).slice(0, 10);
+
+  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
+    try {
+      const decodedInput = defaultAbiCoder.decode(
+        ['address', 'address', 'uint256', 'uint256', 'bytes'],
+        '0x' + tx.input.slice(10)
+      );
+      return decodedInput[3]; // the fourth element is the amount transferred
+    } catch (error) {
+      console.error('Error parsing ERC1155 transfer value:', error);
+    }
+  }
+
+  return null;
+};
+
+export const getERC1155TokenId = (
+  tx: IEvmTransactionResponse
+): string | null => {
+  const safeTransferFromSelector = id(
+    'safeTransferFrom(address,address,uint256,uint256,bytes)'
+  ).slice(0, 10);
+
+  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
+    try {
+      const decodedInput = defaultAbiCoder.decode(
+        ['address', 'address', 'uint256', 'uint256', 'bytes'],
+        '0x' + tx.input.slice(10)
+      );
+      return decodedInput[2].toString(); // the third element is the token ID
+    } catch (error) {
+      console.error('Error parsing ERC1155 token ID:', error);
+    }
+  }
+
+  return null;
+};
+
+export const getERC1155Recipient = (
+  tx: IEvmTransactionResponse
+): string | null => {
+  const safeTransferFromSelector = id(
+    'safeTransferFrom(address,address,uint256,uint256,bytes)'
+  ).slice(0, 10);
+
+  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
+    try {
+      const decodedInput = defaultAbiCoder.decode(
+        ['address', 'address', 'uint256', 'uint256', 'bytes'],
+        '0x' + tx.input.slice(10)
+      );
+      return decodedInput[1]; // the second element is the recipient
+    } catch (error) {
+      console.error('Error parsing ERC1155 recipient:', error);
+    }
+  }
+
+  return null;
 };

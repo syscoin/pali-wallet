@@ -1,5 +1,5 @@
+import { Contract } from '@ethersproject/contracts';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
-import { ethers } from 'ethers';
 
 // ERC-721 ABI fragments
 const ERC721_ABI = [
@@ -25,7 +25,7 @@ const INTERFACE_ID_ERC721_ENUMERABLE = '0x780e9d63';
  * Fake contracts often return positive balances for any token ID
  */
 async function detectFakeNftContract(
-  contract: ethers.Contract,
+  contract: Contract,
   tokenStandard: 'ERC-721' | 'ERC-1155',
   ownerAddress: string
 ): Promise<boolean> {
@@ -65,7 +65,7 @@ export interface INftTokenInfo {
  * Check if a contract supports a specific interface
  */
 async function supportsInterface(
-  contract: ethers.Contract,
+  contract: Contract,
   interfaceId: string
 ): Promise<boolean> {
   try {
@@ -85,7 +85,7 @@ export async function verifyERC721OwnershipHelper(
   provider: CustomJsonRpcProvider
 ): Promise<INftTokenInfo[]> {
   try {
-    const contract = new ethers.Contract(contractAddress, ERC721_ABI, provider);
+    const contract = new Contract(contractAddress, ERC721_ABI, provider);
 
     // Check if this is a fake contract first
     const isFake = await detectFakeNftContract(
@@ -158,11 +158,7 @@ export async function verifyERC1155OwnershipHelper(
   provider: CustomJsonRpcProvider
 ): Promise<INftTokenInfo[]> {
   try {
-    const contract = new ethers.Contract(
-      contractAddress,
-      ERC1155_ABI,
-      provider
-    );
+    const contract = new Contract(contractAddress, ERC1155_ABI, provider);
 
     // Check if this is a fake contract first
     const isFake = await detectFakeNftContract(
@@ -195,11 +191,7 @@ export async function verifyERC1155OwnershipHelper(
 
     // Fallback to individual calls
     try {
-      const contract = new ethers.Contract(
-        contractAddress,
-        ERC1155_ABI,
-        provider
-      );
+      const contract = new Contract(contractAddress, ERC1155_ABI, provider);
       const results: INftTokenInfo[] = [];
       for (const tokenId of tokenIds) {
         try {
@@ -246,11 +238,7 @@ export async function discoverNftTokens(
   // For ERC-721, try enumeration first
   if (tokenStandard === 'ERC-721') {
     try {
-      const contract = new ethers.Contract(
-        contractAddress,
-        ERC721_ABI,
-        provider
-      );
+      const contract = new Contract(contractAddress, ERC721_ABI, provider);
 
       // Check if contract supports enumeration
       const isEnumerable = await supportsInterface(

@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { Block } from '@ethersproject/providers';
 import { useEffect, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -56,7 +56,7 @@ export const useEIP1559 = () => {
           ['wallet', 'getCurrentBlock'],
           []
         );
-        const blockToCheck = blockData as ethers.providers.Block;
+        const blockToCheck = blockData as Block;
 
         const isCompatible = await verifyNetworkEIP1559Compatibility(
           blockToCheck

@@ -1,5 +1,5 @@
 // validateEOAAddress removed - validation should be done through background service
-import { ethers } from 'ethers';
+import { getAddress } from '@ethersproject/address';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
@@ -144,7 +144,7 @@ export const EthProvider = (
         params[1]
       );
       // Convert to checksummed address format using ethers
-      return ethers.utils.getAddress(recoveredAddress);
+      return getAddress(recoveredAddress);
     }
 
     // Handle subscription methods (not supported)

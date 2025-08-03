@@ -1,4 +1,4 @@
-import { isHexString } from 'ethers/lib/utils';
+import { isHexString } from '@ethersproject/bytes';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';

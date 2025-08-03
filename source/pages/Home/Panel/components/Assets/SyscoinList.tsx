@@ -1,4 +1,3 @@
-import { uniqueId } from 'lodash';
 import React, {
   useMemo,
   useCallback,
@@ -115,7 +114,7 @@ export const SyscoinAssetsList = () => {
   const renderAsset = useMemo(() => {
     const AssetRenderer = (asset: any) => (
       <li
-        key={uniqueId(String(asset.assetGuid))}
+        key={String(asset.assetGuid)}
         className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
       >
         <table className="table-auto w-full">

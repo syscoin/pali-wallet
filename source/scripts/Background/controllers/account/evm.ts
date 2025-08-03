@@ -6,7 +6,11 @@ import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
-  deleteTokenInfo: (tokenAddress: string, chainId: number) => void;
+  deleteTokenInfo: (
+    tokenAddress: string,
+    chainId: number,
+    tokenId?: string
+  ) => void;
   saveTokenInfo: (
     token: ITokenEthProps,
     tokenType?: string,
@@ -47,16 +51,44 @@ const EthAccountController = (): IEthAccountController | any => {
 
     try {
       const tokenExists = activeAccountAssets.ethereum.find(
-        (asset: ITokenEthProps) =>
-          asset.contractAddress === token.contractAddress
+        (asset: ITokenEthProps) => {
+          // For ERC-1155 tokens, check both contract address and tokenId
+          if (
+            asset.tokenStandard === 'ERC-1155' &&
+            token.tokenStandard === 'ERC-1155'
+          ) {
+            return (
+              asset.contractAddress.toLowerCase() ===
+                token.contractAddress.toLowerCase() &&
+              asset.tokenId === token.tokenId
+            );
+          }
+          // For other token types, just check contract address
+          return (
+            asset.contractAddress.toLowerCase() ===
+            token.contractAddress.toLowerCase()
+          );
+        }
       );
 
-      if (tokenExists) throw new Error('Token already exists');
+      if (tokenExists) {
+        if (token.tokenStandard === 'ERC-1155') {
+          throw new Error(
+            `ERC-1155 token with ID ${token.tokenId} already exists`
+          );
+        } else {
+          throw new Error('Token already exists');
+        }
+      }
 
       // Use token data as-is
       let web3Token = {
         ...token,
-        id: token.contractAddress,
+        // For ERC-1155, include tokenId in the id to make it unique
+        id:
+          token.tokenStandard === 'ERC-1155' && token.tokenId
+            ? `${token.contractAddress.toLowerCase()}_${token.tokenId}`
+            : token.contractAddress.toLowerCase(),
         chainId,
       };
 
@@ -81,7 +113,11 @@ const EthAccountController = (): IEthAccountController | any => {
     }
   };
 
-  const deleteTokenInfo = (tokenAddress: string, chainId: number) => {
+  const deleteTokenInfo = (
+    tokenAddress: string,
+    chainId: number,
+    tokenId?: string
+  ) => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
 
@@ -110,9 +146,19 @@ const EthAccountController = (): IEthAccountController | any => {
         throw new Error('Ethereum assets array not initialized');
       }
 
+      // Check if token exists with optional tokenId consideration
       const tokenExists = activeAccountAssets.ethereum.find(
-        (asset: ITokenEthProps) =>
-          asset.contractAddress === tokenAddress && asset.chainId === chainId
+        (asset: ITokenEthProps) => {
+          // Compare addresses case-insensitively
+          const matchesAddress =
+            asset.contractAddress.toLowerCase() ===
+              tokenAddress.toLowerCase() && asset.chainId === chainId;
+          // If tokenId is provided, also check it matches
+          if (tokenId) {
+            return matchesAddress && asset.tokenId === tokenId;
+          }
+          return matchesAddress;
+        }
       );
 
       if (!tokenExists)
@@ -125,11 +171,17 @@ const EthAccountController = (): IEthAccountController | any => {
           accountId: activeAccount.id,
           accountType: activeAccount.type,
           property: 'ethereum',
-          value: cloneAssets.ethereum.filter(
-            (currentToken) =>
-              currentToken.contractAddress !== tokenAddress ||
-              currentToken.chainId !== chainId
-          ),
+          value: cloneAssets.ethereum.filter((currentToken) => {
+            const matchesAddress =
+              currentToken.contractAddress.toLowerCase() ===
+                tokenAddress.toLowerCase() && currentToken.chainId === chainId;
+            // If tokenId is provided, only remove if tokenId also matches
+            if (tokenId) {
+              return !(matchesAddress && currentToken.tokenId === tokenId);
+            }
+            // If no tokenId provided, remove all tokens from this contract address
+            return !matchesAddress;
+          }),
         })
       );
     } catch (error) {

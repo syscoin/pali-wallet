@@ -278,6 +278,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             tx.nonce !== undefined && tx.nonce !== null
               ? parseInt(tx.nonce)
               : undefined,
+          // Include transaction status from API
+          // eslint-disable-next-line camelcase
+          txreceipt_status: tx.txreceipt_status || tx.isError || null,
+          isError: tx.isError || null,
         };
       });
 
@@ -511,6 +515,19 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                     latestBlock - tx.blockNumber
                   );
 
+                  // Get receipt to check transaction status
+                  let receipt = null;
+                  let isSuccess = null;
+                  try {
+                    receipt = await web3Provider.getTransactionReceipt(tx.hash);
+                    if (receipt) {
+                      isSuccess =
+                        receipt.status === 1 || receipt.status === '0x1';
+                    }
+                  } catch (receiptError) {
+                    console.log(`Could not fetch receipt for ${tx.hash}`);
+                  }
+
                   return {
                     ...tx,
                     confirmations,
@@ -523,6 +540,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
                           ? parseInt(tx.nonce, 16)
                           : Number(tx.nonce)
                         : undefined,
+                    // Add status fields
+                    // eslint-disable-next-line camelcase
+                    txreceipt_status:
+                      isSuccess === null ? null : isSuccess ? '1' : '0',
+                    isError: isSuccess === null ? null : isSuccess ? '0' : '1',
                   };
                 } else {
                   // Still pending

@@ -29,8 +29,20 @@ export const validateAndManageUserAssets = (
     : 'assetGuid';
 
   const validateIfTokensIsEquals = isEqual(
-    sortBy(userClonedAssets, tokenPropertyToUseAtGroupBy),
-    sortBy(fetchedAssetsOrTokens, tokenPropertyToUseAtGroupBy)
+    sortBy(userClonedAssets, (asset) => {
+      // For ERC-1155, create a composite key with contractAddress and tokenId
+      if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
+        return `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`;
+      }
+      return asset[tokenPropertyToUseAtGroupBy];
+    }),
+    sortBy(fetchedAssetsOrTokens, (asset) => {
+      // For ERC-1155, create a composite key with contractAddress and tokenId
+      if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
+        return `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`;
+      }
+      return asset[tokenPropertyToUseAtGroupBy];
+    })
   );
 
   //Return a empty array to we don't need to dispatch something at the Polling
@@ -48,7 +60,21 @@ export const validateAndManageUserAssets = (
       const balanceB = b?.balance ? parseFloat(b.balance) : 0;
       return balanceB - balanceA;
     }),
-    (a, b) => a[tokenPropertyToUseAtGroupBy] === b[tokenPropertyToUseAtGroupBy]
+    (a, b) => {
+      // For EVM, compare contractAddress and tokenId (for ERC-1155)
+      if (isForEvm) {
+        const sameContract =
+          a.contractAddress.toLowerCase() === b.contractAddress.toLowerCase();
+        const sameTokenId = a.tokenId === b.tokenId;
+        // For ERC-1155, both contractAddress and tokenId must match
+        // For other tokens, just contractAddress needs to match
+        return a.tokenStandard === 'ERC-1155' || b.tokenStandard === 'ERC-1155'
+          ? sameContract && sameTokenId
+          : sameContract;
+      }
+      // For UTXO, use assetGuid
+      return a[tokenPropertyToUseAtGroupBy] === b[tokenPropertyToUseAtGroupBy];
+    }
   );
 };
 

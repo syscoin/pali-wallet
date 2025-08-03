@@ -1,6 +1,8 @@
+import { BigNumber } from '@ethersproject/bignumber';
+import { hexlify } from '@ethersproject/bytes';
+import { parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
-import { BigNumber, ethers } from 'ethers';
 import React, {
   useEffect,
   useMemo,
@@ -37,6 +39,7 @@ import {
   clearNavigationState,
 } from 'utils/index';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
+import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -328,10 +331,7 @@ export const SendConfirm = () => {
             'maxPriorityFeePerGas',
           ]) as ITxState;
 
-          let value = ethers.utils.parseUnits(
-            String(basicTxValues.amount),
-            'ether'
-          );
+          let value = parseUnits(String(basicTxValues.amount), 'ether');
 
           try {
             // For MAX sends, deduct gas fees from the value
@@ -343,7 +343,7 @@ export const SendConfirm = () => {
 
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
-                const maxFeePerGasWei = ethers.utils.parseUnits(
+                const maxFeePerGasWei = parseUnits(
                   String(
                     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
                       ? safeToFixed(customFee.maxFeePerGas)
@@ -377,7 +377,7 @@ export const SendConfirm = () => {
                     {
                       ...restTx,
                       value,
-                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasPrice: hexlify(gasPrice),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -429,7 +429,7 @@ export const SendConfirm = () => {
                 {
                   ...restTx,
                   value,
-                  maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  maxPriorityFeePerGas: parseUnits(
                     String(
                       Boolean(
                         customFee.isCustom && customFee.maxPriorityFeePerGas > 0
@@ -439,7 +439,7 @@ export const SendConfirm = () => {
                     ),
                     9
                   ),
-                  maxFeePerGas: ethers.utils.parseUnits(
+                  maxFeePerGas: parseUnits(
                     String(
                       Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
                         ? safeToFixed(customFee.maxFeePerGas)
@@ -476,7 +476,7 @@ export const SendConfirm = () => {
                 const retryTxObject = {
                   ...restTx,
                   value: reducedValue,
-                  maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  maxPriorityFeePerGas: parseUnits(
                     String(
                       Boolean(
                         customFee.isCustom && customFee.maxPriorityFeePerGas > 0
@@ -486,7 +486,7 @@ export const SendConfirm = () => {
                     ),
                     9
                   ),
-                  maxFeePerGas: ethers.utils.parseUnits(
+                  maxFeePerGas: parseUnits(
                     String(
                       Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
                         ? safeToFixed(customFee.maxFeePerGas)
@@ -581,7 +581,7 @@ export const SendConfirm = () => {
                         tokenAmount: `${basicTxValues.amount}`,
                         isLegacy: !isEIP1559Compatible,
                         decimals: basicTxValues?.token?.decimals,
-                        gasPrice: ethers.utils.hexlify(gasPrice),
+                        gasPrice: hexlify(gasPrice),
                         gasLimit: validateCustomGasLimit
                           ? BigNumber.from(customFee.gasLimit)
                           : BigNumber.from(
@@ -632,7 +632,7 @@ export const SendConfirm = () => {
                       tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
-                      maxPriorityFeePerGas: ethers.utils.parseUnits(
+                      maxPriorityFeePerGas: parseUnits(
                         String(
                           Boolean(
                             customFee.isCustom &&
@@ -643,7 +643,7 @@ export const SendConfirm = () => {
                         ),
                         9
                       ),
-                      maxFeePerGas: ethers.utils.parseUnits(
+                      maxFeePerGas: parseUnits(
                         String(
                           Boolean(
                             customFee.isCustom && customFee.maxFeePerGas > 0
@@ -727,7 +727,7 @@ export const SendConfirm = () => {
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId: numericTokenId, // The actual NFT token ID
                       isLegacy: !isEIP1559Compatible,
-                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasPrice: hexlify(gasPrice),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -803,7 +803,7 @@ export const SendConfirm = () => {
                       tokenId: numericTokenId, // The actual NFT token ID
                       tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
                       isLegacy: !isEIP1559Compatible,
-                      maxPriorityFeePerGas: ethers.utils.parseUnits(
+                      maxPriorityFeePerGas: parseUnits(
                         String(
                           Boolean(
                             customFee.isCustom &&
@@ -814,7 +814,7 @@ export const SendConfirm = () => {
                         ),
                         9
                       ),
-                      maxFeePerGas: ethers.utils.parseUnits(
+                      maxFeePerGas: parseUnits(
                         String(
                           Boolean(
                             customFee.isCustom && customFee.maxFeePerGas > 0
@@ -824,7 +824,7 @@ export const SendConfirm = () => {
                         ),
                         9
                       ),
-                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasPrice: hexlify(gasPrice),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -1189,45 +1189,179 @@ export const SendConfirm = () => {
       {shouldShowMainContent && basicTxValues ? (
         <div className="flex flex-col items-center justify-center w-full">
           {basicTxValues.token?.isNft ? (
-            <div className="flex flex-col items-center justify-center text-center font-rubik">
-              {basicTxValues.token.tokenStandard === 'ERC-1155' ? (
-                <>
-                  <p>
-                    {t('send.tokenId')}: {basicTxValues.token.tokenId}
+            <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto">
+              {/* NFT Token Information Card */}
+              <div className="bg-bkg-2 rounded-2xl p-4 w-full border border-bkg-4 mb-4">
+                {/* Token Name and Type */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white font-medium text-base">
+                      {basicTxValues.token.name ||
+                        basicTxValues.token.symbol ||
+                        'NFT'}
+                    </h3>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
+                        basicTxValues.token.tokenStandard
+                      )}`}
+                    >
+                      {basicTxValues.token.tokenStandard}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Contract Address */}
+                <div className="mb-3">
+                  <p className="text-brand-gray200 text-xs mb-1">
+                    {t('settings.contractAddress')}
                   </p>
-                  <p>
-                    {t('send.amount')}: {basicTxValues.amount}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p>{t('send.tokenId')}</p>
-                  <span>{basicTxValues.token.tokenId}</span>
-                </>
-              )}
+                  <div className="flex items-center gap-2">
+                    <p className="text-white text-sm font-mono">
+                      <Tooltip content={basicTxValues.token.contractAddress}>
+                        {ellipsis(basicTxValues.token.contractAddress, 8, 6)}
+                      </Tooltip>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => copy(basicTxValues.token.contractAddress)}
+                      className="text-brand-gray200 hover:text-white transition-colors"
+                    >
+                      <Icon
+                        name="Copy"
+                        isSvg
+                        className="w-4 h-4 text-brand-gray200 hover:text-white"
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Token Details */}
+                <div className="space-y-2">
+                  {/* Token ID */}
+                  <div className="bg-bkg-3 rounded-lg px-3 py-2">
+                    <p className="text-brand-gray200 text-xs mb-1">
+                      {t('send.tokenId')}
+                    </p>
+                    <p className="text-white font-medium">
+                      {basicTxValues.token.tokenId ? (
+                        basicTxValues.token.tokenId.length > 20 ? (
+                          <Tooltip content={basicTxValues.token.tokenId}>
+                            #{ellipsis(basicTxValues.token.tokenId, 8, 8)}
+                          </Tooltip>
+                        ) : (
+                          `#${basicTxValues.token.tokenId}`
+                        )
+                      ) : (
+                        <span className="text-warning-error">
+                          Missing Token ID
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Amount (for ERC-1155) */}
+                  {basicTxValues.token.tokenStandard === 'ERC-1155' && (
+                    <div className="bg-bkg-3 rounded-lg px-3 py-2">
+                      <p className="text-brand-gray200 text-xs mb-1">
+                        {t('send.amount')}
+                      </p>
+                      <p className="text-white font-medium text-lg">
+                        {basicTxValues.amount}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col mb-4 items-center text-center">
-              <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-                <img
-                  className="relative w-[30px] h-[30px]"
-                  src={'/assets/all_assets/ArrowUp.svg'}
-                  alt="Icon"
-                />
+            <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto">
+              {/* Token/Currency Information Card */}
+              <div className="bg-bkg-2 rounded-2xl p-4 w-full border border-bkg-4 mb-4">
+                {/* Amount and Token/Currency */}
+                <div className="text-center mb-3">
+                  <p className="text-brand-gray200 text-xs mb-1">
+                    {t('buttons.send')}
+                  </p>
+                  <p className="text-white text-2xl font-semibold mb-2">
+                    {basicTxValues.amount}{' '}
+                    {basicTxValues.token
+                      ? basicTxValues.token.symbol
+                      : activeNetwork.currency.toUpperCase()}
+                  </p>
+                </div>
+
+                {/* Token Details (if ERC20) */}
+                {basicTxValues.token && !basicTxValues.token.isNft && (
+                  <>
+                    {/* Token Name and Type */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-white font-medium text-base">
+                          {basicTxValues.token.name ||
+                            basicTxValues.token.symbol}
+                        </h3>
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
+                            'ERC-20'
+                          )}`}
+                        >
+                          ERC-20
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Contract Address */}
+                    <div className="bg-bkg-3 rounded-lg px-3 py-2">
+                      <p className="text-brand-gray200 text-xs mb-1">
+                        {t('settings.contractAddress')}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-white text-sm font-mono">
+                          <Tooltip
+                            content={basicTxValues.token.contractAddress}
+                          >
+                            {ellipsis(
+                              basicTxValues.token.contractAddress,
+                              8,
+                              6
+                            )}
+                          </Tooltip>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            copy(basicTxValues.token.contractAddress)
+                          }
+                          className="text-brand-gray200 hover:text-white transition-colors"
+                        >
+                          <Icon
+                            name="Copy"
+                            isSvg
+                            className="w-4 h-4 text-brand-gray200 hover:text-white"
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Native Currency Label */}
+                {!basicTxValues.token && (
+                  <div className="text-center">
+                    <span
+                      className={`text-xs px-3 py-1 rounded-full ${getTokenTypeBadgeColor(
+                        'native'
+                      )}`}
+                    >
+                      {t('send.native')} {activeNetwork?.label || ''}
+                    </span>
+                  </div>
+                )}
               </div>
-              <p className="text-brand-gray200 text-xs font-light">
-                {t('buttons.send')}
-              </p>
-              <p className="text-white text-base">
-                {basicTxValues.amount}{' '}
-                {basicTxValues.token
-                  ? basicTxValues.token.symbol
-                  : activeNetwork.currency.toUpperCase()}
-              </p>
             </div>
           )}
 
-          <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-full max-w-[380px] mx-auto text-left text-sm">
+          <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-full max-w-md mx-auto text-left text-sm rounded-xl">
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.from')}
               <span className="text-white text-xs">

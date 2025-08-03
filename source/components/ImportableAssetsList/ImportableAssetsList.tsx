@@ -1,5 +1,4 @@
-import { uniqueId } from 'lodash';
-import React, { Fragment, useState, useCallback, useEffect } from 'react';
+import React, { Fragment, useState, useCallback, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiDownload as ImportIcon } from 'react-icons/fi';
 import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
@@ -7,14 +6,12 @@ import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
-import { truncate, formatFullPrecisionBalance } from 'utils/index';
+import { truncate, formatFullPrecisionBalance, ellipsis } from 'utils/index';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IImportableAsset {
-  // EVM
   assetGuid?: string;
   balance: number;
-  // UTXO
   chainId?: number;
   contractAddress?: string;
   decimals?: number;
@@ -23,8 +20,9 @@ interface IImportableAsset {
   logo?: string;
   name?: string;
   symbol: string;
+  tokenId?: string;
   tokenStandard?: string;
-  type?: string; // For UTXO
+  type?: string;
 }
 
 interface IImportableAssetsListProps {
@@ -38,7 +36,7 @@ interface IImportableAssetsListProps {
   onImport: (asset: IImportableAsset) => Promise<void>;
 }
 
-export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
+const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
   assets,
   isLoading,
   onImport,
@@ -129,11 +127,12 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
       {assets.map((asset: IImportableAsset) => {
         const isImported = isAssetImported(asset.id);
         const isImporting = currentlyImporting === asset.id;
+
         const identifier =
           assetType === 'evm' ? asset.contractAddress : asset.assetGuid;
 
         return (
-          <Fragment key={uniqueId(asset.id)}>
+          <Fragment key={asset.id}>
             <li className="flex items-center justify-between py-3 px-4 text-xs border border-bkg-4 rounded-lg bg-bkg-2 hover:bg-bkg-3 transition-all duration-200">
               <div className="flex gap-3 items-center justify-start flex-1 min-w-0">
                 {getAssetLogo(asset)}
@@ -141,12 +140,8 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
                 <div className="flex flex-col flex-1 min-w-0">
                   <p className="flex items-center gap-x-2">
                     <span className="text-brand-white font-medium">
-                      {asset.tokenStandard === 'ERC-1155' && asset.balance === 0
+                      {asset.balance === 0
                         ? '—'
-                        : asset.tokenStandard === 'ERC-1155'
-                        ? `${asset.balance} ${
-                            asset.balance === 1 ? 'item' : 'items'
-                          }`
                         : formatFullPrecisionBalance(
                             asset.balance || 0,
                             Math.min(asset.decimals || 8, 4) // Limit displayed decimals
@@ -164,6 +159,14 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
                       {assetType === 'evm'
                         ? truncate(identifier, 8, true)
                         : `${t('tokens.assetGuid')}: ${identifier}`}
+                    </p>
+                  )}
+                  {asset.tokenStandard === 'ERC-1155' && asset.tokenId && (
+                    <p className="text-brand-gray200 text-xs font-mono mt-0.5">
+                      #
+                      {asset.tokenId.length > 16
+                        ? ellipsis(asset.tokenId, 8, 6)
+                        : asset.tokenId}
                     </p>
                   )}
                 </div>
@@ -258,3 +261,6 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
     </ul>
   );
 };
+
+// Memo to prevent unnecessary re-renders when props haven't meaningfully changed
+export const ImportableAssetsList = memo(ImportableAssetsListComponent);

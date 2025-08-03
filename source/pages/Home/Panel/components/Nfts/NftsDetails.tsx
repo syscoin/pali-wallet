@@ -49,10 +49,19 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
 
   const { t } = useTranslation();
 
-  // Load token IDs when component mounts (only if no specific tokenId provided)
+  // Load token IDs when component mounts
   useEffect(() => {
     if (currentNft && currentNft.balance > 0) {
-      loadTokenIds();
+      if (currentNft.tokenStandard === 'ERC-1155') {
+        // ERC-1155 always has stored tokenId
+        if (currentNft.tokenId) {
+          setSelectedTokenId(currentNft.tokenId);
+        }
+        setVerifiedTokenBalance(currentNft.balance);
+      } else {
+        // ERC-721 - enumerate token IDs
+        loadTokenIds();
+      }
     }
   }, [currentNft]);
 
@@ -107,6 +116,8 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const loadTokenIds = async () => {
     if (!currentNft || !currentAccount?.address) return;
 
+    // This function is only called for ERC-721
+
     setIsLoadingTokenIds(true);
     try {
       const result = (await controllerEmitter(
@@ -158,8 +169,11 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     }
   };
 
-  // Get display token ID (from selection or manual input)
-  const displayTokenId = manualTokenId || selectedTokenId;
+  // Get display token ID
+  const displayTokenId =
+    currentNft?.tokenStandard === 'ERC-1155'
+      ? currentNft.tokenId || '' // ERC-1155 may not have tokenId during search
+      : manualTokenId || selectedTokenId; // ERC-721 uses manual/selected
 
   // Extract image URL with fallback logic similar to MetaMask
   const getNftImage = () => {
@@ -203,101 +217,117 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
               </p>
             </div>
 
-            {/* Token ID Selector */}
-            <div className="w-full">
-              <label className="text-brand-gray200 text-xs mb-2 block">
-                {t('send.tokenId')}:
-              </label>
-
-              {/* Quick select from discovered tokens */}
-              {nftTokenIds.length > 0 && (
-                <div className="mb-3">
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {nftTokenIds.map((token) => (
-                      <button
-                        key={token.tokenId}
-                        onClick={() => {
-                          setSelectedTokenId(token.tokenId);
-                          setManualTokenId('');
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          selectedTokenId === token.tokenId && !manualTokenId
-                            ? 'bg-brand-royalblue text-white'
-                            : 'bg-bkg-2 text-brand-gray200 hover:bg-bkg-3 hover:text-white border border-bkg-4'
-                        }`}
-                      >
-                        #{token.tokenId}
-                        {token.balance > 1 && ` (${token.balance}x)`}
-                      </button>
-                    ))}
-                  </div>
-                  {hasMoreTokens && (
-                    <button
-                      onClick={openCollectionOnExplorer}
-                      className="text-brand-royalblue text-xs hover:underline flex items-center gap-1"
-                    >
-                      <span>{t('send.viewAllOnExplorer')}</span>
-                      <ExternalLinkIcon size={12} />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Manual token ID input */}
-              <div className="relative">
-                <input
-                  type="text"
-                  value={manualTokenId}
-                  onChange={(e) => handleManualTokenIdChange(e.target.value)}
-                  placeholder={
-                    isLoadingTokenIds ? 'Loading...' : t('send.enterTokenId')
-                  }
-                  disabled={isLoadingTokenIds}
-                  className="w-full px-3 py-2 pr-12 bg-bkg-2 border border-bkg-4 rounded-lg text-brand-white text-sm
-                           placeholder-brand-gray200 focus:border-brand-royalblue focus:outline-none
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-                />
-                {/* Validation indicator */}
-                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
-                  {isVerifyingTokenId ? (
-                    <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
-                  ) : manualTokenId && verificationError ? (
-                    <Icon
-                      name="close-circle"
-                      size={16}
-                      className="text-red-500"
-                    />
-                  ) : manualTokenId &&
-                    verifiedTokenBalance !== null &&
-                    verifiedTokenBalance > 0 ? (
-                    <Icon name="check" size={16} className="text-green-500" />
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Validation status messages */}
-              {manualTokenId && !isVerifyingTokenId && verificationError && (
-                <div className="mt-2">
-                  <p className="text-xs text-red-400 text-center">
-                    ❌ {verificationError}
+            {/* Token ID Display/Selector */}
+            {currentNft?.tokenStandard === 'ERC-1155' ? (
+              /* Show stored token ID for ERC-1155 */
+              <div className="w-full">
+                <label className="text-brand-gray200 text-xs mb-2 block">
+                  {t('send.tokenId')}:
+                </label>
+                <div className="bg-bkg-2 border border-bkg-4 rounded-lg px-3 py-2">
+                  <p className="text-brand-white text-sm font-medium">
+                    #
+                    {currentNft.tokenId && currentNft.tokenId.length > 20
+                      ? ellipsis(currentNft.tokenId, 12, 8)
+                      : currentNft.tokenId || ''}
                   </p>
                 </div>
-              )}
+              </div>
+            ) : (
+              /* Token ID selector for ERC-721 */
+              <div className="w-full">
+                <label className="text-brand-gray200 text-xs mb-2 block">
+                  {t('send.tokenId')}:
+                </label>
 
-              <p className="text-brand-gray200 text-[10px] mt-1 text-center">
-                {verifiedTokenBalance !== null && verifiedTokenBalance > 0
-                  ? t('send.selectTokenIdOrTryDifferent')
-                  : currentNft.tokenStandard === 'ERC-1155'
-                  ? t('send.erc1155RequiresManualEntry')
-                  : t('send.enterNftTokenId')}
-                {hasMoreTokens && (
-                  <>
-                    <br />
-                    {t('send.orEnterDifferentTokenId')}
-                  </>
+                {/* Quick select from discovered tokens */}
+                {nftTokenIds.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {nftTokenIds.map((token) => (
+                        <button
+                          key={token.tokenId}
+                          onClick={() => {
+                            setSelectedTokenId(token.tokenId);
+                            setManualTokenId('');
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            selectedTokenId === token.tokenId && !manualTokenId
+                              ? 'bg-brand-royalblue text-white'
+                              : 'bg-bkg-2 text-brand-gray200 hover:bg-bkg-3 hover:text-white border border-bkg-4'
+                          }`}
+                        >
+                          #{token.tokenId}
+                          {token.balance > 1 && ` (${token.balance}x)`}
+                        </button>
+                      ))}
+                    </div>
+                    {hasMoreTokens && (
+                      <button
+                        onClick={openCollectionOnExplorer}
+                        className="text-brand-royalblue text-xs hover:underline flex items-center gap-1"
+                      >
+                        <span>{t('send.viewAllOnExplorer')}</span>
+                        <ExternalLinkIcon size={12} />
+                      </button>
+                    )}
+                  </div>
                 )}
-              </p>
-            </div>
+
+                {/* Manual token ID input */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={manualTokenId}
+                    onChange={(e) => handleManualTokenIdChange(e.target.value)}
+                    placeholder={
+                      isLoadingTokenIds ? 'Loading...' : t('send.enterTokenId')
+                    }
+                    disabled={isLoadingTokenIds}
+                    className="w-full px-3 py-2 pr-12 bg-bkg-2 border border-bkg-4 rounded-lg text-brand-white text-sm
+                           placeholder-brand-gray200 focus:border-brand-royalblue focus:outline-none
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  {/* Validation indicator */}
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
+                    {isVerifyingTokenId ? (
+                      <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
+                    ) : manualTokenId && verificationError ? (
+                      <Icon
+                        name="close-circle"
+                        size={16}
+                        className="text-red-500"
+                      />
+                    ) : manualTokenId &&
+                      verifiedTokenBalance !== null &&
+                      verifiedTokenBalance > 0 ? (
+                      <Icon name="check" size={16} className="text-green-500" />
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Validation status messages */}
+                {manualTokenId && !isVerifyingTokenId && verificationError && (
+                  <div className="mt-2">
+                    <p className="text-xs text-red-400 text-center">
+                      ❌ {verificationError}
+                    </p>
+                  </div>
+                )}
+
+                <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+                  {verifiedTokenBalance !== null && verifiedTokenBalance > 0
+                    ? t('send.selectTokenIdOrTryDifferent')
+                    : t('send.enterNftTokenId')}
+                  {hasMoreTokens && (
+                    <>
+                      <br />
+                      {t('send.orEnterDifferentTokenId')}
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
 
             {/* NFT Image */}
             <div>
@@ -325,7 +355,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                   {t('nftDetails.lastPrice')}
                 </span>
               </p>
-              <p className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
+              <div className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
                 <ChainIcon
                   chainId={Number(currentNft.chainId)}
                   size={28}
@@ -335,7 +365,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                 <span className="text-sm font-normal text-brand-gray200">
                   {t('nftDetails.network')}
                 </span>
-              </p>
+              </div>
             </div>
           </div>
 
@@ -401,7 +431,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                     border-dashed border-bkg-white200 cursor-default transition-all duration-300"
                   >
                     <p className="font-normal text-xs">{t('send.tokenId')}</p>
-                    <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                    <div className="flex items-center font-normal gap-x-1.5 text-xs">
                       <span className="text-brand-white">
                         {displayTokenId.length > 9
                           ? ellipsis(displayTokenId)
@@ -414,7 +444,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                         color="text-brand-white"
                         onClick={() => copy(displayTokenId ?? '')}
                       />
-                    </p>
+                    </div>
                   </li>
                 )}
 
@@ -423,7 +453,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                   border-none"
                 >
                   <p className="font-normal text-xs">Contract Address</p>
-                  <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <div className="flex items-center font-normal gap-x-1.5 text-xs">
                     <span className="text-brand-white">
                       {ellipsis(currentNft.contractAddress)}
                     </span>
@@ -434,7 +464,7 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
                       color="text-brand-white"
                       onClick={() => copy(currentNft.contractAddress ?? '')}
                     />
-                  </p>
+                  </div>
                 </li>
               </ul>
             </div>

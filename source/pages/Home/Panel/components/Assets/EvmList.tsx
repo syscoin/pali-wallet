@@ -1,4 +1,3 @@
-import { uniqueId } from 'lodash';
 import React, {
   Fragment,
   useState,
@@ -87,18 +86,8 @@ const DefaultEvmAssets = ({
   };
 
   const assetsFilteredBySearch = currentChainAssets.filter((token) => {
-    const is1155 = token?.tokenStandard === 'ERC-1155';
     const lowercaseSearchValue = searchValue?.toLowerCase();
     const isHexSearch = searchValue.startsWith('0x');
-
-    if (is1155) {
-      const lowercaseName = token.name?.toLowerCase() || '';
-      const lowercaseContractAddress = token.contractAddress.toLowerCase();
-      if (isHexSearch) {
-        return lowercaseContractAddress.includes(lowercaseSearchValue);
-      }
-      return lowercaseName.includes(lowercaseSearchValue);
-    }
 
     const lowercaseTokenName = token.name?.toLowerCase() || '';
     const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
@@ -137,7 +126,7 @@ const DefaultEvmAssets = ({
     if (tokenToDelete) {
       controllerEmitter(
         ['wallet', 'deleteTokenInfo'],
-        [tokenToDelete.contractAddress, chainId]
+        [tokenToDelete.contractAddress, chainId, tokenToDelete.tokenId]
       );
     }
     setShowDeleteConfirmation(false);
@@ -171,42 +160,29 @@ const DefaultEvmAssets = ({
   return (
     <>
       {filteredAssets?.map((token: ITokenEthProps) => (
-        <Fragment key={uniqueId(token.id)}>
+        <Fragment key={token.id}>
           <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
             <div className="flex gap-3 items-center justify-start">
-              {!token.isNft && (
-                <TokenIcon
-                  logo={token.logo}
-                  contractAddress={token.contractAddress}
-                  symbol={token.tokenSymbol}
-                  size={24}
-                  className="hover:shadow-md hover:scale-110 transition-all duration-200"
-                />
-              )}
-              {token.isNft && (
-                <div
-                  className="w-6 h-6 rounded bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                              flex items-center justify-center hover:shadow-md hover:scale-110 
-                              transition-all duration-200"
+              <TokenIcon
+                logo={token.logo}
+                contractAddress={token.contractAddress}
+                symbol={token.tokenSymbol}
+                size={24}
+                className="hover:shadow-md hover:scale-110 transition-all duration-200"
+              />
+
+              <p className="flex items-center gap-x-2">
+                <span className="text-brand-white">
+                  {formatFullPrecisionBalance(token.balance, 4)}
+                </span>
+
+                <span
+                  className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                  onClick={() => handleAssetClick(token)}
                 >
-                  <span className="text-white text-xs font-bold">NFT</span>
-                </div>
-              )}
-
-              {token?.tokenStandard !== 'ERC-1155' && (
-                <p className="flex items-center gap-x-2">
-                  <span className="text-brand-white">
-                    {formatFullPrecisionBalance(token.balance, 4)}
-                  </span>
-
-                  <span
-                    className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                    onClick={() => handleAssetClick(token)}
-                  >
-                    {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
-                  </span>
-                </p>
-              )}
+                  {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
+                </span>
+              </p>
             </div>
 
             <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">

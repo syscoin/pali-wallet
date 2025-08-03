@@ -157,34 +157,34 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         }
       };
 
-      // Small delay to prevent blocking render
-      const timer = setTimeout(() => {
-        const promise = fetchIcon();
-        pendingTokenRequests.set(cacheKey, promise);
+      // No delay - start fetching immediately to prevent flicker
+      const promise = fetchIcon();
+      pendingTokenRequests.set(cacheKey, promise);
 
-        promise
-          .then((dataUrl) => {
-            if (dataUrl) {
-              setIconUrl(dataUrl);
-              setError(false);
-            } else {
-              setError(true);
-            }
-            setIsLoading(false);
-            pendingTokenRequests.delete(cacheKey); // Clean up
-          })
-          .catch(() => {
+      promise
+        .then((dataUrl) => {
+          if (dataUrl) {
+            setIconUrl(dataUrl);
+            setError(false);
+          } else {
             setError(true);
-            setIsLoading(false);
-            pendingTokenRequests.delete(cacheKey); // Clean up
-          });
-      }, 50);
-
-      return () => clearTimeout(timer);
+          }
+          setIsLoading(false);
+          pendingTokenRequests.delete(cacheKey); // Clean up
+        })
+        .catch(() => {
+          setError(true);
+          setIsLoading(false);
+          pendingTokenRequests.delete(cacheKey); // Clean up
+        });
     }, [logo, cacheKey]);
 
-    // Show loading state
-    if (isLoading) {
+    // Check if we have a cached image to use immediately
+    const cachedImage = tokenImageCache.get(cacheKey);
+    const imageToRender = iconUrl || cachedImage;
+
+    // Show loading state only if we truly have nothing to show
+    if (isLoading && !imageToRender && !error) {
       return (
         <div
           className={`animate-pulse bg-gray-600 ${fallbackClassName} ${className}`}
@@ -194,7 +194,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     }
 
     // Use appropriate fallback
-    if (error || !iconUrl) {
+    if ((error || !imageToRender) && cachedImage !== null) {
       if (isNft) {
         return (
           <NftFallbackSvg
@@ -230,10 +230,10 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       );
     }
 
-    // Render the cached image
+    // Render the image (either from state or cache)
     return (
       <img
-        src={iconUrl}
+        src={imageToRender}
         alt={symbol || 'Token'}
         className={`${fallbackClassName} ${className}`}
         style={{ width: size, height: size }}

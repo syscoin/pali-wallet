@@ -1,5 +1,4 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
-import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
@@ -543,7 +542,7 @@ export const SyscoinAssetDetails = ({
           {formattedAsset
             .filter((item) => item.key !== 'Symbol' && item.key !== 'Decimals')
             .map((item, index, totalArray) => (
-              <Fragment key={uniqueId(id)}>
+              <Fragment key={id}>
                 <li
                   className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
                 border-dashed border-bkg-white200 cursor-default transition-all duration-300 ${

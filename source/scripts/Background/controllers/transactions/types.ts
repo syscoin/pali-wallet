@@ -1,9 +1,9 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import {
   CustomJsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
 import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
-import { ethers } from 'ethers';
 
 import { IAccountTransactions } from 'state/vault/types';
 
@@ -34,17 +34,17 @@ export interface IEvmTransaction {
   data: string;
   from?: string;
 
-  gasLimit: ethers.BigNumber;
-  gasPrice?: ethers.BigNumber;
+  gasLimit: BigNumber;
+  gasPrice?: BigNumber;
 
   hash?: string;
   // Transaction replacement tracking
   isReplaced?: boolean;
   isSpeedUp?: boolean;
 
-  maxFeePerGas?: ethers.BigNumber;
+  maxFeePerGas?: BigNumber;
   // EIP-1559; Type 2
-  maxPriorityFeePerGas?: ethers.BigNumber;
+  maxPriorityFeePerGas?: BigNumber;
   nonce: number;
 
   r?: string;
@@ -58,7 +58,7 @@ export interface IEvmTransaction {
   // Typed-Transaction features
   type?: number | null;
   v?: number;
-  value: ethers.BigNumber;
+  value: BigNumber;
 }
 
 interface ITransactionReceipt {
@@ -67,10 +67,10 @@ interface ITransactionReceipt {
   byzantium: boolean;
   confirmations: number;
   contractAddress: string;
-  cumulativeGasUsed: ethers.BigNumber;
-  effectiveGasPrice: ethers.BigNumber;
+  cumulativeGasUsed: BigNumber;
+  effectiveGasPrice: BigNumber;
   from: string;
-  gasUsed: ethers.BigNumber;
+  gasUsed: BigNumber;
   logs: Array<ILog>;
   logsBloom: string;
   root?: string;

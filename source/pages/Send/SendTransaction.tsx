@@ -1,4 +1,7 @@
-import { BigNumber, ethers } from 'ethers';
+import { Interface } from '@ethersproject/abi';
+import { BigNumber } from '@ethersproject/bignumber';
+import { hexlify } from '@ethersproject/bytes';
+import { parseUnits } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -24,6 +27,7 @@ import {
   IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
+import { convertBigNumberToString } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
@@ -140,31 +144,6 @@ export const SendTransaction = () => {
     return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
   };
 
-  // Helper function to convert BigNumber or similar objects to string
-  const convertBigNumberToString = (value: any): string => {
-    if (!value) return '';
-
-    // Handle different types of BigNumber values
-    if (value._isBigNumber || value._hex) {
-      // It's an ethers BigNumber object
-      return ethers.BigNumber.from(value).toString();
-    } else if (typeof value === 'object' && value.hex) {
-      // It's an object with hex property
-      return ethers.BigNumber.from(value.hex).toString();
-    } else if (typeof value === 'object' && value.toString) {
-      // Try to handle as BigNumber if it has proper methods
-      try {
-        return ethers.BigNumber.from(value).toString();
-      } catch {
-        // Fallback to basic toString if BigNumber conversion fails
-        return value.toString();
-      }
-    } else {
-      // It's already a string or number
-      return String(value);
-    }
-  };
-
   const formattedValueAndCurrency = `${removeScientificNotation(
     Number(tx?.value ? tx?.value : 0) / 10 ** 18
   )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
@@ -222,13 +201,13 @@ export const SendTransaction = () => {
 
         // Only encode custom amount for ERC-20 approvals
         const abi = await getErc20Abi();
-        const erc20AbiInstance = new ethers.utils.Interface(abi);
+        const erc20AbiInstance = new Interface(abi);
 
         // The amount is already in the smallest unit (wei)
         let parsedAmount;
         try {
           // Direct wei/smallest unit input - no conversion needed
-          parsedAmount = ethers.BigNumber.from(
+          parsedAmount = BigNumber.from(
             customApprovedAllowanceAmount.customAllowanceValue
           );
         } catch (parseError) {
@@ -282,7 +261,7 @@ export const SendTransaction = () => {
               {
                 ...txWithoutType,
                 nonce: customNonce,
-                gasPrice: ethers.utils.hexlify(Number(getLegacyGasFee)),
+                gasPrice: hexlify(Number(getLegacyGasFee)),
                 gasLimit: BigNumber.from(
                   Boolean(
                     customFee.isCustom &&
@@ -308,7 +287,7 @@ export const SendTransaction = () => {
               {
                 ...txToSend,
                 nonce: customNonce,
-                maxPriorityFeePerGas: ethers.utils.parseUnits(
+                maxPriorityFeePerGas: parseUnits(
                   String(
                     Boolean(
                       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
@@ -318,7 +297,7 @@ export const SendTransaction = () => {
                   ),
                   9
                 ),
-                maxFeePerGas: ethers.utils.parseUnits(
+                maxFeePerGas: parseUnits(
                   String(
                     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
                       ? safeToFixed(customFee.maxFeePerGas)
@@ -617,10 +596,10 @@ export const SendTransaction = () => {
     // Handle different types of amount values
     if (rawAmount._isBigNumber || rawAmount._hex) {
       // It's an ethers BigNumber object
-      amountString = ethers.BigNumber.from(rawAmount).toString();
+      amountString = BigNumber.from(rawAmount).toString();
     } else if (typeof rawAmount === 'object' && rawAmount.hex) {
       // It's an object with hex property
-      amountString = ethers.BigNumber.from(rawAmount.hex).toString();
+      amountString = BigNumber.from(rawAmount.hex).toString();
     } else if (typeof rawAmount === 'object' && rawAmount.toString) {
       // It's some other object with toString method
       amountString = rawAmount.toString();

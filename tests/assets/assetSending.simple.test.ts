@@ -2,49 +2,54 @@
 jest.mock('../../source/state/store');
 jest.mock('@sidhujag/sysweb3-utils');
 
-// Mock ethers
-jest.mock('ethers', () => ({
-  ethers: {
-    utils: {
-      parseEther: (ethValue: string) => ({
-        _hex: '0x' + (parseFloat(ethValue) * 1e18).toString(16),
-      }),
-      parseUnits: (tokenValue: string, unitDecimals: string | number) => {
-        const decimals =
-          typeof unitDecimals === 'string' && unitDecimals === 'gwei'
-            ? 9
-            : Number(unitDecimals);
-        return {
-          _hex:
-            '0x' +
-            (parseFloat(tokenValue) * Math.pow(10, decimals)).toString(16),
-        };
-      },
-      formatUnits: (hexValue: any, unitDecimals: string | number) => {
-        const decimals =
-          typeof unitDecimals === 'string' && unitDecimals === 'gwei'
-            ? 9
-            : Number(unitDecimals);
-        const num = BigInt(hexValue._hex || hexValue);
-        return (Number(num) / Math.pow(10, decimals)).toString();
-      },
-      isAddress: jest.fn(
-        (address: string) => address.startsWith('0x') && address.length === 42
-      ),
-      Interface: jest.fn().mockImplementation(() => ({
-        encodeFunctionData: jest.fn(() => '0xa9059cbb...'),
-      })),
-    },
-    Contract: jest.fn(),
-    providers: {
-      JsonRpcProvider: jest.fn(),
-    },
+// Mock individual ethers packages
+jest.mock('@ethersproject/units', () => ({
+  parseEther: (ethValue: string) => ({
+    _hex: '0x' + (parseFloat(ethValue) * 1e18).toString(16),
+  }),
+  parseUnits: (tokenValue: string, unitDecimals: string | number) => {
+    const decimals =
+      typeof unitDecimals === 'string' && unitDecimals === 'gwei'
+        ? 9
+        : Number(unitDecimals);
+    return {
+      _hex:
+        '0x' + (parseFloat(tokenValue) * Math.pow(10, decimals)).toString(16),
+    };
   },
+  formatUnits: (hexValue: any, unitDecimals: string | number) => {
+    const decimals =
+      typeof unitDecimals === 'string' && unitDecimals === 'gwei'
+        ? 9
+        : Number(unitDecimals);
+    const num = BigInt(hexValue._hex || hexValue);
+    return (Number(num) / Math.pow(10, decimals)).toString();
+  },
+}));
+
+jest.mock('@ethersproject/address', () => ({
+  isAddress: jest.fn(
+    (address: string) => address.startsWith('0x') && address.length === 42
+  ),
+}));
+
+jest.mock('@ethersproject/abi', () => ({
+  Interface: jest.fn().mockImplementation(() => ({
+    encodeFunctionData: jest.fn(() => '0xa9059cbb...'),
+  })),
+}));
+
+jest.mock('@ethersproject/contracts', () => ({
+  Contract: jest.fn(),
+}));
+
+jest.mock('@ethersproject/providers', () => ({
+  JsonRpcProvider: jest.fn(),
 }));
 
 // Imports removed - test file demonstrates sending patterns
 
-const { ethers } = jest.requireMock('ethers');
+const { isAddress } = jest.requireMock('@ethersproject/address');
 
 describe('Asset Sending Simple Test Suite', () => {
   beforeEach(() => {
@@ -110,8 +115,8 @@ describe('Asset Sending Simple Test Suite', () => {
       const validAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f89234';
       const invalidAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f8923'; // Too short
 
-      expect(ethers.utils.isAddress(validAddress)).toBe(true);
-      expect(ethers.utils.isAddress(invalidAddress)).toBe(false);
+      expect(isAddress(validAddress)).toBe(true);
+      expect(isAddress(invalidAddress)).toBe(false);
     });
   });
 

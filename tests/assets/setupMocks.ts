@@ -33,74 +33,118 @@ jest.mock('syscoinjs-lib', () => ({
   Psbt: jest.fn(),
 }));
 
-// Mock ethers crypto functions
-jest.mock('ethers', () => {
-  const originalModule = jest.requireActual('ethers');
-  return {
-    ...originalModule,
-    ethers: {
-      ...originalModule.ethers,
-      utils: {
-        ...originalModule.ethers?.utils,
-        keccak256: jest.fn(),
-        solidityKeccak256: jest.fn(),
-        arrayify: jest.fn(),
-        hexlify: jest.fn(),
-        isAddress: jest.fn(
-          (address: string) =>
-            typeof address === 'string' &&
-            address.startsWith('0x') &&
-            address.length === 42
-        ),
-        getAddress: jest.fn((address: string) => address),
-        parseEther: jest.fn((value: string) => ({
-          _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
-          toString: () => (parseFloat(value) * 1e18).toString(),
-        })),
-        parseUnits: jest.fn((value: string, decimals: number) => ({
-          _hex:
-            '0x' + (parseFloat(value) * Math.pow(10, decimals)).toString(16),
-          toString: () =>
-            (parseFloat(value) * Math.pow(10, decimals)).toString(),
-        })),
-        formatUnits: jest.fn((value: any, decimals: number) => {
-          const val =
-            typeof value === 'object' && value._hex
-              ? BigInt(value._hex)
-              : BigInt(value);
-          return (Number(val) / Math.pow(10, decimals)).toString();
-        }),
-        Interface: jest.fn().mockImplementation(() => ({
-          encodeFunctionData: jest.fn(() => '0xa9059cbb...'),
-          decodeFunctionResult: jest.fn(() => ['result']),
-        })),
+// Mock individual ethers packages
+
+// Mock @ethersproject/bignumber
+jest.mock('@ethersproject/bignumber', () => ({
+  BigNumber: {
+    from: jest.fn((value: any) => ({
+      _hex:
+        typeof value === 'string' && value.startsWith('0x')
+          ? value
+          : '0x' + value,
+      toString: () => {
+        if (typeof value === 'string' && value.startsWith('0x')) {
+          return BigInt(value).toString();
+        }
+        return value.toString();
       },
-      BigNumber: {
-        from: jest.fn((value: any) => ({
-          _hex:
-            typeof value === 'string' && value.startsWith('0x')
-              ? value
-              : '0x' + value,
-          toString: () => {
-            if (typeof value === 'string' && value.startsWith('0x')) {
-              return BigInt(value).toString();
-            }
-            return value.toString();
-          },
-          gt: jest.fn(() => true),
-          lt: jest.fn(() => false),
-          eq: jest.fn(() => false),
-          toNumber: jest.fn(() => parseInt(value)),
-        })),
-      },
-      Contract: jest.fn(),
-      providers: {
-        JsonRpcProvider: jest.fn(),
-        Web3Provider: jest.fn(),
-      },
-    },
-  };
-});
+      gt: jest.fn(() => true),
+      lt: jest.fn(() => false),
+      eq: jest.fn(() => false),
+      toNumber: jest.fn(() => parseInt(value)),
+    })),
+  },
+}));
+
+// Mock @ethersproject/units
+jest.mock('@ethersproject/units', () => ({
+  parseEther: jest.fn((value: string) => ({
+    _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
+    toString: () => (parseFloat(value) * 1e18).toString(),
+  })),
+  parseUnits: jest.fn((value: string, decimals: number) => ({
+    _hex: '0x' + (parseFloat(value) * Math.pow(10, decimals)).toString(16),
+    toString: () => (parseFloat(value) * Math.pow(10, decimals)).toString(),
+  })),
+  formatUnits: jest.fn((value: any, decimals: number) => {
+    const val =
+      typeof value === 'object' && value._hex
+        ? BigInt(value._hex)
+        : BigInt(value);
+    return (Number(val) / Math.pow(10, decimals)).toString();
+  }),
+  formatEther: jest.fn((value: any) => {
+    const val =
+      typeof value === 'object' && value._hex
+        ? BigInt(value._hex)
+        : BigInt(value);
+    return (Number(val) / 1e18).toString();
+  }),
+}));
+
+// Mock @ethersproject/bytes
+jest.mock('@ethersproject/bytes', () => ({
+  arrayify: jest.fn(),
+  hexlify: jest.fn(),
+  isHexString: jest.fn(
+    (value: string) => typeof value === 'string' && value.startsWith('0x')
+  ),
+}));
+
+// Mock @ethersproject/hash
+jest.mock('@ethersproject/hash', () => ({
+  keccak256: jest.fn(),
+}));
+
+// Mock @ethersproject/solidity
+jest.mock('@ethersproject/solidity', () => ({
+  solidityKeccak256: jest.fn(),
+}));
+
+// Mock @ethersproject/address
+jest.mock('@ethersproject/address', () => ({
+  isAddress: jest.fn(
+    (address: string) =>
+      typeof address === 'string' &&
+      address.startsWith('0x') &&
+      address.length === 42
+  ),
+  getAddress: jest.fn((address: string) => address),
+}));
+
+// Mock @ethersproject/abi
+jest.mock('@ethersproject/abi', () => ({
+  Interface: jest.fn().mockImplementation(() => ({
+    encodeFunctionData: jest.fn(() => '0xa9059cbb...'),
+    decodeFunctionResult: jest.fn(() => ['result']),
+  })),
+  defaultAbiCoder: {
+    encode: jest.fn(),
+    decode: jest.fn(),
+  },
+}));
+
+// Mock @ethersproject/contracts
+jest.mock('@ethersproject/contracts', () => ({
+  Contract: jest.fn(),
+}));
+
+// Mock @ethersproject/providers
+jest.mock('@ethersproject/providers', () => ({
+  JsonRpcProvider: jest.fn(),
+  Web3Provider: jest.fn(),
+}));
+
+// Mock @ethersproject/wallet
+jest.mock('@ethersproject/wallet', () => ({
+  Wallet: jest.fn(),
+}));
+
+// Mock @ethersproject/strings
+jest.mock('@ethersproject/strings', () => ({
+  formatBytes32String: jest.fn(),
+}));
 
 // Mock browser crypto API
 Object.defineProperty(global, 'crypto', {
