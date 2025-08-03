@@ -110,19 +110,40 @@ const ImportAccountView = () => {
               { required: true, message: '' },
               () => ({
                 async validator(_, value) {
-                  if (
-                    validatePrivateKeyValue(
-                      value,
-                      isBitcoinBased,
-                      activeNetwork
-                    )
-                  ) {
+                  const isValid = await validatePrivateKeyValue(
+                    value,
+                    isBitcoinBased,
+                    activeNetwork
+                  );
+
+                  if (isValid) {
                     setValidPrivateKey(true);
                     return Promise.resolve();
                   }
+
                   setValidPrivateKey(false);
+
+                  // Check if it's a network type mismatch
+                  const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
+                  const prefix = value.substring(0, 4);
+                  const looksLikeZprv = zprvPrefixes.includes(prefix);
+                  const looksLikeEvm =
+                    value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
+
+                  if (!isBitcoinBased && looksLikeZprv) {
+                    return Promise.reject(
+                      new Error(t('settings.utxoKeyOnEvmError'))
+                    );
+                  }
+
+                  if (isBitcoinBased && looksLikeEvm) {
+                    return Promise.reject(
+                      new Error(t('settings.evmKeyOnUtxoError'))
+                    );
+                  }
+
                   return Promise.reject(
-                    new Error('Invalid private key format')
+                    new Error(t('settings.invalidPrivateKeyFormat'))
                   );
                 },
               }),

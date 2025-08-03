@@ -43,6 +43,23 @@ const SysTransactionController = (): ISysTransactionsController => {
       ? syscoinUserTransactions
       : [];
 
+    // If backend explicitly returns an empty array and we have no unconfirmed transactions,
+    // trust the backend - don't merge with potentially stale local state
+    if (
+      validGetSysTxs.length === 0 &&
+      validSyscoinUserTransactions.length > 0
+    ) {
+      // Check if all local transactions are confirmed (not pending)
+      const hasUnconfirmedLocal = validSyscoinUserTransactions.some(
+        (tx) => !tx.confirmations || tx.confirmations === 0
+      );
+
+      // If no unconfirmed transactions, trust the backend's empty response
+      if (!hasUnconfirmedLocal) {
+        return [];
+      }
+    }
+
     const mergedArrays = [...validGetSysTxs, ...validSyscoinUserTransactions];
 
     // Use the optimized function that deduplicates, sorts, and limits in one go

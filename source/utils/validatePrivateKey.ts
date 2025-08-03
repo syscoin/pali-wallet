@@ -10,6 +10,14 @@ export const validatePrivateKeyValue = async (
   activeNetwork?: INetwork
 ) => {
   if (!isBitcoinBased) {
+    // First check if it looks like a UTXO extended key (zprv/vprv)
+    const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
+    const prefix = privKey.substring(0, 4);
+    if (zprvPrefixes.includes(prefix)) {
+      // This looks like a UTXO key, reject it on EVM network
+      return false;
+    }
+
     try {
       // Normalize the private key by adding '0x' prefix if missing
       const normalizedKey =
@@ -22,6 +30,11 @@ export const validatePrivateKeyValue = async (
   }
 
   if (isBitcoinBased) {
+    // First check if it looks like an EVM key (0x prefix or 64 hex chars)
+    if (privKey.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(privKey)) {
+      // This looks like an EVM private key, reject it on UTXO network
+      return false;
+    }
     // If activeNetwork is undefined, try to get it from the vault
     let networkToValidate = activeNetwork;
 

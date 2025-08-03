@@ -220,29 +220,28 @@ const ManageAccountsView = React.memo(() => {
       return (
         <li
           key={`${accountType}-${account.id}`}
-          className="group my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
+          className="group my-3 py-2 w-full flex justify-between items-center gap-2 transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
         >
-          <div className="flex items-center">
-            <span
-              style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-              className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
-            >
-              <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out flex-shrink-0">
                 <IconComponent />
               </div>
-              {account.label} ({ellipsis(account.address, 4, 4)})
-            </span>
+              <span className="truncate">
+                {account.label} ({ellipsis(account.address, 4, 4)})
+              </span>
+            </div>
             <span
-              className={`text-xs ml-2 px-2 py-0.5 text-white ${config.bgColor} rounded-full`}
+              className={`text-xs px-2 py-0.5 text-white ${config.bgColor} rounded-full flex-shrink-0`}
             >
               {config.label}
             </span>
             {isActiveAccount(account, accountType) && (
-              <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+              <Icon name="greenCheck" isSvg className="w-4 flex-shrink-0" />
             )}
           </div>
 
-          <div className="flex gap-x-2 items-center justify-between">
+          <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
               onClick={() => editAccount(account)}
               type="primary"
