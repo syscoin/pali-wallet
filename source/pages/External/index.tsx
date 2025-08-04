@@ -1,14 +1,14 @@
 /* eslint-disable import/no-extraneous-dependencies */
 
 import React from 'react';
-import { transitions, positions, Provider as AlertProvider } from 'react-alert';
-import ReactDOM from 'react-dom';
+import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-import { ToastAlert } from 'components/index';
-import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
+import { clearNavigationState } from 'utils/navigationState';
 import 'assets/styles/index.css';
 import 'assets/styles/custom-input-password.css';
 import 'assets/styles/custom-input-normal.css';
@@ -22,27 +22,48 @@ import 'assets/styles/custom-import-token-input.css';
 import 'assets/fonts/index.css';
 import 'assets/styles/custom-send-utxo-input.css';
 
+// Initialize i18n for external pages
+import 'utils/i18n';
+
 import External from './External';
 
-const app = document.getElementById('external-root');
+const externalRootElement = document.getElementById('external-root');
 
-const options = {
-  position: positions.BOTTOM_CENTER,
-  timeout: 2 * 1000,
-  offset: '30px',
-  transition: transitions.FADE,
+const toastOptions = {
+  position: 'bottom-center' as const,
+  autoClose: 2 * 1000,
+  hideProgressBar: false,
+  closeOnClick: true,
+  pauseOnHover: false,
+  draggable: false,
+  newestOnTop: false,
+  limit: 3,
+  closeButton: false,
+  className: 'pali-toast',
+  toastClassName: 'pali-toast-content',
+  progressClassName: 'pali-toast-progress',
 };
 
-rehydrateStore(store).then(() => {
-  ReactDOM.render(
-    <Provider store={store}>
-      <AlertProvider template={ToastAlert} {...options}>
-        <External />
-      </AlertProvider>
-    </Provider>,
-    app
-  );
+if (externalRootElement) {
+  // Clear navigation state for external popups to ensure they don't restore state
+  clearNavigationState()
+    .then(() => {
+      console.log('[External] Cleared navigation state for external popup');
+      return rehydrateStore(store);
+    })
+    .then(() => {
+      const root = ReactDOM.createRoot(externalRootElement);
+      root.render(
+        <React.StrictMode>
+          <Provider store={store}>
+            <External />
+            <ToastContainer {...toastOptions} />
+          </Provider>
+        </React.StrictMode>
+      );
+    });
+} else {
+  console.error("Failed to find the root element with ID 'external-root'.");
+}
 
-  // Subscribe store to updates
-  handleStoreSubscribe(store);
-});
+export { default as External } from './External';

@@ -2,10 +2,10 @@ import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImWarning } from 'react-icons/im';
+import { MdBugReport } from 'react-icons/md';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
-import CheckIcon from 'assets/icons/check_icon.png';
-import ErrorIcon from 'assets/icons/error_icon.png';
+import CheckIcon from 'assets/all_assets/check_icon.svg';
 
 interface IModal {
   children: ReactNode;
@@ -234,70 +234,78 @@ export const ErrorModal = ({
   onClose,
   show,
   title = '',
-}: IErrorModal) => (
-  <Modal show={show} onClose={onClose}>
-    <div
-      className="inline-block align-middle my-8 w-full text-center font-poppins bg-bkg-7 border rounded-2xl shadow-xl overflow-hidden transform transition-all"
-      style={{ borderColor: 'rgba(255,255,255, .15)' }}
-    >
+}: IErrorModal) => {
+  const { t } = useTranslation();
+
+  return (
+    <Modal show={show} onClose={onClose}>
       <div
-        className="py-6 border-b border-dashed"
-        style={{ borderColor: 'rgba(255,255,255,.5)' }}
+        className="inline-block align-middle my-8 w-full text-center font-poppins bg-bkg-7 border rounded-2xl shadow-xl overflow-hidden transform transition-all"
+        style={{ borderColor: 'rgba(255,255,255, .15)' }}
       >
-        <Dialog.Title
-          as="h3"
-          className="text-brand-white text-base font-medium leading-6"
-        >
-          {title.toUpperCase()}
-        </Dialog.Title>
-      </div>
-
-      <div className="pb-3 px-5 w-full">
-        <div className="mt-5">
-          <p className="text-brand-white text-sm">{description}</p>
-        </div>
-
         <div
-          className="flex mb-8 mt-5 p-3 text-left border border-dashed"
-          style={{ borderColor: '#DC1515' }}
+          className="py-6 border-b border-dashed"
+          style={{ borderColor: 'rgba(255,255,255,.5)' }}
         >
-          <div className="mr-4">
-            <ImWarning color="#DC1515" size={32} style={{ marginTop: '5px' }} />
-          </div>
-
-          <div>
-            <span
-              className="text-sm"
-              style={{ color: '#FF1D1D', fontWeight: '600' }}
-            >
-              Error description:{' '}
-            </span>
-
-            <span className="text-brand-white text-sm font-normal">
-              {` ${log}`}
-            </span>
-          </div>
+          <Dialog.Title
+            as="h3"
+            className="text-brand-white text-base font-medium leading-6"
+          >
+            {title.toUpperCase()}
+          </Dialog.Title>
         </div>
 
-        <div className="flex gap-x-1.5 items-center justify-between">
-          <SecondaryButton
-            type="button"
-            onClick={() =>
-              window.open(
-                `mailto:pali@pollum.io?subject="Pali Error Report: Token creation"&body=${log}`
-              )
-            }
-          >
-            <img src={ErrorIcon} alt="Error icon" />
-            Report
-          </SecondaryButton>
+        <div className="pb-3 px-5 w-full">
+          <div className="mt-5">
+            <p className="text-brand-white text-sm">{description}</p>
+          </div>
 
-          <PrimaryButton type="button" onClick={onClose}>
-            <img src={CheckIcon} alt="Check icon" />
-            {buttonText}
-          </PrimaryButton>
+          <div
+            className="flex mb-8 mt-5 p-3 text-left border border-dashed"
+            style={{ borderColor: '#DC1515' }}
+          >
+            <div className="mr-4">
+              <ImWarning
+                color="#DC1515"
+                size={32}
+                style={{ marginTop: '5px' }}
+              />
+            </div>
+
+            <div>
+              <span
+                className="text-sm"
+                style={{ color: '#FF1D1D', fontWeight: '600' }}
+              >
+                {t('buttons.errorDescription')}:{' '}
+              </span>
+
+              <span className="text-brand-white text-sm font-normal">
+                {` ${log}`}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-x-1.5 items-center justify-between">
+            <SecondaryButton
+              type="button"
+              onClick={() =>
+                window.open(
+                  `mailto:support@syscoin.org?subject="Pali Error Report: Token creation"&body=${log}`
+                )
+              }
+            >
+              <MdBugReport size={20} />
+              Report
+            </SecondaryButton>
+
+            <PrimaryButton type="button" onClick={onClose}>
+              <img src={CheckIcon} alt="Check icon" />
+              {buttonText}
+            </PrimaryButton>
+          </div>
         </div>
       </div>
-    </div>
-  </Modal>
-);
+    </Modal>
+  );
+};

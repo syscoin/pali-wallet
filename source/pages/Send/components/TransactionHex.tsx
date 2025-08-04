@@ -19,12 +19,11 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.success(t('send.hexDataCopied'));
-  }, [copied]);
+    alert.info(t('send.hexDataCopied'));
+  }, [copied, alert, t]);
 
   return (
-    <div className="bg-brand-blue600 w-[400px] relative left-[-1%] flex flex-col items-center justify-center p-6 rounded-[20px]">
+    <div className="bg-brand-blue600 w-full max-w-[400px] mx-auto flex flex-col items-center justify-center p-6 rounded-[20px]">
       <div
         className="cursor-pointer remove-scrollbar w-full max-h-32 text-xs rounded-xl overflow-y-auto hover:opacity-60"
         style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}

@@ -1,25 +1,18 @@
-import BigNumber from 'bignumber.js';
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
-import isNil from 'lodash/isNil';
-import last from 'lodash/last';
-import omit from 'lodash/omit';
 import range from 'lodash/range';
-import uniqWith from 'lodash/uniqWith';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
-import {
-  ISysTransaction,
-  IEvmTransactionResponse,
-  TransactionValueType,
-} from './types';
+import { ISysTransaction, IEvmTransactionResponse } from './types';
+
+// Add this type at the top of the file (or near the imports)
+type UnifiedTransaction = IEvmTransactionResponse | ISysTransaction;
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -49,180 +42,378 @@ export const getFormattedEvmTransactionResponse = async (
 
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
-  startBlock: number,
-  endBlock: number
+  numBlocks: number
 ): Promise<IEvmTransactionResponse[] | any> => {
-  const rangeBlocksToRun = range(startBlock, endBlock);
+  const { isBitcoinBased } = store.getState().vault;
 
-  const batchRequest = rangeBlocksToRun.map((blockNumber) =>
-    provider.sendBatch('eth_getBlockByNumber', [
-      `0x${blockNumber.toString(16)}`,
-      true,
-    ])
-  );
+  // This function is EVM-specific, shouldn't be called for UTXO networks
+  if (isBitcoinBased) {
+    console.warn(
+      'findUserTxsInProviderByBlocksRange called on UTXO network - returning empty array'
+    );
+    return [];
+  }
 
-  const responses = await Promise.all(batchRequest);
+  // Get the latest block number first
+  const latestBlockNumber = await provider.getBlockNumber();
 
-  store.dispatch(
-    setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
-  );
+  // Calculate the range: from (latest - numBlocks) to latest
+  const startBlock = Math.max(0, latestBlockNumber - numBlocks);
+  const endBlock = latestBlockNumber;
 
-  const lastBlockNumber = rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
+  const rangeBlocksToRun = range(startBlock, endBlock + 1); // +1 to include endBlock
+
+  // Start with a conservative batch size and let it adapt based on provider limits
+  let currentBatchSize = 5; // Conservative starting point
+  const allResponses = [];
+
+  // Process blocks in chunks with dynamic batch size
+  let i = 0;
+  let chunkCount = 0;
+  let consecutiveErrors = 0;
+
+  while (i < rangeBlocksToRun.length) {
+    const chunk = rangeBlocksToRun.slice(i, i + currentBatchSize);
+
+    try {
+      // Use sendBatch to send all block requests in a single batch
+      const batchParams = chunk.map((blockNumber) => [
+        `0x${blockNumber.toString(16)}`,
+        true,
+      ]);
+
+      const responses = await provider.sendBatch(
+        'eth_getBlockByNumber',
+        batchParams
+      );
+      allResponses.push(...responses);
+
+      // Reset consecutive errors on success
+      consecutiveErrors = 0;
+
+      // Move to next chunk
+      i += currentBatchSize;
+      chunkCount++;
+
+      // Add progressive delay between chunks to avoid rate limiting
+      if (i < rangeBlocksToRun.length) {
+        // Base delay: 100ms, increases by 50ms every 10 chunks
+        const baseDelay = 100;
+        const progressiveDelay = Math.floor(chunkCount / 10) * 50;
+        const delay = Math.min(baseDelay + progressiveDelay, 500); // Cap at 500ms
+
+        if (chunkCount % 10 === 0) {
+          console.log(
+            `Processed ${chunkCount} chunks, current delay: ${delay}ms`
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    } catch (error: any) {
+      console.error('Error fetching blocks:', error);
+      consecutiveErrors++;
+
+      // Check for rate limiting errors
+      const isRateLimitError =
+        (error.message &&
+          (error.message.includes('rate limit') ||
+            error.message.includes('Too many requests') ||
+            error.message.includes('429'))) ||
+        error.status === 429 ||
+        error.code === 429;
+
+      if (isRateLimitError) {
+        // Exponential backoff for rate limiting
+        const backoffDelay = Math.min(
+          1000 * Math.pow(2, consecutiveErrors),
+          10000
+        ); // Max 10 seconds
+        console.warn(`Rate limit hit, waiting ${backoffDelay}ms before retry`);
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+        continue; // Retry the same chunk
+      }
+
+      // Check for various batch size limit errors
+      const isBatchSizeError =
+        (error.message &&
+          (error.message.includes('Batch size too large') ||
+            error.message.includes('Batch of more than') ||
+            (error.message.includes('batch') &&
+              error.message.includes('not allowed')))) ||
+        (error.body &&
+          typeof error.body === 'string' &&
+          error.body.includes('Batch of more than'));
+
+      if (isBatchSizeError) {
+        // Extract batch limit from error message if possible
+        const batchLimitMatch =
+          error.message?.match(/Batch of more than (\d+)/) ||
+          error.body?.match(/Batch of more than (\d+)/);
+
+        if (batchLimitMatch && batchLimitMatch[1]) {
+          const maxAllowed = parseInt(batchLimitMatch[1]);
+          currentBatchSize = Math.min(currentBatchSize, maxAllowed);
+          console.warn(
+            `Batch size limit detected: max ${maxAllowed} allowed. Reducing batch size to ${currentBatchSize}`
+          );
+        } else if (currentBatchSize > 1) {
+          // If we can't parse the limit, reduce by half
+          currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+          console.warn(
+            `Batch size error detected. Reducing batch size to ${currentBatchSize}`
+          );
+        }
+
+        // Retry the same chunk with smaller batch size
+        continue;
+      } else if (currentBatchSize > 1) {
+        // For other errors, try reducing batch size anyway
+        currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+        console.warn(
+          `Unknown error, reducing batch size to ${currentBatchSize} and retrying`
+        );
+        continue;
+      } else {
+        // If we're already at batch size 1, skip this block
+        console.error(
+          `Failed to fetch block ${chunk[0]} even with batch size 1:`,
+          error
+        );
+        i += 1; // Move to next block
+      }
+    }
+  }
 
   return flatMap(
-    responses.map((response: any) => {
-      const currentBlock = parseInt(response.number, 16);
-
+    allResponses.map((response: any) => {
       const filterTxsByAddress = response.transactions
         .filter((tx) => tx?.from || tx?.to)
-        .map((txWithConfirmations) => ({
-          ...txWithConfirmations,
-          chainId: Number(txWithConfirmations.chainId),
-          confirmations: lastBlockNumber - currentBlock,
-          timestamp: Number(response.timestamp),
-        }));
+        .map((txWithConfirmations) => {
+          // Calculate confirmations based on actual latest block number
+          // Confirmations = (latest block number - transaction block number) + 1
+          // But if transaction is in pending state (blockNumber is null), confirmations = 0
+          const txBlockNumber = txWithConfirmations.blockNumber
+            ? parseInt(txWithConfirmations.blockNumber, 16)
+            : null;
+
+          const confirmations = txBlockNumber
+            ? Math.max(0, latestBlockNumber - txBlockNumber)
+            : 0;
+
+          return {
+            ...txWithConfirmations,
+            chainId: Number(txWithConfirmations.chainId),
+            confirmations,
+            timestamp: response.timestamp
+              ? Number(response.timestamp)
+              : Math.floor(Date.now() / 1000),
+            nonce:
+              txWithConfirmations.nonce !== undefined &&
+              txWithConfirmations.nonce !== null
+                ? typeof txWithConfirmations.nonce === 'string'
+                  ? parseInt(txWithConfirmations.nonce, 16) // RPC returns nonce as hex string
+                  : Number(txWithConfirmations.nonce)
+                : undefined,
+          };
+        });
 
       return filterTxsByAddress;
     })
   );
 };
 
-export const treatDuplicatedTxs = (
-  transactions: IEvmTransactionResponse[] | ISysTransaction[]
-) =>
-  uniqWith(
-    transactions,
-    (
-      a: IEvmTransactionResponse | ISysTransaction,
-      b: IEvmTransactionResponse | ISysTransaction
-    ) => {
-      const idA = 'hash' in a ? a.hash : a.txid;
-      const idB = 'hash' in b ? b.hash : b.txid;
+// Optimized function that deduplicates, sorts, and limits in one go
+export const treatAndSortTransactions = (
+  transactions: UnifiedTransaction[],
+  limit = 30
+): UnifiedTransaction[] => {
+  // Single pass: Group transactions by their ID and keep the best version
+  const txMap = new Map<string, UnifiedTransaction>();
 
-      const TSTAMP_PROP = 'timestamp';
-      const BLOCKTIME_PROP = 'blockTime';
-
-      if (idA.toLowerCase() === idB.toLowerCase()) {
-        // Keep the transaction with the higher confirmation number
-        if (a.confirmations > b.confirmations) {
-          // Preserve timestamp if available and valid
-          if (
-            b[TSTAMP_PROP] &&
-            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] > b[TSTAMP_PROP])
-          ) {
-            a[TSTAMP_PROP] = b[TSTAMP_PROP];
-          }
-          // Preserve blockTime if available and valid
-          if (
-            b[BLOCKTIME_PROP] &&
-            (!a[BLOCKTIME_PROP] || a[BLOCKTIME_PROP] < b[BLOCKTIME_PROP])
-          ) {
-            a[BLOCKTIME_PROP] = b[BLOCKTIME_PROP];
-          }
-        } else {
-          // Preserve timestamp if available and valid
-          if (
-            a[TSTAMP_PROP] &&
-            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] > a[TSTAMP_PROP])
-          ) {
-            b[TSTAMP_PROP] = a[TSTAMP_PROP];
-          }
-          // Preserve blockTime if available and valid
-          if (
-            a[BLOCKTIME_PROP] &&
-            (!b[BLOCKTIME_PROP] || b[BLOCKTIME_PROP] < a[BLOCKTIME_PROP])
-          ) {
-            b[BLOCKTIME_PROP] = a[BLOCKTIME_PROP];
-          }
-        }
-        return true;
-      }
-      return false;
+  for (const tx of transactions) {
+    // For EVM transactions with nonce, use nonce to detect replacements
+    // For UTXO or transactions without nonce, use hash/txid
+    let id: string;
+    if ('nonce' in tx && typeof tx.nonce === 'number') {
+      id = tx.nonce.toString();
+    } else {
+      id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
     }
-  );
 
-//todo: there's a potential issue here when we call this function and the active account has changed
-export const validateAndManageUserTransactions = (
-  providerTxs: IEvmTransactionResponse[]
-): IEvmTransactionResponse[] => {
-  // If providerTxs is empty, return an empty array
-  if (isEmpty(providerTxs)) return [];
+    // Normal deduplication by hash
+    const existing = txMap.get(id);
 
-  const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
-    store.getState().vault;
+    // Update if: no existing tx, more confirmations, or transaction just got into a block
+    const shouldUpdate =
+      !existing ||
+      tx.confirmations > existing.confirmations ||
+      (existing && !isTransactionInBlock(existing) && isTransactionInBlock(tx));
 
-  let userTx;
+    if (shouldUpdate) {
+      // If this is a new tx or has better status, it becomes our candidate
+      const mergedTx = existing ? { ...tx } : tx;
 
-  for (const accountType in accounts) {
-    for (const accountId in accounts[accountType]) {
-      const account = accounts[accountType][accountId];
-      const userAddress = account.address.toLowerCase();
+      // If we had an existing tx, preserve earliest timestamps
+      if (existing) {
+        const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
+        const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
-      const filteredTxs = providerTxs.filter(
-        (tx) =>
-          (tx.from?.toLowerCase() === userAddress ||
-            tx.to?.toLowerCase() === userAddress) &&
-          !isNil(tx.blockHash) &&
-          !isNil(tx.blockNumber)
-      );
+        if (
+          existing[TSTAMP_PROP] &&
+          (!mergedTx[TSTAMP_PROP] ||
+            existing[TSTAMP_PROP] < mergedTx[TSTAMP_PROP])
+        ) {
+          (mergedTx as any)[TSTAMP_PROP] = existing[TSTAMP_PROP];
+        }
 
-      const updatedTxs = isBitcoinBased
-        ? (compact(
-            clone(
-              account.transactions[TransactionsType.Syscoin][
-                activeNetwork.chainId
-              ]
-            )
-          ) as ISysTransaction[])
-        : (compact(
-            clone(
-              account.transactions[TransactionsType.Ethereum][
-                activeNetwork.chainId
-              ]
-            )
-          ) as IEvmTransactionResponse[]);
+        if (
+          existing[BLOCKTIME_PROP] &&
+          (!mergedTx[BLOCKTIME_PROP] ||
+            existing[BLOCKTIME_PROP] < mergedTx[BLOCKTIME_PROP])
+        ) {
+          (mergedTx as any)[BLOCKTIME_PROP] = existing[BLOCKTIME_PROP];
+        }
+      }
 
-      const mergedTxs = [
-        ...updatedTxs,
-        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
-      ];
+      txMap.set(id, mergedTx);
+    } else if (existing) {
+      // The existing tx has same or more confirmations, but check if new tx has earlier timestamps
+      const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
+      const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
-      if (filteredTxs.length > 0) {
-        store.dispatch(
-          setMultipleTransactionToState({
-            chainId: activeNetwork.chainId,
-            networkType: TransactionsType.Ethereum,
-            transactions: mergedTxs,
-          })
-        );
+      let updated = false;
+      const mergedTx = { ...existing };
+
+      if (
+        tx[TSTAMP_PROP] &&
+        (!existing[TSTAMP_PROP] || tx[TSTAMP_PROP] < existing[TSTAMP_PROP])
+      ) {
+        (mergedTx as any)[TSTAMP_PROP] = tx[TSTAMP_PROP];
+        updated = true;
       }
 
       if (
-        accountType === activeAccount.type &&
-        Number(accountId) === activeAccount.id
+        tx[BLOCKTIME_PROP] &&
+        (!existing[BLOCKTIME_PROP] ||
+          tx[BLOCKTIME_PROP] < existing[BLOCKTIME_PROP])
       ) {
-        userTx = updatedTxs;
+        (mergedTx as any)[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
+        updated = true;
+      }
+
+      if (updated) {
+        txMap.set(id, mergedTx);
       }
     }
   }
 
-  return userTx;
+  // Convert to array and sort
+  const deduplicatedTxs = Array.from(txMap.values());
+
+  // Sort by confirmations ascending (pending first), then by timestamp descending
+  deduplicatedTxs.sort((a, b) => {
+    if (a.confirmations !== b.confirmations) {
+      return a.confirmations - b.confirmations; // pending (0) first
+    }
+    // If confirmations are equal, sort by timestamp descending
+    const aTime = (a as any).timestamp || (a as any).blockTime || 0;
+    const bTime = (b as any).timestamp || (b as any).blockTime || 0;
+    return bTime - aTime;
+  });
+
+  // Return limited array
+  return deduplicatedTxs.slice(0, limit);
 };
 
-export const convertTransactionValueToCompare = (
-  value: TransactionValueType
-): number => {
-  if (typeof value === 'string') {
-    if (value.startsWith('0x')) {
-      return new BigNumber(value).toNumber();
-    } else {
-      return parseFloat(value);
-    }
-  } else if (typeof value === 'number') {
-    return value;
-  } else if ('isBigNumber' in value) {
-    return new BigNumber(value._hex).toNumber();
-  } else if ('type' in value && 'hex' in value) {
-    return new BigNumber(value.hex).toNumber();
+export const validateAndManageUserTransactions = (
+  providerTxs: IEvmTransactionResponse[]
+): UnifiedTransaction[] => {
+  // If providerTxs is empty, return an empty array
+  if (isEmpty(providerTxs)) return [];
+
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork,
+    accountTransactions: vaultAccountTransactions,
+  } = store.getState().vault;
+
+  // Safety check: if activeNetwork is undefined, return empty array
+  if (!activeNetwork) {
+    console.warn(
+      'validateAndManageUserTransactions: activeNetwork is undefined'
+    );
+    return [];
   }
+
+  // Safety check: validate account access path
+  if (
+    !accounts[activeAccount.type] ||
+    !accounts[activeAccount.type]?.[activeAccount.id]
+  ) {
+    console.warn(
+      'validateAndManageUserTransactions: account not found',
+      activeAccount
+    );
+    return [];
+  }
+
+  const account = accounts[activeAccount.type]?.[activeAccount.id];
+  if (!account) {
+    console.warn(
+      'validateAndManageUserTransactions: account became undefined after check'
+    );
+    return [];
+  }
+  const userAddress = account.address.toLowerCase();
+
+  const filteredTxs = providerTxs
+    .filter(
+      (tx) =>
+        (tx.from?.toLowerCase() === userAddress ||
+          tx.to?.toLowerCase() === userAddress) &&
+        // Include valid transactions: either pending (missing block info) or confirmed (has both)
+        // Pending: missing blockHash OR blockNumber
+        // Confirmed: has both blockHash AND blockNumber
+        (!tx.blockHash || !tx.blockNumber || (tx.blockHash && tx.blockNumber))
+    )
+    .map((tx) => {
+      // Add direction field to transaction
+      const fromAddress = tx.from?.toLowerCase();
+      const toAddress = tx.to?.toLowerCase();
+
+      // Determine transaction direction
+      let direction = 'unknown';
+      if (fromAddress === userAddress && toAddress !== userAddress) {
+        direction = 'sent';
+      } else if (fromAddress !== userAddress && toAddress === userAddress) {
+        direction = 'received';
+      } else if (fromAddress === userAddress && toAddress === userAddress) {
+        direction = 'self';
+      }
+
+      return {
+        ...tx,
+        direction,
+      };
+    });
+
+  // Always use Ethereum for EVM
+  const transactionType = TransactionsType.Ethereum;
+
+  const accountTransactions =
+    vaultAccountTransactions[activeAccount.type]?.[activeAccount.id]?.[
+      transactionType
+    ]?.[activeNetwork.chainId];
+
+  const updatedTxs = accountTransactions
+    ? (compact(clone(accountTransactions)) as UnifiedTransaction[])
+    : [];
+
+  // When merging transactions, use the union type
+  const mergedTxs: UnifiedTransaction[] = [...updatedTxs, ...filteredTxs];
+
+  // Deduplicate, sort, and limit to 30 transactions in one optimized pass
+  return treatAndSortTransactions(mergedTxs, 30);
 };

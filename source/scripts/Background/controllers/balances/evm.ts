@@ -1,40 +1,27 @@
-import { ethers } from 'ethers';
-
+import { formatEther } from '@ethersproject/units';
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
-} from '@pollum-io/sysweb3-keyring';
-
-import { IPaliAccount } from 'state/vault/types';
-import { ONE_MILLION } from 'utils/constants';
-import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
+  IKeyringAccountState,
+} from '@sidhujag/sysweb3-keyring';
 
 import { IEvmBalanceController } from './types';
-import { zerosRepeatingAtStartOfEvmBalance } from './utils';
 
 const EvmBalanceController = (
   web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
 ): IEvmBalanceController => {
-  const getEvmBalanceForAccount = async (currentAccount: IPaliAccount) => {
-    try {
-      //LATER CHANGE THIS TO USE NEW PROVIDER FROM SYSWEB3
-      const provider = web3Provider;
+  const getEvmBalanceForAccount = async (
+    currentAccount: IKeyringAccountState
+  ) => {
+    const provider = web3Provider;
 
-      const getBalance = await provider.getBalance(currentAccount.address);
+    const getBalance = await provider.getBalance(currentAccount.address);
 
-      const formattedBalance = ethers.utils.formatEther(getBalance);
+    // Always return the full precision balance as a string
+    // Formatting for display should happen in the UI components
+    const fullPrecisionBalance = formatEther(getBalance);
 
-      if (+formattedBalance >= ONE_MILLION) {
-        return formattedBalance;
-      }
-
-      //Validate quantity of zeros in the start of balance to don't how a big 0 decimal number
-      return zerosRepeatingAtStartOfEvmBalance(formattedBalance)
-        ? '0'
-        : verifyZerosInBalanceAndFormat(parseFloat(formattedBalance), 4);
-    } catch (error) {
-      return String(currentAccount.balances.ethereum);
-    }
+    return fullPrecisionBalance;
   };
 
   return {

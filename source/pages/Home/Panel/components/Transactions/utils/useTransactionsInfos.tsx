@@ -1,83 +1,102 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { ArrowUpSvg, ReceivedArrowSvg } from 'components/Icon/Icon';
 import { RootState } from 'state/store';
 import { ITransactionsListConfig } from 'types/useTransactionsInfo';
+
+// Memoize transaction status icons using centralized SVG components
+const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
+  <>
+    {isDetail ? (
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2 transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
+        <ArrowUpSvg className="relative w-[30px] h-[30px]" />
+      </div>
+    ) : (
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
+        <ArrowUpSvg className="relative" />
+      </div>
+    )}
+  </>
+));
+SentIcon.displayName = 'SentIcon';
+
+const ReceivedIcon = memo(({ isDetail }: { isDetail: boolean }) => (
+  <>
+    {isDetail ? (
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2 transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
+        <ReceivedArrowSvg className="relative w-[30px] h-[30px]" />
+      </div>
+    ) : (
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
+        <ReceivedArrowSvg className="relative" />
+      </div>
+    )}
+  </>
+));
+ReceivedIcon.displayName = 'ReceivedIcon';
 
 export const useTransactionsListConfig = (
   userTransactions?: any[]
 ): ITransactionsListConfig => {
-  const {
-    activeNetwork: { chainId },
-    isBitcoinBased,
-  } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const chainId = activeNetwork.chainId;
 
   const { t } = useTranslation();
 
   const txId = isBitcoinBased ? 'txId' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
-  const getTxType = (tx: any, isTxSent: boolean) => {
-    if (isBitcoinBased) {
-      if (tx.tokenType === 'SPTAssetActivate') {
-        return 'SPT creation';
+  const getTxType = useCallback(
+    (tx: any, isTxSent: boolean) => {
+      if (isBitcoinBased) {
+        // Syscoin 5 transaction types
+        if (tx.tokenType === 'assetallocationsend') {
+          return 'SPT Transfer';
+        }
+
+        if (tx.tokenType === 'syscoinburntoallocation') {
+          return 'SYS → SYSX';
+        }
+
+        if (tx.tokenType === 'assetallocationburntosyscoin') {
+          return 'SYSX → SYS';
+        }
+
+        if (tx.tokenType === 'assetallocationburntoethereum') {
+          return 'SPT → NEVM';
+        }
+
+        if (tx.tokenType === 'assetallocationmint') {
+          return 'SPT Mint';
+        }
+
+        return 'Transaction';
       }
 
-      if (tx.tokenType === 'SPTAssetSend') {
-        return 'SPT mint';
-      }
+      const txLabel = isTxSent ? 'Sent' : 'Received';
 
-      if (tx.tokenType === 'SPTAssetUpdate') {
-        return 'SPT update';
-      }
+      return `${txLabel}`;
+    },
+    [isBitcoinBased]
+  );
 
-      return 'Transaction';
-    }
-
-    const txLabel = isTxSent ? 'Sent' : 'Received';
-
-    return `${txLabel}`;
-  };
-
-  const getTxStatusIcons = (txLabel: string, isDetail: boolean) => {
-    let icon = '';
-
+  const getTxStatusIcons = useCallback((txLabel: string, isDetail: boolean) => {
     switch (txLabel) {
       case 'Sent':
-        icon = '/assets/icons/ArrowUp.svg';
-        break;
+        return <SentIcon isDetail={isDetail} />;
       case 'Received':
-        icon = '/assets/icons/receivedArrow.svg';
-        break;
+        return <ReceivedIcon isDetail={isDetail} />;
+      default:
+        return null;
     }
-
-    return (
-      <>
-        {isDetail ? (
-          <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-            <img className="relative w-[30px] h-[30px]" src={icon} alt="Icon" />
-          </div>
-        ) : (
-          <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-            <img className="relative" src={icon} alt="Icon" />
-          </div>
-        )}
-      </>
-    );
-  };
-
-  const isShowedGroupBar = useCallback(
-    (tx: any, idx: number) =>
-      tx === null &&
-      tx === undefined &&
-      userTransactions[idx - 1] === undefined &&
-      userTransactions[idx - 1] === null &&
-      (idx === 0 ||
-        new Date(tx[blocktime] * 1e3).toDateString() !==
-          new Date(userTransactions[idx - 1][blocktime] * 1e3).toDateString()),
-    [userTransactions]
-  );
+  }, []);
 
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(userTransactions)) {
@@ -117,12 +136,26 @@ export const useTransactionsListConfig = (
           status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
+
       return <p className={`text-xs font-normal ${className}`}>{status}</p>;
     },
-    [userTransactions]
+    [t]
   );
 
-  const formatTimeStamp = (timestamp: number) => {
+  const formatTimeStamp = useCallback((timestamp: number) => {
+    // Validate timestamp - should be in seconds, not too far in past or future
+    const currentTime = Math.floor(Date.now() / 1000);
+    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
+    // If timestamp is invalid, use current time
+    if (!timestamp || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
+      console.warn(
+        `Invalid timestamp detected: ${timestamp}, using current time`
+      );
+      timestamp = currentTime;
+    }
+
     const data = new Date(timestamp * 1000);
 
     const options: Intl.DateTimeFormatOptions = {
@@ -134,10 +167,35 @@ export const useTransactionsListConfig = (
     const formatedData = new Intl.DateTimeFormat('en-US', options).format(data);
 
     return formatedData;
-  };
+  }, []);
 
-  const formatTimeStampUtxo = (timestamp: number) => {
-    const date = new Date(timestamp);
+  const formatTimeStampUtxo = useCallback((timestamp: number) => {
+    // Validate timestamp for UTXO as well
+    const currentTime = Math.floor(Date.now() / 1000);
+    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
+    // For UTXO, timestamp might already be in milliseconds
+    let timestampMs = timestamp;
+    if (timestamp < 10000000000) {
+      // If timestamp appears to be in seconds, convert to milliseconds
+      timestampMs = timestamp * 1000;
+    }
+
+    // Validate the millisecond timestamp
+    const timestampSec = Math.floor(timestampMs / 1000);
+    if (
+      !timestampSec ||
+      timestampSec < tenYearsAgo ||
+      timestampSec > oneYearFromNow
+    ) {
+      console.warn(
+        `Invalid UTXO timestamp detected: ${timestamp}, using current time`
+      );
+      timestampMs = Date.now();
+    }
+
+    const date = new Date(timestampMs);
 
     const dateFormatOptions: Intl.DateTimeFormatOptions = {
       month: '2-digit',
@@ -169,25 +227,7 @@ export const useTransactionsListConfig = (
         <p className="text-xs text-white">{formattedTime}</p>
       </div>
     );
-  };
-
-  const getTokenSymbol = (isErc20Tx: boolean, coinsList: any[], tx: any) => {
-    if (isErc20Tx) {
-      const token = coinsList.find((coin) =>
-        Object.values(coin?.platforms || {})
-          ?.map((item) => `${item}`.toLocaleLowerCase())
-          ?.includes(`${tx?.to}`.toLocaleLowerCase())
-      );
-
-      if (token) {
-        return `${token?.symbol}`.toUpperCase();
-      }
-
-      return '';
-    }
-
-    return '';
-  };
+  }, []);
 
   return useMemo(
     () => ({
@@ -196,11 +236,9 @@ export const useTransactionsListConfig = (
       formatTimeStamp,
       formatTimeStampUtxo,
       filteredTransactions,
-      isShowedGroupBar,
       txId,
       getTxType,
       blocktime,
-      getTokenSymbol,
     }),
     [
       getTxStatus,
@@ -208,11 +246,9 @@ export const useTransactionsListConfig = (
       formatTimeStamp,
       formatTimeStampUtxo,
       filteredTransactions,
-      isShowedGroupBar,
       txId,
       getTxType,
       blocktime,
-      getTokenSymbol,
     ]
   );
 };

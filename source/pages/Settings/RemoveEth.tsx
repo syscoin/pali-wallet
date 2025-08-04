@@ -1,55 +1,72 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-import metamaskIcon from 'assets/icons/metamask.svg';
-import paliIcon from 'assets/icons/pali.svg';
-import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
+import metamaskIcon from 'assets/all_assets/metamask.svg';
+import { DefaultModal, NeutralButton, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 
 const RemoveEthView = () => {
-  const { hasEthProperty } = useSelector((state: RootState) => state.vault);
+  const { hasEthProperty } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [loading, setLoading] = useState<boolean>(false);
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     setLoading(true);
 
     setIsEnabled(!isEnabled);
 
     switch (isEnabled) {
       case true:
-        controllerEmitter(['wallet', 'removeWindowEthProperty']);
+        await controllerEmitter(['wallet', 'removeWindowEthProperty']);
+        await controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
 
-        controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+        // Get all dapps and disconnect them efficiently
+        try {
+          const dapps = await controllerEmitter(['dapp', 'getAll']);
+          const dappEntries = Object.values(dapps);
 
-        controllerEmitter(['dapp', 'getAll']).then((dapps) => {
-          for (const dapp of Object.values(dapps)) {
-            controllerEmitter(['dapp', 'isConnected'], [dapp.host]).then(
-              (isConnected: boolean) => {
-                if (isConnected)
-                  controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-              }
+          if (dappEntries.length > 0) {
+            await Promise.all(
+              dappEntries.map(async (dapp: any) => {
+                const isConnected = await controllerEmitter(
+                  ['dapp', 'isConnected'],
+                  [dapp.host]
+                );
+                if (isConnected) {
+                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
+                }
+              })
+            );
+
+            // Now save once after all disconnects are complete
+            await controllerEmitter(
+              ['wallet', 'saveCurrentState'],
+              ['remove-eth-disconnects']
             );
           }
-        });
+        } catch (error) {
+          console.error('Error disconnecting dapps:', error);
+        }
 
         setConfirmed(true);
         setLoading(false);
         break;
       case false:
-        controllerEmitter(['wallet', 'addWindowEthProperty']);
-
-        controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+        await controllerEmitter(['wallet', 'addWindowEthProperty']);
+        await controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
 
         setConfirmed(true);
-
         setLoading(false);
         break;
       default:
@@ -62,18 +79,22 @@ const RemoveEthView = () => {
       isEnabled ? (
         <img className="pr-2" src={metamaskIcon} />
       ) : (
-        <img className="pr-2" src={paliIcon} />
+        <Icon
+          name="PaliWhiteSmall"
+          isSvg
+          className="pr-2 text-brand-gray300 opacity-80"
+        />
       ),
     [isEnabled]
   );
 
   return (
-    <Layout title={t('settings.manageEthProvider')} id="auto-lock-timer-title">
+    <>
       <DefaultModal
         show={confirmed}
         onClose={() => {
           setConfirmed(false);
-          navigate('/home');
+          navigateBack(navigate, location);
         }}
         title={t('settings.windowObjectWasSet')}
         description={t('settings.yourWalletWasConfigured')}
@@ -128,7 +149,7 @@ const RemoveEthView = () => {
 
         <div className="w-full px-4 absolute bottom-12 md:static">
           <NeutralButton
-            onClick={() => navigate('/home')}
+            onClick={() => navigateBack(navigate, location)}
             type="button"
             fullWidth={true}
             loading={loading}
@@ -137,7 +158,7 @@ const RemoveEthView = () => {
           </NeutralButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

@@ -1,55 +1,62 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  IKeyringAccountState,
+} from '@sidhujag/sysweb3-keyring';
 
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountAssets } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
-const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
-  const evmAssetsController = EvmAssetsController(w3Provider);
+const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    web3Provider: CustomJsonRpcProvider,
+    currentAssets: IAccountAssets
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
-        try {
-          const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
-            currentAccount.xpub,
-            activeNetworkUrl,
-            networkChainId
-          );
+        const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
+          currentAccount.xpub,
+          activeNetworkUrl,
+          networkChainId
+        );
 
-          return {
-            ...currentAccount.assets,
-            syscoin: getSysAssets,
-          };
-        } catch (sysUpdateError) {
-          return sysUpdateError;
-        }
+        return {
+          ...currentAssets,
+          syscoin: getSysAssets,
+        };
 
       case false:
-        try {
-          const getEvmAssets = await evmAssetsController.updateAllEvmTokens(
-            currentAccount,
-            networkChainId
-          );
-
+        if (!web3Provider) {
+          console.error('No valid web3Provider for EVM assets fetching');
           return {
-            ...currentAccount.assets,
-            ethereum: getEvmAssets,
+            ...currentAssets,
+            ethereum: [],
           };
-        } catch (evmUpdateError) {
-          return evmUpdateError;
         }
+
+        // Create EVM controller fresh with current provider
+        const assetsController = EvmAssetsController();
+        const getEvmAssets = await assetsController.updateAllEvmTokens(
+          currentAccount,
+          networkChainId,
+          web3Provider,
+          currentAssets.ethereum || []
+        );
+
+        return {
+          ...currentAssets,
+          ethereum: getEvmAssets,
+        };
     }
   };
 
   return {
-    evm: evmAssetsController,
     sys: SysAssetsController(),
     utils: {
       updateAssetsFromCurrentAccount,

@@ -10,7 +10,7 @@ export const chromeStorage = {
         }
       });
     }),
-  setItem: (key: string, value: string): Promise<void> =>
+  setItem: (key: string, value: any): Promise<void> =>
     new Promise((resolve, reject) => {
       // Use Chrome Storage API
       chrome.storage.local.set({ [key]: value }, function () {
@@ -32,4 +32,12 @@ export const chromeStorage = {
         }
       });
     }),
+};
+
+export const setLanguageInLocalStorage = async (lang: string) => {
+  try {
+    await chromeStorage.setItem('language', lang);
+  } catch (e) {
+    console.error('<!> Error saving language', e);
+  }
 };

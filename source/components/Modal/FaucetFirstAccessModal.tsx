@@ -2,54 +2,72 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Icon } from '..';
-import image from 'assets/images/faucetmodal.png';
-import rolluxLogo from 'assets/images/rolluxChain.png';
-import sysLogo from 'assets/images/sysChain.svg';
+import closeIcon from 'assets/all_assets/close.svg';
+import { ChainIcon } from 'components/ChainIcon';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { faucetNetworkData } from 'utils/constants';
 
-type FaucetFirstAccessModalProps = {
-  handleOnClose: () => void;
-};
-
 export const FaucetFirstAccessModal = ({
-  handleOnClose,
-}: FaucetFirstAccessModalProps) => {
+  onClose,
+}: {
+  onClose: () => void;
+}) => {
+  const { navigate } = useUtils();
   const { t } = useTranslation();
 
   const {
-    activeNetwork: { chainId },
+    activeNetwork: { chainId, kind },
   } = useSelector((state: RootState) => state.vault);
 
   const currentNetworkData = faucetNetworkData?.[chainId];
 
   return (
-    <div className="z-[49] border border-brand-blue400 left-[6%] absolute bottom-6 w-[352px] h-[91px]  flex items-center rounded-[20px]  bg-gradient-to-r from-[#7192C6] via-[#436AA8] to-[#314E7C]">
-      <div className="w-full relative p-[13px]">
-        <div className="relative bottom-[0.5rem] z-[9999]">
-          <img className="absolute z-20 w-16" src={rolluxLogo} />
-          <img className="absolute right-[13.6rem] z-10 w-16" src={sysLogo} />
-        </div>
-        <div className="relative ml-32">
-          <h1 className="text-base text-white w-[70%]">
-            {t('faucet.grabTextOne', {
+    <div className="fixed z-[999] inset-0 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black bg-opacity-50"
+        onClick={onClose}
+      />
+      <div className="relative z-[1000] w-[364px] p-6 bg-brand-blue600 rounded-[20px] shadow-lg">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 hover:opacity-60 z-[1001]"
+        >
+          <img src={closeIcon} alt="Close" className="w-5 h-5" />
+        </button>
+
+        <div className="flex flex-col items-center gap-4">
+          <ChainIcon
+            chainId={chainId}
+            size={80}
+            className=""
+            networkKind={kind}
+          />
+
+          <h2 className="text-lg font-medium text-white">
+            {t('faucet.firstAccessTitle', {
+              token: currentNetworkData?.token,
+              network: currentNetworkData?.network,
+            })}
+          </h2>
+
+          <p className="text-sm text-center text-white/80">
+            {t('faucet.firstAccessDescription', {
               token: currentNetworkData?.token,
             })}
-          </h1>
+          </p>
+
+          <button
+            onClick={() => {
+              navigate('/faucet');
+              onClose();
+            }}
+            className="w-full py-3 mt-2 text-brand-blue600 bg-white rounded-full hover:opacity-90 transition-opacity"
+          >
+            {t('faucet.grabTokens')}
+          </button>
         </div>
       </div>
-      <img
-        className="absolute w-[352px] rounded-[20px] h-[91px] left-0 overflow-hidden"
-        src={image}
-      />
-      <span onClick={handleOnClose}>
-        <Icon
-          name="Close"
-          className="cursor-pointer absolute left-[90%] top-[10%] w-6 hover:opacity-70 transition-opacity"
-          isSvg
-        />
-      </span>
     </div>
   );
 };

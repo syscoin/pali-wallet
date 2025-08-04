@@ -1,15 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { FaucetStatusResponse } from '../../types/faucet';
-import errorIcon from 'assets/images/faucet-error.svg';
-import loadingIcon from 'assets/images/faucet-loading.svg';
-import successIcon from 'assets/images/faucet-success.svg';
+// Import faucet status icons - make sure these paths are correct
+import errorIcon from 'assets/all_assets/faucet-error.svg';
+import loadingIcon from 'assets/all_assets/faucet-loading.svg';
+import successIcon from 'assets/all_assets/faucet-success.svg';
 import { NeutralButton } from 'components/Button';
-import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';
-import { faucetNetworkData } from 'utils/constants';
+import { INetworkType } from 'types/network';
 import { ellipsis } from 'utils/format';
 
 import {
@@ -26,7 +26,6 @@ export const Faucet: React.FC = () => {
     account,
     status,
     handleFaucetButton,
-    faucetButtonLabel,
     isLoading,
     faucetRequestDetails,
     errorMessage,
@@ -37,7 +36,19 @@ export const Faucet: React.FC = () => {
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
 
-  const currentFaucetNetwork = faucetNetworkData?.[chainId];
+  // Define button label based on status
+  const faucetButtonLabel = useMemo(() => {
+    switch (status) {
+      case FaucetStatusResponse.REQUEST:
+        return t('faucet.requestNow');
+      case FaucetStatusResponse.SUCCESS:
+        return t('faucet.Close');
+      case FaucetStatusResponse.ERROR:
+        return t('faucet.tryAgain');
+      default:
+        return '';
+    }
+  }, [status, t]);
 
   const renderFaucetContent = () => {
     switch (status) {
@@ -46,12 +57,13 @@ export const Faucet: React.FC = () => {
           !isLoading && (
             <>
               <FaucetFeedback
-                icon={faucetRequestDetails.icon}
+                chainId={chainId}
+                networkKind={INetworkType.Ethereum}
                 textFeedbackTitle={faucetRequestDetails.grabText}
                 textFeedbackDesc={faucetRequestDetails.tokenQuantity}
               />
               <FaucetApiFeedback
-                apiTitle="Smart Contract"
+                apiTitle={t('send.smartContract')}
                 apiResponse={faucetRequestDetails.smartContract}
               />
               <FaucetCardAccount
@@ -100,7 +112,7 @@ export const Faucet: React.FC = () => {
   };
 
   return (
-    <Layout title={currentFaucetNetwork?.network} canGoBack>
+    <>
       {isLoading && (
         <FaucetFeedback
           icon={loadingIcon}
@@ -116,6 +128,6 @@ export const Faucet: React.FC = () => {
           </NeutralButton>
         </div>
       )}
-    </Layout>
+    </>
   );
 };

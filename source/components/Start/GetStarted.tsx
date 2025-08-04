@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/useUtils';
 
 const GetStarted: React.FC = () => {
   const { navigate } = useUtils();
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const { language } = i18n;
   const [isLoading, setIsLoading] = useState(false);
 

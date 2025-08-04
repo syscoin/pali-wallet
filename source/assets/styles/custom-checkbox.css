@@ -13,7 +13,7 @@
 }
 
 .custom-checkbox:checked::before {
-  content: url('../icons/check.svg');
+  content: url('../all_assets/check.svg');
   display: flex;
   justify-content: center;
   align-items: center;

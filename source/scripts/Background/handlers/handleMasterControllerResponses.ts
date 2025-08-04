@@ -1,4 +1,5 @@
 import { IMasterController } from 'scripts/Background/controllers';
+import { extractErrorMessage } from 'utils/index';
 
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
@@ -26,20 +27,32 @@ export const handleMasterControllerResponses = (
       }
 
       if (typeof targetMethod === 'function' || importMethod) {
-        new Promise(async (resolve, reject) => {
-          try {
+        Promise.resolve()
+          .then(async () => {
             const response = importMethod
               ? targetMethod
               : await (targetMethod as any)(...params);
-            resolve(response);
-          } catch (error) {
-            reject(error);
-          }
-        })
+            return response;
+          })
           .then(sendResponse)
           .catch((error) => {
             console.error('Error executing method:', error);
-            sendResponse({ error: error.message, success: false });
+            // Preserve structured errors from syscoinjs-lib
+            if (
+              error &&
+              typeof error === 'object' &&
+              error.code &&
+              error.error === true
+            ) {
+              // Pass through structured errors as-is
+              sendResponse(error);
+            } else {
+              // For regular errors, wrap in error object
+              sendResponse({
+                error: extractErrorMessage(error, 'Unknown error'),
+                success: false,
+              });
+            }
             return false;
           });
 
@@ -49,7 +62,22 @@ export const handleMasterControllerResponses = (
       }
     } catch (error) {
       console.error('Error in message handler:', error);
-      sendResponse({ error: error.message, success: false });
+      // Preserve structured errors from syscoinjs-lib
+      if (
+        error &&
+        typeof error === 'object' &&
+        error.code &&
+        error.error === true
+      ) {
+        // Pass through structured errors as-is
+        sendResponse(error);
+      } else {
+        // For regular errors, wrap in error object
+        sendResponse({
+          error: extractErrorMessage(error, 'Unknown error'),
+          success: false,
+        });
+      }
       return false;
     }
   });

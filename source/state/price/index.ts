@@ -7,28 +7,22 @@ export const initialState: IPriceState = {
     asset: 'usd',
     price: 0,
   },
-  coins: {},
 };
 
 const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
-    rehydrate(state: IPriceState, action: PayloadAction<IPriceState>) {
-      return {
-        ...state,
-        ...action.payload,
-      };
+    rehydrate(_state: IPriceState, action: PayloadAction<IPriceState>) {
+      // Complete replacement - consistent with vault and vaultGlobal rehydration
+      return action.payload;
     },
     setPrices(state: IPriceState, action: PayloadAction<IAssetPrice>) {
       state.fiat = action.payload;
     },
-    setCoins(state: IPriceState, action: PayloadAction<any>) {
-      state.coins = action.payload;
-    },
   },
 });
 
-export const { setPrices, setCoins, rehydrate } = PriceState.actions;
+export const { setPrices, rehydrate } = PriceState.actions;
 
 export default PriceState.reducer;

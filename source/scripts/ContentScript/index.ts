@@ -7,12 +7,99 @@ import {
 
 const emitter = new EventEmitter();
 
-const sendToBackground = (
+// Simple error logging rate limiting
+let lastConnectionAttempt = 0;
+const CONNECTION_CHECK_INTERVAL = 5000; // 5 seconds
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [100, 500, 1000]; // Progressive delays in ms
+
+/**
+ * Send message to background script with retry logic and error handling
+ */
+const sendToBackground = async (
   message: any,
-  handleResponse?: (response: any) => void
-) => {
-  chrome.runtime.sendMessage(message, handleResponse);
-};
+  handleResponse?: (response: any) => void,
+  retryCount = 0
+): Promise<void> =>
+  new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(message, (response) => {
+        // Capture error immediately to avoid race conditions
+        const currentError = chrome.runtime.lastError
+          ? { ...chrome.runtime.lastError }
+          : null;
+
+        if (currentError) {
+          const errorMessage = currentError.message || '';
+
+          // Check if this is a connection error
+          const isConnectionError =
+            errorMessage.includes('message port closed') ||
+            errorMessage.includes('Receiving end does not exist') ||
+            errorMessage.includes('Extension context invalidated');
+
+          if (isConnectionError && retryCount < MAX_RETRIES) {
+            // Service worker might be starting up, retry with delay
+            const delay = RETRY_DELAYS[retryCount] || 1000;
+            console.debug(
+              `[Content Script] Background not ready, retrying in ${delay}ms (attempt ${
+                retryCount + 1
+              }/${MAX_RETRIES})`
+            );
+
+            setTimeout(() => {
+              sendToBackground(message, handleResponse, retryCount + 1)
+                .then(resolve)
+                .catch(() => resolve()); // Prevent unhandled rejection
+            }, delay);
+            return;
+          }
+
+          // Rate-limit error logging to reduce spam
+          if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
+            console.error('Content script connection error:', currentError);
+            lastConnectionAttempt = Date.now();
+          }
+
+          // Call response handler with error
+          if (handleResponse) {
+            handleResponse({
+              error: {
+                message: `Pali: ${
+                  isConnectionError
+                    ? 'Background script temporarily unavailable'
+                    : 'Message processing failed'
+                }.`,
+                code: -32603,
+              },
+            });
+          }
+          resolve();
+          return;
+        }
+
+        // Success - call response handler
+        if (handleResponse) {
+          handleResponse(response);
+        }
+        resolve();
+      });
+    } catch (error) {
+      // Handle any synchronous errors
+      console.error('[Content Script] Error sending message:', error);
+      if (handleResponse) {
+        handleResponse({
+          error: {
+            message: 'Pali: Message processing failed.',
+            code: -32603,
+          },
+        });
+      }
+      resolve();
+    }
+  });
 
 const handleEthInjection = (message: any) => {
   const isInjected = message?.isInjected;
@@ -27,10 +114,7 @@ const handleEthInjection = (message: any) => {
   }
 };
 
-sendToBackground(
-  { action: 'isInjected', type: 'pw-msg-background' },
-  handleEthInjection
-);
+// Moved ethereum injection check after pali injection
 
 // Add listener for pali events
 const checkForPaliRegisterEvent = (id: any) => {
@@ -67,11 +151,21 @@ const start = () => {
       // listen for the response
       checkForPaliRegisterEvent(id);
 
-      sendToBackground({
-        id,
-        type,
-        data,
-      });
+      sendToBackground(
+        {
+          id,
+          type,
+          data,
+        },
+        (response) => {
+          // Handle response or error from background
+          if (response && response.error) {
+            // Emit error back to the page
+            emitter.emit(id, response);
+          }
+          // Normal responses are handled by backgroundMessageListener
+        }
+      );
     },
     false
   );
@@ -151,6 +245,8 @@ export const injectScriptFile = (file: string, id: string) => {
   try {
     const inpage = document.getElementById('inpage');
     const removeProperty = document.getElementById('removeProperty');
+    const pali = document.getElementById('pali-provider-script');
+
     switch (id) {
       case 'removeProperty':
         // remove inpage script for not inject the same thing many times
@@ -158,25 +254,42 @@ export const injectScriptFile = (file: string, id: string) => {
         if (removeProperty) removeProperty.remove();
         break;
       case 'inpage':
+        // Skip injection if inpage script already exists (don't remove and re-inject)
+        if (inpage) {
+          console.log(
+            '[Content Script] Inpage script already injected, skipping'
+          );
+          return;
+        }
         // remove removeEth script for not inject the same thing many times
-        if (inpage) inpage.remove();
         if (removeProperty) removeProperty.remove();
         break;
-      default:
+      case 'pali':
+        // remove existing pali script
+        if (pali) pali.remove();
+        // Also remove any old pali script with the old ID
+        const oldPali = document.getElementById('pali');
+        if (oldPali) oldPali.remove();
         break;
+      default:
+        if (!id) return;
     }
+
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
-    scriptTag.src = file.includes('http') ? file : chrome.runtime.getURL(file);
-    scriptTag.setAttribute('id', id);
+    scriptTag.setAttribute('async', 'false');
+    scriptTag.setAttribute('id', id === 'pali' ? 'pali-provider-script' : id);
+    scriptTag.src = chrome.runtime.getURL(file);
+
     container.insertBefore(scriptTag, container.children[0]);
+    scriptTag.onload = () => scriptTag.remove();
   } catch (error) {
-    console.error('Pali Wallet: Provider injection failed.', error);
+    console.error('Provider injection failed.', error);
   }
 };
 
 // listen for messages from background
-chrome.runtime.onMessage.addListener((message) => {
+const backgroundMessageListener = (message) => {
   const { id, data } = message;
 
   if (data?.params?.type) {
@@ -196,19 +309,51 @@ chrome.runtime.onMessage.addListener((message) => {
   if (id) {
     emitter.emit(id, data);
   }
+};
+
+chrome.runtime.onMessage.addListener(backgroundMessageListener);
+
+// Cleanup on page unload (content script lifecycle)
+window.addEventListener('beforeunload', () => {
+  chrome.runtime.onMessage.removeListener(backgroundMessageListener);
 });
 
-// Initial setup
-if (shouldInjectProvider()) {
-  // inject window.pali property in browser
-  injectScriptFile('js/pali.bundle.js', 'pali');
-}
+// Only inject providers in the top frame to avoid duplicates from iframes
+if (window !== window.top) {
+  console.log(
+    '[Content Script] Running in iframe, skipping provider injection'
+  );
+} else {
+  // Guard against multiple content script executions in the same frame
+  if ((window as any).__paliContentScriptInitialized) {
+    console.log(
+      '[Content Script] Already initialized, skipping duplicate execution'
+    );
+  } else {
+    (window as any).__paliContentScriptInitialized = true;
 
-// keeps the background active
-const port = chrome.runtime.connect({ name: 'keepAlive' });
-setInterval(() => {
-  port.postMessage({ ping: true });
-}, 5e3);
+    // Initial setup - inject providers immediately at document_start
+    if (shouldInjectProvider()) {
+      // Always inject pali provider first
+      injectScriptFile('js/pali.bundle.js', 'pali');
+
+      // Check if ethereum should be injected immediately (no delay)
+      sendToBackground(
+        { action: 'isInjected', type: 'pw-msg-background' },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              'Error checking ethereum injection status:',
+              chrome.runtime.lastError
+            );
+            return;
+          }
+          handleEthInjection(response);
+        }
+      );
+    }
+  }
+}
 
 start();
 startEventEmitter();

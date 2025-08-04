@@ -1,0 +1,23 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../sysweb3"
+		},
+		{
+			"path": "../../../syscoinjs-lib"
+		},
+		{
+			"path": "../../../syscointx-js"
+		},
+		{
+			"path": "../../../coinselectsyscoin"
+		},
+		{
+			"path": "../../../syscoin-bridge"
+		}
+	],
+	"settings": {}
+}

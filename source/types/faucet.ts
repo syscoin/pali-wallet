@@ -1,6 +1,6 @@
 /* eslint-disable no-shadow */
 export type faucetTxDetailsProps = {
-  icon: string;
+  chainId?: number;
   networkName: string;
   quantity: number;
   smartContract: string;

@@ -2,7 +2,8 @@ import shuffle from 'lodash/shuffle';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button, OnboardingLayout } from 'components/index';
+import { Button } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletReadyModal } from 'components/Modal/WarningBaseModal';
 

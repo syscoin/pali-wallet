@@ -5,6 +5,9 @@ import { getRpcPromiseCallback } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
 export declare type JsonRpcVersion = '2.0';
 export type WarningEventName = keyof SentWarningsState['events'];
+// Local type to avoid pulling in sysweb3-network dependency
+export type NetworkType = 'ethereum' | 'syscoin';
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SentWarningsState {
   // methods
@@ -49,13 +52,19 @@ export interface UnvalidatedJsonRpcRequest {
 }
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface EnableLegacyPali {
-  chain: string;
+  chain: NetworkType;
   chainId?: unknown;
 }
 //TODO: switch to SafeEventEmitter
 export class BaseProvider extends EventEmitter {
   public wallet: string;
-  public chainType: string;
+  public chainType: NetworkType;
+
+  private static readonly CONNECTION_ERROR_CACHE_TTL = 2000; // 2 seconds cache for connection errors
+
+  // Connection state tracking
+  private _isBackgroundConnected = true;
+  private _lastConnectionError = 0;
   protected _sentWarnings: SentWarningsState = {
     // methods
     enable: false,
@@ -116,6 +125,10 @@ export class BaseProvider extends EventEmitter {
     ) {
       throw messages.errors.invalidRequestParams();
     }
+
+    // 🔥 REMOVED: Don't block EVM methods here - let the background pipeline handle network switching
+    // The pipeline will detect network mismatches and prompt the user to switch networks
+    // This provides a much better UX than just throwing an error
 
     return new Promise<T>((resolve, reject) => {
       this._rpcRequest(
@@ -188,7 +201,9 @@ export class BaseProvider extends EventEmitter {
     let error = null;
     let result = null;
     let formatedResult = null;
+
     if (!Array.isArray(payload)) {
+      // Single request
       try {
         result = await this.proxy('METHOD_REQUEST', payload);
         formatedResult = {
@@ -202,43 +217,111 @@ export class BaseProvider extends EventEmitter {
         error = _error;
       }
       return callback(error, formatedResult);
+    } else {
+      // Batch request - process each request individually
+      try {
+        const batchResults = await Promise.all(
+          payload.map(async (request) => {
+            try {
+              const requestResult = await this.proxy('METHOD_REQUEST', request);
+              return {
+                id: request.id || 1,
+                jsonrpc: '2.0' as JsonRpcVersion,
+                result: requestResult,
+              };
+            } catch (requestError) {
+              // Return error response for this specific request
+              return {
+                id: request.id || 1,
+                jsonrpc: '2.0' as JsonRpcVersion,
+                error: requestError,
+              };
+            }
+          })
+        );
+        return callback(null, batchResults);
+      } catch (batchError) {
+        // General batch processing error
+        error = {
+          code: -32603,
+          message: 'Internal error processing batch request',
+          data: batchError,
+        };
+        return callback(error, null);
+      }
     }
-    error = {
-      code: 123,
-      message: messages.errors.invalidBatchRequest(),
-      data: null,
-    };
-    return callback(error, result);
   }
   private proxy = (
     type: string,
     data: UnvalidatedJsonRpcRequest | EnableLegacyPali
   ) =>
     new Promise((resolve, reject) => {
+      const now = Date.now();
+
+      // Check cache for provider state requests
+      if (data && typeof data === 'object') {
+        // Rate limit requests if we recently had connection errors
+        if (
+          !this._isBackgroundConnected &&
+          now - this._lastConnectionError <
+            BaseProvider.CONNECTION_ERROR_CACHE_TTL
+        ) {
+          reject({
+            message: 'Pali: Background connection temporarily unavailable',
+            code: -32603,
+          });
+          return;
+        }
+      }
+
       const id = Date.now() + '.' + Math.random();
 
-      window.addEventListener(
-        id,
-        (event: any) => {
-          if (event.detail === undefined) {
-            resolve(undefined);
-            return;
-          } else if (event.detail === null) {
-            resolve(null);
-            return;
-          }
-
-          const response = JSON.parse(event.detail);
-          if (response.error) {
-            reject(response.error);
-          }
-          resolve(response);
-        },
-        {
-          once: true,
-          passive: true,
+      const handleResponse = (event: any) => {
+        if (event.detail === undefined) {
+          resolve(undefined);
+          return;
+        } else if (event.detail === null) {
+          resolve(null);
+          return;
         }
-      );
+
+        try {
+          const response = JSON.parse(event.detail);
+
+          // Track connection success
+          this._isBackgroundConnected = true;
+
+          if (response.error) {
+            // Handle specific error types
+            if (
+              response.error.message &&
+              (response.error.message.includes('Background script') ||
+                response.error.message.includes('temporarily unavailable'))
+            ) {
+              this._isBackgroundConnected = false;
+              this._lastConnectionError = now;
+            }
+            reject(response.error);
+          } else {
+            resolve(response);
+          }
+        } catch (parseError) {
+          reject({
+            message: 'Failed to parse response from background script',
+            code: -32700,
+          });
+        }
+      };
+
+      window.addEventListener(id, handleResponse, {
+        once: true,
+        passive: true,
+      });
+
+      // No timeout - let requests wait indefinitely until response or page unload
+      // Browser will automatically clean up when user navigates away or closes tab
+      // This prevents authentication timeouts and provides better UX
+
       window.postMessage(
         {
           id,

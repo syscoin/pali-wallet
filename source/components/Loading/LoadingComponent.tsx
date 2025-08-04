@@ -1,16 +1,20 @@
 import React from 'react';
 
-import { Icon } from '..';
-
-export const LoadingComponent = ({ opacity = 60 }: { opacity?: number }) => (
-  <>
-    <div
-      className={`relative pt-4 flex flex-col items-center justify-center w-full bg-transparent`}
-      style={{ zIndex: '9' }}
-    >
-      <div className={`flex items-center justify-center opacity-${opacity}`}>
-        <Icon name="loading" className="text-brand-white animate-spin-slow" />
-      </div>
+export const LoadingComponent = ({ opacity = 100 }: { opacity?: number }) => (
+  <div
+    className="absolute flex items-center justify-center bg-brand-blue600"
+    style={{
+      zIndex: 60,
+      opacity: opacity / 100,
+      top: '120px', // Below header (80px) + banner (68px)
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 'calc(100vh - 120px)',
+    }}
+  >
+    <div className="flex items-center justify-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
     </div>
-  </>
+  </div>
 );

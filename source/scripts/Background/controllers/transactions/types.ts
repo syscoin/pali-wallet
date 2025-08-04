@@ -1,8 +1,11 @@
-import { ethers } from 'ethers';
+import { BigNumber } from '@ethersproject/bignumber';
+import {
+  CustomJsonRpcProvider,
+  IKeyringAccountState,
+} from '@sidhujag/sysweb3-keyring';
+import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
 
-import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
-
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountTransactions } from 'state/vault/types';
 
 //------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
@@ -31,25 +34,31 @@ export interface IEvmTransaction {
   data: string;
   from?: string;
 
-  gasLimit: ethers.BigNumber;
-  gasPrice?: ethers.BigNumber;
+  gasLimit: BigNumber;
+  gasPrice?: BigNumber;
 
   hash?: string;
-  maxFeePerGas?: ethers.BigNumber;
-  // EIP-1559; Type 2
-  maxPriorityFeePerGas?: ethers.BigNumber;
+  // Transaction replacement tracking
+  isReplaced?: boolean;
+  isSpeedUp?: boolean;
 
+  maxFeePerGas?: BigNumber;
+  // EIP-1559; Type 2
+  maxPriorityFeePerGas?: BigNumber;
   nonce: number;
+
   r?: string;
+
+  replacesHash?: string;
+
   s?: string;
+  status?: string;
 
   to?: string;
-
   // Typed-Transaction features
   type?: number | null;
-
   v?: number;
-  value: ethers.BigNumber;
+  value: BigNumber;
 }
 
 interface ITransactionReceipt {
@@ -58,10 +67,10 @@ interface ITransactionReceipt {
   byzantium: boolean;
   confirmations: number;
   contractAddress: string;
-  cumulativeGasUsed: ethers.BigNumber;
-  effectiveGasPrice: ethers.BigNumber;
+  cumulativeGasUsed: BigNumber;
+  effectiveGasPrice: BigNumber;
   from: string;
-  gasUsed: ethers.BigNumber;
+  gasUsed: BigNumber;
   logs: Array<ILog>;
   logsBloom: string;
   root?: string;
@@ -101,11 +110,31 @@ export type TransactionValueType =
   | { hex: string; type: string };
 
 export interface IEvmTransactionsController {
+  fetchTransactionDetailsFromAPI: (
+    hash: string,
+    apiUrl: string
+  ) => Promise<any>;
+  fetchTransactionsFromAPI: (
+    address: string,
+    chainId: number,
+    apiUrl?: string,
+    includePending?: boolean
+  ) => Promise<{
+    error?: string;
+    transactions: IEvmTransactionResponse[] | null;
+  }>;
   getUserTransactionByDefaultProvider: (
-    startBlock: number,
-    endBlock: number
+    numBlocks: number,
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<IEvmTransactionResponse[]>;
-  pollingEvmTransactions: () => Promise<IEvmTransactionResponse[]>;
+  pollingEvmTransactions: (
+    web3Provider: CustomJsonRpcProvider,
+    isPolling?: boolean,
+    isRapidPolling?: boolean
+  ) => Promise<IEvmTransactionResponse[]>;
+  testExplorerApi: (
+    apiUrl: string
+  ) => Promise<{ error?: string; success: boolean }>;
 }
 
 //------------------------- END EVM TYPES / INTERFACES -------------------------//
@@ -143,17 +172,18 @@ export interface ISysTransactionsController {
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
 
 export interface ITransactionsManagerUtils {
-  checkPendingTransactions: (
-    pendingTransactions: IEvmTransactionResponse[]
-  ) => Promise<IEvmTransactionResponse[]>;
+  clearCache: () => void;
   updateTransactionsFromCurrentAccount: (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
-    activeNetworkUrl: string
-  ) => Promise<ISysTransaction[] | IEvmTransaction[]>;
+    activeNetworkUrl: string,
+    web3Provider: CustomJsonRpcProvider,
+    accountTransactions?: IAccountTransactions,
+    isPolling?: boolean,
+    isRapidPolling?: boolean
+  ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {
-  evm: IEvmTransactionsController;
   sys: ISysTransactionsController;
   utils: ITransactionsManagerUtils;
 }

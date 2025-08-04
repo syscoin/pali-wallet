@@ -1,26 +1,75 @@
-import { ethers } from 'ethers';
+import { Wallet } from '@ethersproject/wallet';
 
-import { getController } from 'scripts/Background';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import store from 'state/store';
+import { INetwork } from 'types/network';
 
-export const validatePrivateKeyValue = (
+export const validatePrivateKeyValue = async (
   privKey: string,
-  isBitcoinBased: boolean
+  isBitcoinBased: boolean,
+  activeNetwork?: INetwork
 ) => {
-  const mainController = getController();
-  const initialValue = privKey.match(/^(0x|zprv)/)?.[0];
+  if (!isBitcoinBased) {
+    // First check if it looks like a UTXO extended key (zprv/vprv)
+    const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
+    const prefix = privKey.substring(0, 4);
+    if (zprvPrefixes.includes(prefix)) {
+      // This looks like a UTXO key, reject it on EVM network
+      return false;
+    }
 
-  if ([undefined, '0x'].includes(initialValue) && !isBitcoinBased) {
     try {
-      new ethers.Wallet(initialValue === undefined ? `0x${privKey}` : privKey);
+      // Normalize the private key by adding '0x' prefix if missing
+      const normalizedKey =
+        privKey.slice(0, 2) === '0x' ? privKey : `0x${privKey}`;
+      new Wallet(normalizedKey);
       return true;
     } catch (error) {
       return false;
     }
   }
 
-  if (initialValue === 'zprv' && isBitcoinBased) {
-    const { isValid } = mainController.wallet.validateZprv(privKey);
-    return isValid;
+  if (isBitcoinBased) {
+    // First check if it looks like an EVM key (0x prefix or 64 hex chars)
+    if (privKey.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(privKey)) {
+      // This looks like an EVM private key, reject it on UTXO network
+      return false;
+    }
+    // If activeNetwork is undefined, try to get it from the vault
+    let networkToValidate = activeNetwork;
+
+    if (!networkToValidate) {
+      try {
+        // Get the active network from the vault state
+        const vaultState = store.getState().vault;
+        networkToValidate = vaultState?.activeNetwork;
+      } catch (error) {
+        // If we can't get the vault state, validation cannot proceed
+        console.warn(
+          'validatePrivateKeyValue: Unable to get active network for validation'
+        );
+        return false;
+      }
+    }
+
+    // If we still don't have a network, we cannot validate
+    if (!networkToValidate) {
+      console.warn(
+        'validatePrivateKeyValue: No network available for Bitcoin-based validation'
+      );
+      return false;
+    }
+
+    try {
+      const result = (await controllerEmitter(
+        ['wallet', 'validateZprv'],
+        [privKey, networkToValidate]
+      )) as { isValid: boolean } | undefined;
+      return result?.isValid || false;
+    } catch (error) {
+      console.error('validatePrivateKeyValue: Error validating zprv:', error);
+      return false;
+    }
   }
 
   return false;

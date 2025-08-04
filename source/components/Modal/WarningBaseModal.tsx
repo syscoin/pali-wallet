@@ -1,9 +1,12 @@
-import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from 'components/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 interface IModal {
   children?: ReactNode;
@@ -23,45 +26,23 @@ interface IDefaultModal {
   title: string;
 }
 
-export const ModalBase = ({ children, onClose, show }: IModal) => (
-  <Transition appear show={show} as={Fragment}>
-    <Dialog
-      as="div"
-      className={`fixed z-30 inset-0 overflow-y-auto rounded-t-[50px]`}
-      onClose={() => {
-        if (onClose) onClose();
-      }}
-    >
-      <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+export const ModalBase = ({ children, onClose, show }: IModal) => {
+  if (!show) return null;
 
+  return (
+    <div className="fixed z-30 inset-0 overflow-y-auto animate-fadeIn">
+      <div
+        className="fixed inset-0 bg-brand-black bg-opacity-50 transition-opacity duration-300"
+        onClick={() => {
+          if (onClose) onClose();
+        }}
+      />
       <div className="fixed z-1 min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <Dialog.Overlay className="fixed z-[-1] inset-0" />
-        </Transition.Child>
-
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
-        >
-          {children}
-        </Transition.Child>
+        <div className="animate-slideIn">{children}</div>
       </div>
-    </Dialog>
-  </Transition>
-);
+    </div>
+  );
+};
 
 export const WalletReadyModal = ({
   phraseOne,
@@ -346,7 +327,15 @@ export const RPCSuccessfullyAdded = ({
           id="btn-ok"
           type="submit"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/settings/networks/edit')}
+          onClick={() => {
+            const returnContext = createNavigationContext('/home');
+            navigateWithContext(
+              navigate,
+              '/settings/networks/edit',
+              {},
+              returnContext
+            );
+          }}
         >
           {t('buttons.ok')}
         </Button>
@@ -362,7 +351,38 @@ export const ConnectHardwareWallet = ({
   title,
 }: IDefaultModal) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+
+  const handleConnectHardwareWallet = () => {
+    // Open hardware wallet setup in a new tab instead of popup window
+    const url = chrome.runtime.getURL(
+      'external.html?route=settings/account/hardware'
+    );
+    window.open(url, '_blank');
+
+    // Set storage flag for detection
+    chrome.storage.local.set(
+      {
+        'pali-popup-open': true,
+        'pali-popup-timestamp': Date.now(),
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[WarningBaseModal] Failed to set popup flag:',
+            chrome.runtime.lastError
+          );
+        }
+      }
+    );
+
+    // Close the modal
+    if (onClose) onClose(true);
+
+    // Close the extension popup window after a short delay to ensure the new tab opens
+    setTimeout(() => {
+      window.close();
+    }, 100);
+  };
 
   return (
     <ModalBase onClose={onClose} show={show}>
@@ -389,7 +409,7 @@ export const ConnectHardwareWallet = ({
             id="unlock-btn"
             type="submit"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            onClick={() => navigate('/settings/account/hardware')}
+            onClick={handleConnectHardwareWallet}
           >
             {t('buttons.connect')}
           </Button>

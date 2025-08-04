@@ -1,5 +1,3 @@
-import { ethers } from 'ethers';
-
 import {
   BaseProvider,
   UnvalidatedJsonRpcRequest,
@@ -13,6 +11,30 @@ import {
   isValidChainId,
   isValidNetworkVersion,
 } from './utils';
+
+// Native utility to check if a string is a valid hex string
+function isHexString(value: any): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  // Must start with 0x
+  if (!value.startsWith('0x')) {
+    return false;
+  }
+
+  // Remove 0x prefix and check if remaining characters are valid hex
+  const hexPart = value.slice(2);
+
+  // Empty hex string after 0x is valid
+  if (hexPart.length === 0) {
+    return true;
+  }
+
+  // Check if all characters are valid hexadecimal
+  const hexRegex = /^[0-9a-fA-F]+$/;
+  return hexRegex.test(hexPart);
+}
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SendSyncJsonRpcRequest {
@@ -52,6 +74,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
+  private _initializationPromise: Promise<void> | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('ethereum', maxEventListeners, wallet);
@@ -63,6 +86,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     this._handleConnect = this._handleConnect.bind(this);
     this._handleChainChanged = this._handleChainChanged.bind(this);
     this._handleDisconnect = this._handleDisconnect.bind(this);
+    this._handleAccountDisconnect = this._handleAccountDisconnect.bind(this);
     this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
     // Private state
     this._state = {
@@ -71,66 +95,112 @@ export class PaliInpageProviderEth extends BaseProvider {
     // Public state
     this.selectedAddress = null;
     this.chainId = null;
-    this.request({ method: 'wallet_getProviderState' })
+
+    // Start initialization immediately and atomically
+    this._checkNetworkTypeAndInitialize();
+
+    this.initMessageListener();
+  }
+
+  private async _checkNetworkTypeAndInitialize(): Promise<void> {
+    // If already initializing, wait for the existing promise
+    if (this._initializationPromise) {
+      return this._initializationPromise;
+    }
+
+    // Create the promise but don't await it here
+    this._initializationPromise = this._initializeEthereumProvider().finally(
+      () => {
+        // Clean up after completion (success or failure)
+        this._initializationPromise = null;
+      }
+    );
+
+    return this._initializationPromise;
+  }
+
+  private _initializeEthereumProvider() {
+    return this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
-        console.log('state', state);
         const initialState = state as Parameters<
           PaliInpageProviderEth['_initializeState']
         >[0];
         this._initializeState(initialState);
       })
-      .catch((error) =>
+      .catch((error) => {
         console.error(
           'Pali: Failed to get initial state. Please report this bug.',
           error
-        )
-      );
-
-    this.initMessageListener();
+        );
+        // Even if we fail to get initial state, we should still mark the provider as initialized
+        // This ensures the provider can function with default state on EVM networks
+        this._initializeState();
+      });
   }
 
   public initMessageListener() {
     window.addEventListener(
       'paliNotification',
       (event: any) => {
-        const { method, params } = JSON.parse(event.detail);
+        try {
+          const parsed = JSON.parse(event.detail);
 
-        switch (method) {
-          case 'pali_accountsChanged':
-            this._handleAccountsChanged(params);
-            break;
-          case 'pali_unlockStateChanged':
-            this._handleUnlockStateChanged(params);
-            break;
-          case 'pali_chainChanged':
-            this._handleChainChanged(params);
-            break;
-          case 'pali_isBitcoinBased':
-            this._handleIsBitcoinBased(params);
-            break;
-          case 'pali_removeProperty':
-            break;
-          case 'pali_addProperty':
-            break;
-          // UTXO METHODS TO AVOID.
-          case 'pali_xpubChanged':
-            break;
-          case 'pali_blockExplorerChanged':
-            break;
-          case 'pali_isTestnet':
-            break;
-          case EMITTED_NOTIFICATIONS.includes(method):
-            //TODO: implement subscription messages
-            throw {
-              code: 69,
-              message:
-                'Pali EthereumProvider: Does not yet have subscription to rpc methods',
-            };
-          default:
-            this._handleDisconnect(
-              false,
-              messages.errors.permanentlyDisconnected()
-            );
+          // Handle both event structures for compatibility
+          const data = parsed.data || parsed;
+          const { method, params } = data;
+
+          switch (method) {
+            case 'pali_accountsChanged':
+              // Ensure params is always an array
+              const accountsParams = Array.isArray(params)
+                ? params
+                : params
+                ? [params]
+                : [];
+              this._handleAccountsChanged(accountsParams);
+              break;
+            case 'pali_unlockStateChanged':
+              this._handleUnlockStateChanged(params);
+              break;
+            case 'pali_chainChanged':
+              this._handleChainChanged(params);
+              break;
+            case 'pali_isBitcoinBased':
+              this._handleIsBitcoinBased(params);
+              break;
+            case 'pali_removeProperty':
+              break;
+            case 'pali_addProperty':
+              break;
+            // UTXO METHODS TO AVOID.
+            case 'pali_xpubChanged':
+              break;
+            case 'pali_blockExplorerChanged':
+              break;
+            case EMITTED_NOTIFICATIONS.includes(method):
+              //TODO: implement subscription messages
+              throw {
+                code: 69,
+                message:
+                  'Pali EthereumProvider: Does not yet have subscription to rpc methods',
+              };
+            default:
+              console.warn(
+                '[PaliEthProvider] Unknown notification method:',
+                method,
+                'params:',
+                params
+              );
+              console.warn(
+                '[PaliEthProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+              );
+              // Don't disconnect for unknown notifications - just ignore them
+              // This prevents disconnection when switching networks or receiving notifications
+              // intended for other providers (like Syscoin provider)
+              break;
+          }
+        } catch (error) {
+          console.error('[PaliEthProvider] Error processing event:', error);
         }
       },
       {
@@ -151,15 +221,53 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   /**
+   * Returns whether the provider has been initialized.
+   */
+  isInitialized(): boolean {
+    return this._state.initialized;
+  }
+
+  /**
+   * Returns the current accounts if available.
+   * This is used by dapps to check connection state.
+   */
+  get accounts(): string[] {
+    return this._state.accounts || [];
+  }
+
+  /**
+   * Connect method for Web3Modal and other libraries.
+   * This is a convenience method that wraps eth_requestAccounts.
+   */
+  async connect(): Promise<string[]> {
+    return this.request({ method: 'eth_requestAccounts' }) as Promise<string[]>;
+  }
+
+  /**
    * Internal backwards compatibility method, used in send.
    *
    * @deprecated
    */
   sendAsync(
     payload: any,
-    callback: (error: Error | null, result?: any) => void
-  ): void {
-    this._rpcRequest(payload, callback);
+    callback?: (error: Error | null, result?: any) => void
+  ): void | Promise<any> {
+    // Support both callback and promise-based patterns
+    if (callback && typeof callback === 'function') {
+      // Traditional callback pattern
+      this._rpcRequest(payload, callback);
+    } else {
+      // Promise-based pattern (like MetaMask)
+      return new Promise((resolve, reject) => {
+        this._rpcRequest(payload, (error, result) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        });
+      });
+    }
   }
 
   /**
@@ -216,10 +324,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       ) {
         // handle accounts changing
         cb = (err: Error, res: JsonRpcSuccessStruct) => {
-          this._handleAccountsChanged(
-            res?.result || [],
-            payload.method === 'eth_accounts'
-          );
+          this._handleAccountsChanged(res?.result || []);
           callback(err, res);
         };
       }
@@ -236,11 +341,34 @@ export class PaliInpageProviderEth extends BaseProvider {
     let result;
     switch (payload.method) {
       case 'eth_accounts':
-        result = this.selectedAddress ? [this.selectedAddress] : [];
+        // If provider is not initialized yet, we should wait or return empty
+        // This prevents Web3Modal from getting incomplete state
+        if (!this._state.initialized) {
+          console.warn(
+            'Pali: eth_accounts called before provider initialization'
+          );
+          result = [];
+        } else if (this._state.accounts && this._state.accounts.length > 0) {
+          // Return accounts from state if available
+          result = this._state.accounts;
+        } else if (this.selectedAddress) {
+          result = [this.selectedAddress];
+        } else {
+          result = [];
+        }
         break;
 
       case 'eth_coinbase':
-        result = this.selectedAddress || null;
+        // Return first account from state if selectedAddress isn't set
+        if (!this._state.initialized) {
+          result = null;
+        } else if (this.selectedAddress) {
+          result = this.selectedAddress;
+        } else if (this._state.accounts && this._state.accounts.length > 0) {
+          result = this._state.accounts[0];
+        } else {
+          result = null;
+        }
         break;
 
       case 'eth_uninstallFilter':
@@ -272,9 +400,13 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _handleAccountsChanged(
-    currentAccounts: unknown[] | null,
-    isEthAccounts = false
+    currentAccounts: unknown[] | null | undefined
   ): void {
+    // Handle edge case of undefined being passed
+    if (currentAccounts === undefined) {
+      currentAccounts = [];
+    }
+
     if (currentAccounts === null) {
       this._state.accounts = currentAccounts as any;
 
@@ -293,7 +425,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       accounts = [];
     }
 
-    for (const account of currentAccounts) {
+    for (const account of accounts) {
       if (typeof account !== 'string' && account !== null) {
         console.error(
           'Pali EthereumProvider: Received non-string account. Please report this bug.',
@@ -305,33 +437,55 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     // emit accountsChanged if anything about the accounts array has changed
-    // we should always have the correct accounts even before eth_accounts
-    // returns
-    this._state.accounts = []; // just for testing purposes
-    if (
-      isEthAccounts &&
-      this._state.accounts !== null &&
-      this._state.accounts.length !== 0
-    ) {
-      console.error(
-        `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
-        accounts
-      );
-    }
+    // Note: It's normal for eth_accounts to return different accounts than what's in state,
+    // especially when dapps are disconnected, during network switches, or permission changes.
+    // The provider should handle these changes gracefully.
 
-    if (ethers.utils.isHexString(accounts[0])) {
+    // Check if accounts actually changed before updating state
+    const previousAccounts = this._state.accounts;
+    const accountsChanged =
+      JSON.stringify(previousAccounts) !== JSON.stringify(accounts);
+
+    // Check if we're transitioning from no accounts to having accounts (new connection)
+    const wasConnected = previousAccounts && previousAccounts.length > 0;
+    const isNowDisconnected = !accounts || accounts.length === 0;
+    const wasDisconnected = !previousAccounts || previousAccounts.length === 0;
+    const isNowConnected = accounts && accounts.length > 0;
+    const isNewConnection = wasDisconnected && isNowConnected;
+    const isDisconnection = wasConnected && isNowDisconnected;
+
+    // Update state before emitting events
+    if (accounts.length > 0 && isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
+    } else {
+      // Clear accounts when empty
+      this._state.accounts = [];
     }
 
     // handle selectedAddress
     if (this.selectedAddress !== accounts[0]) {
-      if (ethers.utils.isHexString(accounts[0])) {
+      if (accounts.length > 0 && isHexString(accounts[0])) {
         this.selectedAddress = (accounts[0] as string) || null;
+      } else {
+        this.selectedAddress = null;
       }
     }
 
+    // If this is a disconnection (accounts went from having accounts to empty),
+    // emit disconnect event
+    if (this._state.initialized && isDisconnection) {
+      this._handleAccountDisconnect();
+    }
+
+    // If this is a new connection (accounts went from empty to having accounts),
+    // emit connect event first, then accountsChanged
+    if (this._state.initialized && isNewConnection && this.chainId) {
+      // Emit connect event for new connections
+      this._handleConnect(this.chainId);
+    }
+
     // finally, after all state has been updated, emit the event
-    if (this._state.initialized) {
+    if (this._state.initialized && accountsChanged) {
       this.emit('accountsChanged', accounts);
     }
   }
@@ -352,6 +506,19 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   /**
+   * When accounts are disconnected, emit disconnect event
+   * This is different from _handleDisconnect which handles connection errors
+   *
+   * @emits PaliInpageProvider#disconnect
+   */
+  private _handleAccountDisconnect() {
+    if (this._state.isConnected) {
+      this._state.isConnected = false;
+      this.emit('disconnect', { code: 4900, message: 'User disconnected' });
+    }
+  }
+
+  /**
    * Upon receipt of a new `chainId`, emits the corresponding event and sets
    * and sets relevant public state. Does nothing if the given `chainId` is
    * equivalent to the existing value.
@@ -366,7 +533,12 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _handleChainChanged({
     chainId,
     networkVersion,
-  }: { chainId?: string; networkVersion?: string } = {}) {
+    isBitcoinBased,
+  }: {
+    chainId?: string;
+    isBitcoinBased?: boolean;
+    networkVersion?: string;
+  } = {}) {
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,
@@ -374,18 +546,19 @@ export class PaliInpageProviderEth extends BaseProvider {
       });
       return;
     }
-    if (networkVersion === 'loading') {
-      this._handleDisconnect(true);
-      return;
+
+    if (this.isMetaMask && this.networkVersion !== networkVersion) {
+      this.networkVersion = networkVersion || null;
     }
 
-    this._handleConnect(chainId);
-
     if (chainId !== this.chainId) {
-      this.chainId = chainId;
-      this.networkVersion = networkVersion;
-      if (this._state.initialized) {
+      this.chainId = chainId || null;
+      if (this._state.initialized && !isBitcoinBased) {
         this.emit('chainChanged', this.chainId);
+      }
+    } else if (!isBitcoinBased) {
+      if (this._state.initialized) {
+        this.emit('chainChanged', chainId);
       }
     }
   }
@@ -488,7 +661,7 @@ export class PaliInpageProviderEth extends BaseProvider {
 
       // EIP-1193 connect
       this._handleConnect(chainId);
-      this._handleChainChanged({ chainId, networkVersion });
+      this._handleChainChanged({ chainId, networkVersion, isBitcoinBased });
       this._handleUnlockStateChanged({ accounts, isUnlocked });
       this._handleAccountsChanged(accounts);
       this._handleIsBitcoinBased({ isBitcoinBased });
@@ -510,9 +683,24 @@ export class PaliInpageProviderEth extends BaseProvider {
          */
         isUnlocked: async () => {
           if (!this._state.initialized) {
-            await new Promise<void>((resolve) => {
-              this.on('_initialized', () => resolve());
-            });
+            // If not initialized and no initialization in progress, start it
+            if (!this._initializationPromise) {
+              await this._checkNetworkTypeAndInitialize();
+            } else {
+              // Wait for the existing initialization to complete
+              await this._initializationPromise;
+            }
+
+            // Double-check initialization completed successfully
+            if (!this._state.initialized) {
+              await new Promise<void>((resolve) => {
+                const handler = () => {
+                  this.off('_initialized', handler);
+                  resolve();
+                };
+                this.on('_initialized', handler);
+              });
+            }
           }
           return this._state.isUnlocked;
         },

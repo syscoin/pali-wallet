@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { INetworkType } from '@pollum-io/sysweb3-network';
-
-import loadImg from 'assets/icons/loading.svg';
-import ethChainImg from 'assets/images/ethChain.svg';
-import rolluxChainImg from 'assets/images/rolluxChain.png';
-import sysChainImg from 'assets/images/sysChain.svg';
-import { Button } from 'components/Button';
-import { Header } from 'components/Header';
+import { NeutralButton } from 'components/Button';
+import { ChainIcon } from 'components/ChainIcon';
+import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
+import { INetworkType } from 'types/network';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -21,128 +22,346 @@ export const ChainErrorPage = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const networkTarget = useSelector(
+    (state: RootState) => state.vaultGlobal.networkTarget
   );
+
+  // Use the target network if we're trying to switch, otherwise use active network
+  const displayNetwork = networkTarget || activeNetwork;
+
   const [isRetrying, setIsRetrying] = useState(false);
+  const [retryStartTime, setRetryStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Always set error state when this page mounts
+  useEffect(() => {
+    console.log('[ChainErrorPage] Setting network status to error');
+    store.dispatch(switchNetworkError());
+  }, []);
+
+  // Timer to track elapsed time
+  useEffect(() => {
+    if (isRetrying && retryStartTime) {
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - retryStartTime) / 1000);
+        setElapsedSeconds(elapsed);
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      // Reset when not retrying
+      setElapsedSeconds(0);
+    }
+  }, [isRetrying, retryStartTime]);
 
   const handleRetryToConnect = async () => {
+    console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
-    try {
-      const chain = isBitcoinBased
-        ? INetworkType.Syscoin
-        : INetworkType.Ethereum;
+    setRetryStartTime(Date.now());
+    setElapsedSeconds(0);
 
-      await controllerEmitter(
+    // Clear any previous error state to ensure a fresh retry
+    store.dispatch(resetNetworkStatus());
+
+    try {
+      const networkToUse = displayNetwork;
+
+      // Get the RPC from global state in case it was edited
+      const globalNetworks = store.getState().vaultGlobal.networks;
+      const networkType =
+        networkToUse.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
+      const networkFromGlobal =
+        globalNetworks[networkType][networkToUse.chainId];
+
+      // Use the RPC from global state if it exists (could have been edited)
+      const selectedRpc = networkFromGlobal || networkToUse;
+
+      console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
+
+      // Call setActiveNetwork without arbitrary timeout
+      // Let the network operation take as long as it needs
+      // Users can navigate away or retry if desired
+      // Pass true for syncUpdates to ensure all updates complete before returning
+      const result = await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
-        [activeNetwork, chain]
-      ).then(() => {
-        navigate('/home');
-      });
-    } catch (error) {
-      alert.error(t('chainError.connectionTooLong'));
-    } finally {
+        [selectedRpc, true]
+      );
+
+      console.log(
+        '[ChainErrorPage] Network switch completed successfully:',
+        result
+      );
+
+      // Check if the network is actually working by checking the status
+      const finalNetworkStatus = store.getState().vaultGlobal.networkStatus;
+      if (finalNetworkStatus === 'error') {
+        console.log(
+          '[ChainErrorPage] Network is still in error state, not navigating'
+        );
+        setIsRetrying(false);
+        setRetryStartTime(null);
+        // Show error alert to user
+        alert.error(t('chainError.connectionError'));
+        return;
+      }
+
+      // If we get here, everything succeeded - navigate to home
+      alert.success(t('networkConnection.operationCompleted'));
       setIsRetrying(false);
+      setRetryStartTime(null);
+      navigate('/home');
+    } catch (error) {
+      console.error('[ChainErrorPage] Retry failed:', error);
+
+      // Set error status so user stays on error page
+      store.dispatch(switchNetworkError());
+
+      // Show error message with specific handling for timeouts
+      let errorMessage = t('chainError.connectionTooLong');
+
+      if (error?.message) {
+        if (
+          error.message.includes('Network request timed out') ||
+          error.message.includes('RPC request timeout') ||
+          error.message.includes('timeout')
+        ) {
+          errorMessage = t('chainError.networkTimeout');
+        } else if (
+          error.message.includes('parse error') ||
+          error.message.includes('JSON') ||
+          error.message.includes('Unexpected end of JSON input')
+        ) {
+          errorMessage = t('chainError.invalidResponse');
+        } else if (
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('Network error')
+        ) {
+          errorMessage = t('chainError.connectionError');
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      alert.error(errorMessage);
+
+      // Reset retry state so user can try again
+      setIsRetrying(false);
+      setRetryStartTime(null);
+    } finally {
+      // Always reset retry state, even if something unexpected happens
+      setIsRetrying(false);
+      setRetryStartTime(null);
     }
   };
 
-  const handleConnectToAnotherRpc = () =>
+  const handleConnectToAnotherRpc = () => {
+    // Don't reset network status - it will trigger navigation to home
+    // The switch network page can handle the status itself
     navigate('/switch-network', {
       state: { switchingFromTimeError: true },
     });
+  };
 
   const CurrentChains = () => {
-    let toChain: React.ReactNode;
+    // If we're not switching networks (just reconnecting), or if we're switching to the same chain
+    // Only show two icons if we're actually switching to a different chain
+    const isSameChain =
+      !networkTarget || activeNetwork.chainId === displayNetwork.chainId;
 
-    switch (activeNetwork.chainId) {
-      case 1:
-        toChain = <img src={ethChainImg} alt="eth" width="39px" />;
-        break;
-      case 57:
-        toChain = <img src={sysChainImg} alt="sys" width="39px" />;
-        break;
-      case 570:
-        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
-        break;
-      case 5700:
-        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
-        break;
-      default:
-        toChain = (
-          <div
-            className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            style={{ width: '39px', height: '39px' }}
-          >
-            {activeNetwork.currency}
+    if (isSameChain) {
+      return (
+        <div className="flex text-center items-center justify-center w-full">
+          <div className="flex flex-col items-center gap-1">
+            <ChainIcon
+              chainId={Number(displayNetwork.chainId)}
+              size={45}
+              className=""
+              networkKind={displayNetwork.kind}
+              fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+            />
+            <span className="text-xs text-gray-300 truncate max-w-[120px]">
+              {displayNetwork.label}
+            </span>
           </div>
-        );
+        </div>
+      );
     }
 
+    // Show current network on the left and target network on the right
+    const fromChain = (
+      <ChainIcon
+        chainId={Number(activeNetwork.chainId)}
+        size={45}
+        className=""
+        networkKind={activeNetwork.kind}
+        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+      />
+    );
+
+    const toChain = (
+      <ChainIcon
+        chainId={Number(displayNetwork.chainId)}
+        size={45}
+        className=""
+        networkKind={displayNetwork.kind}
+        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+      />
+    );
+
     return (
-      <div className="gap-4 flex items-center align-center flex-row">
-        {toChain}
+      <div className="flex text-center gap-3 items-center justify-center w-full">
+        {/* Current network */}
+        <div className="flex flex-col items-center gap-1">
+          {fromChain}
+          <span className="text-xs text-gray-300 truncate max-w-[80px]">
+            {activeNetwork.label}
+          </span>
+        </div>
+
+        {/* Arrow */}
+        <Icon name="arrowright" size={20} isSvg className="mx-2" />
+
+        {/* Target network */}
+        <div className="flex flex-col items-center gap-1">
+          {toChain}
+          <span className="text-xs text-gray-300 truncate max-w-[80px]">
+            {displayNetwork.label}
+          </span>
+        </div>
       </div>
     );
   };
 
   return (
-    <>
-      <Header />
-      <div className="gap-4 mt-6 mb-7 w-full flex flex-col justify-center items-center">
-        <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
-          <img src={loadImg} />
+    <div className="flex flex-col items-center justify-start min-h-full px-4 py-6 overflow-y-auto">
+      <div className="flex flex-col items-center gap-4 w-full max-w-[22rem]">
+        <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%] flex items-center justify-center">
+          {isRetrying ? (
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
+          ) : (
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          )}
         </div>
-        <span className="text-sm font-normal text-white text-center">
-          {t('chainError.connectionTooLong')}
-        </span>
-        <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
+        {/* Status Text - Shows error message or connection progress */}
+        <div
+          className="text-center w-full max-w-[22rem]"
+          style={{ minHeight: '32px' }}
+        >
+          {!isRetrying ? (
+            <span className="text-sm font-normal text-white">
+              {t('chainError.connectionTooLong')}
+            </span>
+          ) : (
+            <div className="text-sm text-brand-gray200 transition-opacity duration-500">
+              {elapsedSeconds < 3 &&
+                t('networkConnection.connecting', {
+                  network: displayNetwork.label,
+                })}
+              {elapsedSeconds >= 3 && elapsedSeconds < 7 && (
+                <>
+                  {t('networkConnection.stillConnecting')}
+                  <span className="ml-2 text-brand-gray400 text-xs">
+                    ({elapsedSeconds}s)
+                  </span>
+                </>
+              )}
+              {elapsedSeconds >= 7 && (
+                <div className="text-yellow-400">
+                  {t('networkConnection.slowConnection')}
+                  <span className="ml-2 text-brand-gray400 text-xs">
+                    ({elapsedSeconds}s)
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Progress Bar - Always reserve space but fade in/out */}
+        <div
+          className={`w-full max-w-[22rem] mt-3 transition-all duration-300 ${
+            isRetrying ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{ height: '6px' }}
+        >
+          <div className="bg-brand-gray600 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-brand-blue400 to-brand-deepPink100 h-full transition-all duration-1000 ease-linear"
+              style={{
+                width: isRetrying
+                  ? `${Math.min((elapsedSeconds / 10) * 100, 100)}%`
+                  : '0%',
+              }}
+            />
+          </div>
+        </div>
+        <div className="rounded-[20px] bg-brand-blue500 p-5 w-full">
           <div className="relative flex mb-4">
             <CurrentChains />
-            <div className="flex flex-col ml-3">
-              <h1 className="text-xs font-light text-white">
-                {t('chainError.tryingToConnectOn')}
-              </h1>
-              <h1 className="text-lg font-bold text-white">
-                {activeNetwork.label}
-              </h1>
-            </div>
           </div>
+
           <div className="flex flex-col mb-2">
             <div
-              className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
-              onClick={() =>
-                navigate('/settings/networks/custom-rpc', {
-                  state: {
-                    selected: activeNetwork,
-                    chain: activeNetwork.chainId,
-                    isDefault: activeNetwork.default,
+              className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
+              onClick={() => {
+                // Reset network status to prevent redirect loops when navigating away
+                store.dispatch(resetNetworkStatus());
+
+                const returnContext = createNavigationContext(
+                  '/chain-fail-to-connect'
+                );
+                navigateWithContext(
+                  navigate,
+                  '/settings/networks/custom-rpc',
+                  {
+                    selected: displayNetwork,
+                    chain: displayNetwork.chainId,
+                    isDefault: displayNetwork.default,
                     isEditing: true,
                   },
-                })
-              }
+                  returnContext
+                );
+              }}
             >
               {t('chainError.editCurrentRpc')}
             </div>
           </div>
+          <div className="text-xs text-gray-300 text-center">
+            {t('networkConnection.mayBeRateLimited')}
+          </div>
         </div>
-        <div className="flex flex-col gap-2 mt-6">
-          <Button
-            type="submit"
-            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+        <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
+          <NeutralButton
+            type="button"
             onClick={handleConnectToAnotherRpc}
+            disabled={isRetrying}
+            fullWidth
           >
             {t('chainError.goToAnotherNetwork')}
-          </Button>
-          <Button
-            loading={isRetrying}
-            type="submit"
-            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+          </NeutralButton>
+          <NeutralButton
+            type="button"
             onClick={handleRetryToConnect}
+            disabled={isRetrying}
+            loading={isRetrying}
+            fullWidth
           >
             {t('buttons.retryConnect')}
-          </Button>
+          </NeutralButton>
         </div>
       </div>
-    </>
+    </div>
   );
 };

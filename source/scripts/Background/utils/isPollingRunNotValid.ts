@@ -1,27 +1,17 @@
 import store from 'state/store';
 
 export const isPollingRunNotValid = () => {
-  const {
-    isNetworkChanging,
-    isLoadingTxs,
-    isLoadingBalances,
-    isLoadingAssets,
-    changingConnectedAccount: { isChangingConnectedAccount },
-    accounts,
-    lastLogin,
-  } = store.getState().vault;
+  const { networkStatus, lastLogin } = store.getState().vaultGlobal;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;
 
-  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
+  const isNetworkChanging = networkStatus === 'switching';
 
-  return (
-    !hasAccount0Address ||
-    verifyIfUserIsNotRegistered ||
-    isChangingConnectedAccount ||
-    isLoadingAssets ||
-    isLoadingBalances ||
-    isLoadingTxs ||
-    isNetworkChanging
-  );
+  // Only block polling for critical operations, not loading states
+  // We want to show loading indicators during polling now
+  if (isNetworkChanging || verifyIfUserIsNotRegistered) {
+    return true;
+  }
+
+  return false;
 };

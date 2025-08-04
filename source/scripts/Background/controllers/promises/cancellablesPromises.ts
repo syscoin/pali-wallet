@@ -69,27 +69,27 @@ export class CancellablePromises {
         try {
           return await this.transactionPromise.promise;
         } catch (transactionError) {
-          throw new Error(transactionError);
+          throw transactionError;
         }
 
       case PromiseTargets.ASSETS:
         try {
           return await this.assetsPromise.promise;
         } catch (assetsError) {
-          throw new Error(assetsError);
+          throw assetsError;
         }
       case PromiseTargets.NFTS:
         try {
           return await this.nftsPromise.promise;
         } catch (nftsError) {
-          throw new Error(nftsError);
+          throw nftsError;
         }
 
       case PromiseTargets.BALANCE:
         try {
           return await this.balancePromise.promise;
         } catch (balanceError) {
-          throw new Error(balanceError);
+          throw balanceError;
         }
     }
   }

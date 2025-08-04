@@ -50,6 +50,7 @@ export interface ITransactionInfoEvm {
   hash: string;
   input: string;
   isCanceled?: boolean;
+  isError?: string | null;
   maxFeePerGas: string;
   maxPriorityFeePerGas: string;
   nonce: string;
@@ -58,6 +59,8 @@ export interface ITransactionInfoEvm {
   timestamp: number;
   to: string;
   transactionIndex: string;
+  // Transaction status fields
+  txreceipt_status?: string | null;
   type: string;
   v: string;
   value: string | valuePending;
@@ -75,10 +78,8 @@ export interface ITransactionsListConfig {
   filteredTransactions: ITransactionInfoEvm[] | ITransactionInfoUtxo[];
   formatTimeStamp: (timestamp: number) => string;
   formatTimeStampUtxo: (timestamp: number) => JSX.Element;
-  getTokenSymbol: (isErc20Tx: boolean, coinsList: any[], tx: any) => string;
   getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
   getTxStatusIcons: (txLabel: string, isDetail: boolean) => JSX.Element;
   getTxType: (tx: any, isTxSent: boolean) => string;
-  isShowedGroupBar: (tx: ITransactionInfoEvm, idx: number) => boolean;
   txId: string;
 }

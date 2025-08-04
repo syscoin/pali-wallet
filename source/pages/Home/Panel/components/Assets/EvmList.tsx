@@ -1,76 +1,95 @@
-import { uniqueId } from 'lodash';
-import React, { Fragment, useState } from 'react';
+import React, {
+  Fragment,
+  useState,
+  useDeferredValue,
+  startTransition,
+  useEffect,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
-import {
-  RiEditLine as EditIcon,
-  RiShareForward2Line as DetailsIcon,
-} from 'react-icons/ri';
+import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
-import { LoadingComponent } from 'components/Loading';
+import { IconButton, TokenIcon } from 'components/index';
+import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { truncate } from 'utils/index';
+import {
+  navigateWithContext,
+  truncate,
+  formatFullPrecisionBalance,
+} from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
 interface IDefaultEvmAssets {
   searchValue: string;
   sortByValue: string;
+  state: {
+    isCoinSelected: boolean;
+    searchValue: string;
+    sortByValue: string;
+  };
 }
 
-const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
+const DefaultEvmAssets = ({
+  searchValue,
+  sortByValue,
+  state,
+}: IDefaultEvmAssets) => {
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
 
-  const {
-    accounts,
-    activeAccount,
-    activeNetwork: { chainId },
-  } = useSelector((state: RootState) => state.vault);
-
-  const assets = accounts[activeAccount.type][activeAccount.id].assets;
-
-  const currentChainAssets = assets.ethereum?.filter(
-    (token) => token.chainId === chainId
+  // Confirmation modal state
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [tokenToDelete, setTokenToDelete] = useState<ITokenEthProps | null>(
+    null
   );
 
-  const assetsSorted = (sortBy: string) => {
+  const {
+    accountAssets,
+    activeAccount,
+    activeNetwork: { chainId },
+  } = useSelector((rootState: RootState) => rootState.vault);
+
+  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
+
+  // Separate regular tokens from NFTs as requested
+  const allAssets =
+    assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
+  const currentChainAssets = allAssets.filter((token) => !token.isNft);
+
+  const assetsSorted = (tokens: ITokenEthProps[], sortBy: string) => {
+    const sortedAssets = [...tokens]; // Create a copy to avoid mutating original array
+
     switch (sortBy) {
       case 'Name':
-        return currentChainAssets.sort(
+        return sortedAssets.sort(
           (a, b) =>
-            a.name.localeCompare(b.name) ||
+            a.name?.localeCompare(b.name) ||
             a.tokenSymbol.localeCompare(b.tokenSymbol)
         );
       case 'Balance':
-        return currentChainAssets.sort((a, b) => a.balance - b.balance);
+        // Sort by balance in descending order (highest balance first)
+        return sortedAssets.sort((a, b) => b.balance - a.balance);
       default:
-        return currentChainAssets;
+        return sortedAssets;
     }
   };
 
   const assetsFilteredBySearch = currentChainAssets.filter((token) => {
-    const is1155 = token?.is1155;
     const lowercaseSearchValue = searchValue?.toLowerCase();
     const isHexSearch = searchValue.startsWith('0x');
 
-    if (is1155) {
-      const lowercaseCollectionName = token.collectionName.toLowerCase();
-      const lowercaseContractAddress = token.contractAddress.toLowerCase();
-      if (isHexSearch) {
-        return lowercaseContractAddress.includes(lowercaseSearchValue);
-      }
-      return lowercaseCollectionName.includes(lowercaseSearchValue);
-    }
-
-    const lowercaseTokenName = token.name.toLowerCase();
+    const lowercaseTokenName = token.name?.toLowerCase() || '';
     const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
     const lowercaseContractAddress = token.contractAddress.toLowerCase();
 
@@ -84,136 +103,234 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
     }
   });
 
-  const assetsSortedBy = assetsSorted(sortByValue);
-
+  // Apply filters and sorting in the correct order
   let filteredAssets = currentChainAssets;
 
+  // First apply search filter if there's a search value
   if (searchValue?.length > 0) {
     filteredAssets = assetsFilteredBySearch;
-  } else if (sortByValue?.length > 0) {
-    filteredAssets = assetsSortedBy;
   }
+
+  // Then apply sorting to the filtered results
+  if (sortByValue?.length > 0) {
+    filteredAssets = assetsSorted(filteredAssets, sortByValue);
+  }
+
+  // Delete confirmation handlers
+  const handleDeleteClick = (token: ITokenEthProps) => {
+    setTokenToDelete(token);
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (tokenToDelete) {
+      controllerEmitter(
+        ['wallet', 'deleteTokenInfo'],
+        [tokenToDelete.contractAddress, chainId, tokenToDelete.tokenId]
+      );
+    }
+    setShowDeleteConfirmation(false);
+    setTokenToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setTokenToDelete(null);
+  };
+
+  const handleAssetClick = (token: ITokenEthProps) => {
+    // Capture current scroll position
+    const scrollPosition = window.scrollY || 0;
+
+    const returnContext = {
+      returnRoute: '/home',
+      tab: searchParams.get('tab') || 'assets',
+      scrollPosition,
+      state,
+    };
+
+    navigateWithContext(
+      navigate,
+      '/home/details',
+      { id: token.id, hash: null },
+      returnContext
+    );
+  };
 
   return (
     <>
-      {filteredAssets?.map((token: ITokenEthProps) => {
-        const btnContainerWidth = token?.is1155 === undefined ? 'w-16' : 'w-10';
-        return (
-          <Fragment key={uniqueId(token.id)}>
-            <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
-              <div className="flex gap-3 items-center justify-start">
-                {!token.isNft && token.logo && (
-                  <div style={{ maxWidth: '25px', maxHeight: '25px' }}>
-                    <img src={`${token.logo}`} alt={`${token.name} Logo`} />
-                  </div>
-                )}
-                {token.isNft && token?.is1155 && (
-                  <p className="font-rubik">
-                    <span className="text-button-primary font-poppins">
-                      {`- ${token.collectionName}`}
-                    </span>
-                  </p>
-                )}
+      {filteredAssets?.map((token: ITokenEthProps) => (
+        <Fragment key={token.id}>
+          <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
+            <div className="flex gap-3 items-center justify-start">
+              <TokenIcon
+                logo={token.logo}
+                contractAddress={token.contractAddress}
+                symbol={token.tokenSymbol}
+                size={24}
+                className="hover:shadow-md hover:scale-110 transition-all duration-200"
+              />
 
-                {token?.is1155 === undefined && (
-                  <p className="flex items-center gap-x-2">
-                    <span className="text-brand-white">{token.balance}</span>
+              <p className="flex items-center gap-x-2">
+                <span className="text-brand-white">
+                  {formatFullPrecisionBalance(token.balance, 4)}
+                </span>
 
-                    <span className="text-brand-royalbluemedium">
-                      {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
-                    </span>
-                  </p>
-                )}
-              </div>
+                <span
+                  className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                  onClick={() => handleAssetClick(token)}
+                >
+                  {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
+                </span>
+              </p>
+            </div>
 
-              <div
-                className={`flex items-center justify-between ${btnContainerWidth}`}
-              >
-                <Tooltip content={t('tooltip.assetDetails')}>
+            <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
+              <Tooltip content={t('tooltip.assetDetails')}>
+                <IconButton
+                  onClick={() => handleAssetClick(token)}
+                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                  aria-label={`View details for ${token.tokenSymbol} token`}
+                >
                   <DetailsIcon
-                    className="cursor-pointer hover:text-fields-input-borderfocus"
-                    color="text-brand-white"
                     size={16}
-                    onClick={() =>
-                      navigate('/home/details', {
-                        state: { id: token.id, hash: null },
-                      })
-                    }
+                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
                   />
-                </Tooltip>
+                </IconButton>
+              </Tooltip>
 
-                {token?.is1155 === undefined && (
-                  <Tooltip content={t('tooltip.editAsset')}>
-                    <EditIcon
-                      className="cursor-pointer hover:text-fields-input-borderfocus"
-                      color="text-brand-white"
-                      size={16}
-                      onClick={() =>
-                        navigate('/tokens/add', {
-                          state: token,
-                        })
-                      }
-                    />
-                  </Tooltip>
-                )}
-
-                <Tooltip content={t('tooltip.deleteAsset')}>
+              <Tooltip content={t('tooltip.deleteAsset')}>
+                <IconButton
+                  onClick={() => handleDeleteClick(token)}
+                  className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                  aria-label={`Delete ${token.tokenSymbol} token`}
+                >
                   <DeleteIcon
-                    className="cursor-pointer hover:text-fields-input-borderfocus"
-                    color="text-brand-white"
                     size={16}
-                    onClick={() => {
-                      controllerEmitter(
-                        ['wallet', 'account', 'eth', 'deleteTokenInfo'],
-                        [token.contractAddress]
-                      );
-                    }}
+                    className="text-brand-white hover:text-red-500 transition-colors"
                   />
-                </Tooltip>
-              </div>
-            </li>
-          </Fragment>
-        );
-      })}
+                </IconButton>
+              </Tooltip>
+            </div>
+          </li>
+        </Fragment>
+      ))}
+
+      <ConfirmationModal
+        show={showDeleteConfirmation}
+        onClick={handleConfirmDelete}
+        onClose={handleCancelDelete}
+        title={t('tokens.deleteToken', {
+          symbol: tokenToDelete?.tokenSymbol || 'Token',
+        })}
+        description={t('tokens.confirmDeleteTokenEvm', {
+          symbol: tokenToDelete?.tokenSymbol || 'this token',
+        })}
+        buttonText={t('buttons.delete')}
+      />
     </>
   );
 };
 
 // todo: create a loading state
 export const EvmAssetsList = () => {
-  const [isCoinSelected, setIsCoinSelected] = useState<boolean>(true);
+  const location = useLocation();
 
-  const [searchValue, setSearchValue] = useState<string>('');
-  const [sortByValue, setSortyByValue] = useState<string>('');
+  // Restore state from navigation if available
+  const initialIsCoinSelected = location.state?.isCoinSelected ?? true;
+  const initialSearchValue = location.state?.searchValue || '';
+  const initialSortByValue = location.state?.sortByValue || '';
 
-  const { isLoadingAssets, isNetworkChanging } = useSelector(
-    (state: RootState) => state.vault
+  const [isCoinSelected, setIsCoinSelected] = useState<boolean>(
+    initialIsCoinSelected
   );
+
+  const [searchValue, setSearchValue] = useState<string>(initialSearchValue);
+  const [sortByValue, setSortyByValue] = useState<string>(initialSortByValue);
+
+  // Use deferred value for search to keep input responsive
+  const deferredSearchValue = useDeferredValue(searchValue);
+  const deferredSortByValue = useDeferredValue(sortByValue);
+
+  // Show subtle loading state when deferred values are behind
+  const isSearching = searchValue !== deferredSearchValue;
+  const isSorting = sortByValue !== deferredSortByValue;
+
+  const { isLoadingAssets } = useSelector(
+    (rootState: RootState) => rootState.vaultGlobal.loadingStates
+  );
+  const { networkStatus } = useSelector(
+    (rootState: RootState) => rootState.vaultGlobal
+  );
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
+  // Track if we've already restored scroll position to prevent duplicate restoration
+  const hasRestoredScrollRef = useRef(false);
+
+  // Handle navigation state restoration
+  useEffect(() => {
+    if (
+      location.state?.scrollPosition !== undefined &&
+      !hasRestoredScrollRef.current
+    ) {
+      hasRestoredScrollRef.current = true;
+
+      // Restore scroll position
+      window.scrollTo(0, location.state.scrollPosition);
+
+      // Do NOT clear the navigation state here - we need it to persist
+      // for when the popup is closed and reopened
+    }
+  }, [location.state]);
+
+  // Handle tab switch with transition
+  const handleTabSwitch = (isCoin: boolean) => {
+    startTransition(() => {
+      setIsCoinSelected(isCoin);
+    });
+  };
+
+  // Pass component state to child components
+  const state = {
+    isCoinSelected,
+    searchValue,
+    sortByValue,
+  };
+
   return (
     <>
       {loadingValidation ? (
-        <LoadingComponent />
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        </div>
       ) : (
         <>
           <AssetsHeader
             isCoinSelected={isCoinSelected}
-            setIsCoinSelected={setIsCoinSelected}
+            setIsCoinSelected={handleTabSwitch}
             setSearchValue={setSearchValue}
             setSortyByValue={setSortyByValue}
           />
 
-          {isCoinSelected ? (
-            <DefaultEvmAssets
-              searchValue={searchValue}
-              sortByValue={sortByValue}
-            />
-          ) : (
-            <EvmNftsList />
-          )}
+          <div
+            className={`${
+              isSearching || isSorting ? 'opacity-75' : ''
+            } transition-opacity duration-150`}
+          >
+            {isCoinSelected ? (
+              <DefaultEvmAssets
+                searchValue={deferredSearchValue}
+                sortByValue={deferredSortByValue}
+                state={state}
+              />
+            ) : (
+              <EvmNftsList state={state} />
+            )}
+          </div>
         </>
       )}
     </>

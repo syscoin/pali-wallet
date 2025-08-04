@@ -1,17 +1,9 @@
-import { ethers } from 'ethers';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import {
-  INetworkType,
-  validateEthRpc,
-  validateSysRpc,
-} from '@pollum-io/sysweb3-network';
+import { Block } from '@ethersproject/providers';
 
 import store from 'state/store';
+import { INetworkType } from 'types/network';
 
-import { ethTestnetsChainsIds } from './constants';
-
-export const isActiveNetwork = (chain: string, chainId: number) => {
+export const isActiveNetwork = (chain: INetworkType, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
   const activeChain = networkChain();
 
@@ -27,68 +19,30 @@ export const isActiveNetwork = (chain: string, chainId: number) => {
 export const networkChain = () =>
   getNetworkChain(store.getState().vault.isBitcoinBased);
 
-/**
- * `{ chaindId, url }` is compatible with `INetwork`
- */
-export const isBitcoinBasedNetwork = async ({
-  chainId,
-  url,
-}: {
-  chainId: number;
-  url: string;
-}) => {
+export const verifyNetworkEIP1559Compatibility = async (stateBlock?: Block) => {
   try {
-    const { networks } = store.getState().vault;
+    // We should always have a block from state
+    // Components are updated to only call this when currentBlock is available
+    if (!stateBlock) {
+      console.warn(
+        'verifyNetworkEIP1559Compatibility called without stateBlock'
+      );
+      return false;
+    }
 
-    const isSyscoinChain = Boolean(networks.syscoin[chainId]);
-
-    if (!isSyscoinChain) return false;
-
-    const { valid } = await validateSysRpc(url);
-
-    return isSyscoinChain && valid;
-  } catch (error) {
-    return false;
-  }
-};
-
-export const verifyIfIsTestnet = async (
-  networkUrl: string,
-  isBitcoinBased: boolean,
-  isInCooldown: boolean
-) => {
-  const { chain, chainId }: any = isBitcoinBased
-    ? await validateSysRpc(networkUrl)
-    : await validateEthRpc(networkUrl, isInCooldown);
-
-  return Boolean(
-    chain === 'test' ||
-      chain === 'testnet' ||
-      ethTestnetsChainsIds.some(
-        (validationChain) => validationChain === chainId
-      )
-  );
-};
-
-export const verifyNetworkEIP1559Compatibility = async (
-  web3Provider: CustomJsonRpcProvider,
-  stateBlock?: ethers.providers.Block
-) => {
-  try {
-    const latestBlock = stateBlock
-      ? stateBlock
-      : await web3Provider.getBlock('latest');
-    const baseFeePerGasExistInBlock = latestBlock?.baseFeePerGas !== undefined;
+    const baseFeePerGasExistInBlock = stateBlock.baseFeePerGas !== undefined;
     let isCompatible = false;
 
     if (baseFeePerGasExistInBlock) {
-      const isValidEIP1559Fee = Number(latestBlock.baseFeePerGas) !== 0;
+      const isValidEIP1559Fee = Number(stateBlock.baseFeePerGas) !== 0;
       isCompatible = isValidEIP1559Fee;
     }
 
     return isCompatible;
   } catch (error) {
-    throw new Error(error);
+    console.error('Failed to verify EIP1559 compatibility:', error);
+    // Return false if we can't determine compatibility
+    return false;
   }
 };
 

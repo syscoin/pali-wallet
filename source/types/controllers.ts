@@ -1,65 +1,10 @@
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
-import {
-  ITokenMap,
-  ICoingeckoToken,
-  ICoingeckoSearchResults,
-} from '@pollum-io/sysweb3-utils';
-
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
-
-export interface IControllerUtils {
-  getAsset: (
-    explorerUrl: string,
-    assetGuid: string
-  ) => Promise<{
-    assetGuid: string;
-    contract: string;
-    decimals: number;
-    maxSupply: string;
-    pubData: any;
-    symbol: string;
-    totalSupply: string;
-    updateCapabilityFlags: number;
-  }>;
-  getFeeRate: (fee: number) => bigint;
-  getPsbtFromJson: (psbt: JSON) => string;
-  getRawTransaction: (explorerUrl: string, txid: string) => any;
-  getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
-  getToken: (tokenId: string) => Promise<ICoingeckoToken>;
-  getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
-  getTokenJson: () => {
-    address: string;
-    chainId: number;
-    decimals: number;
-    logoURI: string;
-    name: string;
-    symbol: string;
-  }[];
-  getTokenMap: ({
-    guid,
-    changeAddress,
-    amount,
-    receivingAddress,
-  }: {
-    amount: number;
-    changeAddress: string;
-    guid: number | string;
-    receivingAddress: string;
-  }) => ITokenMap;
-  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
-  isValidSYSAddress: (
-    address: string,
-    purpose: number,
-    verification?: boolean
-  ) => boolean;
-  setFiat: (currency?: string, assetId?: string) => Promise<void>;
-}
+import { KeyringAccountType, INetwork } from 'types/network';
 
 export interface IDAppController {
   /**
@@ -93,9 +38,6 @@ export interface IDAppController {
   getNetwork: () => INetwork;
   getState: () => any;
   /**
-   * Changes the active network
-   */
-  /**
    * Update state and emit events to all connected dApps
    * @emits PaliSyscoinEvents
    */
@@ -103,10 +45,6 @@ export interface IDAppController {
     id: PaliSyscoinEvents,
     data: { method: string; params: any }
   ) => Promise<void>;
-
-  /**
-   * Changes the active network
-   */
 
   /**
    * Update state and emit events to all connected dApps
@@ -142,21 +80,6 @@ export interface IDAppController {
    * Setup communication
    */
   setup: (sender: chrome.runtime.MessageSender) => void;
-}
-
-// eslint-disable-next-line no-shadow
-export enum PaliRoutes {
-  AddEthChain = 'add-EthChain',
-  ChangeAccount = 'change-account',
-  EncryptKey = 'tx/encryptKey',
-  EthSign = 'tx/ethSign',
-  SendApprove = 'tx/send/approve',
-  SendEthTX = 'tx/send/ethTx',
-  SendNTokenTX = 'tx/send/nTokenTx',
-  SwitchEthChain = 'switch-EthChain',
-  SwitchNetwork = 'switch-network',
-  SwitchUtxo = 'switch-UtxoEvm',
-  WatchAsset = 'watch-asset',
 }
 
 export interface IEventData {

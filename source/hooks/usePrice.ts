@@ -18,7 +18,7 @@ export const usePrice = () => {
   const getFiatAmount: IGetFiatAmount = (
     amount: number,
     precision = 4,
-    currency = 'usd',
+    currency = fiat.asset || 'usd',
     withCurrency = true,
     withSymbol?: boolean
   ): string => {
@@ -29,7 +29,7 @@ export const usePrice = () => {
     const currencySymbol = getSymbolFromCurrency(currency);
 
     const arrayValidationSymbol = [
-      withSymbol,
+      withSymbol === true,
       currencySymbol !== undefined,
       currencySymbol !== 'undefined',
     ];
@@ -40,12 +40,16 @@ export const usePrice = () => {
 
     const symbol = validateSymbol ? currencySymbol : '';
 
+    if (!fiat.price || fiat.price === 0 || value === 0 || !value) {
+      return `${symbol}0 ${withCurrency ? currency : ''}`;
+    }
+
     const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
 
     if (formattedValue === undefined || formattedValue === 'undefined') {
-      return `${symbol}0  ${currency}`;
+      return `${symbol}0 ${withCurrency ? currency : ''}`;
     }
-    return `${symbol} ${formattedValue}  ${withCurrency ? currency : ''}`;
+    return `${symbol}${formattedValue} ${withCurrency ? currency : ''}`;
   };
 
   return { getFiatAmount };

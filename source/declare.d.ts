@@ -8,6 +8,12 @@ declare module '*.svg' {
   export default value;
 }
 
-declare module 'react-alert';
+declare module '*.xlsx';
+declare module '*.xls';
+declare module '*.csv';
+declare module 'react-notifications-component';
 
-declare module 'bip84';
+// eslint-disable-next-line @typescript-eslint/naming-convention
+declare interface Window {
+  __PALI_OFFSCREEN__?: boolean;
+}

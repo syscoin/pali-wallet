@@ -1,46 +1,54 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Layout, NeutralButton } from 'components/index';
+import { NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
-
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
   const { t } = useTranslation();
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const { address: newAddress } = (await controllerEmitter(
-      ['wallet', 'createAccount'],
-      [isBitcoinBased, activeNetwork.chainId, label, false]
-    )) as any;
+    try {
+      const { address: newAddress } = (await controllerEmitter(
+        ['wallet', 'createAccount'],
+        [label]
+      )) as any;
 
-    setAddress(newAddress);
-    setLoading(false);
+      setAddress(newAddress);
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+
+      // Check if this is a wallet locked error and handle redirect
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        // If not a wallet locked error, just log it since the original component
+        // didn't have explicit error handling UI for create account failures
+        console.error('Error creating account:', error);
+      }
+    }
   };
 
   return (
-    <Layout title={t('settings.createAccount')} id="create-account-title">
+    <>
       {address ? (
         <CreatedAccountSuccessfully
           show={address !== ''}
           onClose={() => {
             setAddress('');
-            navigate('/home');
+            navigateBack(navigate, location);
           }}
           title={t('settings.yourNewAccount')}
           phraseOne={`${accountName}`}
@@ -81,8 +89,8 @@ const CreateAccount = () => {
           <div className="w-full px-4 absolute bottom-12 md:static">
             <NeutralButton
               type="submit"
-              loading={loading}
               disabled={loading}
+              loading={loading}
               id="create-btn"
               fullWidth
             >
@@ -91,7 +99,7 @@ const CreateAccount = () => {
           </div>
         </Form>
       )}
-    </Layout>
+    </>
   );
 };
 

@@ -1,35 +1,41 @@
 import { Input } from 'antd';
 import isNaN from 'lodash/isNaN';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
+import { IBlacklistCheckResult } from 'types/security';
+import {
+  ICustomFeeParams,
+  IDecodedTx,
+  IFeeState,
+  ITxState,
+} from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon
+    wrapperClassname="flex items-center justify-center"
+    name="Copy"
+    isSvg
+    className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+  />
+));
+CopyIcon.displayName = 'CopyIcon';
+
 interface ITransactionDetailsProps {
-  customFee: {
-    gasLimit: number;
-    isCustom: boolean;
-    maxFeePerGas: number;
-    maxPriorityFeePerGas: number;
-  };
+  customFee: ICustomFeeParams;
   decodedTx: IDecodedTx;
   fee: IFeeState;
-  setCustomFee: React.Dispatch<
-    React.SetStateAction<{
-      gasLimit: number;
-      isCustom: boolean;
-      maxFeePerGas: number;
-      maxPriorityFeePerGas: number;
-    }>
-  >;
+  setCustomFee: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   setHaveError: React.Dispatch<React.SetStateAction<boolean>>;
@@ -42,19 +48,40 @@ export const TransactionDetailsComponent = (
 ) => {
   const { tx, setCustomNonce, fee, customFee, setIsOpen } = props;
   const { alert, useCopyClipboard } = useUtils();
-  const [copied, copy] = useCopyClipboard();
+  const { controllerEmitter } = useController();
+  const [, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<number>(0);
+  const [blacklistWarning, setBlacklistWarning] = useState<{
+    isBlacklisted: boolean;
+    reason?: string;
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+  }>({ isBlacklisted: false });
   const { t } = useTranslation();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
-  useEffect(() => {
-    if (!copied) return;
-    alert.removeAll();
-    alert.success('Address successfully copied');
-  }, [copied]);
+  // Helper function to get appropriate copy message based on field type
+  const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
+    switch (fieldType) {
+      case 'address':
+        return t('home.addressCopied');
+      case 'hash':
+        return t('home.hashCopied');
+      default:
+        return t('settings.successfullyCopied');
+    }
+  };
+
+  const handleCopyWithMessage = (
+    value: string,
+    fieldType: 'address' | 'hash' | 'other' = 'address'
+  ) => {
+    copy(value);
+
+    alert.info(getCopyMessage(fieldType));
+  };
 
   const finalFee =
     +removeScientificNotation(
@@ -70,49 +97,99 @@ export const TransactionDetailsComponent = (
     }
   }, [tx]);
 
+  // Check recipient address against blacklist
+  useEffect(() => {
+    const checkBlacklist = async () => {
+      if (!tx?.to) return;
+
+      try {
+        const result = (await controllerEmitter(
+          ['wallet', 'checkAddressBlacklist'],
+          [tx.to]
+        )) as IBlacklistCheckResult;
+        if (result.isBlacklisted) {
+          setBlacklistWarning({
+            isBlacklisted: true,
+            reason: result.reason,
+            severity: result.severity,
+          });
+        } else {
+          setBlacklistWarning({ isBlacklisted: false });
+        }
+      } catch (error) {
+        console.error('Failed to check blacklist:', error);
+      }
+    };
+
+    checkBlacklist();
+  }, [tx?.to]);
+
   return (
-    <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
-      <p className="flex flex-col pt-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
+    <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-full max-w-[400px] mx-auto text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
+      <div className="flex flex-col pt-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
         {t('send.from')}
-        <p className="text-white text-xs">
+        <div className="text-white text-xs">
           <Tooltip content={tx.from} childrenClassName="flex">
             {ellipsis(tx.from, 7, 15)}
             {
-              <IconButton onClick={() => copy(tx.from ?? '')}>
-                <Icon
-                  wrapperClassname="flex items-center justify-center"
-                  name="Copy"
-                  isSvg
-                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
-                />
+              <IconButton
+                onClick={() => handleCopyWithMessage(tx.from ?? '', 'address')}
+              >
+                <CopyIcon />
               </IconButton>
             }
           </Tooltip>
-        </p>
-      </p>
+        </div>
+      </div>
 
-      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-normal">
+      <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-normal">
         {t('send.to')}
-        <p className="text-white text-xs">
+        <div className="text-white text-xs">
           <Tooltip content={tx.to} childrenClassName="flex">
             {ellipsis(tx.to, 7, 15)}
             {
-              <IconButton onClick={() => copy(tx.to ?? '')}>
-                <Icon
-                  wrapperClassname="flex items-center justify-center"
-                  name="Copy"
-                  isSvg
-                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
-                />
+              <IconButton
+                onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
+              >
+                <CopyIcon />
               </IconButton>
             }
           </Tooltip>
-        </p>
-      </p>
+        </div>
+        {blacklistWarning.isBlacklisted && (
+          <div
+            className={`mt-2 p-2 rounded-md text-xs ${
+              blacklistWarning.severity === 'critical'
+                ? 'bg-red-900 text-red-100'
+                : blacklistWarning.severity === 'high'
+                ? 'bg-orange-900 text-orange-100'
+                : 'bg-yellow-900 text-yellow-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Icon name="Warning" className="w-4 h-4" />
+              <span className="font-semibold">
+                {blacklistWarning.severity === 'critical'
+                  ? t('blacklist.blacklistCriticalWarning')
+                  : blacklistWarning.severity === 'high'
+                  ? t('blacklist.blacklistHighRisk')
+                  : t('blacklist.blacklistWarning')}
+              </span>
+            </div>
+            <p className="mt-1">
+              {blacklistWarning.reason ||
+                t('blacklist.blacklistDefaultWarning')}
+            </p>
+            <p className="mt-1 font-semibold">
+              {t('blacklist.blacklistWarningDiscouraged')}
+            </p>
+          </div>
+        )}
+      </div>
 
-      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
+      <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t('send.estimatedGasFee')}
-        <p className="flex text-white text-xs">
+        <div className="flex text-white text-xs">
           {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
           <div
             className="hover:text-fields-input-borderfocus"
@@ -124,12 +201,12 @@ export const TransactionDetailsComponent = (
               className="px-2 text-brand-white hover:text-fields-input-borderfocus"
             />{' '}
           </div>
-        </p>
-      </p>
+        </div>
+      </div>
 
-      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
+      <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t('send.customNonce')}
-        <p className="text-white text-xs">
+        <div className="text-white text-xs">
           <Input
             type="number"
             className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
@@ -137,8 +214,8 @@ export const TransactionDetailsComponent = (
             defaultValue={tx.nonce}
             onChange={(e) => setCustomNonce(Number(e.target.value))}
           />
-        </p>
-      </p>
+        </div>
+      </div>
 
       <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         Total ({t('send.amountAndFee')})

@@ -1,74 +1,53 @@
-import { INetworkType } from '@pollum-io/sysweb3-network';
-
 import { getController } from '..';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
-import { saveState } from 'state/paliStorage';
-import store from 'state/store';
-import { setPrevBalances } from 'state/vault';
+import { saveMainState } from 'state/store';
+import { updateMutex } from 'utils/asyncMutex';
 
-function shouldUpdate() {
-  const {
-    accounts,
-    activeAccount,
-    isBitcoinBased,
-    activeNetwork,
-    prevBalances,
-  } = store.getState().vault;
-
-  const chain = isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
-  const chainId = activeNetwork.chainId;
-
-  const currentBalance = isBitcoinBased
-    ? accounts[activeAccount.type][activeAccount.id].balances.syscoin
-    : accounts[activeAccount.type][activeAccount.id].balances.syscoin;
-
-  const previousBalance = prevBalances[activeAccount.id]?.[chain]?.[chainId];
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
-  const currentAccountTransactions = currentAccount.transactions[chain][
-    chainId
-  ] as any[];
-
-  const hasPendingTx = (currentAccountTransactions ?? []).every(
-    (tx) => tx.confirmations > 0
-  );
-
-  if (currentBalance === previousBalance && hasPendingTx) {
-    return false;
-  }
-
-  store.dispatch(
-    setPrevBalances({
-      activeAccountId: activeAccount.id,
-      balance: currentBalance,
-      chain: isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
-      chainId: activeNetwork.chainId,
-    })
-  );
-
-  return true;
-}
-
-export async function checkForUpdates() {
-  if (isPollingRunNotValid()) {
-    return;
-  }
-
-  if (!shouldUpdate()) {
-    return;
-  }
-
-  controllerEmitter(
-    ['wallet', 'getLatestUpdateForCurrentAccount'],
-    [true]
-  ).catch((error) => {
-    // save current state to localstorage if pali is not open
-    if (
-      error?.message ===
-      'Could not establish connection. Receiving end does not exist.'
-    ) {
-      getController().wallet.getLatestUpdateForCurrentAccount(true);
-      saveState(store.getState());
+export async function checkForUpdates(
+  isPolling?: boolean,
+  isRapidPolling?: boolean
+): Promise<boolean> {
+  // Use AsyncMutex for cross-context synchronization
+  // This ensures only one update check runs at a time across all contexts
+  return updateMutex.runExclusive(async () => {
+    if (isPollingRunNotValid()) {
+      console.log('⏸️ checkForUpdates: Polling run not valid, skipping');
+      return true;
     }
+
+    // Skip all updates if we're on the hardware wallet page
+    // Hardware wallet pages don't need balance/asset/transaction updates
+    try {
+      const tabs = await chrome.tabs.query({});
+      const isExternal = tabs.some((tab) => tab.url?.includes('external'));
+      if (isExternal) {
+        console.log(
+          '⏸️ checkForUpdates: Skipping updates - external wallet page is open'
+        );
+        return true;
+      }
+    } catch (error) {
+      // If we can't check the URL, continue with updates
+      console.warn('[checkForUpdates] Could not check tab URLs:', error);
+    }
+
+    console.log('✅ checkForUpdates: Proceeding with update');
+
+    // Always use direct controller call since we're already in the background
+    // This avoids unnecessary errors when popup is closed
+    try {
+      await getController().wallet.getLatestUpdateForCurrentAccount(
+        isPolling,
+        false, // forceUpdate
+        isRapidPolling
+      );
+
+      // Save main state after successful update (excludes vault data)
+      await saveMainState();
+    } catch (error) {
+      console.error('Error updating account in checkForUpdates:', error);
+    }
+
+    return true;
   });
 }

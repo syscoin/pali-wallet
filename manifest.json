@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "3.4.4",
+  "version": "3.5.0",
   "icons": {
-    "16": "assets/icons/favicon-16.png",
-    "32": "assets/icons/favicon-32.png",
-    "48": "assets/icons/favicon-48.png",
-    "128": "assets/icons/favicon-128.png"
+    "16": "assets/all_assets/favicon-16.png",
+    "32": "assets/all_assets/favicon-32.png",
+    "48": "assets/all_assets/favicon-48.png",
+    "128": "assets/all_assets/favicon-128.png"
   },
   "description": "A Non-Custodial Crypto Wallet",
   "short_name": "pali",
@@ -16,7 +16,9 @@
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
-    "scripting"
+    "offscreen",
+    "scripting",
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -28,15 +30,15 @@
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
-  "author": "pollum labs",
-  "minimum_chrome_version": "88",
+  "author": "Syscoin",
+  "minimum_chrome_version": "109",
   "action": {
     "default_popup": "app.html",
     "default_icon": {
-      "16": "assets/icons/favicon-16.png",
-      "32": "assets/icons/favicon-32.png",
-      "48": "assets/icons/favicon-48.png",
-      "128": "assets/icons/favicon-128.png"
+      "16": "assets/all_assets/favicon-16.png",
+      "32": "assets/all_assets/favicon-32.png",
+      "48": "assets/all_assets/favicon-48.png",
+      "128": "assets/all_assets/favicon-128.png"
     },
     "default_title": "Pali Wallet"
   },

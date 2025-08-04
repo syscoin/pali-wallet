@@ -3,9 +3,11 @@ import React, { Dispatch, SetStateAction, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
+import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { migrateWalletState } from 'state/migrateWalletState';
+import { dispatchBackgroundEvent } from 'utils/browser';
+import { clearNavigationState } from 'utils/navigationState';
 
 const Unlock: React.FC<{
   externalRoute: string;
@@ -19,10 +21,13 @@ const Unlock: React.FC<{
   const { t, i18n } = useTranslation();
   const { language } = i18n;
 
+  // Get query data to check if this is an authentication popup
+  const queryData = useQueryData();
+  const { host, eventName } = queryData;
+
   const onSubmit = async ({ password }: { password: string }) => {
     try {
       setIsLoading(true);
-      await migrateWalletState('persist:root', 'state', true);
 
       const result = await controllerEmitter(
         ['wallet', 'unlockFromController'],
@@ -41,7 +46,24 @@ const Unlock: React.FC<{
         return navigate('/home');
       }
 
-      return navigate(externalRoute);
+      // Check if this is an authentication popup (external with login route or no externalRoute)
+      if (
+        isExternal &&
+        (!externalRoute || externalRoute.includes('/external/login')) &&
+        host &&
+        eventName
+      ) {
+        // This is an authentication popup - dispatch success
+        // Let the pipeline continue and close when the final response is ready
+        clearNavigationState();
+        dispatchBackgroundEvent(`${eventName}.${host}`, null);
+        window.close();
+        // Note: Window will be closed by popup promise after pipeline completes
+        return;
+      }
+
+      // For external routes, navigate to the destination
+      return navigate(externalRoute as string);
     } catch (e) {
       setErrorMessage(t('start.wrongPassword'));
       setIsLoading(false);

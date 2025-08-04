@@ -1,9 +1,9 @@
-/* @font-face {
+@font-face {
   font-family: 'Poppins';
   src: local('Poppins Regular'), local('Poppins-Regular'),
     url('./Poppins-Regular.ttf') format('truetype');
   font-weight: 400;
-  font-size: normal;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -12,6 +12,6 @@
   src: local('Rubik Regular'), local('Rubik-Regular'),
     url('./Rubik-Regular.ttf') format('truetype');
   font-weight: 400;
-  font-size: normal;
+  font-style: normal;
   font-display: swap;
-} */
+}

@@ -1,34 +1,91 @@
-import sys from 'syscoinjs-lib';
+import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
+// Removed unused import: INetworkType
 
-import { IPaliAccount } from 'state/vault/types';
+import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
 import { ISysBalanceController } from './types';
 
 const SyscoinBalanceController = (): ISysBalanceController => {
   const getSysBalanceForAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
-    try {
-      const requestDetails = 'details=basic&pageSize=0';
+    const requestDetails = 'details=basic&pageSize=0';
 
-      const { balance } = await sys.utils.fetchBackendAccount(
-        networkUrl,
-        currentAccount.xpub,
-        requestDetails,
-        true
-      );
+    const accountData = await fetchBackendAccountCached(
+      networkUrl,
+      currentAccount.xpub,
+      requestDetails,
+      true
+    );
 
-      const formattedBalance = balance / 1e8;
+    // Validate and parse balance values with proper error handling
+    const parseBalance = (value: any): number => {
+      // Handle missing or invalid values
+      if (value === undefined || value === null) {
+        console.warn(
+          '[SyscoinBalanceController] Missing balance value, defaulting to 0'
+        );
+        return 0;
+      }
 
-      //Prevent to send undefined from verifyZeros when formattedBalance is 0
-      return formattedBalance > 0
-        ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
-        : '0';
-    } catch (error) {
-      return String(currentAccount.balances.syscoin);
+      // Convert to string and trim whitespace
+      const stringValue = String(value).trim();
+
+      // Handle empty strings
+      if (stringValue === '') {
+        console.warn(
+          '[SyscoinBalanceController] Empty balance value, defaulting to 0'
+        );
+        return 0;
+      }
+
+      // Parse the number
+      const parsed = Number(stringValue);
+
+      // Check for NaN or invalid numbers
+      if (isNaN(parsed) || !isFinite(parsed)) {
+        console.error(
+          '[SyscoinBalanceController] Invalid balance value:',
+          value
+        );
+        return 0;
+      }
+
+      return parsed;
+    };
+
+    // Parse balance and unconfirmedBalance safely
+    const confirmedBalance = parseBalance(accountData?.balance);
+    const unconfirmedBalance = parseBalance(accountData?.unconfirmedBalance);
+
+    // Convert from satoshis to SYS
+    const confirmedBalanceInSys = confirmedBalance / 1e8;
+    const unconfirmedBalanceInSys = unconfirmedBalance / 1e8;
+
+    // For display purposes, show the total spendable balance
+    // This includes confirmed balance + pending incoming (positive unconfirmed)
+    // but excludes pending outgoing (negative unconfirmed) to avoid confusion
+    let displayBalance: number;
+
+    if (unconfirmedBalanceInSys >= 0) {
+      // Positive unconfirmed means incoming transaction - add to total
+      displayBalance = confirmedBalanceInSys + unconfirmedBalanceInSys;
+    } else {
+      // Negative unconfirmed means outgoing transaction
+      // Show only confirmed balance to avoid confusion
+      // The pending transaction might fail or be replaced
+      displayBalance = confirmedBalanceInSys;
     }
+
+    // Ensure balance is not negative (should not happen with the logic above)
+    const formattedBalance = Math.max(0, displayBalance);
+
+    //Prevent to send undefined from verifyZeros when formattedBalance is 0
+    return formattedBalance > 0
+      ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
+      : '0';
   };
 
   return {

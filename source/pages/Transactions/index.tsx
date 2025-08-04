@@ -5,10 +5,12 @@ import EncryptPubKey_ from './EncryptPubKey';
 import Sign_ from './Sign';
 import EthSign_ from './SignEth';
 import Transaction from './Transaction';
-export const SendToken = () => <Transaction type="Send" />;
+
+//* Transactions history / generic wrapper
+export const Transactions = () => <Transaction type="Send" />;
 
 //* Sign
-export const Sign = () => <Sign_ send />;
+export const Sign = () => <Sign_ signOnly />;
 export const EthSign = () => <EthSign_ />;
 export const SignAndSend = () => <Sign_ />;
 
