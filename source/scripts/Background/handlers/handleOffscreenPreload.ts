@@ -20,7 +20,9 @@ export async function initializeOffscreenPreload(): Promise<void> {
       justification: 'Keep extension warm for fast popup loading',
     });
 
-    console.log('[Offscreen] Document created successfully');
+    console.log(
+      '[Offscreen] Document created successfully with chrome.storage patches'
+    );
   } catch (error: any) {
     // Handle "already exists" error gracefully
     if (error?.message?.includes('already exists')) {

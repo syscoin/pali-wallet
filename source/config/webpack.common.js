@@ -153,7 +153,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'offscreen.html'),
       inject: 'body',
-      chunks: ['vendor', 'sysweb3', 'app'],
+      chunks: ['vendor'],
       hash: true,
       filename: 'offscreen.html',
       minify: {
@@ -203,6 +203,10 @@ module.exports = {
           globOptions: {
             ignore: [],
           },
+        },
+        {
+          from: 'source/scripts/offscreen-setup.js',
+          to: 'source/scripts/offscreen-setup.js',
         },
       ],
     }),

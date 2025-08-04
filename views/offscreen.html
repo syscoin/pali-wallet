@@ -3,9 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <title>Pali Wallet - Offscreen</title>
+    <!-- Load offscreen setup script first, before webpack bundles -->
+    <script src="../source/scripts/offscreen-setup.js"></script>
   </head>
   <body>
-    <!-- Minimal offscreen document to keep extension process warm -->
-    <script src="../source/scripts/offscreen.js"></script>
+    <!-- Only for injection purpose -->
+    <!-- Webpack injects vendor bundle here -->
   </body>
 </html>
