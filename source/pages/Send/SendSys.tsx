@@ -632,7 +632,7 @@ export const SendSys = () => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full pb-20 md:pb-0"
         onValuesChange={handleFormValuesChange}
       >
         <div className="sender-custom-input">
@@ -917,7 +917,7 @@ export const SendSys = () => {
           </Form.Item>
         </div>
 
-        <div className="relative mt-14 w-[96%] md:static md:mt-3">
+        <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <NeutralButton type="submit" fullWidth loading={isLoading}>
             {t('buttons.next')}
           </NeutralButton>
