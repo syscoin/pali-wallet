@@ -347,7 +347,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresTabId: true,
     requiresAuth: true,
     requiresConnection: false,
-    allowHardwareWallet: false,
+    allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.Never,
     hasPopup: false,

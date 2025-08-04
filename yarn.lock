@@ -2962,10 +2962,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.513":
-  version "1.0.513"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.513.tgz#e37b7cd3d514154fd847d5e132b59d51a953c7d0"
-  integrity sha512-EwZfdMHwNkQ7iwGnH7DSbpPBTl3GzNF04rSIUs9MoBS/Y1eVjlqu80hgDgJALkdob8yPcfyMHrPNH1IPEieWig==
+"@sidhujag/sysweb3-keyring@^1.0.514":
+  version "1.0.514"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.514.tgz#fdb4485d5f5cb5d0de79bf74b948c92a7322b84b"
+  integrity sha512-U19yQdZYiRkSs0GjgIz5W6cynUcFhnpkVNaFqSb1GEn0hIs34s4CKwLqoyaTK8kxkJo3I5jE/6ttRV2MURl2+A==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -7356,14 +7356,7 @@ eth-json-rpc-middleware@^6.0.0:
     pify "^3.0.0"
     safe-event-emitter "^1.0.1"
 
-eth-object@^1.0.3:
-  version "1.0.3"
-  resolved "https://registry.yarnpkg.com/eth-object/-/eth-object-1.0.3.tgz#5e7a58615793e570c6b1c009eb282876b4d059b6"
-  integrity sha512-VOWso/tO0Pz66wNlzUveYN0FgaqHQGVr+n60GL6QWQSUW3kwTyyaMxrHNnaDCeq/61YvMUxygGr9FJsnmWKqEg==
-  dependencies:
-    eth-util-lite "^1.0.1"
-
-"eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
