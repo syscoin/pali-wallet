@@ -228,7 +228,7 @@ export const SendEth = () => {
           setSelectedAsset(null);
           setNftTokenIds([]);
           setSelectedNftTokenId(null);
-          setCachedFeeData(null);
+          // Don't clear cached fee data - gas prices don't change based on asset
           setIsMaxSend(false);
           return;
         }
@@ -239,7 +239,7 @@ export const SendEth = () => {
 
         if (getAsset) {
           setSelectedAsset(getAsset);
-          setCachedFeeData(null);
+          // Don't clear cached fee data - gas prices don't change based on asset
           setIsMaxSend(false);
 
           // If it's an NFT, handle based on token standard
@@ -401,7 +401,8 @@ export const SendEth = () => {
                   }
                 : null,
               // Pass cached gas data to avoid recalculation on confirm screen
-              cachedGasData: !selectedAsset ? cachedFeeData : null,
+              // Always pass it, regardless of asset type
+              cachedGasData: cachedFeeData,
               // Pass isMax flag for proper fee handling
               isMax: !selectedAsset ? isMax : false,
               // Pass transaction type and default gas limit

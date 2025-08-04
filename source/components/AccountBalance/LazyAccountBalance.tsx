@@ -8,30 +8,20 @@ import { RootState } from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { formatNumber } from 'utils/index';
 
-// Cache for storing fetched balances with timestamps
-interface IBalanceCache {
-  [key: string]: {
-    balance: string;
-    timestamp: number;
-  };
-}
-
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
 const MAX_REQUESTS_PER_WINDOW = 10; // Increased to handle multiple accounts on external screens
-const CACHE_DURATION = 30000; // Cache balances for 30 seconds
 const MIN_BATCH_DELAY = 10; // Minimum delay to prevent thundering herd
 const MAX_BATCH_DELAY = 100; // Maximum delay to spread out requests
 
-// Global cache and rate limiter
-const balanceCache: IBalanceCache = {};
+// Global rate limiter and request deduplication
 const requestTimestamps: number[] = [];
 const pendingRequests = new Map<string, Promise<string>>();
 
 interface ILazyAccountBalanceProps {
   account: IKeyringAccountState;
+  accountType?: string;
   className?: string;
-  forceRefresh?: boolean;
   onBalanceLoad?: (balance: string) => void;
   precision?: number;
   showFiat?: boolean;
@@ -40,12 +30,12 @@ interface ILazyAccountBalanceProps {
 
 export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   account,
+  accountType = '',
   showFiat = true,
   showSkeleton = true,
   className = '',
   precision = 4,
   onBalanceLoad,
-  forceRefresh = false,
 }) => {
   const { controllerEmitter } = useController();
   const { isBitcoinBased, activeNetwork } = useSelector(
@@ -53,44 +43,17 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   );
   const { getFiatAmount } = usePrice();
 
-  // Initialize balance from cache if available
-  const getCacheKeyInit = () => {
-    const networkKey = isBitcoinBased ? 'sys' : `evm-${activeNetwork.chainId}`;
-    return `${account.id}-${networkKey}`;
-  };
-
-  const cacheKeyInit = getCacheKeyInit();
-  const cachedBalance = balanceCache[cacheKeyInit];
-  const isCacheValid =
-    cachedBalance && Date.now() - cachedBalance.timestamp < CACHE_DURATION;
-  const initialBalance = isCacheValid ? cachedBalance.balance : null;
-
-  const [balance, setBalance] = useState<string | null>(initialBalance);
+  const [balance, setBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
-
-  // Update balance from cache if component re-renders with null balance
-  useEffect(() => {
-    const networkKey = isBitcoinBased ? 'sys' : `evm-${activeNetwork.chainId}`;
-    const cacheKey = `${account.id}-${networkKey}`;
-    const cached = balanceCache[cacheKey];
-
-    if (
-      balance === null &&
-      cached &&
-      Date.now() - cached.timestamp < CACHE_DURATION
-    ) {
-      setBalance(cached.balance);
-    }
-  }, [account.id, balance, isBitcoinBased, activeNetwork.chainId]);
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate cache key for this account and network
+  // Generate unique key for request deduplication
   const getCacheKey = useCallback(() => {
     const networkKey = isBitcoinBased ? 'sys' : `evm-${activeNetwork.chainId}`;
-    return `${account.id}-${networkKey}`;
-  }, [account.id, isBitcoinBased, activeNetwork.chainId]);
+    return `${accountType}-${account.id}-${networkKey}`;
+  }, [account.id, accountType, isBitcoinBased, activeNetwork.chainId]);
 
   // Check if we can make a request based on rate limiting
   const canMakeRequest = useCallback(() => {
@@ -137,12 +100,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
           );
           const balanceValue = result as string;
 
-          // Update cache
-          balanceCache[cacheKey] = {
-            balance: balanceValue,
-            timestamp: Date.now(),
-          };
-
           // Clear pending request
           pendingRequests.delete(cacheKey);
 
@@ -163,11 +120,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     return fetchPromise;
   }, [account, isBitcoinBased, activeNetwork, getCacheKey]);
 
-  // Load balance with caching and rate limiting
+  // Load balance with rate limiting
   const loadBalance = useCallback(async () => {
     if (!mountedRef.current) return;
 
-    // First check if balance is already available in the account object
+    // Check if balance is already available in the account object
     const existingBalance = isBitcoinBased
       ? account.balances?.syscoin
       : account.balances?.ethereum;
@@ -184,22 +141,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
         onBalanceLoad(balanceStr);
       }
       return;
-    }
-
-    const cacheKey = getCacheKey();
-
-    // Check cache first (unless force refresh is requested)
-    if (!forceRefresh && balanceCache[cacheKey]) {
-      const cached = balanceCache[cacheKey];
-      const isExpired = Date.now() - cached.timestamp > CACHE_DURATION;
-
-      if (!isExpired) {
-        setBalance(cached.balance);
-        if (onBalanceLoad) {
-          onBalanceLoad(cached.balance);
-        }
-        return;
-      }
     }
 
     // Check rate limiting
@@ -238,7 +179,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     account.balances,
     isBitcoinBased,
     getCacheKey,
-    forceRefresh,
     canMakeRequest,
     fetchBalance,
     onBalanceLoad,

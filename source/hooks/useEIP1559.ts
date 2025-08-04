@@ -1,34 +1,34 @@
 import { Block } from '@ethersproject/providers';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-// Cache EIP1559 compatibility per chainId
+// Module-level cache that persists across component mounts
 const eip1559Cache = new Map<number, boolean>();
-
-// Export a function to clear cache for a specific chainId
-export const clearEIP1559CacheForChain = (chainId: number) => {
-  eip1559Cache.delete(chainId);
-};
 
 export const useEIP1559 = () => {
   const { controllerEmitter } = useController();
   const { activeNetwork, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
+
+  // Initialize from cache if available
+  const cachedValue = activeNetwork?.chainId
+    ? eip1559Cache.get(activeNetwork.chainId)
+    : undefined;
+
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<
     boolean | undefined
-  >(undefined);
+  >(cachedValue);
   const [isLoading, setIsLoading] = useState(false);
-  const lastCheckedChainId = useRef<number | null>(null);
   const [forceRecheckTrigger, setForceRecheckTrigger] = useState(0);
 
   const forceRecheck = () => {
     if (activeNetwork?.chainId) {
-      clearEIP1559CacheForChain(activeNetwork.chainId);
+      eip1559Cache.delete(activeNetwork.chainId); // Clear cache
       setIsEIP1559Compatible(undefined); // Reset to trigger loading state
       setForceRecheckTrigger((prev) => prev + 1);
     }
@@ -42,9 +42,16 @@ export const useEIP1559 = () => {
         return;
       }
 
-      // Check cache first
-      if (eip1559Cache.has(activeNetwork.chainId)) {
-        setIsEIP1559Compatible(eip1559Cache.get(activeNetwork.chainId));
+      // Skip if we have cached value (unless force rechecking)
+      if (
+        eip1559Cache.has(activeNetwork.chainId) &&
+        forceRecheckTrigger === 0
+      ) {
+        const cached = eip1559Cache.get(activeNetwork.chainId);
+        // Only update if different from current state
+        if (cached !== isEIP1559Compatible) {
+          setIsEIP1559Compatible(cached);
+        }
         return;
       }
 
@@ -62,10 +69,8 @@ export const useEIP1559 = () => {
           blockToCheck
         );
 
-        // Cache the result for this chainId
+        // Cache the result
         eip1559Cache.set(activeNetwork.chainId, isCompatible);
-        lastCheckedChainId.current = activeNetwork.chainId;
-
         setIsEIP1559Compatible(isCompatible);
       } catch (error) {
         console.error('Failed to check EIP1559 compatibility:', error);
@@ -81,6 +86,7 @@ export const useEIP1559 = () => {
     isBitcoinBased,
     controllerEmitter,
     forceRecheckTrigger,
+    isEIP1559Compatible,
   ]);
 
   return { isEIP1559Compatible, isLoading, forceRecheck };

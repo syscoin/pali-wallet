@@ -421,6 +421,7 @@ export const ConnectWallet = () => {
                                   <div className="text-right">
                                     <LazyAccountBalance
                                       account={acc}
+                                      accountType={keyringType}
                                       showFiat={true}
                                       showSkeleton={true}
                                       precision={8}

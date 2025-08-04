@@ -1,4 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber';
+import { Block } from '@ethersproject/providers';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
@@ -18,11 +19,8 @@ export const fetchGasAndDecodeFunction = async (
       'fetchGasAndDecodeFunction is not available on UTXO networks'
     );
   }
-
-  const currentBlock = (await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
-    ['eth_getBlockByNumber', ['latest', false]]
-  )) as any;
+  const blockData = await controllerEmitter(['wallet', 'getCurrentBlock'], []);
+  const currentBlock = blockData as Block;
 
   const gasLimitFromCurrentBlock = Math.floor(
     Number(currentBlock.gasLimit) * 0.95

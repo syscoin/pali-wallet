@@ -245,6 +245,7 @@ export const ChangeConnectedAccount = () => {
                   <div className="text-right">
                     <LazyAccountBalance
                       account={connectedAccount}
+                      accountType={accountType}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}
@@ -305,6 +306,7 @@ export const ChangeConnectedAccount = () => {
                   <div className="text-right">
                     <LazyAccountBalance
                       account={activeAccount}
+                      accountType={activeAccountRef.type}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}
