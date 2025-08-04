@@ -32,14 +32,18 @@ export const validateAndManageUserAssets = (
     sortBy(userClonedAssets, (asset) => {
       // For ERC-1155, create a composite key with contractAddress and tokenId
       if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
-        return `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`;
+        return `${(asset.contractAddress || '').toLowerCase()}-${
+          asset.tokenId
+        }`;
       }
       return asset[tokenPropertyToUseAtGroupBy];
     }),
     sortBy(fetchedAssetsOrTokens, (asset) => {
       // For ERC-1155, create a composite key with contractAddress and tokenId
       if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
-        return `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`;
+        return `${(asset.contractAddress || '').toLowerCase()}-${
+          asset.tokenId
+        }`;
       }
       return asset[tokenPropertyToUseAtGroupBy];
     })
@@ -64,7 +68,8 @@ export const validateAndManageUserAssets = (
       // For EVM, compare contractAddress and tokenId (for ERC-1155)
       if (isForEvm) {
         const sameContract =
-          a.contractAddress.toLowerCase() === b.contractAddress.toLowerCase();
+          (a.contractAddress || '').toLowerCase() ===
+          (b.contractAddress || '').toLowerCase();
         const sameTokenId = a.tokenId === b.tokenId;
         // For ERC-1155, both contractAddress and tokenId must match
         // For other tokens, just contractAddress needs to match
