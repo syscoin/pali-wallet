@@ -3,6 +3,19 @@ import React, { memo } from 'react';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 
+// Width class mapping to ensure Tailwind includes these classes
+const widthClasses: Record<string, string> = {
+  '36': 'w-36',
+  '40': 'w-40',
+  '44': 'w-44',
+  '48': 'w-48',
+  '52': 'w-52',
+  '56': 'w-56',
+  '60': 'w-60',
+  '64': 'w-64',
+  full: 'w-full',
+};
+
 // Memoize loading icons to prevent unnecessary re-renders
 const LoadingIconPrimary = memo(() => (
   <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
@@ -56,7 +69,9 @@ export const Button: React.FC<IButton> = ({
   width = '36',
 }) => (
   <button
-    className={`${className} ${useDefaultWidth && `w-${width}`} ${
+    className={`${className} ${
+      useDefaultWidth && (widthClasses[width] || 'w-36')
+    } ${
       disabled || loading
         ? 'opacity-60 cursor-not-allowed'
         : 'hover:scale-105 active:scale-95'
@@ -90,7 +105,9 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
 
   return (
     <button
-      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
         ${
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
@@ -133,7 +150,9 @@ export const SecondButton: React.FC<IPrimaryButton> = ({
 
   return (
     <button
-      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
         ${
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
@@ -177,7 +196,9 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   return (
     <button
       className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-${width} h-10 text-brand-white
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } h-10 text-brand-white
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
