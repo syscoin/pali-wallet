@@ -11,11 +11,11 @@ const migrations: Array<{
 }> = [
   // Migrate old vault format with currentSessionSalt AND clean up vault data from main state
   {
-    version: '3.5.0',
+    version: '4.0.0',
     description:
       'Migrate old vault format (currentSessionSalt) and clean up vault data from main state',
     handler: async (state: any) => {
-      console.log('[Migration 3.5.0] Running migration checks...');
+      console.log('[Migration 4.0.0] Running migration checks...');
 
       // Part 1: Check for old vault format
       try {
@@ -23,25 +23,25 @@ const migrations: Array<{
 
         if (vaultKeys && vaultKeys.currentSessionSalt) {
           console.log(
-            '[Migration 3.5.0] Found old vault format with currentSessionSalt'
+            '[Migration 4.0.0] Found old vault format with currentSessionSalt'
           );
           console.log(
-            '[Migration 3.5.0] Migration will be handled during wallet unlock in KeyringManager'
+            '[Migration 4.0.0] Migration will be handled during wallet unlock in KeyringManager'
           );
           console.log(
-            '[Migration 3.5.0] NOTE: Accounts will be created after successful migration'
+            '[Migration 4.0.0] NOTE: Accounts will be created after successful migration'
           );
           // The actual migration happens in KeyringManager.unlock()
           // which properly handles the dual salt system and mnemonic decryption
         }
       } catch (error) {
-        console.error('[Migration 3.5.0] Error checking vault-keys:', error);
+        console.error('[Migration 4.0.0] Error checking vault-keys:', error);
       }
 
       // Part 2: Clean up vault data from main state storage
       if (state && state.vault) {
         console.log(
-          '[Migration 3.5.0] Found vault data in main state, cleaning up...'
+          '[Migration 4.0.0] Found vault data in main state, cleaning up...'
         );
 
         // Create cleaned state without vault
@@ -51,9 +51,9 @@ const migrations: Array<{
         // Save cleaned state
         await chromeStorage.setItem('state', cleanedState);
 
-        console.log('[Migration 3.5.0] Vault data removed from main state');
+        console.log('[Migration 4.0.0] Vault data removed from main state');
       } else {
-        console.log('[Migration 3.5.0] No vault data found in main state');
+        console.log('[Migration 4.0.0] No vault data found in main state');
       }
     },
   },
