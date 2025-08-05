@@ -180,6 +180,12 @@ class MainController {
     }
   >();
 
+  // Rate limiting for failed unlock attempts
+  private failedUnlockAttempts = 0;
+  private lastFailedUnlockTime = 0;
+  private readonly MAX_FAILED_ATTEMPTS = 5;
+  private readonly LOCKOUT_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
   private readonly UTXO_PRICE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache for price data
 
   constructor() {
@@ -1356,6 +1362,23 @@ class MainController {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    // Check rate limiting for failed unlock attempts
+    const now = Date.now();
+    if (this.failedUnlockAttempts >= this.MAX_FAILED_ATTEMPTS) {
+      const timeSinceLastFailed = now - this.lastFailedUnlockTime;
+      if (timeSinceLastFailed < this.LOCKOUT_DURATION) {
+        const remainingTime = Math.ceil(
+          (this.LOCKOUT_DURATION - timeSinceLastFailed) / 1000
+        );
+        throw new Error(
+          `Too many failed attempts. Please wait ${remainingTime} seconds before trying again.`
+        );
+      } else {
+        // Reset after lockout period
+        this.failedUnlockAttempts = 0;
+      }
+    }
+
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
     const controller = getController();
@@ -1405,6 +1428,10 @@ class MainController {
       }
 
       console.log('[MainController] Unlock successful');
+
+      // Reset failed attempts on successful unlock
+      this.failedUnlockAttempts = 0;
+      this.lastFailedUnlockTime = 0;
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
@@ -1517,6 +1544,13 @@ class MainController {
       return canLogin;
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
+
+      // Increment failed attempts if it's a password error
+      if (error.message === 'Invalid password') {
+        this.failedUnlockAttempts++;
+        this.lastFailedUnlockTime = Date.now();
+      }
+
       throw error;
     }
   }
