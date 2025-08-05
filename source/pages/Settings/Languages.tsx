@@ -158,9 +158,11 @@ const Languages = () => {
           <Menu as="div" className="relative inline-block text-left w-[352px]">
             {({ open }) => (
               <>
-                <Menu.Button className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]">
+                <Menu.Button className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group">
                   <div className="flex items-center gap-2 ml-2">
-                    <span className="text-lg">{selectedLanguage?.flag}</span>
+                    <span className="text-lg transform transition-transform duration-300 group-hover:scale-110">
+                      {selectedLanguage?.flag}
+                    </span>
                     <div className="flex flex-col items-start">
                       <span className="text-sm font-medium">
                         {selectedLanguage?.name}
@@ -170,7 +172,11 @@ const Languages = () => {
                       </span>
                     </div>
                   </div>
-                  <ArrowDownSvg />
+                  <ArrowDownSvg
+                    className={`transform transition-transform duration-200 ${
+                      open ? 'rotate-180' : ''
+                    }`}
+                  />
                 </Menu.Button>
 
                 <Menu.Items
@@ -188,13 +194,17 @@ const Languages = () => {
                       <button
                         type="button"
                         onClick={() => handleLanguageChange(lang.value)}
-                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300 ${
+                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
                           selectedLang === lang.value
-                            ? 'text-brand-royalbluemedium'
+                            ? 'text-brand-royalbluemedium bg-brand-blue500 bg-opacity-20'
                             : ''
                         }`}
                       >
-                        <span className="text-lg flex-shrink-0">
+                        <span
+                          className={`text-lg flex-shrink-0 transform transition-transform duration-200 group-hover:scale-110 ${
+                            selectedLang === lang.value ? 'scale-110' : ''
+                          }`}
+                        >
                           {lang.flag}
                         </span>
                         <div className="flex flex-col items-start text-left">
@@ -218,12 +228,14 @@ const Languages = () => {
             )}
           </Menu>
 
-          <div className="bg-brand-blue800 rounded-lg p-6">
+          <div className="bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group">
             <p className="text-brand-gray200 text-xs mb-4 text-center">
               Current Language
             </p>
             <div className="flex items-center justify-center gap-6">
-              <span className="text-6xl">{currentLanguage?.flag}</span>
+              <span className="text-6xl transform transition-transform duration-200 group-hover:scale-110">
+                {currentLanguage?.flag}
+              </span>
               <div className="flex flex-col items-start">
                 <span className="text-xl font-medium text-white">
                   {currentLanguage?.name}
@@ -233,6 +245,13 @@ const Languages = () => {
                 </span>
               </div>
             </div>
+            {hasUnsavedChanges && selectedLang !== savedLang && (
+              <div className="mt-4 text-center">
+                <p className="text-xs text-brand-royalblue300">
+                  Preview: {selectedLanguage?.name}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
