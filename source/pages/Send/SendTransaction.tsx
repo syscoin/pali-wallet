@@ -263,7 +263,7 @@ export const SendTransaction = () => {
                       customFee.gasLimit > 0
                   )
                     ? customFee.gasLimit
-                    : fee.gasLimit
+                    : fee.gasLimit || 42000 // Default gas limit fallback
                 ),
               },
               isLegacyTransaction,
@@ -306,7 +306,7 @@ export const SendTransaction = () => {
                       customFee.gasLimit > 0
                   )
                     ? customFee.gasLimit
-                    : fee.gasLimit
+                    : fee.gasLimit || 42000 // Default gas limit fallback
                 ),
               },
               false, // isLegacy = false for EIP-1559
