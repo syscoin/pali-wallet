@@ -68,6 +68,7 @@ export interface ITransactionParams {
   from: string;
   gas?: string;
   gasLimit?: string | number;
+  gasPrice?: string | number;
   maxFeePerGas?: string | number;
   maxPriorityFeePerGas?: string | number;
   to: string;

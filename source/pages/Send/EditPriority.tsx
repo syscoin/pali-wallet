@@ -35,8 +35,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [priority, setPriority] = useState<number>(() => {
     if (customFee.isCustom) {
       // Try to determine which preset matches current custom values
-      const currentMaxFee = customFee.maxFeePerGas || customFee.gasPrice || 0;
-      const baseMaxFee = fee?.maxFeePerGas || fee?.gasPrice || 0;
+      const currentMaxFee = customFee.maxFeePerGas ?? customFee.gasPrice ?? 0;
+      const baseMaxFee = fee?.maxFeePerGas ?? fee?.gasPrice ?? 0;
 
       if (baseMaxFee > 0) {
         const ratio = currentMaxFee / baseMaxFee;
@@ -62,9 +62,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [priorityFeeError, setPriorityFeeError] = useState<string | null>(null);
   const [maxFeeError, setMaxFeeError] = useState<string | null>(null);
 
-  const maxFeePerGas = fee?.maxFeePerGas || 0;
-  const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas || 0;
-  const gasPrice = fee?.gasPrice || 0;
+  const maxFeePerGas = fee?.maxFeePerGas ?? 0;
+  const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas ?? 0;
+  const gasPrice = fee?.gasPrice ?? 0;
   // ALWAYS have a gas limit - use custom, then fee, then default
   const gasLimit = customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
 
@@ -135,7 +135,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     if (customFee.isCustom) {
       if (isSendLegacyTransaction) {
         const validGasPrice = Number(
-          removeScientificNotation(customFee.gasPrice || gasPrice || 0)
+          removeScientificNotation(customFee.gasPrice ?? gasPrice ?? 0)
         );
         form.setFieldsValue({
           gasLimit: validGasLimit,
@@ -149,11 +149,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       } else {
         const validMaxPriorityFeePerGas = Number(
           removeScientificNotation(
-            customFee.maxPriorityFeePerGas || maxPriorityFeePerGas || 0
+            customFee.maxPriorityFeePerGas ?? maxPriorityFeePerGas ?? 0
           )
         );
         const validMaxFeePerGas = Number(
-          removeScientificNotation(customFee.maxFeePerGas || maxFeePerGas || 0)
+          removeScientificNotation(customFee.maxFeePerGas ?? maxFeePerGas ?? 0)
         );
         form.setFieldsValue({
           gasLimit: validGasLimit,
@@ -172,7 +172,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       const multiplier = priority === 0 ? 0.8 : priority === 2 ? 1.2 : 1;
 
       if (isSendLegacyTransaction) {
-        const validGasPrice = gasPrice || 0;
+        const validGasPrice = gasPrice ?? 0;
         const calculatedGasPrice = Number(
           removeScientificNotation(multiplier * validGasPrice)
         );
@@ -190,8 +190,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
           validateGasPrice(finalGasPrice);
         }, 0);
       } else {
-        const validMaxPriorityFeePerGas = maxPriorityFeePerGas || 0;
-        const validMaxFeePerGas = maxFeePerGas || 0;
+        const validMaxPriorityFeePerGas = maxPriorityFeePerGas ?? 0;
+        const validMaxFeePerGas = maxFeePerGas ?? 0;
 
         const calculatedPriorityFee = Number(
           removeScientificNotation(multiplier * validMaxPriorityFeePerGas)
@@ -229,7 +229,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     const validGasLimit = Math.max(customFee.gasLimit || feeGasLimit, 42000);
 
     if (isSendLegacyTransaction) {
-      const validGasPrice = gasPrice || 0;
+      const validGasPrice = gasPrice ?? 0;
       const calculatedGasPrice = Number(
         removeScientificNotation(multiplier * validGasPrice)
       );
@@ -245,8 +245,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasPrice(finalGasPrice);
       }, 0);
     } else {
-      const validMaxPriorityFeePerGas = maxPriorityFeePerGas || 0;
-      const validMaxFeePerGas = maxFeePerGas || 0;
+      const validMaxPriorityFeePerGas = maxPriorityFeePerGas ?? 0;
+      const validMaxFeePerGas = maxFeePerGas ?? 0;
 
       const calculatedPriorityFee = Number(
         removeScientificNotation(multiplier * validMaxPriorityFeePerGas)
@@ -293,15 +293,26 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       // Ensure gas limit is always set with a valid value
       const finalGasLimit = values.gasLimit || gasLimit || defaultGasLimit;
 
-      // Update custom fee with final values
-      setCustomFee((prev) => ({
-        ...prev,
-        isCustom: true,
-        gasLimit: finalGasLimit, // Always set a valid gas limit
-        gasPrice: values.gasPrice || 0,
-        maxFeePerGas: values.maxFeePerGas || 0,
-        maxPriorityFeePerGas: values.maxPriorityFeePerGas || 0,
-      }));
+      // Update custom fee with final values based on transaction type
+      if (isSendLegacyTransaction) {
+        setCustomFee({
+          isCustom: true,
+          gasLimit: finalGasLimit,
+          gasPrice: values.gasPrice ?? 0,
+          // Clear EIP-1559 fields for legacy transactions
+          maxFeePerGas: 0,
+          maxPriorityFeePerGas: 0,
+        });
+      } else {
+        setCustomFee({
+          isCustom: true,
+          gasLimit: finalGasLimit,
+          maxFeePerGas: values.maxFeePerGas ?? 0,
+          maxPriorityFeePerGas: values.maxPriorityFeePerGas ?? 0,
+          // Clear gasPrice for EIP-1559 transactions
+          gasPrice: 0,
+        });
+      }
       setHaveError(false);
       setIsOpen(false);
     } catch (error) {
@@ -323,7 +334,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
     if (isSendLegacyTransaction) {
       const newGasPrice = Number(
-        removeScientificNotation(multiplier * (gasPrice || 0))
+        removeScientificNotation(multiplier * (gasPrice ?? 0))
       );
       // Ensure the value is a valid number
       const validGasPrice = isNaN(newGasPrice) ? 0 : newGasPrice;
@@ -334,18 +345,20 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateGasLimit(validGasLimit);
         validateGasPrice(validGasPrice);
       }, 0);
-      setCustomFee((prev) => ({
-        ...prev,
+      setCustomFee({
         isCustom: value !== 1,
-        gasLimit: validGasLimit, // Always set gas limit
+        gasLimit: validGasLimit,
         gasPrice: validGasPrice,
-      }));
+        // Clear EIP-1559 fields for legacy transactions
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+      });
     } else {
       const newPriorityFee = Number(
-        removeScientificNotation(multiplier * (maxPriorityFeePerGas || 0))
+        removeScientificNotation(multiplier * (maxPriorityFeePerGas ?? 0))
       );
       const newMaxFee = Number(
-        removeScientificNotation(multiplier * (maxFeePerGas || 0))
+        removeScientificNotation(multiplier * (maxFeePerGas ?? 0))
       );
 
       // Ensure the values are valid numbers
@@ -363,13 +376,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         validateMaxFee(validMaxFee);
       }, 0);
 
-      setCustomFee((prev) => ({
-        ...prev,
+      setCustomFee({
         isCustom: value !== 1,
-        gasLimit: validGasLimit, // Always set gas limit
+        gasLimit: validGasLimit,
         maxPriorityFeePerGas: validPriorityFee,
         maxFeePerGas: validMaxFee,
-      }));
+        // Clear gasPrice for EIP-1559 transactions
+        gasPrice: 0,
+      });
     }
   };
 
@@ -428,9 +442,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     setCustomFee((prev) => ({
       ...prev,
       isCustom: false,
-      maxPriorityFeePerGas: maxPriorityFeePerGas || 0,
-      maxFeePerGas: maxFeePerGas || 0,
-      gasPrice: gasPrice || 0,
+      maxPriorityFeePerGas: maxPriorityFeePerGas ?? 0,
+      maxFeePerGas: maxFeePerGas ?? 0,
+      gasPrice: gasPrice ?? 0,
       gasLimit: gasLimit || defaultGasLimit, // Always ensure gas limit is set
     }));
     setPriority(1);

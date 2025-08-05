@@ -83,11 +83,25 @@ export const TransactionDetailsComponent = (
     alert.info(getCopyMessage(fieldType));
   };
 
-  const finalFee =
-    +removeScientificNotation(
-      customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas
-    ) /
-    10 ** 9;
+  // Calculate total fee: (gasLimit * maxFeePerGas) / 10^18 to get fee in native currency
+  const gasLimit = customFee.isCustom ? customFee.gasLimit : fee.gasLimit;
+
+  // Determine if this is a legacy transaction based on the original fee object
+  const isLegacyTx = fee.gasPrice !== undefined;
+
+  // Use the appropriate fee field based on transaction type
+  const gasPriceGwei = customFee.isCustom
+    ? isLegacyTx
+      ? customFee.gasPrice
+      : customFee.maxFeePerGas
+    : isLegacyTx
+    ? fee.gasPrice
+    : fee.maxFeePerGas;
+
+  // Convert from Gwei to Wei (multiply by 10^9) then calculate total fee
+  // Use nullish coalescing (??) for gas price to preserve legitimate 0 values
+  const totalFeeWei = (gasLimit || 0) * (gasPriceGwei ?? 0) * 10 ** 9;
+  const finalFee = totalFeeWei / 10 ** 18; // Convert to native currency (ETH/SYS)
 
   const formattedFinalFee = removeScientificNotation(finalFee);
 

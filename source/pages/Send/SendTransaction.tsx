@@ -87,7 +87,10 @@ export const SendTransaction = () => {
     ? externalTx.txMetadata
     : state?.txMetadata || {};
 
-  const isLegacyTransaction = txMetadata.isLegacyTx || false;
+  // Detect legacy transaction based on the presence of gasPrice field
+  const isLegacyTransaction =
+    txMetadata.isLegacyTx ||
+    (dataTx?.gasPrice !== undefined && dataTx?.maxFeePerGas === undefined);
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType;
   const tokenStandard = txMetadata.tokenStandard;
@@ -229,21 +232,12 @@ export const SendTransaction = () => {
         let response;
 
         if (isLegacyTransaction) {
-          // Legacy transaction handling
-          let txWithoutType = omitTransactionObjectData(txToSend, [
+          // Legacy transaction handling - MUST remove all EIP-1559 fields
+          const txWithoutType = omitTransactionObjectData(txToSend, [
             'type',
+            'maxFeePerGas',
+            'maxPriorityFeePerGas',
           ]) as ITxState;
-
-          // Remove EIP-1559 fields for legacy transactions
-          if (
-            txWithoutType.maxFeePerGas ||
-            txWithoutType.maxPriorityFeePerGas
-          ) {
-            txWithoutType = omitTransactionObjectData(txWithoutType, [
-              'maxFeePerGas',
-              'maxPriorityFeePerGas',
-            ]) as ITxState;
-          }
 
           const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
@@ -262,7 +256,7 @@ export const SendTransaction = () => {
                 ...txWithoutType,
                 nonce: customNonce,
                 gasPrice: hexlify(Number(getLegacyGasFee)),
-                gasLimit: BigNumber.from(
+                gasLimit: hexlify(
                   Boolean(
                     customFee.isCustom &&
                       customFee.gasLimit &&
