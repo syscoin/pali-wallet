@@ -99,8 +99,9 @@ export const TransactionDetailsComponent = (
     : fee.maxFeePerGas;
 
   // Convert from Gwei to Wei (multiply by 10^9) then calculate total fee
-  // Use nullish coalescing (??) for gas price to preserve legitimate 0 values
-  const totalFeeWei = (gasLimit || 0) * (gasPriceGwei ?? 0) * 10 ** 9;
+  // Show actual gas price, even if 0 (test networks now handle cancellation properly)
+  const displayGasPrice = gasPriceGwei ?? 0;
+  const totalFeeWei = (gasLimit || 0) * displayGasPrice * 10 ** 9;
   const finalFee = totalFeeWei / 10 ** 18; // Convert to native currency (ETH/SYS)
 
   const formattedFinalFee = removeScientificNotation(finalFee);

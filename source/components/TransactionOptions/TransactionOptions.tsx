@@ -68,6 +68,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 isLegacy: isLegacyTransaction,
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
+                nonce: transaction.nonce,
               },
               t,
             });

@@ -276,7 +276,8 @@ const cancelTransaction = async (
   isLegacy: boolean,
   chainId: number,
   alert: any,
-  t: (key: string) => string
+  t: (key: string) => string,
+  fallbackNonce?: number
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -288,7 +289,7 @@ const cancelTransaction = async (
   try {
     const response = await controllerEmitter(
       ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
-      [txHash, isLegacy]
+      [txHash, isLegacy, fallbackNonce]
     );
 
     if (!response) {
@@ -391,15 +392,23 @@ export const handleUpdateTransaction = async ({
     alert: any;
     chainId: number;
     isLegacy: boolean;
+    nonce?: number;
     txHash: string;
     updateType: UpdateTxAction;
   };
 }) => {
-  const { alert, chainId, isLegacy, txHash, updateType } = updateData;
+  const { alert, chainId, isLegacy, txHash, updateType, nonce } = updateData;
 
   switch (updateType) {
     case UpdateTxAction.Cancel:
-      return await cancelTransaction(txHash, isLegacy, chainId, alert, t);
+      return await cancelTransaction(
+        txHash,
+        isLegacy,
+        chainId,
+        alert,
+        t,
+        nonce
+      );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(txHash, isLegacy, chainId, alert, t);
   }

@@ -62,6 +62,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [priorityFeeError, setPriorityFeeError] = useState<string | null>(null);
   const [maxFeeError, setMaxFeeError] = useState<string | null>(null);
 
+  // Use actual gas prices, even if 0 (cancellation now handles this properly)
   const maxFeePerGas = fee?.maxFeePerGas ?? 0;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas ?? 0;
   const gasPrice = fee?.gasPrice ?? 0;
