@@ -7,6 +7,7 @@ import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { extractErrorMessage } from 'utils/index';
 import { clearNavigationState } from 'utils/navigationState';
 
 const Unlock: React.FC<{
@@ -14,7 +15,7 @@ const Unlock: React.FC<{
   isExternal: boolean;
   setIsOpenValidation: Dispatch<SetStateAction<boolean>>;
 }> = ({ isExternal, externalRoute, setIsOpenValidation }) => {
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const { controllerEmitter } = useController();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,17 +30,10 @@ const Unlock: React.FC<{
     try {
       setIsLoading(true);
 
-      const result = await controllerEmitter(
-        ['wallet', 'unlockFromController'],
-        [password]
-      );
+      await controllerEmitter(['wallet', 'unlockFromController'], [password]);
 
-      if (!result) {
-        setErrorMessage(t('start.wrongPassword'));
-        setIsLoading(false);
-        return;
-      }
-
+      // unlockFromController returns true on success, false on invalid password
+      // If we get here without throwing, it was successful
       setErrorMessage(null);
 
       if (!isExternal) {
@@ -65,8 +59,19 @@ const Unlock: React.FC<{
       // For external routes, navigate to the destination
       return navigate(externalRoute as string);
     } catch (e) {
-      setErrorMessage(t('start.wrongPassword'));
       setIsLoading(false);
+
+      // Extract the actual error message
+      const errorMsg = extractErrorMessage(e, t('start.wrongPassword'));
+
+      // Check if it's a rate limiting error
+      if (errorMsg.includes('Too many failed attempts')) {
+        // Show rate limiting error as an alert for better visibility
+        alert.error(errorMsg);
+      } else {
+        // For regular password errors, show in the form
+        setErrorMessage(errorMsg);
+      }
     }
   };
 
@@ -82,8 +87,9 @@ const Unlock: React.FC<{
         <Form.Item
           name="password"
           className="w-full flex justify-center"
-          validateStatus={'error'}
+          validateStatus={errorMessage ? 'error' : undefined}
           hasFeedback={!!errorMessage}
+          help={errorMessage}
         >
           <Input.Password
             className="custom-input-password relative"
