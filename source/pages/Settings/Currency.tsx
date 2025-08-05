@@ -14,7 +14,7 @@ import { formatNumber } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 
 const CurrencyView = () => {
-  const { controllerEmitter, isUnlocked: _isUnlocked } = useController();
+  const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const { t } = useTranslation();
@@ -107,26 +107,24 @@ const CurrencyView = () => {
   //* Functions
   const handleConfirmCurrencyChange = async () => {
     if (hasUnsavedChanges) {
-      // Actually save the currency
-      await controllerEmitter(['wallet', 'setFiat'], [selectedCoin]);
-      setSavedCoin(selectedCoin); // Update saved state
+      // Actually save the currency (ensure it's lowercase)
+      const currencyToSave = selectedCoin.toLowerCase();
+      await controllerEmitter(['wallet', 'setFiat'], [currencyToSave]);
+      setSavedCoin(currencyToSave); // Update saved state
       setConfirmed(true);
     }
   };
 
   //* Constants
-  const isUnlocked = _isUnlocked && activeAccount.address !== '';
-
-  const fiatCurrency = fiat.asset ? String(fiat.asset).toUpperCase() : 'USD';
-
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
     activeAccount.balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
   //* States
-  const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
-  const [savedCoin, setSavedCoin] = useState(String(fiat.asset)); // Track saved currency
+  const initialCurrency = (fiat.asset || 'usd').toLowerCase();
+  const [selectedCoin, setSelectedCoin] = useState<string>(initialCurrency);
+  const [savedCoin, setSavedCoin] = useState<string>(initialCurrency); // Track saved currency
   const [confirmed, setConfirmed] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
 
@@ -196,10 +194,10 @@ const CurrencyView = () => {
 
   // Track changes to the saved fiat currency
   useEffect(() => {
-    const currentSavedCoin = String(fiat.asset);
-    setSavedCoin(currentSavedCoin);
-    if (selectedCoin === savedCoin) {
-      setSelectedCoin(currentSavedCoin);
+    if (fiat.asset) {
+      const lowerAsset = fiat.asset.toLowerCase();
+      setSavedCoin(lowerAsset);
+      setSelectedCoin(lowerAsset);
     }
   }, [fiat.asset]);
 
@@ -207,6 +205,7 @@ const CurrencyView = () => {
   const hasUnsavedChanges = selectedCoin !== savedCoin;
 
   const fiatPriceValue = useMemo(() => {
+    // For preview, we need to calculate with the selected currency
     const getAmount = getFiatAmount(
       actualBalance > 0 ? actualBalance : 0,
       4,
@@ -216,16 +215,7 @@ const CurrencyView = () => {
     );
 
     return getAmount;
-  }, [
-    isUnlocked,
-    activeAccount,
-    activeAccount.address,
-    activeNetwork,
-    activeNetwork.chainId,
-    selectedCoin,
-    fiat.asset,
-    fiat.price,
-  ]);
+  }, [actualBalance, selectedCoin, getFiatAmount]);
 
   return (
     <>
@@ -248,25 +238,27 @@ const CurrencyView = () => {
             <>
               <Menu.Button
                 disabled={!fiat || !coins}
-                className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]"
+                className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
               >
                 <div className="flex items-center gap-2 ml-2">
-                  <span className="text-lg">
-                    {currencyFlags[selectedCoin?.toLowerCase()] || '💰'}
+                  <span className="text-lg transform transition-transform duration-300 group-hover:scale-110">
+                    {currencyFlags[selectedCoin.toLowerCase()] || '💰'}
                   </span>
                   <div className="flex flex-col items-start">
                     <span className="text-sm font-medium">
-                      {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
+                      {selectedCoin.toUpperCase()}
                     </span>
                     <span className="text-xs text-brand-gray200">
-                      {getSymbolFromCurrency(
-                        selectedCoin?.toUpperCase() || fiatCurrency
-                      )}
+                      {getSymbolFromCurrency(selectedCoin.toUpperCase())}
                     </span>
                   </div>
                 </div>
 
-                <ArrowDownSvg />
+                <ArrowDownSvg
+                  className={`transform transition-transform duration-200 ${
+                    open ? 'rotate-180' : ''
+                  }`}
+                />
               </Menu.Button>
 
               {fiat && coins && (
@@ -293,16 +285,22 @@ const CurrencyView = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          setSelectedCoin(coin);
+                          setSelectedCoin(coin.toLowerCase());
                           setInputValue(''); // Clear search when currency is selected
                         }}
-                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300 ${
-                          selectedCoin === coin
-                            ? 'text-brand-royalbluemedium'
+                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 rounded-lg ${
+                          selectedCoin === coin.toLowerCase()
+                            ? 'text-brand-royalbluemedium bg-brand-blue500 bg-opacity-20'
                             : ''
                         }`}
                       >
-                        <span className="text-lg flex-shrink-0">
+                        <span
+                          className={`text-lg flex-shrink-0 transform transition-transform duration-200 group-hover:scale-110 ${
+                            selectedCoin === coin.toLowerCase()
+                              ? 'scale-110'
+                              : ''
+                          }`}
+                        >
                           {currencyFlags[coin.toLowerCase()] || '💰'}
                         </span>
                         <div className="flex flex-col items-start text-left">
@@ -313,7 +311,7 @@ const CurrencyView = () => {
                             {getSymbolFromCurrency(coin.toUpperCase())}
                           </span>
                         </div>
-                        {selectedCoin === coin && (
+                        {selectedCoin === coin.toLowerCase() && (
                           <span className="ml-auto text-brand-royalbluemedium">
                             ✓
                           </span>
@@ -327,35 +325,53 @@ const CurrencyView = () => {
           )}
         </Menu>
 
-        <div className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-4">
-          <p className="text-brand-gray200 text-xs mb-3">
+        <div
+          className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group"
+          key={`balance-${selectedCoin}`}
+        >
+          <p className="text-brand-gray200 text-xs mb-4">
             {t('components.currentBalance')}
           </p>
-          {activeNetwork.chainId === 5700 ? (
-            <div className="flex flex-col items-center">
-              <div className="flex gap-x-1 items-baseline">
-                <p className="font-poppins text-2xl font-medium text-white">
-                  {formatNumber(Number(actualBalance) || 0)}
-                </p>
-                <p className="font-poppins text-sm text-brand-gray300">TSYS</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center">
-              <div className="flex gap-x-1 items-baseline">
-                <p className="font-poppins text-2xl font-medium text-white">
-                  {formatNumber(actualBalance || 0)}
-                </p>
-                <p className="font-poppins text-sm text-brand-gray300">
-                  {activeNetwork.currency
-                    ? activeNetwork.currency.toUpperCase()
-                    : ''}
+          <div className="flex items-center gap-4">
+            <span className="text-4xl transform transition-transform duration-200 group-hover:scale-110">
+              {currencyFlags[selectedCoin.toLowerCase()] || '💰'}
+            </span>
+            {activeNetwork.chainId === 5700 ? (
+              <div className="flex flex-col items-start">
+                <div className="flex gap-x-1 items-baseline">
+                  <p className="font-poppins text-2xl font-medium text-white">
+                    {formatNumber(Number(actualBalance) || 0)}
+                  </p>
+                  <p className="font-poppins text-sm text-brand-gray300">
+                    TSYS
+                  </p>
+                </div>
+                <p className="text-brand-gray200 text-sm mt-1 font-medium">
+                  {fiatPriceValue || '$0.00'}
                 </p>
               </div>
-              <p className="text-brand-gray200 text-sm mt-1 font-medium">
-                {fiatPriceValue || '$0.00'}
-              </p>
-            </div>
+            ) : (
+              <div className="flex flex-col items-start">
+                <div className="flex gap-x-1 items-baseline">
+                  <p className="font-poppins text-2xl font-medium text-white">
+                    {formatNumber(actualBalance || 0)}
+                  </p>
+                  <p className="font-poppins text-sm text-brand-gray300">
+                    {activeNetwork.currency
+                      ? activeNetwork.currency.toUpperCase()
+                      : ''}
+                  </p>
+                </div>
+                <p className="text-brand-gray200 text-sm mt-1 font-medium">
+                  {fiatPriceValue || '$0.00'}
+                </p>
+              </div>
+            )}
+          </div>
+          {hasUnsavedChanges && (
+            <p className="text-xs text-brand-royalblue300 mt-3 text-center italic">
+              {t('settings.saveToUpdateRate')}
+            </p>
           )}
         </div>
       </div>

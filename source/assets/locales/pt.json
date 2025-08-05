@@ -413,6 +413,7 @@
     "nowYouWill": "Agora você verá os valores em sua carteira em {{currency}} e",
     "setYourPreferred": "Defina sua moeda preferida para exibir o valor de seus ativos.",
     "setYourPreferredLanguage": "Defina seu idioma preferido para a interface da carteira e traduções.",
+    "saveToUpdateRate": "Salvar para atualizar a taxa de conversão",
     "rpcSuccessfullyAdded": "RPC adicionado com sucesso.",
     "rpcSuccessfullyEdited": "RPC editado com sucesso.",
     "rpcUrlRequired": "URL do RPC é obrigatória",

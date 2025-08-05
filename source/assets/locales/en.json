@@ -420,6 +420,7 @@
     "nowYouWill": "Now you will see the values in your wallet in {{currency}} and",
     "setYourPreferred": "Set your preferred currency for displaying the value of your assets.",
     "setYourPreferredLanguage": "Set your preferred language for the wallet interface and translations.",
+    "saveToUpdateRate": "Save to update conversion rate",
     "rpcSuccessfullyEdited": "RPC successfully edited.",
     "rpcUrlRequired": "RPC URL is required",
     "validUrlRequired": "Please enter a valid URL",

@@ -422,6 +422,7 @@
     "nowYouWill": "Ahora verás los valores en tu monedero en {{currency}} y",
     "setYourPreferred": "Configura tu moneda preferida para mostrar el valor de tus activos.",
     "setYourPreferredLanguage": "Establece tu idioma preferido para la interfaz de la billetera y las traducciones.",
+    "saveToUpdateRate": "Guardar para actualizar la tasa de conversión",
     "rpcSuccessfullyAdded": "RPC añadido correctamente.",
     "rpcSuccessfullyEdited": "RPC editado correctamente.",
     "rpcUrlRequired": "Se requiere URL de RPC",

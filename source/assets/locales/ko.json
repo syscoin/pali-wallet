@@ -114,6 +114,7 @@
     "nowYouWill": "이제 지갑에서 {{currency}}와",
     "setYourPreferred": "자산 가치를 표시하기 위한 선호 통화를 설정하세요.",
     "setYourPreferredLanguage": "지갑 인터페이스와 번역을 위한 선호 언어를 설정하세요.",
+    "saveToUpdateRate": "저장하여 환율 업데이트",
     "rpcSuccessfullyEdited": "RPC가 성공적으로 편집되었습니다.",
     "rpcUrlRequired": "RPC URL이 필요합니다",
     "validUrlRequired": "유효한 URL을 입력하세요",

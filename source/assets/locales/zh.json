@@ -114,6 +114,7 @@
     "nowYouWill": "现在您将在钱包中看到{{currency}}和其他货币的价值",
     "setYourPreferred": "设置您首选的货币以显示您资产的价值。",
     "setYourPreferredLanguage": "设置您偏好的钱包界面和翻译语言。",
+    "saveToUpdateRate": "保存以更新汇率",
     "rpcSuccessfullyEdited": "RPC成功编辑。",
     "rpcUrlRequired": "需要RPC URL",
     "validUrlRequired": "请输入有效的URL",

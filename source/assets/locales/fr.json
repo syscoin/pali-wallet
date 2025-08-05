@@ -114,6 +114,7 @@
     "nowYouWill": "Maintenant vous verrez les valeurs dans votre portefeuille en {{currency}} et",
     "setYourPreferred": "Définissez votre devise préférée pour afficher la valeur de vos actifs.",
     "setYourPreferredLanguage": "Définissez votre langue préférée pour l'interface du portefeuille et les traductions.",
+    "saveToUpdateRate": "Enregistrer pour mettre à jour le taux de change",
     "rpcSuccessfullyEdited": "RPC modifié avec succès.",
     "rpcUrlRequired": "L'URL RPC est requise",
     "validUrlRequired": "Veuillez saisir une URL valide",

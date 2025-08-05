@@ -114,6 +114,7 @@
     "nowYouWill": "Jetzt sehen Sie die Werte in Ihrer Wallet in {{currency}} und",
     "setYourPreferred": "Stellen Sie Ihre bevorzugte Währung für die Anzeige des Werts Ihrer Assets ein.",
     "setYourPreferredLanguage": "Legen Sie Ihre bevorzugte Sprache für die Wallet-Oberfläche und Übersetzungen fest.",
+    "saveToUpdateRate": "Speichern, um den Wechselkurs zu aktualisieren",
     "rpcSuccessfullyEdited": "RPC erfolgreich bearbeitet.",
     "rpcUrlRequired": "RPC-URL ist erforderlich",
     "validUrlRequired": "Bitte geben Sie eine gültige URL ein",

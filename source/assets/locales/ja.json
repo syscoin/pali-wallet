@@ -114,6 +114,7 @@
     "nowYouWill": "今後、ウォレットの値を{{currency}}と",
     "setYourPreferred": "アセットの価値を表示するための優先通貨を設定してください。",
     "setYourPreferredLanguage": "ウォレットインターフェースと翻訳のための優先言語を設定してください。",
+    "saveToUpdateRate": "保存して換算レートを更新",
     "rpcSuccessfullyEdited": "RPCが正常に編集されました。",
     "rpcUrlRequired": "RPC URLが必要です",
     "validUrlRequired": "有効なURLを入力してください",
