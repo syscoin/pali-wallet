@@ -100,7 +100,8 @@ const MV3_OPTIONS = {
     'http://localhost:8545/',
   ],
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self'",
+    extension_pages:
+      "script-src 'self'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
   },
   author: 'Syscoin',
   minimum_chrome_version: '109',
