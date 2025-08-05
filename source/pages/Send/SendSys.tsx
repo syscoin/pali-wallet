@@ -133,6 +133,11 @@ export const SendSys = () => {
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
     setFeeRate(newFee);
+
+    // If in MAX send mode, recalculate the amount
+    // For UTXO, the backend handles fee subtraction for MAX sends
+    // So we keep the full balance in the amount field
+    // The isMaxSend flag tells the backend to subtract fees
   }, []);
 
   // ✅ OPTIMIZED: Fee fetching with proper dependencies
