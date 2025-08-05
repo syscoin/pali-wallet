@@ -1,47 +1,44 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-
-import { IPaliAccount } from 'state/vault/types';
+import {
+  CustomJsonRpcProvider,
+  CustomL2JsonRpcProvider,
+  IKeyringAccountState,
+} from '@sidhujag/sysweb3-keyring';
 
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';
 import { IBalancesManager } from './types';
 
-const BalancesManager = (
-  web3Provider: CustomJsonRpcProvider
-): IBalancesManager => {
-  const evmBalanceController = EvmBalanceController(web3Provider);
+const BalancesManager = (): IBalancesManager => {
   const getBalanceUpdatedForAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
-    networkUrl: string
+    networkUrl: string,
+    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
   ) => {
     switch (isBitcoinBased) {
       case true:
-        try {
-          const getSysBalance =
-            await SyscoinBalanceController().getSysBalanceForAccount(
-              currentAccount,
-              networkUrl
-            );
+        const getSysBalance =
+          await SyscoinBalanceController().getSysBalanceForAccount(
+            currentAccount,
+            networkUrl
+          );
+        return getSysBalance;
 
-          return getSysBalance;
-        } catch (sysBalanceError) {
-          return sysBalanceError;
-        }
       case false:
-        try {
-          const getEvmBalance =
-            await evmBalanceController.getEvmBalanceForAccount(currentAccount);
-
-          return getEvmBalance;
-        } catch (evmBalanceError) {
-          return evmBalanceError;
+        if (!provider) {
+          throw new Error('No valid web3Provider for EVM balance fetching');
         }
+
+        // Create EVM controller fresh with current provider
+        const evmController = EvmBalanceController(provider);
+        const getEvmBalance = await evmController.getEvmBalanceForAccount(
+          currentAccount
+        );
+        return getEvmBalance;
     }
   };
 
   return {
-    evm: evmBalanceController,
     sys: SyscoinBalanceController(),
     utils: {
       getBalanceUpdatedForAccount,

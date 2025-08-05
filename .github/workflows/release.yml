@@ -18,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '18'
+          node-version: '23.11.1'
 
       - name: Install dependencies
         run: yarn install
@@ -29,12 +29,19 @@ jobs:
       - name: Build project for Chrome
         run: yarn run build:chrome
 
+      - name: Build project for Canary
+        run: yarn run build:canary
+
       - name: List files in build directory
         run: ls -l ./build
 
-      - name: Set asset name
-        id: set_asset_name
-        run: echo "ASSET_NAME=$(ls build | grep 'pali-wallet-chrome' | grep '.zip')" >> $GITHUB_ENV
+      - name: Set asset name for Chrome
+        id: set_asset_name_chrome
+        run: echo "ASSET_NAME_CHROME=$(ls build | grep 'pali-wallet-' | grep 'chrome' | grep '.zip' | grep -v 'canary')" >> $GITHUB_ENV
+
+      - name: Set asset name for Canary
+        id: set_asset_name_canary
+        run: echo "ASSET_NAME_CANARY=$(ls build | grep 'pali-wallet-' | grep 'chrome' | grep 'canary' | grep '.zip')" >> $GITHUB_ENV
 
       - name: Get package version
         id: get_version
@@ -51,12 +58,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload zip to release
+      - name: Upload Chrome zip to release
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/${{ env.ASSET_NAME }}
-          asset_name: ${{ env.ASSET_NAME }}
+          asset_path: ./build/${{ env.ASSET_NAME_CHROME }}
+          asset_name: ${{ env.ASSET_NAME_CHROME }}
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Canary zip to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/${{ env.ASSET_NAME_CANARY }}
+          asset_name: ${{ env.ASSET_NAME_CANARY }}
           asset_content_type: application/zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

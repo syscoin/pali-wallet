@@ -1,16 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
-import { camelCaseToText } from 'utils/format';
 
 import Fee from './Fee';
-import TransactionConfirmation from './TransactionConfirmation';
 
 interface ITransaction {
   type: string;
@@ -22,33 +15,14 @@ interface ITransaction {
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
   const navigate = useNavigate();
-  const { controllerEmitter } = useController();
-  const { t } = useTranslation();
   const [fee, setFee] = useState<number>();
-  const titleResolver = (txType: string) =>
-    camelCaseToText(txType).toUpperCase() || t('transactions.transaction');
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const title = titleResolver(type);
 
   useEffect(() => {
+    // For Ethereum transactions, wait for fee to be set
     if (!fee) return;
 
     (async () => {
-      const recommended = isBitcoinBased
-        ? await controllerEmitter(
-            ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
-            [activeNetwork.url]
-          )
-        : fee;
-
-      const data = { host, ...transaction, fee: recommended };
+      const data = { host, ...transaction, fee: fee };
 
       if (type !== 'Send') return;
 
@@ -56,18 +30,7 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
     })();
   }, [fee]);
 
-  if (!fee) return <Fee title={title} onFinish={setFee} />;
-
-  return (
-    <Layout canGoBack={false} title={title}>
-      <TransactionConfirmation
-        host={host}
-        title={title}
-        type={type}
-        transaction={{ ...transaction, fee }}
-      />
-    </Layout>
-  );
+  if (!fee) return <Fee onFinish={setFee} />;
 };
 
 export default Transaction;

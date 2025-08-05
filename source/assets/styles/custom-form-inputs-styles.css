@@ -6,8 +6,8 @@
 .ant-form-item-has-success .anticon-check-circle::before {
   content: ' ';
   display: inline-block;
-  background: transparent url('../icons/input_success_icon.svg') center / 16px
-    16px no-repeat;
+  background: transparent url('../all_assets/input_success_icon.svg') center /
+    16px 16px no-repeat;
   width: 16px;
   height: 16px;
 }
@@ -20,8 +20,8 @@
 .ant-form-item-has-error .anticon-close-circle::before {
   content: '';
   display: inline-block;
-  background: transparent url('../icons/input_error_icon.svg') center / 16px
-    16px no-repeat;
+  background: transparent url('../all_assets/input_error_icon.svg') center /
+    16px 16px no-repeat;
   width: 16px;
   height: 16px;
 }

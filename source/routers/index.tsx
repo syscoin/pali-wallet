@@ -1,335 +1,397 @@
-import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
-
+import React, { lazy, Suspense } from 'react';
 import {
-  About,
-  AutoLock,
-  ConnectedSites,
-  ConnectHardwareWallet,
-  CreateAccount,
-  CreatePass,
-  Currency,
-  CustomRPC,
-  ForgetWallet,
-  DetailsView,
-  ManageNetwork,
-  Home,
-  Import,
-  PrivateKey,
-  Receive,
-  SendEth,
-  SendSys,
-  SendConfirm,
-  Start,
-  TrustedSites,
-  AddToken,
-  SeedConfirm,
-  Phrase,
-  ImportAccount,
-  RemoveEth,
-  CreatePasswordImport,
-  ManageAccounts,
-  EditAccount,
-  Advanced,
-  Languages,
-} from '../pages';
+  Routes,
+  Route,
+  Navigate,
+  useSearchParams,
+  useNavigate,
+} from 'react-router-dom';
+
+import { AppLayout } from 'components/Layout/AppLayout';
 import { WarningModal } from 'components/Modal';
-import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { ChainErrorPage } from 'pages/Chain';
-import { SwitchNetwork } from 'pages/SwitchNetwork';
-import {
-  inactivityTime,
-  removeVerifyPaliRequestListener,
-  resetPaliRequestsCount,
-  verifyPaliRequests,
-} from 'scripts/Background';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { rehydrateStore } from 'state/rehydrate';
-import store, { RootState } from 'state/store';
+import { useNavigationState } from 'hooks/useNavigationState';
+import { useRouterLogic } from 'routers/useRouterLogic';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
-export const Router = () => {
-  const [showModal, setShowModal] = useState(false);
-  const [modalMessage, setmodalMessage] = useState('');
-  const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState(false);
-  const { alert, navigate } = useUtils();
-  const { pathname } = useLocation();
-  const { t } = useTranslation();
-  const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
-    useSelector((state: RootState) => state.vault);
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { isUnlocked, web3Provider } = useController();
-  const { serverHasAnError, errorMessage } = web3Provider;
+// Component to handle external routing from query parameters
+const ExternalQueryHandler = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const hasRedirectedRef = React.useRef(false);
+  const { isUnlocked, isLoading } = useController();
 
-  const utf8ErrorData = JSON.parse(
-    window.localStorage.getItem('sysweb3-utf8Error') ??
-      JSON.stringify({ hasUtf8Error: false })
-  );
-
-  const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
-
-  useEffect(() => {
-    function handleStateChange(message: any) {
-      if (message.type === 'CONTROLLER_STATE_CHANGE') {
-        rehydrateStore(store, message.data);
-      }
-    }
-
-    chrome.runtime.onMessage.addListener(handleStateChange);
-
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleStateChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isUnlocked) {
-      setShowUtf8ErrorModal(hasUtf8Error);
-    }
-  }, [hasUtf8Error, isUnlocked]);
-
-  useEffect(() => {
-    const canProceed = isUnlocked && accounts;
-
-    if (canProceed) {
-      navigate('/home');
+  React.useEffect(() => {
+    // Prevent double execution
+    if (hasRedirectedRef.current) {
       return;
     }
 
-    controllerEmitter(['appRoute']).then((route) => {
-      if (route !== '/') navigate(route);
-    });
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    if (isTimerEnabled) inactivityTime();
-  }, []);
-
-  useEffect(() => {
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen) {
-      navigate('/settings/account/hardware');
+    // Wait for auth check to complete
+    if (isLoading) {
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      if (isNetworkChanging) resetPaliRequestsCount();
-      if (!isBitcoinBased) verifyPaliRequests();
-      if (isBitcoinBased) removeVerifyPaliRequestListener();
-    }
-  }, [isBitcoinBased, isNetworkChanging]);
+    const route = searchParams.get('route');
+    // Mark that we've handled the redirect
+    hasRedirectedRef.current = true;
+    if (route) {
+      if (!isUnlocked) {
+        // If not authenticated, redirect to auth flow and preserve the external route info
+        const data = searchParams.get('data');
+        const newSearchParams = new URLSearchParams();
+        if (data) {
+          newSearchParams.set('data', data);
+        }
+        newSearchParams.set('externalRoute', route);
 
-  useEffect(() => {
-    alert.removeAll();
-    // appRoute(pathname);
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen && isUnlocked) {
-      navigate('/settings/account/hardware');
-    }
-  }, [pathname, isUnlocked]);
-
-  useEffect(() => {
-    if (
-      serverHasAnError &&
-      isUnlocked &&
-      !isBitcoinBased &&
-      !isNetworkChanging
-    ) {
-      if (errorMessage !== 'string' && errorMessage?.code === -32016) {
-        setmodalMessage(
-          'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
-        );
+        navigate(`/?${newSearchParams.toString()}`, { replace: true });
       } else {
-        setmodalMessage(
-          'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
-        );
-      }
-      setShowModal(true);
-    }
-  }, [serverHasAnError]);
+        // Special handling for login route when already authenticated
+        if (route === 'login') {
+          window.close();
+          return;
+        }
 
-  const SYS_UTXO_MAINNET_NETWORK = {
-    chainId: 57,
-    url: 'https://blockbook.syscoin.org',
-    label: 'Syscoin Mainnet',
-    default: true,
-    currency: 'sys',
-    slip44: 57,
-  } as INetwork;
+        // If authenticated, redirect to the external route
+        const routePath = `/external/${route}`;
+
+        // Preserve the data parameter for the target route
+        const data = searchParams.get('data');
+        const newSearchParams = new URLSearchParams();
+        if (data) {
+          newSearchParams.set('data', data);
+        }
+
+        navigate(routePath + (data ? `?${newSearchParams.toString()}` : ''), {
+          replace: true,
+        });
+      }
+    }
+  }, [navigate, searchParams, isUnlocked, isLoading]);
+  return <div style={{ opacity: 0 }}>Loading...</div>;
+};
+
+// Navigation state restorer component
+const NavigationRestorer = () => {
+  const { restoreState } = useNavigationState();
+  const { isLoading, isUnlocked } = useController();
+  const hasAttemptedRestore = React.useRef(false);
+
+  React.useEffect(() => {
+    // Don't attempt restoration if already done
+    if (hasAttemptedRestore.current) return;
+
+    // Wait for auth state to be loaded
+    if (isLoading) return;
+
+    // Mark that we've attempted restoration
+    hasAttemptedRestore.current = true;
+
+    // If user is authenticated, attempt to restore navigation
+    if (isUnlocked) {
+      // Small delay to ensure all components are mounted and ready
+      setTimeout(() => {
+        restoreState();
+      }, 100);
+    }
+  }, [restoreState, isLoading, isUnlocked]);
+
+  return null;
+};
+
+// Lazy load route groups
+const AuthRoutes = lazy(() => import('./routes/AuthRoutes'));
+
+// Lazy load components with proper imports
+const About = lazy(() => import('pages').then((m) => ({ default: m.About })));
+const ConnectedSites = lazy(() =>
+  import('pages').then((m) => ({ default: m.ConnectedSites }))
+);
+const ConnectHardwareWallet = lazy(() =>
+  import('pages').then((m) => ({ default: m.ConnectHardwareWallet }))
+);
+const CreateAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.CreateAccount }))
+);
+const CreatePass = lazy(() =>
+  import('pages').then((m) => ({ default: m.CreatePass }))
+);
+const Currency = lazy(() =>
+  import('pages').then((m) => ({ default: m.Currency }))
+);
+const CustomRPC = lazy(() =>
+  import('pages').then((m) => ({ default: m.CustomRPC }))
+);
+const ForgetWallet = lazy(() =>
+  import('pages').then((m) => ({ default: m.ForgetWallet }))
+);
+const DetailsView = lazy(() =>
+  import('pages').then((m) => ({ default: m.DetailsView }))
+);
+const ManageNetwork = lazy(() =>
+  import('pages').then((m) => ({ default: m.ManageNetwork }))
+);
+const Home = lazy(() => import('pages').then((m) => ({ default: m.Home })));
+const Import = lazy(() => import('pages').then((m) => ({ default: m.Import })));
+const PrivateKey = lazy(() =>
+  import('pages').then((m) => ({ default: m.PrivateKey }))
+);
+const Receive = lazy(() =>
+  import('pages').then((m) => ({ default: m.Receive }))
+);
+const SendEth = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendEth }))
+);
+const SendSys = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendSys }))
+);
+const SendConfirm = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendConfirm }))
+);
+const Start = lazy(() => import('pages').then((m) => ({ default: m.Start })));
+const TrustedSites = lazy(() =>
+  import('pages').then((m) => ({ default: m.TrustedSites }))
+);
+const AddToken = lazy(() =>
+  import('pages').then((m) => ({ default: m.AddToken }))
+);
+const SeedConfirm = lazy(() =>
+  import('pages').then((m) => ({ default: m.SeedConfirm }))
+);
+const Phrase = lazy(() => import('pages').then((m) => ({ default: m.Phrase })));
+const ImportAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.ImportAccount }))
+);
+const RemoveEth = lazy(() =>
+  import('pages').then((m) => ({ default: m.RemoveEth }))
+);
+const CreatePasswordImport = lazy(() =>
+  import('pages').then((m) => ({ default: m.CreatePasswordImport }))
+);
+const ManageAccounts = lazy(() =>
+  import('pages').then((m) => ({ default: m.ManageAccounts }))
+);
+const EditAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.EditAccount }))
+);
+const Advanced = lazy(() =>
+  import('pages').then((m) => ({ default: m.Advanced }))
+);
+const Languages = lazy(() =>
+  import('pages').then((m) => ({ default: m.Languages }))
+);
+const ChainErrorPage = lazy(() =>
+  import('pages/Chain/ChainErrorPage').then((m) => ({
+    default: m.ChainErrorPage,
+  }))
+);
+const Faucet = lazy(() =>
+  import('pages/Faucet').then((m) => ({ default: m.Faucet }))
+);
+const SwitchNetwork = lazy(() =>
+  import('pages/SwitchNetwork').then((m) => ({ default: m.SwitchNetwork }))
+);
+
+// External/dApp components
+const ConnectWallet = lazy(() =>
+  import('pages').then((m) => ({ default: m.ConnectWallet }))
+);
+const ChangeAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.ChangeAccount }))
+);
+const ChangeConnectedAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.ChangeConnectedAccount }))
+);
+const ExternalWatchAsset = lazy(() =>
+  import('pages').then((m) => ({ default: m.ExternalWatchAsset }))
+);
+const CustomRPCExternal = lazy(() =>
+  import('pages').then((m) => ({ default: m.CustomRPCExternal }))
+);
+const SwitchChain = lazy(() =>
+  import('pages').then((m) => ({ default: m.SwitchChain }))
+);
+const SpamWarning = lazy(() =>
+  import('pages/External/SpamWarning').then((m) => ({ default: m.SpamWarning }))
+);
+const SwitchNeworkUtxoEvm = lazy(() =>
+  import('pages').then((m) => ({ default: m.SwitchNeworkUtxoEvm }))
+);
+const SendTransaction = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendTransaction }))
+);
+const SendCalls = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendCalls }))
+);
+const SignAndSend = lazy(() =>
+  import('pages').then((m) => ({ default: m.SignAndSend }))
+);
+const EthSign = lazy(() =>
+  import('pages').then((m) => ({ default: m.EthSign }))
+);
+const EncryptPubKey = lazy(() =>
+  import('pages').then((m) => ({ default: m.EncryptPubKey }))
+);
+const Decrypt = lazy(() =>
+  import('pages').then((m) => ({ default: m.Decrypt }))
+);
+const Sign = lazy(() => import('pages').then((m) => ({ default: m.Sign })));
+
+export const Router = () => {
+  const {
+    showModal,
+    setShowModal,
+    modalMessage,
+    showUtf8ErrorModal,
+    t,
+    handleUtf8ErrorClose,
+    warningMessage,
+  } = useRouterLogic();
 
   return (
     <>
+      <NavigationRestorer />
       <WarningModal
         show={showUtf8ErrorModal}
         title={t('settings.bgError')}
         description={t('settings.bgErrorMessage')}
-        onClose={async () => {
-          setShowUtf8ErrorModal(false);
-          if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
-            await controllerEmitter(
-              ['wallet', 'setActiveNetwork'],
-              [SYS_UTXO_MAINNET_NETWORK, 'syscoin']
-            );
-          }
-
-          controllerEmitter(['wallet', 'lock']);
-          navigate('/');
-        }}
+        onClose={handleUtf8ErrorClose}
       />
       <WarningModal
         show={showModal}
-        title="RPC Error"
+        title={t('send.rpcError')}
         description={`${modalMessage}`}
-        warningMessage={`Provider Error: ${
-          errorMessage === 'string' || typeof errorMessage === 'undefined'
-            ? errorMessage
-            : errorMessage?.message
-        }`}
+        warningMessage={warningMessage}
         onClose={() => setShowModal(false)}
       />
-      <Routes>
-        <Route path="/" element={<Start />} />
-
-        <Route path="create-password" element={<CreatePass />} />
-        <Route
-          path="create-password-import"
-          element={<CreatePasswordImport />}
-        />
-        <Route path="import" element={<Import />} />
-        <Route path="phrase" element={<SeedConfirm />} />
-
-        <Route path="home" element={<ProtectedRoute element={<Home />} />} />
-        <Route
-          path="home/details"
-          element={<ProtectedRoute element={<DetailsView />} />}
-        />
-
-        <Route
-          path="/receive"
-          element={<ProtectedRoute element={<Receive />} />}
-        />
-
-        <Route
-          path="send/eth"
-          element={<ProtectedRoute element={<SendEth />} />}
-        />
-
-        <Route
-          path="send/sys"
-          element={<ProtectedRoute element={<SendSys />} />}
-        />
-        <Route
-          path="send/confirm"
-          element={<ProtectedRoute element={<SendConfirm />} />}
-        />
-        <Route path="switch-network" element={<SwitchNetwork />} />
-        <Route
-          path="chain-fail-to-connect"
-          element={<ProtectedRoute element={<ChainErrorPage />} />}
-        />
-
-        {/* /tokens/add */}
-        <Route
-          path="tokens/add"
-          element={<ProtectedRoute element={<AddToken />} />}
-        />
-
-        {/* /settings */}
-        <Route path="settings">
-          <Route
-            path="about"
-            element={<ProtectedRoute element={<About />} />}
-          />
-          <Route
-            path="autolock"
-            element={<ProtectedRoute element={<AutoLock />} />}
-          />
-          <Route
-            path="remove-eth"
-            element={<ProtectedRoute element={<RemoveEth />} />}
-          />
-          <Route
-            path="advanced"
-            element={<ProtectedRoute element={<Advanced />} />}
-          />
-          <Route
-            path="languages"
-            element={<ProtectedRoute element={<Languages />} />}
-          />
-          <Route
-            path="currency"
-            element={<ProtectedRoute element={<Currency />} />}
-          />
-          <Route
-            path="forget-wallet"
-            element={<ProtectedRoute element={<ForgetWallet />} />}
-          />
-          <Route
-            path="seed"
-            element={<ProtectedRoute element={<Phrase />} />}
-          />
-
-          <Route
-            path="manage-accounts"
-            element={<ProtectedRoute element={<ManageAccounts />} />}
-          />
-
-          <Route
-            path="edit-account"
-            element={<ProtectedRoute element={<EditAccount />} />}
-          />
-
-          {/* /settings/account */}
-          <Route path="account">
+      <Suspense
+        fallback={
+          // Minimal transparent fallback - AppLayout will handle the actual loading display
+          <div style={{ opacity: 0 }}>Loading...</div>
+        }
+      >
+        <Routes>
+          {/* Auth Routes - No persistent layout */}
+          <Route path="/" element={<AuthRoutes />}>
+            <Route path="/" element={<Start />} />
+            <Route path="create-password" element={<CreatePass />} />
             <Route
-              path="hardware"
-              element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
+              path="create-password-import"
+              element={<CreatePasswordImport />}
             />
-            <Route
-              path="new"
-              element={<ProtectedRoute element={<CreateAccount />} />}
-            />
-            <Route
-              path="import"
-              element={<ProtectedRoute element={<ImportAccount />} />}
-            />
-
-            <Route
-              path="private-key"
-              element={<ProtectedRoute element={<PrivateKey />} />}
-            />
+            <Route path="import" element={<Import />} />
+            <Route path="phrase" element={<SeedConfirm />} />
           </Route>
 
-          {/* /settings/networks */}
-          <Route path="networks">
-            <Route
-              path="connected-sites"
-              element={<ProtectedRoute element={<ConnectedSites />} />}
-            />
-            <Route
-              path="custom-rpc"
-              element={<ProtectedRoute element={<CustomRPC />} />}
-            />
-            <Route
-              path="edit"
-              element={<ProtectedRoute element={<ManageNetwork />} />}
-            />
-            <Route
-              path="trusted-sites"
-              element={<ProtectedRoute element={<TrustedSites />} />}
-            />
-          </Route>
-        </Route>
+          {/* Handle external.html with query parameters */}
+          <Route path="external.html" element={<ExternalQueryHandler />} />
 
-        <Route path="app.html" element={<Navigate to={{ pathname: '/' }} />} />
-      </Routes>
+          {/* Special route for switch-network that needs different handling */}
+          <Route path="switch-network" element={<SwitchNetwork />} />
+
+          {/* Spam filter routes - rendered without AppLayout header */}
+          <Route path="/external/spam-warning" element={<SpamWarning />} />
+
+          {/* All protected routes wrapped in AppLayout for persistent header */}
+          <Route element={<ProtectedRoute element={<AppLayout />} />}>
+            {/* Home Routes */}
+            <Route path="/home" element={<Home />} />
+            <Route path="/home/details" element={<DetailsView />} />
+
+            {/* Transaction Routes */}
+            <Route path="/receive" element={<Receive />} />
+            <Route path="/faucet" element={<Faucet />} />
+            <Route path="/send/eth" element={<SendEth />} />
+            <Route path="/send/sys" element={<SendSys />} />
+            <Route path="/send/confirm" element={<SendConfirm />} />
+
+            {/* Network Routes */}
+            <Route path="/chain-fail-to-connect" element={<ChainErrorPage />} />
+            <Route path="/tokens/add" element={<AddToken />} />
+
+            {/* Settings Routes */}
+            <Route path="/settings/about" element={<About />} />
+            <Route path="/settings/remove-eth" element={<RemoveEth />} />
+            <Route path="/settings/advanced" element={<Advanced />} />
+            <Route path="/settings/languages" element={<Languages />} />
+            <Route path="/settings/currency" element={<Currency />} />
+            <Route path="/settings/forget-wallet" element={<ForgetWallet />} />
+            <Route path="/settings/seed" element={<Phrase />} />
+            <Route
+              path="/settings/manage-accounts"
+              element={<ManageAccounts />}
+            />
+            <Route path="/settings/edit-account" element={<EditAccount />} />
+
+            {/* Account sub-routes */}
+            <Route path="/settings/account/new" element={<CreateAccount />} />
+            <Route
+              path="/settings/account/import"
+              element={<ImportAccount />}
+            />
+            <Route
+              path="/settings/account/private-key"
+              element={<PrivateKey />}
+            />
+
+            {/* Network sub-routes */}
+            <Route
+              path="/settings/networks/connected-sites"
+              element={<ConnectedSites />}
+            />
+            <Route
+              path="/settings/networks/custom-rpc"
+              element={<CustomRPC />}
+            />
+            <Route path="/settings/networks/edit" element={<ManageNetwork />} />
+            <Route
+              path="/settings/networks/trusted-sites"
+              element={<TrustedSites />}
+            />
+
+            {/* External/dApp Routes - also wrapped in AppLayout */}
+            <Route path="/external">
+              <Route path="import" element={<Import />} />
+              <Route path="phrase" element={<SeedConfirm />} />
+              <Route path="login" element={<Start isExternal={true} />} />
+              <Route path="connect-wallet" element={<ConnectWallet />} />
+              <Route path="change-account" element={<ChangeAccount />} />
+              <Route
+                path="change-active-connected-account"
+                element={<ChangeConnectedAccount />}
+              />
+              <Route path="watch-asset" element={<ExternalWatchAsset />} />
+              <Route path="switch-network" element={<SwitchNetwork />} />
+              <Route path="add-EthChain" element={<CustomRPCExternal />} />
+              <Route path="switch-EthChain" element={<SwitchChain />} />
+              <Route path="switch-UtxoEvm" element={<SwitchNeworkUtxoEvm />} />
+              <Route
+                path="settings/account/hardware"
+                element={<ConnectHardwareWallet />}
+              />
+
+              {/* External transaction routes */}
+              <Route path="tx">
+                <Route path="send/confirm" element={<SendConfirm />} />
+                <Route path="send/ethTx" element={<SendTransaction />} />
+                <Route path="send/calls" element={<SendCalls />} />
+                <Route path="sign" element={<SignAndSend />} />
+                <Route path="ethSign" element={<EthSign />} />
+                <Route path="encryptKey" element={<EncryptPubKey />} />
+                <Route path="decrypt" element={<Decrypt />} />
+                <Route path="sign-psbt" element={<Sign />} />
+              </Route>
+            </Route>
+          </Route>
+
+          <Route
+            path="app.html"
+            element={<Navigate to={{ pathname: '/' }} />}
+          />
+        </Routes>
+      </Suspense>
     </>
   );
 };

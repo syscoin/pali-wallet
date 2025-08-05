@@ -1,0 +1,383 @@
+/* Subtle Login Screen Effects - Just particles and glow */
+
+/* Container for animated elements */
+.login-animated-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle ambient glow effects */
+.login-animated-bg::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 255, 127, 0.08) 0%,
+    rgba(77, 162, 207, 0.05) 40%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  filter: blur(40px);
+  transform: translate(-50%, -50%);
+  animation: gentleGlow 20s ease-in-out infinite;
+  z-index: 0;
+}
+
+.login-animated-bg::after {
+  content: '';
+  position: absolute;
+  top: 30%;
+  right: 20%;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(
+    circle at center,
+    rgba(138, 43, 226, 0.06) 0%,
+    rgba(254, 0, 119, 0.04) 50%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  filter: blur(50px);
+  animation: gentleGlow2 25s ease-in-out infinite reverse;
+  z-index: 0;
+}
+
+/* Remove geometric elements - they were tacky */
+.geometric-element-1 {
+  display: none;
+}
+
+.geometric-element-2 {
+  display: none;
+}
+
+/* Remove large swirls - keep just subtle glow */
+.light-swirl-1 {
+  display: none;
+}
+
+.light-swirl-2 {
+  display: none;
+}
+
+/* Soft blurred floating particles with gentle drift */
+.particle-1 {
+  position: absolute;
+  top: 25%;
+  left: 75%;
+  width: 6px;
+  height: 6px;
+  background: rgba(0, 255, 127, 0.8);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 12px rgba(0, 255, 127, 0.6);
+  animation: gentleTwinkle1 8s ease-in-out infinite,
+    driftToCenter1 45s ease-in-out infinite;
+  z-index: 3;
+}
+
+.particle-2 {
+  position: absolute;
+  top: 60%;
+  left: 20%;
+  width: 5px;
+  height: 5px;
+  background: rgba(77, 162, 207, 0.7);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 10px rgba(77, 162, 207, 0.5);
+  animation: gentleTwinkle2 12s ease-in-out infinite,
+    driftToGlow2 50s ease-in-out infinite;
+  z-index: 3;
+}
+
+.particle-3 {
+  position: absolute;
+  top: 40%;
+  right: 25%;
+  width: 4px;
+  height: 4px;
+  background: rgba(138, 43, 226, 0.6);
+  border-radius: 50%;
+  filter: blur(1px);
+  box-shadow: 0 0 8px rgba(138, 43, 226, 0.5);
+  animation: gentleTwinkle3 10s ease-in-out infinite,
+    driftToCenter3 20s ease-in-out infinite;
+  z-index: 3;
+}
+
+.particle-4 {
+  position: absolute;
+  top: 15%;
+  left: 30%;
+  width: 5px;
+  height: 5px;
+  background: rgba(254, 0, 119, 0.7);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 10px rgba(254, 0, 119, 0.5);
+  animation: gentleTwinkle4 9s ease-in-out infinite,
+    driftToGlow4 40s ease-in-out infinite;
+  z-index: 3;
+}
+
+.particle-5 {
+  position: absolute;
+  top: 75%;
+  right: 15%;
+  width: 7px;
+  height: 7px;
+  background: rgba(77, 162, 207, 0.9);
+  border-radius: 50%;
+  filter: blur(3px);
+  box-shadow: 0 0 15px rgba(77, 162, 207, 0.8);
+  animation: gentleTwinkle5 8s ease-in-out infinite,
+    driftToGlow5 15s ease-in-out infinite;
+  z-index: 3;
+}
+
+.particle-6 {
+  position: absolute;
+  top: 38%;
+  right: 15%;
+  width: 6px;
+  height: 6px;
+  background: rgba(77, 162, 207, 0.9);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 14px rgba(77, 162, 207, 0.8);
+  animation: gentleTwinkle6 11s ease-in-out infinite,
+    driftToBlueGlow6 18s ease-in-out infinite;
+  z-index: 3;
+}
+
+/* Subtle animation keyframes */
+
+/* Gentle ambient glow animations */
+@keyframes gentleGlow {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.12;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+@keyframes gentleGlow2 {
+  0%,
+  100% {
+    opacity: 0.06;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.1;
+    transform: scale(1.2);
+  }
+}
+
+/* Subtle particle twinkling */
+@keyframes gentleTwinkle1 {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(0, 255, 127, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2);
+    box-shadow: 0 0 12px rgba(0, 255, 127, 0.6);
+  }
+}
+
+@keyframes gentleTwinkle2 {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(77, 162, 207, 0.3);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.3);
+    box-shadow: 0 0 10px rgba(77, 162, 207, 0.5);
+  }
+}
+
+@keyframes gentleTwinkle3 {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(1);
+    box-shadow: 0 0 5px rgba(138, 43, 226, 0.3);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+    box-shadow: 0 0 8px rgba(138, 43, 226, 0.4);
+  }
+}
+
+@keyframes gentleTwinkle4 {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(254, 0, 119, 0.3);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+    box-shadow: 0 0 9px rgba(254, 0, 119, 0.5);
+  }
+}
+
+@keyframes gentleTwinkle5 {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(77, 162, 207, 0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.8);
+    box-shadow: 0 0 12px rgba(77, 162, 207, 0.9);
+  }
+}
+
+@keyframes gentleTwinkle6 {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+    box-shadow: 0 0 12px rgba(77, 162, 207, 0.7);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.6);
+    box-shadow: 0 0 18px rgba(77, 162, 207, 0.9);
+  }
+}
+
+/* Subtle drift animations - barely noticeable movement towards glows */
+
+/* Particle 1 (top-right green) - drift towards center */
+@keyframes driftToCenter1 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(-8px, 12px);
+  }
+}
+
+/* Particle 2 (bottom-left blue) - drift towards central blue glow */
+@keyframes driftToGlow2 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(15px, -10px);
+  }
+}
+
+/* Particle 3 (middle-right purple) - swirl towards blue glow area */
+@keyframes driftToCenter3 {
+  0%,
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  25% {
+    transform: translate(-8px, 5px) rotate(8deg);
+  }
+  50% {
+    transform: translate(-20px, 15px) rotate(12deg);
+  }
+  75% {
+    transform: translate(-28px, 20px) rotate(6deg);
+  }
+}
+
+/* Particle 4 (top-left pink) - drift towards purple glow area */
+@keyframes driftToGlow4 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(10px, 15px);
+  }
+}
+
+/* Particle 5 (bottom-right blue) - swirl towards center blue glow area */
+@keyframes driftToGlow5 {
+  0%,
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  25% {
+    transform: translate(-15px, -10px) rotate(20deg);
+  }
+  50% {
+    transform: translate(-35px, -25px) rotate(40deg);
+  }
+  75% {
+    transform: translate(-55px, -45px) rotate(25deg);
+  }
+}
+
+/* Particle 6 (behind blue glow) - swirls toward purple center area */
+@keyframes driftToBlueGlow6 {
+  0%,
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  25% {
+    transform: translate(-25px, 10px) rotate(20deg);
+  }
+  50% {
+    transform: translate(-50px, 25px) rotate(35deg);
+  }
+  75% {
+    transform: translate(-75px, 35px) rotate(25deg);
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .login-animated-bg::before,
+  .login-animated-bg::after,
+  .particle-1,
+  .particle-2,
+  .particle-3,
+  .particle-4,
+  .particle-5,
+  .particle-6 {
+    animation: none !important;
+    opacity: 0.5;
+  }
+}
+
+/* Performance optimization */
+.login-animated-bg::before,
+.login-animated-bg::after,
+.particle-1,
+.particle-2,
+.particle-3,
+.particle-4,
+.particle-5,
+.particle-6 {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}

@@ -1,137 +1,83 @@
-import { Form, Input } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
-import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
-import { useUtils } from 'hooks/index';
+import GetStarted from 'components/Start/GetStarted';
+import Unlock from 'components/Start/Unlock';
+import { useAppReady } from 'hooks/useAppReady';
 import { useController } from 'hooks/useController';
-import { migrateWalletState } from 'state/migrateWalletState';
+import { chromeStorage } from 'utils/storageAPI';
 
 export const Start = (props: any) => {
-  const { navigate } = useUtils();
   const [isOpenValidation, setIsOpenValidation] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
+  const [hasVault, setHasVault] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const { controllerEmitter } = useController();
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { t, i18n } = useTranslation();
-  const { language } = i18n;
-  const { isExternal, externalRoute } = props;
-  const hasVault = !!JSON.parse(localStorage.getItem('sysweb3-vault'));
+  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+
+  // Check for external route from URL parameters (when redirected from ExternalQueryHandler)
+  const urlExternalRoute = searchParams.get('externalRoute');
+  const urlData = searchParams.get('data');
+
+  // Determine if this is an external request and what the route should be
+  const isExternal = !!urlExternalRoute || props.isExternal;
+  const externalRoute = urlExternalRoute
+    ? `/external/${urlExternalRoute}${urlData ? `?data=${urlData}` : ''}`
+    : props.externalRoute;
+
   const isFirstStep = !hasAccount && !hasVault;
 
   useEffect(() => {
-    const checkAccounts = async () => {
-      const result: any = await controllerEmitter([
-        'wallet',
-        'getActiveAccount',
-      ]);
+    const checkVaultAndAccounts = async () => {
+      try {
+        // Check for vault in Chrome storage
+        const vault = await chromeStorage.getItem('sysweb3-vault');
+        setHasVault(!!vault);
 
-      setHasAccount(!!result.activeAccount.address);
+        // Check for active account
+        const result: any = await controllerEmitter([
+          'wallet',
+          'getActiveAccount',
+        ]);
+        setHasAccount(!!result.activeAccount.address);
+      } catch (error: any) {
+        // Only log non-connection errors
+        if (
+          !error?.message?.includes('Could not establish connection') &&
+          !error?.message?.includes('Receiving end does not exist') &&
+          !error?.message?.includes('Network request timed out')
+        ) {
+          console.error('Error checking vault/accounts:', error);
+        }
+        // For connection errors, we'll just use the default state (no account/vault)
+      } finally {
+        setIsInitialLoading(false);
+      }
     };
 
-    checkAccounts();
-
-    return () => {
-      checkAccounts();
-    };
+    checkVaultAndAccounts();
   }, []);
 
-  const onSubmit = async ({ password }: { password: string }) => {
-    try {
-      await migrateWalletState('persist:root', 'state', hasAccount);
+  // Signal app is ready when we have content to show
+  useAppReady(!isInitialLoading);
 
-      const result = await controllerEmitter(
-        ['wallet', 'unlockFromController'],
-        [password]
-      );
-
-      if (!result) {
-        setErrorMessage(t('start.wrongPassword'));
-        return;
-      }
-
-      setErrorMessage(null);
-
-      if (!isExternal) {
-        return navigate('/home');
-      }
-
-      return navigate(externalRoute);
-    } catch (e) {
-      setErrorMessage(t('start.wrongPassword'));
-    }
-  };
-
-  const getStarted = (
-    <>
-      <Button
-        id="unlock-btn"
-        type="submit"
-        onClick={() => navigate('/create-password')}
-        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl"
-      >
-        Get started
-      </Button>
-      <Link
-        className={`mt-9 hover:text-brand-graylight text-[#A2A5AB] ${
-          language === 'es' ? 'text-xs' : 'text-base'
-        } font-light transition-all duration-300 cursor-pointer`}
-        to="/import"
-        id="import-wallet-link"
-      >
-        Import using wallet seed phrase
-      </Link>
-    </>
-  );
-
-  const unLock = (
-    <>
-      <Form
-        className="flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
-        name="basic"
-        onFinish={onSubmit}
-        autoComplete="off"
-        id="login"
-      >
-        <Form.Item
-          name="password"
-          className="w-full flex justify-center"
-          validateStatus={'error'}
-          hasFeedback={!!errorMessage}
-        >
-          <Input.Password
-            className="custom-input-password relative"
-            placeholder={t('settings.enterYourPassword')}
-            id="password"
-          />
-        </Form.Item>
-
-        <Form.Item>
-          <Button
-            id="unlock-btn"
-            type="submit"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base	 font-base font-medium rounded-2xl"
-          >
-            {t('buttons.unlock')}
-          </Button>
-        </Form.Item>
-      </Form>
-      <a
-        className={`mt-7 hover:text-brand-graylight text-[#A2A5AB] ${
-          language === 'es' ? 'text-xs' : 'text-base'
-        } font-light transition-all duration-300 cursor-pointer`}
-        id="import-wallet-link"
-        onClick={() => setIsOpenValidation(true)}
-      >
-        {t('start.importUsing')}
-      </a>
-    </>
-  );
-
+  // Don't render anything while loading - the HTML loader is showing
+  if (isInitialLoading) {
+    return null;
+  }
   return (
-    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen login-animated-bg">
+      {/* Subtle twinkling particles */}
+      <div className="particle-1"></div>
+      <div className="particle-2"></div>
+      <div className="particle-3"></div>
+      <div className="particle-4"></div>
+      <div className="particle-5"></div>
+      <div className="particle-6"></div>
+
       <ImportWalletWarning
         title={t('settings.importWalletWarning')}
         phraseOne={t('settings.thisActionErases')}
@@ -140,11 +86,12 @@ export const Start = (props: any) => {
         onClose={setIsOpenValidation}
         show={isOpenValidation}
       />
-      <p className=" pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
+
+      <p className="relative z-10 pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
         {t('start.welcomeTo')}
       </p>
 
-      <div className="flex flex-row gap-3 mb-6">
+      <div className="relative z-10 flex flex-row gap-3 mb-6">
         <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
           Pali
         </h1>
@@ -152,7 +99,18 @@ export const Start = (props: any) => {
           Wallet
         </h1>
       </div>
-      {isFirstStep ? getStarted : unLock}
+
+      <div className="relative z-10">
+        {isFirstStep ? (
+          <GetStarted />
+        ) : (
+          <Unlock
+            setIsOpenValidation={setIsOpenValidation}
+            isExternal={isExternal}
+            externalRoute={externalRoute}
+          />
+        )}
+      </div>
     </div>
   );
 };

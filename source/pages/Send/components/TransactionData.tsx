@@ -11,7 +11,7 @@ export const TransactionDataComponent = (props: ITransactionDataProps) => {
   const { decodedTx } = props;
   const { t } = useTranslation();
   return (
-    <div className="flex p-6 rounded-[20px] flex-col items-center justify-center bg-brand-blue600 w-[400px] h-fit relative left-[-1%]">
+    <div className="flex p-6 rounded-[20px] flex-col items-center justify-center bg-brand-blue600 w-full max-w-[400px] mx-auto h-fit">
       {decodedTx.method === 'Contract Interaction' ? (
         <div
           className="flex items-center justify-center mt-2 p-4 w-full text-xs rounded-xl"
@@ -20,7 +20,7 @@ export const TransactionDataComponent = (props: ITransactionDataProps) => {
           <p>{t('send.decodificationNotAvailable')}</p>
         </div>
       ) : (
-        <pre className="scrollbar-styled w-full mb-6 mt-2 px-2.5 py-1 max-h-80 text-xs rounded-xl overflow-y-auto whitespace-pre-wrap">
+        <pre className="remove-scrollbar w-full mb-6 mt-2 px-2.5 py-1 max-h-80 text-xs rounded-xl overflow-y-auto whitespace-pre-wrap">
           {JSON.stringify(decodedTx, null, '\t')}
         </pre>
       )}

@@ -1,4 +1,4 @@
-// import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from 'types/network';
 
 import reducer, {
   addDApp,
@@ -13,7 +13,7 @@ import { IDApp } from './types';
 describe('dapp store actions', () => {
   const FAKE_DAPP: IDApp = {
     host: 'fakehost.net',
-    chain: 'syscoin',
+    chain: INetworkType.Syscoin,
     chainId: 57,
     accountId: 0,
     accountType: 'HDAccount' as any,

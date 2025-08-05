@@ -1,118 +1,131 @@
-import { isValidSYSAddress as _isValidSYSAddress } from '@pollum-io/sysweb3-utils';
+// isValidSYSAddress removed - validation should use message passing to background
 
-import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
-import { isNFT as _isNFT } from 'scripts/Background/controllers/utils';
+import { getController } from 'scripts/Background';
 import store from 'state/store';
+
 export const SysProvider = (host: string) => {
-  const sendTransaction = (data: {
-    amount: number;
-    fee: number;
-    receivingAddress: string;
-    tokenGuid?: string;
-    verifyAddress?: boolean;
-    zDag?: boolean;
-  }) =>
-    popupPromise({
-      host,
-      data: {
-        isToken: data.tokenGuid !== undefined,
-        verifyAddress: data.verifyAddress,
-        zDag: data.zDag,
-        ...data,
-      },
-      route: 'tx/send',
-      eventName: 'txSend',
-    });
+  //* ----- Connection & Account Methods -----
+  const getAccount = () => {
+    const { dapp } = getController();
+    return dapp.getAccount(host);
+  };
 
-  //* ----- Token -----
-  const createToken = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/create',
-      eventName: 'txCreateToken',
-    });
-  const transferAssetOwnership = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/transfer',
-      eventName: 'txTransferAssetOwnership',
-    });
+  const isConnected = () => {
+    const { dapp } = getController();
+    return dapp.isConnected(host);
+  };
 
-  const updateToken = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/update',
-      eventName: 'txUpdateToken',
-    });
+  const getNetwork = () => {
+    const { dapp } = getController();
+    return dapp.getNetwork();
+  };
 
-  const mintToken = (data: {
-    amount: number;
-    assetGuid: string;
-    fee: number;
-  }) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/mint',
-      eventName: 'txMintToken',
-    });
+  const getPublicKey = () => {
+    const { dapp } = getController();
+    const account = dapp.getAccount(host);
+    return account?.xpub || null;
+  };
 
-  //* ----- NFT -----
-  const createNft = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/nft/create',
-      eventName: 'txCreateNFT',
-    });
+  const getChangeAddress = () => {
+    const { dapp, wallet } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      throw new Error('Not connected');
+    }
+    return wallet.getChangeAddress(account.id);
+  };
 
-  const mintNft = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/asset/nft/mint',
-      eventName: 'txMintNFT',
-    });
+  const getCurrentAddressPubkey = (params: any[]) => {
+    const { dapp, wallet } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      throw new Error('Not connected');
+    }
 
-  //* ----- Sign -----
-  const sign = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/sign-psbt',
-      eventName: 'txSign',
-    });
+    const isChangeAddress = params?.[0]?.isChangeAddress || false;
+    return wallet.getCurrentAddressPubkey(account.id, isChangeAddress);
+  };
 
-  const signAndSend = (data) =>
-    popupPromise({
-      host,
-      data,
-      route: 'tx/sign',
-      eventName: 'txSignAndSend',
-    });
+  const getBip32Path = (params: any[]) => {
+    const { dapp, wallet } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      throw new Error('Not connected');
+    }
 
-  const isNFT = (data) => _isNFT(data[0] as number);
+    const isChangeAddress = params?.[0]?.isChangeAddress || false;
+    return wallet.getBip32Path(account.id, isChangeAddress);
+  };
 
-  const isValidSYSAddress = (data) => {
+  //* ----- Transaction Methods -----
+  const getTransactions = () => {
+    const { dapp } = getController();
+    const account = dapp.getAccount(host);
+    if (!account) {
+      return [];
+    }
+
+    // Get transactions from Redux store
+    const { activeAccount, activeNetwork, accountTransactions } =
+      store.getState().vault;
+
+    if (!activeAccount || !activeNetwork) {
+      return [];
+    }
+
+    const transactions =
+      accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
+        activeNetwork.chainId
+      ] || [];
+
+    return transactions;
+  };
+
+  const transaction = (params: any[]) => {
+    // Get a specific transaction by ID
+    if (!params?.[0]) {
+      return null;
+    }
+
+    const txId = params[0];
+    const { activeAccount, activeNetwork, accountTransactions } =
+      store.getState().vault;
+
+    if (!activeAccount || !activeNetwork) {
+      return null;
+    }
+
+    const transactions =
+      accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
+        activeNetwork.chainId
+      ] || [];
+
+    return transactions.find((tx: any) => tx.txid === txId) || null;
+  };
+
+  //* ----- Validation Methods -----
+  const isValidSYSAddress = (params: any[]) => {
     const { activeNetwork } = store.getState().vault;
-    const isValid = _isValidSYSAddress(data, activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
+    const isValid = getController().wallet.validateSysAddress(
+      params?.[0],
+      activeNetwork.chainId
+    );
     return isValid;
   };
 
   return {
-    sendTransaction,
-    createToken,
-    updateToken,
-    mintToken,
-    transferAssetOwnership,
-    createNft,
-    mintNft,
-    sign,
-    signAndSend,
-    isNFT,
+    // Connection & Account methods
+    getAccount,
+    isConnected,
+    getNetwork,
+    getPublicKey,
+    getChangeAddress,
+    getCurrentAddressPubkey,
+    getBip32Path,
+    // Transaction methods
+    getTransactions,
+    transaction,
+    // Validation methods
     isValidSYSAddress,
   };
 };

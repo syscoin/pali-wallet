@@ -1,4 +1,4 @@
-import { BigNumber } from 'ethers';
+import { BigNumber } from '@ethersproject/bignumber';
 
 export interface ITransaction {
   blockTime: number;
@@ -17,30 +17,11 @@ export interface IAssets {
   type: string;
 }
 
-export interface IToken {
-  address: string;
-  chainId: number;
-  decimals: number;
-  logoURI: string;
-  name: string;
-  symbol: string;
-}
-
 export interface IAccountInfo {
   address?: string | null;
   assets: IAssets[];
   balance: number;
   transactions: ITransaction[];
-}
-
-export interface ITransactionInfo {
-  amount: number;
-  fee: number;
-  fromAddress: string;
-  isToken: boolean;
-  rbf: boolean;
-  toAddress: string;
-  token: IAssets | null;
 }
 
 export interface IPendingTx {
@@ -51,109 +32,11 @@ export interface IPendingTx {
   value: number;
 }
 
-export interface INotaryDetails {
-  endpoint?: string | null;
-  hdrequired?: boolean;
-  instanttransfers?: boolean;
-}
-
-export interface IAuxFees {
-  [auxfees: number]: {
-    bound: number;
-    percent: number;
-  };
-}
-
-export interface INewAsset {
-  advanced?: {
-    auxfeedetails?: IAuxFees[];
-    capabilityflags?: string | '127';
-    initialSupply?: number;
-    notaryAddress?: string;
-    notarydetails?: INotaryDetails;
-    payoutAddress?: string;
-  };
-  description?: string;
-  fee: number;
-  maxsupply: number;
-  precision: number | 8;
-  receiver?: string;
-  symbol: string;
-}
-
-export interface ISentAsset {
-  amount: number;
-  fee: number;
-  isToken: boolean;
-  rbf?: boolean;
-  receiver: string;
-  sender: string;
-  token: string;
-}
-
-export interface IMintAsset {
-  amount: number;
-  assetGuid: string;
-  fee: number;
-}
-
-export interface INewNFT {
-  description: string;
-  fee: number;
-  precision: number;
-  receiver: string;
-  symbol: string;
-}
-
-export interface IUpdateAsset {
-  advanced?: {
-    auxfeedetails?: IAuxFees[];
-    notaryAddress?: string;
-    notarydetails?: INotaryDetails;
-    payoutAddress?: string;
-  };
-  assetGuid: number;
-  assetWhiteList: string;
-  capabilityflags: string | '127';
-  contract: string;
-  description: string;
-  fee: number;
-}
-
-export interface ITransferAsset {
-  assetGuid: string;
-  fee: number;
-  newOwner: string;
-}
-
-export interface ISendAsset {
-  amount: number;
-  fee: number;
-  fromAddress: string;
-  isToken: boolean;
-  rbf?: boolean;
-  toAddress: string;
-  token: IAssets | null;
-}
-
-export interface ITemporaryTransaction {
-  mintAsset: IMintAsset | null;
-  mintNFT: IMintAsset | null;
-  newAsset: INewAsset | null;
-  newNFT: INewNFT | null;
-  sendAsset: ISendAsset | null;
-  signAndSendPSBT: any | null;
-  signPSBT: any | null;
-  transferAsset: ITransferAsset | null;
-  updateAsset: IUpdateAsset | null;
-}
-
 export interface ICustomRpcParams {
   apiUrl?: string;
   chainId: number;
   explorer?: string;
   isSyscoinRpc?: boolean;
-  isTestnet: boolean;
   label: string;
   symbol?: string;
   url: string;
@@ -226,4 +109,19 @@ export interface IIsEditedAllowanceModalProps {
   >;
   setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
+}
+
+// eslint-disable-next-line no-shadow
+export enum TransactionType {
+  ERC1155 = 'ERC1155',
+  ERC20 = 'ERC20',
+  ERC721 = 'ERC721',
+  NATIVE_ETH = 'NATIVE_ETH',
+  UTXO = 'UTXO',
+}
+
+export interface ITransactionTypeInfo {
+  defaultGasLimit?: number;
+  isLegacy?: boolean;
+  type: TransactionType;
 }

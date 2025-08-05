@@ -1,23 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "3.0.0",
+  "version": "3.5.0",
   "icons": {
-    "16": "assets/icons/favicon-16.png",
-    "32": "assets/icons/favicon-32.png",
-    "48": "assets/icons/favicon-48.png",
-    "128": "assets/icons/favicon-128.png"
+    "16": "assets/all_assets/favicon-16.png",
+    "32": "assets/all_assets/favicon-32.png",
+    "48": "assets/all_assets/favicon-48.png",
+    "128": "assets/all_assets/favicon-128.png"
   },
   "description": "A Non-Custodial Crypto Wallet",
   "short_name": "pali",
   "permissions": [
+    "alarms",
     "storage",
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
     "offscreen",
     "scripting",
-    "webRequest"
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -27,17 +28,17 @@
     "http://localhost:8545/"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
   },
-  "author": "pollum labs",
-  "minimum_chrome_version": "88",
+  "author": "Syscoin",
+  "minimum_chrome_version": "109",
   "action": {
     "default_popup": "app.html",
     "default_icon": {
-      "16": "assets/icons/favicon-16.png",
-      "32": "assets/icons/favicon-32.png",
-      "48": "assets/icons/favicon-48.png",
-      "128": "assets/icons/favicon-128.png"
+      "16": "assets/all_assets/favicon-16.png",
+      "32": "assets/all_assets/favicon-32.png",
+      "48": "assets/all_assets/favicon-48.png",
+      "128": "assets/all_assets/favicon-128.png"
     },
     "default_title": "Pali Wallet"
   },
@@ -55,15 +56,6 @@
       "run_at": "document_start",
       "js": [
         "js/contentScript.bundle.js"
-      ]
-    },
-    {
-      "matches": [
-        "*://connect.trezor.io/9/popup.html",
-        "https://localhost:8088/*"
-      ],
-      "js": [
-        "js/trezorScript.bundle.js"
       ]
     }
   ],

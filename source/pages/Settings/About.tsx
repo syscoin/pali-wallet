@@ -1,10 +1,18 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 
 import packageJson from '../../../package.json';
-import paliLogo from 'assets/images/paliLogoSmall.png';
-import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
+import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
+import { Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { navigateBack } from 'utils/navigationState';
+
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon isSvg={true} name="Copy" id="copy-address-btn" />
+));
+CopyIcon.displayName = 'CopyIcon';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
@@ -12,23 +20,22 @@ const AboutView: FC = () => {
   };
   const { t } = useTranslation();
   const { navigate, useCopyClipboard, alert } = useUtils();
+  const location = useLocation();
   const [copied, copy] = useCopyClipboard();
 
-  const showSuccessAlert = () => {
+  useEffect(() => {
     if (copied) {
-      alert.removeAll();
-      alert.success(t('settings.linkCopied'));
+      alert.info(t('settings.linkCopied'));
     }
-  };
+  }, [copied, alert, t]);
 
   return (
-    <Layout
-      title={t('generalMenu.infoHelp').toUpperCase()}
-      id="info-help-title"
-    >
+    <>
       <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
-        <img className="pb-6" src={paliLogo} />
-        <p className=" text-white">Pali Wallet Browser Extension</p>
+        <PaliWhiteSmallIconSvg className="pb-6 w-16" />
+        <p className=" text-white">
+          {t('settings.paliWalletBrowserExtension')}
+        </p>
         <p className="text-brand-gray200">
           {t('settings.version')}: {packageJson.version}
         </p>
@@ -71,21 +78,22 @@ const AboutView: FC = () => {
               shape="circle"
               className="align-center pl-2"
             >
-              <Icon isSvg={true} name="Copy" id="copy-address-btn" />
-              <>{copied ? showSuccessAlert() : null}</>
+              <CopyIcon />
             </IconButton>
           </div>
         </SimpleCard>
 
-        <Button
-          className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
-          type="button"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.close')}
-        </Button>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <Button
+            className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
+            type="button"
+            onClick={() => navigateBack(navigate, location)}
+          >
+            {t('buttons.close')}
+          </Button>
+        </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

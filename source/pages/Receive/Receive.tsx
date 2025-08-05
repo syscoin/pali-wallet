@@ -3,8 +3,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Layout, NeutralButton } from 'components/index';
-import { LoadingComponent } from 'components/Loading';
+import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 
@@ -13,9 +12,6 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const { t } = useTranslation();
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -24,19 +20,13 @@ export const Receive = () => {
   useEffect(() => {
     if (!isCopied) return;
 
-    alert.removeAll();
-    alert.success(t('home.addressCopied'));
-  }, [isCopied]);
+    alert.info(t('home.addressCopied'));
+  }, [isCopied, alert, t]);
 
   return (
-    <Layout
-      title={`${t(
-        'receive.receiveTitle'
-      )} ${activeNetwork.currency?.toUpperCase()}`}
-      id="receiveSYS-title"
-    >
+    <>
       {activeAccount.address ? (
-        <div className="flex flex-col items-center justify-center w-screen">
+        <div className="flex flex-col items-center justify-center w-full">
           <div id="qr-code">
             <QRCodeSVG
               value={activeAccount.address}
@@ -74,10 +64,10 @@ export const Receive = () => {
           </div>
         </div>
       ) : (
-        <div className="flex items-center h-80">
-          <LoadingComponent />
+        <div className="flex items-center justify-center h-80">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };

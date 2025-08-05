@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { OnboardingLayout, Button } from 'components/index';
+import { Button, SeedPhraseDisplay } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { useController } from 'hooks/useController';
 
 export const CreatePhrase = ({ password }: { password: string }) => {
@@ -10,8 +11,7 @@ export const CreatePhrase = ({ password }: { password: string }) => {
   const [seed, setSeed] = useState('');
   const { t } = useTranslation();
 
-  const [visible, setVisible] = useState<boolean>(false);
-  const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
   const [isTermsConfirmed, setIsTermsConfirmed] = useState<boolean>(false);
 
   const navigate = useNavigate();
@@ -23,64 +23,37 @@ export const CreatePhrase = ({ password }: { password: string }) => {
     });
   }, []);
 
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(seed);
-  };
+  const handleCopyToClipboard = useCallback(async (seedPhrase: string) => {
+    try {
+      await navigator.clipboard.writeText(seedPhrase);
+      setCopied(true);
+      // Reset copied state after a delay
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy seed:', error);
+    }
+  }, []);
+
+  const handleNext = useCallback(() => {
+    if (isTermsConfirmed) {
+      navigate('/phrase', {
+        state: { password, next: true, createdSeed: seed },
+      });
+    }
+  }, [isTermsConfirmed, navigate, password, seed]);
 
   return (
     <OnboardingLayout title={t('createPhrase.recoveryPhrase')}>
       <div className="flex flex-col gap-4 items-center justify-center max-w-xs md:max-w-lg">
-        <div className="flex gap-3 items-start p-[0.938rem] w-[17.5rem] max-w-[17.5rem] border border-brand-blue200 rounded-[10px] bg-brand-blue800">
-          <div
-            className={`flex flex-wrap flex-row gap-1 bg-brand-blue800 ${
-              visible ? '' : 'filter blur-sm'
-            }`}
-          >
-            {seed.split(' ').map((phrase: string, index: number) => (
-              <p key={index} className="flex text-white text-sm font-light ">
-                {phrase}
-              </p>
-            ))}
-          </div>
-          <div className="flex bg-brand-blue800">
-            {visible ? (
-              <img
-                className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
-                onClick={() => setVisible(false)}
-                src="/assets/icons/visibleEye.svg"
-              />
-            ) : (
-              <img
-                className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
-                onClick={() => setVisible(true)}
-                src="/assets/icons/notVisibleEye.svg"
-              />
-            )}
-          </div>
-        </div>
-
-        <div className="flex w-full flex-col space-y-6 mt-2 z-20">
-          {isCopied ? (
-            <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
-              <img
-                className="w-[16px] max-w-none"
-                src="/assets/icons/successIcon.svg"
-              />
-              <p className="text-sm text-white">Copied!</p>
-            </div>
-          ) : (
-            <div
-              className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer"
-              onClick={() => {
-                handleCopyToClipboard();
-                setIsCopied(true);
-              }}
-            >
-              <img className="max-w-none z-20 " src="/assets/icons/copy.svg" />
-              <p className="text-sm text-white">Copy</p>
-            </div>
-          )}
-        </div>
+        <SeedPhraseDisplay
+          seedPhrase={seed}
+          isEnabled={true}
+          showEyeToggle={true}
+          onCopy={handleCopyToClipboard}
+          copied={copied}
+          displayMode="words"
+          className="w-[17.5rem] max-w-[17.5rem]"
+        />
 
         <div className="flex w-full flex-col space-y-6 mt-2 gap-2 z-20">
           <label className="flex items-start gap-2">
@@ -105,13 +78,7 @@ export const CreatePhrase = ({ password }: { password: string }) => {
             className={`bg-brand-deepPink100 ${
               isTermsConfirmed ? 'opacity-100' : 'opacity-60	'
             } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
-            onClick={() => {
-              isTermsConfirmed
-                ? navigate('/phrase', {
-                    state: { password, next: true, createdSeed: seed },
-                  })
-                : null;
-            }}
+            onClick={handleNext}
           >
             {t('buttons.next')}
           </Button>

@@ -2,8 +2,7 @@
   "extends": [
     "plugin:react/recommended",
     "plugin:@typescript-eslint/recommended",
-    "prettier",
-    "prettier/react"
+    "prettier"
   ],
   "plugins": [
     "@typescript-eslint",
@@ -86,7 +85,7 @@
         ],
         "pathGroups": [
           {
-            "pattern": "@pollum-io/**",
+            "pattern": "syscoin/**",
             "group": "internal",
             "position": "before"
           },
@@ -131,7 +130,7 @@
             "group": "internal"
           }
         ],
-        "pathGroupsExcludedImportTypes": ["@pollum-io/**"],
+        "pathGroupsExcludedImportTypes": ["syscoin/**"],
         "newlines-between": "always",
         "alphabetize": {
           "order": "asc",

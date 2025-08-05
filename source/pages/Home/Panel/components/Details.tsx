@@ -1,10 +1,8 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import explorerImg from 'assets/icons/externalExplorer.svg';
-import { Layout, Icon } from 'components/index';
+import { ExternalLinkSvg } from 'components/Icon/Icon';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { adjustUrl } from 'utils/index';
@@ -20,15 +18,14 @@ export const DetailsView = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { t } = useTranslation();
 
+  const location = useLocation();
   const {
-    state: { id, hash, nftId, nftAddress },
-  }: any = useLocation();
+    state: { id, hash, nftCollection, nftData },
+  }: any = location;
 
   const isAsset = id && !hash;
-
-  const isNft = Boolean(nftId && nftAddress);
+  const isNft = Boolean(nftCollection && nftData);
 
   const { explorer } = activeNetwork;
 
@@ -53,41 +50,38 @@ export const DetailsView = () => {
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
 
   return (
-    <Layout
-      title={`${
-        isNft
-          ? 'NFT DETAILS'
-          : isAsset
-          ? t('titles.assetDetails')
-          : t('titles.transactionDetails')
-      }`}
-    >
+    <>
       {isLoading && !isNft ? (
-        <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
+        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-blue500"></div>
+        </div>
       ) : (
         <>
-          <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">
-            {isAsset ? (
+          <ul className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto">
+            {isNft ? (
+              <NftsDetails nftData={nftData} />
+            ) : isAsset ? (
               <AssetDetails id={id} />
             ) : (
               <TransactionDetails hash={hash} />
             )}
-            {isNft ? (
-              <NftsDetails nftId={nftId} nftAddress={nftAddress} />
+
+            {!isAsset && !isNft ? (
+              <li className="mt-6 mb-4 flex items-center justify-center">
+                <div
+                  className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
+                  onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
+                >
+                  <ExternalLinkSvg className="w-4 h-4" />
+                  <p className="text-sm text-white underline">
+                    View on Explorer
+                  </p>
+                </div>
+              </li>
             ) : null}
           </ul>
-
-          {!isAsset && !isNft ? (
-            <div
-              className="mt-6 flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60"
-              onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-            >
-              <img className="w-4 h-4" src={explorerImg} />
-              <p className="text-sm text-white underline">View on Explorer</p>
-            </div>
-          ) : null}
         </>
       )}
-    </Layout>
+    </>
   );
 };

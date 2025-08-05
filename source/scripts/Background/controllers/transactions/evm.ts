@@ -1,8 +1,8 @@
-import flatMap from 'lodash/flatMap';
-
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
 
 import store from 'state/store';
+import { hasPositiveBalance } from 'utils/balance';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
@@ -10,78 +10,594 @@ import {
   validateAndManageUserTransactions,
 } from './utils';
 
-const EvmTransactionsController = (
-  web3Provider: CustomJsonRpcProvider
-): IEvmTransactionsController => {
-  const getUserTransactionByDefaultProvider = async (
-    startBlock: number,
-    endBlock: number
-  ) => {
-    const provider = web3Provider;
+// Cache for address transaction counts to optimize Blockscout API calls
+// Key: chainId:address, Value: { hasTransactions: boolean, timestamp: number }
+// This works around a Blockscout bug (prior to v6.12) where passing offset parameter
+// on addresses with no transactions triggers a massive union query that causes rate limiting
+// We make an initial request without offset to check if address has transactions,
+// then use offset only for addresses with transactions in subsequent requests
+const addressTxCountCache = new Map<string, boolean>();
 
+const EvmTransactionsController = (): IEvmTransactionsController => {
+  const getUserTransactionByDefaultProvider = async (
+    numBlocks: number,
+    web3Provider: CustomJsonRpcProvider
+  ) => {
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
-      provider,
-      startBlock,
-      endBlock
+      web3Provider,
+      numBlocks
     );
 
-    const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
-
-    return treatedTxs as IEvmTransactionResponse[];
+    // Just return the raw transactions - let the caller handle processing
+    return providerUserTxs;
   };
 
-  const pollingEvmTransactions = async () => {
+  /**
+   * Test if an explorer API is available and working
+   * Works with both Etherscan and Blockscout APIs
+   */
+  const testExplorerApi = async (
+    apiUrl: string
+  ): Promise<{ error?: string; success: boolean }> => {
     try {
-      const currentBlockNumber = store.getState().vault.currentBlock?.number;
-      const currentNetworkChainId =
-        store.getState().vault.activeNetwork?.chainId;
-      const rpcForbiddenList = [10];
+      const url = new URL(apiUrl);
 
-      const latestBlockNumber = await web3Provider.getBlockNumber();
-      const adjustedBlock =
-        latestBlockNumber - parseInt(String(currentBlockNumber), 16);
+      // Preserve existing API key if present
+      const existingApiKey =
+        url.searchParams.get('apikey') || url.searchParams.get('apiKey');
 
-      let blocksToSearch;
+      // Try block module first (Blockscout specific)
+      url.searchParams.set('module', 'block');
+      url.searchParams.set('action', 'eth_block_number');
 
-      if (
-        currentBlockNumber &&
-        currentNetworkChainId &&
-        rpcForbiddenList.includes(currentNetworkChainId)
-      ) {
-        blocksToSearch = Math.min(10, adjustedBlock);
-      } else if (
-        currentNetworkChainId &&
-        rpcForbiddenList.includes(currentNetworkChainId)
-      ) {
-        blocksToSearch = 10;
-      } else if (
-        currentBlockNumber &&
-        adjustedBlock > 0 &&
-        adjustedBlock < 30
-      ) {
-        blocksToSearch = adjustedBlock;
-      } else if (currentBlockNumber && adjustedBlock < 0) {
-        blocksToSearch = 30;
-      } else {
-        blocksToSearch = 30;
+      if (existingApiKey) {
+        url.searchParams.set('apikey', existingApiKey);
       }
 
-      const fromBlock = latestBlockNumber - blocksToSearch;
+      const blockResponse = await retryableFetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
 
-      const txs = await getUserTransactionByDefaultProvider(
-        fromBlock,
-        latestBlockNumber
+      if (blockResponse.ok) {
+        const blockData = await blockResponse.json();
+
+        // Check for API error responses
+        if (blockData.status === '0' || blockData.message === 'NOTOK') {
+          const errorMsg =
+            blockData.result || blockData.message || 'Explorer API error';
+          // If we get a clear API error (like missing API key), return it immediately
+          // Don't try proxy module because the same error will occur
+          if (errorMsg && errorMsg.toLowerCase().includes('api key')) {
+            return { success: false, error: 'settings.missingApiKey' };
+          }
+          return { success: false, error: errorMsg };
+        } else if (blockData.result) {
+          return { success: true };
+        }
+      } else {
+        console.log('Block API request failed, trying proxy module...');
+      }
+
+      // If block module fails, try proxy module (Etherscan format)
+      url.searchParams.set('module', 'proxy');
+      url.searchParams.set('action', 'eth_blockNumber');
+
+      const proxyResponse = await retryableFetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!proxyResponse.ok) {
+        return {
+          success: false,
+          error: `API request failed with status ${proxyResponse.status}`,
+        };
+      }
+
+      const proxyData = await proxyResponse.json();
+
+      // Check for API error responses
+      if (proxyData.status === '0' || proxyData.message === 'NOTOK') {
+        const errorMsg =
+          proxyData.result || proxyData.message || 'Explorer API error';
+        // Check for specific API key error
+        if (errorMsg && errorMsg.toLowerCase().includes('api key')) {
+          return { success: false, error: 'settings.missingApiKey' };
+        }
+        return { success: false, error: errorMsg };
+      }
+
+      if (proxyData.result) {
+        console.log('Proxy API success');
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        error: 'API did not return valid block number data',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Connection failed: ${error.message}`,
+      };
+    }
+  };
+
+  const fetchTransactionsFromAPI = async (
+    address: string,
+    chainId: number,
+    apiUrl?: string,
+    includePending = false
+  ): Promise<{
+    error?: string;
+    transactions: IEvmTransactionResponse[] | null;
+  }> => {
+    if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
+
+    // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
+    // Reference: https://docs.blockscout.com/devs/apis/rpc/account
+    const url = new URL(apiUrl);
+
+    // Extract API key if it's already in the URL
+    const existingApiKey =
+      url.searchParams.get('apikey') || url.searchParams.get('apiKey');
+
+    // Build the API request
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'txlist');
+    url.searchParams.set('address', address);
+    url.searchParams.set('sort', 'desc');
+
+    // Check cache to see if we know if address has transactions
+    const cacheKey = `${chainId}:${address.toLowerCase()}`;
+    const cached = addressTxCountCache.get(cacheKey);
+
+    // Only include offset if we have valid cache showing the address has transactions
+    // First time requests (no cache) won't include offset to avoid Blockscout bug
+    const shouldIncludeOffset = cached;
+
+    if (shouldIncludeOffset) {
+      url.searchParams.set('page', '1');
+      url.searchParams.set('offset', '30');
+    }
+
+    // Preserve the API key if it was in the original URL
+    // Reference: https://docs.blockscout.com/using-blockscout/my-account/api-keys
+    if (existingApiKey) {
+      url.searchParams.set('apikey', existingApiKey);
+    }
+
+    // Prepare fetch promises for parallel execution
+    const fetchPromises = [retryableFetch(url.toString())];
+
+    // Add pending transactions fetch if requested
+    let pendingUrl: URL | null = null;
+    if (includePending) {
+      pendingUrl = new URL(apiUrl);
+      pendingUrl.searchParams.set('module', 'account');
+      pendingUrl.searchParams.set('action', 'pendingtxlist');
+      pendingUrl.searchParams.set('address', address);
+
+      if (existingApiKey) {
+        pendingUrl.searchParams.set('apikey', existingApiKey);
+      }
+
+      fetchPromises.push(retryableFetch(pendingUrl.toString()));
+    }
+
+    // Execute both fetches in parallel
+    const responses = await Promise.all(fetchPromises);
+    const [response, pendingResponse] = responses;
+
+    if (!response.ok) {
+      const errorMsg = `Explorer API request failed with status ${response.status}`;
+      return { transactions: null, error: errorMsg };
+    }
+
+    // Parse both responses in parallel
+    const parsePromises = [response.json()];
+    if (pendingResponse) {
+      parsePromises.push(pendingResponse.json());
+    }
+
+    const [data, pendingData] = await Promise.all(parsePromises);
+
+    // Handle API error responses
+    // Status "0" with "No transactions found" is not an error, it's a valid empty result
+    if (data.status === '0' || data.message === 'NOTOK') {
+      // Check if this is actually a "no transactions found" case rather than an error
+      const isNoTransactionsFound =
+        data.message === 'No transactions found' ||
+        (Array.isArray(data.result) && data.result.length === 0);
+
+      if (isNoTransactionsFound) {
+        // This is a valid response indicating no transactions, not an error
+        console.log('API response: No transactions found for this address');
+        // Continue with empty result processing below
+      } else {
+        // This is an actual error
+        const errorMsg = data.result || data.message || 'Explorer API error';
+        console.error('Explorer API error:', errorMsg);
+        return { transactions: null, error: errorMsg };
+      }
+    }
+
+    let allTransactions: IEvmTransactionResponse[] = [];
+
+    // Both Etherscan and Blockscout use the same response format
+    // Handle both status "1" (success) and status "0" with valid empty results
+    if (
+      (data.status === '1' ||
+        (data.status === '0' && Array.isArray(data.result))) &&
+      data.result &&
+      Array.isArray(data.result)
+    ) {
+      // Note: txlist returns transactions that are in blocks (including those with 0 confirmations)
+      // It does NOT return transactions that are only in the mempool (truly pending)
+      // For mempool transactions, use pendingtxlist action
+      const transactions = data.result.map((tx: any) => {
+        // Validate timestamp
+        let timestamp = parseInt(tx.timeStamp, 10);
+        const currentTime = Math.floor(Date.now() / 1000);
+        const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+        const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
+        if (
+          !timestamp ||
+          isNaN(timestamp) ||
+          timestamp < tenYearsAgo ||
+          timestamp > oneYearFromNow
+        ) {
+          console.warn(
+            `Invalid timestamp from API for tx ${tx.hash}: ${tx.timeStamp}, using current time`
+          );
+          timestamp = currentTime;
+        }
+        return {
+          hash: tx.hash,
+          from: tx.from,
+          to: tx.to,
+          value: tx.value,
+          blockNumber: parseInt(tx.blockNumber),
+          blockHash: tx.blockHash,
+          timestamp: timestamp,
+          confirmations: parseInt(tx.confirmations),
+          chainId: chainId,
+          input: tx.input,
+          gasPrice: tx.gasPrice,
+          gas: tx.gas || tx.gasLimit, // Blockscout may use 'gas' or 'gasLimit'
+          nonce:
+            tx.nonce !== undefined && tx.nonce !== null
+              ? parseInt(tx.nonce)
+              : undefined,
+          // Include transaction status from API
+          // eslint-disable-next-line camelcase
+          txreceipt_status: tx.txreceipt_status || tx.isError || null,
+          isError: tx.isError || null,
+        };
+      });
+
+      allTransactions = transactions;
+    }
+
+    // Process pending transactions if they were fetched
+    if (
+      includePending &&
+      pendingResponse &&
+      pendingResponse.ok &&
+      pendingData
+    ) {
+      try {
+        // Check for pending API errors too
+        if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
+          const pendingTxs = pendingData.result.map((tx: any) => ({
+            hash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            blockNumber: null, // Pending transactions don't have a block number
+            blockHash: null,
+            timestamp: tx.timeStamp
+              ? parseInt(tx.timeStamp, 10)
+              : Math.floor(Date.now() / 1000),
+            confirmations: 0,
+            chainId: chainId,
+            input: tx.input,
+            gasPrice: tx.gasPrice,
+            gas: tx.gas || tx.gasLimit,
+            nonce:
+              tx.nonce !== undefined && tx.nonce !== null
+                ? parseInt(tx.nonce)
+                : undefined,
+            // Add any other fields your UI expects as null/default
+            contractAddress: tx.contractAddress || null,
+            cumulativeGasUsed: tx.cumulativeGasUsed || null,
+            gasUsed: tx.gasUsed || null,
+            isError: tx.isError || null,
+            // eslint-disable-next-line camelcase
+            txreceipt_status: tx.txreceipt_status || null,
+            transactionIndex:
+              tx.transactionIndex !== undefined ? tx.transactionIndex : null,
+          }));
+
+          // Combine pending with confirmed transactions
+          allTransactions = [...pendingTxs, ...allTransactions];
+        }
+      } catch (pendingError) {
+        // Not all APIs support pending transactions, so this is not a critical error
+        console.log('Pending transactions not supported by this API');
+      }
+    }
+
+    // Cache whether this address has transactions (only if not already cached or cache expired)
+    if (cacheKey) {
+      const hasTransactions = allTransactions.length > 0;
+      addressTxCountCache.set(cacheKey, hasTransactions);
+    }
+
+    // If we didn't use offset, limit to 30 for consistency
+    // This applies to first-time requests and addresses with no transactions
+    const finalTransactions = shouldIncludeOffset
+      ? allTransactions
+      : allTransactions.slice(0, 30);
+
+    return {
+      transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
+      error: undefined, // No error when we get a valid response with empty results
+    };
+  };
+
+  const fetchTransactionDetailsFromAPI = async (
+    hash: string,
+    apiUrl: string
+  ): Promise<any> => {
+    try {
+      const url = new URL(apiUrl);
+      const apiKey = url.searchParams.get('apikey') || '';
+      url.search = '';
+
+      const apiEndpoint = `${url.toString()}?module=transaction&action=gettxinfo&txhash=${hash}${
+        apiKey ? `&apikey=${apiKey}` : ''
+      }`;
+
+      const response = await retryableFetch(apiEndpoint);
+      const data = await response.json();
+
+      if (data.status === '1' && data.result) {
+        return data.result;
+      }
+    } catch (error) {
+      console.error('Failed to fetch transaction details from API:', error);
+    }
+    return null;
+  };
+
+  const pollingEvmTransactions = async (
+    web3Provider: CustomJsonRpcProvider,
+    isPolling?: boolean,
+    isRapidPolling?: boolean
+  ) => {
+    // Guard: ensure web3Provider is valid before polling
+    if (!web3Provider) {
+      console.warn(
+        '[pollingEvmTransactions] No valid web3Provider, skipping polling'
+      );
+      return [];
+    }
+    const { activeAccount, accounts, activeNetwork, accountTransactions } =
+      store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    const currentNetworkChainId = activeNetwork?.chainId;
+    const rpcForbiddenList = [10];
+
+    // Check if account exists before proceeding
+    if (!currentAccount) {
+      console.warn('[pollingEvmTransactions] Active account not found');
+      return [];
+    }
+
+    // Check if network chain ID exists before proceeding
+    if (!currentNetworkChainId) {
+      console.warn('[pollingEvmTransactions] No network chain ID found');
+      return [];
+    }
+
+    let rawTransactions: IEvmTransactionResponse[] = [];
+
+    // Try to fetch from external API first (more efficient)
+    if (activeNetwork?.apiUrl) {
+      console.log(
+        `[pollingEvmTransactions] Attempting to fetch from API for ${currentAccount.address}`
+      );
+      const apiResult = await fetchTransactionsFromAPI(
+        currentAccount.address,
+        currentNetworkChainId,
+        activeNetwork.apiUrl,
+        true
       );
 
-      return flatMap(txs);
-    } catch (error) {
-      console.log(error);
+      if (apiResult.transactions !== null) {
+        console.log(
+          `[pollingEvmTransactions] Found ${apiResult.transactions.length} transactions from API`
+        );
+        rawTransactions = apiResult.transactions;
+      } else if (apiResult.error) {
+        // Always throw when API is configured but fails
+        // Let MainController decide how to handle based on isPolling
+        throw new Error(
+          `Transaction API error: ${apiResult.error}. Please check your API URL configuration.`
+        );
+      }
     }
+
+    // Fallback to RPC scanning if API failed or no API configured
+    if (
+      rawTransactions.length === 0 &&
+      !rpcForbiddenList.includes(currentNetworkChainId)
+    ) {
+      // Smart block scanning based on account history
+      const currentAccountTxs =
+        accountTransactions[activeAccount.type]?.[activeAccount.id];
+
+      // Check if account has any transaction history on current network
+      const hasTransactionHistory =
+        currentAccountTxs?.ethereum?.[currentNetworkChainId]?.length > 0;
+
+      // Get current balance (native token) - balances are on the account object
+      const currentBalance =
+        currentAccount.balances?.[INetworkType.Ethereum] || '0';
+      const hasBalance = hasPositiveBalance(currentBalance);
+      // Determine how many blocks to scan:
+      // - New account with no balance: 10 blocks (just recent activity)
+      // - Account with balance but no tx history: 20 blocks (they got funds somehow)
+      // - Account with tx history: 30 blocks (normal scanning)
+      let blocksToScan = 30;
+
+      if (!hasTransactionHistory && !hasBalance) {
+        blocksToScan = 10; // Minimal scanning for truly empty accounts
+        console.log(
+          `[pollingEvmTransactions] Empty account detected, scanning only last ${blocksToScan} blocks`
+        );
+      } else if (!hasTransactionHistory && hasBalance) {
+        blocksToScan = 20; // Medium scanning - they have funds but we haven't found the tx yet
+        console.log(
+          `[pollingEvmTransactions] Account has balance but no tx history, scanning last ${blocksToScan} blocks`
+        );
+      } else {
+        console.log(
+          `[pollingEvmTransactions] Account has transaction history, scanning last ${blocksToScan} blocks`
+        );
+      }
+      rawTransactions = [];
+      // Skip expensive block scanning during rapid polling
+      if (isPolling && !isRapidPolling) {
+        rawTransactions = await getUserTransactionByDefaultProvider(
+          blocksToScan,
+          web3Provider
+        );
+      }
+
+      // ENHANCEMENT: When no API is available, also check specific pending transactions
+      // This ensures pending transactions are tracked even if they fall outside the polling window
+      if (
+        !activeNetwork?.apiUrl &&
+        currentAccountTxs?.ethereum?.[currentNetworkChainId]
+      ) {
+        const existingTxs = currentAccountTxs.ethereum[currentNetworkChainId];
+        const pendingTxs = existingTxs.filter(
+          (tx: any) => !tx.blockNumber || !tx.blockHash
+        );
+
+        if (pendingTxs.length > 0) {
+          console.log(
+            `[pollingEvmTransactions] Checking ${pendingTxs.length} pending transactions individually`
+          );
+
+          // Fetch each pending transaction individually to get its current status
+          const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
+            try {
+              const tx = await web3Provider.getTransaction(pendingTx.hash);
+              if (tx) {
+                // If transaction is found and has a block number, it's confirmed
+                if (tx.blockNumber) {
+                  const block = await web3Provider.getBlock(tx.blockNumber);
+                  const latestBlock = await web3Provider.getBlockNumber();
+                  const confirmations = Math.max(
+                    0,
+                    latestBlock - tx.blockNumber
+                  );
+
+                  // Get receipt to check transaction status
+                  let receipt = null;
+                  let isSuccess = null;
+                  try {
+                    receipt = await web3Provider.getTransactionReceipt(tx.hash);
+                    if (receipt) {
+                      isSuccess =
+                        receipt.status === 1 || receipt.status === '0x1';
+                    }
+                  } catch (receiptError) {
+                    console.log(`Could not fetch receipt for ${tx.hash}`);
+                  }
+
+                  return {
+                    ...tx,
+                    confirmations,
+                    timestamp:
+                      block?.timestamp || Math.floor(Date.now() / 1000),
+                    chainId: currentNetworkChainId,
+                    nonce:
+                      tx.nonce !== undefined && tx.nonce !== null
+                        ? typeof tx.nonce === 'string'
+                          ? parseInt(tx.nonce, 16)
+                          : Number(tx.nonce)
+                        : undefined,
+                    // Add status fields
+                    // eslint-disable-next-line camelcase
+                    txreceipt_status:
+                      isSuccess === null ? null : isSuccess ? '1' : '0',
+                    isError: isSuccess === null ? null : isSuccess ? '0' : '1',
+                  };
+                } else {
+                  // Still pending
+                  return {
+                    ...tx,
+                    confirmations: 0,
+                    timestamp:
+                      pendingTx.timestamp || Math.floor(Date.now() / 1000),
+                    chainId: currentNetworkChainId,
+                    nonce:
+                      tx.nonce !== undefined && tx.nonce !== null
+                        ? typeof tx.nonce === 'string'
+                          ? parseInt(tx.nonce, 16)
+                          : Number(tx.nonce)
+                        : undefined,
+                  };
+                }
+              }
+            } catch (error) {
+              console.error(
+                `[pollingEvmTransactions] Error fetching pending tx ${pendingTx.hash}:`,
+                error
+              );
+            }
+            return null;
+          });
+
+          const updatedPendingTxs = await Promise.all(pendingTxPromises);
+          const validUpdatedTxs = updatedPendingTxs.filter((tx) => tx !== null);
+
+          // Merge the individually fetched pending transactions with the block scan results
+          if (validUpdatedTxs.length > 0) {
+            console.log(
+              `[pollingEvmTransactions] Found ${validUpdatedTxs.length} updated pending transactions`
+            );
+            rawTransactions = [...rawTransactions, ...validUpdatedTxs];
+          }
+        }
+      }
+    }
+
+    // Process all transactions consistently, regardless of source (API or RPC)
+    const processedTransactions =
+      validateAndManageUserTransactions(rawTransactions);
+    return processedTransactions as IEvmTransactionResponse[];
   };
 
   return {
     getUserTransactionByDefaultProvider,
     pollingEvmTransactions,
+    fetchTransactionsFromAPI,
+    fetchTransactionDetailsFromAPI,
+    testExplorerApi, // Export the test function
   };
 };
 

@@ -10,7 +10,6 @@
   font-size: 12px;
 }
 
-
 .custom-edit-input .ant-input {
   display: flex;
   width: 352px;
@@ -24,7 +23,7 @@
 }
 
 .custom-edit-input .ant-input-suffix .anticon-close-circle {
-  content: url('../icons/errorIcon.svg');
+  content: url('../all_assets/errorIcon.svg');
   position: absolute;
   top: 55%;
   right: 28px;
@@ -35,7 +34,7 @@
 }
 
 .custom-edit-input .ant-input-suffix .anticon-check-circle {
-  content: url('../icons/successIcon.svg');
+  content: url('../all_assets/successIcon.svg');
   position: absolute;
   top: 53%;
   right: 28px;
@@ -43,7 +42,7 @@
   cursor: pointer;
   font-size: 14px;
   line-height: 14px;
-} 
+}
 
 .custom-gas-input {
   display: flex;

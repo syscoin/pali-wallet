@@ -1,5 +1,4 @@
 export { default as About } from './About';
-export { default as AutoLock } from './AutoLock';
 export { default as ConnectedSites } from './ConnectedSites';
 export { default as ConnectHardwareWallet } from './ConnectHardwareWallet';
 export { default as CreateAccount } from './CreateAccount';

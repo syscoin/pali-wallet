@@ -1,11 +1,9 @@
 import uniq from 'lodash/uniq';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 
-import { Icon, Layout } from 'components/index';
+import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
-import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
@@ -44,10 +42,6 @@ const TrustedSitesView = () => {
 
   const [status, setStatus] = useState(EMPTY_STATE);
 
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
-
   const handleSearch = (typed) => {
     if (!typed) setStatus({ name: '', icon: '', color: '', size: '' });
 
@@ -83,10 +77,9 @@ const TrustedSitesView = () => {
   };
 
   return (
-    <Layout title={t('settings.trustedWebsites')}>
+    <>
       <p className="text-white text-sm font-normal pb-6">
-        {accounts[activeAccount.type][activeAccount.id].label} is connected to
-        these site. They can view your account address.
+        {t('settings.isConnected')}
       </p>
       <div className="relative">
         <input
@@ -104,7 +97,7 @@ const TrustedSitesView = () => {
         </div>
       </div>
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled my-2 w-full h-[19.5rem] overflow-auto">
+        <ul className="remove-scrollbar my-2 w-full h-[19.5rem] overflow-auto">
           {filteredSearch &&
             filteredSearch.map((url: string, key: number) => (
               <li
@@ -116,7 +109,7 @@ const TrustedSitesView = () => {
             ))}
         </ul>
       </div>
-    </Layout>
+    </>
   );
 };
 

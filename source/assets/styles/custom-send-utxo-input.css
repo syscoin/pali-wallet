@@ -2,7 +2,7 @@
   display: flex;
   width: 352px;
   height: 40px;
-  padding: 11px 20px;
+  padding: 11px 45px 11px 20px;
   border-radius: 100px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background-color: #07152a !important;
@@ -19,60 +19,42 @@
 .sender-custom-input .ant-input {
   width: 352px;
   color: #fff !important;
-  padding: 11px 20px;
+  padding: 11px 45px 11px 20px;
 }
 
-.sender-custom-input .ant-input-suffix .anticon-close-circle {
-  content: url('../icons/errorIcon.svg');
-  position: absolute;
-  top: 18.5rem;
-  right: 45px;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 14px;
+/* Make the wrapper divs position relative for absolute positioning context */
+.sender-custom-input,
+.value-custom-input {
+  position: relative;
 }
 
-.sender-custom-input .ant-input-suffix .anticon-check-circle {
-  content: url('../icons/successIcon.svg');
-  position: absolute;
-  top: 18.5rem;
-  right: 45px;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 14px;
+/* Position validation icons inside sender-custom-input wrapper */
+.sender-custom-input .ant-form-item-feedback-icon {
+  position: absolute !important;
+  right: 20px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Position validation icons inside value-custom-input wrapper */
+.value-custom-input .ant-form-item-feedback-icon {
+  position: absolute !important;
+  right: 20px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .value-custom-input .ant-input {
   display: flex;
   width: 244px;
   height: 40px;
-  padding: 11px 20px;
+  padding: 11px 45px 11px 20px;
   border-radius: 100px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background-color: #07152a !important;
   font-size: 12px;
-}
-
-.value-custom-input .ant-input-suffix .anticon-close-circle {
-  content: url('../icons/errorIcon.svg');
-  position: absolute;
-  top: 1.3rem;
-  right: 23px;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 14px;
-}
-
-.value-custom-input .ant-input-suffix .anticon-check-circle {
-  content: url('../icons/successIcon.svg');
-  position: absolute;
-  top: 1.3rem;
-  right: 23px;
-  transform: translateY(-50%);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 14px;
 }

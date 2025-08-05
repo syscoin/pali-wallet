@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { KeyringAccountType } from 'types/network';
 
 import { IDAppState, IDApp } from './types';
 
@@ -12,11 +12,9 @@ const DAppState = createSlice({
   name: 'dapp',
   initialState,
   reducers: {
-    rehydrate(state: IDAppState, action: PayloadAction<IDAppState>) {
-      return {
-        ...state,
-        ...action.payload,
-      };
+    rehydrate(_state: IDAppState, action: PayloadAction<IDAppState>) {
+      // Complete replacement - consistent with vault and vaultGlobal rehydration
+      return action.payload;
     },
     addDApp(state: IDAppState, action: PayloadAction<IDApp>) {
       state.dapps[action.payload.host] = action.payload;

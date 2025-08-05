@@ -1,6 +1,4 @@
-import { ethers } from 'ethers';
-
-import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
+import { ISysAssetMetadata } from 'types/tokens';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
@@ -16,9 +14,31 @@ interface SysProviderState {
   initialized: boolean;
   isBitcoinBased: boolean;
   isPermanentlyDisconnected: boolean;
-  isTestnet: boolean | undefined;
   isUnlocked: boolean;
   xpub: string | null;
+}
+// Native utility to check if a string is a valid hex string
+function isHexString(value: any): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  // Must start with 0x
+  if (!value.startsWith('0x')) {
+    return false;
+  }
+
+  // Remove 0x prefix and check if remaining characters are valid hex
+  const hexPart = value.slice(2);
+
+  // Empty hex string after 0x is valid
+  if (hexPart.length === 0) {
+    return true;
+  }
+
+  // Check if all characters are valid hexadecimal
+  const hexRegex = /^[0-9a-fA-F]+$/;
+  return hexRegex.test(hexPart);
 }
 
 export class PaliInpageProviderSys extends BaseProvider {
@@ -29,13 +49,14 @@ export class PaliInpageProviderSys extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
-    isTestnet: false,
     isBitcoinBased: false,
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
   public networkVersion: string | null;
   public chainId: string | null;
+  private _isInitializing = false;
+  private _initializationPromise: Promise<void> | null = null;
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
@@ -45,24 +66,55 @@ export class PaliInpageProviderSys extends BaseProvider {
     };
     this.chainId = null;
     this.networkVersion = null;
-    this.request({ method: 'wallet_getSysProviderState' })
+
+    // Start initialization immediately and atomically
+    this._initializeProvider();
+
+    this.initMessageListener();
+  }
+
+  private _initializeProvider(): void {
+    // Check if already initializing and return existing promise if so
+    if (this._initializationPromise) {
+      return;
+    }
+
+    this._isInitializing = true;
+    this._initializationPromise = this.request({
+      method: 'wallet_getSysProviderState',
+    })
       .then((state) => {
         const initialState = state as Parameters<
           PaliInpageProviderSys['_initializeState']
         >[0];
+
         this._initializeState(initialState);
       })
-      .catch((error) =>
+      .catch((error) => {
         console.error(
           'Pali: Failed to get initial state. Please report this bug.',
           error
-        )
-      );
+        );
+        // Even if we fail to get initial state, mark as initialized
+        // This allows the provider to function with default state
+        this._initializeState();
+      })
+      .finally(() => {
+        this._isInitializing = false;
+        // Reset the promise to null to allow re-initialization if needed
+        this._initializationPromise = null;
+      });
+  }
+
+  public initMessageListener() {
     window.addEventListener(
-      'notification',
+      'paliNotification',
       (event: any) => {
-        const { method, params } = JSON.parse(event.detail);
+        const { data } = JSON.parse(event.detail);
+
+        const { method, params } = data;
         this.emit('walletUpdate');
+
         switch (method) {
           case 'pali_xpubChanged':
             this._handleConnectedXpub(params);
@@ -72,9 +124,6 @@ export class PaliInpageProviderSys extends BaseProvider {
             break;
           case 'pali_blockExplorerChanged':
             this._handleActiveBlockExplorer(params);
-            break;
-          case 'pali_isTestnet':
-            this._handleIsTestnet(params);
             break;
           case 'pali_isBitcoinBased':
             this._handleIsBitcoinBased(params);
@@ -92,15 +141,22 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_addProperty':
             break;
           default:
-            this._handleDisconnect(
-              false,
-              messages.errors.permanentlyDisconnected()
+            console.warn(
+              '[PaliSysProvider] Unknown notification method:',
+              method,
+              'params:',
+              params
             );
+            console.warn(
+              '[PaliSysProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+            );
+            // Don't disconnect for unknown notifications - just ignore them
+            // This prevents disconnection when switching networks or receiving notifications
+            // intended for other providers (like Ethereum provider)
+            break;
         }
       },
-      {
-        passive: true,
-      }
+      { passive: true }
     );
   }
 
@@ -119,7 +175,12 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _handleChainChanged({
     chainId,
     networkVersion,
-  }: { chainId?: string; networkVersion?: string } = {}) {
+    isBitcoinBased,
+  }: {
+    chainId?: string;
+    isBitcoinBased?: boolean;
+    networkVersion?: string;
+  } = {}) {
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,
@@ -131,11 +192,22 @@ export class PaliInpageProviderSys extends BaseProvider {
     if (chainId !== this.chainId) {
       this.chainId = chainId;
       this.networkVersion = networkVersion;
+      if (this._sysState.initialized && isBitcoinBased) {
+        this.emit('chainChanged', this.chainId);
+      }
+    } else if (isBitcoinBased) {
+      if (this._sysState.initialized) {
+        this.emit('chainChanged', chainId);
+      }
     }
   }
 
   public async activeExplorer(): Promise<string> {
     if (!this._sysState.initialized) {
+      // If not initialized and no initialization in progress, start it
+      if (!this._initializationPromise) {
+        this._initializeProvider();
+      }
       await new Promise<void>((resolve) => {
         this.on('_sysInitialized', () => resolve());
       });
@@ -172,6 +244,10 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   public async isUnlocked(): Promise<boolean> {
     if (!this._sysState.initialized) {
+      // If not initialized and no initialization in progress, start it
+      if (!this._initializationPromise) {
+        this._initializeProvider();
+      }
       await new Promise<void>((resolve) => {
         this.on('_sysInitialized', () => resolve());
       });
@@ -179,27 +255,40 @@ export class PaliInpageProviderSys extends BaseProvider {
     return this._sysState.isUnlocked;
   }
 
-  public async isTestnet(): Promise<boolean> {
-    if (!this._sysState.initialized) {
-      await new Promise<void>((resolve) => {
-        this.on('_sysInitialized', () => resolve());
-      });
-    }
-    return this._sysState.isTestnet;
-  }
-
   public isBitcoinBased(): boolean {
-    return this._sysState.isBitcoinBased;
+    // If initialized, return the actual state
+    if (this._sysState.initialized) {
+      return this._sysState.isBitcoinBased;
+    }
+
+    // If not initialized, try to get a quick state check
+    // Start initialization if not already in progress
+    if (!this._initializationPromise) {
+      this._initializeProvider();
+    }
+
+    // For the Syscoin provider, we need to be more careful about the default
+    // Check if we have any reliable indicator of the network type
+
+    // Default to false (EVM) to be safe - this will show the network switch button
+    // which is better UX than blocking calls with wrong network assumptions
+    // The proper state will be updated once initialization completes
+    return false;
   }
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (args.method !== 'wallet_getSysProviderState') {
-      const isSyscoinChain = await this._isSyscoinChain;
-      if (!isSyscoinChain)
-        throw new Error(
-          'UTXO Content only are valid for syscoin chain for now'
-        );
+      // Wait for initialization if not already initialized
+      if (!this._sysState.initialized) {
+        // If not initialized and no initialization in progress, start it
+        if (!this._initializationPromise) {
+          this._initializeProvider();
+        }
+        await new Promise<void>((resolve) => {
+          this.on('_sysInitialized', () => resolve());
+        });
+      }
     }
     return super.request(args);
   }
@@ -242,7 +331,7 @@ export class PaliInpageProviderSys extends BaseProvider {
    * @param opts.isUnlocked - The latest isUnlocked value.
    */
   private _handleConnectedXpub(xpub: string | null) {
-    if (!ethers.utils.isHexString(xpub) || xpub === null) {
+    if (!isHexString(xpub) || xpub === null) {
       this._sysState.xpub = xpub;
     }
   }
@@ -256,25 +345,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     isBitcoinBased: boolean;
   }) {
     this._sysState.isBitcoinBased = isBitcoinBased;
-  }
-  private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
-    this._sysState.isTestnet = isTestnet;
-  }
-  private async _isSyscoinChain(): Promise<boolean> {
-    let checkExplorer = false;
-    try {
-      //Only trezor blockbooks are accepted as endpoint for UTXO chains for now
-      const rpcoutput = await (
-        await fetch(this._sysState.blockExplorerURL + 'api/v2')
-      ).json();
-      checkExplorer = rpcoutput.blockbook.coin
-        .toLowerCase()
-        .includes('syscoin');
-    } catch (e) {
-      //Its not a blockbook, so it might be a ethereum RPC
-      checkExplorer = false;
-    }
-    return checkExplorer;
   }
 
   /**
@@ -316,15 +386,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     return new Proxy(
       {
         /**
-         * Determines if asset is a NFT on syscoin UTXO.
-         *
-         * @returns Promise resolving to true if asset isNFT
-         */
-        isNFT: (guid: number) => {
-          const validated = _isNFT(guid);
-          return validated;
-        },
-        /**
          * Get the minted tokens by the current connected Xpub on UTXO chain.
          *
          * @returns Promise send back tokens data
@@ -334,8 +395,9 @@ export class PaliInpageProviderSys extends BaseProvider {
           if (account) {
             const { transactions } = account as any;
 
+            // Filter for asset allocation mint transactions (Syscoin 5)
             const filteredTxs = transactions?.filter(
-              (tx: any) => tx.tokenType === 'SPTAssetActivate'
+              (tx: any) => tx.tokenType === 'assetallocationmint'
             );
 
             const allTokens = [];
@@ -350,18 +412,19 @@ export class PaliInpageProviderSys extends BaseProvider {
 
             const txs = await Promise.all(
               allTokens.map(async (t: any) => {
-                const assetInfo = await getAsset(
-                  this._sysState.blockExplorerURL,
-                  t.token
-                );
-                const formattedAssetInfo = {
-                  ...assetInfo,
-                  symbol: Buffer.from(
-                    String(assetInfo.symbol),
-                    'base64'
-                  ).toString('utf-8'),
-                };
-                if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
+                const assetInfo = (await this.request({
+                  method: 'wallet_getSysAssetMetadata',
+                  params: [t.token, this._sysState.blockExplorerURL],
+                })) as ISysAssetMetadata | null;
+
+                // Return the asset info with the symbol as-is (Syscoin 5 uses plain text)
+                if (assetInfo && assetInfo.assetGuid) {
+                  return {
+                    ...assetInfo,
+                    symbol: assetInfo.symbol, // Syscoin 5 uses plain text symbols
+                  };
+                }
+                return undefined;
               })
             );
 
@@ -397,13 +460,19 @@ export class PaliInpageProviderSys extends BaseProvider {
          * @returns Promise send back tokens data
          */
         getDataAsset: async (assetGuid: any) => {
-          if (this._sysState) {
-            //TODO: create sysInitialized event
+          if (!this._sysState.initialized) {
+            // If not initialized and no initialization in progress, start it
+            if (!this._initializationPromise) {
+              this._initializeProvider();
+            }
             await new Promise<void>((resolve) => {
               this.on('_sysInitialized', () => resolve());
             });
           }
-          return getAsset(this._sysState.blockExplorerURL, assetGuid);
+          return this.request({
+            method: 'wallet_getSysAssetMetadata',
+            params: [assetGuid, this._sysState.blockExplorerURL],
+          });
         },
       },
       {

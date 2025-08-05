@@ -11,7 +11,7 @@
   font-style: normal;
   font-weight: 400;
   line-height: normal;
-  padding: 11px 86px 11px 20px !important;
+  padding: 11px 45px 11px 20px !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20,7 +20,7 @@
 .custom-input-normal .ant-input-suffix .anticon-close-circle {
   display: inline-block;
   position: absolute;
-  content: url('../icons/errorIcon.svg');
+  content: url('../all_assets/errorIcon.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-style: normal;
@@ -35,7 +35,7 @@
 .custom-input-normal .ant-input-suffix .anticon-check-circle {
   display: inline-block;
   position: absolute;
-  content: url('../icons/successIcon.svg');
+  content: url('../all_assets/successIcon.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-style: normal;

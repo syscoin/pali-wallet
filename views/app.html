@@ -1,25 +1,103 @@
 <!DOCTYPE html>
-<html lang="en" class="remove-scrollbar">
+<html lang="en" class="remove-scrollbar" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=500" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="preconnect" href="https://fonts.gstatic.com" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Poppins&display=swap"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Rubik&display=swap"
-      rel="stylesheet"
-    />
+    <meta name="google" content="notranslate" />
+    <!-- Performance hints -->
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <title>Pali Wallet</title>
+    <style>
+      /* Ensure body has the correct background immediately */
+      body {
+        background-color: #061120; /* Same as bg-bkg-6 */
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Initial loading screen styles */
+      #initial-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: #061120; /* Match bg-bkg-6 */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.1s ease-out;
+      }
+
+      #initial-loader .logo-container {
+        display: flex;
+        gap: 12px;
+        animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+
+      #initial-loader h1 {
+        color: #4da2cf;
+        font-family: 'Poppins', sans-serif;
+        font-size: 37.87px;
+        line-height: 37.87px;
+        letter-spacing: 0.379px;
+        margin: 0;
+      }
+
+      #initial-loader .bold {
+        font-weight: 700;
+      }
+
+      #initial-loader .light {
+        font-weight: 300;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      /* Hide loader when React app is ready */
+      body.app-loaded #initial-loader {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* Ensure the app root is hidden until ready */
+      #app-root {
+        opacity: 0;
+        transition: opacity 0.1s ease-in;
+      }
+
+      body.app-loaded #app-root {
+        opacity: 1;
+      }
+    </style>
   </head>
-  <body class="remove-scrollbar h-popup bg-bkg-6 overflow-hidden sm:py-8">
-    <div id="app-root" class="w-full min-w-popup h-full min-h-popup" />
+  <body
+    class="remove-scrollbar h-popup bg-bkg-6 overflow-x-hidden overflow-y-hidden sm:py-8"
+  >
+    <!-- Initial loading screen that shows immediately -->
+    <div id="initial-loader">
+      <div class="logo-container">
+        <h1 class="bold">Pali</h1>
+        <h1 class="light">Wallet</h1>
+      </div>
+    </div>
+
+    <div
+      id="app-root"
+      class="w-full min-w-popup max-w-popup h-full min-h-popup overflow-x-hidden"
+    />
+
+    <script src="assets/js/appLoader.js"></script>
   </body>
 </html>

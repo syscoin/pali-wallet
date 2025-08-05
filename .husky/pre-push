@@ -1,4 +1,9 @@
 #!/bin/sh
 . "$(dirname "$0")/_/husky.sh"
 
-tsc --pretty --noEmit
+# Load nvm if it exists
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+# Use the type-check script from package.json
+yarn type-check

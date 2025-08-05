@@ -1,6 +1,36 @@
-import React from 'react';
+import React, { memo } from 'react';
 
-import { Icon } from '..';
+import { LoadingSvg } from 'components/Icon/Icon';
+import { Icon } from 'components/index';
+
+// Width class mapping to ensure Tailwind includes these classes
+const widthClasses: Record<string, string> = {
+  '36': 'w-36',
+  '40': 'w-40',
+  '44': 'w-44',
+  '48': 'w-48',
+  '52': 'w-52',
+  '56': 'w-56',
+  '60': 'w-60',
+  '64': 'w-64',
+  full: 'w-full',
+};
+
+// Memoize loading icons to prevent unnecessary re-renders
+const LoadingIconPrimary = memo(() => (
+  <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
+));
+LoadingIconPrimary.displayName = 'LoadingIconPrimary';
+
+const LoadingIconWhite = memo(() => (
+  <LoadingSvg className="w-5 animate-spin" style={{ color: '#ffffff' }} />
+));
+LoadingIconWhite.displayName = 'LoadingIconWhite';
+
+const LoadingIconDark = memo(() => (
+  <LoadingSvg className="w-5 animate-spin" style={{ color: '#1f2937' }} />
+));
+LoadingIconDark.displayName = 'LoadingIconDark';
 
 interface IPrimaryButton {
   action?: boolean;
@@ -39,13 +69,19 @@ export const Button: React.FC<IButton> = ({
   width = '36',
 }) => (
   <button
-    className={`${className} ${useDefaultWidth && `w-${width}`}`}
+    className={`${className} ${
+      useDefaultWidth && (widthClasses[width] || 'w-36')
+    } ${
+      disabled || loading
+        ? 'opacity-60 cursor-not-allowed'
+        : 'hover:scale-105 active:scale-95'
+    } flex justify-center items-center transition-all duration-200`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}
     id={id}
   >
-    {children}
+    {loading ? <LoadingIconPrimary /> : children}
   </button>
 );
 
@@ -69,23 +105,21 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
 
   return (
     <button
-      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
         ${
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
-            : 'opacity-100 hover:bg-button-primaryhover'
-        } border-button-primary bg-button-primary  text-brand-white w-${width}`}
+            : 'opacity-100 hover:bg-button-primaryhover hover:scale-105 active:scale-95 hover:shadow-lg'
+        } border-button-primary bg-button-primary text-brand-white`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
       id={id}
     >
       {loading ? (
-        <Icon
-          name="loading"
-          color="#4d76b8"
-          className="w-6 animate-spin-slow"
-        />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && checkIcon}
@@ -116,23 +150,21 @@ export const SecondButton: React.FC<IPrimaryButton> = ({
 
   return (
     <button
-      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } transition-all duration-200 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
         ${
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
-            : 'opacity-100 hover:bg-button-primaryhover'
-        } border-button-primary  text-brand-white w-${width}`}
+            : 'opacity-100 hover:bg-button-primaryhover hover:scale-105 active:scale-95 hover:shadow-lg'
+        } border-button-primary text-brand-white`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
       id={id}
     >
       {loading ? (
-        <Icon
-          name="loading"
-          color="#4d76b8"
-          className="w-6 animate-spin-slow"
-        />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && closeIcon}
@@ -151,6 +183,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type,
+  width = '36',
 }) => {
   const closeIcon = (
     <Icon
@@ -163,23 +196,21 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   return (
     <button
       className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-white
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 ${
+        widthClasses[width] || 'w-36'
+      } h-10 text-brand-white
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
-          : 'opacity-100 hover:bg-button-secondaryhover'
-      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5`}
+          : 'opacity-100 hover:bg-button-secondaryhover hover:scale-105 active:scale-95 hover:shadow-lg'
+      } border-2 border-button-secondary transition-all duration-200 bg-button-secondary`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
       id={id}
     >
       {loading ? (
-        <Icon
-          name="loading"
-          color="#4d76b8"
-          className="w-6 animate-spin-slow"
-        />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && closeIcon}
@@ -204,12 +235,12 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
     className={`
       flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal leading-4 ${
         fullWidth ? 'w-full' : 'w-36'
-      } h-10 text-brand-royalblue
+      } h-10
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
-          : 'opacity-100 hover:opacity-90'
-      } border-button-neutral transition-all duration-300 bg-button-neutral  py-2.5 ${
+          : 'opacity-100 hover:opacity-90 hover:scale-105 active:scale-95 hover:shadow-md'
+      } border-2 border-button-neutral transition-all duration-200 bg-button-neutral ${
       extraStyles ? extraStyles : 'text-sm text-brand-royalblue'
     }`}
     disabled={disabled || loading}
@@ -217,10 +248,6 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
     type={type}
     id={id}
   >
-    {loading ? (
-      <Icon name="loading" color="#4d76b8" className="w-6 animate-spin-slow" />
-    ) : (
-      <>{children}</>
-    )}
+    {loading ? <LoadingIconPrimary /> : <>{children}</>}
   </button>
 );

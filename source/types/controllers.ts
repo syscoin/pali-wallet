@@ -1,258 +1,10 @@
-//@ts-nocheck
-
-import {
-  IKeyringManager,
-  IKeyringAccountState,
-  KeyringAccountType,
-  IWalletState,
-} from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
-import {
-  ITokenMap,
-  ICoingeckoToken,
-  ICoingeckoSearchResults,
-} from '@pollum-io/sysweb3-utils';
-
-import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
-import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { IAssetsManager } from 'scripts/Background/controllers/assets/types';
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
-import {
-  IEvmTransactionResponse,
-  ISysTransaction,
-  ITransactionsManager,
-} from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
-
-import { ITokenEthProps, IWatchAssetTokenProps } from './tokens';
-import { ICustomRpcParams } from './transactions';
-
-export interface IMainController extends IKeyringManager {
-  account: {
-    eth: IEthAccountController;
-    sys: ISysAccountController;
-  };
-  addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
-  addWindowEthProperty: () => void;
-  assets: IAssetsManager;
-  createAccount: (
-    isBitcoinBased: boolean,
-    activeNetworkChainId: number,
-    label?: string
-  ) => Promise<IKeyringAccountState>;
-  createWallet: (password: string, phrase: string) => Promise<void>;
-  editAccountLabel: (
-    label: string,
-    accountId: number,
-    accountType: KeyringAccountType
-  ) => void;
-  editCustomRpc: (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
-  ) => Promise<INetwork>;
-  fetchAndUpdateNftsState: ({
-    activeNetwork,
-    activeAccount,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-  }) => Promise<void>;
-  forgetWallet: (pwd: string) => void;
-  getAssetInfo: (
-    type: string,
-    asset: IWatchAssetTokenProps
-  ) => Promise<ITokenEthProps>;
-  getChangeAddress: (accountId: number) => Promise<string>;
-  getLatestUpdateForCurrentAccount: () => void;
-  getRecommendedFee: (data?: string | boolean) =>
-    | Promise<number>
-    | Promise<
-        | string
-        | {
-            ethers: string;
-            gwei: string;
-          }
-      >;
-  getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
-  getSeed: (pwd: string) => Promise<any>;
-  handleWatchAsset: (
-    type: string,
-    asset: IWatchAssetTokenProps
-  ) => Promise<boolean>;
-  importAccountFromPrivateKey: (
-    privKey: string,
-    label?: string
-  ) => Promise<IKeyringAccountState>;
-  importLedgerAccount: (
-    coin: string,
-    slip44: string,
-    index: string,
-    isAlreadyConnected: boolean
-  ) => Promise<any>;
-  lock: () => void;
-  openDAppErrorModal: () => void;
-  removeKeyringNetwork: (
-    chain: string,
-    chainId: number,
-    rpcUrl: string,
-    label: string,
-    key?: string
-  ) => void;
-  removeWindowEthProperty: () => void;
-  resolveAccountConflict: () => void;
-  resolveError: () => void;
-  sendAndSaveTransaction: (
-    tx: IEvmTransactionResponse | ISysTransaction
-  ) => void;
-  setAccount: (
-    id: number,
-    type: KeyringAccountType,
-    host?: string,
-    connectedAccount?: IOmmitedAccount
-  ) => void;
-  setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
-  setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
-  setAutolockTimer: (minutes: number) => void;
-  setEvmTransactionAsAccelerated: (
-    oldTxHash: string,
-    chainID: number,
-    newTxValue: IEvmTransactionResponse
-  ) => void;
-  setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
-  setHasEthProperty: (exist: boolean) => void;
-  setIsAutolockEnabled: (isEnabled: boolean) => void;
-  setIsLastTxConfirmed: (
-    chainId: number,
-    wasConfirmed: boolean,
-    isFirstTime?: boolean
-  ) => void;
-  setIsPaliNetworkChanging: (isChanging: boolean) => void;
-  transactions: ITransactionsManager;
-  unlock: (
-    pwd: string,
-    isForPvtKey?: boolean
-  ) => Promise<{
-    canLogin: boolean;
-    wallet?: IWalletState;
-  }>;
-  unlockFromController: (pwd: string) => Promise<boolean>;
-  updateAssetsFromCurrentAccount: ({
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-    isPolling,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-    isBitcoinBased: boolean;
-    isPolling: boolean;
-  }) => void;
-  updateUserNativeBalance: ({
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-    isBitcoinBased: boolean;
-  }) => void;
-  updateUserTransactionsState: ({
-    isPolling,
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-    isBitcoinBased: boolean;
-    isPolling: boolean;
-  }) => void;
-  validatePendingEvmTransactions: ({
-    activeAccount,
-    activeNetwork,
-    pendingTransactions,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-    pendingTransactions: IEvmTransactionResponse[];
-  }) => void;
-}
-
-export interface IEthTokenDetails {
-  contract: string;
-  decimals: number;
-  description: string;
-  id: string;
-  name: string;
-  symbol: string;
-}
-
-export interface IControllerUtils {
-  getAsset: (
-    explorerUrl: string,
-    assetGuid: string
-  ) => Promise<{
-    assetGuid: string;
-    contract: string;
-    decimals: number;
-    maxSupply: string;
-    pubData: any;
-    symbol: string;
-    totalSupply: string;
-    updateCapabilityFlags: number;
-  }>;
-  getFeeRate: (fee: number) => bigint;
-  getPsbtFromJson: (psbt: JSON) => string;
-  getRawTransaction: (explorerUrl: string, txid: string) => any;
-  getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
-  getToken: (tokenId: string) => Promise<ICoingeckoToken>;
-  getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
-  getTokenJson: () => {
-    address: string;
-    chainId: number;
-    decimals: number;
-    logoURI: string;
-    name: string;
-    symbol: string;
-  }[];
-  getTokenMap: ({
-    guid,
-    changeAddress,
-    amount,
-    receivingAddress,
-  }: {
-    amount: number;
-    changeAddress: string;
-    guid: number | string;
-    receivingAddress: string;
-  }) => ITokenMap;
-  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
-  isValidSYSAddress: (
-    address: string,
-    purpose: number,
-    verification?: boolean
-  ) => boolean;
-  setFiat: (currency?: string, assetId?: string) => Promise<void>;
-}
+import { KeyringAccountType, INetwork } from 'types/network';
 
 export interface IDAppController {
   /**
@@ -286,9 +38,6 @@ export interface IDAppController {
   getNetwork: () => INetwork;
   getState: () => any;
   /**
-   * Changes the active network
-   */
-  /**
    * Update state and emit events to all connected dApps
    * @emits PaliSyscoinEvents
    */
@@ -296,10 +45,6 @@ export interface IDAppController {
     id: PaliSyscoinEvents,
     data: { method: string; params: any }
   ) => Promise<void>;
-
-  /**
-   * Changes the active network
-   */
 
   /**
    * Update state and emit events to all connected dApps
@@ -334,5 +79,14 @@ export interface IDAppController {
   /**
    * Setup communication
    */
-  setup: (port: chrome.runtime.Port) => void;
+  setup: (sender: chrome.runtime.MessageSender) => void;
+}
+
+export interface IEventData {
+  detail?: string;
+  eventName: string;
+}
+
+export interface ICustomEvent {
+  data: IEventData;
 }

@@ -4,7 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { OnboardingLayout, Button } from 'components/index';
+import { Button } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useController } from 'hooks/useController';
 import { formatSeedPhrase } from 'utils/format';
@@ -110,7 +111,7 @@ const ImportPhrase: React.FC = () => {
                     seedLength: value.seedLength,
                     seedLengthError: value.seedLengthError,
                   });
-                  return Promise.reject();
+                  return Promise.reject(new Error('Invalid seed phrase'));
                 });
               },
             }),
@@ -135,13 +136,13 @@ const ImportPhrase: React.FC = () => {
                 <img
                   className={eyeStyle}
                   onClick={() => setVisible(false)}
-                  src="/assets/icons/visibleEye.svg"
+                  src="/assets/all_assets/visibleEye.svg"
                 />
               ) : (
                 <img
                   className={eyeStyle}
                   onClick={() => setVisible(true)}
-                  src="/assets/icons/notVisibleEye.svg"
+                  src="/assets/all_assets/notVisibleEye.svg"
                 />
               )}
             </div>

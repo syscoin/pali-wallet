@@ -1,19 +1,18 @@
-import MainController from 'scripts/Background/controllers/MainController';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
-import { IMainController } from 'types/controllers';
+import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 
 import { UpdateTxAction } from './transactions';
 
 // eslint-disable-next-line no-shadow
-export enum NetworkType {
-  EVM = 'EVM',
-  UTXO = 'UTXO',
-}
-// eslint-disable-next-line no-shadow
 export enum PaliLanguages {
+  DE = 'de',
   EN = 'en',
   ES = 'es',
-  PT = 'pt-br',
+  FR = 'fr',
+  JA = 'ja',
+  KO = 'ko',
+  PT = 'pt',
+  RU = 'ru',
+  ZH = 'zh',
 }
 
 export interface ITransactionOptions {
@@ -21,7 +20,9 @@ export interface ITransactionOptions {
   chainId: number;
   handleUpdateTransaction: ({
     updateData,
+    t,
   }: {
+    t: (key: string) => string;
     updateData: {
       alert: any;
       chainId: number;
@@ -43,11 +44,4 @@ export interface ITransactionOptions {
     }>
   >;
   transaction: IEvmTransaction;
-}
-
-export interface IEIP6963ProviderInfo {
-  icon: string;
-  name: string;
-  rdns: string;
-  uuid: string;
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import LogoImage from 'assets/images/logo-s.svg';
+import favicon128 from 'assets/all_assets/favicon-128.png';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 
@@ -10,9 +10,9 @@ export const LogoHeader: React.FC = () => {
   return (
     <div className="relative">
       <img
-        src={`${LogoImage}`}
-        className="max-w-40 mt-4 mx-auto w-40"
-        alt="pali"
+        src={favicon128}
+        className="max-w-40 mt-4 mx-auto w-40 h-40"
+        alt="Pali Wallet"
       />
 
       <IconButton

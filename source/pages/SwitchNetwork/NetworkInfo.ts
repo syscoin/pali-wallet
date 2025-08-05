@@ -1,17 +1,27 @@
-import leftLogoEthChain from 'assets/images/ethChainDarkBlue.svg';
-import leftLogoPinkBitcoin from 'assets/images/pinkBitcoin.svg';
-import rightLogoRolluxChain from 'assets/images/rolluxChainWhite.svg';
-import rightLogoSysWhite from 'assets/images/sysChainWhite.svg';
-import { NetworkType } from 'utils/types';
+import React from 'react';
+
+import {
+  EthChainDarkBlueSvg,
+  PinkBitcoinSvg,
+  RolluxChainWhiteSvg,
+  SysChainWhiteSvg,
+} from 'components/Icon/Icon';
+import { INetworkType } from 'types/network';
 
 interface INetworkInfo {
   connectedColor: string;
-  connectedNetwork: NetworkType;
-  leftLogo: string;
+  connectedNetwork: INetworkType;
+  leftLogo: React.ComponentType<{
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   networkDescription: string;
   networkNeedsChangingColor: string;
-  networkThatNeedsChanging: NetworkType;
-  rightLogo: string;
+  networkThatNeedsChanging: string;
+  rightLogo: React.ComponentType<{
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   selectedNetworkText: string;
 }
 
@@ -20,41 +30,68 @@ const BLUE_COLOR = 'text-brand-blue200';
 
 export const useNetworkInfo = ({
   isBitcoinBased,
-  isChanging,
   selectedNetwork,
 }: {
   isBitcoinBased?: boolean;
-  isChanging?: boolean;
   selectedNetwork?: string;
 }): INetworkInfo => {
-  const utxoNetwork: INetworkInfo = {
-    connectedNetwork: NetworkType.UTXO,
-    networkThatNeedsChanging: NetworkType.EVM,
+  // For switching context (what you need to switch TO)
+  const utxoSwitchingInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Syscoin,
+    networkThatNeedsChanging: 'EVM',
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',
     selectedNetworkText: 'Select an EVM network:',
-    leftLogo: leftLogoEthChain,
-    rightLogo: rightLogoRolluxChain,
+    leftLogo: EthChainDarkBlueSvg,
+    rightLogo: RolluxChainWhiteSvg,
   };
 
-  const evmNetworkInfo: INetworkInfo = {
-    connectedNetwork: NetworkType.EVM,
-    networkThatNeedsChanging: NetworkType.UTXO,
+  const evmSwitchingInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Ethereum,
+    networkThatNeedsChanging: 'UTXO',
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
     selectedNetworkText: 'Select a UTXO network:',
-    leftLogo: leftLogoPinkBitcoin,
-    rightLogo: rightLogoSysWhite,
+    leftLogo: PinkBitcoinSvg,
+    rightLogo: SysChainWhiteSvg,
+  };
+
+  // For selection context (what you're currently selecting)
+  const utxoSelectionInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Syscoin,
+    networkThatNeedsChanging: 'UTXO',
+    connectedColor: PINK_COLOR,
+    networkNeedsChangingColor: PINK_COLOR,
+    networkDescription: 'Unspent Transaction Output',
+    selectedNetworkText: 'Select a UTXO network:',
+    leftLogo: PinkBitcoinSvg,
+    rightLogo: SysChainWhiteSvg,
+  };
+
+  const evmSelectionInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Ethereum,
+    networkThatNeedsChanging: 'EVM',
+    connectedColor: BLUE_COLOR,
+    networkNeedsChangingColor: BLUE_COLOR,
+    networkDescription: 'Ethereum Virtual Machine',
+    selectedNetworkText: 'Select an EVM network:',
+    leftLogo: EthChainDarkBlueSvg,
+    rightLogo: RolluxChainWhiteSvg,
   };
 
   let value: any;
 
-  if (isChanging) {
-    value = selectedNetwork === 'UTXO' ? evmNetworkInfo : utxoNetwork;
+  // If selectedNetwork is provided, use selection context (for network selection tabs)
+  // Otherwise, use switching context (for warning messages)
+  if (selectedNetwork) {
+    value =
+      selectedNetwork === INetworkType.Syscoin
+        ? utxoSelectionInfo
+        : evmSelectionInfo;
   } else {
-    value = isBitcoinBased ? utxoNetwork : evmNetworkInfo;
+    value = isBitcoinBased ? utxoSwitchingInfo : evmSwitchingInfo;
   }
 
   return value;

@@ -2,10 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import floating dots animation */
+@import './floating-dots-animation.css';
+
+/* Import login screen animation */
+@import './login-animation.css';
+
+/* Import gradient banner animation */
+@import './gradient-banner-animation.css';
+
 /** ALERTS/TOASTS **/
 
-div[role='alert'] {
-  @apply absolute left-1/4 right-1/4 text-center text-brand-white text-base font-light;
+/* Pali Toast Styles */
+.pali-toast {
+  font-family: 'Poppins', sans-serif !important;
+  bottom: 1rem !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+}
+
+/* Override the default toast content wrapper */
+.Toastify__toast.pali-toast-content {
+  background-color: #111e33 !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #4d76b8 !important;
+  box-shadow: 0 10px 25px rgba(7, 21, 42, 0.4) !important;
+  font-family: 'Poppins', sans-serif !important;
+  padding: 16px 20px !important;
+  min-height: 64px !important;
+  max-width: 420px !important;
+  width: auto !important;
+}
+
+/* Ensure toast container doesn't block interaction */
+.Toastify__toast-container {
+  pointer-events: none !important;
+}
+
+.Toastify__toast {
+  pointer-events: auto !important;
+}
+
+/* Ensure toast body text is visible */
+.Toastify__toast.pali-toast-content .Toastify__toast-body {
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: visible !important;
+  text-overflow: initial !important;
+  white-space: normal !important;
+}
+
+/* Ensure the text div is visible */
+.Toastify__toast.pali-toast-content .Toastify__toast-body > div:last-child {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+  overflow: visible !important;
+  text-overflow: initial !important;
+  white-space: normal !important;
+}
+
+/* Style the icon */
+.Toastify__toast.pali-toast-content .Toastify__toast-icon {
+  width: 20px !important;
+  height: 20px !important;
+  margin-inline-end: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Default progress bar style */
+.pali-toast-progress {
+  background-color: #4d76b8 !important;
+  height: 3px !important;
+}
+
+/* Success toast progress bar - green */
+.Toastify__toast--success .pali-toast-progress {
+  background-color: #10b981 !important; /* Green color for success */
+}
+
+/* Error toast progress bar - red */
+.Toastify__toast--error .pali-toast-progress {
+  background-color: #ef4444 !important; /* Red color for error */
+}
+
+/* Warning toast progress bar - yellow */
+.Toastify__toast--warning .pali-toast-progress {
+  background-color: #f59e0b !important; /* Yellow color for warning */
+}
+
+/* Info toast progress bar - blue */
+.Toastify__toast--info .pali-toast-progress {
+  background-color: #3b82f6 !important; /* Blue color for info */
 }
 
 /** IDENTICONS **/
@@ -289,4 +385,67 @@ input[type='number']::-webkit-inner-spin-button {
 /** Input Type Radio **/
 .ant-radio {
   @apply flex items-center justify-center;
+}
+
+/* NAVIGATION ANIMATIONS - Prevent flash during page transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 200ms ease-in-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 200ms ease-in-out;
+}
+
+/* Smooth transitions for all layout elements */
+.layout-transition {
+  transition: all 200ms ease-in-out;
+}
+
+/* Prevent flash of unstyled content */
+.page-content {
+  opacity: 1;
+  /* Removed animation to prevent blip during route transitions */
+}
+
+/* Custom animation for critical network errors */
+@keyframes pulse-fast {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-fast {
+  animation: pulse-fast 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Line clamp utility for token descriptions */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

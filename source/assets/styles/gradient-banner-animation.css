@@ -1,0 +1,240 @@
+/* Gradient Banner Particle Animation for Send/Receive/Transaction Screens */
+
+/* Container for animated elements on gradient banners */
+.gradient-banner-animated {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle particle layer over the gradient banner */
+.gradient-banner-animated::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Banner particles - soft blurred glowing dots like in the image */
+.banner-particle-1 {
+  position: absolute;
+  top: 15%;
+  right: 10%;
+  width: 8px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  filter: blur(3px);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+  animation: bannerTwinkle1 12s ease-in-out infinite,
+    bannerDrift1 20s ease-in-out infinite;
+  z-index: 3;
+}
+
+.banner-particle-2 {
+  position: absolute;
+  top: 60%;
+  left: 15%;
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
+  animation: bannerTwinkle2 15s ease-in-out infinite,
+    bannerDrift2 25s ease-in-out infinite;
+  z-index: 3;
+}
+
+.banner-particle-3 {
+  position: absolute;
+  top: 30%;
+  left: 75%;
+  width: 5px;
+  height: 5px;
+  background: rgba(254, 0, 119, 0.8);
+  border-radius: 50%;
+  filter: blur(2px);
+  box-shadow: 0 0 10px rgba(254, 0, 119, 0.6);
+  animation: bannerTwinkle3 18s ease-in-out infinite,
+    bannerDrift3 30s ease-in-out infinite;
+  z-index: 3;
+}
+
+.banner-particle-4 {
+  position: absolute;
+  top: 75%;
+  right: 25%;
+  width: 7px;
+  height: 7px;
+  background: rgba(40, 79, 148, 0.7);
+  border-radius: 50%;
+  filter: blur(3px);
+  box-shadow: 0 0 14px rgba(40, 79, 148, 0.5);
+  animation: bannerTwinkle4 10s ease-in-out infinite,
+    bannerDrift4 22s ease-in-out infinite;
+  z-index: 3;
+}
+
+.banner-particle-5 {
+  position: absolute;
+  top: 45%;
+  left: 40%;
+  width: 4px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  filter: blur(1px);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+  animation: bannerTwinkle5 14s ease-in-out infinite,
+    bannerDrift5 28s ease-in-out infinite;
+  z-index: 3;
+}
+
+/* Twinkling animations */
+@keyframes bannerTwinkle1 {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.3);
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+  }
+}
+
+@keyframes bannerTwinkle2 {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1);
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.4);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.5);
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.6);
+  }
+}
+
+@keyframes bannerTwinkle3 {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+    box-shadow: 0 0 3px rgba(254, 0, 119, 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2);
+    box-shadow: 0 0 5px rgba(254, 0, 119, 0.6);
+  }
+}
+
+@keyframes bannerTwinkle4 {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(1);
+    box-shadow: 0 0 4px rgba(40, 79, 148, 0.3);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.4);
+    box-shadow: 0 0 6px rgba(40, 79, 148, 0.5);
+  }
+}
+
+@keyframes bannerTwinkle5 {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(1);
+    box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.4);
+  }
+}
+
+/* Subtle drift animations */
+@keyframes bannerDrift1 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(-8px, 4px);
+  }
+}
+
+@keyframes bannerDrift2 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(6px, -3px);
+  }
+}
+
+@keyframes bannerDrift3 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(-5px, 6px);
+  }
+}
+
+@keyframes bannerDrift4 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(4px, -2px);
+  }
+}
+
+@keyframes bannerDrift5 {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  50% {
+    transform: translate(-3px, 2px);
+  }
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .banner-particle-1,
+  .banner-particle-2,
+  .banner-particle-3,
+  .banner-particle-4,
+  .banner-particle-5 {
+    animation: none !important;
+    opacity: 0.3;
+  }
+}
+
+/* Performance optimization */
+.banner-particle-1,
+.banner-particle-2,
+.banner-particle-3,
+.banner-particle-4,
+.banner-particle-5 {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}

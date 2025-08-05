@@ -1,18 +1,26 @@
-import { BigNumber } from 'ethers';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { BigNumber } from '@ethersproject/bignumber';
+import { Block } from '@ethersproject/providers';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import store from 'state/store';
+import { INetwork } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
+
+import { safeBigNumber } from './safeBigNumber';
 
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetwork
 ) => {
-  const currentBlock = (await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],
-    ['eth_getBlockByNumber', ['latest', false]]
-  )) as any;
+  // Safety check: this function is only for EVM networks
+  const { isBitcoinBased } = store.getState().vault;
+  if (isBitcoinBased) {
+    throw new Error(
+      'fetchGasAndDecodeFunction is not available on UTXO networks'
+    );
+  }
+  const blockData = await controllerEmitter(['wallet', 'getCurrentBlock'], []);
+  const currentBlock = blockData as Block;
 
   const gasLimitFromCurrentBlock = Math.floor(
     Number(currentBlock.gasLimit) * 0.95
@@ -65,19 +73,25 @@ export const fetchGasAndDecodeFunction = async (
   } else {
     // verify tx data
     try {
-      // if it run successfully, the contract data is all right.
-      const clonedTx = { ...dataTx };
-      delete clonedTx.gasLimit;
-      delete clonedTx.gas;
-      delete clonedTx.maxPriorityFeePerGas;
-      delete clonedTx.maxFeePerGas;
-      if (!dataTx.to) {
-        delete clonedTx.to;
+      // Skip eth_call validation for simple ETH transfers (no data)
+      const isSimpleTransfer =
+        !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
+
+      if (!isSimpleTransfer) {
+        // if it run successfully, the contract data is all right.
+        const clonedTx = { ...dataTx };
+        delete clonedTx.gasLimit;
+        delete clonedTx.gas;
+        delete clonedTx.maxPriorityFeePerGas;
+        delete clonedTx.maxFeePerGas;
+        if (!dataTx.to) {
+          delete clonedTx.to;
+        }
+        await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+          ['eth_call', [clonedTx, 'latest']]
+        );
       }
-      await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],
-        ['eth_call', [clonedTx, 'latest']]
-      );
     } catch (error) {
       if (!error.message.includes('reverted')) {
         isInvalidTxData = true;
@@ -91,22 +105,79 @@ export const fetchGasAndDecodeFunction = async (
           ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
           [baseTx]
         )) as any;
+
+        // Ensure the result from getTxGasLimit is a BigNumber
+        gasLimitResult = safeBigNumber(
+          gasLimitResult,
+          gasLimitFromCurrentBlock,
+          'Gas limit estimation result'
+        );
       }
     } catch (error) {
       console.error(error);
       gasLimitError = true;
     }
   }
-  formTx.gasLimit =
-    (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
-    (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(gasLimitResult))
-      ? BigNumber.from(dataTx.gas || dataTx.gasLimit)
-      : gasLimitResult;
+  // Determine the appropriate gas limit
+  const userProvidedGasLimit = dataTx?.gas || dataTx?.gasLimit;
+  if (userProvidedGasLimit) {
+    const userGasLimitBN = safeBigNumber(
+      userProvidedGasLimit,
+      null,
+      'User provided gas limit'
+    );
+    const gasLimitResultBN = safeBigNumber(
+      gasLimitResult,
+      gasLimitFromCurrentBlock,
+      'Estimated gas limit'
+    );
+
+    formTx.gasLimit = userGasLimitBN.gt(gasLimitResultBN)
+      ? userGasLimitBN
+      : gasLimitResultBN;
+  } else {
+    formTx.gasLimit = safeBigNumber(
+      gasLimitResult,
+      gasLimitFromCurrentBlock,
+      'Gas limit'
+    );
+  }
+
+  // Final validation - ensure we have a valid gas limit
+  formTx.gasLimit = safeBigNumber(
+    formTx.gasLimit,
+    60000, // Safe default for contract interactions
+    'Final gas limit validation'
+  );
+
+  // Get gas price for legacy transactions
+  const gasPrice = (await controllerEmitter([
+    'wallet',
+    'ethereumTransaction',
+    'getRecommendedGasPrice',
+  ])) as number;
+
+  // Use BigNumber for all calculations to avoid precision loss
+  const gweiFactor = BigNumber.from(10).pow(9);
+
+  // Safely convert gas price to BigNumber
+  const gasPriceBigNumber = safeBigNumber(
+    gasPrice,
+    BigNumber.from(10).pow(9), // 1 Gwei fallback
+    'Gas price'
+  );
+
   const feeDetails = {
-    maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
-    baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-    maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 9,
-    gasLimit: formTx.gasLimit.toNumber(),
+    // Convert to Gwei but keep as string to preserve precision
+    maxFeePerGas: parseFloat(maxFeePerGas.div(gweiFactor).toString()),
+    baseFee: parseFloat(
+      maxFeePerGas.sub(maxPriorityFeePerGas).div(gweiFactor).toString()
+    ),
+    maxPriorityFeePerGas: parseFloat(
+      maxPriorityFeePerGas.div(gweiFactor).toString()
+    ),
+    gasPrice: parseFloat(gasPriceBigNumber.div(gweiFactor).toString()),
+    gasLimit: parseInt(formTx.gasLimit.toString()),
   };
 
   return {

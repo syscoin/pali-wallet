@@ -1,5 +1,5 @@
-import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, ReactNode } from 'react';
+import { Dialog } from '@headlessui/react';
+import React, { ReactNode } from 'react';
 
 interface IModal {
   children: ReactNode;
@@ -14,45 +14,32 @@ export const EditFeeModalBase = ({
   onClose,
   show = true,
 }: IModal) => (
-  <Transition appear show={show} as={Fragment}>
-    <Dialog
-      as="div"
-      className={`fixed z-[9999] inset-0 overflow-y-auto ${className}`}
-      onClose={() => {
-        if (onClose) onClose();
-      }}
-    >
-      <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+  <Dialog
+    as="div"
+    className={`fixed z-[70] inset-0 ${className} ${
+      show ? 'visible' : 'invisible'
+    }`}
+    open={show}
+    onClose={() => {
+      if (onClose) onClose();
+    }}
+  >
+    <div
+      className={`fixed z-[69] inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out ${
+        show ? 'opacity-100' : 'opacity-0'
+      }`}
+    />
 
-      <div className="min-h-screen text-center">
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <Dialog.Overlay className="fixed inset-0" />
-        </Transition.Child>
+    <div className="fixed inset-0 z-[70] flex items-start justify-center p-2 overflow-y-auto">
+      <Dialog.Overlay className="fixed inset-0" />
 
-        <span className="inline-block align-middle h-screen" aria-hidden="true">
-          &#8203;
-        </span>
-
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
-        >
-          {children}
-        </Transition.Child>
+      <div
+        className={`transition-all duration-300 ease-in-out transform ${
+          show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+        }`}
+      >
+        {children}
       </div>
-    </Dialog>
-  </Transition>
+    </div>
+  </Dialog>
 );

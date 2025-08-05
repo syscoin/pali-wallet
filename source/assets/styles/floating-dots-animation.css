@@ -1,0 +1,116 @@
+/* Professional Floating Dots Animation for Pali Wallet Balance Section */
+
+/* Main container with dots background */
+.floating-dots-container {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Layer 1: Main dots pattern - slow float */
+.floating-dots-container::before {
+  content: '';
+  position: absolute;
+  top: -10%;
+  left: -15%;
+  width: 130%;
+  height: 120%;
+  background-image: url('../all_assets/Dots.png');
+  background-repeat: repeat;
+  background-size: 400px 250px;
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 5;
+  animation: floatDotsMain 15s ease-in-out infinite;
+}
+
+/* Layer 2: Header dots pattern - different rhythm */
+.floating-dots-container::after {
+  content: '';
+  position: absolute;
+  top: -5%;
+  left: -20%;
+  width: 140%;
+  height: 115%;
+  background-image: url('../all_assets/dotsHeader.png');
+  background-repeat: repeat;
+  background-size: 350px 200px;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 6;
+  animation: floatDotsSecondary 18s ease-in-out infinite reverse;
+}
+
+/* Main flowing animation - professional movement with higher opacity */
+@keyframes floatDotsMain {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  25% {
+    transform: translate(25px, -20px) rotate(0.5deg);
+  }
+  50% {
+    transform: translate(-15px, -30px) rotate(-0.3deg);
+  }
+  75% {
+    transform: translate(-25px, -15px) rotate(0.4deg);
+  }
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+
+/* Secondary flowing animation - professional counter movement */
+@keyframes floatDotsSecondary {
+  0% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+  20% {
+    transform: translate(-20px, 25px) rotate(-0.3deg);
+  }
+  40% {
+    transform: translate(30px, -15px) rotate(0.4deg);
+  }
+  60% {
+    transform: translate(-25px, -30px) rotate(0.2deg);
+  }
+  80% {
+    transform: translate(15px, -8px) rotate(-0.1deg);
+  }
+  100% {
+    transform: translate(0px, 0px) rotate(0deg);
+  }
+}
+
+/* Ensure content stays above the floating dots */
+.floating-dots-content {
+  position: relative;
+  z-index: 10;
+}
+
+/* Optional: Add a subtle pulse effect to the dots on hover/interaction */
+.floating-dots-container:hover::before {
+  animation-duration: 30s;
+  opacity: 0.1;
+}
+
+.floating-dots-container:hover::after {
+  animation-duration: 25s;
+  opacity: 0.09;
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .floating-dots-container::before,
+  .floating-dots-container::after {
+    animation-duration: 120s;
+    opacity: 0.05;
+  }
+}
+
+/* Performance optimization - use GPU acceleration */
+.floating-dots-container::before,
+.floating-dots-container::after {
+  will-change: transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}

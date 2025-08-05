@@ -1,6 +1,8 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, useCallback, useMemo } from 'react';
 
+import { WhiteSuccessIconSvg, ErrorIconSvg, WarnIconSvg } from '../Icon/Icon';
+
 interface IModal {
   description?: string;
   onClose?: () => any;
@@ -21,17 +23,17 @@ export const StatusModal = ({
   const theme = useMemo(() => {
     const themes = {
       error: {
-        icon: 'assets/icons/error.svg',
+        iconComponent: ErrorIconSvg,
         iconBg: 'bg-brand-redDark',
         bg: 'bg-brand-red',
       },
       success: {
-        icon: 'assets/icons/whiteSuccess.svg',
+        iconComponent: WhiteSuccessIconSvg,
         iconBg: 'bg-brand-darkGreen',
         bg: 'bg-brand-green',
       },
       warn: {
-        icon: 'assets/icons/warn.svg',
+        iconComponent: WarnIconSvg,
         iconBg: 'bg-brand-yellowInfoDark',
         bg: 'bg-brand-yellowInfo',
       },
@@ -48,7 +50,7 @@ export const StatusModal = ({
     <Transition appear show={show} as={Fragment}>
       <Dialog
         as="div"
-        className={`fixed z-30 ${position} overflow-y-auto  rounded-[20px]`}
+        className={`fixed z-[60] ${position} overflow-y-auto  rounded-[20px]`}
         onClose={handleOnClose}
       >
         <div className="fixed z-0 -inset-0 w-full bg-transparent bg-opacity-50 transition-all duration-300 ease-in-out" />
@@ -79,7 +81,7 @@ export const StatusModal = ({
               className={`rounded-[20px] mb-12 flex flex-row align-bottom justify-end ${theme.iconBg} items-center shadow-md`}
             >
               <div className={`${theme.iconBg} p-4  h-full`}>
-                <img className="w-[24px] h-[24px]" src={theme.icon} />
+                <theme.iconComponent className="w-[24px] h-[24px]" />
               </div>
               <div
                 className={`flex flex-col w-[264px] rounded-r-[20px] p-4 ${theme.bg}`}
@@ -87,7 +89,7 @@ export const StatusModal = ({
                 <div className="flex flex-row w-full justify-between">
                   <p className="text-white text-base font-medium ">{title}</p>
                   <img
-                    src="../../assets/icons/close.svg"
+                    src="../../assets/all_assets/close.svg"
                     className="w-[15px] h-[15px] hover:cursor-pointer"
                     onClick={handleOnClose}
                   />

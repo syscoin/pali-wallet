@@ -1,61 +1,83 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
-import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
+import { EditIconSvg } from 'components/Icon/Icon';
+import { Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
 import { truncate, ellipsis } from 'utils/index';
+import { navigateBack } from 'utils/navigationState';
 
 const ConnectedSites = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
+  const location = useLocation();
   const { t } = useTranslation();
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+
+  // Get dapps directly from Redux state
+  const dapps = useSelector((state: RootState) => state.dapp.dapps);
+
+  // Show all dapps since they're connected globally (one account per dapp)
+  const dappsList = Object.values(dapps);
 
   const [selected, setSelected] = useState<IDApp>();
-  const [dapps, setDapps] = useState<IDApp[]>([]);
 
-  useEffect(() => {
-    controllerEmitter(['dapp', 'getAll']).then(
-      (response: { [host: string]: IDApp }) => {
-        setDapps(Object.values(response));
-      }
-    );
-  }, []);
+  const disconnectSelected = async () => {
+    if (!selected) return;
 
-  const disconnectSelected = () => {
-    controllerEmitter(['dapp', 'disconnect'], [selected.host]);
-
-    setSelected(undefined);
+    try {
+      // The controller will dispatch removeDApp action internally
+      await controllerEmitter(['dapp', 'disconnect'], [selected.host]);
+      await controllerEmitter(
+        ['wallet', 'saveCurrentState'],
+        ['connected-sites-disconnect']
+      );
+      // Close the modal
+      setSelected(undefined);
+    } catch (error) {
+      console.error('Error disconnecting dapp:', error);
+    }
   };
 
   return (
-    <Layout title={t('settings.connectedSites')}>
+    <>
       <p className="w-full text-white text-sm md:max-w-md">
-        {dapps.length > 0
-          ? `${activeAccount.label} ${t('settings.isConnected')}`
-          : `${activeAccount.label} ${t('settings.isNotConnected')}`}
+        {dappsList.length > 0
+          ? `${dappsList.length} ${
+              dappsList.length === 1 ? 'site is' : 'sites are'
+            } connected to Pali Wallet`
+          : 'No sites are connected to Pali Wallet'}
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled w-full max-w-xs h-80 overflow-auto md:max-w-md">
+        <ul className="remove-scrollbar w-full max-w-xs h-80 overflow-auto md:max-w-md">
           {' '}
-          {dapps.map((_dapp) => (
+          {dappsList.map((_dapp) => (
             <li
               key={_dapp.host}
               className="flex items-center justify-between my-2 py-3 w-full text-xs border-b border-dashed border-gray-500"
             >
-              <p>{truncate(_dapp.host, 40)}</p>
+              <div className="flex-1">
+                <p className="font-medium">{truncate(_dapp.host, 40)}</p>
+                {_dapp.accountId !== activeAccountMeta.id && (
+                  <p className="text-brand-graylight text-[10px] mt-1">
+                    Connected to:{' '}
+                    {accounts[_dapp.accountType]?.[_dapp.accountId]?.label ||
+                      `Account ${_dapp.accountId + 1}`}
+                  </p>
+                )}
+              </div>
 
               <IconButton onClick={() => setSelected(_dapp)}>
-                <Icon name="edit" wrapperClassname="w-4" />
+                <EditIconSvg className="w-4" />
               </IconButton>
             </li>
           ))}
@@ -125,21 +147,19 @@ const ConnectedSites = () => {
 
                         <div className="flex items-center justify-between">
                           <p className="text-brand-white text-xs">
-                            {activeAccount?.label}
+                            {accounts[selected.accountType]?.[
+                              selected.accountId
+                            ]?.label || `Account ${selected.accountId + 1}`}
                           </p>
 
                           <p className="text-brand-white text-xs">
-                            {ellipsis(activeAccount?.address)}
+                            {ellipsis(
+                              accounts[selected.accountType]?.[
+                                selected.accountId
+                              ]?.address
+                            )}
                           </p>
                         </div>
-
-                        <p className="mt-4 pt-3 text-brand-white border-t border-dashed border-brand-white opacity-60 cursor-not-allowed">
-                          <input type="checkbox" />
-
-                          <span className="mb-1 ml-3">
-                            {t('settings.viewTheAddresses')}
-                          </span>
-                        </p>
                       </div>
                     </div>
 
@@ -163,13 +183,13 @@ const ConnectedSites = () => {
           <NeutralButton
             type="button"
             fullWidth
-            onClick={() => navigate('/home')}
+            onClick={() => navigateBack(navigate, location)}
           >
             {t('buttons.close')}
           </NeutralButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

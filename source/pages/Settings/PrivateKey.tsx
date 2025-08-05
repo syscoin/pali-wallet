@@ -1,9 +1,10 @@
-import { Input, Form } from 'antd';
+import { Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
-import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
+import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -30,43 +31,48 @@ const PrivateKeyView = () => {
   const [currentXprv, setCurrentXprv] = useState<string>('');
   const [form] = Form.useForm();
 
-  const currentPassword = form.getFieldValue('password');
-
   const getDecryptedPrivateKey = async (key: string) => {
-    try {
-      const privateKey = (await controllerEmitter(
-        ['wallet', 'getPrivateKeyByAccountId'],
-        [activeAccountMeta.id, activeAccountMeta.type, key]
-      )) as string;
+    const privateKey = (await controllerEmitter(
+      ['wallet', 'getPrivateKeyByAccountId'],
+      [activeAccountMeta.id, activeAccountMeta.type, key]
+    )) as string;
 
-      return privateKey;
-    } catch (e) {
-      console.log('Wrong password', e);
-    }
+    return privateKey;
   };
 
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.success(t('settings.successfullyCopied'));
-  }, [copied]);
+    alert.info(t('settings.successfullyCopied'));
+  }, [copied, alert, t]);
 
-  useEffect(() => {
-    (async () => {
-      if (currentPassword.length >= 8) {
-        try {
-          const xprv = await getDecryptedPrivateKey(
-            form.getFieldValue('password')
-          );
+  // Password validation function for ValidatedPasswordInput
+  const validatePassword = async (password: string) => {
+    const { canLogin } = (await controllerEmitter(
+      ['wallet', 'unlock'],
+      [password, true]
+    )) as any;
 
-          setCurrentXprv(xprv);
-        } catch (error) {
-          console.error(error);
-        }
-      }
-    })();
-  }, [currentPassword]);
+    if (!canLogin) {
+      throw new Error('Invalid password');
+    }
+
+    // Get the private key
+    const privateKey = await getDecryptedPrivateKey(password);
+    return { canLogin, privateKey };
+  };
+
+  // Handle successful password validation
+  const handleValidationSuccess = (result: any) => {
+    setValid(true);
+    setCurrentXprv(result.privateKey);
+  };
+
+  // Handle failed password validation
+  const handleValidationError = () => {
+    setValid(false);
+    setCurrentXprv('');
+  };
 
   const { url: activeUrl, explorer } = activeNetwork;
 
@@ -82,7 +88,7 @@ const PrivateKeyView = () => {
     : `${url}${property}/${value}`;
 
   return (
-    <Layout title={t('accountMenu.yourKeys').toUpperCase()}>
+    <>
       {isBitcoinBased && (
         <Card type="info">
           <p>
@@ -95,7 +101,7 @@ const PrivateKeyView = () => {
 
       {isBitcoinBased && (
         <CopyCard
-          className="my-4"
+          className="my-4 w-full md:max-w-md"
           onClick={() => copyText(String(activeAccount?.xpub))}
           label={t('settings.yourXpub')}
         >
@@ -111,41 +117,19 @@ const PrivateKeyView = () => {
         wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
-        <Form.Item
+        <ValidatedPasswordInput
+          onValidate={validatePassword}
+          onValidationSuccess={handleValidationSuccess}
+          onValidationError={handleValidationError}
+          placeholder={t('settings.enterYourPassword')}
+          form={form}
           name="password"
-          hasFeedback
-          className="my-4 md:w-full"
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, pwd) {
-                const { canLogin } = (await controllerEmitter(
-                  ['wallet', 'unlock'],
-                  [pwd, true]
-                )) as any;
-
-                if (canLogin) {
-                  setValid(true);
-
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <Input.Password
-            className="input-small relative custom-input-password"
-            placeholder={t('settings.enterYourPassword')}
-          />
-        </Form.Item>
+          className="my-4"
+        />
       </Form>
 
       <CopyCard
+        className="w-full md:max-w-md"
         onClick={valid ? () => copyText(currentXprv) : undefined}
         label={t('settings.yourPrivateKey')}
       >
@@ -157,17 +141,21 @@ const PrivateKeyView = () => {
       </CopyCard>
 
       {isBitcoinBased && (
-        <div className="absolute bottom-8 md:static">
-          <NeutralButton
-            width="56 px-8"
-            type="button"
-            onClick={() => window.open(explorerLink)}
+        <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
+          <a
+            href={explorerLink}
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+            rel="noreferrer"
           >
-            {t('settings.seeOnExplorer')}
-          </NeutralButton>
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              {t('settings.seeOnExplorer')}
+            </span>
+          </a>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

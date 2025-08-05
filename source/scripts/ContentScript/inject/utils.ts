@@ -1,4 +1,9 @@
-import { IEIP6963ProviderInfo } from 'utils/types';
+export interface IEIP6963ProviderInfo {
+  icon: string;
+  name: string;
+  rdns: string;
+  uuid: string;
+}
 // resolve response.result or response, reject errors
 export const getRpcPromiseCallback =
   (resolve: (value?: any) => void, reject: (error?: Error) => void) =>
@@ -46,31 +51,19 @@ export const EMITTED_NOTIFICATIONS = Object.freeze([
   'eth_subscription', // per eth-json-rpc-filters/subscriptionManager
 ]);
 
-export const PALI_ETHEREUM_METHODS = [
-  'pali_accountsChanged',
-  'pali_chainChanged',
-  'pali_removeProperty',
-  'pali_addProperty',
-];
-
-export const PALI_UTXO_METHODS = [
-  'pali_xpubChanged',
-  'pali_blockExplorerChanged',
-  'pali_isTestnet',
-  ,
-];
-
 export const announceProvider = (provider: any, uuid: string) => {
   const providerInfo: IEIP6963ProviderInfo = {
-    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/icons/favicon-48.png',
+    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/all_assets/favicon-48.png',
     name: 'Pali Wallet',
     rdns: 'com.paliwallet',
     uuid,
   };
 
+  const detail = { info: providerInfo, provider };
+
   window.dispatchEvent(
     new CustomEvent('eip6963:announceProvider', {
-      detail: Object.freeze({ info: providerInfo, provider }),
+      detail: detail,
     })
   );
 };

@@ -2,7 +2,8 @@ import shuffle from 'lodash/shuffle';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button, OnboardingLayout } from 'components/index';
+import { Button } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletReadyModal } from 'components/Modal/WarningBaseModal';
 
@@ -62,7 +63,7 @@ export const ConfirmPhrase = ({
               <Button
                 useDefaultWidth={false}
                 className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-brand-blue rounded-md z-20"
-                key={phrase}
+                key={`${phrase}-${idx}-new`}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
               >
@@ -75,7 +76,7 @@ export const ConfirmPhrase = ({
               <Button
                 useDefaultWidth={false}
                 className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-transparent border border-brand-blue rounded-[10px] z-20"
-                key={phrase}
+                key={`${phrase}-${idx}-org`}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}
               >
@@ -91,7 +92,7 @@ export const ConfirmPhrase = ({
               } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
               type="button"
               onClick={() => {
-                orgList?.length ? null : handleValidate();
+                !orgList?.length ? handleValidate() : null;
               }}
             >
               {t('buttons.validate')}
@@ -117,5 +118,3 @@ export const ConfirmPhrase = ({
     </OnboardingLayout>
   );
 };
-
-export default ConfirmPhrase;

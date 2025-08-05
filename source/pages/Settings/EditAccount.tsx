@@ -5,16 +5,17 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-
-import { Icon, Layout, NeutralButton } from 'components/index';
+import { Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
+import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/format';
+import { navigateBack } from 'utils/navigationState';
 
 const EditAccountView = () => {
-  const { state } = useLocation();
+  const location = useLocation();
+  const { state } = location;
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
@@ -54,16 +55,14 @@ const EditAccountView = () => {
 
       const accountId = state.id;
 
-      controllerEmitter(
+      await controllerEmitter(
         ['wallet', 'editAccountLabel'],
         [data.label, accountId, accountType]
       );
 
       alert.success(t('settings.accountLabelEditedSuccessfully'));
-
-      navigate('/home');
+      navigateBack(navigate, location);
     } catch (error) {
-      alert.removeAll();
       alert.error(error.message);
     } finally {
       setLoading(false);
@@ -75,7 +74,7 @@ const EditAccountView = () => {
   };
 
   return (
-    <Layout title={t('settings.editAccount')}>
+    <>
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -113,7 +112,7 @@ const EditAccountView = () => {
                 <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
                   <Icon isSvg className="w-4" name="greenCheck" />
 
-                  <p className="text-sm text-white">Copied!</p>
+                  <p className="text-sm text-white">{t('components.copied')}</p>
                 </div>
               ) : (
                 <div
@@ -123,7 +122,7 @@ const EditAccountView = () => {
                   }}
                 >
                   <Icon isSvg className="w-4" name="Copy" />
-                  <p className="text-sm text-white">Copy</p>
+                  <p className="text-sm text-white">{t('buttons.copy')}</p>
                 </div>
               )}
             </div>{' '}
@@ -144,7 +143,11 @@ const EditAccountView = () => {
                   return Promise.resolve();
                 }
 
-                return Promise.reject();
+                return Promise.reject(
+                  new Error(
+                    'Label must be non-empty and different from current label'
+                  )
+                );
               },
             }),
           ]}
@@ -162,7 +165,7 @@ const EditAccountView = () => {
           </NeutralButton>
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

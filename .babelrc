@@ -1,23 +1,21 @@
 {
   "presets": [
     [
-      // Latest stable ECMAScript features
       "@babel/preset-env",
       {
-        "useBuiltIns": false,
-        // Do not transform modules to CJS
-        "modules": "auto",
+        "useBuiltIns": "usage",
+        "corejs": 3,
+        "modules": false,
         "targets": {
-          "chrome": "49",
-          "firefox": "52",
-          "opera": "36",
-          "edge": "79",
-          "node": "current"
+          "chrome": "88",
+          "firefox": "78",
+          "opera": "74",
+          "edge": "88"
         }
       }
     ],
-    "@babel/typescript",
-    "@babel/react"
+    "@babel/preset-typescript",
+    "@babel/preset-react"
   ],
   "env": {
     "test": {
@@ -39,12 +37,12 @@
       }
     ],
     [
-      // Polyfills the runtime needed for async/await and generators
       "@babel/plugin-transform-runtime",
       {
         "helpers": false,
         "regenerator": true
       }
-    ]
+    ],
+    "@babel/plugin-syntax-dynamic-import"
   ]
 }
