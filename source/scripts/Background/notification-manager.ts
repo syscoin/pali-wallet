@@ -1,7 +1,9 @@
+import { formatUnits } from '@ethersproject/units';
 import { txUtils } from '@sidhujag/sysweb3-utils';
 
 import { getIsReady } from 'scripts/Background';
 import { INetwork } from 'types/network';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   setupNotificationListeners,
   showTransactionNotification,
@@ -213,30 +215,7 @@ class NotificationManager {
             if (assets.length > 0) {
               const asset = assets[0];
 
-              // Use the formatted value if available, otherwise calculate from values array
-              if (asset.values && asset.values.length > 0) {
-                const totalValue = asset.values.reduce(
-                  (sum: number, val: any) => {
-                    // Use valueFormatted if available (already in correct decimal format)
-                    if (val.valueFormatted) {
-                      return sum + parseFloat(val.valueFormatted);
-                    }
-                    // Otherwise convert from satoshis
-                    return sum + (val.value || 0);
-                  },
-                  0
-                );
-
-                // If we got formatted values, use them directly
-                if (asset.values[0].valueFormatted) {
-                  value = totalValue.toString();
-                } else {
-                  // Convert from satoshis to token units
-                  value = totalValue.toString();
-                }
-              }
-
-              // Fetch asset metadata
+              // Fetch asset metadata first to get the correct decimals
               if (asset.assetGuid && network.url) {
                 const assetData = await this.getSPTMetadata(
                   asset.assetGuid.toString(),
@@ -251,6 +230,29 @@ class NotificationManager {
                   };
                 }
               }
+
+              // Use the formatted value if available, otherwise calculate from values array
+              if (asset.values && asset.values.length > 0) {
+                const totalValue = asset.values.reduce(
+                  (sum: number, val: any) => {
+                    // Use valueFormatted if available (already in correct decimal format)
+                    if (val.valueFormatted) {
+                      return sum + parseFloat(val.valueFormatted);
+                    }
+                    // Otherwise convert from satoshis to token units using safe conversion
+                    // Use the token's actual decimals, not hardcoded 8
+                    const formatted = formatSyscoinValue(
+                      val.value || '0',
+                      decimals
+                    );
+                    return sum + parseFloat(formatted);
+                  },
+                  0
+                );
+
+                // Set the value as string
+                value = totalValue.toString();
+              }
             }
           }
 
@@ -258,15 +260,67 @@ class NotificationManager {
           if (decodedTx.syscoin.burn) {
             const burn = decodedTx.syscoin.burn;
 
-            // For burns, the amount might be in the burn object or we need to calculate from outputs
-            if (burn.amount) {
-              value = burn.amount.toString();
-            }
-
-            // Check if burning to Ethereum (bridge transaction)
+            // Check if burning to Ethereum (bridge transaction) first
             if (burn.ethaddress) {
               // This is a bridge transaction to NEVM
               detectedTokenType = 'assetallocationburntoethereum';
+            }
+
+            // Extract amount from allocation data in burn
+            if (burn.allocation && burn.allocation.length > 0) {
+              const allocation = burn.allocation[0];
+
+              // Fetch asset metadata first to get correct decimals
+              if (allocation.assetGuid && network.url) {
+                const assetData = await this.getSPTMetadata(
+                  allocation.assetGuid.toString(),
+                  network.url
+                );
+                if (assetData) {
+                  tokenSymbol = assetData.symbol;
+                  decimals = assetData.decimals;
+                  metadata = {
+                    ...assetData.metaData,
+                    assetGuid: allocation.assetGuid.toString(),
+                  };
+                } else {
+                  // If metadata fetch fails for bridge transactions, default to SYSX
+                  // since bridges typically involve SYSX
+                  if (detectedTokenType === 'assetallocationburntoethereum') {
+                    tokenSymbol = 'SYSX';
+                    decimals = 8;
+                  }
+                }
+              }
+
+              // Now calculate value using correct decimals
+              // For burn transactions, only use the intent amount (first output)
+              if (allocation.values && allocation.values.length > 0) {
+                // Sort values by output index to find the intent (first output)
+                const sortedValues = [...allocation.values].sort(
+                  (a, b) => a.n - b.n
+                );
+                const intentValue = sortedValues[0]; // First output is the intent
+
+                let intentAmount = 0;
+                if (intentValue) {
+                  // Use valueFormatted if available (already in correct decimal format)
+                  if (intentValue.valueFormatted) {
+                    intentAmount = parseFloat(intentValue.valueFormatted);
+                  } else {
+                    // Otherwise convert from satoshis to token units using safe conversion
+                    // Use the token's actual decimals
+                    const formatted = formatSyscoinValue(
+                      intentValue.value || '0',
+                      decimals
+                    );
+                    intentAmount = parseFloat(formatted);
+                  }
+                }
+
+                // Set the value as string (only the intent amount)
+                value = intentAmount.toString();
+              }
             }
           }
 
@@ -274,12 +328,65 @@ class NotificationManager {
           if (decodedTx.syscoin.mint) {
             const mint = decodedTx.syscoin.mint;
 
-            if (mint.amount) {
-              value = mint.amount.toString();
-            }
-
             // This is a mint from NEVM transaction
             detectedTokenType = 'assetallocationmint';
+
+            // Extract amount from allocation data in mint
+            if (mint.allocation && mint.allocation.length > 0) {
+              const allocation = mint.allocation[0];
+
+              // Fetch asset metadata first to get correct decimals
+              if (allocation.assetGuid && network.url) {
+                const assetData = await this.getSPTMetadata(
+                  allocation.assetGuid.toString(),
+                  network.url
+                );
+                if (assetData) {
+                  tokenSymbol = assetData.symbol;
+                  decimals = assetData.decimals;
+                  metadata = {
+                    ...assetData.metaData,
+                    assetGuid: allocation.assetGuid.toString(),
+                  };
+                } else {
+                  // If metadata fetch fails for mint transactions, default to SYSX
+                  // since mints from NEVM typically create SYSX
+                  if (detectedTokenType === 'assetallocationmint') {
+                    tokenSymbol = 'SYSX';
+                    decimals = 8;
+                  }
+                }
+              }
+
+              // Now calculate value using correct decimals
+              // For mint transactions, only use the intent amount (first output)
+              if (allocation.values && allocation.values.length > 0) {
+                // Sort values by output index to find the intent (first output)
+                const sortedValues = [...allocation.values].sort(
+                  (a, b) => a.n - b.n
+                );
+                const intentValue = sortedValues[0]; // First output is the intent
+
+                let intentAmount = 0;
+                if (intentValue) {
+                  // Use valueFormatted if available (already in correct decimal format)
+                  if (intentValue.valueFormatted) {
+                    intentAmount = parseFloat(intentValue.valueFormatted);
+                  } else {
+                    // Otherwise convert from satoshis to token units using safe conversion
+                    // Use the token's actual decimals
+                    const formatted = formatSyscoinValue(
+                      intentValue.value || '0',
+                      decimals
+                    );
+                    intentAmount = parseFloat(formatted);
+                  }
+                }
+
+                // Set the value as string (only the intent amount)
+                value = intentAmount.toString();
+              }
+            }
           }
         }
       } catch (error) {
@@ -342,7 +449,9 @@ class NotificationManager {
       from: account.address,
       to: account.address, // UTXO doesn't have simple to/from
       value:
-        value && value !== '0' ? this.formatValue(value, decimals) : undefined,
+        value && value !== '0'
+          ? this.formatDisplayValue(value, decimals)
+          : undefined,
       tokenSymbol,
       network: network.label,
       chainId: network.chainId,
@@ -354,11 +463,35 @@ class NotificationManager {
     showTransactionNotification(notification);
   }
 
+  // For EVM transactions where value is in wei and needs conversion
   private formatValue(value: string, decimals: number): string {
     try {
-      const divisor = Math.pow(10, decimals);
-      const numValue = parseFloat(value) / divisor;
+      const formattedValue = formatUnits(value, decimals);
+      const numValue = parseFloat(formattedValue);
       return numValue.toFixed(4);
+    } catch {
+      return '0';
+    }
+  }
+
+  // For UTXO transactions where value is already in display units
+  private formatDisplayValue(value: string, decimals: number): string {
+    try {
+      const numValue = parseFloat(value);
+
+      // Respect the token's decimal places but add some reasonable limits for display
+      const maxDisplayDecimals = Math.min(decimals, 8); // Cap at 8 for display
+
+      // For very small values, show more precision (up to token's decimals)
+      if (numValue > 0 && numValue < 0.0001) {
+        return numValue.toFixed(maxDisplayDecimals);
+      } else if (numValue > 0 && numValue < 1) {
+        // For small values, show up to 6 decimals or token's decimals, whichever is smaller
+        return numValue.toFixed(Math.min(decimals, 6));
+      } else {
+        // For larger values, show up to 4 decimals or token's decimals, whichever is smaller
+        return numValue.toFixed(Math.min(decimals, 4));
+      }
     } catch {
       return '0';
     }

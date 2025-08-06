@@ -1,3 +1,4 @@
+import { formatUnits } from '@ethersproject/units';
 import React, { Fragment, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -14,6 +15,7 @@ import {
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { camelCaseToText, ellipsis } from 'utils/index';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -117,7 +119,7 @@ export const SyscoinTransactionDetails = ({
     }
 
     try {
-      const rawTxData = await controllerEmitter(
+      const rawTxData: any = await controllerEmitter(
         ['wallet', 'getRawTransaction'],
         [activeNetworkUrl, hash]
       );
@@ -263,28 +265,55 @@ export const SyscoinTransactionDetails = ({
         {/* Display token transfers if available */}
         {tokenTransfers.length > 0 ? (
           <div className="text-center">
-            {tokenTransfers.map((transfer: any, index: number) => (
-              <div key={index} className="mb-1">
-                <p className="text-white text-base">
-                  {transfer.valueOut
-                    ? `${(
-                        Number(transfer.valueOut) /
-                        Math.pow(10, transfer.decimals || 8)
-                      ).toFixed(4)} ${transfer.symbol || 'Unknown'}`
-                    : '0'}
-                </p>
-                {transfer.name && (
-                  <p className="text-brand-gray200 text-xs">{transfer.name}</p>
-                )}
-              </div>
-            ))}
+            {tokenTransfers.map((transfer: any, index: number) => {
+              // For mint and burn transactions, display the intent amount
+              // The intent is typically the first output's asset value
+              let displayStr = '';
+
+              // Check if we have vout with assetInfo for the intent value
+              if (
+                tokenType === 'SPTAssetAllocationMint' ||
+                tokenType === 'SPTAssetAllocationBurnToNEVM' ||
+                tokenType === 'SPTAssetAllocationBurnToSyscoin' ||
+                tokenType === 'SPTSyscoinBurnToAssetAllocation'
+              ) {
+                // Find the first vout with assetInfo for this token
+                const firstVoutWithAsset = rawTransaction?.vout?.find(
+                  (v: any) =>
+                    v.assetInfo && v.assetInfo.assetGuid === transfer.token
+                );
+
+                if (firstVoutWithAsset?.assetInfo?.valueStr) {
+                  // Use the valueStr directly as it's already formatted
+                  displayStr = firstVoutWithAsset.assetInfo.valueStr;
+                }
+              }
+
+              // Fallback to transfer value if no valueStr found
+              if (!displayStr && transfer.valueOut) {
+                displayStr = `${parseFloat(
+                  formatUnits(transfer.valueOut, transfer.decimals || 8)
+                ).toFixed(4)} ${transfer.symbol || 'Unknown'}`;
+              }
+
+              return (
+                <div key={index} className="mb-1">
+                  <p className="text-white text-base">{displayStr || '0'}</p>
+                  {transfer.name && (
+                    <p className="text-brand-gray200 text-xs">
+                      {transfer.name}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : assetInfo ? (
           // Display asset info from vins/vouts if available
           <div className="text-center">
             <p className="text-white text-base">
               {assetInfo.valueStr ||
-                `${(Number(assetInfo.value) / Math.pow(10, 8)).toFixed(
+                `${parseFloat(formatUnits(assetInfo.value || '0', 8)).toFixed(
                   4
                 )} Asset`}
             </p>
@@ -294,7 +323,7 @@ export const SyscoinTransactionDetails = ({
           </div>
         ) : (
           <p className="text-white text-base">
-            {Number(txValue) / 10 ** 8} {currency?.toUpperCase() || 'SYS'}
+            {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
           </p>
         )}
 
@@ -362,33 +391,35 @@ export const SyscoinTransactionDetails = ({
         </div>
       )}
 
-      {formattedTransactionDetails.map(({ label, value, canCopy }: any) => (
-        <Fragment key={hash}>
-          {label.length > 0 && value !== undefined && (
-            <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-              <p className="text-xs font-normal text-white">{label}</p>
-              <span>
-                {value.length >= 20 ? (
-                  <Tooltip content={value} childrenClassName="flex">
-                    <p className="text-xs font-normal text-white">
-                      {ellipsis(value, 2, 4)}
-                    </p>
-                    {canCopy && (
-                      <IconButton
-                        onClick={() => handleCopyWithMessage(value, label)}
-                      >
-                        <CopyIcon />
-                      </IconButton>
-                    )}
-                  </Tooltip>
-                ) : (
-                  <p className="text-xs font-normal text-white">{value}</p>
-                )}
-              </span>
-            </div>
-          )}
-        </Fragment>
-      ))}
+      {formattedTransactionDetails.map(
+        ({ label, value, canCopy }: any, index: number) => (
+          <Fragment key={`${hash}-${label}-${index}`}>
+            {label.length > 0 && value !== undefined && (
+              <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
+                <p className="text-xs font-normal text-white">{label}</p>
+                <span>
+                  {value.length >= 20 ? (
+                    <Tooltip content={value} childrenClassName="flex">
+                      <p className="text-xs font-normal text-white">
+                        {ellipsis(value, 2, 4)}
+                      </p>
+                      {canCopy && (
+                        <IconButton
+                          onClick={() => handleCopyWithMessage(value, label)}
+                        >
+                          <CopyIcon />
+                        </IconButton>
+                      )}
+                    </Tooltip>
+                  ) : (
+                    <p className="text-xs font-normal text-white">{value}</p>
+                  )}
+                </span>
+              </div>
+            )}
+          </Fragment>
+        )
+      )}
     </>
   );
 
