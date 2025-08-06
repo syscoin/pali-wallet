@@ -337,6 +337,7 @@ export const SendConfirm = () => {
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
             // The amount from basicTxValues might be rounded for display, causing precision issues
             if (basicTxValues.isMax) {
+              // Get the balance from account state
               const actualBalance = activeAccount?.balances?.ethereum || 0;
               value = parseUnits(String(actualBalance), 'ether');
               const gasLimit = BigNumber.from(
@@ -468,14 +469,12 @@ export const SendConfirm = () => {
             return;
           } catch (error: any) {
             // For MAX sends, if we get insufficient funds error, retry with a buffer
-            // This can happen due to gas price increases or estimation errors
+            // This can happen due to gas price fluctuations between estimation and execution
             if (
               basicTxValues.isMax &&
               error.message?.includes('insufficient funds')
             ) {
-              // Simply reduce the value by a small buffer
-              // 10k wei buffer should be sufficient now that we're using actual balance
-              const buffer = BigNumber.from('10000');
+              const buffer = BigNumber.from('100000');
               const reducedValue = value.sub(buffer);
 
               if (reducedValue.gt(0)) {
