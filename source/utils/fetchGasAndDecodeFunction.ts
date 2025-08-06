@@ -33,11 +33,21 @@ export const fetchGasAndDecodeFunction = async (
   let gasLimitError = false;
 
   // Get fee data - backend already handles EIP-1559 detection
-  const feeData = (await controllerEmitter([
-    'wallet',
-    'ethereumTransaction',
-    'getFeeDataWithDynamicMaxPriorityFeePerGas',
-  ])) as any;
+  let feeData: any;
+  try {
+    feeData = await controllerEmitter([
+      'wallet',
+      'ethereumTransaction',
+      'getFeeDataWithDynamicMaxPriorityFeePerGas',
+    ]);
+  } catch (error) {
+    console.error('Failed to fetch fee data:', error);
+    // Use default fallback values if fee fetch fails
+    feeData = {
+      maxFeePerGas: BigNumber.from('0x77359400'), // 2 Gwei fallback
+      maxPriorityFeePerGas: BigNumber.from('0x3b9aca00'), // 1 Gwei fallback
+    };
+  }
 
   // Use dApp values if provided, otherwise use network values
   const maxFeePerGas = dataTx?.maxFeePerGas
