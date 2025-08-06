@@ -25,10 +25,9 @@ import {
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
-import { getController } from '..';
+import { getController, notificationManager } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
-import { notificationManager } from '../notification-manager';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -402,6 +401,8 @@ class MainController {
         }
 
         // Update vault state with correct network info
+        // This is critical for slip44 switches where we load vault from storage
+        // The loaded vault might have stale network info that needs updating
         store.dispatch(setNetworkChange({ activeNetwork: network }));
       }
 
@@ -1967,11 +1968,6 @@ class MainController {
     // Stop all rapid polling when wallet is locked
     this.stopAllRapidPolling();
 
-    // Clear notification state when wallet is locked
-    // Preserve pending transaction tracking when wallet is locked
-    // This allows notifications to still show when transactions confirm
-    notificationManager.clearState(true);
-
     store.dispatch(setLastLogin());
 
     // Send lockStateChanged event which will trigger accountsChanged internally
@@ -2089,6 +2085,16 @@ class MainController {
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
+
+        // Get the new account data for notification
+        const newAccountData = store.getState().vault.accounts[type][id];
+        // Notify about account change (notification manager handles validation)
+        if (newAccountData && newAccountData.address) {
+          notificationManager.notifyAccountChange({
+            address: newAccountData.address,
+            label: newAccountData.label,
+          });
+        }
 
         // Defer heavy operations to prevent blocking the UI
         if (sync) {
@@ -2837,6 +2843,22 @@ class MainController {
         transaction: transactionWithMetadata,
       })
     );
+
+    // Notify about new accelerated/replacement transaction (shows as pending)
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (account) {
+      notificationManager.notifyTransaction({
+        transaction: transactionWithMetadata,
+        type: 'pending',
+        account: {
+          address: account.address,
+          label: account.label,
+        },
+        network: activeNetwork,
+        isEvm: true,
+      });
+    }
   }
 
   public updateUserTransactionsState({
@@ -2892,6 +2914,80 @@ class MainController {
 
             // Dispatch transactions for both UTXO and EVM
             if (txs && !isEmpty(txs)) {
+              // Get the current account for notifications
+              const account = accounts[activeAccount.type]?.[activeAccount.id];
+
+              // Get previous transactions for comparison
+              const previousTxs =
+                currentAccountTxs?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
+                  activeNetwork.chainId
+                ] || [];
+
+              // Create a map of previous transactions by hash/txid for easy lookup
+              const previousTxMap = new Map();
+              previousTxs.forEach((tx: any) => {
+                const txId = tx.hash || tx.txid;
+                if (txId) {
+                  previousTxMap.set(txId, tx);
+                }
+              });
+
+              // Notify about transaction updates
+              // Always check for notifications, even during polling - users should be notified
+              // about new transactions discovered in the background while using dapps
+              if (account) {
+                txs.forEach((tx: any) => {
+                  const txId = tx.hash || tx.txid;
+                  const previousTx = txId ? previousTxMap.get(txId) : undefined;
+                  const isCurrentConfirmed = isTransactionInBlock(tx);
+                  const wasPreviouslyConfirmed = previousTx
+                    ? isTransactionInBlock(previousTx)
+                    : false;
+
+                  // New pending transaction
+                  if (!previousTx && !isCurrentConfirmed) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'pending',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: !isBitcoinBased,
+                    });
+                  }
+
+                  // Transaction just confirmed
+                  if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'confirmed',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: !isBitcoinBased,
+                    });
+                  }
+
+                  // Failed transaction (EVM only)
+                  if (!isBitcoinBased && tx.status === 0 && !previousTx) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'failed',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: true,
+                    });
+                  }
+                });
+              }
+
               store.dispatch(
                 setAccountTransactions({
                   chainId: activeNetwork.chainId,
@@ -2901,6 +2997,9 @@ class MainController {
                   transactions: txs,
                 })
               );
+
+              // Update pending transaction badge
+              notificationManager.updatePendingTransactionBadge(txs);
             }
 
             // Clear loading state on success only if we set it
@@ -2955,6 +3054,22 @@ class MainController {
         })
       );
 
+      // Notify about new pending transaction
+      const { accounts, activeAccount } = store.getState().vault;
+      const account = accounts[activeAccount.type]?.[activeAccount.id];
+      if (account) {
+        notificationManager.notifyTransaction({
+          transaction: minimalTx,
+          type: 'pending',
+          account: {
+            address: account.address,
+            label: account.label,
+          },
+          network: activeNetwork,
+          isEvm: false,
+        });
+      }
+
       // Start rapid polling for this transaction
       try {
         console.log(
@@ -2999,6 +3114,22 @@ class MainController {
         transaction: txWithTimestamp,
       })
     );
+
+    // Notify about new pending transaction
+    const { accounts, activeAccount } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (account) {
+      notificationManager.notifyTransaction({
+        transaction: txWithTimestamp,
+        type: 'pending',
+        account: {
+          address: account.address,
+          label: account.label,
+        },
+        network: activeNetwork,
+        isEvm: !isBitcoinBased,
+      });
+    }
 
     // Start rapid polling for this transaction to detect confirmation quickly
     try {
@@ -4133,6 +4264,8 @@ class MainController {
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
+    // Notify about network change (notification manager handles validation)
+    notificationManager.notifyNetworkChange(network);
 
     // Execute updates synchronously if requested, otherwise with a small delay
     if (syncUpdates) {

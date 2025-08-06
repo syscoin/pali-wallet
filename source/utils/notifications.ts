@@ -185,12 +185,11 @@ export const showTransactionNotification = async (
 
 // Network change notification
 export const showNetworkChangeNotification = async (
-  fromNetwork: string,
   toNetwork: string
 ): Promise<string | null> =>
   createNotification({
     title: 'Network Changed',
-    message: `Switched from ${fromNetwork} to ${toNetwork}`,
+    message: `Switched to ${toNetwork}`,
     type: 'basic',
     priority: 0,
   });

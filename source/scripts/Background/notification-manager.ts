@@ -1,7 +1,7 @@
 import { txUtils } from '@sidhujag/sysweb3-utils';
 
-import { getController, getIsReady } from 'scripts/Background';
-import store from 'state/store';
+import { getIsReady } from 'scripts/Background';
+import { INetwork } from 'types/network';
 import {
   setupNotificationListeners,
   showTransactionNotification,
@@ -14,435 +14,46 @@ import {
 } from 'utils/notifications';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
-interface INotificationState {
-  // Last known account
-  lastAccount: { address: string; label?: string } | null;
-  // Last known network
-  lastNetwork: { chainId: number; name: string } | null;
-  // Track pending transactions
-  pendingTransactions: Map<string, ITransactionNotification>;
-  // Track notifications we've already shown
-  shownTransactionNotifications: Set<string>;
-}
-
 class NotificationManager {
-  private state: INotificationState = {
-    shownTransactionNotifications: new Set(),
-    pendingTransactions: new Map(),
-    lastNetwork: null,
-    lastAccount: null,
-  };
+  private controller: any = null; // Will be set after initialization
 
   constructor() {
-    // Initialize state with current values to prevent false notifications on startup
-    const currentState = store.getState();
-
-    if (currentState.vault) {
-      const {
-        activeAccount,
-        activeNetwork,
-        accounts,
-        accountTransactions,
-        isBitcoinBased,
-      } = currentState.vault;
-
-      // Initialize last network
-      if (activeNetwork) {
-        this.state.lastNetwork = {
-          chainId: activeNetwork.chainId,
-          name: activeNetwork.label,
-        };
-      }
-
-      // Initialize last account
-      if (activeAccount && accounts) {
-        const account = accounts[activeAccount.type]?.[activeAccount.id];
-        if (account) {
-          this.state.lastAccount = {
-            address: account.address,
-            label: account.label,
-          };
-        }
-      }
-
-      // Initialize shownTransactionNotifications with existing transactions
-      // This prevents showing notifications for transactions that already exist on startup
-      if (activeAccount && accountTransactions) {
-        const txs = accountTransactions[activeAccount.type]?.[activeAccount.id];
-        if (txs) {
-          const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
-          const chainTxs = txs[networkType]?.[activeNetwork.chainId] || [];
-
-          chainTxs.forEach((tx: any) => {
-            const txId = tx.hash || tx.txid;
-            if (txId) {
-              const txKey = `${txId}_${activeNetwork.chainId}`;
-              // Mark all existing transactions as already shown
-              // This prevents spam on startup/restart
-              if (!isTransactionInBlock(tx)) {
-                this.state.shownTransactionNotifications.add(
-                  `${txKey}_pending`
-                );
-              } else {
-                this.state.shownTransactionNotifications.add(
-                  `${txKey}_confirmed`
-                );
-              }
-            }
-          });
-        }
-      }
-    }
-
     // Set up notification click handlers
     setupNotificationListeners();
-
-    // Subscribe to state changes
-    this.subscribeToStateChanges();
-
-    // Check for pending transactions periodically
-    this.startPendingTransactionCheck();
   }
 
-  private subscribeToStateChanges() {
-    let previousState = store.getState();
-
-    store.subscribe(() => {
-      const currentState = store.getState();
-      const { vault } = currentState;
-
-      // Early return if vault doesn't exist
-      if (!vault) {
-        previousState = currentState;
-        return;
-      }
-
-      // Check for network changes
-      if (vault.activeNetwork && previousState.vault?.activeNetwork) {
-        if (
-          vault.activeNetwork.chainId !==
-          previousState.vault.activeNetwork.chainId
-        ) {
-          this.handleNetworkChange(
-            previousState.vault.activeNetwork,
-            vault.activeNetwork
-          );
-        }
-      }
-      // Check for account changes
-      if (vault.activeAccount && previousState.vault?.activeAccount) {
-        // Check if the active account ID or type has changed
-        if (
-          vault.activeAccount.id !== previousState.vault.activeAccount.id ||
-          vault.activeAccount.type !== previousState.vault.activeAccount.type
-        ) {
-          // Get the newly active account
-          const newActiveAccount =
-            vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
-
-          if (newActiveAccount) {
-            this.handleAccountChange(newActiveAccount);
-          }
-        }
-      }
-
-      // Check for transaction updates
-      if (
-        previousState.vault?.accountTransactions &&
-        vault.accountTransactions !== previousState.vault.accountTransactions
-      ) {
-        this.checkTransactionUpdates(vault, previousState.vault);
-      }
-
-      previousState = currentState;
-    });
+  // Set the controller after it's been initialized
+  public setController(controller: any) {
+    this.controller = controller;
   }
 
-  private handleNetworkChange(fromNetwork: any, toNetwork: any) {
-    // Only show notification if we're actually switching networks
-    // Skip notification on initial load (when lastNetwork is null)
-    if (
-      this.state.lastNetwork &&
-      this.state.lastNetwork.chainId !== toNetwork.chainId
-    ) {
-      showNetworkChangeNotification(fromNetwork.label, toNetwork.label);
-    }
-
-    // Always update the last network state
-    this.state.lastNetwork = {
-      chainId: toNetwork.chainId,
-      name: toNetwork.label,
-    };
+  // Public method for MainController to notify network changes
+  public notifyNetworkChange(newNetwork: INetwork) {
+    showNetworkChangeNotification(newNetwork.label);
   }
 
-  private handleAccountChange(newAccount: any) {
-    // Only show notification if we're switching from one account to another
-    // Skip notification on initial load (when lastAccount is null)
-    if (
-      this.state.lastAccount &&
-      this.state.lastAccount.address !== newAccount.address
-    ) {
-      showAccountChangeNotification(newAccount.address, newAccount.label);
-    }
-
-    // Always update the last account state
-    this.state.lastAccount = {
-      address: newAccount.address,
-      label: newAccount.label,
-    };
+  // Public method for MainController to notify account changes
+  public notifyAccountChange(newAccount: { address: string; label?: string }) {
+    showAccountChangeNotification(newAccount.address, newAccount.label);
   }
 
-  private checkTransactionUpdates(currentVault: any, previousVault: any) {
-    const { activeAccount, activeNetwork, accounts, isBitcoinBased } =
-      currentVault;
+  // Public method for MainController to notify about transaction events
+  // MainController determines when to call this and with what type
+  public notifyTransaction(params: {
+    account: { address: string; label?: string };
+    isEvm: boolean;
+    network: INetwork;
+    transaction: any;
+    type: 'pending' | 'confirmed' | 'failed';
+  }) {
+    const { transaction, type, account, network, isEvm } = params;
 
-    if (!activeAccount || !activeNetwork) {
-      return;
-    }
-
-    const account = accounts[activeAccount.type]?.[activeAccount.id];
-    if (!account) {
-      return;
-    }
-
-    const currentTxs =
-      currentVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
-    const previousTxs =
-      previousVault?.accountTransactions?.[activeAccount.type]?.[
-        activeAccount.id
-      ];
-
-    // Early return if no current transactions exist for this account
-    if (!currentTxs) {
-      return;
-    }
-
-    if (isBitcoinBased) {
-      // Safely access syscoin transactions with proper null checks
-      const currentUtxoTxs = currentTxs?.syscoin?.[activeNetwork.chainId] || [];
-      const previousUtxoTxs =
-        previousTxs?.syscoin?.[activeNetwork.chainId] || [];
-      this.checkUtxoTransactions(
-        currentUtxoTxs,
-        previousUtxoTxs,
-        account,
-        activeNetwork
-      );
-    } else {
-      // Safely access ethereum transactions with proper null checks
-      const currentEvmTxs = currentTxs?.ethereum?.[activeNetwork.chainId] || [];
-      const previousEvmTxs =
-        previousTxs?.ethereum?.[activeNetwork.chainId] || [];
-      this.checkEvmTransactions(
-        currentEvmTxs,
-        previousEvmTxs,
-        account,
-        activeNetwork
-      );
-    }
-  }
-
-  // Helper method to create transaction lookup maps
-  private createTransactionMaps(transactions: any[]) {
-    const byHash = new Map();
-    const byNonce = new Map();
-
-    transactions.forEach((tx) => {
-      // Map by hash (works for both EVM and UTXO)
-      const txId = tx.hash || tx.txid;
-      if (txId) {
-        byHash.set(txId, tx);
-      }
-
-      // Map by nonce (EVM only)
-      if (tx.from && typeof tx.nonce === 'number') {
-        const nonceKey = `${tx.from.toLowerCase()}_${tx.nonce}`;
-        byNonce.set(nonceKey, tx);
-      }
-    });
-
-    return { byHash, byNonce };
-  }
-
-  // Helper method to find previous transaction
-  private findPreviousTransaction(
-    tx: any,
-    previousMaps: { byHash: Map<string, any>; byNonce: Map<string, any> }
-  ) {
-    const { byHash, byNonce } = previousMaps;
-
-    // First try to find by hash/txid
-    const txId = tx.hash || tx.txid;
-    const byHashResult = txId ? byHash.get(txId) : null;
-
-    // For EVM transactions, also try to find by nonce (for replacements)
-    let byNonceResult = null;
-    if (!byHashResult && tx.from && typeof tx.nonce === 'number') {
-      const nonceKey = `${tx.from.toLowerCase()}_${tx.nonce}`;
-      byNonceResult = byNonce.get(nonceKey);
-    }
-
-    return {
-      previousTx: byHashResult || byNonceResult,
-    };
-  }
-
-  // Helper method to handle confirmed transactions
-  private handleConfirmedTransaction(
-    tx: any,
-    previousTx: any,
-    account: any,
-    network: any,
-    isEvm: boolean
-  ) {
-    const txId = isEvm ? tx.hash : tx.txid;
-    const txKey = `${txId}_${network.chainId}`;
-
-    // Check if we've already shown a notification for this transaction
-    if (this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)) {
-      return;
-    }
-
-    // Show the appropriate notification
+    // Simply show the notification based on what MainController tells us
     if (isEvm) {
-      this.showEvmTransactionNotification(tx, 'confirmed', account, network);
+      this.showEvmTransactionNotification(transaction, type, account, network);
     } else {
-      this.showUtxoTransactionNotification(tx, 'confirmed', account, network);
+      this.showUtxoTransactionNotification(transaction, type, account, network);
     }
-
-    // Mark as shown
-    this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
-    this.state.pendingTransactions.delete(txKey);
-
-    // If this was a replacement, also mark the old tx as notified
-    const previousTxId = isEvm ? previousTx.hash : previousTx.txid;
-    if (previousTxId !== txId) {
-      const oldTxKey = `${previousTxId}_${network.chainId}`;
-      this.state.shownTransactionNotifications.add(`${oldTxKey}_confirmed`);
-      this.state.pendingTransactions.delete(oldTxKey);
-    }
-  }
-
-  private checkEvmTransactions(
-    currentTxs: any[],
-    previousTxs: any[],
-    account: any,
-    network: any
-  ) {
-    // Create lookup maps for previous transactions
-    const previousMaps = this.createTransactionMaps(previousTxs);
-
-    // Check each current transaction
-    currentTxs.forEach((tx) => {
-      const txKey = `${tx.hash}_${network.chainId}`;
-      const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
-
-      // Generic check: A transaction is confirmed if it's in a block
-      const isCurrentTxConfirmed = isTransactionInBlock(tx);
-      const isPreviousTxConfirmed =
-        previousTx && isTransactionInBlock(previousTx);
-
-      // New pending transaction
-      if (
-        !previousTx &&
-        !isCurrentTxConfirmed &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
-      ) {
-        this.showEvmTransactionNotification(tx, 'pending', account, network);
-        this.state.shownTransactionNotifications.add(`${txKey}_pending`);
-      }
-
-      // Transaction just confirmed (including replacements)
-      // Check if previous was unconfirmed (no blockNumber) and current is confirmed (has blockNumber)
-      if (previousTx && !isPreviousTxConfirmed && isCurrentTxConfirmed) {
-        this.handleConfirmedTransaction(tx, previousTx, account, network, true);
-      }
-
-      // Failed transaction
-      if (
-        tx.txreceipt_status === '0' &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_failed`)
-      ) {
-        this.showEvmTransactionNotification(tx, 'failed', account, network);
-        this.state.shownTransactionNotifications.add(`${txKey}_failed`);
-        this.state.pendingTransactions.delete(txKey);
-      }
-    });
-
-    // Update pending transaction badge
-    this.updatePendingBadge(currentTxs);
-  }
-
-  private checkUtxoTransactions(
-    currentTxs: any[],
-    previousTxs: any[],
-    account: any,
-    network: any
-  ) {
-    // Create lookup maps for previous transactions (UTXO only uses hash)
-    const previousMaps = this.createTransactionMaps(previousTxs);
-
-    // Track which transactions we've seen in this update
-    const currentTxIds = new Set<string>();
-
-    // Check each current transaction
-    currentTxs.forEach((tx) => {
-      const txKey = `${tx.txid}_${network.chainId}`;
-      currentTxIds.add(tx.txid);
-
-      const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
-
-      // Generic check: A transaction is confirmed if it's in a block
-      const isCurrentTxConfirmed = isTransactionInBlock(tx);
-      const isPreviousTxConfirmed =
-        previousTx && isTransactionInBlock(previousTx);
-
-      // New pending transaction - only notify if we haven't seen it before
-      if (
-        !isCurrentTxConfirmed &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_pending`) &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
-      ) {
-        // Additional check: only show if this is truly a new transaction
-        if (!previousTx || previousTxs.length === 0) {
-          this.showUtxoTransactionNotification(tx, 'pending', account, network);
-          this.state.shownTransactionNotifications.add(`${txKey}_pending`);
-        }
-      }
-
-      // Transaction just confirmed
-      if (
-        previousTx &&
-        !isPreviousTxConfirmed &&
-        isCurrentTxConfirmed &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
-      ) {
-        this.handleConfirmedTransaction(
-          tx,
-          previousTx,
-          account,
-          network,
-          false
-        );
-        this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
-      }
-    });
-
-    // Clean up stale entries from shownTransactionNotifications
-    const keysToRemove: string[] = [];
-    this.state.shownTransactionNotifications.forEach((key) => {
-      const [txId] = key.split('_');
-      if (!currentTxIds.has(txId)) {
-        keysToRemove.push(key);
-      }
-    });
-
-    keysToRemove.forEach((key) => {
-      this.state.shownTransactionNotifications.delete(key);
-    });
-
-    // Update pending transaction badge
-    this.updatePendingBadge(currentTxs);
   }
 
   private async showEvmTransactionNotification(
@@ -453,7 +64,7 @@ class NotificationManager {
   ) {
     try {
       // Check if controller is ready before proceeding
-      if (!getIsReady()) {
+      if (!getIsReady() || !this.controller) {
         console.warn(
           '[NotificationManager] Controller not ready, skipping EVM transaction notification for:',
           tx.hash
@@ -467,7 +78,7 @@ class NotificationManager {
         network.currency,
         undefined, // tokenCache
         false, // skipUnknownTokenFetch
-        getController() // Pass controller for background context
+        this.controller // Pass controller for background context
       );
       // Note: We don't skip token fetch here as notifications should show proper token info
 
@@ -502,13 +113,6 @@ class NotificationManager {
       };
 
       showTransactionNotification(notification);
-
-      if (type === 'pending') {
-        this.state.pendingTransactions.set(`${tx.hash}_${network.chainId}`, {
-          ...notification,
-          timestamp: Date.now(),
-        } as any);
-      }
     } catch (error) {
       console.error(
         '[NotificationManager] Error showing EVM transaction notification:',
@@ -528,13 +132,6 @@ class NotificationManager {
       };
 
       showTransactionNotification(notification);
-
-      if (type === 'pending') {
-        this.state.pendingTransactions.set(
-          `${tx.hash}_${network.chainId}`,
-          notification
-        );
-      }
     }
   }
 
@@ -574,12 +171,12 @@ class NotificationManager {
         // Decode the raw hex to get SPT information
         if (rawHex) {
           // Check if controller is ready
-          if (!getIsReady()) {
+          if (!getIsReady() || !this.controller) {
             console.warn(
               '[NotificationManager] Controller not ready yet for transaction decoding'
             );
           } else {
-            const controller = getController();
+            const controller = this.controller;
 
             if (controller && controller.wallet) {
               try {
@@ -755,13 +352,6 @@ class NotificationManager {
     } as ITransactionNotification;
 
     showTransactionNotification(notification);
-
-    if (type === 'pending') {
-      this.state.pendingTransactions.set(`${tx.txid}_${network.chainId}`, {
-        ...notification,
-        timestamp: Date.now(),
-      } as any);
-    }
   }
 
   private formatValue(value: string, decimals: number): string {
@@ -774,43 +364,9 @@ class NotificationManager {
     }
   }
 
-  private updatePendingBadge(transactions: any[]) {
-    const pendingCount = transactions.filter(
-      (tx) => !isTransactionInBlock(tx)
-    ).length;
-
-    updatePendingTransactionBadge(pendingCount);
-  }
-
-  private pendingCheckInterval: NodeJS.Timeout | null = null;
-
-  private startPendingTransactionCheck() {
-    // Clear any existing interval to prevent duplicates
-    if (this.pendingCheckInterval) {
-      clearInterval(this.pendingCheckInterval);
-    }
-
-    // Check every 30 seconds for stuck pending transactions
-    this.pendingCheckInterval = setInterval(() => {
-      const now = Date.now();
-      const TIMEOUT = 10 * 60 * 1000; // 10 minutes
-
-      this.state.pendingTransactions.forEach((notification, key) => {
-        // If a pending transaction has been pending for too long, remove it
-        // This prevents memory leaks from stuck transactions
-        if (now - (notification as any).timestamp > TIMEOUT) {
-          this.state.pendingTransactions.delete(key);
-        }
-      });
-    }, 30000);
-  }
-
   // Public cleanup method
   public cleanup() {
-    if (this.pendingCheckInterval) {
-      clearInterval(this.pendingCheckInterval);
-      this.pendingCheckInterval = null;
-    }
+    // Currently no cleanup needed
   }
 
   // Public methods for manual notification triggering
@@ -822,19 +378,13 @@ class NotificationManager {
     showErrorNotification(error, context);
   }
 
-  // Clear all notification state (useful for wallet lock/reset)
-  public clearState(preservePendingTransactions = false) {
-    this.state.shownTransactionNotifications.clear();
+  // Public method to update pending transaction badge
+  public updatePendingTransactionBadge(transactions: any[]) {
+    const pendingCount = transactions.filter(
+      (tx) => !isTransactionInBlock(tx)
+    ).length;
 
-    // Only clear pending transactions if explicitly requested
-    // This allows us to keep tracking pending transactions when wallet is locked
-    if (!preservePendingTransactions) {
-      this.state.pendingTransactions.clear();
-      updatePendingTransactionBadge(0);
-    } else {
-      // Keep the badge count updated with current pending transactions
-      updatePendingTransactionBadge(this.state.pendingTransactions.size);
-    }
+    updatePendingTransactionBadge(pendingCount);
   }
 
   // Get SPT metadata including any color information
@@ -844,14 +394,14 @@ class NotificationManager {
   ): Promise<any | null> {
     try {
       // Check if controller is ready
-      if (!getIsReady()) {
+      if (!getIsReady() || !this.controller) {
         console.warn(
           '[NotificationManager] Controller not ready yet for asset metadata fetch'
         );
         return null;
       }
 
-      const controller = getController();
+      const controller = this.controller;
 
       if (!controller || !controller.wallet) {
         console.error(
