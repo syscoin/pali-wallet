@@ -210,24 +210,11 @@ export const SendConfirm = () => {
       return null;
     }
   };
-  // Helper function to convert Gwei values to Wei as BigNumber without precision loss
-  const gweiToWeiBigNumber = (
-    gweiValue: number | string | BigNumber
-  ): BigNumber => {
-    // If already a BigNumber in Wei, return it
-    if (BigNumber.isBigNumber(gweiValue) && gweiValue.gt(10 ** 9)) {
-      return gweiValue;
-    }
 
-    // Convert to string first to preserve precision
-    const gweiStr = BigNumber.isBigNumber(gweiValue)
-      ? gweiValue.toString()
-      : typeof gweiValue === 'number'
-      ? gweiValue.toString()
-      : gweiValue;
-
-    // parseUnits handles decimal conversion without precision loss
-    return parseUnits(gweiStr, 9);
+  // Helper function to safely convert fee values to numbers and format them
+  const safeToFixed = (value: any, decimals = 9): string => {
+    const numValue = Number(value);
+    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
   };
 
   const getLegacyGasPrice = async () => {
@@ -346,45 +333,24 @@ export const SendConfirm = () => {
 
           let value = parseUnits(String(basicTxValues.amount), 'ether');
 
-          // For max sends, get the actual balance from the account
-          const actualBalance = activeAccount?.balances?.ethereum || 0;
-          const actualBalanceWei = parseUnits(String(actualBalance), 'ether');
-
           try {
             // For MAX sends, deduct gas fees from the value
             // This is required because ethers.js validates balance >= value + gas
             if (basicTxValues.isMax) {
-              // For max sends, use the ACTUAL balance instead of the parsed amount
-              // This avoids rounding issues where the displayed amount might be slightly different
-              value = actualBalanceWei;
-
               const gasLimit = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
 
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
-                let maxFeePerGasWei;
-
-                // For max sends, ALWAYS prefer cachedGasData when available (unless custom fee is set)
-                if (
-                  cachedGasData &&
-                  !customFee.isCustom &&
-                  basicTxValues.isMax
-                ) {
-                  // Use cached gas data directly (already in Wei as BigNumber)
-                  maxFeePerGasWei = BigNumber.from(cachedGasData.maxFeePerGas);
-                } else {
-                  // Use fee state (convert from Gwei to Wei)
-                  const feeValue = Boolean(
-                    customFee.isCustom && customFee.maxFeePerGas > 0
-                  )
-                    ? customFee.maxFeePerGas
-                    : fee.maxFeePerGas;
-                  // Use precision-preserving conversion
-                  maxFeePerGasWei = gweiToWeiBigNumber(feeValue);
-                }
-
+                const maxFeePerGasWei = parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? safeToFixed(customFee.maxFeePerGas)
+                      : safeToFixed(fee.maxFeePerGas)
+                  ),
+                  9
+                );
                 const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
                 value = value.sub(maxGasFeeWei);
               } else {
@@ -457,36 +423,30 @@ export const SendConfirm = () => {
             }
 
             // Use atomic wrapper for EIP-1559 transactions
-            // For max sends, ALWAYS use cachedGasData when available (unless custom fee)
-            const shouldUseCachedGas =
-              cachedGasData && !customFee.isCustom && basicTxValues.isMax;
-
-            const finalMaxFeePerGas = shouldUseCachedGas
-              ? BigNumber.from(cachedGasData.maxFeePerGas)
-              : gweiToWeiBigNumber(
-                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? customFee.maxFeePerGas
-                    : fee.maxFeePerGas
-                );
-
-            const finalMaxPriorityFeePerGas = shouldUseCachedGas
-              ? BigNumber.from(cachedGasData.maxPriorityFeePerGas)
-              : gweiToWeiBigNumber(
-                  Boolean(
-                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                  )
-                    ? customFee.maxPriorityFeePerGas
-                    : fee.maxPriorityFeePerGas
-                );
-
             await controllerEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
               [
                 {
                   ...restTx,
                   value,
-                  maxPriorityFeePerGas: finalMaxPriorityFeePerGas,
-                  maxFeePerGas: finalMaxFeePerGas,
+                  maxPriorityFeePerGas: parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? safeToFixed(customFee.maxPriorityFeePerGas)
+                        : safeToFixed(fee.maxPriorityFeePerGas)
+                    ),
+                    9
+                  ),
+                  maxFeePerGas: parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? safeToFixed(customFee.maxFeePerGas)
+                        : safeToFixed(fee.maxFeePerGas)
+                    ),
+                    9
+                  ),
                   gasLimit: validateCustomGasLimit
                     ? BigNumber.from(customFee.gasLimit)
                     : BigNumber.from(
@@ -510,55 +470,42 @@ export const SendConfirm = () => {
               basicTxValues.isMax &&
               error.message?.includes('insufficient funds')
             ) {
-              // Recalculate gas parameters for retry (they might not be defined if coming from legacy path)
-              const retryMaxFeePerGas =
-                cachedGasData && !customFee.isCustom && basicTxValues.isMax
-                  ? BigNumber.from(cachedGasData.maxFeePerGas)
-                  : gweiToWeiBigNumber(
-                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                        ? customFee.maxFeePerGas
-                        : fee.maxFeePerGas
-                    );
-
-              const retryMaxPriorityFeePerGas =
-                cachedGasData && !customFee.isCustom && basicTxValues.isMax
-                  ? BigNumber.from(cachedGasData.maxPriorityFeePerGas)
-                  : gweiToWeiBigNumber(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? customFee.maxPriorityFeePerGas
-                        : fee.maxPriorityFeePerGas
-                    );
-
-              // Calculate gas limit for retry
-              const retryGasLimit = BigNumber.from(
-                validateCustomGasLimit
-                  ? customFee.gasLimit
-                  : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-              );
-
-              // Calculate new value: balance - gas - buffer
-              const retryGasFee = retryMaxFeePerGas.mul(retryGasLimit);
-              const buffer = BigNumber.from('10000'); // 10,000 wei buffer for retry
-              const reducedValue = actualBalanceWei
-                .sub(retryGasFee)
-                .sub(buffer);
+              const reducedValue = value.sub(BigNumber.from('100000'));
 
               if (reducedValue.gt(0)) {
                 const retryTxObject = {
                   ...restTx,
                   value: reducedValue,
-                  maxPriorityFeePerGas: retryMaxPriorityFeePerGas,
-                  maxFeePerGas: retryMaxFeePerGas,
-                  gasLimit: retryGasLimit,
+                  maxPriorityFeePerGas: parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? safeToFixed(customFee.maxPriorityFeePerGas)
+                        : safeToFixed(fee.maxPriorityFeePerGas)
+                    ),
+                    9
+                  ),
+                  maxFeePerGas: parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? safeToFixed(customFee.maxFeePerGas)
+                        : safeToFixed(fee.maxFeePerGas)
+                    ),
+                    9
+                  ),
+                  gasLimit: BigNumber.from(
+                    validateCustomGasLimit
+                      ? customFee.gasLimit
+                      : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                  ),
                 };
 
                 try {
-                  // Retry with reduced value
+                  // Use atomic wrapper for retry
                   await controllerEmitter(
                     ['wallet', 'sendAndSaveEthTransaction'],
-                    [retryTxObject],
+                    [retryTxObject, !isEIP1559Compatible],
                     false,
                     activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                       ? 300000 // 5 minutes timeout for hardware wallet operations
@@ -685,20 +632,26 @@ export const SendConfirm = () => {
                       tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
-                      maxPriorityFeePerGas: gweiToWeiBigNumber(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
-                        )
-                          ? customFee.maxPriorityFeePerGas
-                          : fee.maxPriorityFeePerGas
+                      maxPriorityFeePerGas: parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom &&
+                              customFee.maxPriorityFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxPriorityFeePerGas)
+                            : safeToFixed(fee.maxPriorityFeePerGas)
+                        ),
+                        9
                       ),
-                      maxFeePerGas: gweiToWeiBigNumber(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? customFee.maxFeePerGas
-                          : fee.maxFeePerGas
+                      maxFeePerGas: parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom && customFee.maxFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxFeePerGas)
+                            : safeToFixed(fee.maxFeePerGas)
+                        ),
+                        9
                       ),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
@@ -850,20 +803,26 @@ export const SendConfirm = () => {
                       tokenId: numericTokenId, // The actual NFT token ID
                       tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
                       isLegacy: !isEIP1559Compatible,
-                      maxPriorityFeePerGas: gweiToWeiBigNumber(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
-                        )
-                          ? customFee.maxPriorityFeePerGas
-                          : fee.maxPriorityFeePerGas
+                      maxPriorityFeePerGas: parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom &&
+                              customFee.maxPriorityFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxPriorityFeePerGas)
+                            : safeToFixed(fee.maxPriorityFeePerGas)
+                        ),
+                        9
                       ),
-                      maxFeePerGas: gweiToWeiBigNumber(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? customFee.maxFeePerGas
-                          : fee.maxFeePerGas
+                      maxFeePerGas: parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom && customFee.maxFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxFeePerGas)
+                            : safeToFixed(fee.maxFeePerGas)
+                        ),
+                        9
                       ),
                       gasPrice: hexlify(gasPrice),
                       gasLimit: validateCustomGasLimit
