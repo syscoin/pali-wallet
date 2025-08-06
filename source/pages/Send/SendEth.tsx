@@ -355,7 +355,11 @@ export const SendEth = () => {
           try {
             const amountBN = parseEther(values.amount);
             const balanceBN = parseEther(balanceEth);
-            isMax = amountBN.eq(balanceBN);
+
+            // Check if amounts are equal or within 1 wei difference (rounding tolerance)
+            // This handles cases where the displayed value might be slightly rounded
+            const difference = balanceBN.sub(amountBN).abs();
+            isMax = difference.lte(1); // Consider it max if difference is <= 1 wei
           } catch {
             // If parsing fails, it's not a MAX send
             isMax = false;
@@ -1289,8 +1293,9 @@ export const SendEth = () => {
                           const inputBN = parseEther(inputValue);
                           const balanceBN = parseEther(balanceEth);
 
-                          // Set isMaxSend based on whether value equals balance
-                          setIsMaxSend(inputBN.eq(balanceBN));
+                          // Check if amounts are equal or within 1 wei difference (rounding tolerance)
+                          const difference = balanceBN.sub(inputBN).abs();
+                          setIsMaxSend(difference.lte(1)); // Consider it max if difference is <= 1 wei
                         } catch {
                           // If parsing fails, it's not a MAX send
                           setIsMaxSend(false);

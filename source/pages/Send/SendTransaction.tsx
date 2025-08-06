@@ -243,6 +243,8 @@ export const SendTransaction = () => {
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9
+            : fee.gasPrice && fee.gasPrice > 0
+            ? fee.gasPrice * 10 ** 9 // Use the value from fee (already in Gwei, convert to wei)
             : await controllerEmitter([
                 'wallet',
                 'ethereumTransaction',
@@ -263,7 +265,9 @@ export const SendTransaction = () => {
                       customFee.gasLimit > 0
                   )
                     ? customFee.gasLimit
-                    : fee.gasLimit || 42000 // Default gas limit fallback
+                    : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+                    ? tx.gasLimit.toNumber() // Use the BigNumber from tx
+                    : fee.gasLimit || 42000 // Fallback to fee or default
                 ),
               },
               isLegacyTransaction,
@@ -281,33 +285,36 @@ export const SendTransaction = () => {
               {
                 ...txToSend,
                 nonce: customNonce,
-                maxPriorityFeePerGas: parseUnits(
-                  String(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                maxPriorityFeePerGas: Boolean(
+                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                )
+                  ? parseUnits(
+                      String(safeToFixed(customFee.maxPriorityFeePerGas)),
+                      9
                     )
-                      ? safeToFixed(customFee.maxPriorityFeePerGas)
-                      : safeToFixed(fee.maxPriorityFeePerGas)
-                  ),
-                  9
-                ),
-                maxFeePerGas: parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? safeToFixed(customFee.maxFeePerGas)
-                      : safeToFixed(fee.maxFeePerGas)
-                  ),
-                  9
-                ),
-                gasLimit: BigNumber.from(
-                  Boolean(
-                    customFee.isCustom &&
-                      customFee.gasLimit &&
-                      customFee.gasLimit > 0
-                  )
-                    ? customFee.gasLimit
-                    : fee.gasLimit || 42000 // Default gas limit fallback
-                ),
+                  : tx.maxPriorityFeePerGas &&
+                    BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
+                  ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
+                  : parseUnits(
+                      String(safeToFixed(fee.maxPriorityFeePerGas)),
+                      9
+                    ), // Fallback to fee
+                maxFeePerGas: Boolean(
+                  customFee.isCustom && customFee.maxFeePerGas > 0
+                )
+                  ? parseUnits(String(safeToFixed(customFee.maxFeePerGas)), 9)
+                  : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
+                  ? tx.maxFeePerGas // Use the BigNumber from tx
+                  : parseUnits(String(safeToFixed(fee.maxFeePerGas)), 9), // Fallback to fee
+                gasLimit: Boolean(
+                  customFee.isCustom &&
+                    customFee.gasLimit &&
+                    customFee.gasLimit > 0
+                )
+                  ? BigNumber.from(customFee.gasLimit)
+                  : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+                  ? tx.gasLimit // Use the BigNumber from tx
+                  : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
               },
               false, // isLegacy = false for EIP-1559
             ],
