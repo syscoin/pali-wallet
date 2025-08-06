@@ -535,7 +535,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
 
                     <div className="pt-2 border-t border-alpha-whiteAlpha100">
                       <CopyableField
-                        label="Asset GUID"
+                        label={t('send.assetGuid')}
                         value={asset.assetGuid}
                         displayValue={displayGuid}
                         monospace

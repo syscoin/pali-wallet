@@ -360,7 +360,7 @@ export const SyscoinTransactionDetails = ({
                 )} Asset`}
             </p>
             <p className="text-brand-gray200 text-xs">
-              Asset GUID: {assetInfo.assetGuid}
+              {t('send.assetGuid')}: {assetInfo.assetGuid}
             </p>
           </div>
         ) : (
@@ -399,7 +399,9 @@ export const SyscoinTransactionDetails = ({
           <Fragment key={`token-${index}`}>
             {transfer.token && (
               <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-                <p className="text-xs font-normal text-white">Asset GUID</p>
+                <p className="text-xs font-normal text-white">
+                  {t('send.assetGuid')}
+                </p>
                 <span className="flex items-center">
                   <Tooltip content={transfer.token} childrenClassName="flex">
                     <p className="text-xs font-normal text-white">
@@ -409,7 +411,7 @@ export const SyscoinTransactionDetails = ({
                     </p>
                     <IconButton
                       onClick={() =>
-                        handleCopyWithMessage(transfer.token, 'Asset GUID')
+                        handleCopyWithMessage(transfer.token, 'Asset Guid')
                       }
                     >
                       <CopyIcon />
@@ -424,7 +426,9 @@ export const SyscoinTransactionDetails = ({
       {/* Add asset info from vins/vouts if present and not already shown */}
       {assetInfo && tokenTransfers.length === 0 && assetInfo.assetGuid && (
         <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-          <p className="text-xs font-normal text-white">Asset GUID</p>
+          <p className="text-xs font-normal text-white">
+            {t('send.assetGuid')}
+          </p>
           <span className="flex items-center">
             <Tooltip content={assetInfo.assetGuid} childrenClassName="flex">
               <p className="text-xs font-normal text-white">
@@ -434,7 +438,7 @@ export const SyscoinTransactionDetails = ({
               </p>
               <IconButton
                 onClick={() =>
-                  handleCopyWithMessage(assetInfo.assetGuid, 'Asset GUID')
+                  handleCopyWithMessage(assetInfo.assetGuid, 'Asset Guid')
                 }
               >
                 <CopyIcon />
