@@ -516,17 +516,25 @@ export const SendEth = () => {
 
     try {
       // Get fee data for EIP-1559 transaction
-      const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter([
+      const feeData = (await controllerEmitter([
         'wallet',
         'ethereumTransaction',
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
       ])) as any;
 
-      // Cache only the fee rates - gas limit will be handled by backend
-      setCachedFeeData({
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      });
+      // Only cache if we got valid fee data
+      if (feeData && feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        const { maxFeePerGas, maxPriorityFeePerGas } = feeData;
+
+        // Cache only the fee rates - gas limit will be handled by backend
+        // IMPORTANT: Convert BigNumbers to hex strings for proper serialization through navigation
+        setCachedFeeData({
+          maxFeePerGas: BigNumber.from(maxFeePerGas || '0').toHexString(),
+          maxPriorityFeePerGas: BigNumber.from(
+            maxPriorityFeePerGas || '0'
+          ).toHexString(),
+        });
+      }
     } catch (error) {
       console.error('Error calculating gas fees:', error);
       // Don't cache on error, but don't block the UI either
@@ -1197,6 +1205,7 @@ export const SendEth = () => {
                                     TransactionType.NATIVE_ETH
                                   ).toString()
                                 );
+                                // cachedFeeData.maxFeePerGas is already a hex string
                                 const maxFeePerGas = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );

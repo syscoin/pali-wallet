@@ -99,7 +99,6 @@ export const SendConfirm = () => {
   // Handle both normal navigation and restoration
   const basicTxValues = state.tx;
   const cachedGasData = basicTxValues?.cachedGasData;
-
   // Initialize fee state after basicTxValues is available
   const [fee, setFee] = useState<IFeeState>({
     gasLimit: basicTxValues?.defaultGasLimit || 42000,
@@ -968,17 +967,16 @@ export const SendConfirm = () => {
     // If we have cached gas data from SendEth, use it immediately
     if (cachedGasData && !customFee.isCustom) {
       const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
+
+      // Convert hex strings back to BigNumbers (they were serialized for navigation)
+      const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
+      const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
+
       const gasLimit = basicTxValues.defaultGasLimit || 42000;
       const initialFeeDetails = {
-        maxFeePerGas: parseFloat(formatGweiValue(maxFeePerGas)),
-        baseFee: parseFloat(
-          formatGweiValue(
-            BigNumber.from(maxFeePerGas).sub(
-              BigNumber.from(maxPriorityFeePerGas)
-            )
-          )
-        ),
-        maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityFeePerGas)),
+        maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+        baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+        maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
         gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
       };
 
@@ -986,8 +984,8 @@ export const SendConfirm = () => {
         from: basicTxValues.sender,
         to: basicTxValues.receivingAddress,
         chainId: activeNetwork.chainId,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
+        maxFeePerGas: maxFeeBN,
+        maxPriorityFeePerGas: maxPriorityBN,
       };
 
       setTxObjectState(formattedTxObject);
@@ -1122,7 +1120,9 @@ export const SendConfirm = () => {
 
       // Use BigNumber to prevent overflow for large gas prices
       const gasLimitBN = BigNumber.from(gasLimit);
-      const gasPriceWeiBN = parseUnits(gasPriceValue.toString(), 'gwei');
+      // Limit to 9 decimal places to avoid parseUnits error
+      const gasPriceStr = gasPriceValue.toFixed(9);
+      const gasPriceWeiBN = parseUnits(gasPriceStr, 'gwei');
       const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
       return Number(formatEther(totalFeeWeiBN));
     }
@@ -1139,7 +1139,9 @@ export const SendConfirm = () => {
 
     // Use BigNumber to prevent overflow for large gas prices
     const gasLimitBN = BigNumber.from(gasLimit);
-    const feePerGasWeiBN = parseUnits(feePerGas.toString(), 'gwei');
+    // Limit to 9 decimal places to avoid parseUnits error
+    const feePerGasStr = feePerGas.toFixed(9);
+    const feePerGasWeiBN = parseUnits(feePerGasStr, 'gwei');
     const totalFeeWeiBN = gasLimitBN.mul(feePerGasWeiBN);
     return Number(formatEther(totalFeeWeiBN));
   }, [

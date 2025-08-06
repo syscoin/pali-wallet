@@ -105,7 +105,12 @@ export const TransactionDetailsComponent = (
 
   // Use BigNumber to prevent overflow when multiplying large numbers
   const gasLimitBN = BigNumber.from(gasLimit || 0);
-  const gasPriceWeiBN = parseUnits(displayGasPrice.toString(), 'gwei');
+  // Limit to 9 decimal places to avoid parseUnits error
+  const gasPriceStr =
+    typeof displayGasPrice === 'number'
+      ? displayGasPrice.toFixed(9)
+      : parseFloat(displayGasPrice).toFixed(9);
+  const gasPriceWeiBN = parseUnits(gasPriceStr, 'gwei');
   const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
 
   // Convert to ETH for display (safe as we're only using for display)
