@@ -23,15 +23,15 @@ export const FaucetFirstAccessModal = ({
   const currentNetworkData = faucetNetworkData?.[chainId];
 
   return (
-    <div className="fixed z-[999] inset-0 flex items-center justify-center">
+    <div className="fixed z-[100] inset-0 flex items-center justify-center">
       <div
         className="absolute inset-0 bg-black bg-opacity-50"
         onClick={onClose}
       />
-      <div className="relative z-[1000] w-[364px] p-6 bg-brand-blue600 rounded-[20px] shadow-lg">
+      <div className="relative z-[101] w-[364px] p-6 bg-brand-blue600 rounded-[20px] shadow-lg">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 hover:opacity-60 z-[1001]"
+          className="absolute top-4 right-4 hover:opacity-60 z-[102]"
         >
           <img src={closeIcon} alt="Close" className="w-5 h-5" />
         </button>

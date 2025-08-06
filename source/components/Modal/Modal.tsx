@@ -44,7 +44,7 @@ export const Modal = ({
   <Transition appear show={show} as={Fragment}>
     <Dialog
       as="div"
-      className={`fixed z-[9999] inset-0 overflow-y-auto ${className}`}
+      className={`fixed z-[100] inset-0 overflow-y-auto ${className}`}
       onClose={() => {
         if (onClose) onClose();
       }}

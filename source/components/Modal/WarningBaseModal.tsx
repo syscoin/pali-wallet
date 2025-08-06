@@ -8,6 +8,17 @@ import {
   navigateWithContext,
 } from 'utils/navigationState';
 
+/**
+ * Z-Index Hierarchy:
+ * - Fixed buttons/containers: z-50
+ * - PageLoadingOverlay: z-50 (overlay), z-[55] (spinner)
+ * - LoadingComponent: z-[60]
+ * - Header/Navigation: z-[60]
+ * - Warning/Error Modals: z-[100] to z-[102] (highest priority)
+ *
+ * This ensures warning dialogs always appear above loading spinners.
+ */
+
 interface IModal {
   children?: ReactNode;
   onClose?: (value?: any) => any;
@@ -30,14 +41,20 @@ export const ModalBase = ({ children, onClose, show }: IModal) => {
   if (!show) return null;
 
   return (
-    <div className="fixed z-30 inset-0 overflow-y-auto animate-fadeIn">
+    <div
+      className="fixed z-[100] inset-0 overflow-y-auto animate-fadeIn"
+      style={{ pointerEvents: 'auto' }}
+    >
       <div
-        className="fixed inset-0 bg-brand-black bg-opacity-50 transition-opacity duration-300"
+        className="fixed inset-0 bg-brand-black bg-opacity-50 transition-opacity duration-200"
         onClick={() => {
           if (onClose) onClose();
         }}
       />
-      <div className="fixed z-1 min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
+      <div
+        className="fixed z-[101] min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]"
+        style={{ pointerEvents: 'auto' }}
+      >
         <div className="animate-slideIn">{children}</div>
       </div>
     </div>

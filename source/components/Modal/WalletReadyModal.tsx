@@ -27,7 +27,7 @@ export const WalletReadyModal = ({
     <Transition appear show={show} as={Fragment}>
       <Dialog
         as="div"
-        className={`fixed z-30 inset-0 overflow-y-auto rounded-t-[50px]`}
+        className={`fixed z-[100] inset-0 overflow-y-auto rounded-t-[50px]`}
         onClose={handleOnClose}
       >
         <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
