@@ -1,3 +1,4 @@
+import { formatUnits } from '@ethersproject/units';
 import { getAsset } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import { isNil } from 'lodash';
@@ -159,7 +160,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       }
 
       // Get user's balance for this asset (optional)
-      let balance = 0;
+      let balance: number = 0;
       try {
         // Blockbook doesn't support filtering by assetGuid, so we fetch all tokens
         const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -180,8 +181,11 @@ const SysAssetsControler = (): ISysAssetsController => {
         );
 
         if (tokenData && tokenData.balance !== undefined) {
-          // Keep balance in satoshis - it will be converted for display in UI
-          balance = Number(tokenData.balance);
+          // Convert from satoshis to display format to match getSysAssetsByXpub
+          const decimals = assetData.decimals || 8;
+          balance = parseFloat(
+            formatUnits(String(tokenData.balance || 0), decimals)
+          );
         }
       } catch (balanceError) {
         console.warn(
@@ -285,13 +289,18 @@ const SysAssetsControler = (): ISysAssetsController => {
           // Token found in blockchain response - use updated data
           // Convert all satoshi values to display format
           const decimals = blockchainToken.decimals || 8;
-          const divisor = Math.pow(10, decimals);
           return {
             ...blockchainToken,
-            balance: blockchainToken.balance / divisor,
-            totalSent: String(Number(blockchainToken.totalSent) / divisor),
-            totalReceived: String(
-              Number(blockchainToken.totalReceived) / divisor
+            balance: parseFloat(
+              formatUnits(String(blockchainToken.balance || 0), decimals)
+            ),
+            totalSent: formatUnits(
+              String(blockchainToken.totalSent || 0),
+              decimals
+            ),
+            totalReceived: formatUnits(
+              String(blockchainToken.totalReceived || 0),
+              decimals
             ),
             chainId: networkChainId,
             type: 'SPTAllocated',

@@ -2,6 +2,7 @@ import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 // Removed unused import: INetworkType
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
 import { ISysBalanceController } from './types';
@@ -60,9 +61,14 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     const confirmedBalance = parseBalance(accountData?.balance);
     const unconfirmedBalance = parseBalance(accountData?.unconfirmedBalance);
 
-    // Convert from satoshis to SYS
-    const confirmedBalanceInSys = confirmedBalance / 1e8;
-    const unconfirmedBalanceInSys = unconfirmedBalance / 1e8;
+    // Convert from satoshis to SYS safely without precision loss
+    // Using formatSyscoinValue which handles large values correctly
+    const confirmedBalanceInSys = parseFloat(
+      formatSyscoinValue(confirmedBalance.toString())
+    );
+    const unconfirmedBalanceInSys = parseFloat(
+      formatSyscoinValue(unconfirmedBalance.toString())
+    );
 
     // For display purposes, show the total spendable balance
     // This includes confirmed balance + pending incoming (positive unconfirmed)

@@ -20,6 +20,7 @@ import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
 import { handleTransactionError } from 'utils/errorHandling';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
   isNFT,
@@ -336,7 +337,7 @@ export const SendSys = () => {
               ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
               [
                 {
-                  amount: Number(amount),
+                  amount: amount, // Keep as string to preserve precision
                   receivingAddress: receiver,
                   feeRate,
                   txOptions: { rbf: RBF },
@@ -358,8 +359,8 @@ export const SendSys = () => {
 
           // Create transaction values object for centralized error handling
           const basicTxValues = {
-            fee: feeRate / 100000000, // Convert from satoshis to SYS
-            amount: Number(amount),
+            fee: parseFloat(formatSyscoinValue(feeRate.toString())), // Convert from satoshis to SYS safely
+            amount: amount, // Keep as string to preserve precision
           };
 
           // Handle all errors with centralized handler
@@ -446,7 +447,7 @@ export const SendSys = () => {
             ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
             [
               {
-                amount: Number(amount),
+                amount: amount, // Keep as string to preserve precision
                 receivingAddress: receiver,
                 feeRate,
                 txOptions: { rbf: RBF },
@@ -470,8 +471,8 @@ export const SendSys = () => {
 
           // Create transaction values object for centralized error handling
           const basicTxValues = {
-            fee: feeRate / 100000000, // Convert from satoshis to SYS
-            amount: Number(amount),
+            fee: parseFloat(formatSyscoinValue(feeRate.toString())), // Convert from satoshis to SYS safely
+            amount: amount, // Keep as string to preserve precision
           };
 
           // Handle all errors with centralized handler
@@ -523,7 +524,7 @@ export const SendSys = () => {
             tx: {
               sender: activeAccount?.address,
               receivingAddress: receiver,
-              amount: Number(amount),
+              amount: amount, // Keep as string to preserve precision
               fee: tokenFeeEstimate, // Actual fee amount (compliant with SysProvider API)
               feeRate: feeRate, // Add fee rate for transaction details display
               rbf: RBF, // RBF state for transaction details display
@@ -761,7 +762,7 @@ export const SendSys = () => {
                                         className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                                           isNFT(item.assetGuid)
                                             ? 'bg-gray-500 bg-opacity-80 text-white'
-                                            : 'bg-blue-500 bg-opacity-80 text-white'
+                                            : 'bg-brand-royalbluemedium bg-opacity-80 text-white'
                                         }`}
                                       >
                                         {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}

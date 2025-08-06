@@ -1,5 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { id } from '@ethersproject/hash';
+import { formatUnits } from '@ethersproject/units';
 import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -79,7 +80,7 @@ export const getTransactionDisplayInfo = async (
         } else {
           // Regular ERC-20 token with known decimals
           return {
-            displayValue: Number(tokenValue) / Math.pow(10, decimals),
+            displayValue: parseFloat(formatUnits(tokenValue, decimals)),
             displaySymbol: symbol.toUpperCase(),
             isErc20Transfer: true,
             actualRecipient: actualRecipient || tokenAddress,
@@ -122,7 +123,7 @@ export const getTransactionDisplayInfo = async (
             } else {
               // Regular ERC-20 token
               return {
-                displayValue: Number(tokenValue) / Math.pow(10, decimals),
+                displayValue: parseFloat(formatUnits(tokenValue, decimals)),
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
@@ -168,7 +169,7 @@ export const getTransactionDisplayInfo = async (
               } else {
                 // Regular ERC-20 token
                 return {
-                  displayValue: Number(tokenValue) / Math.pow(10, decimals),
+                  displayValue: parseFloat(formatUnits(tokenValue, decimals)),
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
@@ -188,7 +189,7 @@ export const getTransactionDisplayInfo = async (
       // Since we don't know if it's an NFT or the decimals, flag it
       // For unknown tokens, we'll show the raw value with a warning
       // and format it as if it might be 18 decimals (most common)
-      const possibleFormattedValue = Number(tokenValue) / Math.pow(10, 18);
+      const possibleFormattedValue = parseFloat(formatUnits(tokenValue, 18));
       const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
 
       return {

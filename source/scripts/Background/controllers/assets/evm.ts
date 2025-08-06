@@ -1,4 +1,5 @@
 import { Contract } from '@ethersproject/contracts';
+import { formatUnits } from '@ethersproject/units';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import { retryableFetch } from '@sidhujag/sysweb3-network';
@@ -160,8 +161,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
           contractAddress: token.contractAddress,
           balance: isNft
             ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
-            : parseFloat(token.balance) /
-              Math.pow(10, parseInt(token.decimals) || 18),
+            : parseFloat(
+                formatUnits(
+                  token.balance || '0',
+                  parseInt(token.decimals) || 18
+                )
+              ),
           decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
           tokenStandard: tokenType,
           ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
@@ -214,9 +219,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         contract.balanceOf(walletAddress),
       ]);
 
-      // Calculate the formatted balance
-      const balance = Number(balanceRaw) / Math.pow(10, decimals);
-      const formattedBalance = Math.floor(balance * 10000) / 10000;
+      // Calculate the formatted balance using BigNumber to avoid precision loss
+      // formatUnits returns a string with full precision
+      const balanceString = formatUnits(balanceRaw, decimals);
+      // Store full precision balance, UI will format for display
+      const balance = parseFloat(balanceString);
 
       // Lightweight token type detection (optional, non-blocking)
       let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
@@ -252,7 +259,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         name: name || symbol, // Keep names intact - they can have spaces
         contractAddress,
         decimals,
-        balance: formattedBalance,
+        balance, // Full precision balance
         chainId: store.getState().vault.activeNetwork.chainId,
         tokenStandard,
         isNft: false,
@@ -261,7 +268,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       // Don't fetch CoinGecko data during validation - keep it lightweight
       console.log(
-        `[EvmAssetsController] Validated ${tokenStandard} token ${symbol} with balance: ${formattedBalance}`
+        `[EvmAssetsController] Validated ${tokenStandard} token ${symbol} with balance: ${balance}`
       );
       return tokenDetails;
     } catch (error) {
@@ -669,7 +676,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           try {
             const balanceCallMethod = await contract.balanceOf(account.address);
-            const collectionBalance = Number(balanceCallMethod);
+            // Convert BigNumber to number safely (NFT counts are typically small)
+            const collectionBalance = balanceCallMethod.toNumber
+              ? balanceCallMethod.toNumber()
+              : Number(balanceCallMethod);
 
             console.log(
               `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
@@ -934,7 +944,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
         walletAddress,
         w3Provider
       );
-      const balance = metadata.balance / Math.pow(10, metadata.decimals || 18);
+      const balance = parseFloat(
+        formatUnits(metadata.balance || '0', metadata.decimals || 18)
+      );
 
       return {
         ...basicDetails,

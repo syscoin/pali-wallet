@@ -90,12 +90,14 @@ export const fetchGasAndDecodeFunction = async (
     maxPriorityFeePerGas: BigNumber;
     nonce: number;
     to: string;
-    value: number;
+    value: any; // BigNumber or compatible type
   } = {
     data: dataTx.data,
     from: dataTx.from,
     to: dataTx.to,
-    value: dataTx?.value ? Number(dataTx.value) : 0,
+    value: dataTx?.value
+      ? safeBigNumber(dataTx.value, '0x0', 'tx value')
+      : BigNumber.from(0),
     nonce: nonce,
     chainId: activeNetwork.chainId,
     gasLimit: BigNumber.from(0), //todo: adjust to get from new keyringmanager

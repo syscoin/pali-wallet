@@ -1,6 +1,6 @@
 import { Interface } from '@ethersproject/abi';
 import { BigNumber } from '@ethersproject/bignumber';
-import { parseUnits } from '@ethersproject/units';
+import { parseUnits, formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -34,6 +34,8 @@ import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
+import { safeBigNumber } from 'utils/safeBigNumber';
+import { safeToFixed } from 'utils/safeToFixed';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 import { getErc20Abi } from 'utils/validations';
@@ -140,15 +142,22 @@ export const SendTransaction = () => {
   const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
   const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
 
-  // Helper function to safely convert fee values to numbers and format them
-  const safeToFixed = (value: any, decimals = 9): string => {
-    const numValue = Number(value);
-    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
-  };
+  const formattedValueAndCurrency = useMemo(() => {
+    if (!tx?.value) return `0 ${activeNetwork.currency?.toUpperCase()}`;
 
-  const formattedValueAndCurrency = `${removeScientificNotation(
-    Number(tx?.value ? tx?.value : 0) / 10 ** 18
-  )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
+    try {
+      // Use formatEther to properly handle wei values without precision loss
+      const ethValue = formatEther(
+        BigNumber.isBigNumber(tx.value) ? tx.value : BigNumber.from(tx.value)
+      );
+      return `${removeScientificNotation(
+        Number(ethValue)
+      )} ${activeNetwork.currency?.toUpperCase()}`;
+    } catch (error) {
+      console.error('Error formatting value:', error);
+      return `0 ${activeNetwork.currency?.toUpperCase()}`;
+    }
+  }, [tx?.value, activeNetwork.currency]);
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
@@ -252,9 +261,9 @@ export const SendTransaction = () => {
           const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
-            ? parseUnits(String(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits
+            ? parseUnits(safeToFixed(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
             : fee.gasPrice && fee.gasPrice > 0
-            ? parseUnits(String(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits
+            ? parseUnits(safeToFixed(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
             : await controllerEmitter([
                 'wallet',
                 'ethereumTransaction',
@@ -266,6 +275,13 @@ export const SendTransaction = () => {
             [
               {
                 ...txWithoutType,
+                value: txWithoutType.value
+                  ? safeBigNumber(
+                      txWithoutType.value,
+                      '0x0',
+                      'transaction value'
+                    ).toHexString()
+                  : '0x0', // Convert value to hex string using safe conversion
                 nonce: customNonce,
                 gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
                 gasLimit: BigNumber.from(
@@ -294,28 +310,29 @@ export const SendTransaction = () => {
             [
               {
                 ...txToSend,
+                value: txToSend.value
+                  ? safeBigNumber(
+                      txToSend.value,
+                      '0x0',
+                      'transaction value'
+                    ).toHexString()
+                  : '0x0', // Convert value to hex string using safe conversion
                 nonce: customNonce,
                 maxPriorityFeePerGas: Boolean(
                   customFee.isCustom && customFee.maxPriorityFeePerGas > 0
                 )
-                  ? parseUnits(
-                      String(safeToFixed(customFee.maxPriorityFeePerGas)),
-                      9
-                    )
+                  ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
                   : tx.maxPriorityFeePerGas &&
                     BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
                   ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
-                  : parseUnits(
-                      String(safeToFixed(fee.maxPriorityFeePerGas)),
-                      9
-                    ), // Fallback to fee
+                  : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
                 maxFeePerGas: Boolean(
                   customFee.isCustom && customFee.maxFeePerGas > 0
                 )
-                  ? parseUnits(String(safeToFixed(customFee.maxFeePerGas)), 9)
+                  ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
                   : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
                   ? tx.maxFeePerGas // Use the BigNumber from tx
-                  : parseUnits(String(safeToFixed(fee.maxFeePerGas)), 9), // Fallback to fee
+                  : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
                 gasLimit: Boolean(
                   customFee.isCustom &&
                     customFee.gasLimit &&
@@ -486,7 +503,7 @@ export const SendTransaction = () => {
 
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);
-  }, [tx]);
+  }, [formattedValueAndCurrency]);
 
   // Navigate when transaction is confirmed
   useEffect(() => {

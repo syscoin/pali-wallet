@@ -2,6 +2,11 @@ import { BigNumber } from '@ethersproject/bignumber';
 
 /**
  * Safely convert a value to BigNumber with validation
+ *
+ * Note: Decimal values (both number and string) are truncated towards zero
+ * since BigNumber doesn't support decimals. If you need decimal precision,
+ * use parseUnits() with the appropriate decimal places instead.
+ *
  * @param value The value to convert
  * @param fallback The fallback value if conversion fails
  * @param context Optional context for error messages
@@ -50,18 +55,56 @@ export const safeBigNumber = (
         throw new Error(`${context ? `${context}: ` : ''}Empty string value`);
       }
 
-      // Validate number format
-      if (!/^-?\d*\.?\d*$/.test(trimmed)) {
+      // Validate number format (including scientific notation)
+      // Allow: integers, decimals, scientific notation (e.g., 1e18, 1.5e-10)
+      if (
+        !/^-?\d*\.?\d*([eE][+-]?\d+)?$/.test(trimmed) ||
+        trimmed === '.' ||
+        trimmed === '-.' ||
+        trimmed === 'e' ||
+        trimmed === 'E'
+      ) {
         throw new Error(`Invalid number format: ${trimmed}`);
       }
 
-      // Handle decimal values by converting to wei
+      // Handle scientific notation by converting to regular number string
+      if (trimmed.includes('e') || trimmed.includes('E')) {
+        const num = Number(trimmed);
+        if (!isFinite(num)) {
+          throw new Error(`Invalid scientific notation: ${trimmed}`);
+        }
+        // Convert to string, but check if it's a decimal
+        const converted = num.toString();
+        if (converted.includes('.')) {
+          // Truncate it since BigNumber doesn't support decimals
+          return BigNumber.from(Math.trunc(num).toString());
+        }
+        return BigNumber.from(converted);
+      }
+
+      // Handle decimal values - BigNumber doesn't support decimals
       if (trimmed.includes('.')) {
         const parts = trimmed.split('.');
         if (parts.length !== 2) {
           throw new Error(`Invalid decimal format: ${trimmed}`);
         }
-        // For now, just try to convert - BigNumber will handle the validation
+
+        // BigNumber doesn't handle decimals, so we need to handle them
+        // For consistency with number handling, we'll truncate towards zero
+        // If you need decimal precision, use parseUnits with appropriate decimals
+        let integerPart = parts[0];
+
+        // Handle cases like '.5' or '-.5'
+        if (!integerPart || integerPart === '' || integerPart === '-') {
+          integerPart = '0';
+        }
+
+        // Validate the integer part is a valid number
+        if (!/^-?\d+$/.test(integerPart) && integerPart !== '0') {
+          throw new Error(`Invalid decimal format: ${trimmed}`);
+        }
+
+        return BigNumber.from(integerPart);
       }
 
       return BigNumber.from(trimmed);
@@ -77,10 +120,13 @@ export const safeBigNumber = (
       // Check for decimals - BigNumber doesn't handle them well
       if (value % 1 !== 0) {
         // Convert to string first to preserve precision
-        return BigNumber.from(Math.floor(value));
+        // Use Math.trunc to truncate towards zero (not floor which goes towards -Infinity)
+        return BigNumber.from(Math.trunc(value).toString());
       }
 
-      return BigNumber.from(value);
+      // Convert to string to avoid overflow errors for large numbers
+      // JavaScript numbers outside safe integer range need string conversion
+      return BigNumber.from(value.toString());
     }
 
     // Handle objects with hex property

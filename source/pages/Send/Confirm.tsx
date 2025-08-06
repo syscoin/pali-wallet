@@ -1,5 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber';
-import { parseUnits } from '@ethersproject/units';
+import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -27,6 +27,7 @@ import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
+import { formatGweiValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
   logError,
@@ -37,6 +38,7 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
+import { safeToFixed } from 'utils/safeToFixed';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -210,17 +212,11 @@ export const SendConfirm = () => {
     }
   };
 
-  // Helper function to safely convert fee values to numbers and format them
-  const safeToFixed = (value: any, decimals = 9): string => {
-    const numValue = Number(value);
-    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
-  };
-
   const getLegacyGasPrice = async () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
     )
-      ? parseUnits(String(customFee.gasPrice), 9).toString() // Convert Gwei to Wei using parseUnits, keep as string for precision
+      ? parseUnits(safeToFixed(customFee.gasPrice), 9).toString() // Convert Gwei to Wei using parseUnits, keep as string for precision
       : await controllerEmitter([
           'wallet',
           'ethereumTransaction',
@@ -235,7 +231,7 @@ export const SendConfirm = () => {
 
     const initialFee = { ...INITIAL_FEE, gasLimit };
 
-    initialFee.gasPrice = Number(correctGasPrice) / 10 ** 9; // Convert wei back to Gwei for display
+    initialFee.gasPrice = parseFloat(formatGweiValue(correctGasPrice)); // Convert wei back to Gwei for display using safe conversion
 
     // Use startTransition for non-critical fee updates
     startTransition(() => {
@@ -346,11 +342,9 @@ export const SendConfirm = () => {
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
                 const maxFeePerGasWei = parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? safeToFixed(customFee.maxFeePerGas)
-                      : safeToFixed(fee.maxFeePerGas)
-                  ),
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? safeToFixed(customFee.maxFeePerGas)
+                    : safeToFixed(fee.maxFeePerGas),
                   9
                 );
                 const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
@@ -378,7 +372,7 @@ export const SendConfirm = () => {
                   [
                     {
                       ...restTx,
-                      value,
+                      value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                       gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
                       gasLimit: BigNumber.from(
                         validateCustomGasLimit
@@ -430,15 +424,13 @@ export const SendConfirm = () => {
               [
                 {
                   ...restTx,
-                  value,
+                  value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
-                    String(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? safeToFixed(customFee.maxPriorityFeePerGas)
-                        : safeToFixed(fee.maxPriorityFeePerGas)
-                    ),
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas),
                     9
                   ),
                   maxFeePerGas: parseUnits(
@@ -479,15 +471,13 @@ export const SendConfirm = () => {
               if (reducedValue.gt(0)) {
                 const retryTxObject = {
                   ...restTx,
-                  value: reducedValue,
+                  value: reducedValue.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
-                    String(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? safeToFixed(customFee.maxPriorityFeePerGas)
-                        : safeToFixed(fee.maxPriorityFeePerGas)
-                    ),
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas),
                     9
                   ),
                   maxFeePerGas: parseUnits(
@@ -637,24 +627,20 @@ export const SendConfirm = () => {
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
                       maxPriorityFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom &&
-                              customFee.maxPriorityFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxPriorityFeePerGas)
-                            : safeToFixed(fee.maxPriorityFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
                         9
                       ),
                       maxFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom && customFee.maxFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxFeePerGas)
-                            : safeToFixed(fee.maxFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
                         9
                       ),
                       gasLimit: validateCustomGasLimit
@@ -808,24 +794,20 @@ export const SendConfirm = () => {
                       tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
                       isLegacy: !isEIP1559Compatible,
                       maxPriorityFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom &&
-                              customFee.maxPriorityFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxPriorityFeePerGas)
-                            : safeToFixed(fee.maxPriorityFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
                         9
                       ),
                       maxFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom && customFee.maxFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxFeePerGas)
-                            : safeToFixed(fee.maxFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
                         9
                       ),
                       gasPrice: BigNumber.from(gasPrice).toHexString(),
@@ -988,13 +970,15 @@ export const SendConfirm = () => {
       const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
       const gasLimit = basicTxValues.defaultGasLimit || 42000;
       const initialFeeDetails = {
-        maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
-        baseFee:
-          (BigNumber.from(maxFeePerGas).toNumber() -
-            BigNumber.from(maxPriorityFeePerGas).toNumber()) /
-          10 ** 9,
-        maxPriorityFeePerGas:
-          BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+        maxFeePerGas: parseFloat(formatGweiValue(maxFeePerGas)),
+        baseFee: parseFloat(
+          formatGweiValue(
+            BigNumber.from(maxFeePerGas).sub(
+              BigNumber.from(maxPriorityFeePerGas)
+            )
+          )
+        ),
+        maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityFeePerGas)),
         gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
       };
 
@@ -1031,13 +1015,17 @@ export const SendConfirm = () => {
           ])) as any;
 
         const initialFeeDetails = {
-          maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
-          baseFee:
-            (BigNumber.from(maxFeePerGas).toNumber() -
-              BigNumber.from(maxPriorityFeePerGas).toNumber()) /
-            10 ** 9,
-          maxPriorityFeePerGas:
-            BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+          maxFeePerGas: parseFloat(formatGweiValue(maxFeePerGas)),
+          baseFee: parseFloat(
+            formatGweiValue(
+              BigNumber.from(maxFeePerGas).sub(
+                BigNumber.from(maxPriorityFeePerGas)
+              )
+            )
+          ),
+          maxPriorityFeePerGas: parseFloat(
+            formatGweiValue(maxPriorityFeePerGas)
+          ),
           gasLimit: basicTxValues.defaultGasLimit || 42000, // Always use appropriate default gas limit
         };
 
@@ -1127,12 +1115,16 @@ export const SendConfirm = () => {
       const gasPriceValue = Number(
         customFee.isCustom && customFee.gasPrice > 0
           ? customFee.gasPrice
-          : Number(gasPrice) / 10 ** 9
+          : parseFloat(formatGweiValue(gasPrice))
       );
 
       if (isNaN(gasPriceValue) || isNaN(gasLimit)) return 0;
 
-      return (gasPriceValue * gasLimit) / 10 ** 9;
+      // Use BigNumber to prevent overflow for large gas prices
+      const gasLimitBN = BigNumber.from(gasLimit);
+      const gasPriceWeiBN = parseUnits(gasPriceValue.toString(), 'gwei');
+      const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
+      return Number(formatEther(totalFeeWeiBN));
     }
 
     // Handle EIP-1559 transactions
@@ -1145,7 +1137,11 @@ export const SendConfirm = () => {
     // Ensure we don't return NaN
     if (isNaN(feePerGas) || isNaN(gasLimit)) return 0;
 
-    return (feePerGas * gasLimit) / 10 ** 9;
+    // Use BigNumber to prevent overflow for large gas prices
+    const gasLimitBN = BigNumber.from(gasLimit);
+    const feePerGasWeiBN = parseUnits(feePerGas.toString(), 'gwei');
+    const totalFeeWeiBN = gasLimitBN.mul(feePerGasWeiBN);
+    return Number(formatEther(totalFeeWeiBN));
   }, [
     fee?.gasLimit,
     fee?.maxFeePerGas,
@@ -1294,7 +1290,7 @@ export const SendConfirm = () => {
                   </p>
                 </div>
 
-                {/* Token Details (if ERC20) */}
+                {/* Token Details (if ERC20 or SPT) */}
                 {basicTxValues.token && !basicTxValues.token.isNft && (
                   <>
                     {/* Token Name and Type */}
@@ -1306,35 +1302,51 @@ export const SendConfirm = () => {
                         </h3>
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
-                            'ERC-20'
+                            isBitcoinBased ? 'SPT' : 'ERC-20'
                           )}`}
                         >
-                          ERC-20
+                          {isBitcoinBased ? 'SPT' : 'ERC-20'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Contract Address */}
+                    {/* Contract Address or Asset GUID */}
                     <div className="bg-bkg-3 rounded-lg px-3 py-2">
                       <p className="text-brand-gray200 text-xs mb-1">
-                        {t('settings.contractAddress')}
+                        {isBitcoinBased
+                          ? t('send.assetGuid')
+                          : t('settings.contractAddress')}
                       </p>
                       <div className="flex items-center gap-2">
                         <p className="text-white text-sm font-mono">
                           <Tooltip
-                            content={basicTxValues.token.contractAddress}
+                            content={
+                              isBitcoinBased
+                                ? basicTxValues.token.guid ||
+                                  basicTxValues.token.assetGuid
+                                : basicTxValues.token.contractAddress
+                            }
                           >
-                            {ellipsis(
-                              basicTxValues.token.contractAddress,
-                              8,
-                              6
-                            )}
+                            {isBitcoinBased
+                              ? basicTxValues.token.guid ||
+                                basicTxValues.token.assetGuid ||
+                                'N/A'
+                              : ellipsis(
+                                  basicTxValues.token.contractAddress,
+                                  8,
+                                  6
+                                )}
                           </Tooltip>
                         </p>
                         <button
                           type="button"
                           onClick={() =>
-                            copy(basicTxValues.token.contractAddress)
+                            copy(
+                              isBitcoinBased
+                                ? basicTxValues.token.guid ||
+                                    basicTxValues.token.assetGuid
+                                : basicTxValues.token.contractAddress
+                            )
                           }
                           className="text-brand-gray200 hover:text-white transition-colors"
                         >

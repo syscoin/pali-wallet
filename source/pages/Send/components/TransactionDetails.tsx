@@ -1,5 +1,6 @@
+import { BigNumber } from '@ethersproject/bignumber';
+import { formatEther, parseUnits } from '@ethersproject/units';
 import { Input } from 'antd';
-import isNaN from 'lodash/isNaN';
 import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -50,7 +51,7 @@ export const TransactionDetailsComponent = (
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
   const [, copy] = useCopyClipboard();
-  const [currentTxValue, setCurrentTxValue] = useState<number>(0);
+  const [currentTxValue, setCurrentTxValue] = useState<string>('0');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     isBlacklisted: boolean;
     reason?: string;
@@ -101,14 +102,25 @@ export const TransactionDetailsComponent = (
   // Convert from Gwei to Wei (multiply by 10^9) then calculate total fee
   // Show actual gas price, even if 0 (test networks now handle cancellation properly)
   const displayGasPrice = gasPriceGwei ?? 0;
-  const totalFeeWei = (gasLimit || 0) * displayGasPrice * 10 ** 9;
-  const finalFee = totalFeeWei / 10 ** 18; // Convert to native currency (ETH/SYS)
+
+  // Use BigNumber to prevent overflow when multiplying large numbers
+  const gasLimitBN = BigNumber.from(gasLimit || 0);
+  const gasPriceWeiBN = parseUnits(displayGasPrice.toString(), 'gwei');
+  const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
+
+  // Convert to ETH for display (safe as we're only using for display)
+  const finalFee = Number(formatEther(totalFeeWeiBN));
 
   const formattedFinalFee = removeScientificNotation(finalFee);
 
   useEffect(() => {
-    if (tx && tx.value && !isNaN(Number(tx.value))) {
-      setCurrentTxValue(tx.value);
+    if (tx && tx.value) {
+      // tx.value is in wei, store as string to preserve precision
+      if (BigNumber.isBigNumber(tx.value)) {
+        setCurrentTxValue(tx.value.toString());
+      } else {
+        setCurrentTxValue(String(tx.value));
+      }
     }
   }, [tx]);
 
@@ -236,7 +248,7 @@ export const TransactionDetailsComponent = (
         Total ({t('send.amountAndFee')})
         <span className="text-white text-xs">
           {removeScientificNotation(
-            Number(currentTxValue) / 10 ** 18 + finalFee
+            parseFloat(formatEther(currentTxValue)) + finalFee
           )}{' '}
           {activeNetwork.currency?.toUpperCase()}
         </span>

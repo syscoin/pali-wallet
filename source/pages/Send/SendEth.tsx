@@ -1,5 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber';
-import { parseEther, parseUnits } from '@ethersproject/units';
+import { parseEther, parseUnits, formatUnits } from '@ethersproject/units';
 import { Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { toSvg } from 'jdenticon';
@@ -705,8 +705,9 @@ export const SendEth = () => {
       )) as { balance: string; decimals: number; name: string; symbol: string };
 
       if (result) {
-        const balance = Number(result.balance) / Math.pow(10, result.decimals);
-        setVerifiedERC20Balance(balance);
+        // Use formatUnits to avoid precision loss with large token balances
+        const balance = formatUnits(result.balance, result.decimals);
+        setVerifiedERC20Balance(Number(balance)); // Safe to convert after formatting
       }
     } catch (error) {
       console.error('Error verifying ERC-20 balance:', error);

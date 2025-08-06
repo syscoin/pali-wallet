@@ -34,28 +34,7 @@ jest.mock('syscoinjs-lib', () => ({
 }));
 
 // Mock individual ethers packages
-
-// Mock @ethersproject/bignumber
-jest.mock('@ethersproject/bignumber', () => ({
-  BigNumber: {
-    from: jest.fn((value: any) => ({
-      _hex:
-        typeof value === 'string' && value.startsWith('0x')
-          ? value
-          : '0x' + value,
-      toString: () => {
-        if (typeof value === 'string' && value.startsWith('0x')) {
-          return BigInt(value).toString();
-        }
-        return value.toString();
-      },
-      gt: jest.fn(() => true),
-      lt: jest.fn(() => false),
-      eq: jest.fn(() => false),
-      toNumber: jest.fn(() => parseInt(value)),
-    })),
-  },
-}));
+// Note: We don't mock @ethersproject/bignumber since it's a pure JS library with no external dependencies
 
 // Mock @ethersproject/units
 jest.mock('@ethersproject/units', () => ({
@@ -83,13 +62,19 @@ jest.mock('@ethersproject/units', () => ({
   }),
 }));
 
-// Mock @ethersproject/bytes
+// Mock @ethersproject/bytes - but include functions needed by BigNumber
 jest.mock('@ethersproject/bytes', () => ({
   arrayify: jest.fn(),
   hexlify: jest.fn(),
   isHexString: jest.fn(
     (value: string) => typeof value === 'string' && value.startsWith('0x')
   ),
+  isBytes: jest.fn((value: any) => value instanceof Uint8Array),
+  hexZeroPad: jest.fn((value: string, length: number) => {
+    const hex = value.startsWith('0x') ? value.slice(2) : value;
+    const padded = hex.padStart(length * 2, '0');
+    return '0x' + padded;
+  }),
 }));
 
 // Mock @ethersproject/hash
