@@ -590,6 +590,8 @@
     "cancelNotAvailableUtxo": "L'annulation de transaction n'est pas disponible sur les réseaux UTXO",
     "speedUpNotAvailableUtxo": "L'accélération de transaction n'est pas disponible sur les réseaux UTXO",
     "transactionNotFoundOrConfirmed": "Transaction non trouvée ou déjà confirmée, vérifiez la transaction dans l'explorateur !",
+    "transactionNotFoundOrPending": "Transaction non trouvée ou encore en attente",
+    "transactionMayNotExistYet": "Cette transaction n'existe peut-être pas encore ou est encore en cours de traitement.",
     "transactionCanceledSuccessfully": "Votre transaction a été annulée avec succès.",
     "transactionCancelFailed": "Quelque chose s'est mal passé lors de la tentative d'annulation de votre transaction, veuillez réessayer plus tard !",
     "transactionCancelled": "Transaction Annulée",

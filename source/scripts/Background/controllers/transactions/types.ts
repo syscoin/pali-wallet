@@ -146,14 +146,19 @@ export interface ISysTransaction {
   blockHeight: number;
   blockTime: number;
   confirmations: number;
+  // Array of token transfer details
+  direction?: 'sent' | 'received';
   fees: string;
   hex: string;
+  // SPT transaction type (e.g., 'assetallocation_send', 'syscoin_burn_to_allocation')
+  tokenTransfers?: any[];
+  tokenType?: string;
   txid: string;
   value: string;
   valueIn: string;
   version: number;
   vin: ISyscoinVIn[];
-  vout: ISyscoinVOut;
+  vout: ISyscoinVOut; // Transaction direction relative to current account
 }
 
 export interface ISysTransactionsController {

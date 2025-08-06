@@ -590,6 +590,8 @@
     "cancelNotAvailableUtxo": "UTXOネットワークでは取引のキャンセルは利用できません",
     "speedUpNotAvailableUtxo": "UTXOネットワークでは取引の高速化は利用できません",
     "transactionNotFoundOrConfirmed": "取引が見つからないか、すでに確認されています。エクスプローラーで取引を確認してください！",
+    "transactionNotFoundOrPending": "取引が見つからないか、まだ保留中です",
+    "transactionMayNotExistYet": "この取引はまだ存在しないか、まだ処理中の可能性があります。",
     "transactionCanceledSuccessfully": "あなたの取引は正常にキャンセルされました。",
     "transactionCancelFailed": "取引のキャンセルを試行中に問題が発生しました。後でもう一度お試しください！",
     "transactionCancelled": "トランザクションがキャンセルされました",

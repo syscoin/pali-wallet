@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { ArrowUpSvg, ReceivedArrowSvg } from 'components/Icon/Icon';
 import { RootState } from 'state/store';
 import { ITransactionsListConfig } from 'types/useTransactionsInfo';
+import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
 
 // Memoize transaction status icons using centralized SVG components
 const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
@@ -56,28 +57,8 @@ export const useTransactionsListConfig = (
   const getTxType = useCallback(
     (tx: any, isTxSent: boolean) => {
       if (isBitcoinBased) {
-        // Syscoin 5 transaction types
-        if (tx.tokenType === 'assetallocationsend') {
-          return 'SPT Transfer';
-        }
-
-        if (tx.tokenType === 'syscoinburntoallocation') {
-          return 'SYS → SYSX';
-        }
-
-        if (tx.tokenType === 'assetallocationburntosyscoin') {
-          return 'SYSX → SYS';
-        }
-
-        if (tx.tokenType === 'assetallocationburntoethereum') {
-          return 'SPT → NEVM';
-        }
-
-        if (tx.tokenType === 'assetallocationmint') {
-          return 'SPT Mint';
-        }
-
-        return 'Transaction';
+        // Use the unified normalization function
+        return getSyscoinTransactionTypeLabel(tx.tokenType);
       }
 
       const txLabel = isTxSent ? 'Sent' : 'Received';

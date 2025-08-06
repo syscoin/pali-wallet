@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
+import { Icon } from 'components/Icon';
 import { DetailArrowSvg } from 'components/Icon/Icon';
+import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';
+import { getSyscoinTransactionTypeStyle } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 export const UtxoTransactionsListComponent = ({
@@ -18,13 +21,17 @@ export const UtxoTransactionsListComponent = ({
   tx: ITransactionInfoUtxo;
   userTransactions: ITransactionInfoUtxo[];
 }) => {
-  const { navigate } = useUtils();
+  const { navigate, useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
+  const [, copy] = useCopyClipboard();
   const { getTxStatus, formatTimeStampUtxo, blocktime } =
     useTransactionsListConfig(userTransactions);
 
   const isTxCanceled = tx?.isCanceled === true;
   const isConfirmed = isTransactionInBlock(tx);
+
+  // Get SPT transaction styling - always returns a style (has default fallback)
+  const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
 
   const handleGoTxDetails = () => {
     navigate('/home/details', {
@@ -35,16 +42,44 @@ export const UtxoTransactionsListComponent = ({
     });
   };
 
+  const handleCopyTxId = () => {
+    copy(tx.txid);
+    alert.success(t('home.hashCopied'));
+  };
+
   return (
-    <div className="flex py-2 w-full border-b border-dashed border-bkg-deepBlue">
-      <div className="flex flex-1 flex-col w-[]">
-        <p className="text-xs">{ellipsis(tx.txid, 4, 14)}</p>
+    <div className="flex py-2 w-full border-b border-dashed border-bkg-deepBlue hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg">
+      <div className="flex flex-1 flex-col gap-1">
+        <div className="flex items-center gap-1">
+          <p className="text-xs font-mono">{ellipsis(tx.txid, 4, 14)}</p>
+          <Tooltip content={t('buttons.copy')}>
+            <IconButton
+              className="p-0.5 hover:bg-brand-royalbluemedium/20 rounded transition-all duration-200"
+              onClick={handleCopyTxId}
+            >
+              <Icon
+                name="Copy"
+                className="w-3 h-3 text-brand-gray400 hover:text-brand-royalblue"
+              />
+            </IconButton>
+          </Tooltip>
+        </div>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
-      <div className="flex flex-[0.8] flex-col">
+
+      <div className="flex flex-[0.8] flex-col gap-1">
         {formatTimeStampUtxo(tx[blocktime] * 1000)}
-        <p className="text-xs">Transaction</p>
+        <div
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full max-w-fit transition-all duration-200 hover:scale-105 hover:brightness-110 cursor-default"
+          style={sptInfo.bgStyle}
+        >
+          <span className="text-xs">{sptInfo.icon}</span>
+          <span className="text-xs font-medium text-white">
+            {sptInfo.label}
+          </span>
+        </div>
       </div>
+
       <div>
         <Tooltip content={t('notifications.clickToView')}>
           <DetailArrowSvg

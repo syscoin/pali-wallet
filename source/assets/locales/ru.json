@@ -590,6 +590,8 @@
     "cancelNotAvailableUtxo": "Отмена транзакций недоступна в сетях UTXO",
     "speedUpNotAvailableUtxo": "Ускорение транзакций недоступно в сетях UTXO",
     "transactionNotFoundOrConfirmed": "Транзакция не найдена или уже подтверждена, проверьте транзакцию в проводнике!",
+    "transactionNotFoundOrPending": "Транзакция не найдена или еще ожидает подтверждения",
+    "transactionMayNotExistYet": "Эта транзакция может еще не существовать или все еще обрабатывается.",
     "transactionCanceledSuccessfully": "Ваша транзакция была успешно отменена.",
     "transactionCancelFailed": "Что-то пошло не так при попытке отменить вашу транзакцию, попробуйте еще раз позже!",
     "transactionCancelled": "Транзакция Отменена",

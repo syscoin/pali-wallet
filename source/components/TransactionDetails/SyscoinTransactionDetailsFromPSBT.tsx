@@ -17,6 +17,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/format';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
 
 export interface IDecodedTransaction {
   error?: string;
@@ -99,24 +100,21 @@ interface ISyscoinTransactionDetailsProps {
 
 // Helper function to convert technical tx type to user-friendly text
 export const getTransactionTypeText = (txtype: string): string => {
-  switch (txtype) {
-    case 'assetallocationburn_to_syscoin':
-      return 'Bridge: Burn SYSX to SYS';
-    case 'syscoinburn_to_allocation':
-      return 'Bridge: Burn SYS to SYSX';
-    case 'assetallocation_mint':
-      return 'Bridge: Mint from NEVM';
-    case 'assetallocationburn_to_ethereum':
-      return 'Bridge: Burn to NEVM';
-    case 'assetallocation_send':
-      return 'Asset Transfer';
-    case 'nevm_data':
-      return 'NEVM Data Transaction';
-    case 'bitcoin':
-      return 'Standard Transaction';
-    default:
-      return txtype || 'Unknown';
+  // Use the unified normalization function
+  const label = getSyscoinTransactionTypeLabel(txtype);
+
+  // Special handling for bitcoin/standard transactions
+  if (txtype === 'bitcoin') {
+    return 'Standard Transaction';
   }
+
+  // If it's a known SPT transaction type, return the label
+  if (label !== 'Transaction') {
+    return label;
+  }
+
+  // Otherwise return the original txtype or 'Unknown'
+  return txtype || 'Unknown';
 };
 
 // Component for copyable fields

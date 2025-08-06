@@ -22,15 +22,20 @@ export interface ITransactionInfoUtxo {
   blockHeight: number;
   blockTime: number;
   confirmations: number;
+  // Array of token transfer details
+  direction?: 'sent' | 'received';
   fees: string;
   hex: string;
   isCanceled?: boolean;
+  // SPT transaction type (e.g., 'SPTAssetAllocationBurnToSyscoin')
+  tokenTransfers?: any[];
+  tokenType?: string;
   txid: string;
   value: string;
   valueIn: string;
   version: number;
   vin: TransactionVin[];
-  vout: TransactionVout[];
+  vout: TransactionVout[]; // Transaction direction relative to current account
 }
 
 type valuePending = {

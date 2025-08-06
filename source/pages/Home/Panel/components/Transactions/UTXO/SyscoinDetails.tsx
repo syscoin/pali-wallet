@@ -17,6 +17,12 @@ import {
 import { TransactionsType } from 'state/vault/types';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { camelCaseToText, ellipsis } from 'utils/index';
+import {
+  getSyscoinTransactionTypeLabel,
+  getSyscoinTransactionTypeStyle,
+  isMintOrBurnTransaction,
+  normalizeSyscoinTransactionType,
+} from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // UTXO transaction details cache with TTL (5 minutes - consistent with EVM)
@@ -36,19 +42,6 @@ CopyIcon.displayName = 'CopyIcon';
 interface ISyscoinTransactionDetailsProps {
   hash: string;
 }
-
-// Helper function to format token type to human-readable text
-const formatTokenType = (tokenType: string): string => {
-  const typeMap: { [key: string]: string } = {
-    SPTAssetAllocationBurnToNEVM: 'SPT Bridge to NEVM',
-    SPTSyscoinBurnToAssetAllocation: 'SYS → SYSX',
-    SPTAssetAllocationBurnToSyscoin: 'SYSX → SYS',
-    SPTAssetAllocationSend: 'SPT Transfer',
-    SPTAssetAllocationMint: 'SPT Mint from NEVM',
-  };
-
-  return typeMap[tokenType] || tokenType.replace(/^SPT/, 'SPT ');
-};
 
 export const SyscoinTransactionDetails = ({
   hash,
@@ -111,13 +104,30 @@ export const SyscoinTransactionDetails = ({
   let txValue: number;
 
   const setTx = async () => {
-    // Check cache first (consistent with EVM implementation)
+    // First check if transaction exists in state with all needed data
+    const syscoinTxs =
+      accountTransactions[TransactionsType.Syscoin]?.[chainId] || [];
+    const existingTx = syscoinTxs.find((tx: any) => tx.txid === hash);
+
+    // If we have the transaction with full data (vin, vout, tokenType, etc), use it
+    if (existingTx && existingTx.vin && existingTx.vout) {
+      setRawTransaction(existingTx);
+      // Also cache it for consistency
+      utxoTxDetailsCache.set(hash, {
+        data: existingTx,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    // Check cache if not in state
     const cached = utxoTxDetailsCache.get(hash);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
       setRawTransaction(cached.data);
       return;
     }
 
+    // Only fetch if we don't have the transaction or it's missing details
     try {
       const rawTxData: any = await controllerEmitter(
         ['wallet', 'getRawTransaction'],
@@ -138,14 +148,14 @@ export const SyscoinTransactionDetails = ({
 
   useEffect(() => {
     setTx();
-  }, [hash]);
+  }, [hash, chainId, accountTransactions]);
 
   useEffect(() => {
     if (rawTransaction) {
       const { vin, vout } = rawTransaction;
 
-      // Process vins and vouts
-      if (vout) {
+      // Process vins and vouts (with array checks)
+      if (Array.isArray(vout)) {
         for (const voutItem of vout) {
           if (!voutItem.addresses) continue;
           for (const address of voutItem.addresses) {
@@ -157,7 +167,7 @@ export const SyscoinTransactionDetails = ({
         }
       }
 
-      if (vin) {
+      if (Array.isArray(vin)) {
         for (const vinItem of vin) {
           if (!vinItem.addresses) continue;
           for (const address of vinItem.addresses) {
@@ -185,13 +195,13 @@ export const SyscoinTransactionDetails = ({
   const tokenTransfers = rawTransaction?.tokenTransfers || [];
   const tokenType = rawTransaction?.tokenType;
 
-  // Extract asset info from vins and vouts
-  const vinAssetInfo = rawTransaction?.vin?.find(
-    (v: any) => v.assetInfo
-  )?.assetInfo;
-  const voutAssetInfo = rawTransaction?.vout?.find(
-    (v: any) => v.assetInfo
-  )?.assetInfo;
+  // Extract asset info from vins and vouts (with array checks)
+  const vinAssetInfo = Array.isArray(rawTransaction?.vin)
+    ? rawTransaction.vin.find((v: any) => v.assetInfo)?.assetInfo
+    : undefined;
+  const voutAssetInfo = Array.isArray(rawTransaction?.vout)
+    ? rawTransaction.vout.find((v: any) => v.assetInfo)?.assetInfo
+    : undefined;
   const assetInfo = vinAssetInfo || voutAssetInfo;
 
   const hasTokenInfo = tokenTransfers.length > 0 || tokenType || assetInfo;
@@ -253,12 +263,26 @@ export const SyscoinTransactionDetails = ({
         UtxoTxDetailsLabelsToKeep.indexOf(b.label)
     );
 
+  // Handle case where transaction doesn't exist (e.g., pending tx not in blockchain)
+  if (!rawTransaction && !transactionTx) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-brand-gray200 text-sm mb-4">
+          {t('transactions.transactionNotFoundOrPending')}
+        </p>
+        <p className="text-xs text-brand-gray400">
+          {t('transactions.transactionMayNotExistYet')}
+        </p>
+      </div>
+    );
+  }
+
   const RenderTransaction = () => (
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
           {hasTokenInfo && tokenType
-            ? formatTokenType(tokenType)
+            ? getSyscoinTransactionTypeLabel(tokenType)
             : getTxType(transactionTx, isTxSent)}
         </p>
 
@@ -266,30 +290,48 @@ export const SyscoinTransactionDetails = ({
         {tokenTransfers.length > 0 ? (
           <div className="text-center">
             {tokenTransfers.map((transfer: any, index: number) => {
-              // For mint and burn transactions, display the intent amount
-              // The intent is typically the first output's asset value
               let displayStr = '';
 
-              // Check if we have vout with assetInfo for the intent value
-              if (
-                tokenType === 'SPTAssetAllocationMint' ||
-                tokenType === 'SPTAssetAllocationBurnToNEVM' ||
-                tokenType === 'SPTAssetAllocationBurnToSyscoin' ||
-                tokenType === 'SPTSyscoinBurnToAssetAllocation'
-              ) {
-                // Find the first vout with assetInfo for this token
-                const firstVoutWithAsset = rawTransaction?.vout?.find(
-                  (v: any) =>
-                    v.assetInfo && v.assetInfo.assetGuid === transfer.token
-                );
+              // For mint and burn transactions, use the appropriate value
+              if (isMintOrBurnTransaction(tokenType)) {
+                const normalizedType =
+                  normalizeSyscoinTransactionType(tokenType);
 
-                if (firstVoutWithAsset?.assetInfo?.valueStr) {
-                  // Use the valueStr directly as it's already formatted
-                  displayStr = firstVoutWithAsset.assetInfo.valueStr;
+                // Special case: For SYS → SYSX, the minted amount is in the OP_RETURN
+                if (normalizedType === 'syscoinburntoallocation') {
+                  // Find the OP_RETURN output (usually first output)
+                  const opReturnOutput = Array.isArray(rawTransaction?.vout)
+                    ? rawTransaction.vout.find((v: any) =>
+                        v.addresses?.[0]?.startsWith('OP_RETURN')
+                      )
+                    : undefined;
+
+                  if (opReturnOutput?.value) {
+                    // The value is in satoshis, use proper utility to format
+                    const formattedAmount = formatSyscoinValue(
+                      opReturnOutput.value
+                    );
+                    displayStr = `${formattedAmount} ${
+                      transfer.symbol || 'SYSX'
+                    }`;
+                  }
+                } else {
+                  // For all other mint/burn types, use the first vout with asset info
+                  const firstVoutWithAsset = Array.isArray(rawTransaction?.vout)
+                    ? rawTransaction.vout.find(
+                        (v: any) =>
+                          v.assetInfo &&
+                          v.assetInfo.assetGuid === transfer.token
+                      )
+                    : undefined;
+
+                  if (firstVoutWithAsset?.assetInfo?.valueStr) {
+                    displayStr = firstVoutWithAsset.assetInfo.valueStr;
+                  }
                 }
               }
 
-              // Fallback to transfer value if no valueStr found
+              // Fallback to transfer value if no displayStr found
               if (!displayStr && transfer.valueOut) {
                 displayStr = `${parseFloat(
                   formatUnits(transfer.valueOut, transfer.decimals || 8)
@@ -334,9 +376,20 @@ export const SyscoinTransactionDetails = ({
       {tokenType && (
         <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
           <p className="text-xs font-normal text-white">Transaction Type</p>
-          <p className="text-xs font-normal text-white">
-            {formatTokenType(tokenType)}
-          </p>
+          {(() => {
+            const sptInfo = getSyscoinTransactionTypeStyle(tokenType);
+            return (
+              <div
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full transition-all duration-200 hover:scale-105 hover:brightness-110 cursor-default"
+                style={sptInfo.bgStyle}
+              >
+                <span className="text-xs">{sptInfo.icon}</span>
+                <span className="text-xs font-medium text-white">
+                  {sptInfo.label}
+                </span>
+              </div>
+            );
+          })()}
         </div>
       )}
 
