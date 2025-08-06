@@ -334,9 +334,11 @@ export const SendConfirm = () => {
           let value = parseUnits(String(basicTxValues.amount), 'ether');
 
           try {
-            // For MAX sends, deduct gas fees from the value
-            // This is required because ethers.js validates balance >= value + gas
+            // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
+            // The amount from basicTxValues might be rounded for display, causing precision issues
             if (basicTxValues.isMax) {
+              const actualBalance = activeAccount?.balances?.ethereum || 0;
+              value = parseUnits(String(actualBalance), 'ether');
               const gasLimit = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
@@ -465,80 +467,45 @@ export const SendConfirm = () => {
 
             return;
           } catch (error: any) {
-            // For MAX sends, if we get insufficient funds error, retry with slightly less
+            // For MAX sends, if we get insufficient funds error, retry with a buffer
+            // This can happen due to gas price increases or estimation errors
             if (
               basicTxValues.isMax &&
               error.message?.includes('insufficient funds')
             ) {
-              // For MAX sends retry, recalculate from actual balance for precision
-              // This allows us to use a minimal 10k wei buffer instead of 100k
-              const actualBalance = activeAccount?.balances?.ethereum || 0;
-              const actualBalanceWei = parseUnits(
-                String(actualBalance),
-                'ether'
-              );
-
-              // Calculate gas parameters for retry
-              const retryGasLimit = BigNumber.from(
-                validateCustomGasLimit
-                  ? customFee.gasLimit
-                  : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-              );
-
-              // Calculate gas fee based on transaction type
-              let retryGasFee: BigNumber;
-              let retryMaxFeePerGas: BigNumber | undefined;
-              let retryMaxPriorityFeePerGas: BigNumber | undefined;
-
-              if (isEIP1559Compatible) {
-                // EIP-1559: Use maxFeePerGas for gas calculation
-                retryMaxFeePerGas = parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? safeToFixed(customFee.maxFeePerGas)
-                      : safeToFixed(fee.maxFeePerGas)
-                  ),
-                  9
-                );
-                retryMaxPriorityFeePerGas = parseUnits(
-                  String(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                    )
-                      ? safeToFixed(customFee.maxPriorityFeePerGas)
-                      : safeToFixed(fee.maxPriorityFeePerGas)
-                  ),
-                  9
-                );
-                retryGasFee = retryGasLimit.mul(retryMaxFeePerGas);
-              } else {
-                // Legacy: Use gasPrice for gas calculation
-                const retryGasPrice = BigNumber.from(gasPrice);
-                retryGasFee = retryGasLimit.mul(retryGasPrice);
-              }
-
-              // Calculate reduced value: balance - gasFee - buffer
-              // Using precise calculation allows minimal 10k wei buffer
-              const buffer = BigNumber.from('10000'); // 10k wei buffer is sufficient with precise calculation
-              const reducedValue = actualBalanceWei
-                .sub(retryGasFee)
-                .sub(buffer);
+              // Simply reduce the value by a small buffer
+              // 10k wei buffer should be sufficient now that we're using actual balance
+              const buffer = BigNumber.from('10000');
+              const reducedValue = value.sub(buffer);
 
               if (reducedValue.gt(0)) {
-                const retryTxObject = isEIP1559Compatible
-                  ? {
-                      ...restTx,
-                      value: reducedValue,
-                      maxPriorityFeePerGas: retryMaxPriorityFeePerGas,
-                      maxFeePerGas: retryMaxFeePerGas,
-                      gasLimit: retryGasLimit,
-                    }
-                  : {
-                      ...restTx,
-                      value: reducedValue,
-                      gasPrice: BigNumber.from(gasPrice),
-                      gasLimit: retryGasLimit,
-                    };
+                const retryTxObject = {
+                  ...restTx,
+                  value: reducedValue,
+                  maxPriorityFeePerGas: parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? safeToFixed(customFee.maxPriorityFeePerGas)
+                        : safeToFixed(fee.maxPriorityFeePerGas)
+                    ),
+                    9
+                  ),
+                  maxFeePerGas: parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? safeToFixed(customFee.maxFeePerGas)
+                        : safeToFixed(fee.maxFeePerGas)
+                    ),
+                    9
+                  ),
+                  gasLimit: BigNumber.from(
+                    validateCustomGasLimit
+                      ? customFee.gasLimit
+                      : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                  ),
+                };
 
                 try {
                   // Use atomic wrapper for retry
