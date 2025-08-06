@@ -14,6 +14,7 @@ import {
   updatePendingTransactionBadge,
   ITransactionNotification,
 } from 'utils/notifications';
+import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 class NotificationManager {
@@ -398,35 +399,17 @@ class NotificationManager {
       }
     }
 
-    // Determine transaction type label
+    // Determine transaction type label using unified function
     const finalTokenType = detectedTokenType || tx.tokenType;
     if (finalTokenType) {
-      switch (finalTokenType) {
-        case 'assetallocationsend':
-          transactionTypeLabel = 'SPT Transfer';
-          break;
+      transactionTypeLabel = getSyscoinTransactionTypeLabel(finalTokenType);
 
-        case 'syscoinburntoallocation':
-          transactionTypeLabel = 'SYS → SYSX';
-          tokenSymbol = 'SYS'; // Source is SYS
-          break;
-
-        case 'assetallocationburntosyscoin':
-          transactionTypeLabel = 'SYSX → SYS';
-          tokenSymbol = 'SYSX'; // Source is SYSX
-          break;
-
-        case 'assetallocationburntoethereum':
-          transactionTypeLabel = 'Bridge to NEVM';
-          break;
-
-        case 'assetallocationmint':
-          transactionTypeLabel = 'Mint from NEVM';
-          break;
-
-        default:
-          // Regular SYS transaction
-          break;
+      // Special handling for burn transactions to set correct source token symbol
+      const label = transactionTypeLabel;
+      if (label === 'SYS → SYSX') {
+        tokenSymbol = 'SYS'; // Source is SYS
+      } else if (label === 'SYSX → SYS') {
+        tokenSymbol = 'SYSX'; // Source is SYSX
       }
     }
 
