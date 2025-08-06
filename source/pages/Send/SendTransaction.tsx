@@ -1,6 +1,5 @@
 import { Interface } from '@ethersproject/abi';
 import { BigNumber } from '@ethersproject/bignumber';
-import { hexlify } from '@ethersproject/bytes';
 import { parseUnits } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -206,14 +205,25 @@ export const SendTransaction = () => {
         const abi = await getErc20Abi();
         const erc20AbiInstance = new Interface(abi);
 
-        // The amount is already in the smallest unit (wei)
+        // Parse the custom allowance amount
         let parsedAmount;
         try {
-          // Direct wei/smallest unit input - no conversion needed
-          parsedAmount = BigNumber.from(
+          // Check if the value contains a decimal point
+          const customValue = String(
             customApprovedAllowanceAmount.customAllowanceValue
           );
+
+          if (customValue.includes('.')) {
+            // For decimal values, use parseUnits to convert to wei
+            // Assuming the token has 18 decimals (standard for most ERC-20 tokens)
+            const decimals = approvedTokenInfos?.tokenDecimals || 18;
+            parsedAmount = parseUnits(customValue, decimals);
+          } else {
+            // For integer values, use BigNumber.from directly
+            parsedAmount = BigNumber.from(customValue);
+          }
         } catch (parseError) {
+          console.error('Error parsing amount:', parseError);
           alert.error('Invalid amount format. Please enter a valid number.');
           setLoading(false);
           return;
@@ -242,14 +252,14 @@ export const SendTransaction = () => {
           const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
-            ? customFee.gasPrice * 10 ** 9
+            ? parseUnits(String(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits
             : fee.gasPrice && fee.gasPrice > 0
-            ? fee.gasPrice * 10 ** 9 // Use the value from fee (already in Gwei, convert to wei)
+            ? parseUnits(String(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits
             : await controllerEmitter([
                 'wallet',
                 'ethereumTransaction',
                 'getRecommendedGasPrice',
-              ]);
+              ]).then((gas) => BigNumber.from(gas)); // This returns wei already, so BigNumber.from is fine
 
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
@@ -257,8 +267,8 @@ export const SendTransaction = () => {
               {
                 ...txWithoutType,
                 nonce: customNonce,
-                gasPrice: hexlify(Number(getLegacyGasFee)),
-                gasLimit: hexlify(
+                gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
+                gasLimit: BigNumber.from(
                   Boolean(
                     customFee.isCustom &&
                       customFee.gasLimit &&
@@ -266,9 +276,9 @@ export const SendTransaction = () => {
                   )
                     ? customFee.gasLimit
                     : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
-                    ? tx.gasLimit.toNumber() // Use the BigNumber from tx
+                    ? tx.gasLimit // Keep as BigNumber
                     : fee.gasLimit || 42000 // Fallback to fee or default
-                ),
+                ).toHexString(), // Convert to hex string for ethers
               },
               isLegacyTransaction,
             ],

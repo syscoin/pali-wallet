@@ -1,5 +1,4 @@
 import { BigNumber } from '@ethersproject/bignumber';
-import { hexlify } from '@ethersproject/bytes';
 import { parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
@@ -74,7 +73,7 @@ export const SendConfirm = () => {
     gasPrice: 0,
   });
 
-  const [gasPrice, setGasPrice] = useState<number>(0);
+  const [gasPrice, setGasPrice] = useState<string>('0');
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   // Removed unused haveError state
@@ -221,12 +220,12 @@ export const SendConfirm = () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
     )
-      ? customFee.gasPrice * 10 ** 9 // Convert to WEI because injected gasPrices comes in GWEI
+      ? parseUnits(String(customFee.gasPrice), 9).toString() // Convert Gwei to Wei using parseUnits, keep as string for precision
       : await controllerEmitter([
           'wallet',
           'ethereumTransaction',
           'getRecommendedGasPrice',
-        ]).then((gas) => BigNumber.from(gas).toNumber());
+        ]).then((gas) => BigNumber.from(gas).toString());
 
     // Always use a valid gas limit - custom, default from tx type, or fallback
     const gasLimit =
@@ -236,7 +235,7 @@ export const SendConfirm = () => {
 
     const initialFee = { ...INITIAL_FEE, gasLimit };
 
-    initialFee.gasPrice = correctGasPrice;
+    initialFee.gasPrice = Number(correctGasPrice) / 10 ** 9; // Convert wei back to Gwei for display
 
     // Use startTransition for non-critical fee updates
     startTransition(() => {
@@ -380,14 +379,14 @@ export const SendConfirm = () => {
                     {
                       ...restTx,
                       value,
-                      gasPrice: hexlify(gasPrice),
-                      gasLimit: validateCustomGasLimit
-                        ? BigNumber.from(customFee.gasLimit)
-                        : BigNumber.from(
-                            fee.gasLimit ||
+                      gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
+                      gasLimit: BigNumber.from(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit
+                          : fee.gasLimit ||
                               basicTxValues.defaultGasLimit ||
                               42000
-                          ),
+                      ).toHexString(), // Convert to hex string
                     },
                     !isEIP1559Compatible,
                   ],
@@ -586,7 +585,7 @@ export const SendConfirm = () => {
                         tokenAmount: `${basicTxValues.amount}`,
                         isLegacy: !isEIP1559Compatible,
                         decimals: basicTxValues?.token?.decimals,
-                        gasPrice: hexlify(gasPrice),
+                        gasPrice: BigNumber.from(gasPrice).toHexString(),
                         gasLimit: validateCustomGasLimit
                           ? BigNumber.from(customFee.gasLimit)
                           : BigNumber.from(
@@ -732,7 +731,7 @@ export const SendConfirm = () => {
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId: numericTokenId, // The actual NFT token ID
                       isLegacy: !isEIP1559Compatible,
-                      gasPrice: hexlify(gasPrice),
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -829,7 +828,7 @@ export const SendConfirm = () => {
                         ),
                         9
                       ),
-                      gasPrice: hexlify(gasPrice),
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -1128,7 +1127,7 @@ export const SendConfirm = () => {
       const gasPriceValue = Number(
         customFee.isCustom && customFee.gasPrice > 0
           ? customFee.gasPrice
-          : gasPrice / 10 ** 9
+          : Number(gasPrice) / 10 ** 9
       );
 
       if (isNaN(gasPriceValue) || isNaN(gasLimit)) return 0;
