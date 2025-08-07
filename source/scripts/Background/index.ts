@@ -50,9 +50,6 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
     MasterControllerInstance = controller;
     isReady = true;
 
-    // Set the controller on the notification manager
-    notificationManager.setController(controller);
-
     console.log(
       '[Background] Controller initialized successfully at',
       new Date().toISOString()

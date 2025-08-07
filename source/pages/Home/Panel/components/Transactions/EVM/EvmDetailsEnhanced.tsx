@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -36,8 +36,6 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const { controllerEmitter } = useController();
   const {
     activeNetwork: { chainId, currency, apiUrl },
-    activeAccount,
-    accountAssets,
   } = useSelector((state: RootState) => state.vault);
 
   // Use proper selectors
@@ -46,33 +44,6 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
-  // Create enhanced token cache from user's assets with symbol, decimals, and NFT info
-  const tokenCache = useMemo(() => {
-    const cache = new Map<
-      string,
-      {
-        decimals: number;
-        isNft: boolean;
-        symbol: string;
-      }
-    >();
-    const currentAccountAssets =
-      accountAssets?.[activeAccount.type]?.[activeAccount.id];
-
-    if (currentAccountAssets?.ethereum) {
-      currentAccountAssets.ethereum.forEach((token) => {
-        if (token.contractAddress && token.tokenSymbol) {
-          cache.set(token.contractAddress.toLowerCase(), {
-            symbol: token.tokenSymbol,
-            decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
-            isNft: token.isNft || false,
-          });
-        }
-      });
-    }
-
-    return cache;
-  }, [accountAssets, activeAccount.type, activeAccount.id]);
 
   const { getTxStatusIcons, getTxStatus, getTxType } =
     useTransactionsListConfig();
@@ -311,8 +282,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
           : currentTransaction;
         const displayInfo = await getTransactionDisplayInfo(
           mergedTx,
-          currency,
-          tokenCache
+          currency
           // Don't skip token fetch on details page - users want full info
         );
         setTransactionDisplayInfo(displayInfo);
@@ -322,7 +292,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     if (ethereumTransactions && hash) {
       getDisplayInfo();
     }
-  }, [ethereumTransactions, hash, enhancedDetails, currency, tokenCache]);
+  }, [ethereumTransactions, hash, enhancedDetails, currency]);
 
   ethereumTransactions?.forEach((transaction: any) => {
     const tx = { ...transaction };

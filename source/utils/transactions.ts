@@ -17,23 +17,14 @@ import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
  * Uses the same logic as notification manager for consistent display
  * @param tx Transaction object
  * @param currency Network currency (e.g., 'ETH', 'NEVM')
- * @param tokenCache Cache of known token info by contract address
- * @param skipUnknownTokenFetch New parameter to skip fetching unknown tokens
+ * @param skipUnknownTokenFetch Skip fetching unknown tokens
  * @param controller Optional controller instance for background context calls
  * @returns Object with displayValue, displaySymbol, isErc20Transfer, actualRecipient, isNft, and hasUnknownDecimals
  */
 export const getTransactionDisplayInfo = async (
   tx: any,
   currency: string,
-  tokenCache?: Map<
-    string,
-    {
-      decimals: number;
-      isNft: boolean;
-      symbol: string;
-    }
-  >,
-  skipUnknownTokenFetch = false, // New parameter to skip fetching unknown tokens
+  skipUnknownTokenFetch = false,
   controller?: any
 ): Promise<{
   actualRecipient: string;
@@ -61,34 +52,6 @@ export const getTransactionDisplayInfo = async (
     const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
 
     if (tokenValue && tokenAddress) {
-      // First check enhanced cache for this contract address
-      const cachedToken = tokenCache?.get(tokenAddress.toLowerCase());
-      if (cachedToken) {
-        const { symbol, decimals, isNft } = cachedToken;
-
-        if (isNft) {
-          // For NFTs, show count as numeric value (same as ERC20 tokens)
-          const nftCount = Number(tokenValue);
-          return {
-            displayValue: nftCount,
-            displaySymbol: symbol.toUpperCase(),
-            isErc20Transfer: true, // This includes all token transfers (ERC20/721/1155)
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: true,
-            tokenId: tokenId || undefined,
-          };
-        } else {
-          // Regular ERC-20 token with known decimals
-          return {
-            displayValue: parseFloat(formatUnits(tokenValue, decimals)),
-            displaySymbol: symbol.toUpperCase(),
-            isErc20Transfer: true,
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: false,
-          };
-        }
-      }
-
       // Try to get token info from user's assets or fetch from controller
       try {
         const { accounts, activeAccount, accountAssets } =

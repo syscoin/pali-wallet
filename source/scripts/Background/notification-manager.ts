@@ -1,6 +1,5 @@
 import { formatUnits } from '@ethersproject/units';
 
-import { getIsReady } from 'scripts/Background';
 import { INetwork } from 'types/network';
 import {
   formatDisplayValue,
@@ -23,16 +22,9 @@ import {
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 class NotificationManager {
-  private controller: any = null; // Will be set after initialization
-
   constructor() {
     // Set up notification click handlers
     setupNotificationListeners();
-  }
-
-  // Set the controller after it's been initialized
-  public setController(controller: any) {
-    this.controller = controller;
   }
 
   // Public method for MainController to notify network changes
@@ -71,24 +63,12 @@ class NotificationManager {
     network: any
   ) {
     try {
-      // Check if controller is ready before proceeding
-      if (!getIsReady() || !this.controller) {
-        console.warn(
-          '[NotificationManager] Controller not ready, skipping EVM transaction notification for:',
-          tx.hash
-        );
-        return;
-      }
-
       // Use the shared utility to get transaction display info
       const displayInfo = await getTransactionDisplayInfo(
         tx,
         network.currency,
-        undefined, // tokenCache
-        false, // skipUnknownTokenFetch
-        this.controller // Pass controller for background context
+        true // skipUnknownTokenFetch - don't fetch unknown tokens for notifications
       );
-      // Note: We don't skip token fetch here as notifications should show proper token info
 
       let value: string | undefined;
       const tokenSymbol = displayInfo.displaySymbol;

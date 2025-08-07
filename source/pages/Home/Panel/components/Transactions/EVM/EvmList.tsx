@@ -50,7 +50,6 @@ const EvmTransactionItem = React.memo(
     txId,
     getTxOptions,
     t,
-    tokenCache,
   }: {
     currency: string;
     currentAccount: any;
@@ -61,14 +60,6 @@ const EvmTransactionItem = React.memo(
     getTxType: any;
     navigate: any;
     t: any;
-    tokenCache: Map<
-      string,
-      {
-        decimals: number;
-        isNft: boolean;
-        symbol: string;
-      }
-    >;
     tx: ITransactionInfoEvm & {
       isReplaced?: boolean;
       isSpeedUp?: boolean;
@@ -122,7 +113,6 @@ const EvmTransactionItem = React.memo(
           const info = await getTransactionDisplayInfo(
             tx,
             currency,
-            tokenCache,
             true // Skip fetching unknown tokens in transaction list
           );
           if (!cancelled) {
@@ -142,7 +132,7 @@ const EvmTransactionItem = React.memo(
       return () => {
         cancelled = true;
       };
-    }, [cacheKey, currency, tokenCache, tx]);
+    }, [cacheKey, currency, tx]);
 
     const finalTxValue = displayInfo.displayValue;
     const finalSymbol = displayInfo.displaySymbol;
@@ -391,42 +381,12 @@ export const EvmTransactionsList = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const accountAssets = useSelector(
-    (state: RootState) => state.vault.accountAssets
-  );
+
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
 
   const { chainId, currency } = activeNetwork;
-
-  // Create enhanced token cache from user's assets with symbol, decimals, and NFT info
-  const tokenCache = useMemo(() => {
-    const cache = new Map<
-      string,
-      {
-        decimals: number;
-        isNft: boolean;
-        symbol: string;
-      }
-    >();
-    const currentAccountAssets =
-      accountAssets?.[activeAccount.type]?.[activeAccount.id];
-
-    if (currentAccountAssets?.ethereum) {
-      currentAccountAssets.ethereum.forEach((token) => {
-        if (token.contractAddress && token.tokenSymbol) {
-          cache.set(token.contractAddress.toLowerCase(), {
-            symbol: token.tokenSymbol,
-            decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
-            isNft: token.isNft || false,
-          });
-        }
-      });
-    }
-
-    return cache;
-  }, [accountAssets, activeAccount.type, activeAccount.id]);
 
   const {
     filteredTransactions,
@@ -577,7 +537,6 @@ export const EvmTransactionsList = ({
                   txId={txId}
                   getTxOptions={getTxOptions}
                   t={t}
-                  tokenCache={tokenCache}
                 />
               );
             })}
