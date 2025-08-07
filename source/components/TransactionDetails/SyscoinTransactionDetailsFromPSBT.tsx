@@ -36,25 +36,9 @@ export interface IDecodedTransaction {
       }>;
     };
     burn?: {
-      allocation?: Array<{
-        assetGuid: string;
-        values?: Array<{
-          n: number;
-          value: string;
-          valueFormatted?: string;
-        }>;
-      }>;
       ethaddress: string;
     };
     mint?: {
-      allocation?: Array<{
-        assetGuid: string;
-        values?: Array<{
-          n: number;
-          value: string;
-          valueFormatted?: string;
-        }>;
-      }>;
       blockhash: string;
       ethtxid: string;
       receiptpos?: number;
@@ -147,16 +131,16 @@ const CopyableField: React.FC<{
   }, [copied, alert, copyMessage, label]);
 
   return (
-    <div className={`flex justify-between items-center ${className}`}>
+    <div className={`flex justify-between items-center gap-4 ${className}`}>
       <Typography.Text
-        className={`text-brand-gray200 text-xs ${labelClassName}`}
+        className={`text-brand-gray200 text-xs flex-shrink-0 ${labelClassName}`}
       >
         {label}:
       </Typography.Text>
       <div className="flex items-center gap-1">
         <Tooltip content={value}>
           <Typography.Text
-            className={`text-white text-xs ${
+            className={`text-white text-xs text-right ${
               monospace ? 'font-mono' : ''
             } ${valueClassName}`}
           >
@@ -205,7 +189,7 @@ const ExpandableSection: React.FC<{
   );
 };
 
-export const SyscoinTransactionDetailsFromPSBT: React.FC<
+const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
   ISyscoinTransactionDetailsProps
 > = ({
   psbt,
@@ -221,6 +205,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
   const [assetInfoMap, setAssetInfoMap] = useState<Record<string, any>>({});
   const [copiedJson, copyJson] = useCopyClipboard();
   const [copiedAddress, copyAddress] = useCopyClipboard();
+  const [showDetails, setShowDetails] = useState(false);
 
   // Use proper selectors
   const activeAccountAssets = useSelector(selectActiveAccountAssets);
@@ -342,12 +327,11 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
   }
 
   if (!decodedTx) return null;
-
   const isToken = decodedTx?.syscoin?.allocations?.assets?.length > 0;
 
-  // Use minimal padding when used as a simple display (no technical details/transaction options)
+  // Use responsive padding - less padding for dapp popup (simple mode), more for internal wallet
   const isSimpleMode = !showTechnicalDetails && !showTransactionOptions;
-  const paddingClass = isSimpleMode ? 'px-2 py-4' : 'px-4 sm:px-6 py-4';
+  const paddingClass = isSimpleMode ? 'px-3 py-4' : 'px-4 sm:px-6 lg:px-8 py-4';
 
   return (
     <div className={`${paddingClass} space-y-4`}>
@@ -426,41 +410,62 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
       {/* Main Transaction Details */}
       <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
         <div className="flex justify-between items-center mb-3">
-          <Typography.Text strong className="text-white text-sm">
-            Transaction Details
+          <Typography.Text strong className="text-white text-sm sm:text-base">
+            {t('send.transactionDetails')}
           </Typography.Text>
-          {/* Copy as JSON button - moved here for better visibility */}
-          <button
-            onClick={handleCopyAsJson}
-            className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
-            title="Copy complete transaction details as JSON"
-          >
-            <Icon
-              wrapperClassname="flex items-center justify-center"
-              name="Copy"
-              isSvg
-              className="w-3 h-3"
-            />
-            <span>Copy Details</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Toggle details button for dapp popup mode */}
+            {!showTechnicalDetails && (
+              <button
+                onClick={() => setShowDetails(!showDetails)}
+                className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
+                title={
+                  showDetails ? t('send.hideDetails') : t('send.showDetails')
+                }
+              >
+                {showDetails ? (
+                  <DownOutlined className="text-xs" />
+                ) : (
+                  <RightOutlined className="text-xs" />
+                )}
+                <span>
+                  {showDetails ? t('send.hideDetails') : t('send.showDetails')}
+                </span>
+              </button>
+            )}
+            {/* Copy as JSON button */}
+            <button
+              onClick={handleCopyAsJson}
+              className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
+              title="Copy complete transaction details as JSON"
+            >
+              <Icon
+                wrapperClassname="flex items-center justify-center"
+                name="Copy"
+                isSvg
+                className="w-3 h-3"
+              />
+              <span>Copy Details</span>
+            </button>
+          </div>
         </div>
 
         {/* Transaction Type */}
         {decodedTx.syscoin?.txtype && (
-          <div className="flex justify-between items-center">
-            <Typography.Text className="text-brand-gray200 text-xs">
+          <div className="flex justify-between items-center gap-2">
+            <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
               Type:
             </Typography.Text>
-            <Typography.Text className="text-white text-xs font-medium">
+            <Typography.Text className="text-white text-xs sm:text-sm font-medium text-right">
               {getTransactionTypeText(decodedTx.syscoin.txtype)}
             </Typography.Text>
           </div>
         )}
 
-        {/* Transaction ID */}
-        {decodedTx.txid && (
+        {/* Transaction ID - only show for signed transactions */}
+        {decodedTx.txid && !psbt && (
           <CopyableField
-            label="Transaction ID"
+            label={t('send.transactionId')}
             value={decodedTx.txid}
             displayValue={ellipsis(decodedTx.txid, 8, 8)}
             monospace
@@ -468,310 +473,174 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
           />
         )}
 
+        {/* For unsigned PSBTs, show a note that the transaction ID will be generated after signing */}
+        {psbt && (
+          <div className="flex justify-between items-center gap-2">
+            <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
+              {t('send.transactionId')}:
+            </Typography.Text>
+            <Typography.Text className="text-white text-xs sm:text-sm italic text-right">
+              {t('send.willBeGeneratedAfterSigning')}
+            </Typography.Text>
+          </div>
+        )}
+
         {/* Fee */}
         {decodedTx.fee !== undefined && (
-          <div className="flex justify-between items-center">
-            <Typography.Text className="text-brand-gray200 text-xs">
-              Network Fee:
+          <div className="flex justify-between items-center gap-2">
+            <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
+              {t('send.networkFee')}:
             </Typography.Text>
-            <Typography.Text className="text-white text-xs">
+            <Typography.Text className="text-white text-xs sm:text-sm text-right">
               {decodedTx.fee} {activeNetwork.currency.toUpperCase()}
             </Typography.Text>
           </div>
         )}
 
-        {/* Size */}
-        {decodedTx.vsize && (
-          <div className="flex justify-between items-center">
-            <Typography.Text className="text-brand-gray200 text-xs">
-              Size:
+        {/* Size - show conditionally based on detail toggle */}
+        {(showTechnicalDetails || showDetails) && decodedTx.vsize && (
+          <div className="flex justify-between items-center gap-2">
+            <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
+              {t('send.size')}:
             </Typography.Text>
-            <Typography.Text className="text-white text-xs">
+            <Typography.Text className="text-white text-xs sm:text-sm text-right">
               {decodedTx.vsize} vbytes
             </Typography.Text>
           </div>
         )}
       </div>
 
-      {/* Asset Transfers - improved layout */}
-      {isToken && decodedTx.syscoin?.allocations?.assets && (
+      {/* Asset Transfers - show all assets involved */}
+      {(() => (
         <div className="space-y-3">
           <Typography.Text className="text-white text-sm font-medium">
-            Asset Transfers
+            {t('send.assetsInvolved')}
           </Typography.Text>
-          {decodedTx.syscoin.allocations.assets.map(
-            (asset: any, index: number) => {
-              const assetInfo = assetInfoMap[asset.assetGuid] || {
-                assetGuid: asset.assetGuid,
-                symbol: 'Unknown',
-              };
-              const totalAmount =
-                asset.values?.reduce(
-                  (sum: number, val: any) =>
-                    sum + parseFloat(formatSyscoinValue(val.value.toString())),
-                  0
-                ) || 0;
+          <div className="space-y-2">
+            {Array.from(decodedTx.syscoin?.allocations?.assets || []).map(
+              (primaryAsset, index) => {
+                // Get asset info for the primary asset
+                const assetInfo = assetInfoMap[primaryAsset.assetGuid] || {
+                  assetGuid: primaryAsset.assetGuid,
+                  symbol:
+                    primaryAsset.assetGuid === '123456' ? 'SYSX' : 'Unknown',
+                  decimals: 8,
+                };
 
-              // Don't ellipsis short asset GUIDs
-              const displayGuid =
-                asset.assetGuid.length <= 10
-                  ? asset.assetGuid
-                  : ellipsis(asset.assetGuid, 12, 12);
+                // Don't ellipsis short asset GUIDs
+                const displayGuid =
+                  primaryAsset.assetGuid.length <= 10
+                    ? primaryAsset.assetGuid
+                    : ellipsis(primaryAsset.assetGuid, 12, 12);
 
-              return (
-                <div key={index} className="bg-brand-blue800 p-4 rounded-lg">
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <Typography.Text className="text-white text-base font-semibold">
-                          {assetInfo.symbol}
-                        </Typography.Text>
-                        <Typography.Text className="text-brand-gray200 text-xs mt-1 block">
-                          Amount: {totalAmount.toFixed(assetInfo.decimals || 8)}{' '}
+                return (
+                  <div
+                    key={`asset-${primaryAsset.assetGuid}-${index}`}
+                    className="bg-brand-blue800 p-4 rounded-lg"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <Typography.Text className="text-white text-base sm:text-lg font-semibold">
                           {assetInfo.symbol}
                         </Typography.Text>
                       </div>
-                    </div>
 
-                    <div className="pt-2 border-t border-alpha-whiteAlpha100">
-                      <CopyableField
-                        label={t('send.assetGuid')}
-                        value={asset.assetGuid}
-                        displayValue={displayGuid}
-                        monospace
-                        copyMessage={t('home.assetGuidCopied')}
-                        className="text-xs"
-                      />
+                      <div className="pt-2 border-t border-alpha-whiteAlpha100">
+                        <CopyableField
+                          label={t('send.assetGuid')}
+                          value={primaryAsset.assetGuid}
+                          displayValue={displayGuid}
+                          monospace
+                          copyMessage={t('home.assetGuidCopied')}
+                          className="text-xs sm:text-sm"
+                          labelClassName="text-xs sm:text-sm"
+                          valueClassName="text-xs sm:text-sm"
+                        />
+                      </div>
                     </div>
-
-                    {asset.values && asset.values.length > 1 && (
-                      <ExpandableSection
-                        title={t('send.outputBreakdown')}
-                        defaultExpanded={false}
-                      >
-                        <div className="space-y-1">
-                          {asset.values.map((val: any, valIndex: number) => (
-                            <div
-                              key={valIndex}
-                              className="text-brand-gray200 text-xs"
-                            >
-                              Output #{val.n}:{' '}
-                              {val.valueFormatted ||
-                                formatSyscoinValue(val.value.toString())}{' '}
-                              {assetInfo.symbol}
-                            </div>
-                          ))}
-                        </div>
-                      </ExpandableSection>
-                    )}
                   </div>
-                </div>
-              );
-            }
-          )}
+                );
+              }
+            )}
+          </div>
         </div>
-      )}
+      ))()}
 
-      {/* Outputs Summary */}
-      {decodedTx.vout && decodedTx.vout.length > 0 && !isToken && (
-        <ExpandableSection
-          title={t('send.outputs')}
-          count={decodedTx.vout.length}
-          defaultExpanded={decodedTx.vout.length <= 3}
-        >
-          <div className="space-y-2">
-            {(() => {
-              // Pre-process to find first mint output (intent)
-              let firstMintOutput = -1;
-              let firstBurnOutput = -1;
-
-              if (decodedTx.syscoin?.mint?.allocation) {
-                for (const allocation of decodedTx.syscoin.mint.allocation) {
-                  const sortedValues = [...(allocation.values || [])].sort(
-                    (a, b) => a.n - b.n
-                  );
-                  if (sortedValues.length > 0) {
-                    firstMintOutput = sortedValues[0].n; // First output is intent
-                    break;
-                  }
-                }
-              }
-
-              if (decodedTx.syscoin?.burn?.allocation) {
-                for (const allocation of decodedTx.syscoin.burn.allocation) {
-                  const sortedValues = [...(allocation.values || [])].sort(
-                    (a, b) => a.n - b.n
-                  );
-                  if (sortedValues.length > 0) {
-                    firstBurnOutput = sortedValues[0].n;
-                    break;
-                  }
-                }
-              }
-
-              return decodedTx.vout.map((output: any, index: number) => {
-                // Check if this output contains asset allocations
+      {/* Outputs Summary - show based on technical details or detail toggle */}
+      {(showTechnicalDetails || showDetails) &&
+        decodedTx.vout &&
+        decodedTx.vout.length > 0 && (
+          <ExpandableSection
+            title={t('send.outputs')}
+            count={decodedTx.vout.length}
+            defaultExpanded={decodedTx.vout.length <= 3}
+          >
+            <div className="space-y-2">
+              {decodedTx.vout.map((output: any, index: number) => {
+                // Check if this output contains any asset allocations
                 let assetInfo = null;
                 let assetAmount = null;
-                let rawAssetValue = null;
-                let outputType = null; // 'intent', 'change', or null
-                let isFromMint = false;
-                let isFromBurn = false;
 
-                // For mint transactions, check mint allocations first
-                if (decodedTx.syscoin?.mint?.allocation) {
-                  for (const allocation of decodedTx.syscoin.mint.allocation) {
-                    const valueForOutput = allocation.values?.find(
-                      (val: any) => val.n === index
+                // First check if output has embedded assetInfo
+                if (output.assetInfo) {
+                  // Find asset info
+                  assetInfo = activeAccountAssets?.syscoin?.find(
+                    (a: any) => a.assetGuid === output.assetInfo.assetGuid
+                  ) ||
+                    assetInfoMap[output.assetInfo.assetGuid] || {
+                      assetGuid: output.assetInfo.assetGuid,
+                      symbol:
+                        output.assetInfo.assetGuid === '123456'
+                          ? 'SYSX'
+                          : 'SPT',
+                      decimals: 8,
+                    };
+                  // Get the amount
+                  if (output.assetInfo.value) {
+                    assetAmount = formatSyscoinValue(
+                      output.assetInfo.value.toString(),
+                      assetInfo.decimals || 8
                     );
-                    if (valueForOutput) {
-                      // For mint transactions, find asset info
-                      assetInfo = activeAccountAssets?.syscoin?.find(
-                        (a: any) => a.assetGuid === allocation.assetGuid
-                      ) || {
-                        assetGuid: allocation.assetGuid,
-                        symbol: 'SYSX',
-                        decimals: 8,
-                      };
-                      // Use valueFormatted if available, otherwise store raw value
-                      if (valueForOutput.valueFormatted) {
-                        assetAmount = valueForOutput.valueFormatted;
-                      } else {
-                        rawAssetValue = valueForOutput.value;
-                      }
-                      isFromMint = true;
-                      break;
-                    }
                   }
-                }
-
-                // Check standard allocations if not found in mint
-                if (!assetInfo && decodedTx.syscoin?.allocations?.assets) {
+                } else if (decodedTx.syscoin?.allocations?.assets) {
+                  // Check if this output index has an asset allocation
                   for (const asset of decodedTx.syscoin.allocations.assets) {
-                    const valueForOutput = asset.values?.find(
-                      (val: any) => val.n === index
+                    const allocation = asset.values?.find(
+                      (v: any) => v.n === index
                     );
-                    if (valueForOutput) {
-                      assetInfo = activeAccountAssets?.syscoin?.find(
-                        (a: any) => a.assetGuid === asset.assetGuid
-                      ) || {
+                    if (allocation) {
+                      assetInfo = assetInfoMap[asset.assetGuid] || {
                         assetGuid: asset.assetGuid,
-                        symbol: 'SYSX',
+                        symbol:
+                          asset.assetGuid === '123456' ? 'SYSX' : 'Unknown',
                         decimals: 8,
                       };
-                      // Use valueFormatted if available, otherwise store raw value
-                      if (valueForOutput.valueFormatted) {
-                        assetAmount = valueForOutput.valueFormatted;
-                      } else {
-                        rawAssetValue = valueForOutput.value;
-                      }
+                      assetAmount = formatSyscoinValue(
+                        allocation.value.toString(),
+                        assetInfo.decimals || 8
+                      );
                       break;
                     }
                   }
                 }
-
-                // Check burn allocations
-                if (!assetInfo && decodedTx.syscoin?.burn?.allocation) {
-                  for (const allocation of decodedTx.syscoin.burn.allocation) {
-                    const valueForOutput = allocation.values?.find(
-                      (val: any) => val.n === index
-                    );
-                    if (valueForOutput) {
-                      assetInfo = activeAccountAssets?.syscoin?.find(
-                        (a: any) => a.assetGuid === allocation.assetGuid
-                      ) || {
-                        assetGuid: allocation.assetGuid,
-                        symbol: 'SYSX',
-                        decimals: 8,
-                      };
-                      // Use valueFormatted if available, otherwise store raw value
-                      if (valueForOutput.valueFormatted) {
-                        assetAmount = valueForOutput.valueFormatted;
-                      } else {
-                        rawAssetValue = valueForOutput.value;
-                      }
-                      isFromBurn = true;
-                      break;
-                    }
-                  }
-                }
-
-                // Format the asset amount using proper decimals
-                if (rawAssetValue && !assetAmount) {
-                  const decimals = assetInfo?.decimals || 8; // Default to 8 if not specified
-                  assetAmount = formatSyscoinValue(rawAssetValue, decimals);
-                }
-
-                // Determine intent vs change based on transaction type and consensus rules
-                const txType = decodedTx.syscoin?.txtype;
-                if (assetInfo && assetAmount) {
-                  switch (txType) {
-                    case 'assetallocation_mint':
-                      // For mint transactions, only the first output with mint allocation is intent
-                      if (isFromMint) {
-                        outputType =
-                          index === firstMintOutput ? 'intent' : 'change';
-                      }
-                      break;
-
-                    case 'assetallocationburn_to_ethereum':
-                    case 'assetallocationburn_to_syscoin':
-                      // For burn transactions, only the first burn output is intent
-                      if (isFromBurn) {
-                        outputType =
-                          index === firstBurnOutput ? 'intent' : 'change';
-                      }
-                      break;
-
-                    case 'syscoinburn_to_allocation':
-                      // The new allocation output is intent
-                      outputType = 'intent';
-                      break;
-
-                    case 'assetallocation_send':
-                      // For regular SPT sends, we can't easily determine intent vs change
-                      // Multiple outputs could be intent (sending to multiple recipients)
-                      // So we don't label these
-                      outputType = null;
-                      break;
-
-                    default:
-                      // For other types, don't label
-                      outputType = null;
-                  }
-                }
-
                 return (
                   <div
                     key={index}
                     className="bg-brand-blue800 p-3 rounded transition-colors hover:bg-alpha-whiteAlpha100"
                   >
                     <div className="space-y-2">
-                      {/* Output header with index and optional type */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Typography.Text className="text-brand-gray200 text-xs">
-                            Output #{index}
-                          </Typography.Text>
-                          {outputType && (
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded ${
-                                outputType === 'intent'
-                                  ? 'bg-brand-royalblue text-white'
-                                  : 'bg-alpha-whiteAlpha200 text-brand-gray200'
-                              }`}
-                            >
-                              {outputType === 'intent' ? 'Intent' : 'Change'}
-                            </span>
-                          )}
-                        </div>
+                      {/* Output header with index */}
+                      <div className="flex items-center justify-between gap-2">
+                        <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
+                          Output #{index}
+                        </Typography.Text>
                         <div className="text-right">
-                          <Typography.Text className="text-white text-xs font-medium block">
+                          <Typography.Text className="text-white text-xs sm:text-sm font-medium block">
                             {output.value}{' '}
                             {activeNetwork.currency.toUpperCase()}
                           </Typography.Text>
                           {assetInfo && assetAmount && (
-                            <Typography.Text className="text-brand-royalblue text-xs font-medium block mt-1">
+                            <Typography.Text className="text-brand-royalblue text-xs sm:text-sm font-medium block mt-1">
                               {assetAmount} {assetInfo.symbol || 'SYSX'}
                             </Typography.Text>
                           )}
@@ -780,13 +649,13 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
 
                       {/* Address section */}
                       {output.scriptPubKey?.addresses?.[0] ? (
-                        <div className="flex items-center gap-2 bg-brand-blue900 p-2 rounded">
-                          <Typography.Text className="text-brand-gray200 text-xs flex-shrink-0">
+                        <div className="flex items-center justify-between bg-brand-blue900 p-2 rounded gap-2">
+                          <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
                             Address:
                           </Typography.Text>
-                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-1">
                             <Tooltip content={output.scriptPubKey.addresses[0]}>
-                              <Typography.Text className="text-white text-xs font-mono truncate block max-w-[150px]">
+                              <Typography.Text className="text-white text-xs sm:text-sm font-mono">
                                 {ellipsis(
                                   output.scriptPubKey.addresses[0],
                                   10,
@@ -810,193 +679,76 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-brand-blue900 p-2 rounded">
-                          <Typography.Text className="text-brand-gray200 text-xs">
-                            Type:{' '}
-                            <span className="text-white">
-                              {output.scriptPubKey?.type || 'Unknown'}
-                            </span>
+                        <div className="flex items-center justify-between bg-brand-blue900 p-2 rounded gap-2">
+                          <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
+                            Type:
+                          </Typography.Text>
+                          <Typography.Text className="text-white text-xs sm:text-sm text-right">
+                            {output.scriptPubKey?.type === 'nulldata'
+                              ? 'OP_RETURN (Data)'
+                              : output.scriptPubKey?.type || 'Unknown'}
                           </Typography.Text>
                         </div>
                       )}
                     </div>
                   </div>
                 );
-              });
-            })()}
-          </div>
-        </ExpandableSection>
-      )}
+              })}
+            </div>
+          </ExpandableSection>
+        )}
 
       {/* Syscoin-specific Data (Bridge operations, etc.) */}
       {decodedTx.syscoin && (
         <>
-          {/* Burn Data */}
-          {decodedTx.syscoin.burn && (
+          {/* Burn Data - only show metadata specific to burns */}
+          {decodedTx.syscoin.burn?.ethaddress && (
             <div className="bg-brand-blue800 rounded-lg p-4 space-y-2">
-              <Typography.Text className="text-white text-sm block font-medium">
-                Burn Data:
+              <Typography.Text className="text-white text-sm sm:text-base block font-medium">
+                Bridge to NEVM
               </Typography.Text>
-
-              {/* Display burn amount if available */}
-              {decodedTx.syscoin.burn.allocation &&
-                decodedTx.syscoin.burn.allocation.length > 0 && (
-                  <div className="space-y-2">
-                    {decodedTx.syscoin.burn.allocation.map(
-                      (allocation, index) => {
-                        // Calculate total amount from values
-                        const totalAmount =
-                          allocation.values?.reduce((sum, val) => {
-                            if (val.valueFormatted) {
-                              return sum + parseFloat(val.valueFormatted);
-                            }
-                            return sum + parseFloat(val.value) / 100000000;
-                          }, 0) || 0;
-
-                        // Get asset info if available
-                        const assetInfo = activeAccountAssets?.syscoin?.find(
-                          (asset: any) =>
-                            asset.assetGuid === allocation.assetGuid
-                        );
-
-                        // Determine the asset symbol based on the transaction type
-                        let assetSymbol = assetInfo?.symbol || 'SYSX';
-                        if (
-                          decodedTx.syscoin.txtype ===
-                          'syscoinburn_to_allocation'
-                        ) {
-                          assetSymbol = 'SYS'; // Burning SYS to SYSX
-                        } else if (
-                          decodedTx.syscoin.txtype ===
-                          'assetallocationburn_to_syscoin'
-                        ) {
-                          assetSymbol = 'SYSX'; // Burning SYSX to SYS
-                        }
-
-                        return (
-                          <div
-                            key={index}
-                            className="bg-brand-blue900 rounded p-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <Typography.Text className="text-brand-gray200 text-xs">
-                                Amount:
-                              </Typography.Text>
-                              <Typography.Text className="text-white text-sm font-medium">
-                                {totalAmount.toFixed(8)} {assetSymbol}
-                              </Typography.Text>
-                            </div>
-                            {allocation.assetGuid &&
-                              allocation.assetGuid !== '0' && (
-                                <div className="flex items-center justify-between mt-1">
-                                  <Typography.Text className="text-brand-gray200 text-xs">
-                                    Asset ID:
-                                  </Typography.Text>
-                                  <Typography.Text className="text-white text-xs font-mono">
-                                    {allocation.assetGuid}
-                                  </Typography.Text>
-                                </div>
-                              )}
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                )}
-
               <CopyableField
                 label="NEVM Address"
                 value={decodedTx.syscoin.burn.ethaddress}
                 displayValue={ellipsis(decodedTx.syscoin.burn.ethaddress, 8, 8)}
                 monospace
                 copyMessage={t('home.addressCopied')}
+                labelClassName="text-xs sm:text-sm"
+                valueClassName="text-xs sm:text-sm"
               />
             </div>
           )}
 
-          {/* Mint Data */}
+          {/* Mint Data - only show metadata specific to mints */}
           {decodedTx.syscoin.mint && (
             <div className="bg-brand-blue800 rounded-lg p-4 space-y-2">
               <Typography.Text className="text-white text-sm block font-medium">
-                Mint Data:
+                Bridge from NEVM
               </Typography.Text>
 
-              {/* Display mint amount if available */}
-              {decodedTx.syscoin.mint.allocation &&
-                decodedTx.syscoin.mint.allocation.length > 0 && (
-                  <div className="space-y-2">
-                    {decodedTx.syscoin.mint.allocation.map(
-                      (allocation, index) => {
-                        // For mint, only show the intent amount (first output with this asset)
-                        // Find the first output with this asset (the intent)
-                        const sortedValues = [
-                          ...(allocation.values || []),
-                        ].sort((a, b) => a.n - b.n);
-                        const intentValue = sortedValues[0]; // First output is the intent
+              {decodedTx.syscoin.mint.ethtxid && (
+                <CopyableField
+                  label="NEVM TXID"
+                  value={decodedTx.syscoin.mint.ethtxid}
+                  displayValue={ellipsis(decodedTx.syscoin.mint.ethtxid, 8, 8)}
+                  monospace
+                  copyMessage={t('home.hashCopied')}
+                />
+              )}
 
-                        let intentAmount = 0;
-                        if (intentValue) {
-                          if (intentValue.valueFormatted) {
-                            intentAmount = parseFloat(
-                              intentValue.valueFormatted
-                            );
-                          } else {
-                            intentAmount =
-                              parseFloat(intentValue.value) / 100000000;
-                          }
-                        }
-
-                        // Get asset info if available
-                        const assetInfo = activeAccountAssets?.syscoin?.find(
-                          (asset: any) =>
-                            asset.assetGuid === allocation.assetGuid
-                        );
-
-                        return (
-                          <div
-                            key={index}
-                            className="bg-brand-blue900 rounded p-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <Typography.Text className="text-brand-gray200 text-xs">
-                                Amount:
-                              </Typography.Text>
-                              <Typography.Text className="text-white text-sm font-medium">
-                                {intentAmount.toFixed(8)}{' '}
-                                {assetInfo?.symbol || 'SYSX'}
-                              </Typography.Text>
-                            </div>
-                            {allocation.assetGuid && (
-                              <div className="flex items-center justify-between mt-1">
-                                <Typography.Text className="text-brand-gray200 text-xs">
-                                  Asset ID:
-                                </Typography.Text>
-                                <Typography.Text className="text-white text-xs font-mono">
-                                  {allocation.assetGuid}
-                                </Typography.Text>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                )}
-
-              <CopyableField
-                label="NEVM TXID"
-                value={decodedTx.syscoin.mint.ethtxid}
-                displayValue={ellipsis(decodedTx.syscoin.mint.ethtxid, 8, 8)}
-                monospace
-                copyMessage={t('home.hashCopied')}
-              />
-              <CopyableField
-                label="Block Hash"
-                value={decodedTx.syscoin.mint.blockhash}
-                displayValue={ellipsis(decodedTx.syscoin.mint.blockhash, 8, 8)}
-                monospace
-                copyMessage={t('home.hashCopied')}
-              />
+              {decodedTx.syscoin.mint.blockhash && (
+                <CopyableField
+                  label="Block Hash"
+                  value={decodedTx.syscoin.mint.blockhash}
+                  displayValue={ellipsis(
+                    decodedTx.syscoin.mint.blockhash,
+                    8,
+                    8
+                  )}
+                  monospace
+                  copyMessage={t('home.hashCopied')}
+                />
+              )}
             </div>
           )}
 
@@ -1018,8 +770,8 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
         </>
       )}
 
-      {/* Technical Details */}
-      {showTechnicalDetails && decodedTx && (
+      {/* Technical Details - now also show when detail toggle is enabled */}
+      {(showTechnicalDetails || showDetails) && decodedTx && (
         <>
           <div className="border-dashed border-alpha-whiteAlpha300 border-t my-4" />
 
@@ -1085,6 +837,35 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
                       key={index}
                       className="bg-brand-blue800 p-3 rounded space-y-1"
                     >
+                      {/* Input header with index and asset amount if available */}
+                      <div className="flex items-center justify-between mb-2">
+                        <Typography.Text className="text-brand-gray200 text-xs">
+                          Input #{index}
+                        </Typography.Text>
+                        <div className="text-right">
+                          {input.value !== undefined && (
+                            <Typography.Text className="text-white text-xs font-medium block">
+                              {input.value}{' '}
+                              {activeNetwork.currency.toUpperCase()}
+                            </Typography.Text>
+                          )}
+                          {input.assetInfo && (
+                            <Typography.Text className="text-brand-royalblue text-xs font-medium block mt-1">
+                              {input.assetInfo.value
+                                ? formatSyscoinValue(
+                                    input.assetInfo.value.toString(),
+                                    input.assetInfo.decimals || 8
+                                  )
+                                : '0'}{' '}
+                              {input.assetInfo.symbol ||
+                                (input.assetInfo.assetGuid === '123456'
+                                  ? 'SYSX'
+                                  : 'SPT')}
+                            </Typography.Text>
+                          )}
+                        </div>
+                      </div>
+
                       {input.txid ? (
                         <CopyableField
                           label="TXID"
@@ -1136,3 +917,14 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
     </div>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders during rapid polling
+export const SyscoinTransactionDetailsFromPSBT = React.memo(
+  SyscoinTransactionDetailsFromPSBTComponent,
+  (prevProps, nextProps) =>
+    // Custom comparison function - only re-render if the PSBT data changes
+    prevProps.psbt === nextProps.psbt &&
+    prevProps.transaction?.psbt === nextProps.transaction?.psbt &&
+    prevProps.showTechnicalDetails === nextProps.showTechnicalDetails &&
+    prevProps.showTransactionOptions === nextProps.showTransactionOptions
+);

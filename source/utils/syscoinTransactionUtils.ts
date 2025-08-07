@@ -1,3 +1,4 @@
+import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';
 
 /**
@@ -72,6 +73,137 @@ export const getSyscoinTransactionTypeLabel = (
 };
 
 /**
+ * Common helper to parse asset values from various formats
+ */
+const parseAssetValue = (assetInfo: any): number => {
+  if (!assetInfo) return 0;
+
+  // Handle string format with potential symbol
+  if (assetInfo.valueStr || assetInfo.valueFormatted) {
+    const valueStr = assetInfo.valueStr || assetInfo.valueFormatted;
+    const numericValue = parseFloat(valueStr.split(' ')[0]);
+    return isNaN(numericValue) ? 0 : numericValue;
+  }
+
+  // Handle raw numeric value
+  if (assetInfo.value !== undefined) {
+    const formatted = formatSyscoinValue(assetInfo.value.toString(), 8);
+    return parseFloat(formatted);
+  }
+
+  return 0;
+};
+
+/**
+ * Unified function to get intent amount and asset from any Syscoin transaction
+ * Handles both decoded transactions and raw transactions with vin/vout
+ * Simple rules:
+ * - ALLOCATION_BURN_TO_ETHEREUM/SYSCOIN: Asset amount from OP_RETURN
+ * - SYSCOIN_BURN_TO_ALLOCATION: SYS amount from OP_RETURN (returns SYSX guid: 123456)
+ * - ALLOCATION_MINT: Net amount (output - input) for asset
+ * - ALLOCATION_SEND & others: First asset output value
+ * @param transaction - Transaction (decoded or raw with vin/vout)
+ * @returns Object with amount and assetGuid, or null if no intent found
+ */
+export const getSyscoinIntentAmount = (
+  transaction: any
+): { amount: number; assetGuid: string } | null => {
+  if (!transaction) {
+    return null;
+  }
+
+  // Determine transaction type - support both decoded and raw formats
+  const txType = transaction.syscoin?.txtype || transaction.tokenType;
+  const normalizedType = normalizeSyscoinTransactionType(txType);
+
+  // Modern format with vin/vout containing assetInfo (or raw transaction)
+  const vout = transaction.vout || [];
+  const vin = transaction.vin || [];
+
+  // SYSCOIN_BURN_TO_ALLOCATION: SYS amount from OP_RETURN (burning SYS to get SYSX)
+  if (normalizedType === 'syscoinburntoallocation') {
+    const opReturn = vout.find((v: any) =>
+      v.addresses?.[0]?.startsWith('OP_RETURN')
+    );
+
+    if (opReturn?.value) {
+      const formatted = formatSyscoinValue(opReturn.value.toString());
+      return {
+        amount: parseFloat(formatted),
+        assetGuid: '123456', // SYSX guid - the asset being minted
+      };
+    }
+    return null;
+  }
+
+  // ALLOCATION_BURN_TO_ETHEREUM/SYSCOIN: Asset amount from OP_RETURN
+  if (
+    normalizedType === 'assetallocationburntoethereum' ||
+    normalizedType === 'assetallocationburntosyscoin'
+  ) {
+    const opReturn = vout.find((v: any) =>
+      v.addresses?.[0]?.startsWith('OP_RETURN')
+    );
+
+    if (opReturn?.assetInfo) {
+      return {
+        amount: parseAssetValue(opReturn.assetInfo),
+        assetGuid: opReturn.assetInfo.assetGuid,
+      };
+    }
+    return null;
+  }
+
+  // ALLOCATION_MINT: Net amount (output - input) for asset
+  if (normalizedType === 'assetallocationmint') {
+    // Calculate outputs per asset
+    const outputAssets = new Map<string, number>();
+    vout.forEach((v: any) => {
+      if (v.assetInfo) {
+        const guid = v.assetInfo.assetGuid;
+        const current = outputAssets.get(guid) || 0;
+        outputAssets.set(guid, current + parseAssetValue(v.assetInfo));
+      }
+    });
+
+    // Calculate inputs per asset
+    const inputAssets = new Map<string, number>();
+    vin.forEach((v: any) => {
+      if (v.assetInfo) {
+        const guid = v.assetInfo.assetGuid;
+        const current = inputAssets.get(guid) || 0;
+        inputAssets.set(guid, current + parseAssetValue(v.assetInfo));
+      }
+    });
+
+    // Find asset with output > input and return the net
+    for (const [guid, outputAmount] of outputAssets.entries()) {
+      const inputAmount = inputAssets.get(guid) || 0;
+      if (outputAmount > inputAmount) {
+        return {
+          amount: outputAmount - inputAmount,
+          assetGuid: guid,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  // ALLOCATION_SEND and others: First asset output value
+  const firstAsset = vout.find((v: any) => v.assetInfo);
+
+  if (firstAsset?.assetInfo) {
+    return {
+      amount: parseAssetValue(firstAsset.assetInfo),
+      assetGuid: firstAsset.assetInfo.assetGuid,
+    };
+  }
+
+  return null;
+};
+
+/**
  * Gets styling information for a normalized transaction type
  */
 export const getSyscoinTransactionTypeStyle = (
@@ -143,21 +275,4 @@ export const getSyscoinTransactionTypeStyle = (
         bgStyle: { backgroundColor: 'rgba(107, 114, 128, 0.2)' }, // gray-500 with 20% opacity
       };
   }
-};
-
-/**
- * Checks if a transaction type is a mint or burn transaction
- * These transactions display the intent amount (first output) differently
- */
-export const isMintOrBurnTransaction = (
-  tokenType: string | undefined
-): boolean => {
-  const normalized = normalizeSyscoinTransactionType(tokenType);
-
-  return (
-    normalized === 'assetallocationmint' ||
-    normalized === 'assetallocationburntoethereum' ||
-    normalized === 'assetallocationburntosyscoin' ||
-    normalized === 'syscoinburntoallocation'
-  );
 };

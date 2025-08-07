@@ -21,8 +21,6 @@ export interface INotificationOptions {
 export interface ITransactionNotification {
   chainId: number;
   from: string;
-  // e.g., "SPT Transfer", "SYS → SYSX", "Bridge to NEVM"
-  metadata?: any;
   network: string;
   to?: string;
   tokenSymbol?: string;

@@ -1,9 +1,11 @@
 import { formatUnits } from '@ethersproject/units';
-import { txUtils } from '@sidhujag/sysweb3-utils';
 
 import { getIsReady } from 'scripts/Background';
 import { INetwork } from 'types/network';
-import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import {
+  formatDisplayValue,
+  formatSyscoinValue,
+} from 'utils/formatSyscoinValue';
 import {
   setupNotificationListeners,
   showTransactionNotification,
@@ -14,7 +16,10 @@ import {
   updatePendingTransactionBadge,
   ITransactionNotification,
 } from 'utils/notifications';
-import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
+import {
+  getSyscoinTransactionTypeLabel,
+  getSyscoinIntentAmount,
+} from 'utils/syscoinTransactionUtils';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 class NotificationManager {
@@ -148,254 +153,47 @@ class NotificationManager {
     let value = '0';
     let tokenSymbol = network.currency.toUpperCase();
     let decimals = 8; // Default for SYS
-    let metadata: any = {};
+    const metadata: any = {};
     let transactionTypeLabel = '';
-    let decodedTx: any = null;
+
     let detectedTokenType: string | null = null;
 
-    // Try to decode the transaction to get full SPT details
-    if (tx.hex || tx.txid) {
-      try {
-        let rawHex: string | null = null;
+    // Use stored transaction data directly (no need to decode hex again)
+    if (tx.tokenType) {
+      detectedTokenType = tx.tokenType;
 
-        // If we have the hex, use it directly
-        if (tx.hex) {
-          rawHex = tx.hex;
-        }
-        // Otherwise, fetch the raw transaction first
-        else if (tx.txid && network.url) {
-          const { getRawTransaction } = txUtils();
-          const rawTx = await getRawTransaction(network.url, tx.txid);
-          if (rawTx && typeof rawTx === 'string') {
-            rawHex = rawTx;
-          }
-        }
+      // Use getSyscoinIntentAmount for robust amount calculation
+      const intent = getSyscoinIntentAmount(tx);
+      if (intent) {
+        value = intent.amount.toString();
 
-        // Decode the raw hex to get SPT information
-        if (rawHex) {
-          // Check if controller is ready
-          if (!getIsReady() || !this.controller) {
-            console.warn(
-              '[NotificationManager] Controller not ready yet for transaction decoding'
-            );
+        // Get decimals and symbol from tokenTransfers if available
+        if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+          // Find the transfer that matches the intent asset
+          const matchingTransfer = tx.tokenTransfers.find(
+            (transfer: any) => transfer.token === intent.assetGuid
+          );
+
+          if (matchingTransfer) {
+            tokenSymbol =
+              matchingTransfer.symbol || network.currency.toUpperCase();
+            decimals = matchingTransfer.decimals || 8;
           } else {
-            const controller = this.controller;
-
-            if (controller && controller.wallet) {
-              try {
-                // Use the enhanced decodeRawTransaction method with isRawHex=true
-                decodedTx = controller.wallet.decodeRawTransaction(
-                  rawHex,
-                  true
-                );
-              } catch (err) {
-                console.error(
-                  '[NotificationManager] Failed to decode transaction:',
-                  err
-                );
-                // Continue with regular processing
-              }
-            } else {
-              console.warn(
-                '[NotificationManager] Controller or wallet not available for transaction decoding'
-              );
-            }
+            // Fallback to first transfer if no exact match
+            const transfer = tx.tokenTransfers[0];
+            tokenSymbol = transfer.symbol || network.currency.toUpperCase();
+            decimals = transfer.decimals || 8;
+          }
+        } else {
+          // Fallback: hardcoded values for known transaction types
+          if (
+            detectedTokenType === 'SPTSyscoinBurnToAssetAllocation' ||
+            detectedTokenType === 'SPTSyscoinBurnToAssetAllocation'
+          ) {
+            tokenSymbol = 'SYSX';
+            decimals = 8;
           }
         }
-
-        // Extract SPT asset information from decoded transaction
-        if (decodedTx?.syscoin) {
-          // Get transaction type directly from decoded transaction
-          if (decodedTx.syscoin.txtype) {
-            detectedTokenType = decodedTx.syscoin.txtype;
-          }
-
-          // Handle asset allocations (for SPT transfers)
-          if (decodedTx.syscoin.allocations?.assets) {
-            const assets = decodedTx.syscoin.allocations.assets;
-            if (assets.length > 0) {
-              const asset = assets[0];
-
-              // Fetch asset metadata first to get the correct decimals
-              if (asset.assetGuid && network.url) {
-                const assetData = await this.getSPTMetadata(
-                  asset.assetGuid.toString(),
-                  network.url
-                );
-                if (assetData) {
-                  tokenSymbol = assetData.symbol;
-                  decimals = assetData.decimals;
-                  metadata = {
-                    ...assetData.metaData,
-                    assetGuid: asset.assetGuid.toString(),
-                  };
-                }
-              }
-
-              // Use the formatted value if available, otherwise calculate from values array
-              if (asset.values && asset.values.length > 0) {
-                const totalValue = asset.values.reduce(
-                  (sum: number, val: any) => {
-                    // Use valueFormatted if available (already in correct decimal format)
-                    if (val.valueFormatted) {
-                      return sum + parseFloat(val.valueFormatted);
-                    }
-                    // Otherwise convert from satoshis to token units using safe conversion
-                    // Use the token's actual decimals, not hardcoded 8
-                    const formatted = formatSyscoinValue(
-                      val.value || '0',
-                      decimals
-                    );
-                    return sum + parseFloat(formatted);
-                  },
-                  0
-                );
-
-                // Set the value as string
-                value = totalValue.toString();
-              }
-            }
-          }
-
-          // Handle burns (SYS → SYSX, SYSX → SYS, Bridge to NEVM)
-          if (decodedTx.syscoin.burn) {
-            const burn = decodedTx.syscoin.burn;
-
-            // Check if burning to Ethereum (bridge transaction) first
-            if (burn.ethaddress) {
-              // This is a bridge transaction to NEVM
-              detectedTokenType = 'assetallocationburntoethereum';
-            }
-
-            // Extract amount from allocation data in burn
-            if (burn.allocation && burn.allocation.length > 0) {
-              const allocation = burn.allocation[0];
-
-              // Fetch asset metadata first to get correct decimals
-              if (allocation.assetGuid && network.url) {
-                const assetData = await this.getSPTMetadata(
-                  allocation.assetGuid.toString(),
-                  network.url
-                );
-                if (assetData) {
-                  tokenSymbol = assetData.symbol;
-                  decimals = assetData.decimals;
-                  metadata = {
-                    ...assetData.metaData,
-                    assetGuid: allocation.assetGuid.toString(),
-                  };
-                } else {
-                  // If metadata fetch fails for bridge transactions, default to SYSX
-                  // since bridges typically involve SYSX
-                  if (detectedTokenType === 'assetallocationburntoethereum') {
-                    tokenSymbol = 'SYSX';
-                    decimals = 8;
-                  }
-                }
-              }
-
-              // Now calculate value using correct decimals
-              // For burn transactions, only use the intent amount (first output)
-              if (allocation.values && allocation.values.length > 0) {
-                // Sort values by output index to find the intent (first output)
-                const sortedValues = [...allocation.values].sort(
-                  (a, b) => a.n - b.n
-                );
-                const intentValue = sortedValues[0]; // First output is the intent
-
-                let intentAmount = 0;
-                if (intentValue) {
-                  // Use valueFormatted if available (already in correct decimal format)
-                  if (intentValue.valueFormatted) {
-                    intentAmount = parseFloat(intentValue.valueFormatted);
-                  } else {
-                    // Otherwise convert from satoshis to token units using safe conversion
-                    // Use the token's actual decimals
-                    const formatted = formatSyscoinValue(
-                      intentValue.value || '0',
-                      decimals
-                    );
-                    intentAmount = parseFloat(formatted);
-                  }
-                }
-
-                // Set the value as string (only the intent amount)
-                value = intentAmount.toString();
-              }
-            }
-          }
-
-          // Handle mints (from NEVM)
-          if (decodedTx.syscoin.mint) {
-            const mint = decodedTx.syscoin.mint;
-
-            // This is a mint from NEVM transaction
-            detectedTokenType = 'assetallocationmint';
-
-            // Extract amount from allocation data in mint
-            if (mint.allocation && mint.allocation.length > 0) {
-              const allocation = mint.allocation[0];
-
-              // Fetch asset metadata first to get correct decimals
-              if (allocation.assetGuid && network.url) {
-                const assetData = await this.getSPTMetadata(
-                  allocation.assetGuid.toString(),
-                  network.url
-                );
-                if (assetData) {
-                  tokenSymbol = assetData.symbol;
-                  decimals = assetData.decimals;
-                  metadata = {
-                    ...assetData.metaData,
-                    assetGuid: allocation.assetGuid.toString(),
-                  };
-                } else {
-                  // If metadata fetch fails for mint transactions, default to SYSX
-                  // since mints from NEVM typically create SYSX
-                  if (detectedTokenType === 'assetallocationmint') {
-                    tokenSymbol = 'SYSX';
-                    decimals = 8;
-                  }
-                }
-              }
-
-              // Now calculate value using correct decimals
-              // For mint transactions, only use the intent amount (first output)
-              if (allocation.values && allocation.values.length > 0) {
-                // Sort values by output index to find the intent (first output)
-                const sortedValues = [...allocation.values].sort(
-                  (a, b) => a.n - b.n
-                );
-                const intentValue = sortedValues[0]; // First output is the intent
-
-                let intentAmount = 0;
-                if (intentValue) {
-                  // Use valueFormatted if available (already in correct decimal format)
-                  if (intentValue.valueFormatted) {
-                    intentAmount = parseFloat(intentValue.valueFormatted);
-                  } else {
-                    // Otherwise convert from satoshis to token units using safe conversion
-                    // Use the token's actual decimals
-                    const formatted = formatSyscoinValue(
-                      intentValue.value || '0',
-                      decimals
-                    );
-                    intentAmount = parseFloat(formatted);
-                  }
-                }
-
-                // Set the value as string (only the intent amount)
-                value = intentAmount.toString();
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error(
-          '[NotificationManager] Failed to decode transaction:',
-          error
-        );
-        // Continue with regular processing
       }
     }
 
@@ -403,19 +201,13 @@ class NotificationManager {
     const finalTokenType = detectedTokenType || tx.tokenType;
     if (finalTokenType) {
       transactionTypeLabel = getSyscoinTransactionTypeLabel(finalTokenType);
-
-      // Special handling for burn transactions to set correct source token symbol
-      const label = transactionTypeLabel;
-      if (label === 'SYS → SYSX') {
-        tokenSymbol = 'SYS'; // Source is SYS
-      } else if (label === 'SYSX → SYS') {
-        tokenSymbol = 'SYSX'; // Source is SYSX
-      }
     }
 
     // If we still don't have a proper value but have basic transaction info, use it
     if ((!value || value === '0') && tx.value) {
-      value = tx.value;
+      // tx.value is in raw satoshis, so we need to format it properly
+      const formattedValue = formatSyscoinValue(tx.value.toString(), decimals);
+      value = parseFloat(formattedValue).toString();
     }
 
     // If we have symbol/decimals from transaction metadata, use them
@@ -433,14 +225,13 @@ class NotificationManager {
       to: account.address, // UTXO doesn't have simple to/from
       value:
         value && value !== '0'
-          ? this.formatDisplayValue(value, decimals)
+          ? formatDisplayValue(parseFloat(value), decimals)
           : undefined,
       tokenSymbol,
       network: network.label,
       chainId: network.chainId,
       // Include transaction type in the notification
       transactionType: transactionTypeLabel || undefined,
-      metadata, // Include metadata for SPT color/visual info
     } as ITransactionNotification;
 
     showTransactionNotification(notification);
@@ -452,29 +243,6 @@ class NotificationManager {
       const formattedValue = formatUnits(value, decimals);
       const numValue = parseFloat(formattedValue);
       return numValue.toFixed(4);
-    } catch {
-      return '0';
-    }
-  }
-
-  // For UTXO transactions where value is already in display units
-  private formatDisplayValue(value: string, decimals: number): string {
-    try {
-      const numValue = parseFloat(value);
-
-      // Respect the token's decimal places but add some reasonable limits for display
-      const maxDisplayDecimals = Math.min(decimals, 8); // Cap at 8 for display
-
-      // For very small values, show more precision (up to token's decimals)
-      if (numValue > 0 && numValue < 0.0001) {
-        return numValue.toFixed(maxDisplayDecimals);
-      } else if (numValue > 0 && numValue < 1) {
-        // For small values, show up to 6 decimals or token's decimals, whichever is smaller
-        return numValue.toFixed(Math.min(decimals, 6));
-      } else {
-        // For larger values, show up to 4 decimals or token's decimals, whichever is smaller
-        return numValue.toFixed(Math.min(decimals, 4));
-      }
     } catch {
       return '0';
     }
@@ -501,51 +269,6 @@ class NotificationManager {
     ).length;
 
     updatePendingTransactionBadge(pendingCount);
-  }
-
-  // Get SPT metadata including any color information
-  private async getSPTMetadata(
-    assetGuid: string,
-    networkUrl: string
-  ): Promise<any | null> {
-    try {
-      // Check if controller is ready
-      if (!getIsReady() || !this.controller) {
-        console.warn(
-          '[NotificationManager] Controller not ready yet for asset metadata fetch'
-        );
-        return null;
-      }
-
-      const controller = this.controller;
-
-      if (!controller || !controller.wallet) {
-        console.error(
-          '[NotificationManager] Controller or wallet not available'
-        );
-        return null;
-      }
-
-      const assetData = await controller.wallet.getSysAssetMetadata(
-        assetGuid,
-        networkUrl
-      );
-      if (assetData) {
-        const metadata = {
-          symbol: assetData.symbol,
-          decimals: assetData.decimals,
-          metaData: assetData.metaData, // This could contain color or other visual info
-        };
-        return metadata;
-      }
-    } catch (error) {
-      console.error(
-        '[NotificationManager] Failed to fetch SPT metadata:',
-        error
-      );
-    }
-
-    return null;
   }
 }
 

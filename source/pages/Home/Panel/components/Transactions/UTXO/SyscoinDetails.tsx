@@ -1,4 +1,3 @@
-import { formatUnits } from '@ethersproject/units';
 import React, { Fragment, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -13,15 +12,18 @@ import { RootState } from 'state/store';
 import {
   selectActiveAccount,
   selectActiveAccountTransactions,
+  selectActiveAccountAssets,
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
-import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import {
+  formatSyscoinValue,
+  formatDisplayValue,
+} from 'utils/formatSyscoinValue';
 import { camelCaseToText, ellipsis } from 'utils/index';
 import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
-  isMintOrBurnTransaction,
-  normalizeSyscoinTransactionType,
+  getSyscoinIntentAmount,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -55,6 +57,7 @@ export const SyscoinTransactionDetails = ({
   // Use proper selector
   const accountTransactions = useSelector(selectActiveAccountTransactions);
   const activeAccount = useSelector(selectActiveAccount);
+  const activeAccountAssets = useSelector(selectActiveAccountAssets);
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -195,16 +198,13 @@ export const SyscoinTransactionDetails = ({
   const tokenTransfers = rawTransaction?.tokenTransfers || [];
   const tokenType = rawTransaction?.tokenType;
 
-  // Extract asset info from vins and vouts (with array checks)
-  const vinAssetInfo = Array.isArray(rawTransaction?.vin)
-    ? rawTransaction.vin.find((v: any) => v.assetInfo)?.assetInfo
-    : undefined;
-  const voutAssetInfo = Array.isArray(rawTransaction?.vout)
-    ? rawTransaction.vout.find((v: any) => v.assetInfo)?.assetInfo
-    : undefined;
-  const assetInfo = vinAssetInfo || voutAssetInfo;
+  // Simple extraction of first asset from vout for single clear intent
+  const firstAssetInfo = rawTransaction?.vout?.find(
+    (v: any) => v.assetInfo
+  )?.assetInfo;
+  const hasAssetInfo = Boolean(firstAssetInfo);
 
-  const hasTokenInfo = tokenTransfers.length > 0 || tokenType || assetInfo;
+  const hasTokenInfo = tokenTransfers.length > 0 || tokenType || hasAssetInfo;
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
@@ -286,88 +286,41 @@ export const SyscoinTransactionDetails = ({
             : getTxType(transactionTx, isTxSent)}
         </p>
 
-        {/* Display token transfers if available */}
-        {tokenTransfers.length > 0 ? (
-          <div className="text-center">
-            {tokenTransfers.map((transfer: any, index: number) => {
-              let displayStr = '';
+        {/* Display transaction amount */}
+        {(() => {
+          // Priority 1: Use assetInfo-based calculation with single clear intent
+          if (hasAssetInfo) {
+            const intent = getSyscoinIntentAmount(rawTransaction);
 
-              // For mint and burn transactions, use the appropriate value
-              if (isMintOrBurnTransaction(tokenType)) {
-                const normalizedType =
-                  normalizeSyscoinTransactionType(tokenType);
+            if (intent) {
+              // Look up asset from vault's assets for accurate symbol and decimals
+              const assetInfo = activeAccountAssets?.syscoin?.find(
+                (asset: any) => asset.assetGuid === intent.assetGuid
+              );
 
-                // Special case: For SYS → SYSX, the minted amount is in the OP_RETURN
-                if (normalizedType === 'syscoinburntoallocation') {
-                  // Find the OP_RETURN output (usually first output)
-                  const opReturnOutput = Array.isArray(rawTransaction?.vout)
-                    ? rawTransaction.vout.find((v: any) =>
-                        v.addresses?.[0]?.startsWith('OP_RETURN')
-                      )
-                    : undefined;
-
-                  if (opReturnOutput?.value) {
-                    // The value is in satoshis, use proper utility to format
-                    const formattedAmount = formatSyscoinValue(
-                      opReturnOutput.value
-                    );
-                    displayStr = `${formattedAmount} ${
-                      transfer.symbol || 'SYSX'
-                    }`;
-                  }
-                } else {
-                  // For all other mint/burn types, use the first vout with asset info
-                  const firstVoutWithAsset = Array.isArray(rawTransaction?.vout)
-                    ? rawTransaction.vout.find(
-                        (v: any) =>
-                          v.assetInfo &&
-                          v.assetInfo.assetGuid === transfer.token
-                      )
-                    : undefined;
-
-                  if (firstVoutWithAsset?.assetInfo?.valueStr) {
-                    displayStr = firstVoutWithAsset.assetInfo.valueStr;
-                  }
-                }
-              }
-
-              // Fallback to transfer value if no displayStr found
-              if (!displayStr && transfer.valueOut) {
-                displayStr = `${parseFloat(
-                  formatUnits(transfer.valueOut, transfer.decimals || 8)
-                ).toFixed(4)} ${transfer.symbol || 'Unknown'}`;
-              }
+              // Use asset info from vault if available, otherwise fallback
+              const symbol =
+                assetInfo?.symbol ||
+                (intent.assetGuid === '123456'
+                  ? 'SYSX'
+                  : `Asset ${intent.assetGuid.slice(0, 6)}`);
+              const decimals = assetInfo?.decimals || 8;
 
               return (
-                <div key={index} className="mb-1">
-                  <p className="text-white text-base">{displayStr || '0'}</p>
-                  {transfer.name && (
-                    <p className="text-brand-gray200 text-xs">
-                      {transfer.name}
-                    </p>
-                  )}
-                </div>
+                <p className="text-white text-base">
+                  {formatDisplayValue(intent.amount, decimals)} {symbol}
+                </p>
               );
-            })}
-          </div>
-        ) : assetInfo ? (
-          // Display asset info from vins/vouts if available
-          <div className="text-center">
+            }
+          }
+
+          // Priority 2: For regular SYS transactions without asset transfers
+          return (
             <p className="text-white text-base">
-              {assetInfo.valueStr ||
-                `${parseFloat(formatUnits(assetInfo.value || '0', 8)).toFixed(
-                  4
-                )} Asset`}
+              {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
             </p>
-            <p className="text-brand-gray200 text-xs">
-              {t('send.assetGuid')}: {assetInfo.assetGuid}
-            </p>
-          </div>
-        ) : (
-          <p className="text-white text-base">
-            {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
-          </p>
-        )}
+          );
+        })()}
 
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
@@ -422,31 +375,6 @@ export const SyscoinTransactionDetails = ({
             )}
           </Fragment>
         ))}
-
-      {/* Add asset info from vins/vouts if present and not already shown */}
-      {assetInfo && tokenTransfers.length === 0 && assetInfo.assetGuid && (
-        <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-          <p className="text-xs font-normal text-white">
-            {t('send.assetGuid')}
-          </p>
-          <span className="flex items-center">
-            <Tooltip content={assetInfo.assetGuid} childrenClassName="flex">
-              <p className="text-xs font-normal text-white">
-                {assetInfo.assetGuid.length > 12
-                  ? ellipsis(assetInfo.assetGuid, 6, 6)
-                  : assetInfo.assetGuid}
-              </p>
-              <IconButton
-                onClick={() =>
-                  handleCopyWithMessage(assetInfo.assetGuid, 'Asset Guid')
-                }
-              >
-                <CopyIcon />
-              </IconButton>
-            </Tooltip>
-          </span>
-        </div>
-      )}
 
       {formattedTransactionDetails.map(
         ({ label, value, canCopy }: any, index: number) => (

@@ -123,3 +123,35 @@ export const formatGweiValue = (value: string | number | BigNumber): string => {
     return '0';
   }
 };
+
+/**
+ * Format a numeric value for display with intelligent decimal handling
+ * Shows more decimals for small values, fewer for large values
+ * @param value The numeric value to format
+ * @param decimals Maximum decimals the token supports
+ * @returns Formatted string for display
+ */
+export const formatDisplayValue = (value: number, decimals: number): string => {
+  try {
+    // Handle invalid values
+    if (isNaN(value) || value === null || value === undefined) {
+      return '0';
+    }
+
+    // Respect the token's decimal places but add reasonable limits for display
+    const maxDisplayDecimals = Math.min(decimals, 8); // Cap at 8 for display
+
+    // For very small values, show more precision
+    if (value > 0 && value < 0.0001) {
+      return value.toFixed(maxDisplayDecimals);
+    } else if (value > 0 && value < 1) {
+      // For small values, show up to 6 decimals or token's decimals, whichever is smaller
+      return value.toFixed(Math.min(decimals, 6));
+    } else {
+      // For larger values, show up to 4 decimals or token's decimals, whichever is smaller
+      return value.toFixed(Math.min(decimals, 4));
+    }
+  } catch {
+    return '0';
+  }
+};
