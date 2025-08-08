@@ -123,6 +123,16 @@ export interface IEvmTransactionsController {
     error?: string;
     transactions: IEvmTransactionResponse[] | null;
   }>;
+  fetchTransactionsPageFromAPI: (
+    address: string,
+    chainId: number,
+    apiUrl: string,
+    page: number,
+    offset?: number
+  ) => Promise<{
+    error?: string;
+    transactions: IEvmTransactionResponse[] | null;
+  }>;
   getUserTransactionByDefaultProvider: (
     numBlocks: number,
     web3Provider: CustomJsonRpcProvider
@@ -162,6 +172,12 @@ export interface ISysTransaction {
 }
 
 export interface ISysTransactionsController {
+  fetchTransactionsPageFromBlockbook: (
+    xpub: string,
+    networkUrl: string,
+    page: number,
+    pageSize?: number
+  ) => Promise<ISysTransaction[]>;
   getInitialUserTransactionsByXpub: (
     xpub: string,
     networkUrl: string

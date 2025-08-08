@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -9,6 +9,7 @@ import { IconButton } from 'components/IconButton';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
@@ -27,7 +28,7 @@ import {
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
-export const UtxoTransactionsListComponent = ({
+const UtxoTransactionsListComponentBase = ({
   userTransactions,
   tx,
 }: {
@@ -106,6 +107,7 @@ export const UtxoTransactionsListComponent = ({
       state: {
         id: null,
         hash: tx.txid,
+        tx, // pass the tx so details can use it without relying on redux
       },
     });
   };
@@ -209,6 +211,14 @@ export const UtxoTransactionsListComponent = ({
   );
 };
 
+export const UtxoTransactionsListComponent = React.memo(
+  UtxoTransactionsListComponentBase,
+  (prev, next) =>
+    prev.tx.txid === next.tx.txid &&
+    prev.tx.confirmations === next.tx.confirmations &&
+    (prev.tx as any).isCanceled === (next.tx as any).isCanceled
+);
+
 export const UtxoTransactionsList = ({
   userTransactions,
 }: {
@@ -219,6 +229,7 @@ export const UtxoTransactionsList = ({
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -226,9 +237,31 @@ export const UtxoTransactionsList = ({
     (state: RootState) => state.vault.accountTransactions
   );
 
-  const { chainId } = activeNetwork;
+  const { chainId, url: networkUrl } = activeNetwork as any;
 
-  const { filteredTransactions } = useTransactionsListConfig(userTransactions);
+  // Merge base transactions with any paged ones we fetch from Blockbook
+  const [extraTransactions, setExtraTransactions] = useState<
+    ITransactionInfoUtxo[]
+  >([]);
+  const combined = useMemo(() => {
+    if (!extraTransactions.length) return userTransactions;
+    const seen = new Set<string>();
+    const result: ITransactionInfoUtxo[] = [];
+    for (const tx of userTransactions) {
+      const key = (tx as any).txid;
+      if (key) seen.add(key);
+      result.push(tx);
+    }
+    for (const tx of extraTransactions) {
+      const key = (tx as any).txid;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(tx);
+    }
+    return result;
+  }, [userTransactions, extraTransactions]);
+
+  const { filteredTransactions } = useTransactionsListConfig(combined);
 
   // Track the previous confirmation state locally
   const prevConfirmationState = useRef<{ [txid: string]: number }>({});
@@ -237,6 +270,7 @@ export const UtxoTransactionsList = ({
 
   const currentAccountTransactions =
     accountTransactions[activeAccount.type]?.[activeAccount.id];
+  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
 
   const array = filteredTransactions as ITransactionInfoUtxo[];
 
@@ -301,15 +335,78 @@ export const UtxoTransactionsList = ({
     }
   }, [txCount, confirmationSum, chainId, alert, t]);
 
+  // Server-backed pagination using Blockbook pages (fallback to local slicing if needed)
+  const [visibleCount, setVisibleCount] = useState<number>(50);
+  const [nextPage, setNextPage] = useState<number>(2);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMoreServer, setHasMoreServer] = useState<boolean>(true);
+
+  // Reset paging on account/network changes
+  useEffect(() => {
+    setExtraTransactions([]);
+    setNextPage(2);
+    setHasMoreServer(true);
+    setVisibleCount(50);
+  }, [currentAccount?.address, currentAccount?.xpub, chainId, networkUrl]);
+
   return (
     <>
-      {array.map((tx) => (
+      {(networkUrl ? array : array.slice(0, visibleCount)).map((tx) => (
         <UtxoTransactionsListComponent
           key={tx.txid}
           tx={tx}
           userTransactions={userTransactions}
         />
       ))}
+      {networkUrl
+        ? hasMoreServer && (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                disabled={isLoadingMore}
+                onClick={async () => {
+                  try {
+                    setIsLoadingMore(true);
+                    const accountKey =
+                      (currentAccount as any)?.xpub ||
+                      (currentAccount as any)?.address;
+                    if (!accountKey)
+                      throw new Error('Missing account identifier');
+                    const res = (await controllerEmitter(
+                      ['wallet', 'getSysTransactionsPage'],
+                      [accountKey, networkUrl, nextPage, 30]
+                    )) as any[];
+                    const newTxs = Array.isArray(res) ? res : [];
+                    if (newTxs.length > 0) {
+                      setExtraTransactions((prev) => [...prev, ...newTxs]);
+                      setNextPage((p) => p + 1);
+                      if (newTxs.length < 30) setHasMoreServer(false);
+                    } else {
+                      setHasMoreServer(false);
+                    }
+                  } catch (e: any) {
+                    alert.error(String(e?.message || e));
+                  } finally {
+                    setIsLoadingMore(false);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
+              >
+                {isLoadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )
+        : array.length > visibleCount && (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + 50)}
+                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
+              >
+                Load more
+              </button>
+            </div>
+          )}
     </>
   );
 };

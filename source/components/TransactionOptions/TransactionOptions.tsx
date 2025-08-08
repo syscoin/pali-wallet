@@ -105,6 +105,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
       state: {
         id: null,
         hash: transaction.hash,
+        tx: transaction,
       },
     });
   }, [transaction.hash]);

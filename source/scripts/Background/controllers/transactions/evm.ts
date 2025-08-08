@@ -355,6 +355,72 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     };
   };
 
+  const fetchTransactionsPageFromAPI = async (
+    address: string,
+    chainId: number,
+    apiUrl: string,
+    page: number,
+    offset = 30
+  ): Promise<{
+    error?: string;
+    transactions: IEvmTransactionResponse[] | null;
+  }> => {
+    try {
+      const url = new URL(apiUrl);
+      const existingApiKey =
+        url.searchParams.get('apikey') || url.searchParams.get('apiKey');
+      url.searchParams.set('module', 'account');
+      url.searchParams.set('action', 'txlist');
+      url.searchParams.set('address', address);
+      url.searchParams.set('sort', 'desc');
+      url.searchParams.set('page', String(page));
+      url.searchParams.set('offset', String(offset));
+      if (existingApiKey) url.searchParams.set('apikey', existingApiKey);
+
+      const response = await retryableFetch(url.toString());
+      if (!response.ok) {
+        return {
+          transactions: null,
+          error: `Explorer API status ${response.status}`,
+        };
+      }
+      const data = await response.json();
+      if (
+        (data.status === '1' ||
+          (data.status === '0' && Array.isArray(data.result))) &&
+        Array.isArray(data.result)
+      ) {
+        const txs = data.result.map((tx: any) => ({
+          hash: tx.hash,
+          from: tx.from,
+          to: tx.to,
+          value: tx.value,
+          blockNumber: parseInt(tx.blockNumber),
+          blockHash: tx.blockHash,
+          timestamp:
+            parseInt(tx.timeStamp, 10) || Math.floor(Date.now() / 1000),
+          confirmations: parseInt(tx.confirmations),
+          chainId,
+          input: tx.input,
+          gasPrice: tx.gasPrice,
+          gas: tx.gas || tx.gasLimit,
+          nonce:
+            tx.nonce !== undefined && tx.nonce !== null
+              ? parseInt(tx.nonce)
+              : undefined,
+          // eslint-disable-next-line camelcase
+          txreceipt_status: tx.txreceipt_status || tx.isError || null,
+          isError: tx.isError || null,
+        }));
+        return { transactions: txs };
+      }
+      const errorMsg = data.result || data.message || 'Explorer API error';
+      return { transactions: null, error: errorMsg };
+    } catch (err: any) {
+      return { transactions: null, error: String(err?.message || err) };
+    }
+  };
+
   const fetchTransactionDetailsFromAPI = async (
     hash: string,
     apiUrl: string
@@ -596,6 +662,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     getUserTransactionByDefaultProvider,
     pollingEvmTransactions,
     fetchTransactionsFromAPI,
+    fetchTransactionsPageFromAPI,
     fetchTransactionDetailsFromAPI,
     testExplorerApi, // Export the test function
   };

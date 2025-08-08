@@ -66,9 +66,22 @@ const SysTransactionController = (): ISysTransactionsController => {
     return treatAndSortTransactions(mergedArrays, 30) as ISysTransaction[];
   };
 
+  const fetchTransactionsPageFromBlockbook = async (
+    xpub: string,
+    networkUrl: string,
+    page: number,
+    pageSize: number = 30
+  ): Promise<ISysTransaction[]> => {
+    const requestOptions = `details=txs&page=${page}&pageSize=${pageSize}`;
+    const { transactions }: { transactions: ISysTransaction[] } =
+      await fetchBackendAccountCached(networkUrl, xpub, requestOptions, true);
+    return Array.isArray(transactions) ? transactions : [];
+  };
+
   return {
     getInitialUserTransactionsByXpub,
     pollingSysTransactions,
+    fetchTransactionsPageFromBlockbook,
   };
 };
 

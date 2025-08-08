@@ -57,8 +57,8 @@ export const useTransactionsListConfig = (
   const getTxType = useCallback(
     (tx: any, isTxSent: boolean) => {
       if (isBitcoinBased) {
-        // Use the unified normalization function
-        return getSyscoinTransactionTypeLabel(tx.tokenType);
+        // Use the unified normalization function; tx may be undefined for details of extra-paged items
+        return getSyscoinTransactionTypeLabel(tx?.tokenType);
       }
 
       const txLabel = isTxSent ? 'Sent' : 'Received';

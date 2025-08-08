@@ -16,6 +16,7 @@ import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
@@ -53,6 +54,7 @@ const EvmTransactionItem = React.memo(
     txId,
     getTxOptions,
     t,
+    tokenMeta,
   }: {
     currency: string;
     currentAccount: any;
@@ -63,6 +65,7 @@ const EvmTransactionItem = React.memo(
     getTxType: any;
     navigate: any;
     t: any;
+    tokenMeta?: any;
     tx: ITransactionInfoEvm & {
       isReplaced?: boolean;
       isSpeedUp?: boolean;
@@ -70,7 +73,6 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
-    const activeAssets = useSelector(selectActiveAccountAssets);
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
@@ -146,7 +148,7 @@ const EvmTransactionItem = React.memo(
 
     const handleGoTxDetails = () => {
       navigate('/home/details', {
-        state: { id: null, hash: tx[txId] },
+        state: { id: null, hash: tx[txId], tx },
       });
     };
 
@@ -187,24 +189,19 @@ const EvmTransactionItem = React.memo(
 
       // Resolve token icon for imported ERC-20s (no fetches; skip if absent)
       let tokenIcon: React.ReactNode = null;
-      if (displayInfo.isErc20Transfer && tx.to && activeAssets?.ethereum) {
-        const imported = activeAssets.ethereum.find(
-          (a: any) =>
-            a?.contractAddress?.toLowerCase() === tx?.to?.toLowerCase()
-        ) as any;
-        if (imported) {
-          const logo = imported.logo || getTokenLogo(imported.tokenSymbol);
-          if (logo) {
-            tokenIcon = (
-              <TokenIcon
-                logo={logo}
-                assetGuid={imported.contractAddress}
-                symbol={imported.tokenSymbol}
-                size={14}
-                className="shrink-0"
-              />
-            );
-          }
+      if (displayInfo.isErc20Transfer && tx.to && tokenMeta) {
+        const symbol = tokenMeta?.tokenSymbol || tokenMeta?.symbol;
+        const logo = tokenMeta?.logo || getTokenLogo(symbol);
+        if (logo && symbol) {
+          tokenIcon = (
+            <TokenIcon
+              logo={logo}
+              assetGuid={tokenMeta.contractAddress}
+              symbol={symbol}
+              size={14}
+              className="shrink-0"
+            />
+          );
         }
       }
 
@@ -416,7 +413,12 @@ const EvmTransactionItem = React.memo(
     (prevProps.tx as any).isReplaced === (nextProps.tx as any).isReplaced &&
     (prevProps.tx as any).isSpeedUp === (nextProps.tx as any).isSpeedUp &&
     prevProps.tx.value === nextProps.tx.value &&
-    prevProps.currentAccount?.address === nextProps.currentAccount?.address
+    prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
+    prevProps.currency === nextProps.currency &&
+    prevProps.t === nextProps.t &&
+    (prevProps.tokenMeta?.logo ?? '') === (nextProps.tokenMeta?.logo ?? '') &&
+    (prevProps.tokenMeta?.tokenSymbol ?? prevProps.tokenMeta?.symbol ?? '') ===
+      (nextProps.tokenMeta?.tokenSymbol ?? nextProps.tokenMeta?.symbol ?? '')
 );
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
@@ -435,12 +437,36 @@ export const EvmTransactionsList = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const activeAssets = useSelector(selectActiveAccountAssets);
 
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
 
-  const { chainId, currency } = activeNetwork;
+  const { chainId, currency, apiUrl } = activeNetwork as any;
+
+  // Combine base transactions with any paged transactions we load from API
+  const [extraTransactions, setExtraTransactions] = useState<
+    ITransactionInfoEvm[]
+  >([]);
+  const combinedTransactions = useMemo(() => {
+    if (!extraTransactions.length) return userTransactions;
+    const seen = new Set<string>();
+    const result: ITransactionInfoEvm[] = [];
+    // Base first (usually newest)
+    for (const tx of userTransactions) {
+      const key = (tx as any).hash || (tx as any).txid || '';
+      if (key) seen.add(key);
+      result.push(tx);
+    }
+    for (const tx of extraTransactions) {
+      const key = (tx as any).hash || (tx as any).txid || '';
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(tx);
+    }
+    return result;
+  }, [userTransactions, extraTransactions]);
 
   const {
     filteredTransactions,
@@ -449,7 +475,7 @@ export const EvmTransactionsList = ({
     getTxStatus,
     getTxType,
     txId,
-  } = useTransactionsListConfig(userTransactions);
+  } = useTransactionsListConfig(combinedTransactions);
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
 
@@ -547,11 +573,26 @@ export const EvmTransactionsList = ({
     [alert, chainId]
   );
 
-  // Memoize grouped transactions
+  // Server-backed pagination via explorer API (fallbacks to local slicing when no API)
+  const [nextPage, setNextPage] = useState<number>(2);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMoreServer, setHasMoreServer] = useState<boolean>(true);
+  const [visibleCount, setVisibleCount] = useState<number>(50); // fallback only
+
+  // Reset pagination state when switching account, network, or API endpoint
+  useEffect(() => {
+    setExtraTransactions([]);
+    setNextPage(2);
+    setHasMoreServer(true);
+    setVisibleCount(50);
+  }, [currentAccount?.address, chainId, apiUrl]);
+
   const groupedTransactions = useMemo(() => {
     const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
-
-    filteredTransactions.forEach((tx) => {
+    const sourceList = apiUrl
+      ? filteredTransactions
+      : filteredTransactions.slice(0, visibleCount);
+    sourceList.forEach((tx) => {
       const formattedDate = formatTimeStamp(tx?.timestamp);
       if (!grouped[formattedDate]) {
         grouped[formattedDate] = [];
@@ -560,7 +601,19 @@ export const EvmTransactionsList = ({
     });
 
     return grouped;
-  }, [filteredTransactions, formatTimeStamp]);
+  }, [filteredTransactions, formatTimeStamp, visibleCount, apiUrl]);
+
+  // Build a quick lookup map for imported ERC-20 token metadata
+  const tokenMetaByAddress = useMemo(() => {
+    const map = new Map<string, any>();
+    const list = activeAssets?.ethereum || [];
+    for (const a of list) {
+      if (a?.contractAddress) {
+        map.set(String(a.contractAddress).toLowerCase(), a);
+      }
+    }
+    return map;
+  }, [activeAssets?.ethereum]);
 
   return (
     <>
@@ -576,6 +629,9 @@ export const EvmTransactionsList = ({
                 tx.nonce !== undefined
                   ? `nonce-${tx.nonce}-${tx?.hash || `unknown-${index}`}`
                   : `${tx?.hash || tx?.txid || `unknown-${index}`}-${index}`;
+              const tokenMetaForTx = tx?.to
+                ? tokenMetaByAddress.get(String(tx.to).toLowerCase())
+                : undefined;
 
               return (
                 <EvmTransactionItem
@@ -591,12 +647,64 @@ export const EvmTransactionsList = ({
                   txId={txId}
                   getTxOptions={getTxOptions}
                   t={t}
+                  tokenMeta={tokenMetaForTx}
                 />
               );
             })}
           </div>
         )
       )}
+      {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
+      {apiUrl
+        ? hasMoreServer && (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                disabled={isLoadingMore}
+                onClick={async () => {
+                  try {
+                    setIsLoadingMore(true);
+                    const res = (await controllerEmitter(
+                      ['wallet', 'getEvmTransactionsPage'],
+                      [currentAccount?.address, chainId, apiUrl, nextPage, 30]
+                    )) as { error?: string; transactions: any[] | null };
+                    if (res?.error) {
+                      alert.warning(res.error);
+                    } else if (Array.isArray(res?.transactions)) {
+                      const newTxs = res.transactions as ITransactionInfoEvm[];
+                      if (newTxs.length > 0) {
+                        setExtraTransactions((prev) => [...prev, ...newTxs]);
+                        setNextPage((p) => p + 1);
+                        if (newTxs.length < 30) setHasMoreServer(false);
+                      } else {
+                        setHasMoreServer(false);
+                      }
+                    } else {
+                      setHasMoreServer(false);
+                    }
+                  } catch (e: any) {
+                    alert.error(String(e?.message || e));
+                  } finally {
+                    setIsLoadingMore(false);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
+              >
+                {isLoadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )
+        : filteredTransactions.length > visibleCount && (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((c) => c + 50)}
+                className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
+              >
+                Load more
+              </button>
+            </div>
+          )}
     </>
   );
 };

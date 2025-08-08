@@ -7,14 +7,9 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
+import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import {
-  selectActiveAccount,
-  selectActiveAccountTransactions,
-  selectActiveAccountAssets,
-} from 'state/vault/selectors';
-import { TransactionsType } from 'state/vault/types';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import {
   formatSyscoinValue,
   formatDisplayValue,
@@ -26,10 +21,6 @@ import {
   getSyscoinIntentAmount,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
-
-// UTXO transaction details cache with TTL (5 minutes - consistent with EVM)
-const utxoTxDetailsCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -43,26 +34,23 @@ CopyIcon.displayName = 'CopyIcon';
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
+  tx: ISysTransaction;
 }
 
 export const SyscoinTransactionDetails = ({
   hash,
+  tx,
 }: ISyscoinTransactionDetailsProps) => {
-  const { controllerEmitter } = useController();
   const {
-    activeNetwork: { chainId, url: activeNetworkUrl, currency },
-    isBitcoinBased,
+    activeNetwork: { currency },
   } = useSelector((state: RootState) => state.vault);
   const { getTxType, getTxStatus } = useTransactionsListConfig();
-  // Use proper selector
-  const accountTransactions = useSelector(selectActiveAccountTransactions);
-  const activeAccount = useSelector(selectActiveAccount);
   const activeAccountAssets = useSelector(selectActiveAccountAssets);
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [rawTransaction, setRawTransaction] = useState<any>({});
+  const [rawTransaction] = useState<any>(tx);
   const [, copy] = useCopyClipboard();
 
   // Helper function to get appropriate copy message based on field label
@@ -103,55 +91,7 @@ export const SyscoinTransactionDetails = ({
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let transactionTx: any;
-  let txValue: number;
-
-  const setTx = async () => {
-    // First check if transaction exists in state with all needed data
-    const syscoinTxs =
-      accountTransactions[TransactionsType.Syscoin]?.[chainId] || [];
-    const existingTx = syscoinTxs.find((tx: any) => tx.txid === hash);
-
-    // If we have the transaction with full data (vin, vout, tokenType, etc), use it
-    if (existingTx && existingTx.vin && existingTx.vout) {
-      setRawTransaction(existingTx);
-      // Also cache it for consistency
-      utxoTxDetailsCache.set(hash, {
-        data: existingTx,
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    // Check cache if not in state
-    const cached = utxoTxDetailsCache.get(hash);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      setRawTransaction(cached.data);
-      return;
-    }
-
-    // Only fetch if we don't have the transaction or it's missing details
-    try {
-      const rawTxData: any = await controllerEmitter(
-        ['wallet', 'getRawTransaction'],
-        [activeNetworkUrl, hash]
-      );
-
-      // Cache the result
-      utxoTxDetailsCache.set(hash, {
-        data: rawTxData,
-        timestamp: Date.now(),
-      });
-
-      setRawTransaction(rawTxData);
-    } catch (error) {
-      console.error('Failed to fetch UTXO transaction details:', error);
-    }
-  };
-
-  useEffect(() => {
-    setTx();
-  }, [hash, chainId, accountTransactions]);
+  let txValue: number = 0;
 
   useEffect(() => {
     if (rawTransaction) {
@@ -184,9 +124,7 @@ export const SyscoinTransactionDetails = ({
     }
   }, [rawTransaction]);
 
-  // Get transaction from state
-  const syscoinTransactions =
-    accountTransactions[TransactionsType.Syscoin]?.[chainId] || [];
+  // Build formatted details from the active raw transaction (prefer passed tx)
 
   const formattedTransaction: {
     canCopy: boolean;
@@ -206,17 +144,14 @@ export const SyscoinTransactionDetails = ({
 
   const hasTokenInfo = tokenTransfers.length > 0 || tokenType || hasAssetInfo;
 
-  syscoinTransactions?.find((tx: any) => {
-    if (tx.txid !== hash) return null;
-    transactionTx = tx;
-    txValue = tx?.vout?.[0]?.value || 0;
-    isTxCanceled = tx?.isCanceled === true;
-    isConfirmed = isTransactionInBlock(tx);
-    isTxSent = isBitcoinBased
-      ? false
-      : tx.from.toLowerCase() === activeAccount.address.toLowerCase();
-
-    const vinAddresses = tx.vin?.[0]?.addresses || [];
+  const txSource =
+    rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
+  if (txSource) {
+    txValue = (txSource as any)?.vout?.[0]?.value || 0;
+    isTxCanceled = Boolean((txSource as any)?.isCanceled);
+    isConfirmed = isTransactionInBlock(txSource as any);
+    isTxSent = false;
+    const vinAddresses = (txSource as any).vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
       label: 'From',
@@ -224,7 +159,7 @@ export const SyscoinTransactionDetails = ({
     };
     formattedTransaction.push(vinFormattedValue);
 
-    const voutAddress = tx?.vout?.[0]?.addresses || [];
+    const voutAddress = (txSource as any)?.vout?.[0]?.addresses || [];
     const voutFormattedValue = {
       value: voutAddress.join(', '),
       label: 'To',
@@ -232,7 +167,7 @@ export const SyscoinTransactionDetails = ({
     };
     formattedTransaction.push(voutFormattedValue);
 
-    for (const [key, value] of Object.entries(tx)) {
+    for (const [key, value] of Object.entries(txSource as any)) {
       const formattedKey = camelCaseToText(key);
       const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
 
@@ -251,9 +186,7 @@ export const SyscoinTransactionDetails = ({
 
       if (isValid) formattedTransaction.push(formattedValue);
     }
-
-    return formattedTransaction;
-  });
+  }
 
   const formattedTransactionDetails = formattedTransaction
     .filter(({ label }) => UtxoTxDetailsLabelsToKeep.includes(label))
@@ -264,7 +197,7 @@ export const SyscoinTransactionDetails = ({
     );
 
   // Handle case where transaction doesn't exist (e.g., pending tx not in blockchain)
-  if (!rawTransaction && !transactionTx) {
+  if (!rawTransaction) {
     return (
       <div className="p-8 text-center">
         <p className="text-brand-gray200 text-sm mb-4">
@@ -281,7 +214,7 @@ export const SyscoinTransactionDetails = ({
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
-          {getTxType(transactionTx, isTxSent)}
+          {getTxType(rawTransaction, isTxSent)}
         </p>
 
         {/* Display transaction amount */}

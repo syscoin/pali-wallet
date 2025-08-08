@@ -4470,6 +4470,42 @@ class MainController {
   }
 
   /**
+   * Paged fetch for EVM transactions via explorer API (Etherscan/Blockscout-compatible)
+   */
+  public async getEvmTransactionsPage(
+    address: string,
+    chainId: number,
+    apiUrl: string,
+    page: number,
+    offset: number = 30
+  ) {
+    return this.evmTransactionsController.fetchTransactionsPageFromAPI(
+      address,
+      chainId,
+      apiUrl,
+      page,
+      offset
+    );
+  }
+
+  /**
+   * Paged fetch for UTXO (Blockbook) transactions by xpub
+   */
+  public async getSysTransactionsPage(
+    xpub: string,
+    url: string,
+    page: number,
+    pageSize: number = 30
+  ) {
+    return this.transactionsManager.sys.fetchTransactionsPageFromBlockbook(
+      xpub,
+      url,
+      page,
+      pageSize
+    );
+  }
+
+  /**
    * Helper function to safely convert hex values and BigNumber objects to numbers or strings
    */
   private convertHexValue(

@@ -11,13 +11,9 @@ import {
 } from 'components/TransactionDetails';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
+import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import {
-  selectActiveAccount,
-  selectActiveAccountTransactions,
-} from 'state/vault/selectors';
-import { TransactionsType } from 'state/vault/types';
+import { selectActiveAccount } from 'state/vault/selectors';
 import { IDecodedTx } from 'types/transactions';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { camelCaseToText } from 'utils/index';
@@ -32,7 +28,13 @@ const decodedTxCache = new Map<
 >();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
+export const EvmTransactionDetailsEnhanced = ({
+  hash,
+  tx,
+}: {
+  hash: string;
+  tx: IEvmTransactionResponse;
+}) => {
   const { controllerEmitter } = useController();
   const {
     activeNetwork: { chainId, currency, apiUrl },
@@ -40,7 +42,6 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
-  const accountTransactions = useSelector(selectActiveAccountTransactions);
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -70,7 +71,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let transactionTx: any;
+  let transactionTx: IEvmTransactionResponse = tx;
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -184,13 +185,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
         return;
       }
 
-      const ethereumTransactions = accountTransactions[
-        TransactionsType.Ethereum
-      ][chainId] as IEvmTransaction[];
-
-      const currentTransaction = ethereumTransactions?.find(
-        (tx: any) => tx.hash === hash
-      );
+      const currentTransaction = transactionTx;
 
       if (currentTransaction && !decodingRef.current) {
         decodingRef.current = true;
@@ -251,13 +246,10 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       }
     };
 
-    if (hash && accountTransactions[TransactionsType.Ethereum][chainId]) {
-      processTransactionDecoding();
-    }
+    processTransactionDecoding();
   }, [
     hash,
     chainId,
-    accountTransactions,
     enhancedDetails,
     transactionDisplayInfo,
     // controllerEmitter is omitted as it's a stable reference from useController
@@ -265,21 +257,16 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  const ethereumTransactions = accountTransactions[TransactionsType.Ethereum][
-    chainId
-  ] as IEvmTransaction[];
+  // Removed redux dependency; rely on passed tx and enhanced details
 
   // Effect to get proper transaction display info
   useEffect(() => {
     const getDisplayInfo = async () => {
-      const currentTransaction = ethereumTransactions?.find(
-        (tx: any) => tx.hash === hash
-      );
-
-      if (currentTransaction) {
+      const baseTx = transactionTx;
+      if (baseTx || enhancedDetails) {
         const mergedTx = enhancedDetails
-          ? { ...currentTransaction, ...enhancedDetails }
-          : currentTransaction;
+          ? { ...baseTx, ...enhancedDetails }
+          : baseTx;
         const displayInfo = await getTransactionDisplayInfo(
           mergedTx,
           currency
@@ -289,25 +276,32 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       }
     };
 
-    if (ethereumTransactions && hash) {
+    if (hash) {
       getDisplayInfo();
     }
-  }, [ethereumTransactions, hash, enhancedDetails, currency]);
+  }, [hash, enhancedDetails, currency]);
 
-  ethereumTransactions?.forEach((transaction: any) => {
-    const tx = { ...transaction };
+  // Build details from the available transaction (passed + enhanced)
+  if (transactionTx || enhancedDetails) {
+    const base = transactionTx ? { ...transactionTx } : ({} as any);
+    const txLocal = enhancedDetails ? { ...base, ...enhancedDetails } : base;
 
-    tx.value = !!tx.value?.hex ? tx.value?.hex : tx.value;
+    txLocal.value = !!txLocal.value?.hex ? txLocal.value?.hex : txLocal.value;
 
-    if (tx?.hash !== hash) return null;
-    transactionTx = tx;
+    if (txLocal?.hash !== hash) {
+      txLocal.hash = hash;
+    }
+    transactionTx = txLocal as any;
 
-    isTxCanceled = tx?.isCanceled === true;
-    isConfirmed = isTransactionInBlock(tx);
-    isTxSent = tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();
+    isTxCanceled = txLocal?.isCanceled === true;
+    isConfirmed = isTransactionInBlock(txLocal);
+    isTxSent =
+      txLocal.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 
     // Merge with enhanced details if available - prioritize enhanced data
-    const mergedTx = enhancedDetails ? { ...tx, ...enhancedDetails } : tx;
+    const mergedTx = enhancedDetails
+      ? { ...txLocal, ...enhancedDetails }
+      : txLocal;
 
     // Use the decoded transaction data for method information
     if (decodedTxData && decodedTxData.method) {
@@ -385,7 +379,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
       if (isValid) formattedTransaction.push(formattedValue);
     }
-  });
+  }
 
   // Always use enhanced labels since provider data is now normalized to same structure as API
   const labelsToUse = EnhancedEvmTxDetailsLabelsToKeep;

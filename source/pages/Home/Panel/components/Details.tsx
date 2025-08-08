@@ -21,7 +21,7 @@ export const DetailsView = () => {
 
   const location = useLocation();
   const {
-    state: { id, hash, nftCollection, nftData },
+    state: { id, hash, nftCollection, nftData, tx },
   }: any = location;
 
   const isAsset = id && !hash;
@@ -63,7 +63,7 @@ export const DetailsView = () => {
             ) : isAsset ? (
               <AssetDetails id={id} />
             ) : (
-              <TransactionDetails hash={hash} />
+              <TransactionDetails hash={hash} tx={tx} />
             )}
 
             {!isAsset && !isNft ? (
