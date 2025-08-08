@@ -10,6 +10,7 @@ import {
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
+  accounts: null | string[];
   blockExplorerURL: string | null;
   initialized: boolean;
   isBitcoinBased: boolean;
@@ -44,6 +45,7 @@ function isHexString(value: any): boolean {
 export class PaliInpageProviderSys extends BaseProvider {
   public readonly _sys: ReturnType<PaliInpageProviderSys['_getSysAPI']>;
   private static _defaultState: SysProviderState = {
+    accounts: null,
     blockExplorerURL: null,
     xpub: null,
     isUnlocked: false,
@@ -130,8 +132,15 @@ export class PaliInpageProviderSys extends BaseProvider {
             break;
           case EMITTED_NOTIFICATIONS.includes(method):
             break;
-          // EVM METHODS TO AVOID
+          // Handle accountsChanged for UTXO addresses so dapps can react to account updates
           case 'pali_accountsChanged':
+            // Ensure params is always an array
+            const accountsParams = Array.isArray(params)
+              ? params
+              : params
+              ? [params]
+              : [];
+            this._handleAccountsChanged(accountsParams);
             break;
           case 'pali_chainChanged':
             this._handleChainChanged(params);
@@ -216,6 +225,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   }
 
   private _initializeState(initialState?: {
+    accounts: string[];
     blockExplorerURL: string | null;
     isBitcoinBased: boolean;
     isUnlocked: boolean;
@@ -226,13 +236,13 @@ export class PaliInpageProviderSys extends BaseProvider {
     }
 
     if (initialState) {
-      const { xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
+      const { accounts, xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
         initialState;
 
       // EIP-1193 connect
       this._handleConnectedXpub(xpub);
       this._handleActiveBlockExplorer(blockExplorerURL);
-      this._handleUnlockStateChanged({ xpub, isUnlocked });
+      this._handleUnlockStateChanged({ accounts, xpub, isUnlocked });
       this._handleIsBitcoinBased({ isBitcoinBased });
     }
 
@@ -306,9 +316,10 @@ export class PaliInpageProviderSys extends BaseProvider {
    * @param opts.isUnlocked - The latest isUnlocked value.
    */
   private _handleUnlockStateChanged({
+    accounts,
     xpub,
     isUnlocked,
-  }: { isUnlocked?: boolean; xpub?: string | null } = {}) {
+  }: { accounts?: string[]; isUnlocked?: boolean; xpub?: string | null } = {}) {
     if (typeof isUnlocked !== 'boolean') {
       console.error(
         'Pali: Received invalid isUnlocked parameter. Please report this bug.'
@@ -319,6 +330,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     if (isUnlocked !== this._sysState.isUnlocked) {
       this._sysState.isUnlocked = isUnlocked;
       this._handleConnectedXpub(xpub);
+      this._handleAccountsChanged(accounts || []);
     }
   }
 
@@ -338,6 +350,45 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
+  }
+  private _handleAccountsChanged(
+    currentAccounts: unknown[] | null | undefined
+  ): void {
+    // Only emit for Bitcoin-based networks
+    if (!this._sysState.isBitcoinBased) {
+      return;
+    }
+
+    // Normalize input
+    if (currentAccounts === undefined || currentAccounts === null) {
+      currentAccounts = [];
+    }
+
+    let accounts = currentAccounts as any[];
+    if (!Array.isArray(accounts)) {
+      accounts = [];
+    }
+
+    // If first account looks like hex (EVM), skip emitting for Sys provider
+    if (accounts.length > 0 && isHexString(accounts[0])) {
+      return;
+    }
+
+    // Ensure values are strings
+    const validAccounts = accounts.filter((a) => typeof a === 'string');
+
+    // Avoid duplicate emissions: compare with previous state
+    const previousAccounts = this._sysState.accounts;
+    const accountsChanged =
+      JSON.stringify(previousAccounts) !== JSON.stringify(validAccounts);
+
+    // Update state before potentially emitting
+    this._sysState.accounts = validAccounts;
+
+    // Only emit after provider is initialized and when accounts actually changed
+    if (this._sysState.initialized && accountsChanged) {
+      this.emit('accountsChanged', validAccounts);
+    }
   }
   private _handleIsBitcoinBased({
     isBitcoinBased,

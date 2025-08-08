@@ -436,6 +436,20 @@ export class PaliInpageProviderEth extends BaseProvider {
       }
     }
 
+    // If we're on a Bitcoin-based network, ignore account updates for the Ethereum provider
+    if (this._state.isBitcoinBased) {
+      this._state.accounts = [];
+      this.selectedAddress = null;
+      return;
+    }
+
+    // If any non-hex accounts are passed (e.g., UTXO addresses), ignore and do not emit
+    if (accounts.length > 0 && !isHexString(accounts[0])) {
+      this._state.accounts = [];
+      this.selectedAddress = null;
+      return;
+    }
+
     // emit accountsChanged if anything about the accounts array has changed
     // Note: It's normal for eth_accounts to return different accounts than what's in state,
     // especially when dapps are disconnected, during network switches, or permission changes.
@@ -486,7 +500,7 @@ export class PaliInpageProviderEth extends BaseProvider {
 
     // finally, after all state has been updated, emit the event
     if (this._state.initialized && accountsChanged) {
-      this.emit('accountsChanged', accounts);
+      this.emit('accountsChanged', this._state.accounts);
     }
   }
 

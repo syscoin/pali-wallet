@@ -173,6 +173,8 @@ export class WalletMethodHandler implements IMethodHandler {
 
     // Handle non-popup methods
     return executeMethodWithCache(context, async () => {
+      // Shared temp holder for provider accounts across provider-state cases
+      let providerAccounts: string[] = [];
       switch (methodName) {
         case 'isLocked':
           return !wallet.isUnlocked();
@@ -280,7 +282,7 @@ export class WalletMethodHandler implements IMethodHandler {
           }
 
           // Return accounts if wallet is unlocked, similar to eth_accounts
-          let providerAccounts = [];
+          providerAccounts = [];
           if (wallet.isUnlocked() && !isBitcoinBased) {
             // First check if dapp is already connected
             if (account) {
@@ -315,14 +317,36 @@ export class WalletMethodHandler implements IMethodHandler {
           if (!vault || isBitcoinBased === undefined || !activeNetwork) {
             // Return safe defaults during initialization
             return {
+              accounts: [],
               xpub: null,
               blockExplorerURL: null,
               isUnlocked: false,
               isBitcoinBased: true, // Default to true for Syscoin provider
             };
           }
-
+          // Return accounts if wallet is unlocked, similar to eth_accounts
+          providerAccounts = [];
+          if (wallet.isUnlocked() && isBitcoinBased) {
+            // First check if dapp is already connected
+            if (account) {
+              providerAccounts = [account.address];
+            } else {
+              // If not connected but wallet is unlocked, return the active account
+              const vaultAccounts = store.getState().vault?.accounts;
+              const vaultActiveAccount = store.getState().vault?.activeAccount;
+              if (vaultAccounts && vaultActiveAccount) {
+                const activeAccountData =
+                  vaultAccounts[vaultActiveAccount.type]?.[
+                    vaultActiveAccount.id
+                  ];
+                if (activeAccountData?.address) {
+                  providerAccounts = [activeAccountData.address];
+                }
+              }
+            }
+          }
           return {
+            accounts: providerAccounts,
             xpub: account?.xpub || null,
             blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,
             isUnlocked: wallet.isUnlocked(),
