@@ -3043,7 +3043,7 @@ class MainController {
         valueIn: '0',
         version: 0,
         vin: [],
-        vout: {} as any,
+        vout: [] as any,
       };
 
       store.dispatch(

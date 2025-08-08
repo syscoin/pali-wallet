@@ -117,8 +117,14 @@ export const getSyscoinIntentAmount = (
   const normalizedType = normalizeSyscoinTransactionType(txType);
 
   // Modern format with vin/vout containing assetInfo (or raw transaction)
-  const vout = transaction.vout || [];
-  const vin = transaction.vin || [];
+  // Normalize to arrays to guard against API variants that return objects or singletons
+  const toArray = (val: any): any[] => {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') return Object.values(val);
+    return [];
+  };
+  const vout = toArray(transaction.vout);
+  const vin = toArray(transaction.vin);
 
   // SYSCOIN_BURN_TO_ALLOCATION: SYS amount from OP_RETURN (burning SYS to get SYSX)
   if (normalizedType === 'syscoinburntoallocation') {
@@ -191,12 +197,13 @@ export const getSyscoinIntentAmount = (
   }
 
   // ALLOCATION_SEND and others: First asset output value
-  const firstAsset = vout.find((v: any) => v.assetInfo);
+  const firstAsset = vout.find((v: any) => v && (v.assetInfo || v.assetinfo));
 
-  if (firstAsset?.assetInfo) {
+  if (firstAsset?.assetInfo || firstAsset?.assetinfo) {
+    const info = firstAsset.assetInfo || firstAsset.assetinfo;
     return {
-      amount: parseAssetValue(firstAsset.assetInfo),
-      assetGuid: firstAsset.assetInfo.assetGuid,
+      amount: parseAssetValue(info),
+      assetGuid: info.assetGuid,
     };
   }
 
