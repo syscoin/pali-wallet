@@ -226,6 +226,8 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           alt="Token"
           className={`${fallbackClassName} ${className}`}
           style={{ width: size, height: size }}
+          loading="lazy"
+          decoding="async"
         />
       );
     }
@@ -237,6 +239,8 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         alt={symbol || 'Token'}
         className={`${fallbackClassName} ${className}`}
         style={{ width: size, height: size }}
+        loading="lazy"
+        decoding="async"
       />
     );
   },

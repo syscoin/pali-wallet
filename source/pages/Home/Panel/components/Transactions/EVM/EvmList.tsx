@@ -32,6 +32,10 @@ import {
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+// Simple in-memory cache for display info to avoid repeated async work in lists (short TTL)
+const txDisplayInfoCache = new Map<string, { data: any; ts: number }>();
+const TX_DISPLAY_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
 // Skeleton loader component for transaction values
 const TransactionValueSkeleton = () => (
   <div className="animate-pulse">
@@ -116,11 +120,27 @@ const EvmTransactionItem = React.memo(
       const getDisplayInfo = async () => {
         setIsLoadingDisplayInfo(true);
         try {
+          const cacheKeyLocal = tx.hash || (tx as any).txid || cacheKey;
+          const now = Date.now();
+          const cached = cacheKeyLocal
+            ? txDisplayInfoCache.get(cacheKeyLocal)
+            : undefined;
+          if (cached && now - cached.ts < TX_DISPLAY_TTL_MS) {
+            if (!cancelled) {
+              setDisplayInfo(cached.data);
+              setIsLoadingDisplayInfo(false);
+            }
+            return;
+          }
+
           const info = await getTransactionDisplayInfo(
             tx,
             currency,
             true // Skip fetching unknown tokens in transaction list
           );
+          if (cacheKeyLocal) {
+            txDisplayInfoCache.set(cacheKeyLocal, { data: info, ts: now });
+          }
           if (!cancelled) {
             setDisplayInfo(info);
             setIsLoadingDisplayInfo(false);
@@ -410,6 +430,9 @@ const EvmTransactionItem = React.memo(
     prevProps.tx.hash === nextProps.tx.hash &&
     prevProps.tx.confirmations === nextProps.tx.confirmations &&
     prevProps.tx.isCanceled === nextProps.tx.isCanceled &&
+    (prevProps.tx as any).txreceipt_status ===
+      (nextProps.tx as any).txreceipt_status &&
+    (prevProps.tx as any).isError === (nextProps.tx as any).isError &&
     (prevProps.tx as any).isReplaced === (nextProps.tx as any).isReplaced &&
     (prevProps.tx as any).isSpeedUp === (nextProps.tx as any).isSpeedUp &&
     prevProps.tx.value === nextProps.tx.value &&
