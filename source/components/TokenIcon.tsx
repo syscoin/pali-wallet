@@ -6,6 +6,8 @@ import { NftFallbackSvg } from 'components/Icon/Icon';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
+// Add a simple LRU cap to prevent unbounded growth
+const MAX_CACHE_ENTRIES = 200;
 const tokenImageCache = new Map<string, string | null>();
 
 // Track in-flight requests to prevent duplicate fetches
@@ -134,16 +136,34 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           if (!response.ok) throw new Error('Failed to fetch');
 
           const blob = await response.blob();
+          // Skip caching very large images to avoid memory bloat (~256KB)
+          if (blob.size > 256 * 1024) {
+            tokenImageCache.set(cacheKey, null);
+            return null;
+          }
           const reader = new FileReader();
 
           return new Promise<string>((resolve) => {
             reader.onloadend = () => {
               const dataUrl = reader.result as string;
+              // Enforce LRU cap
+              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+                const oldestKey = tokenImageCache.keys().next().value as
+                  | string
+                  | undefined;
+                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+              }
               tokenImageCache.set(cacheKey, dataUrl);
               resolve(dataUrl);
             };
 
             reader.onerror = () => {
+              if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+                const oldestKey = tokenImageCache.keys().next().value as
+                  | string
+                  | undefined;
+                if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+              }
               tokenImageCache.set(cacheKey, null);
               resolve(null);
             };
@@ -280,15 +300,29 @@ export const preloadTokenIcons = async (logoUrls: string[]) => {
         if (!response.ok) return null;
 
         const blob = await response.blob();
+        // Skip caching very large images to avoid memory bloat (~256KB)
+        if (blob.size > 256 * 1024) return null;
         const reader = new FileReader();
 
         return new Promise<string | null>((resolve) => {
           reader.onloadend = () => {
             const dataUrl = reader.result as string;
+            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+              const oldestKey = tokenImageCache.keys().next().value as
+                | string
+                | undefined;
+              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+            }
             tokenImageCache.set(url, dataUrl);
             resolve(dataUrl);
           };
           reader.onerror = () => {
+            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+              const oldestKey = tokenImageCache.keys().next().value as
+                | string
+                | undefined;
+              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+            }
             tokenImageCache.set(url, null);
             resolve(null);
           };

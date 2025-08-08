@@ -73,8 +73,9 @@ export const getTransactionDisplayInfo = async (
             const decimals = Number(token.decimals) || (isNft ? 0 : 18);
 
             if (isNft) {
-              // For NFTs, show count as numeric value (same as cached tokens)
-              const nftCount = Number(tokenValue);
+              // For NFTs: if ERC-721, displayValue should be 1 and tokenId is the ID
+              // If ERC-1155, tokenValue represents the amount transferred
+              const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
               return {
                 displayValue: nftCount,
                 displaySymbol: token.tokenSymbol.toUpperCase(),
@@ -120,14 +121,15 @@ export const getTransactionDisplayInfo = async (
               const decimals = isNft ? 0 : tokenDetails.decimals || 18;
 
               if (isNft) {
-                // For NFTs, show count instead of formatted value
-                const nftCount = Number(tokenValue);
+                // For NFTs: if ERC-721, count is 1; if ERC-1155, use provided amount
+                const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
                 return {
-                  displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
+                  displayValue: nftCount,
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
                   isNft: true,
+                  tokenId: tokenId || undefined,
                 };
               } else {
                 // Regular ERC-20 token
@@ -176,18 +178,29 @@ export const getTransactionDisplayInfo = async (
   const rawValue = tx.value;
   let numericValue = 0;
 
-  if (typeof rawValue === 'string') {
-    if (rawValue.startsWith('0x')) {
-      numericValue = parseInt(rawValue, 16) / 1e18;
-    } else {
-      numericValue = Number(rawValue) / 1e18;
+  try {
+    // Use formatUnits to avoid precision loss and handle BigNumberish inputs
+    // Accept hex string, decimal string, BigNumber-like, or number
+    // Normalize to a value acceptable by formatUnits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let bigNumberishValue: any = rawValue;
+    if (rawValue && typeof rawValue === 'object') {
+      // Support ethers-style objects with hex/_hex
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const asAny: any = rawValue;
+      if (typeof asAny.hex === 'string') {
+        bigNumberishValue = asAny.hex;
+      } else if (typeof asAny._hex === 'string') {
+        bigNumberishValue = asAny._hex;
+      }
     }
-  } else if (rawValue?.hex) {
-    numericValue = parseInt(rawValue.hex, 16) / 1e18;
-  } else if ((rawValue as any)?._hex) {
-    numericValue = parseInt((rawValue as any)._hex, 16) / 1e18;
-  } else if (typeof rawValue === 'number') {
-    numericValue = rawValue / 1e18;
+
+    const formatted = formatUnits(bigNumberishValue ?? '0', 18);
+    numericValue = Number.isFinite(Number(formatted))
+      ? parseFloat(formatted)
+      : 0;
+  } catch {
+    numericValue = 0;
   }
 
   return {

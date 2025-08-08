@@ -15,6 +15,10 @@ export const formatTransactionValue = (
   try {
     const ethValue = formatEther(transactionValue);
     const fiatWithDecimals = formatWithDecimals(ethValue, decimals || 2);
+    // Clamp display precision for readability and to avoid overflow strings
+    const displayCrypto = Number.isFinite(Number(ethValue))
+      ? Number(ethValue).toFixed(6)
+      : '0';
 
     const formattedFiatAmount = getFiatAmount(
       Number(fiatWithDecimals) || 0,
@@ -23,10 +27,11 @@ export const formatTransactionValue = (
     );
 
     return {
-      crypto: `${ethValue} ${nativeCurrencySymbol || 'ETH'}`,
+      crypto: `${displayCrypto} ${nativeCurrencySymbol}`,
       formattedFiatAmount,
     };
   } catch (error) {
-    return { crypto: '0', formattedFiatAmount: '0' };
+    // Provide consistent symbol even on error
+    return { crypto: `0 ${nativeCurrencySymbol}`, formattedFiatAmount: '0' };
   }
 };

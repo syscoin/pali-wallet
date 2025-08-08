@@ -1,3 +1,4 @@
+import { formatUnits } from '@ethersproject/units';
 import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -336,17 +337,41 @@ export const EvmTransactionDetailsEnhanced = ({
 
       // Special formatting for certain fields
       if (key === 'gasUsed' || key === 'gasLimit') {
-        formattedValue.value = finalValue
-          ? parseInt(String(finalValue), 10).toLocaleString()
+        const asString = String(finalValue);
+        const isHex = asString.startsWith('0x');
+        let numeric = 0;
+        try {
+          numeric = isHex ? parseInt(asString, 16) : parseInt(asString, 10);
+        } catch {
+          numeric = NaN as unknown as number;
+        }
+        formattedValue.value = Number.isFinite(numeric)
+          ? numeric.toLocaleString()
           : 'N/A';
       } else if (
         key === 'gasPrice' ||
         key === 'maxFeePerGas' ||
         key === 'maxPriorityFeePerGas'
       ) {
-        formattedValue.value = finalValue
-          ? `${(parseInt(String(finalValue), 10) / 1e9).toFixed(2)} Gwei`
-          : 'N/A';
+        // Normalize BigNumberish (hex or decimal) and format as Gwei
+        let bigNumberish: any = finalValue as any;
+        if (bigNumberish && typeof bigNumberish === 'object') {
+          // ethers objects may contain hex fields
+          if (typeof (bigNumberish as any).hex === 'string') {
+            bigNumberish = (bigNumberish as any).hex;
+          } else if (typeof (bigNumberish as any)._hex === 'string') {
+            bigNumberish = (bigNumberish as any)._hex;
+          }
+        }
+        try {
+          const gwei = formatUnits(bigNumberish ?? '0', 'gwei');
+          const num = Number(gwei);
+          formattedValue.value = Number.isFinite(num)
+            ? `${num.toFixed(2)} Gwei`
+            : 'N/A';
+        } catch {
+          formattedValue.value = 'N/A';
+        }
       } else if (key === 'revertReason' && finalValue) {
         formattedValue.value = finalValue;
         formattedValue.className = 'text-brand-redDark';

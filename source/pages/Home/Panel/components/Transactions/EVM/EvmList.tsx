@@ -191,19 +191,26 @@ const EvmTransactionItem = React.memo(
       const showSign =
         isNumericAmount && (showFiat || displayInfo.isErc20Transfer);
 
+      // NFT display rules:
+      // - ERC-721: finalTxValue should be 1; show only "SYMBOL #tokenId"
+      // - ERC-1155: show "<amount> SYMBOL #tokenId"
+      const isNftWithId = displayInfo.isNft && !!displayInfo.tokenId;
+      const shortTokenId = isNftWithId
+        ? displayInfo.tokenId!.length > 8
+          ? displayInfo.tokenId!.substring(0, 6) + '...'
+          : displayInfo.tokenId!
+        : '';
       const amountStr = displayInfo.hasUnknownDecimals
         ? `${finalSymbol} Transfer`
-        : displayInfo.isNft && displayInfo.tokenId
-        ? `${Number(finalTxValue)} ${finalSymbol} #${
-            displayInfo.tokenId.length > 8
-              ? displayInfo.tokenId.substring(0, 6) + '...'
-              : displayInfo.tokenId
-          }`
+        : isNftWithId
+        ? `${
+            Number(finalTxValue) === Number(displayInfo.tokenId)
+              ? ''
+              : `${Number(finalTxValue)} `
+          }${finalSymbol} #${shortTokenId}`
         : `${
             isNaN(Number(finalTxValue))
               ? '0.0000'
-              : displayInfo.isNft
-              ? Number(finalTxValue)
               : Number(finalTxValue).toFixed(4)
           } ${finalSymbol}`;
 

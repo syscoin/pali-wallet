@@ -18,7 +18,7 @@ export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
 
   const { crypto, formattedFiatAmount } = formatTransactionValue(
     transactionValue,
-    activeNetwork.currency?.toUpperCase() || 'ETH',
+    (activeNetwork.currency || '').toUpperCase(),
     fiat.asset,
     getFiatAmount
   );
