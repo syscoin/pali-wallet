@@ -331,9 +331,9 @@ export const SendConfirm = () => {
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
             // The amount from basicTxValues might be rounded for display, causing precision issues
             if (basicTxValues.isMax) {
-              // Get the balance from account state
-              const actualBalance = activeAccount?.balances?.ethereum || 0;
-              value = parseUnits(String(actualBalance), 'ether');
+              // Use the already-fetched EVM balance (ETH units)
+              const actualBalanceEth = balance;
+              value = parseUnits(safeToFixed(actualBalanceEth), 'ether');
               const gasLimit = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
