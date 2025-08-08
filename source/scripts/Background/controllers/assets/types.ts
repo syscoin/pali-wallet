@@ -59,6 +59,7 @@ export interface ISysTokensAssetReponse {
   assetGuid: string;
   balance: number;
   chainId?: number;
+  confirmedBalance?: number;
   decimals: number;
   name: string;
   path: string;
@@ -67,6 +68,7 @@ export interface ISysTokensAssetReponse {
   totalSent: string;
   transfers: number;
   type: string;
+  unconfirmedBalance?: number;
 }
 
 // EVM TYPES

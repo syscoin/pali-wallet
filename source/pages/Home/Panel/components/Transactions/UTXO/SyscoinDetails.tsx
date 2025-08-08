@@ -281,9 +281,7 @@ export const SyscoinTransactionDetails = ({
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
-          {hasTokenInfo && tokenType
-            ? getSyscoinTransactionTypeLabel(tokenType)
-            : getTxType(transactionTx, isTxSent)}
+          {getTxType(transactionTx, isTxSent)}
         </p>
 
         {/* Display transaction amount */}
@@ -322,7 +320,35 @@ export const SyscoinTransactionDetails = ({
           );
         })()}
 
-        <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
+        {(() => {
+          // Detect SPT tx (either explicit tokenType or vout with assetInfo)
+          const normalizedType = getSyscoinTransactionTypeLabel(tokenType);
+          const isSptTx = hasTokenInfo || normalizedType !== 'Transaction';
+
+          // Heuristic RBF detection from input sequences:
+          // If any input sequence is < 0xfffffffe, opt-in RBF is enabled
+          const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+          const rbfEnabled = Array.isArray(rawTransaction?.vin)
+            ? rawTransaction.vin.some(
+                (v: any) =>
+                  typeof v.sequence === 'number' &&
+                  v.sequence < MAX_SEQ_MINUS_ONE
+              )
+            : false;
+
+          const showZdagConfirmed =
+            isSptTx && !rbfEnabled && !isTxCanceled && !isConfirmed;
+
+          if (showZdagConfirmed) {
+            return (
+              <p className="text-xs font-normal text-brand-green">
+                Z-DAG confirmed
+              </p>
+            );
+          }
+
+          return getTxStatus(isTxCanceled, isConfirmed);
+        })()}
       </div>
 
       {/* Add token type as a detail if present */}

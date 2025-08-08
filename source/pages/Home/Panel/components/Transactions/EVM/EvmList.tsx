@@ -11,17 +11,20 @@ import { useSelector } from 'react-redux';
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
+import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import {
   isContractInteraction,
   getTransactionTypeLabel,
   getTransactionTypeDisplayLabel,
 } from 'utils/commonMethodSignatures';
+import { getTokenLogo } from 'utils/index';
 import {
   getTransactionDisplayInfo,
   handleUpdateTransaction,
@@ -67,6 +70,7 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
+    const activeAssets = useSelector(selectActiveAccountAssets);
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
@@ -152,31 +156,79 @@ const EvmTransactionItem = React.memo(
         return <TransactionValueSkeleton />;
       }
 
+      const showFiat =
+        isNativeTransfer &&
+        !displayInfo.isNft &&
+        !displayInfo.hasUnknownDecimals;
+      const fiatText = showFiat
+        ? getFiatAmount(Number(finalTxValue), 6)
+        : '---';
+      const isNumericAmount =
+        !isNaN(Number(finalTxValue)) && Number(finalTxValue) > 0;
+      // Show sign for native (when we also show fiat) and for ERC-20 transfers as well
+      const showSign =
+        isNumericAmount && (showFiat || displayInfo.isErc20Transfer);
+
+      const amountStr = displayInfo.hasUnknownDecimals
+        ? `${finalSymbol} Transfer`
+        : displayInfo.isNft && displayInfo.tokenId
+        ? `${Number(finalTxValue)} ${finalSymbol} #${
+            displayInfo.tokenId.length > 8
+              ? displayInfo.tokenId.substring(0, 6) + '...'
+              : displayInfo.tokenId
+          }`
+        : `${
+            isNaN(Number(finalTxValue))
+              ? '0.0000'
+              : displayInfo.isNft
+              ? Number(finalTxValue)
+              : Number(finalTxValue).toFixed(4)
+          } ${finalSymbol}`;
+
+      // Resolve token icon for imported ERC-20s (no fetches; skip if absent)
+      let tokenIcon: React.ReactNode = null;
+      if (displayInfo.isErc20Transfer && tx.to && activeAssets?.ethereum) {
+        const imported = activeAssets.ethereum.find(
+          (a: any) =>
+            a?.contractAddress?.toLowerCase() === tx?.to?.toLowerCase()
+        ) as any;
+        if (imported) {
+          const logo = imported.logo || getTokenLogo(imported.tokenSymbol);
+          if (logo) {
+            tokenIcon = (
+              <TokenIcon
+                logo={logo}
+                assetGuid={imported.contractAddress}
+                symbol={imported.tokenSymbol}
+                size={14}
+                className="shrink-0"
+              />
+            );
+          }
+        }
+      }
+
       return (
         <div className="flex flex-col justify-end items-end">
-          <div className="text-white text-xs font-normal">
-            {displayInfo.hasUnknownDecimals
-              ? `${finalSymbol} Transfer`
-              : displayInfo.isNft && displayInfo.tokenId
-              ? `${Number(finalTxValue)} ${finalSymbol} #${
-                  displayInfo.tokenId.length > 8
-                    ? displayInfo.tokenId.substring(0, 6) + '...'
-                    : displayInfo.tokenId
-                }`
-              : `${
-                  isNaN(Number(finalTxValue))
-                    ? '0.0000'
-                    : displayInfo.isNft
-                    ? Number(finalTxValue)
-                    : Number(finalTxValue).toFixed(4)
-                } ${finalSymbol}`}
+          <div className="text-white text-xs font-normal whitespace-nowrap">
+            {showSign && (
+              <span
+                className={`${
+                  isTxSent ? 'text-warning-error' : 'text-brand-green'
+                }`}
+              >
+                {isTxSent ? '-' : '+'}
+              </span>
+            )}
+            {tokenIcon && (
+              <span className="ml-1 align-middle inline-flex items-center">
+                {tokenIcon}
+              </span>
+            )}
+            <span className="ml-1 align-middle">{amountStr}</span>
           </div>
-          <div className="text-brand-gray200 text-xs font-normal">
-            {isNativeTransfer &&
-            !displayInfo.isNft &&
-            !displayInfo.hasUnknownDecimals
-              ? getFiatAmount(Number(finalTxValue), 6)
-              : '---'}
+          <div className="text-brand-gray200 text-xs font-normal whitespace-nowrap">
+            {fiatText === '---' ? '---' : fiatText}
           </div>
           {displayInfo.hasUnknownDecimals && (
             <div className="text-warning-error text-[10px]">
@@ -262,9 +314,11 @@ const EvmTransactionItem = React.memo(
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
         <div className="flex justify-between py-2 w-full">
-          <div className="flex items-center">
-            {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col ">
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0 pt-0.5">
+              {getTxStatusIcons(getTxType(tx, isTxSent), false)}
+            </div>
+            <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-white text-xs font-normal">
                   {getTransactionTypeDisplayLabel(
@@ -286,7 +340,7 @@ const EvmTransactionItem = React.memo(
                       </div>
                     }
                   >
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-pointer transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 cursor-pointer transition-all duration-200 hover:bg-brand-blue/20 hover:border-brand-blue/30 hover:scale-105 whitespace-nowrap">
                       <svg
                         width="10"
                         height="10"

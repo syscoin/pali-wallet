@@ -6,12 +6,25 @@ import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { Icon } from 'components/Icon';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { IconButton } from 'components/IconButton';
+import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountAssets,
+} from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
+import {
+  formatDisplayValue,
+  formatSyscoinValue,
+} from 'utils/formatSyscoinValue';
+import { getTokenLogo } from 'utils/index';
 import { ellipsis } from 'utils/index';
-import { getSyscoinTransactionTypeStyle } from 'utils/syscoinTransactionUtils';
+import {
+  getSyscoinTransactionTypeStyle,
+  getSyscoinIntentAmount,
+} from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 export const UtxoTransactionsListComponent = ({
@@ -26,12 +39,67 @@ export const UtxoTransactionsListComponent = ({
   const [, copy] = useCopyClipboard();
   const { getTxStatus, formatTimeStampUtxo, blocktime } =
     useTransactionsListConfig(userTransactions);
+  const activeAccountAssets = useSelector(selectActiveAccountAssets);
+  const activeAccount = useSelector(selectActiveAccount);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const isTxCanceled = tx?.isCanceled === true;
   const isConfirmed = isTransactionInBlock(tx);
 
+  // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
+  const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+  const rbfEnabled = Array.isArray(tx?.vin)
+    ? tx.vin.some(
+        (v: any) =>
+          typeof v.sequence === 'number' && v.sequence < MAX_SEQ_MINUS_ONE
+      )
+    : false;
+  const isSptTx = Boolean(tx?.tokenType);
+  const isZdagConfirmed =
+    isSptTx && !rbfEnabled && !isTxCanceled && !isConfirmed;
+
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
+
+  // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
+  let sptAmountDisplay: string | null = null;
+  let sptAssetInfo: any | null = null;
+  let sysAmountDisplay: string | null = null;
+  const intent = getSyscoinIntentAmount(tx as any);
+  if (intent) {
+    const assetInfo = activeAccountAssets?.syscoin?.find(
+      (a: any) => a.assetGuid === intent.assetGuid
+    );
+    sptAssetInfo = assetInfo || null;
+    const symbol =
+      assetInfo?.symbol || (intent.assetGuid === '123456' ? 'SYSX' : 'SPT');
+    const decimals = assetInfo?.decimals ?? 8;
+    const amountText = formatDisplayValue(intent.amount, decimals);
+    sptAmountDisplay = `${amountText} ${symbol}`;
+  }
+  // Determine direction relative to active account (best-effort)
+  const myAddr = activeAccount?.address?.toLowerCase();
+  const vinSet = new Set(
+    (tx?.vin || [])
+      .flatMap((v: any) => v.addresses || [])
+      .map((a: string) => a.toLowerCase())
+  );
+  const isSentByUs = myAddr ? vinSet.has(myAddr) : false;
+  const signChar = isSentByUs ? '-' : '+';
+  const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
+  // Native SYS amount from first vout
+  if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
+    const value = Number(tx.vout[0]?.value || 0); // satoshis
+    if (!isNaN(value) && value > 0) {
+      const baseSymbol = activeNetwork?.currency
+        ? String(activeNetwork.currency).toUpperCase()
+        : '';
+      const decimalValue = parseFloat(formatSyscoinValue(value));
+      sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
+    }
+  }
 
   const handleGoTxDetails = () => {
     navigate('/home/details', {
@@ -64,7 +132,28 @@ export const UtxoTransactionsListComponent = ({
             </IconButton>
           </Tooltip>
         </div>
-        <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
+        <div>
+          {isZdagConfirmed ? (
+            <div
+              className="group inline-flex items-center gap-1 text-xs font-normal cursor-default"
+              title="Z-DAG"
+            >
+              <Icon
+                name="thunderbolt"
+                className="text-brand-royalbluemedium transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:rotate-6 group-hover:scale-110"
+                size={12}
+              />
+              <span className="text-brand-green">Z-DAG</span>
+              <Icon
+                name="check"
+                className="text-brand-green transition-transform duration-200 group-hover:translate-y-0.5 group-hover:scale-110"
+                size={12}
+              />
+            </div>
+          ) : (
+            getTxStatus(isTxCanceled, isConfirmed)
+          )}
+        </div>
       </div>
 
       <div className="flex flex-[0.8] flex-col gap-1">
@@ -78,6 +167,34 @@ export const UtxoTransactionsListComponent = ({
             {sptInfo.label}
           </span>
         </div>
+        {sptAmountDisplay && (
+          <div
+            className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
+            title={sptAmountDisplay}
+          >
+            <span className={`${signClass}`}>{signChar}</span>
+            {(sptAssetInfo?.image ||
+              (sptAssetInfo?.symbol && getTokenLogo(sptAssetInfo.symbol))) && (
+              <TokenIcon
+                logo={sptAssetInfo.image || getTokenLogo(sptAssetInfo.symbol)}
+                assetGuid={sptAssetInfo.assetGuid}
+                symbol={sptAssetInfo.symbol}
+                size={14}
+                className="shrink-0"
+              />
+            )}
+            <span className="truncate">{sptAmountDisplay}</span>
+          </div>
+        )}
+        {!sptAmountDisplay && sysAmountDisplay && (
+          <div
+            className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
+            title={sysAmountDisplay}
+          >
+            <span className={`${signClass}`}>{signChar}</span>
+            <span className="truncate">{sysAmountDisplay}</span>
+          </div>
+        )}
       </div>
 
       <div>

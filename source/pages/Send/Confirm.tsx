@@ -1218,11 +1218,11 @@ export const SendConfirm = () => {
                     {t('settings.contractAddress')}
                   </p>
                   <div className="flex items-center gap-2">
-                    <p className="text-white text-sm font-mono">
+                    <span className="text-white text-sm font-mono">
                       <Tooltip content={basicTxValues.token.contractAddress}>
                         {ellipsis(basicTxValues.token.contractAddress, 8, 6)}
                       </Tooltip>
-                    </p>
+                    </span>
                     <button
                       type="button"
                       onClick={() => copy(basicTxValues.token.contractAddress)}
@@ -1244,7 +1244,7 @@ export const SendConfirm = () => {
                     <p className="text-brand-gray200 text-xs mb-1">
                       {t('send.tokenId')}
                     </p>
-                    <p className="text-white font-medium">
+                    <div className="text-white font-medium">
                       {basicTxValues.token.tokenId ? (
                         basicTxValues.token.tokenId.length > 20 ? (
                           <Tooltip content={basicTxValues.token.tokenId}>
@@ -1258,7 +1258,7 @@ export const SendConfirm = () => {
                           Missing Token ID
                         </span>
                       )}
-                    </p>
+                    </div>
                   </div>
 
                   {/* Amount (for ERC-1155) */}
@@ -1320,7 +1320,7 @@ export const SendConfirm = () => {
                           : t('settings.contractAddress')}
                       </p>
                       <div className="flex items-center gap-2">
-                        <p className="text-white text-sm font-mono">
+                        <span className="text-white text-sm font-mono">
                           <Tooltip
                             content={
                               isBitcoinBased
@@ -1339,7 +1339,7 @@ export const SendConfirm = () => {
                                   6
                                 )}
                           </Tooltip>
-                        </p>
+                        </span>
                         <button
                           type="button"
                           onClick={() =>

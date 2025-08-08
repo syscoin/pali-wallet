@@ -60,6 +60,8 @@ const icons = {
   warning: AntIcons.WarningOutlined,
   trash: AntIcons.DeleteOutlined,
   tag: AntIcons.TagFilled,
+  // Lightning icon for Z-DAG status
+  thunderbolt: AntIcons.ThunderboltOutlined,
   import: AntIcons.ImportOutlined,
   'hamburger-menu': AntIcons.MenuOutlined,
 };

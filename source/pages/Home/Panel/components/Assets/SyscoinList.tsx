@@ -147,8 +147,19 @@ export const SyscoinAssetsList = () => {
                       className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
                       onClick={() => handleAssetClick(asset)}
                     >
-                      {`${truncate(asset.symbol, 12).toUpperCase()}`}
+                      {truncate(asset.symbol, 12).toUpperCase()}
                     </span>
+
+                    {/* Show pending indicator if there are unconfirmed transfers */}
+                    {/* unconfirmedBalance is -1 when there are pending transactions */}
+                    {asset.unconfirmedBalance === -1 && (
+                      <span
+                        className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
+                        title={t('send.pending')}
+                      >
+                        {t('send.pending')}
+                      </span>
+                    )}
 
                     {asset.contract &&
                       asset.contract !==

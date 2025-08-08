@@ -3,7 +3,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
-import { formatUnits } from '@ethersproject/units';
 import { debounce } from 'lodash';
 import React, {
   useState,
@@ -213,12 +212,11 @@ export const SyscoinImport: React.FC = () => {
   const convertToImportableAssets = useCallback(
     (tokens: (ISysTokensAssetReponse | ITokenSysProps)[]) =>
       tokens.map((token) => {
-        // Convert balance from satoshis for display (EVM already provides display values)
         const decimals = token.decimals || 8;
-        const balanceInSatoshis = token.balance || '0';
-        const displayBalance = parseFloat(
-          formatUnits(balanceInSatoshis, decimals)
-        );
+
+        // The balance field is already in display units (e.g., 0.02 means 0.02 tokens)
+        // No need to convert from satoshis since the API returns display values
+        const displayBalance = token.balance || 0;
 
         return {
           id: token.assetGuid || '',

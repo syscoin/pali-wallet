@@ -212,7 +212,7 @@ export const truncate = (
 
   if (input.length < size) return input;
 
-  return `${input.slice(0, size)} ${dots ? '...' : ''}`;
+  return `${input.slice(0, size)}${dots ? ' ...' : ''}`;
 };
 
 /**

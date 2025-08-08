@@ -202,6 +202,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
   const { t } = useTranslation();
   const [decodedTx, setDecodedTx] = useState<IDecodedTransaction | null>(null);
   const [loading, setLoading] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [assetInfoMap, setAssetInfoMap] = useState<Record<string, any>>({});
   const [copiedJson, copyJson] = useCopyClipboard();
   const [copiedAddress, copyAddress] = useCopyClipboard();
@@ -211,13 +212,19 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
   const activeAccountAssets = useSelector(selectActiveAccountAssets);
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
 
+  // Avoid disruptive re-renders during background polling:
+  // - Only refetch when PSBT or network changes
+  // - Show loading spinner only on initial load, not on refreshes
   useEffect(() => {
     const fetchTransactionDetails = async () => {
       const psbtData = psbt || transaction?.psbt;
 
       if (!psbtData || !activeNetwork) return;
 
-      setLoading(true);
+      // Only show blocking loader on first load
+      if (!initialLoadDone) {
+        setLoading(true);
+      }
       try {
         const decodedData = (await controllerEmitter(
           ['wallet', 'decodeRawTransaction'],
@@ -232,7 +239,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           for (const asset of decodedData.syscoin.allocations.assets) {
             const assetGuid = asset.assetGuid;
 
-            // First try local assets
+            // First try local assets (use current snapshot without re-triggering effect)
             const localAsset = activeAccountAssets?.syscoin?.find(
               (a: any) => a.assetGuid === assetGuid
             );
@@ -266,17 +273,14 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
         setDecodedTx({ error: 'Failed to decode transaction details' });
       } finally {
         setLoading(false);
+        if (!initialLoadDone) setInitialLoadDone(true);
       }
     };
 
     fetchTransactionDetails();
-  }, [
-    psbt,
-    transaction,
-    activeNetwork,
-    activeAccountAssets,
-    controllerEmitter,
-  ]);
+    // Only refetch when PSBT or network URL changes to avoid resets during polling
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [psbt, transaction?.psbt, activeNetwork?.url, initialLoadDone]);
 
   useEffect(() => {
     if (copiedJson) {
@@ -305,7 +309,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
     }
   };
 
-  if (loading) {
+  if (loading && !initialLoadDone) {
     return (
       <div className="flex items-center justify-center p-4">
         <ClockCircleOutlined className="text-brand-royalblue text-lg animate-spin" />
