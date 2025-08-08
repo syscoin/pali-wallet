@@ -146,34 +146,8 @@ class NotificationManager {
       const intent = getSyscoinIntentAmount(tx);
       if (intent) {
         value = intent.amount.toString();
-
-        // Get decimals and symbol from tokenTransfers if available
-        if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
-          // Find the transfer that matches the intent asset
-          const matchingTransfer = tx.tokenTransfers.find(
-            (transfer: any) => transfer.token === intent.assetGuid
-          );
-
-          if (matchingTransfer) {
-            tokenSymbol =
-              matchingTransfer.symbol || network.currency.toUpperCase();
-            decimals = matchingTransfer.decimals || 8;
-          } else {
-            // Fallback to first transfer if no exact match
-            const transfer = tx.tokenTransfers[0];
-            tokenSymbol = transfer.symbol || network.currency.toUpperCase();
-            decimals = transfer.decimals || 8;
-          }
-        } else {
-          // Fallback: hardcoded values for known transaction types
-          if (
-            detectedTokenType === 'SPTSyscoinBurnToAssetAllocation' ||
-            detectedTokenType === 'SPTSyscoinBurnToAssetAllocation'
-          ) {
-            tokenSymbol = 'SYSX';
-            decimals = 8;
-          }
-        }
+        tokenSymbol = intent.symbol ?? 'SYSX';
+        decimals = intent.decimals ?? 8;
       }
     }
 

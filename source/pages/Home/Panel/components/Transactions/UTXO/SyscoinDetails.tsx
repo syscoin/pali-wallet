@@ -9,7 +9,6 @@ import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import { selectActiveAccountAssets } from 'state/vault/selectors';
 import {
   formatSyscoinValue,
   formatDisplayValue,
@@ -45,7 +44,6 @@ export const SyscoinTransactionDetails = ({
     activeNetwork: { currency },
   } = useSelector((state: RootState) => state.vault);
   const { getTxType, getTxStatus } = useTransactionsListConfig();
-  const activeAccountAssets = useSelector(selectActiveAccountAssets);
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -224,18 +222,8 @@ export const SyscoinTransactionDetails = ({
             const intent = getSyscoinIntentAmount(rawTransaction);
 
             if (intent) {
-              // Look up asset from vault's assets for accurate symbol and decimals
-              const assetInfo = activeAccountAssets?.syscoin?.find(
-                (asset: any) => asset.assetGuid === intent.assetGuid
-              );
-
-              // Use asset info from vault if available, otherwise fallback
-              const symbol =
-                assetInfo?.symbol ||
-                (intent.assetGuid === '123456'
-                  ? 'SYSX'
-                  : `Asset ${intent.assetGuid.slice(0, 6)}`);
-              const decimals = assetInfo?.decimals || 8;
+              const decimals = intent.decimals ?? 8;
+              const symbol = intent.symbol ?? 'SYSX';
 
               return (
                 <p className="text-white text-base">

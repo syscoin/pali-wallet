@@ -11,10 +11,6 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
-import {
-  selectActiveAccount,
-  selectActiveAccountAssets,
-} from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import {
   formatDisplayValue,
@@ -40,13 +36,10 @@ const UtxoTransactionsListComponentBase = ({
   const [, copy] = useCopyClipboard();
   const { getTxStatus, formatTimeStampUtxo, blocktime } =
     useTransactionsListConfig(userTransactions);
-  const activeAccountAssets = useSelector(selectActiveAccountAssets);
-  const activeAccount = useSelector(selectActiveAccount);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const isTxCanceled = tx?.isCanceled === true;
   const isConfirmed = isTransactionInBlock(tx);
 
   // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
@@ -58,36 +51,27 @@ const UtxoTransactionsListComponentBase = ({
       )
     : false;
   const isSptTx = Boolean(tx?.tokenType);
-  const isZdagConfirmed =
-    isSptTx && !rbfEnabled && !isTxCanceled && !isConfirmed;
+  const isZdagConfirmed = isSptTx && !rbfEnabled && !isConfirmed;
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
 
   // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
   let sptAmountDisplay: string | null = null;
-  let sptAssetInfo: any | null = null;
+  const sptAssetInfo: any | null = null;
   let sysAmountDisplay: string | null = null;
-  const intent = getSyscoinIntentAmount(tx as any);
+  const intent = getSyscoinIntentAmount(tx);
   if (intent) {
-    const assetInfo = activeAccountAssets?.syscoin?.find(
-      (a: any) => a.assetGuid === intent.assetGuid
-    );
-    sptAssetInfo = assetInfo || null;
-    const symbol =
-      assetInfo?.symbol || (intent.assetGuid === '123456' ? 'SYSX' : 'SPT');
-    const decimals = assetInfo?.decimals ?? 8;
+    const decimals = intent.decimals ?? 8;
+    const symbol = intent.symbol ?? 'SYSX';
     const amountText = formatDisplayValue(intent.amount, decimals);
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
-  // Determine direction relative to active account (best-effort)
-  const myAddr = activeAccount?.address?.toLowerCase();
-  const vinSet = new Set(
-    (tx?.vin || [])
-      .flatMap((v: any) => v.addresses || [])
-      .map((a: string) => a.toLowerCase())
-  );
-  const isSentByUs = myAddr ? vinSet.has(myAddr) : false;
+  // Determine direction using only vin: if any input is ours, we are sending
+  const anyVinOwn = Array.isArray(tx?.vin)
+    ? tx.vin.some((v: any) => v?.isOwn === true)
+    : false;
+  const isSentByUs = anyVinOwn;
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
   // Native SYS amount from first vout
@@ -152,8 +136,12 @@ const UtxoTransactionsListComponentBase = ({
                 size={12}
               />
             </div>
+          ) : isConfirmed ? (
+            <p className="text-xs font-normal text-brand-green">
+              {isSentByUs ? 'Sent' : 'Received'}
+            </p>
           ) : (
-            getTxStatus(isTxCanceled, isConfirmed)
+            getTxStatus(false, isConfirmed)
           )}
         </div>
       </div>
@@ -215,8 +203,7 @@ export const UtxoTransactionsListComponent = React.memo(
   UtxoTransactionsListComponentBase,
   (prev, next) =>
     prev.tx.txid === next.tx.txid &&
-    prev.tx.confirmations === next.tx.confirmations &&
-    (prev.tx as any).isCanceled === (next.tx as any).isCanceled
+    prev.tx.confirmations === next.tx.confirmations
 );
 
 export const UtxoTransactionsList = ({
@@ -248,12 +235,12 @@ export const UtxoTransactionsList = ({
     const seen = new Set<string>();
     const result: ITransactionInfoUtxo[] = [];
     for (const tx of userTransactions) {
-      const key = (tx as any).txid;
+      const key = tx.txid;
       if (key) seen.add(key);
       result.push(tx);
     }
     for (const tx of extraTransactions) {
-      const key = (tx as any).txid;
+      const key = tx.txid;
       if (!key || seen.has(key)) continue;
       seen.add(key);
       result.push(tx);

@@ -167,8 +167,26 @@ export interface ISysTransaction {
   value: string;
   valueIn: string;
   version: number;
-  vin: ISyscoinVIn[];
-  vout: ISyscoinVOut; // Transaction direction relative to current account
+  vin: Array<
+    ISyscoinVIn & {
+      assetInfo?: {
+        assetGuid: string;
+        value?: number | string;
+        valueStr?: string;
+      };
+      isOwn?: boolean;
+    }
+  >;
+  vout: Array<
+    ISyscoinVOut & {
+      assetInfo?: {
+        assetGuid: string;
+        value?: number | string;
+        valueStr?: string;
+      };
+      isOwn?: boolean;
+    }
+  >; // Transaction outputs
 }
 
 export interface ISysTransactionsController {

@@ -1,3 +1,10 @@
+import {
+  IAssetInfo,
+  ITransactionInfoUtxo,
+  ITransactionVin,
+  ITransactionVout,
+} from 'types/useTransactionsInfo';
+
 import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';
 
@@ -75,19 +82,22 @@ export const getSyscoinTransactionTypeLabel = (
 /**
  * Common helper to parse asset values from various formats
  */
-const parseAssetValue = (assetInfo: any): number => {
+const parseAssetValue = (assetInfo: IAssetInfo, decimals?: number): number => {
   if (!assetInfo) return 0;
 
   // Handle string format with potential symbol
-  if (assetInfo.valueStr || assetInfo.valueFormatted) {
-    const valueStr = assetInfo.valueStr || assetInfo.valueFormatted;
+  if (assetInfo.valueStr) {
+    const valueStr = assetInfo.valueStr;
     const numericValue = parseFloat(valueStr.split(' ')[0]);
     return isNaN(numericValue) ? 0 : numericValue;
   }
 
   // Handle raw numeric value
   if (assetInfo.value !== undefined) {
-    const formatted = formatSyscoinValue(assetInfo.value.toString(), 8);
+    const formatted = formatSyscoinValue(
+      assetInfo.value.toString(),
+      typeof decimals === 'number' ? decimals : 8
+    );
     return parseFloat(formatted);
   }
 
@@ -106,14 +116,14 @@ const parseAssetValue = (assetInfo: any): number => {
  * @returns Object with amount and assetGuid, or null if no intent found
  */
 export const getSyscoinIntentAmount = (
-  transaction: any
-): { amount: number; assetGuid: string } | null => {
+  transaction: ITransactionInfoUtxo
+): { amount: number; decimals?: number; symbol?: string } | null => {
   if (!transaction) {
     return null;
   }
 
   // Determine transaction type - support both decoded and raw formats
-  const txType = transaction.syscoin?.txtype || transaction.tokenType;
+  const txType = transaction.tokenType;
   const normalizedType = normalizeSyscoinTransactionType(txType);
 
   // Modern format with vin/vout containing assetInfo (or raw transaction)
@@ -126,9 +136,27 @@ export const getSyscoinIntentAmount = (
   const vout = toArray(transaction.vout);
   const vin = toArray(transaction.vin);
 
+  // Build decimals map from tokenTransfers if present
+  const decimalsByGuid = new Map<string, number>();
+  const symbolByGuid = new Map<string, string>();
+  const transfers = Array.isArray(transaction.tokenTransfers)
+    ? transaction.tokenTransfers
+    : [];
+  for (const t of transfers) {
+    const guid = t?.token || t?.assetGuid;
+    const d = t?.decimals;
+    const s = t?.symbol;
+    if (guid && typeof d === 'number') {
+      decimalsByGuid.set(guid, d);
+    }
+    if (guid && typeof s === 'string' && s) {
+      symbolByGuid.set(guid, s);
+    }
+  }
+
   // SYSCOIN_BURN_TO_ALLOCATION: SYS amount from OP_RETURN (burning SYS to get SYSX)
   if (normalizedType === 'syscoinburntoallocation') {
-    const opReturn = vout.find((v: any) =>
+    const opReturn = vout.find((v: ITransactionVout) =>
       v.addresses?.[0]?.startsWith('OP_RETURN')
     );
 
@@ -136,7 +164,8 @@ export const getSyscoinIntentAmount = (
       const formatted = formatSyscoinValue(opReturn.value.toString());
       return {
         amount: parseFloat(formatted),
-        assetGuid: '123456', // SYSX guid - the asset being minted
+        decimals: 8,
+        symbol: 'SYSX',
       };
     }
     return null;
@@ -147,14 +176,17 @@ export const getSyscoinIntentAmount = (
     normalizedType === 'assetallocationburntoethereum' ||
     normalizedType === 'assetallocationburntosyscoin'
   ) {
-    const opReturn = vout.find((v: any) =>
+    const opReturn = vout.find((v: ITransactionVout) =>
       v.addresses?.[0]?.startsWith('OP_RETURN')
     );
 
     if (opReturn?.assetInfo) {
+      const guid = opReturn.assetInfo.assetGuid;
+      const dec = decimalsByGuid.get(guid);
       return {
-        amount: parseAssetValue(opReturn.assetInfo),
-        assetGuid: opReturn.assetInfo.assetGuid,
+        amount: parseAssetValue(opReturn.assetInfo, dec),
+        decimals: dec,
+        symbol: symbolByGuid.get(guid),
       };
     }
     return null;
@@ -164,21 +196,23 @@ export const getSyscoinIntentAmount = (
   if (normalizedType === 'assetallocationmint') {
     // Calculate outputs per asset
     const outputAssets = new Map<string, number>();
-    vout.forEach((v: any) => {
+    vout.forEach((v: ITransactionVout) => {
       if (v.assetInfo) {
         const guid = v.assetInfo.assetGuid;
         const current = outputAssets.get(guid) || 0;
-        outputAssets.set(guid, current + parseAssetValue(v.assetInfo));
+        const dec = decimalsByGuid.get(guid);
+        outputAssets.set(guid, current + parseAssetValue(v.assetInfo, dec));
       }
     });
 
     // Calculate inputs per asset
     const inputAssets = new Map<string, number>();
-    vin.forEach((v: any) => {
+    vin.forEach((v: ITransactionVin) => {
       if (v.assetInfo) {
         const guid = v.assetInfo.assetGuid;
         const current = inputAssets.get(guid) || 0;
-        inputAssets.set(guid, current + parseAssetValue(v.assetInfo));
+        const dec = decimalsByGuid.get(guid);
+        inputAssets.set(guid, current + parseAssetValue(v.assetInfo, dec));
       }
     });
 
@@ -186,9 +220,11 @@ export const getSyscoinIntentAmount = (
     for (const [guid, outputAmount] of outputAssets.entries()) {
       const inputAmount = inputAssets.get(guid) || 0;
       if (outputAmount > inputAmount) {
+        // Net amount already in decimal units; carry decimals if known
         return {
           amount: outputAmount - inputAmount,
-          assetGuid: guid,
+          decimals: decimalsByGuid.get(guid),
+          symbol: symbolByGuid.get(guid),
         };
       }
     }
@@ -197,13 +233,15 @@ export const getSyscoinIntentAmount = (
   }
 
   // ALLOCATION_SEND and others: First asset output value
-  const firstAsset = vout.find((v: any) => v && (v.assetInfo || v.assetinfo));
+  const firstAsset = vout.find((v: ITransactionVout) => v && v.assetInfo);
 
-  if (firstAsset?.assetInfo || firstAsset?.assetinfo) {
-    const info = firstAsset.assetInfo || firstAsset.assetinfo;
+  if (firstAsset?.assetInfo) {
+    const info = firstAsset.assetInfo;
+    const dec = decimalsByGuid.get(info.assetGuid);
     return {
-      amount: parseAssetValue(info),
-      assetGuid: info.assetGuid,
+      amount: parseAssetValue(info, dec),
+      decimals: dec,
+      symbol: symbolByGuid.get(info.assetGuid),
     };
   }
 

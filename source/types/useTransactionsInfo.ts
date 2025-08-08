@@ -1,5 +1,13 @@
-type TransactionVout = {
+export type IAssetInfo = {
+  assetGuid: string;
+  value?: number | string;
+  valueStr?: string;
+};
+
+export type ITransactionVout = {
   addresses: string[];
+  // Optional enriched fields from Blockbook for SPT context
+  assetInfo?: IAssetInfo;
   hex: string;
   isAddress: boolean;
   isOwn?: boolean;
@@ -8,9 +16,12 @@ type TransactionVout = {
   value: string;
 };
 
-type TransactionVin = {
+export type ITransactionVin = {
   addresses: string[];
+  // Optional enriched fields from Blockbook for SPT context
+  assetInfo?: IAssetInfo;
   isAddress: boolean;
+  isOwn?: boolean;
   n: number;
   sequence: number;
   txid: string;
@@ -26,7 +37,6 @@ export interface ITransactionInfoUtxo {
   direction?: 'sent' | 'received';
   fees: string;
   hex: string;
-  isCanceled?: boolean;
   // SPT transaction type (e.g., 'SPTAssetAllocationBurnToSyscoin')
   tokenTransfers?: any[];
   tokenType?: string;
@@ -34,8 +44,8 @@ export interface ITransactionInfoUtxo {
   value: string;
   valueIn: string;
   version: number;
-  vin: TransactionVin[];
-  vout: TransactionVout[]; // Transaction direction relative to current account
+  vin: ITransactionVin[];
+  vout: ITransactionVout[]; // Transaction direction relative to current account
 }
 
 type valuePending = {
