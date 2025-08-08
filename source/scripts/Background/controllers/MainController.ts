@@ -4340,7 +4340,7 @@ class MainController {
         },
         {
           method: PaliEvents.accountsChanged,
-          params: null,
+          params: [activeAccountData.address],
         },
       ]);
     } else {
