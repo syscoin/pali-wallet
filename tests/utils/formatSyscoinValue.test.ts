@@ -53,6 +53,17 @@ describe('formatSyscoinValue', () => {
       expect(formatSyscoinValue(100000000.5)).toBe('1');
       expect(formatSyscoinValue(50000000.999)).toBe('0.5');
     });
+
+    it('should handle very large satoshis provided as Number (no scientific notation)', () => {
+      // 1.5e20 satoshis => 1.5e12 SYS
+      const input = 1.5e20;
+      expect(formatSyscoinValue(input, 8)).toBe('1500000000000');
+    });
+
+    it('should handle very large satoshis provided as scientific string', () => {
+      const input = '1.5e20';
+      expect(formatSyscoinValue(input, 8)).toBe('1500000000000');
+    });
   });
 
   describe('toSatoshis', () => {
@@ -140,6 +151,17 @@ describe('formatSyscoinValue', () => {
       expect(formatGweiValue(null as any)).toBe('0');
       expect(formatGweiValue(undefined as any)).toBe('0');
       expect(formatGweiValue('invalid')).toBe('0');
+    });
+
+    it('should handle very large wei provided as Number (no scientific notation)', () => {
+      // 1.23e20 wei => 1.23e11 Gwei
+      const input = 1.23e20;
+      expect(formatGweiValue(input)).toBe('123000000000');
+    });
+
+    it('should handle very large wei provided as scientific string', () => {
+      const input = '1.23e20';
+      expect(formatGweiValue(input)).toBe('123000000000');
     });
   });
 });

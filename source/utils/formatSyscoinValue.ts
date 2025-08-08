@@ -1,6 +1,11 @@
 import { BigNumber } from '@ethersproject/bignumber';
 import { formatUnits } from '@ethersproject/units';
 
+import {
+  numberToIntegerString,
+  scientificToIntegerString,
+} from './bigNumberString';
+
 /**
  * Format Syscoin/UTXO values from satoshis (8 decimals) to display format
  * Handles precision correctly without using direct division
@@ -23,12 +28,18 @@ export const formatSyscoinValue = (
       if (value.startsWith('0x')) {
         bnValue = BigNumber.from(value);
       } else {
-        // Decimal string
-        bnValue = BigNumber.from(value);
+        // Handle scientific notation in decimal strings
+        if (value.includes('e') || value.includes('E')) {
+          const integerStr = scientificToIntegerString(value);
+          bnValue = BigNumber.from(integerStr);
+        } else {
+          bnValue = BigNumber.from(value);
+        }
       }
     } else if (typeof value === 'number') {
-      // Convert number to string first to avoid precision loss
-      bnValue = BigNumber.from(Math.floor(value).toString());
+      // Convert number to non-scientific integer string first to avoid precision loss
+      const integerStr = numberToIntegerString(value);
+      bnValue = BigNumber.from(integerStr);
     } else {
       // Fallback
       return '0';
@@ -108,10 +119,16 @@ export const formatGweiValue = (value: string | number | BigNumber): string => {
       if (value === 'invalid' || value === '') {
         return '0';
       }
-      bnValue = BigNumber.from(value);
+      if (value.includes('e') || value.includes('E')) {
+        const integerStr = scientificToIntegerString(value);
+        bnValue = BigNumber.from(integerStr);
+      } else {
+        bnValue = BigNumber.from(value);
+      }
     } else if (typeof value === 'number') {
-      // Convert number to string first to avoid precision loss
-      bnValue = BigNumber.from(Math.floor(value).toString());
+      // Convert number to non-scientific integer string first to avoid precision loss
+      const integerStr = numberToIntegerString(value);
+      bnValue = BigNumber.from(integerStr);
     } else {
       return '0';
     }

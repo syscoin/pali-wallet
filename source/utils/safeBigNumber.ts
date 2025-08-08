@@ -1,5 +1,10 @@
 import { BigNumber } from '@ethersproject/bignumber';
 
+import {
+  numberToIntegerString,
+  scientificToIntegerString,
+} from './bigNumberString';
+
 /**
  * Safely convert a value to BigNumber with validation
  *
@@ -67,19 +72,10 @@ export const safeBigNumber = (
         throw new Error(`Invalid number format: ${trimmed}`);
       }
 
-      // Handle scientific notation by converting to regular number string
+      // Handle scientific notation by converting to plain integer string
       if (trimmed.includes('e') || trimmed.includes('E')) {
-        const num = Number(trimmed);
-        if (!isFinite(num)) {
-          throw new Error(`Invalid scientific notation: ${trimmed}`);
-        }
-        // Convert to string, but check if it's a decimal
-        const converted = num.toString();
-        if (converted.includes('.')) {
-          // Truncate it since BigNumber doesn't support decimals
-          return BigNumber.from(Math.trunc(num).toString());
-        }
-        return BigNumber.from(converted);
+        const integerStr = scientificToIntegerString(trimmed);
+        return BigNumber.from(integerStr);
       }
 
       // Handle decimal values - BigNumber doesn't support decimals
@@ -112,21 +108,9 @@ export const safeBigNumber = (
 
     // Handle numbers
     if (typeof value === 'number') {
-      // Check for special values
-      if (!isFinite(value)) {
-        throw new Error(`Invalid number: ${value} (not finite)`);
-      }
-
-      // Check for decimals - BigNumber doesn't handle them well
-      if (value % 1 !== 0) {
-        // Convert to string first to preserve precision
-        // Use Math.trunc to truncate towards zero (not floor which goes towards -Infinity)
-        return BigNumber.from(Math.trunc(value).toString());
-      }
-
-      // Convert to string to avoid overflow errors for large numbers
-      // JavaScript numbers outside safe integer range need string conversion
-      return BigNumber.from(value.toString());
+      // Convert to non-scientific integer string, truncating decimals
+      const integerStr = numberToIntegerString(value);
+      return BigNumber.from(integerStr);
     }
 
     // Handle objects with hex property
@@ -152,11 +136,8 @@ export const safeBigNumber = (
       return BigNumber.from(fallback);
     }
 
-    throw new Error(
-      `${context ? `${context}: ` : ''}Failed to convert to BigNumber: ${
-        error.message
-      }`
-    );
+    // Preserve the original error message to keep behavior aligned with existing tests
+    throw new Error(`${context ? `${context}: ` : ''}${error.message}`);
   }
 };
 
