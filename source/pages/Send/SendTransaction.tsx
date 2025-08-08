@@ -547,9 +547,13 @@ export const SendTransaction = () => {
             symbol: string;
           };
 
+          // Preserve zero-decimal tokens; fallback to 18 only if missing/invalid
+          const parsed = Number(tokenInfo.decimals);
+          const safeDecimals =
+            Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
           setApprovedTokenInfos({
             tokenSymbol: tokenInfo.symbol,
-            tokenDecimals: Number(tokenInfo.decimals) || 18, // Ensure it's a number
+            tokenDecimals: safeDecimals,
           });
         } else if (
           approvalType === 'erc721-single' ||

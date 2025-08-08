@@ -154,6 +154,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
             }-${tokenId}`
           : `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`;
 
+        // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
+        const parsed = Number.parseInt(token.decimals);
+        const safeDecimals =
+          Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
+
         return {
           id: uniqueId,
           symbol: cleanTokenSymbol(token.symbol || (isNft ? 'NFT' : 'Unknown')),
@@ -161,13 +166,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
           contractAddress: token.contractAddress,
           balance: isNft
             ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
-            : parseFloat(
-                formatUnits(
-                  token.balance || '0',
-                  parseInt(token.decimals) || 18
-                )
-              ),
-          decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
+            : parseFloat(formatUnits(token.balance || '0', safeDecimals)),
+          decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
           tokenStandard: tokenType,
           ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
         };

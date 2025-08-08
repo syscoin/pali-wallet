@@ -220,13 +220,17 @@ const EvmTransactionItem = React.memo(
         const logo = tokenMeta?.logo || getTokenLogo(symbol);
         if (logo && symbol) {
           tokenIcon = (
-            <TokenIcon
-              logo={logo}
-              assetGuid={tokenMeta.contractAddress}
-              symbol={symbol}
-              size={14}
-              className="shrink-0"
-            />
+            <Tooltip content={tokenMeta?.name || symbol}>
+              <span className="inline-flex items-center justify-center">
+                <TokenIcon
+                  logo={logo}
+                  assetGuid={tokenMeta.contractAddress}
+                  symbol={symbol}
+                  size={14}
+                  className="shrink-0 hover:scale-110 hover:shadow-md transition-transform duration-200"
+                />
+              </span>
+            </Tooltip>
           );
         }
       }

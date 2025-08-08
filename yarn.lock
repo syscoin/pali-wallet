@@ -3003,10 +3003,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.520":
-  version "1.0.520"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.520.tgz#2b32d24c68e3aa8b744640929e9b430e6a224c08"
-  integrity sha512-GODLtAS/YRRE4IJhNjYmnv4MWNRqtr2CrmGslcRhajprZgpI9teUkBwWmbrKy+02T16404ra4CponHmfzcgeGA==
+"@sidhujag/sysweb3-keyring@^1.0.521":
+  version "1.0.521"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.521.tgz#fc9dea313e7a76901701e348858707d950fd56fa"
+  integrity sha512-A58A83cCWDgGbjpnqtLCCYSsjV8gdNj/yp+D+B/DFEj1bSwN5M3FXeMVhrT8qFKDXRBgXvoWFQN6N7pciAtM4g==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -3030,7 +3030,7 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.27"
     "@sidhujag/sysweb3-network" "^1.0.105"
-    "@sidhujag/sysweb3-utils" "^1.1.253"
+    "@sidhujag/sysweb3-utils" "^1.1.254"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -3057,10 +3057,10 @@
     "@ethersproject/bytes" "^5.8.0"
     eth-chains "^1.0.0"
 
-"@sidhujag/sysweb3-utils@^1.1.253":
-  version "1.1.253"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.253.tgz#57c8c56e323e985fdb63405f07ad097ab229d8e1"
-  integrity sha512-LcFOoSMqRGYbzWRJEcW+3t6EzM5/pj+cWkclk0RqyIlR2og9ngoDB2XbMgJbvIRnfLKblL/HevRVFMrh+Mey7A==
+"@sidhujag/sysweb3-utils@^1.1.254":
+  version "1.1.254"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.254.tgz#9212ec6590e3e68247527aaec3a2b7ca52370a98"
+  integrity sha512-0yAz1mMHe9QDPfxKrP42SJsdSN59VXl7DDI5DlMuQL/azlPDAcTVnlaxjxakZGPHAoqUsTGMwGPGsKICEFw25w==
   dependencies:
     "@ethersproject/address" "^5.8.0"
     "@ethersproject/contracts" "^5.8.0"
@@ -13236,10 +13236,10 @@ svgo@^3.2.0:
     csso "^5.0.5"
     picocolors "^1.0.0"
 
-syscoinjs-lib@^1.0.252:
-  version "1.0.252"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.252.tgz#c08e9f1006b414ed8d25c47b305c44bbc099e990"
-  integrity sha512-9KvyAeqAbHLq3Sab59hf74zPHfPevLdaSlP7IvIHp+El0cml0+0d8NYETeilTOdG7126dHXByexRvTeB99baOA==
+syscoinjs-lib@^1.0.253:
+  version "1.0.253"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.253.tgz#8e358211695d4469623fdbe3a83d8e6f8dc8f91a"
+  integrity sha512-cTZL/sAr6PjMjvkdNXx/edYhaLln4YBd9df3AmeZcj0zOD1dn9BvvVg4QwHtHMcC2n6WE7EKxXdpnKMsxHu4vA==
   dependencies:
     "@ethersproject/abi" "^5.8.0"
     "@ethersproject/keccak256" "^5.8.0"

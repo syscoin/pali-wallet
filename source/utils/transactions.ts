@@ -71,7 +71,11 @@ export const getTransactionDisplayInfo = async (
 
           if (token) {
             const isNft = token.isNft || false;
-            const decimals = isNft ? 0 : Number(token.decimals ?? 18);
+            const rawDecimals = isNft ? 0 : Number(token.decimals ?? 18);
+            const decimals =
+              Number.isFinite(rawDecimals) && rawDecimals >= 0
+                ? rawDecimals
+                : 18;
 
             if (isNft) {
               // For NFTs: if ERC-721, displayValue should be 1 and tokenId is the ID
@@ -122,7 +126,13 @@ export const getTransactionDisplayInfo = async (
 
             if (tokenDetails) {
               const isNft = tokenDetails.isNft || false;
-              const decimals = isNft ? 0 : Number(tokenDetails.decimals ?? 18);
+              const rawDecimals = isNft
+                ? 0
+                : Number(tokenDetails.decimals ?? 18);
+              const decimals =
+                Number.isFinite(rawDecimals) && rawDecimals >= 0
+                  ? rawDecimals
+                  : 18;
 
               if (isNft) {
                 // For NFTs: if ERC-721, count is 1; if ERC-1155, use provided amount
