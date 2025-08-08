@@ -851,7 +851,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             symbol: cleanTokenSymbol(metadata.tokenSymbol).toUpperCase(),
             name: cleanTokenSymbol(metadata.tokenSymbol), // Use symbol as name for basic info
             contractAddress,
-            decimals: metadata.decimals || 18,
+            decimals: Number(metadata.decimals ?? 18),
             balance: 0, // No balance for basic details
             chainId: store.getState().vault.activeNetwork.chainId,
             tokenStandard: contractType as any,
@@ -945,7 +945,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         w3Provider
       );
       const balance = parseFloat(
-        formatUnits(metadata.balance || '0', metadata.decimals || 18)
+        formatUnits(metadata.balance || '0', Number(metadata.decimals ?? 18))
       );
 
       return {

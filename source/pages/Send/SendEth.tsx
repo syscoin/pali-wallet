@@ -1144,11 +1144,11 @@ export const SendEth = () => {
                           try {
                             const tokenBalanceBN = parseUnits(
                               String(verifiedERC20Balance),
-                              selectedAsset.decimals || 18
+                              Number(selectedAsset.decimals ?? 18)
                             );
                             const tokenValueBN = parseUnits(
                               String(value),
-                              selectedAsset.decimals || 18
+                              Number(selectedAsset.decimals ?? 18)
                             );
 
                             if (tokenValueBN.gt(tokenBalanceBN)) {

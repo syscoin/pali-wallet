@@ -214,23 +214,14 @@ export const SendTransaction = () => {
         const abi = await getErc20Abi();
         const erc20AbiInstance = new Interface(abi);
 
-        // Parse the custom allowance amount
+        // Parse the custom allowance amount consistently as human-readable token units
         let parsedAmount;
         try {
-          // Check if the value contains a decimal point
           const customValue = String(
             customApprovedAllowanceAmount.customAllowanceValue
           );
-
-          if (customValue.includes('.')) {
-            // For decimal values, use parseUnits to convert to wei
-            // Assuming the token has 18 decimals (standard for most ERC-20 tokens)
-            const decimals = approvedTokenInfos?.tokenDecimals || 18;
-            parsedAmount = parseUnits(customValue, decimals);
-          } else {
-            // For integer values, use BigNumber.from directly
-            parsedAmount = BigNumber.from(customValue);
-          }
+          const decimals = approvedTokenInfos?.tokenDecimals ?? 18;
+          parsedAmount = parseUnits(customValue, decimals);
         } catch (parseError) {
           console.error('Error parsing amount:', parseError);
           alert.error('Invalid amount format. Please enter a valid number.');
