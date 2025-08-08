@@ -79,14 +79,7 @@ class NotificationManager {
         value = displayInfo.displayValue as string;
       } else {
         // For regular tokens and native currency
-        if (typeof displayInfo.displayValue === 'number') {
-          value =
-            displayInfo.displayValue > 0
-              ? displayInfo.displayValue.toFixed(4)
-              : undefined;
-        } else {
-          value = displayInfo.displayValue;
-        }
+        value = displayInfo.formattedValue;
       }
 
       const notification: ITransactionNotification = {

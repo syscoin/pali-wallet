@@ -30,6 +30,7 @@ export const getTransactionDisplayInfo = async (
   actualRecipient: string;
   displaySymbol: string;
   displayValue: number | string;
+  formattedValue: string;
   hasUnknownDecimals?: boolean;
   isErc20Transfer: boolean; // Note: This includes all token transfers (ERC20/721/1155), not just ERC20
   isNft: boolean;
@@ -78,6 +79,7 @@ export const getTransactionDisplayInfo = async (
               const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
               return {
                 displayValue: nftCount,
+                formattedValue: String(nftCount),
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
@@ -86,8 +88,10 @@ export const getTransactionDisplayInfo = async (
               };
             } else {
               // Regular ERC-20 token
+              const numeric = parseFloat(formatUnits(tokenValue, decimals));
               return {
-                displayValue: parseFloat(formatUnits(tokenValue, decimals)),
+                displayValue: numeric,
+                formattedValue: formatFullPrecisionBalance(numeric, 4),
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
@@ -125,6 +129,7 @@ export const getTransactionDisplayInfo = async (
                 const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
                 return {
                   displayValue: nftCount,
+                  formattedValue: String(nftCount),
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
@@ -133,8 +138,10 @@ export const getTransactionDisplayInfo = async (
                 };
               } else {
                 // Regular ERC-20 token
+                const numeric = parseFloat(formatUnits(tokenValue, decimals));
                 return {
-                  displayValue: parseFloat(formatUnits(tokenValue, decimals)),
+                  displayValue: numeric,
+                  formattedValue: formatFullPrecisionBalance(numeric, 4),
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
@@ -157,12 +164,14 @@ export const getTransactionDisplayInfo = async (
       const possibleFormattedValue = parseFloat(formatUnits(tokenValue, 18));
       const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
 
+      const unknownStr = isLikelyWholeNumber
+        ? tokenValue.toString() // Likely an NFT or low decimal token
+        : possibleFormattedValue < 0.000001
+        ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
+        : `~${possibleFormattedValue.toFixed(6)}`; // Regular amount with ~ to indicate uncertainty
       return {
-        displayValue: isLikelyWholeNumber
-          ? tokenValue.toString() // Likely an NFT or low decimal token
-          : possibleFormattedValue < 0.000001
-          ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
-          : `~${possibleFormattedValue.toFixed(6)}`, // Regular amount with ~ to indicate uncertainty
+        displayValue: unknownStr,
+        formattedValue: unknownStr,
         displaySymbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
           -4
         )}`,
@@ -205,6 +214,7 @@ export const getTransactionDisplayInfo = async (
 
   return {
     displayValue: numericValue,
+    formattedValue: formatFullPrecisionBalance(numericValue, 4),
     displaySymbol: currency.toUpperCase(),
     isErc20Transfer: false,
     actualRecipient: tx.to || '', // For native transfers, tx.to is the actual recipient

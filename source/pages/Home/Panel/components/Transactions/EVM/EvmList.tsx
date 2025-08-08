@@ -95,12 +95,14 @@ const EvmTransactionItem = React.memo(
       actualRecipient: string;
       displaySymbol: string;
       displayValue: number | string;
+      formattedValue: string;
       hasUnknownDecimals?: boolean;
       isErc20Transfer: boolean;
       isNft: boolean;
       tokenId?: string;
     }>({
       displayValue: 0,
+      formattedValue: '0',
       displaySymbol: currency.toUpperCase(),
       isErc20Transfer: false,
       actualRecipient: '',
@@ -161,6 +163,7 @@ const EvmTransactionItem = React.memo(
     }, [cacheKey, currency, tx]);
 
     const finalTxValue = displayInfo.displayValue;
+    const formattedValue = displayInfo.formattedValue;
     const finalSymbol = displayInfo.displaySymbol;
     const isErc20Tx = displayInfo.isErc20Transfer;
     // Check if this is a native token transfer (no contract interaction)
@@ -208,11 +211,7 @@ const EvmTransactionItem = React.memo(
               ? ''
               : `${Number(finalTxValue)} `
           }${finalSymbol} #${shortTokenId}`
-        : `${
-            isNaN(Number(finalTxValue))
-              ? '0.0000'
-              : Number(finalTxValue).toFixed(4)
-          } ${finalSymbol}`;
+        : `${formattedValue} ${finalSymbol}`;
 
       // Resolve token icon for imported ERC-20s (no fetches; skip if absent)
       let tokenIcon: React.ReactNode = null;
