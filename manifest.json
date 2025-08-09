@@ -24,7 +24,6 @@
     "http://*/*",
     "https://*/*",
     "*://connect.trezor.io/9/*",
-    "*://*.eth/",
     "http://localhost:8545/"
   ],
   "content_security_policy": {
