@@ -31,8 +31,11 @@ export const getRpcPromiseCallback =
  * @param chainId - The chain ID to validate.
  * @returns Whether the given chain ID is valid.
  */
-export const isValidChainId = (chainId: unknown): chainId is string =>
-  Boolean(chainId) && typeof chainId === 'string' && chainId.startsWith('0x');
+export const isValidChainId = (chainId: unknown): chainId is string => {
+  if (typeof chainId !== 'string') return false;
+  // Require at least one hex digit after 0x
+  return /^0x[0-9a-fA-F]+$/.test(chainId);
+};
 
 /**
  * Checks whether the given network version is valid, meaning if it is non-empty
@@ -48,8 +51,8 @@ export const isValidNetworkVersion = (
   if (typeof networkVersion === 'number') {
     return Number.isInteger(networkVersion) && networkVersion >= 0;
   }
-  // Accept any string (including '0') for EVM-style net_version
-  return typeof networkVersion === 'string';
+  // Accept non-empty strings (including '0') for EVM-style net_version
+  return typeof networkVersion === 'string' && networkVersion.length > 0;
 };
 
 export const NOOP = () => undefined;

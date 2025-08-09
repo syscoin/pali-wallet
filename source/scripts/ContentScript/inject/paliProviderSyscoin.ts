@@ -112,57 +112,68 @@ export class PaliInpageProviderSys extends BaseProvider {
     window.addEventListener(
       'paliNotification',
       (event: any) => {
-        const { data } = JSON.parse(event.detail);
-
-        const { method, params } = data;
-        this.emit('walletUpdate');
-
-        switch (method) {
-          case 'pali_xpubChanged':
-            this._handleConnectedXpub(params);
-            break;
-          case 'pali_unlockStateChanged':
-            this._handleUnlockStateChanged(params);
-            break;
-          case 'pali_blockExplorerChanged':
-            this._handleActiveBlockExplorer(params);
-            break;
-          case 'pali_isBitcoinBased':
-            this._handleIsBitcoinBased(params);
-            break;
-          case EMITTED_NOTIFICATIONS.includes(method):
-            break;
-          // Handle accountsChanged for UTXO addresses so dapps can react to account updates
-          case 'pali_accountsChanged':
-            // Ensure params is always an array
-            const accountsParams = Array.isArray(params)
-              ? params
-              : params
-              ? [params]
-              : [];
-            this._handleAccountsChanged(accountsParams);
-            break;
-          case 'pali_chainChanged':
-            this._handleChainChanged(params);
-            break;
-          case 'pali_removeProperty':
-            break;
-          case 'pali_addProperty':
-            break;
-          default:
+        try {
+          const parsed = JSON.parse(event.detail);
+          const data = parsed?.data || parsed;
+          const { method, params } = data || {};
+          if (!method) {
             console.warn(
-              '[PaliSysProvider] Unknown notification method:',
-              method,
-              'params:',
-              params
+              '[PaliSysProvider] Received notification without method'
             );
-            console.warn(
-              '[PaliSysProvider] Ignoring unknown notification - this is likely from a different provider or network type'
-            );
-            // Don't disconnect for unknown notifications - just ignore them
-            // This prevents disconnection when switching networks or receiving notifications
-            // intended for other providers (like Ethereum provider)
-            break;
+            return;
+          }
+
+          this.emit('walletUpdate');
+
+          switch (method) {
+            case 'pali_xpubChanged':
+              this._handleConnectedXpub(params);
+              break;
+            case 'pali_unlockStateChanged':
+              this._handleUnlockStateChanged(params);
+              break;
+            case 'pali_blockExplorerChanged':
+              this._handleActiveBlockExplorer(params);
+              break;
+            case 'pali_isBitcoinBased':
+              this._handleIsBitcoinBased(params);
+              break;
+            case EMITTED_NOTIFICATIONS.includes(method):
+              break;
+            // Handle accountsChanged for UTXO addresses so dapps can react to account updates
+            case 'pali_accountsChanged':
+              // Ensure params is always an array
+              const accountsParams = Array.isArray(params)
+                ? params
+                : params
+                ? [params]
+                : [];
+              this._handleAccountsChanged(accountsParams);
+              break;
+            case 'pali_chainChanged':
+              this._handleChainChanged(params);
+              break;
+            case 'pali_removeProperty':
+              break;
+            case 'pali_addProperty':
+              break;
+            default:
+              console.warn(
+                '[PaliSysProvider] Unknown notification method:',
+                method,
+                'params:',
+                params
+              );
+              console.warn(
+                '[PaliSysProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+              );
+              // Don't disconnect for unknown notifications - just ignore them
+              // This prevents disconnection when switching networks or receiving notifications
+              // intended for other providers (like Ethereum provider)
+              break;
+          }
+        } catch (error) {
+          console.error('[PaliSysProvider] Error processing event:', error);
         }
       },
       { passive: true }

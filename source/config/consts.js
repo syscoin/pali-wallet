@@ -18,7 +18,6 @@ const MV2_OPTIONS = {
     'tabs',
     'storage',
     'activeTab',
-    '*://*.eth/',
     'clipboardWrite',
     'unlimitedStorage',
     'http://localhost:8545/',
@@ -96,7 +95,6 @@ const MV3_OPTIONS = {
     'http://*/*',
     'https://*/*',
     '*://connect.trezor.io/9/*',
-    '*://*.eth/',
     'http://localhost:8545/',
   ],
   content_security_policy: {
