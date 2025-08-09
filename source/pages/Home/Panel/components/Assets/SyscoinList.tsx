@@ -32,6 +32,9 @@ export const SyscoinAssetsList = () => {
     networkStatus,
     loadingStates: { isLoadingAssets },
   } = useSelector((state: RootState) => state.vaultGlobal);
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
   const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
@@ -64,6 +67,27 @@ export const SyscoinAssetsList = () => {
     () => assets?.syscoin?.filter((asset) => asset.chainId === chainId) || [],
     [assets?.syscoin, chainId]
   );
+
+  // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
+  const pendingAssetGuids = useMemo(() => {
+    const txs =
+      accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
+        chainId
+      ] || [];
+    const set = new Set<string>();
+    for (const tx of txs) {
+      if (!tx || (tx.confirmations || 0) > 0) continue;
+      const transfers = Array.isArray((tx as any).tokenTransfers)
+        ? (tx as any).tokenTransfers
+        : [];
+      for (const tr of transfers) {
+        if (tr && tr.token !== undefined && tr.token !== null) {
+          set.add(String(tr.token));
+        }
+      }
+    }
+    return set;
+  }, [accountTransactions, activeAccount, chainId]);
 
   // Memoize delete handlers
   const handleDeleteClickMemo = useCallback((asset: any) => {
@@ -154,9 +178,10 @@ export const SyscoinAssetsList = () => {
                       {truncate(asset.symbol, 12).toUpperCase()}
                     </span>
 
-                    {/* Show pending indicator if there are unconfirmed transfers */}
-                    {/* unconfirmedBalance is -1 when there are pending transactions */}
-                    {asset.unconfirmedBalance !== 0 && (
+                    {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
+                    {((typeof asset.unconfirmedBalance === 'number' &&
+                      asset.unconfirmedBalance !== 0) ||
+                      pendingAssetGuids.has(String(asset.assetGuid))) && (
                       <span
                         className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
                         title={t('send.pending')}

@@ -421,6 +421,7 @@ const SysAssetsControler = (): ISysAssetsController => {
           return {
             assetGuid: asset.assetGuid!,
             balance: 0,
+            unconfirmedBalance: 0,
             decimals: asset.decimals,
             name: asset.name || asset.symbol,
             path: '',
