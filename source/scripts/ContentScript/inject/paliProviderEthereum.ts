@@ -562,8 +562,12 @@ export class PaliInpageProviderEth extends BaseProvider {
       return;
     }
 
-    if (this.isMetaMask && this.networkVersion !== networkVersion) {
-      this.networkVersion = networkVersion || null;
+    if (this.isMetaMask && this.networkVersion !== (networkVersion as any)) {
+      // Coerce to string to maintain web3 expectations
+      this.networkVersion =
+        networkVersion === undefined || networkVersion === null
+          ? null
+          : String(networkVersion);
     }
 
     if (chainId !== this.chainId) {
