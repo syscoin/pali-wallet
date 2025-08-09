@@ -156,7 +156,7 @@ export const SyscoinAssetsList = () => {
 
                     {/* Show pending indicator if there are unconfirmed transfers */}
                     {/* unconfirmedBalance is -1 when there are pending transactions */}
-                    {asset.unconfirmedBalance === -1 && (
+                    {asset.unconfirmedBalance !== 0 && (
                       <span
                         className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
                         title={t('send.pending')}

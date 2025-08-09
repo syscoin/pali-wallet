@@ -143,13 +143,15 @@ const SysAssetsControler = (): ISysAssetsController => {
             formatUnits(String(token.balance || 0), decimals)
           );
 
-          // Skip unconfirmed balance for SPT tokens as it's unreliable
-          // The blockbook API seems to report it inconsistently
-          // We'll just track that there are unconfirmed transfers
-          if (token.unconfirmedTransfers && token.unconfirmedTransfers > 0) {
-            // Mark that there are pending transactions but don't use the balance
-            totalUnconfirmedBalance = -1; // Use -1 as a flag for pending tx
-          }
+          // Add unconfirmed delta (can be positive or negative)
+          // Blockbook now provides per-address SPT unconfirmed deltas
+          const unconfirmedRaw =
+            token.unconfirmedBalance !== undefined
+              ? token.unconfirmedBalance
+              : 0;
+          totalUnconfirmedBalance += parseFloat(
+            formatUnits(String(unconfirmedRaw || 0), decimals)
+          );
 
           // Sum up totals (using BigInt to avoid precision issues)
           totalSent += BigInt(token.totalSent || 0);
@@ -157,9 +159,8 @@ const SysAssetsControler = (): ISysAssetsController => {
           totalTransfers += token.transfers || 0;
         });
 
-        // Always use confirmed balance for SPT tokens
-        // unconfirmedBalance is -1 if there are pending transactions (just as indicator)
-        const displayBalance = totalConfirmedBalance;
+        // Real-time balance is confirmed + unconfirmed delta
+        const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
 
         return {
           ...firstToken,
@@ -368,13 +369,12 @@ const SysAssetsControler = (): ISysAssetsController => {
           formatUnits(String(token.balance || 0), decimals)
         );
 
-        // Skip unconfirmed balance for SPT tokens as it's unreliable
-        // The blockbook API seems to report it inconsistently
-        // We'll just track that there are unconfirmed transfers
-        if (token.unconfirmedTransfers && token.unconfirmedTransfers > 0) {
-          // Mark that there are pending transactions but don't use the balance
-          totalUnconfirmedBalance = -1; // Use -1 as a flag for pending tx
-        }
+        // Add unconfirmed delta (positive for receiver, negative for sender)
+        const unconfirmedRaw =
+          token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
+        totalUnconfirmedBalance += parseFloat(
+          formatUnits(String(unconfirmedRaw || 0), decimals)
+        );
 
         // Sum up totals (using BigInt to avoid precision issues)
         totalSent += BigInt(token.totalSent || 0);
@@ -382,9 +382,8 @@ const SysAssetsControler = (): ISysAssetsController => {
         totalTransfers += token.transfers || 0;
       });
 
-      // Always use confirmed balance for SPT tokens
-      // unconfirmedBalance is -1 if there are pending transactions (just as indicator)
-      const displayBalance = totalConfirmedBalance;
+      // Real-time balance is confirmed + unconfirmed delta
+      const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
 
       aggregatedTokensMap.set(assetGuid, {
         ...firstToken,
