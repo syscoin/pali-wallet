@@ -498,8 +498,11 @@ export const networkCompatibilityMiddleware: Middleware = async (
 export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   const { originalRequest } = context;
 
-  // Only handle changeUTXOEVM methods
-  if (!originalRequest.method.includes('changeUTXOEVM')) {
+  // Only handle changeUTXOEVM and sys_switchChain methods
+  if (
+    !originalRequest.method.includes('changeUTXOEVM') &&
+    originalRequest.method !== 'sys_switchChain'
+  ) {
     return next();
   }
 
@@ -509,9 +512,15 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   const { dapp } = getController();
 
   const params = originalRequest.params;
-  const chainId = params?.[0]?.chainId;
+  const rawChainId = params?.[0]?.chainId;
+  const chainId =
+    typeof rawChainId === 'string'
+      ? rawChainId.startsWith('0x')
+        ? parseInt(rawChainId, 16)
+        : Number(rawChainId)
+      : rawChainId;
 
-  if (!chainId) {
+  if (chainId === undefined || chainId === null) {
     throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
   }
 
@@ -520,27 +529,46 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
     (originalRequest.method?.toLowerCase() === 'eth_changeutxoevm' &&
       isBitcoinBased) ||
     (originalRequest.method?.toLowerCase() === 'sys_changeutxoevm' &&
-      !isBitcoinBased);
+      !isBitcoinBased) ||
+    // For sys_switchChain allow from any current type; target is always UTXO
+    originalRequest.method === 'sys_switchChain';
 
   const newChainValue =
     originalRequest.method?.toLowerCase() === 'sys_changeutxoevm'
       ? 'syscoin'
+      : originalRequest.method === 'sys_switchChain'
+      ? 'syscoin'
       : 'ethereum';
-  const targetNetwork = networks[newChainValue.toLowerCase()][chainId];
+  const targetNetwork =
+    networks[newChainValue.toLowerCase()]?.[Number(chainId)];
 
   if (!targetNetwork) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Network does not exist')
     );
   }
+  // Early exit: if sys_switchChain targeting the already-active UTXO chain, skip popup
+  if (
+    originalRequest.method === 'sys_switchChain' &&
+    isBitcoinBased &&
+    store.getState().vault.activeNetwork.chainId === Number(chainId)
+  ) {
+    return next();
+  }
+
   if (validatePrefixAndCurrentChain) {
+    const eventName =
+      originalRequest.method === 'sys_switchChain'
+        ? 'sys_switchChain'
+        : 'change_UTXOEVM';
+
     await requestCoordinator.coordinatePopupRequest(
       context,
       () =>
         popupPromise({
           host: originalRequest.host,
           route: MethodRoute.SwitchUtxoEvm,
-          eventName: 'change_UTXOEVM',
+          eventName,
           data: {
             newNetwork: targetNetwork,
             newChainValue: newChainValue,
@@ -566,9 +594,6 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
     // connectionMiddleware can handle reconnection if needed
   }
 
-  // Continue to the next middleware
-  // The connectionMiddleware will check if the method requires connection
-  // and handle reconnection if needed (especially after a network type switch)
   return next();
 };
 

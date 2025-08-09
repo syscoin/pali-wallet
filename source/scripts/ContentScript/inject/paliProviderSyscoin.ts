@@ -190,6 +190,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     isBitcoinBased?: boolean;
     networkVersion?: string;
   } = {}) {
+    // For Sys provider, accept numeric networkVersion including 0; chainId must be '0x' hex but allow '0x0'
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,

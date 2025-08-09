@@ -619,6 +619,11 @@ export class SysMethodHandler implements IMethodHandler {
       return null;
     }
 
+    // Handle sys_switchChain (UTXO -> UTXO) - processed by middleware opening popup
+    if (methodName === 'switchChain') {
+      return null;
+    }
+
     // Handle popup-based methods using registry configuration
     if (
       methodConfig.hasPopup &&

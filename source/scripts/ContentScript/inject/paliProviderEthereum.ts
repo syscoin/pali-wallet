@@ -553,6 +553,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     isBitcoinBased?: boolean;
     networkVersion?: string;
   } = {}) {
+    // Accept '0x0' and networkVersion 0 during transitions without emitting errors
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,

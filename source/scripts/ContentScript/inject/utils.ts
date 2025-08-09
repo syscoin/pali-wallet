@@ -43,8 +43,14 @@ export const isValidChainId = (chainId: unknown): chainId is string =>
  */
 export const isValidNetworkVersion = (
   networkVersion: unknown
-): networkVersion is number =>
-  Boolean(networkVersion) && typeof networkVersion === 'number';
+): networkVersion is number | string => {
+  // Accept non-negative numbers (including 0) for UTXO networks
+  if (typeof networkVersion === 'number') {
+    return Number.isInteger(networkVersion) && networkVersion >= 0;
+  }
+  // Accept any string (including '0') for EVM-style net_version
+  return typeof networkVersion === 'string';
+};
 
 export const NOOP = () => undefined;
 export const EMITTED_NOTIFICATIONS = Object.freeze([

@@ -274,6 +274,20 @@ export const METHOD_REGISTRY: MethodRegistry = {
     popupEventName: 'wallet_switchEthereumChain',
   },
 
+  sys_switchChain: {
+    name: 'sys_switchChain',
+    handlerType: MethodHandlerType.Sys,
+    requiresTabId: true,
+    requiresAuth: false, // Popup handles auth
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.UTXO,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: true,
+    popupRoute: MethodRoute.SwitchUtxoEvm,
+    popupEventName: 'sys_switchChain',
+  },
+
   wallet_getProviderState: {
     name: 'wallet_getProviderState',
     handlerType: MethodHandlerType.Wallet,
