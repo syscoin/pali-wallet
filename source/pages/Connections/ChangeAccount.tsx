@@ -134,25 +134,29 @@ const TokenIconStack = React.memo(
       <div className="flex items-center">
         <div className="flex">
           {visibleTokens.map((token, index) => (
-            <div
+            <Tooltip
               key={
                 token.id || token.contractAddress || token.assetGuid || index
               }
-              className="relative"
-              style={{
-                marginLeft: index > 0 ? '-8px' : '0',
-                zIndex: visibleTokens.length - index,
-              }}
+              content={token.name || token.symbol}
             >
-              <TokenIcon
-                logo={token.logo}
-                contractAddress={token.contractAddress}
-                assetGuid={token.assetGuid}
-                symbol={token.symbol}
-                size={16}
-                className="border border-bkg-3 rounded-full"
-              />
-            </div>
+              <div
+                className="relative hover:scale-110 hover:shadow-md transition-transform duration-200"
+                style={{
+                  marginLeft: index > 0 ? '-8px' : '0',
+                  zIndex: visibleTokens.length - index,
+                }}
+              >
+                <TokenIcon
+                  logo={token.logo}
+                  contractAddress={token.contractAddress}
+                  assetGuid={token.assetGuid}
+                  symbol={token.symbol}
+                  size={16}
+                  className="border border-bkg-3 rounded-full"
+                />
+              </div>
+            </Tooltip>
           ))}
         </div>
         {remainingCount > 0 && (

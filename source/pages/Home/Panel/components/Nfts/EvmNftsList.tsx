@@ -155,13 +155,17 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
           <div className="flex gap-3 items-center justify-start flex-1">
             {/* NFT Icon */}
             {collection.logo ? (
-              <TokenIcon
-                logo={collection.logo}
-                contractAddress={collection.contractAddress}
-                symbol={collection.symbol}
-                size={24}
-                className="hover:shadow-md hover:scale-110 transition-all duration-200"
-              />
+              <Tooltip content={collection.name || collection.symbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={collection.logo}
+                    contractAddress={collection.contractAddress}
+                    symbol={collection.symbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
             ) : (
               <div
                 className="w-6 h-6 rounded bg-gradient-to-br from-brand-royalblue to-brand-pink200 

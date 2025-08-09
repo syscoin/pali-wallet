@@ -122,13 +122,17 @@ export const SyscoinAssetsList = () => {
             <tr className="flex items-center justify-between font-poppins font-normal">
               <td className="flex items-center gap-3">
                 {/* Token Logo */}
-                <TokenIcon
-                  logo={asset.image || getTokenLogo(asset.symbol)}
-                  assetGuid={String(asset.assetGuid)}
-                  symbol={asset.symbol}
-                  size={24}
-                  className="hover:shadow-md hover:scale-110 transition-all duration-200"
-                />
+                <Tooltip content={asset.name || asset.symbol}>
+                  <span className="inline-flex items-center justify-center">
+                    <TokenIcon
+                      logo={asset.image || getTokenLogo(asset.symbol)}
+                      assetGuid={String(asset.assetGuid)}
+                      symbol={asset.symbol}
+                      size={24}
+                      className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                    />
+                  </span>
+                </Tooltip>
 
                 <div className="flex flex-col">
                   <div className="flex items-center gap-x-2">

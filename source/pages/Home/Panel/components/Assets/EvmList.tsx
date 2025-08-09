@@ -155,13 +155,17 @@ const DefaultEvmAssets = React.memo(
             className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
           >
             <div className="flex gap-3 items-center justify-start">
-              <TokenIcon
-                logo={token.logo}
-                contractAddress={token.contractAddress}
-                symbol={token.tokenSymbol}
-                size={24}
-                className="hover:shadow-md hover:scale-110 transition-all duration-200"
-              />
+              <Tooltip content={token.name || token.tokenSymbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={token.logo}
+                    contractAddress={token.contractAddress}
+                    symbol={token.tokenSymbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
 
               <p className="flex items-center gap-x-2">
                 <span className="text-brand-white">

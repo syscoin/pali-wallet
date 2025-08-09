@@ -165,13 +165,19 @@ const UtxoTransactionsListComponentBase = ({
             <span className={`${signClass}`}>{signChar}</span>
             {(sptAssetInfo?.image ||
               (sptAssetInfo?.symbol && getTokenLogo(sptAssetInfo.symbol))) && (
-              <TokenIcon
-                logo={sptAssetInfo.image || getTokenLogo(sptAssetInfo.symbol)}
-                assetGuid={sptAssetInfo.assetGuid}
-                symbol={sptAssetInfo.symbol}
-                size={14}
-                className="shrink-0"
-              />
+              <Tooltip content={sptAssetInfo?.name || sptAssetInfo?.symbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={
+                      sptAssetInfo.image || getTokenLogo(sptAssetInfo.symbol)
+                    }
+                    assetGuid={sptAssetInfo.assetGuid}
+                    symbol={sptAssetInfo.symbol}
+                    size={14}
+                    className="shrink-0 hover:scale-110 hover:shadow-md transition-transform duration-200"
+                  />
+                </span>
+              </Tooltip>
             )}
             <span className="truncate">{sptAmountDisplay}</span>
           </div>
