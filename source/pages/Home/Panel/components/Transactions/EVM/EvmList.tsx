@@ -77,6 +77,9 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
+    const ensCache = useSelector(
+      (state: RootState) => (state as any).vaultGlobal?.ensCache
+    );
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
@@ -236,8 +239,8 @@ const EvmTransactionItem = React.memo(
       }
 
       return (
-        <div className="flex flex-col justify-end items-end">
-          <div className="text-white text-xs font-normal whitespace-nowrap">
+        <div className="flex flex-col justify-end items-end min-w-0">
+          <div className="inline-flex items-center text-white text-xs font-normal whitespace-nowrap overflow-hidden max-w-full">
             {showSign && (
               <span
                 className={`${
@@ -248,11 +251,43 @@ const EvmTransactionItem = React.memo(
               </span>
             )}
             {tokenIcon && (
-              <span className="ml-1 align-middle inline-flex items-center">
+              <span className="ml-1 align-middle inline-flex items-center shrink-0">
                 {tokenIcon}
               </span>
             )}
-            <span className="ml-1 align-middle">{amountStr}</span>
+            {/* Single-line, truncating container for amount + ENS */}
+            <div className="ml-1 inline-flex items-center truncate max-w-full">
+              {amountStr}
+              {(() => {
+                try {
+                  // Prefer decoded actual recipient when we have it; fallback to tx.to
+                  const recipient =
+                    (displayInfo as any)?.actualRecipient || (tx as any)?.to;
+                  if (recipient) {
+                    const cache = (ensCache as any)?.[
+                      String(recipient).toLowerCase()
+                    ];
+                    const name = cache?.name;
+                    if (name) {
+                      return (
+                        <Tooltip
+                          content={String(recipient)}
+                          childrenClassName="inline-flex items-center"
+                        >
+                          <span className="ml-2 text-[10px] text-brand-gray200">
+                            →{' '}
+                            {name.length > 24
+                              ? `${name.slice(0, 14)}…${name.slice(-8)}`
+                              : name}
+                          </span>
+                        </Tooltip>
+                      );
+                    }
+                  }
+                } catch {}
+                return null;
+              })()}
+            </div>
           </div>
           <div className="text-brand-gray200 text-xs font-normal whitespace-nowrap">
             {fiatText === '---' ? '---' : fiatText}
@@ -411,7 +446,7 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
               {isConfirmed || isTxCanceled || isReplaced ? (

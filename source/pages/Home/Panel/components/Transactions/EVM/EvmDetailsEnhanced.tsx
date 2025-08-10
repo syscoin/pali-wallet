@@ -37,6 +37,9 @@ export const EvmTransactionDetailsEnhanced = ({
   tx: IEvmTransactionResponse;
 }) => {
   const { controllerEmitter } = useController();
+  const ensCache = useSelector(
+    (state: RootState) => state.vaultGlobal.ensCache
+  );
   const {
     activeNetwork: { chainId, currency, apiUrl },
   } = useSelector((state: RootState) => state.vault);
@@ -409,7 +412,29 @@ export const EvmTransactionDetailsEnhanced = ({
   // Always use enhanced labels since provider data is now normalized to same structure as API
   const labelsToUse = EnhancedEvmTxDetailsLabelsToKeep;
 
-  const formattedTransactionDetails = formattedTransaction
+  // Enhance details with ENS cache for From/To where applicable
+  const withEns = formattedTransaction.map((item: any) => {
+    if (item?.label && typeof item.value === 'string') {
+      const labelLower = String(item.label).toLowerCase();
+      if (labelLower === 'from' || labelLower === 'to') {
+        const addrLower = item.value.toLowerCase();
+        const cached = (ensCache as any)?.[addrLower];
+        if (cached?.name) {
+          const name = cached.name as string;
+          const short =
+            name.length > 24 ? `${name.slice(0, 14)}…${name.slice(-8)}` : name;
+          return {
+            ...item,
+            value: short,
+            tooltip: item.value,
+          };
+        }
+      }
+    }
+    return item;
+  });
+
+  const formattedTransactionDetails = withEns
     .filter(({ label }) => labelsToUse.includes(label))
     .sort(
       (a, b) => labelsToUse.indexOf(a.label) - labelsToUse.indexOf(b.label)

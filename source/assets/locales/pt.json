@@ -376,7 +376,10 @@
     "signingForWrongAddress": "Este site está pedindo para você fazer login usando a conta errada.",
     "suspiciousSignInRequest": "O site que está fazendo a solicitação não é o site em que você está fazendo login. Isso pode ser uma tentativa de roubar suas credenciais de login.",
     "invalidParameters": "Parâmetros inválidos",
-    "invalidEthSignFormat": "Formato de mensagem eth_sign inválido. Esperava-se string hex de 32 bytes (64 caracteres), obtido: \"{{message}}\". Para assinar texto arbitrário, o dapp deveria usar personal_sign."
+    "invalidEthSignFormat": "Formato de mensagem eth_sign inválido. Esperava-se string hex de 32 bytes (64 caracteres), obtido: \"{{message}}\". Para assinar texto arbitrário, o dapp deveria usar personal_sign.",
+    "unableToResolveEns": "Não foi possível resolver o nome ENS",
+    "invalidDestination": "Destino inválido",
+    "verifyEnsOrUseAddress": "Verifique o ENS do destinatário ou use um endereço 0x."
   },
   "settings": {
     "bgError": "Erro em segundo plano",

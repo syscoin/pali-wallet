@@ -525,7 +525,10 @@
     "signingForWrongAddress": "このサイトは間違ったアカウントでサインインするよう求めています。",
     "suspiciousSignInRequest": "リクエストを行っているサイトは、ログインしようとしているサイトではありません。これはログイン認証情報を盗もうとする試みの可能性があります。",
     "invalidParameters": "無効なパラメータ",
-    "invalidEthSignFormat": "無効なeth_signメッセージ形式。32バイトのhex文字列（64文字）が期待されましたが、\"{{message}}\"を受け取りました。任意のテキストに署名する場合、dappはpersonal_signを使用する必要があります。"
+    "invalidEthSignFormat": "無効なeth_signメッセージ形式。32バイトのhex文字列（64文字）が期待されましたが、\"{{message}}\"を受け取りました。任意のテキストに署名する場合、dappはpersonal_signを使用する必要があります。",
+    "unableToResolveEns": "ENS名を解決できません",
+    "invalidDestination": "無効な宛先",
+    "verifyEnsOrUseAddress": "受信者のENSを確認するか、0xアドレスを使用してください。"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",

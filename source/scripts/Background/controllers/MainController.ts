@@ -77,6 +77,7 @@ import {
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
+  setEnsName,
 } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
@@ -5010,6 +5011,93 @@ class MainController {
 
   public getErc1155Abi(): any[] {
     return getErc55Abi(); // Note: getErc55Abi returns ERC1155 ABI
+  }
+
+  /**
+   * Resolve ENS name on Ethereum mainnet and persist in global ENS cache.
+   * Returns the resolved 0x address or null if not resolvable.
+   */
+  public async resolveEns(name: string): Promise<string | null> {
+    if (
+      !name ||
+      typeof name !== 'string' ||
+      !name.toLowerCase().endsWith('.eth')
+    ) {
+      return null;
+    }
+
+    const { networks } = store.getState().vaultGlobal;
+    const mainnet = networks?.ethereum?.[1];
+    if (!mainnet?.url) {
+      throw new Error(
+        'Ethereum mainnet RPC not configured. Cannot resolve ENS.'
+      );
+    }
+
+    // Build a throwaway provider to mainnet
+    const abortController = new AbortController();
+    const provider = new CustomJsonRpcProvider(
+      abortController.signal,
+      mainnet.url
+    );
+
+    // Call resolver via ethers-style method if available
+    let resolved: string | null = null;
+    try {
+      // ethers.js Web3Provider/JsonRpcProvider implements resolveName
+      // CustomJsonRpcProvider extends JsonRpcProvider so resolveName is available
+      // However, to keep types simple here, use (provider as any)
+      resolved = await (provider as any).resolveName(name);
+    } catch (e) {
+      // Best-effort; fall through to null
+      resolved = null;
+    }
+
+    if (resolved && typeof resolved === 'string' && resolved.startsWith('0x')) {
+      // Persist in vaultGlobal ENS cache so UI can render ENS consistently
+      const addressLower = resolved.toLowerCase();
+      store.dispatch(setEnsName({ address: addressLower, name }));
+      return resolved;
+    }
+    return null;
+  }
+
+  /**
+   * Reverse-resolve an Ethereum address to an ENS name on mainnet.
+   * Returns the ENS name or null if not resolvable. Persists into ENS cache.
+   */
+  public async reverseResolveEns(address: string): Promise<string | null> {
+    if (!address || typeof address !== 'string' || !address.startsWith('0x')) {
+      return null;
+    }
+
+    const { networks } = store.getState().vaultGlobal;
+    const mainnet = networks?.ethereum?.[1];
+    if (!mainnet?.url) {
+      throw new Error(
+        'Ethereum mainnet RPC not configured. Cannot reverse-resolve ENS.'
+      );
+    }
+
+    const abortController = new AbortController();
+    const provider = new CustomJsonRpcProvider(
+      abortController.signal,
+      mainnet.url
+    );
+
+    let name: string | null = null;
+    try {
+      name = await (provider as any).lookupAddress(address);
+    } catch (_e) {
+      name = null;
+    }
+
+    if (name && typeof name === 'string') {
+      const addressLower = address.toLowerCase();
+      store.dispatch(setEnsName({ address: addressLower, name }));
+      return name;
+    }
+    return null;
   }
 
   /**

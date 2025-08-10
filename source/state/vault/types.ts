@@ -40,11 +40,15 @@ export interface IGlobalState {
     [k: string]: boolean | number; // Allow both boolean and number values
   };
 
+  // Optional ENS cache for quick display of names in UI (address -> { name, timestamp })
+  ensCache?: {
+    [addressLower: string]: { name: string; timestamp: number };
+  };
+
   // Global UI states
   error: string | null;
 
   hasEncryptedVault: boolean;
-
   hasEthProperty: boolean;
   // Track if current updates are from polling (background) vs user action
   isPollingUpdate: boolean;

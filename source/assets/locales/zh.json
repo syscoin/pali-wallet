@@ -744,7 +744,10 @@
     "signingForWrongAddress": "此网站要求您使用错误的账户登录。",
     "suspiciousSignInRequest": "发出请求的网站不是您要登录的网站。这可能是盗取您登录凭据的企图。",
     "invalidParameters": "无效参数",
-    "invalidEthSignFormat": "无效的eth_sign消息格式。期望32字节十六进制字符串（64个字符），得到：\"{{message}}\"。要签署任意文本，dapp应使用personal_sign。"
+    "invalidEthSignFormat": "无效的eth_sign消息格式。期望32字节十六进制字符串（64个字符），得到：\"{{message}}\"。要签署任意文本，dapp应使用personal_sign。",
+    "unableToResolveEns": "无法解析 ENS 名称",
+    "invalidDestination": "无效的目标",
+    "verifyEnsOrUseAddress": "请验证收件人的 ENS 或使用 0x 地址。"
   },
   "nftDetails": {
     "collectionInfo": "收藏信息",

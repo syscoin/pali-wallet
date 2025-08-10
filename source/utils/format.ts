@@ -8,12 +8,18 @@ const ONE_MILLION = 1000000;
  * Add `...` to shorten a string. Keeps chars at the beginning and end
  */
 export const ellipsis = (str: any, start = 7, end = 4): string => {
-  if (typeof str !== 'string') return str;
+  const input = typeof str === 'string' ? str : String(str ?? '');
+  const length = input.length;
 
-  return `${str.substring(0, start)}...${str.substring(
-    str.length - end,
-    str.length
-  )}`.toLowerCase();
+  // If it's already short enough, return as-is
+  if (length === 0 || (start <= 0 && end <= 0)) return input;
+  if (length <= start + end + 3) return input;
+
+  const head = input.slice(0, Math.max(0, start));
+  const tail = end > 0 ? input.slice(-end) : '';
+  const separator = end > 0 ? '...' : '';
+
+  return `${head}${separator}${tail}`;
 };
 
 export const formatWithDecimals = (value: number | string, precision = 2) => {

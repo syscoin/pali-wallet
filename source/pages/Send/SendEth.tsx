@@ -21,6 +21,7 @@ import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
@@ -50,6 +51,9 @@ export const SendEth = () => {
   const { account: activeAccount, assets: activeAccountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
+
+  // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
+  const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
 
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
@@ -93,6 +97,24 @@ export const SendEth = () => {
   >(null);
 
   const [form] = Form.useForm();
+  // Receiver suggestions / ENS state
+  const [receiverInput, setReceiverInput] = useState('');
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    { address: string; label: string; type: 'account' | 'recent' | 'ens' }[]
+  >([]);
+
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const ensCache = useSelector(
+    (state: RootState) => state.vaultGlobal.ensCache
+  );
+  const ensNameToAddress = useSelector(selectEnsNameToAddress);
+  const vaultActiveAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
 
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
@@ -130,6 +152,117 @@ export const SendEth = () => {
       formValuesRef.current = allValues;
     },
     []
+  );
+
+  // Initialize receiverInput from form on mount (restored state)
+  useEffect(() => {
+    const initialReceiver = form.getFieldValue('receiver');
+    if (typeof initialReceiver === 'string') {
+      setReceiverInput(initialReceiver);
+    }
+  }, [form]);
+
+  // Minimal ENS resolver via background method
+  const tryResolveEns = useCallback(
+    async (maybeEns: string): Promise<string | null> => {
+      if (!maybeEns || !maybeEns.toLowerCase().endsWith('.eth')) return null;
+      const key = maybeEns.toLowerCase();
+      // 1) Try cache first
+      const cached = ensNameToAddress[key];
+      if (cached && cached.startsWith('0x')) return cached;
+      // 2) Fallback to background resolver on mainnet
+      try {
+        const resolved = (await controllerEmitter(
+          ['wallet', 'resolveEns'],
+          [maybeEns]
+        )) as string | null;
+        if (
+          resolved &&
+          typeof resolved === 'string' &&
+          resolved.startsWith('0x')
+        ) {
+          return resolved;
+        }
+        return null;
+      } catch (_e) {
+        return null;
+      }
+    },
+    [ensNameToAddress]
+  );
+
+  // Build suggestions from local accounts and recent recipients
+  const buildSuggestions = useCallback(
+    (query: string) => {
+      const results: {
+        address: string;
+        label: string;
+        type: 'account' | 'recent' | 'ens';
+      }[] = [];
+      const q = String(query || '').toLowerCase();
+
+      // Local accounts (EVM)
+      try {
+        Object.values(accounts || {}).forEach((byId: any) => {
+          Object.values(byId || {}).forEach((acct: any) => {
+            const addressLower = String(acct?.address || '').toLowerCase();
+            const labelLower = String(acct?.label || '').toLowerCase();
+            if (!addressLower) return;
+            // Only show EVM-style addresses here
+            if (!addressLower.startsWith('0x')) return;
+            if (!q || addressLower.includes(q) || labelLower.includes(q)) {
+              results.push({
+                label: acct?.label || acct?.address,
+                address: acct.address,
+                type: 'account',
+              });
+            }
+          });
+        });
+      } catch {}
+
+      // Recent recipients for current account + chain
+      try {
+        const chainId = activeNetwork?.chainId;
+        const currentAccTxs =
+          accountTransactions?.[vaultActiveAccount.type]?.[
+            vaultActiveAccount.id
+          ]?.ethereum?.[chainId];
+        const seen = new Set<string>();
+        (currentAccTxs || []).forEach((tx: any) => {
+          const to = String(tx?.to || '').toLowerCase();
+          if (!to || seen.has(to)) return;
+          const maybeName = (ensCache as any)?.[to]?.name;
+          const display = maybeName || to;
+          if (!q || display.includes(q)) {
+            results.push({ label: display, address: tx.to, type: 'recent' });
+            seen.add(to);
+          }
+        });
+      } catch {}
+
+      // ENS suggestion row when typing .eth
+      if (q.toLowerCase().endsWith('.eth')) {
+        results.unshift({
+          label: `${query} (ENS)`,
+          address: query,
+          type: 'ens',
+        });
+      }
+
+      // De-duplicate by address, preserve order
+      const deduped: typeof results = [];
+      const added = new Set<string>();
+      for (const item of results) {
+        const key = `${item.type}:${item.address.toLowerCase()}`;
+        if (!added.has(key)) {
+          deduped.push(item);
+          added.add(key);
+        }
+      }
+      setSuggestions(deduped.slice(0, 10));
+    },
+    [accounts, accountTransactions, activeAccount, activeNetwork]
   );
 
   // Save state when user blurs from input fields
@@ -774,6 +907,32 @@ export const SendEth = () => {
     });
   }, [activeAccount?.address, activeAccount?.xpub]);
 
+  // Attach reverse ENS effect after handlers are defined
+  useEffect(() => {
+    const input = String(receiverInput || '');
+    const isAddress = input.startsWith('0x') && input.length > 10;
+    if (!isAddress) return;
+    const lower = input.toLowerCase();
+    if ((ensCache as any)?.[lower]?.name) return;
+    if (reverseEnsTimeoutRef.current) {
+      clearTimeout(reverseEnsTimeoutRef.current);
+      reverseEnsTimeoutRef.current = undefined;
+    }
+    reverseEnsTimeoutRef.current = setTimeout(async () => {
+      try {
+        await controllerEmitter(['wallet', 'reverseResolveEns'], [input]);
+        buildSuggestions(input);
+      } catch {}
+    }, 600);
+
+    return () => {
+      if (reverseEnsTimeoutRef.current) {
+        clearTimeout(reverseEnsTimeoutRef.current);
+        reverseEnsTimeoutRef.current = undefined;
+      }
+    };
+  }, [receiverInput, ensCache, controllerEmitter, buildSuggestions]);
+
   // Calculate gas fees when component mounts or asset changes
   useEffect(() => {
     // Only calculate for native ETH (not tokens)
@@ -781,6 +940,22 @@ export const SendEth = () => {
       calculateGasFees();
     }
   }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
+
+  // Close suggestions when clicking outside form
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // If click is outside any input container, close
+      if (!target.closest('.sender-custom-input')) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick, { capture: true });
+    return () =>
+      document.removeEventListener('click', onDocClick, {
+        capture: true,
+      } as any);
+  }, []);
 
   return (
     <div className="w-full md:max-w-sm">
@@ -889,13 +1064,31 @@ export const SendEth = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
+                async validator(_, value) {
                   if (!value) {
                     return Promise.resolve();
                   }
 
+                  // Accept valid hex addresses directly
                   if (isValidEthereumAddress(value)) {
                     return Promise.resolve();
+                  }
+
+                  // Attempt ENS resolution for .eth names on mainnet
+                  if (
+                    typeof value === 'string' &&
+                    value.toLowerCase().endsWith('.eth')
+                  ) {
+                    const resolved = await tryResolveEns(value);
+                    if (resolved) {
+                      // Replace input with resolved address for submission
+                      form.setFieldValue('receiver', resolved);
+                      setReceiverInput(resolved);
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t('send.unableToResolveEns'))
+                    );
                   }
 
                   return Promise.reject(new Error('Invalid Ethereum address'));
@@ -903,11 +1096,57 @@ export const SendEth = () => {
               }),
             ]}
           >
-            <Input
-              type="text"
-              placeholder={t('send.receiver')}
-              onBlur={handleFieldBlur}
-            />
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder={t('send.receiver')}
+                value={receiverInput}
+                onChange={(e) => {
+                  const v = e.target.value || '';
+                  setReceiverInput(v);
+                  setIsSuggestionsOpen(true);
+                  buildSuggestions(v);
+                }}
+                onFocus={() => {
+                  setIsSuggestionsOpen(true);
+                  buildSuggestions(receiverInput);
+                }}
+                onBlur={handleFieldBlur}
+              />
+              {isSuggestionsOpen && suggestions.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-bkg-3 bg-brand-blue800 shadow-2xl">
+                  {suggestions.map((sug, idx) => (
+                    <button
+                      type="button"
+                      key={`${sug.type}-${sug.address}-${idx}`}
+                      className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        if (sug.type === 'ens') {
+                          // Resolve then fill
+                          tryResolveEns(sug.address).then((resolved) => {
+                            if (resolved) {
+                              form.setFieldValue('receiver', resolved);
+                              setReceiverInput(resolved);
+                              setIsSuggestionsOpen(false);
+                            }
+                          });
+                        } else {
+                          form.setFieldValue('receiver', sug.address);
+                          setReceiverInput(sug.address);
+                          setIsSuggestionsOpen(false);
+                        }
+                      }}
+                    >
+                      <span className="truncate max-w-[75%]">{sug.label}</span>
+                      <span className="text-[10px] text-brand-gray200 uppercase">
+                        {sug.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Form.Item>
         </div>
 

@@ -381,7 +381,10 @@
     "signingForWrongAddress": "Este sitio te está pidiendo que inicies sesión con la cuenta incorrecta.",
     "suspiciousSignInRequest": "El sitio que hace la solicitud no es el sitio en el que te estás registrando. Esto podría ser un intento de robar tus credenciales de acceso.",
     "invalidParameters": "Parámetros inválidos",
-    "invalidEthSignFormat": "Formato de mensaje eth_sign inválido. Se esperaba cadena hex de 32 bytes (64 caracteres), se obtuvo: \"{{message}}\". Para firmar texto arbitrario, la dapp debería usar personal_sign."
+    "invalidEthSignFormat": "Formato de mensaje eth_sign inválido. Se esperaba cadena hex de 32 bytes (64 caracteres), se obtuvo: \"{{message}}\". Para firmar texto arbitrario, la dapp debería usar personal_sign.",
+    "unableToResolveEns": "No se puede resolver el nombre ENS",
+    "invalidDestination": "Destino inválido",
+    "verifyEnsOrUseAddress": "Verifica el ENS del destinatario o usa una dirección 0x."
   },
   "settings": {
     "bgError": "Error de Fondo",

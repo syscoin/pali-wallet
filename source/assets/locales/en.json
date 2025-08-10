@@ -381,7 +381,10 @@
     "signingForWrongAddress": "This site is asking you to sign in using the wrong account.",
     "suspiciousSignInRequest": "The site making the request is not the site you're signing into. This could be an attempt to steal your login credentials.",
     "invalidParameters": "Invalid parameters",
-    "invalidEthSignFormat": "Invalid eth_sign message format. Expected 32-byte hex string (64 characters), got: \"{{message}}\". For signing arbitrary text, the dapp should use personal_sign instead."
+    "invalidEthSignFormat": "Invalid eth_sign message format. Expected 32-byte hex string (64 characters), got: \"{{message}}\". For signing arbitrary text, the dapp should use personal_sign instead.",
+    "unableToResolveEns": "Unable to resolve ENS name",
+    "invalidDestination": "Invalid destination",
+    "verifyEnsOrUseAddress": "Please verify the recipient ENS or use a 0x address."
   },
   "settings": {
     "bgError": "Background Error",

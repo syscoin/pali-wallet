@@ -23,13 +23,13 @@ export const Tooltip: React.FC<ITooltip> = ({
       animation="scale"
       placement={placement}
       appendTo={() => document.body}
-      maxWidth="20rem"
+      maxWidth="calc(100vw - 2rem)"
       interactive
       content={
         <div
           className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none 
           ${className} 
-          ${String(content).length >= 20 && 'max-w-full text-clip break-all'}`}
+          ${String(content).length >= 20 && 'max-w-full whitespace-nowrap'}`}
         >
           {content}
         </div>

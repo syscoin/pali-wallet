@@ -12,11 +12,13 @@ import {
   Icon,
   IconButton,
   WarningModal,
+  Tooltip,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import {
   ICustomFeeParams,
   IDecodedTx,
@@ -161,6 +163,9 @@ export const SendTransaction = () => {
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
+  // Raw input 'to' (could be ENS or address)
+  const toRaw = String(dataTx?.to || '');
+
   // Memoize the validated transaction to prevent unnecessary re-renders
   const validatedDataTxWithoutType = useMemo(
     () => ({
@@ -179,6 +184,97 @@ export const SendTransaction = () => {
       dataTx.maxPriorityFeePerGas,
     ]
   );
+
+  // ENS handling: display and resolution
+  const ensCache = useSelector((s: RootState) => s.vaultGlobal.ensCache);
+  const nameToAddress = useSelector(selectEnsNameToAddress);
+  const [resolvedTo, setResolvedTo] = useState<string | null>(
+    toRaw.toLowerCase().endsWith('.eth') ? null : toRaw
+  );
+  // Track ENS resolution failure to avoid indefinite spinner and inform the user
+  const [ensResolutionFailed, setEnsResolutionFailed] =
+    useState<boolean>(false);
+
+  // Effective address for provider calls (never pass ENS to provider)
+  const toAddressForProvider = useMemo(
+    () => (toRaw.startsWith('0x') ? toRaw : resolvedTo || ''),
+    [toRaw, resolvedTo]
+  );
+
+  // Clone tx for estimation with resolved address
+  const txForEstimation = useMemo(
+    () =>
+      ({
+        ...validatedDataTxWithoutType,
+        to: toAddressForProvider || undefined,
+      } as ITransactionParams),
+    [validatedDataTxWithoutType, toAddressForProvider]
+  );
+  // Reverse cache name->address
+
+  // Lazy resolve if ENS name
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const isEns = toRaw.toLowerCase().endsWith('.eth');
+      if (!isEns) return;
+      const cached = nameToAddress[toRaw.toLowerCase()];
+      if (cached) {
+        if (!cancelled) setResolvedTo(cached);
+        return;
+      }
+      try {
+        const addr = (await controllerEmitter(
+          ['wallet', 'resolveEns'],
+          [toRaw]
+        )) as string | null;
+        if (!cancelled) {
+          setResolvedTo(addr || null);
+          if (!addr) {
+            // Mark failure and stop initial spinner so UI can render an error state
+            setEnsResolutionFailed(true);
+            setInitialLoading(false);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setResolvedTo(null);
+          setEnsResolutionFailed(true);
+          setInitialLoading(false);
+        }
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [toRaw, nameToAddress]);
+
+  const displayToLabel = useMemo(() => {
+    if (toRaw.toLowerCase().endsWith('.eth')) return toRaw; // show the ENS input
+    const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+    return cachedName || toRaw;
+  }, [toRaw, ensCache]);
+
+  // Lazy reverse-resolve for address input -> show ENS name if available later
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!toRaw || !toRaw.startsWith('0x')) return;
+      const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+      if (cachedName) return;
+      try {
+        await controllerEmitter(['wallet', 'reverseResolveEns'], [toRaw]);
+        if (!cancelled) {
+          // ensCache will update via store; label will re-render from selector
+        }
+      } catch {}
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [toRaw, ensCache, controllerEmitter]);
 
   const handleConfirm = async () => {
     const {
@@ -266,6 +362,7 @@ export const SendTransaction = () => {
             [
               {
                 ...txWithoutType,
+                to: resolvedTo || toRaw,
                 value: txWithoutType.value
                   ? safeBigNumber(
                       txWithoutType.value,
@@ -301,6 +398,7 @@ export const SendTransaction = () => {
             [
               {
                 ...txToSend,
+                to: resolvedTo || toRaw,
                 value: txToSend.value
                   ? safeBigNumber(
                       txToSend.value,
@@ -395,11 +493,12 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
+        // If ENS input and not resolved yet, don't call provider
+        if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
+          return; // wait until resolvedTo is ready
+        }
         const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
-          await fetchGasAndDecodeFunction(
-            validatedDataTxWithoutType as ITransactionParams,
-            activeNetwork
-          );
+          await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
 
         // Only update state if component is still mounted
         if (isMounted) {
@@ -426,7 +525,16 @@ export const SendTransaction = () => {
       }
     };
 
-    getGasAndFunction();
+    // If the request used an ENS name that failed to resolve, skip gas estimation
+    if (
+      !(
+        toRaw.toLowerCase().endsWith('.eth') &&
+        !toAddressForProvider &&
+        ensResolutionFailed
+      )
+    ) {
+      getGasAndFunction();
+    }
 
     return () => {
       isMounted = false;
@@ -435,7 +543,13 @@ export const SendTransaction = () => {
         clearTimeout(closeTimeoutId);
       }
     };
-  }, [validatedDataTxWithoutType, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
+  }, [
+    txForEstimation,
+    toAddressForProvider,
+    toRaw,
+    activeNetwork.chainId,
+    ensResolutionFailed,
+  ]); // ensure we wait for resolved address
 
   // Check for contract interaction with non-contract address
   useEffect(() => {
@@ -443,7 +557,7 @@ export const SendTransaction = () => {
       // Only check once per transaction
       if (
         hasCheckedContract ||
-        !dataTx?.to ||
+        !toAddressForProvider ||
         !dataTx?.data ||
         isCheckingContract
       ) {
@@ -459,8 +573,8 @@ export const SendTransaction = () => {
 
       // Skip contract deployments (no 'to' address)
       if (
-        !dataTx.to ||
-        dataTx.to === '0x0000000000000000000000000000000000000000'
+        !toAddressForProvider ||
+        toAddressForProvider === '0x0000000000000000000000000000000000000000'
       ) {
         return;
       }
@@ -471,7 +585,7 @@ export const SendTransaction = () => {
         // Check if address is a contract
         const isContract = await controllerEmitter(
           ['wallet', 'isContractAddress'],
-          [dataTx.to]
+          [toAddressForProvider]
         );
 
         // Show warning if sending call data to non-contract address
@@ -487,10 +601,19 @@ export const SendTransaction = () => {
       }
     };
 
-    if (!initialLoading && dataTx?.to) {
+    if (
+      !initialLoading &&
+      (toAddressForProvider || !toRaw.toLowerCase().endsWith('.eth'))
+    ) {
       checkContract();
     }
-  }, [dataTx?.to, dataTx?.data, hasCheckedContract, initialLoading]);
+  }, [
+    toAddressForProvider,
+    toRaw,
+    dataTx?.data,
+    hasCheckedContract,
+    initialLoading,
+  ]);
 
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);
@@ -768,8 +891,14 @@ export const SendTransaction = () => {
                         maxWidth: '150px',
                       }}
                     >
-                      <span>{ellipsis(dataTx.to)}</span>
-                      <IconButton onClick={() => copy(dataTx.to)}>
+                      <Tooltip
+                        content={
+                          resolvedTo || (toRaw.startsWith('0x') ? toRaw : '')
+                        }
+                      >
+                        <span>{ellipsis(displayToLabel)}</span>
+                      </Tooltip>
+                      <IconButton onClick={() => copy(resolvedTo || toRaw)}>
                         <Icon
                           name="copy"
                           className="text-brand-white hover:text-fields-input-borderfocus"
@@ -939,6 +1068,18 @@ export const SendTransaction = () => {
                 {t('buttons.confirm')}
               </PrimaryButton>
             </div>
+          </div>
+        </div>
+      ) : // Render a clear error state when ENS couldn't be resolved
+      ensResolutionFailed ? (
+        <div className="flex items-center justify-center min-h-[400px] px-6 text-center">
+          <div className="bg-bkg-2 border border-bkg-4 rounded-2xl p-4 max-w-md w-full">
+            <p className="text-white text-sm mb-2">
+              {t('send.unableToResolveEns')}
+            </p>
+            <p className="text-brand-gray200 text-xs">
+              {t('send.verifyEnsOrUseAddress')}
+            </p>
           </div>
         </div>
       ) : null}

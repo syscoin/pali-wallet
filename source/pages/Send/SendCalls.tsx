@@ -5,11 +5,17 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
-import { PrimaryButton, SecondaryButton, Icon } from 'components/index';
+import {
+  PrimaryButton,
+  SecondaryButton,
+  Icon,
+  Tooltip,
+} from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
@@ -59,6 +65,9 @@ export const SendCalls = () => {
       txHash?: string;
     }>
   >();
+
+  // Reverse ENS cache: name -> address (lowercased)
+  const ensNameToAddress = useSelector(selectEnsNameToAddress);
 
   // Initialize selected calls
   useEffect(() => {
@@ -181,10 +190,104 @@ export const SendCalls = () => {
         });
 
         try {
+          // Resolve ENS names in 'to' if needed and ensure we only send hex addresses
+          let toResolved: string | undefined = call.to;
+          const toRaw = String(call.to || '');
+          if (toRaw) {
+            const lower = toRaw.toLowerCase();
+            const isHex = lower.startsWith('0x');
+            const isEns = lower.endsWith('.eth');
+            if (!isHex) {
+              if (isEns) {
+                const cached = ensNameToAddress[lower];
+                let resolved: string | null = cached || null;
+                if (!resolved) {
+                  try {
+                    resolved = (await controllerEmitter(
+                      ['wallet', 'resolveEns'],
+                      [toRaw]
+                    )) as string | null;
+                  } catch (_) {
+                    resolved = null;
+                  }
+                }
+                if (!resolved) {
+                  // If atomic batch required, abort entire process
+                  if (callsData.atomicRequired) {
+                    setTransactionStatuses((prev) => {
+                      const newStatuses = prev
+                        ? [...prev]
+                        : new Array(callsData.calls.length).fill({
+                            status: 'pending',
+                          });
+                      newStatuses[originalIndex] = {
+                        status: 'error',
+                        error: t('send.unableToResolveEns'),
+                      } as any;
+                      return newStatuses;
+                    });
+                    setLoading(false);
+                    setProcessingIndex(-1);
+                    alert.error(t('send.unableToResolveEns'));
+                    return;
+                  }
+                  // Non-atomic: mark this call as error and continue with others
+                  setTransactionStatuses((prev) => {
+                    const newStatuses = prev
+                      ? [...prev]
+                      : new Array(callsData.calls.length).fill({
+                          status: 'pending',
+                        });
+                    newStatuses[originalIndex] = {
+                      status: 'error',
+                      error: t('send.unableToResolveEns'),
+                    } as any;
+                    return newStatuses;
+                  });
+                  continue;
+                }
+                toResolved = resolved;
+              } else {
+                // Not a hex address or recognized ENS name; treat as invalid
+                if (callsData.atomicRequired) {
+                  setTransactionStatuses((prev) => {
+                    const newStatuses = prev
+                      ? [...prev]
+                      : new Array(callsData.calls.length).fill({
+                          status: 'pending',
+                        });
+                    newStatuses[originalIndex] = {
+                      status: 'error',
+                      error: t('send.invalidDestination'),
+                    } as any;
+                    return newStatuses;
+                  });
+                  setLoading(false);
+                  setProcessingIndex(-1);
+                  alert.error(t('send.invalidDestination'));
+                  return;
+                }
+                setTransactionStatuses((prev) => {
+                  const newStatuses = prev
+                    ? [...prev]
+                    : new Array(callsData.calls.length).fill({
+                        status: 'pending',
+                      });
+                  newStatuses[originalIndex] = {
+                    status: 'error',
+                    error: t('send.invalidDestination'),
+                  } as any;
+                  return newStatuses;
+                });
+                continue;
+              }
+            }
+          }
+
           // Prepare transaction with incremented nonce
           const tx = {
             from,
-            to: call.to,
+            to: toResolved,
             value: call.value || '0x0',
             data: call.data || '0x',
             nonce: startingNonce + i, // Use incremented nonce to prevent conflicts
@@ -422,7 +525,35 @@ export const SendCalls = () => {
                         {t('send.to')}:
                       </p>
                       <p className="text-sm text-brand-white font-mono">
-                        {ellipsis(call.to, 10, 10)}
+                        {(() => {
+                          const toRaw = String(call.to);
+                          // If the dapp passed an address, just show ellipsized address with tooltip=address
+                          if (toRaw.startsWith('0x')) {
+                            return (
+                              <Tooltip content={toRaw}>
+                                <span>{ellipsis(toRaw, 10, 10)}</span>
+                              </Tooltip>
+                            );
+                          }
+
+                          // If the dapp passed an ENS name, prefer ENS as text; tooltip should be resolved address if available
+                          if (toRaw.toLowerCase().endsWith('.eth')) {
+                            const resolved =
+                              ensNameToAddress[toRaw.toLowerCase()];
+                            return (
+                              <Tooltip content={resolved || toRaw}>
+                                <span>{toRaw}</span>
+                              </Tooltip>
+                            );
+                          }
+
+                          // Fallback: show as provided
+                          return (
+                            <Tooltip content={toRaw}>
+                              <span>{toRaw}</span>
+                            </Tooltip>
+                          );
+                        })()}
                       </p>
                     </div>
                   )}

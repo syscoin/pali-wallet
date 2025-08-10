@@ -25,6 +25,7 @@ import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
 import { formatGweiValue } from 'utils/formatSyscoinValue';
@@ -60,6 +61,9 @@ export const SendConfirm = () => {
   );
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const ensCache = useSelector(
+    (state: RootState) => state.vaultGlobal.ensCache
+  );
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const location = useLocation();
@@ -85,6 +89,56 @@ export const SendConfirm = () => {
   const [copied, copy] = useCopyClipboard();
 
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+
+  // Resolve ENS lazily (tooltip + enforcement)
+  const [resolvedToAddress, setResolvedToAddress] = useState<string | null>(
+    null
+  );
+  const ensNameToAddress = useSelector(selectEnsNameToAddress);
+
+  useEffect(() => {
+    const maybeName = String((state as any)?.tx?.receivingAddress || '');
+    if (!maybeName || !maybeName.toLowerCase().endsWith('.eth')) {
+      setResolvedToAddress(null);
+      return;
+    }
+    // Cache-first: check background-derived map name -> address
+    const cached = ensNameToAddress[maybeName.toLowerCase()];
+    (async () => {
+      try {
+        const addr =
+          cached ||
+          ((await controllerEmitter(['wallet', 'resolveEns'], [maybeName])) as
+            | string
+            | null);
+        if (addr && typeof addr === 'string' && addr.startsWith('0x')) {
+          setResolvedToAddress(addr);
+        } else {
+          setResolvedToAddress(null);
+        }
+      } catch {
+        setResolvedToAddress(null);
+      }
+    })();
+  }, [state, ensNameToAddress]);
+
+  // Display destination: prefer resolved address when input was ENS
+  const toRaw = useMemo(
+    () => String((state as any)?.tx?.receivingAddress || ''),
+    [state]
+  );
+  const tooltipToAddress = useMemo(
+    () =>
+      toRaw.toLowerCase().endsWith('.eth') ? resolvedToAddress || toRaw : toRaw,
+    [toRaw, resolvedToAddress]
+  );
+  const labelToDisplay = useMemo(() => {
+    if (toRaw.toLowerCase().endsWith('.eth')) return toRaw; // show ENS input
+    const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+    return cachedName || toRaw;
+  }, [toRaw, ensCache]);
+
+  // We always display addresses; ENS names are only used as input and resolved to addresses
 
   // Add fee calculation cache and debouncing
   const [feeCalculationCache, setFeeCalculationCache] = useState<
@@ -262,6 +316,16 @@ export const SendConfirm = () => {
     if (activeAccount && balance >= 0) {
       setLoading(true);
 
+      // Enforce ENS resolution: if user provided an ENS name and it couldn't be resolved, block
+      const rawTo = String(basicTxValues?.receivingAddress || '');
+      const isEnsInput = rawTo.toLowerCase().endsWith('.eth');
+      if (isEnsInput && !resolvedToAddress) {
+        setLoading(false);
+        alert.error(t('send.unableToResolveEns'));
+        return;
+      }
+      const destinationTo = resolvedToAddress || rawTo;
+
       // Handle transactions based on type
       const transactionType =
         basicTxValues.transactionType ||
@@ -371,6 +435,7 @@ export const SendConfirm = () => {
                   [
                     {
                       ...restTx,
+                      to: destinationTo,
                       value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                       gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
                       gasLimit: BigNumber.from(
@@ -423,6 +488,7 @@ export const SendConfirm = () => {
               [
                 {
                   ...restTx,
+                  to: destinationTo,
                   value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
@@ -470,6 +536,7 @@ export const SendConfirm = () => {
               if (reducedValue.gt(0)) {
                 const retryTxObject = {
                   ...restTx,
+                  to: destinationTo,
                   value: reducedValue.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
@@ -569,7 +636,7 @@ export const SendConfirm = () => {
                       'ERC20',
                       {
                         networkUrl: activeNetwork.url,
-                        receiver: txObjectState.to,
+                        receiver: destinationTo,
                         tokenAddress: basicTxValues.token.contractAddress,
                         tokenAmount: `${basicTxValues.amount}`,
                         isLegacy: !isEIP1559Compatible,
@@ -620,7 +687,7 @@ export const SendConfirm = () => {
                     'ERC20',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
@@ -712,7 +779,7 @@ export const SendConfirm = () => {
                     'ERC721',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId: numericTokenId, // The actual NFT token ID
                       isLegacy: !isEIP1559Compatible,
@@ -787,7 +854,7 @@ export const SendConfirm = () => {
                     'ERC1155',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenId: numericTokenId, // The actual NFT token ID
                       tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
@@ -1388,18 +1455,14 @@ export const SendConfirm = () => {
                   childrenClassName="flex"
                 >
                   {ellipsis(basicTxValues.sender, 7, 15)}
-                  {
-                    <IconButton
-                      onClick={() => copy(basicTxValues.sender ?? '')}
-                    >
-                      <Icon
-                        wrapperClassname="flex items-center justify-center"
-                        name="Copy"
-                        isSvg
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  }
+                  <IconButton onClick={() => copy(basicTxValues.sender ?? '')}>
+                    <Icon
+                      wrapperClassname="flex items-center justify-center"
+                      name="Copy"
+                      isSvg
+                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                    />
+                  </IconButton>
                 </Tooltip>
               </span>
             </div>
@@ -1407,23 +1470,16 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.to')}
               <span className="text-white text-xs">
-                <Tooltip
-                  content={basicTxValues.receivingAddress}
-                  childrenClassName="flex"
-                >
-                  {ellipsis(basicTxValues.receivingAddress, 7, 15)}{' '}
-                  {
-                    <IconButton
-                      onClick={() => copy(basicTxValues.receivingAddress ?? '')}
-                    >
-                      <Icon
-                        wrapperClassname="flex items-center justify-center"
-                        name="Copy"
-                        isSvg
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  }
+                <Tooltip content={tooltipToAddress} childrenClassName="flex">
+                  {ellipsis(labelToDisplay, 7, 15)}{' '}
+                  <IconButton onClick={() => copy(tooltipToAddress ?? '')}>
+                    <Icon
+                      wrapperClassname="flex items-center justify-center"
+                      name="Copy"
+                      isSvg
+                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                    />
+                  </IconButton>
                 </Tooltip>
               </span>
             </div>

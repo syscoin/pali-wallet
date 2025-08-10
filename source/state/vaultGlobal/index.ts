@@ -28,6 +28,7 @@ const initialState: IGlobalState = {
   networks: PALI_NETWORKS_STATE,
   isPollingUpdate: false,
   networkQuality: undefined,
+  ensCache: {},
 };
 
 const vaultGlobalSlice = createSlice({
@@ -128,6 +129,17 @@ const vaultGlobalSlice = createSlice({
       action: PayloadAction<'idle' | 'switching' | 'error' | 'connecting'>
     ) {
       state.networkStatus = action.payload;
+    },
+    setEnsName(
+      state: IGlobalState,
+      action: PayloadAction<{ address: string; name: string }>
+    ) {
+      if (!state.ensCache) state.ensCache = {};
+      const addressLower = action.payload.address.toLowerCase();
+      state.ensCache[addressLower] = {
+        name: action.payload.name,
+        timestamp: Date.now(),
+      };
     },
     setIsSwitchingAccount(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isSwitchingAccount = action.payload;
@@ -336,6 +348,7 @@ export const {
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
+  setEnsName,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;

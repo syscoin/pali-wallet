@@ -4,6 +4,7 @@ import { Input } from 'antd';
 import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useSelector as useReduxSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
@@ -62,6 +63,8 @@ export const TransactionDetailsComponent = (
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  // Prefer rendering ENS name when available in cache for destination
+  const ensCache = useReduxSelector((s: RootState) => s.vaultGlobal.ensCache);
 
   // Helper function to get appropriate copy message based on field type
   const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
@@ -178,7 +181,12 @@ export const TransactionDetailsComponent = (
         {t('send.to')}
         <div className="text-white text-xs">
           <Tooltip content={tx.to} childrenClassName="flex">
-            {ellipsis(tx.to, 7, 15)}
+            {(() => {
+              const toLower = (tx.to || '').toLowerCase();
+              const cachedName = (ensCache as any)?.[toLower]?.name;
+              const label = cachedName || tx.to;
+              return ellipsis(label, 7, 15);
+            })()}
             {
               <IconButton
                 onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
