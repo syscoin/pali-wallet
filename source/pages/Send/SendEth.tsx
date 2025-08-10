@@ -122,8 +122,13 @@ export const SendEth = () => {
 
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
+    // Prefer live form values to avoid races when setFieldValue was just called
+    const currentFormValues =
+      typeof form?.getFieldsValue === 'function'
+        ? form.getFieldsValue()
+        : formValuesRef.current;
     const state = {
-      formValues: formValuesRef.current,
+      formValues: currentFormValues,
       selectedAsset,
       nftTokenIds,
       selectedNftTokenId,
@@ -144,12 +149,16 @@ export const SendEth = () => {
     isMaxSend,
     verifiedTokenBalance,
     location,
+    form,
   ]);
 
   // Update form values ref when they change (no save yet)
   const handleFormValuesChange = useCallback(
     (_changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
+      if (typeof allValues?.receiver === 'string') {
+        setReceiverInput(allValues.receiver);
+      }
     },
     []
   );
@@ -329,18 +338,20 @@ export const SendEth = () => {
   // Track if we've already restored form values to prevent duplicate restoration
   const hasRestoredRef = useRef(false);
 
-  // Restore form values if coming back from navigation
+  // Restore form values if coming back from navigation or from saved state
   useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredRef.current
-    ) {
-      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
+    const hasScrollable = location.state?.scrollPosition !== undefined;
+    const hasFormValues = Boolean(location.state?.formValues);
+    if (!hasRestoredRef.current && (hasScrollable || hasFormValues)) {
+      const { formValues, isMaxSend: restoredIsMaxSend } = location.state || {};
 
       if (formValues) {
         hasRestoredRef.current = true;
         form.setFieldsValue(formValues);
         formValuesRef.current = formValues;
+        if (typeof formValues.receiver === 'string') {
+          setReceiverInput(formValues.receiver);
+        }
 
         // If this was a max send, recalculate the max amount
         if (restoredIsMaxSend) {
@@ -1124,24 +1135,14 @@ export const SendEth = () => {
                       className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        if (sug.type === 'ens') {
-                          // Resolve then fill
-                          tryResolveEns(sug.address).then((resolved) => {
-                            if (resolved) {
-                              form.setFieldValue('receiver', resolved);
-                              setReceiverInput(resolved);
-                              setIsSuggestionsOpen(false);
-                              // Force validation so UI updates from red to green immediately
-                              form.validateFields(['receiver']).catch(() => {});
-                            }
-                          });
-                        } else {
-                          form.setFieldValue('receiver', sug.address);
-                          setReceiverInput(sug.address);
-                          setIsSuggestionsOpen(false);
-                          // Force validation so UI updates from red to green immediately
-                          form.validateFields(['receiver']).catch(() => {});
-                        }
+                        // Set the selected suggestion (ENS name or address). The validator will resolve ENS if needed.
+                        form.setFieldValue('receiver', sug.address);
+                        setReceiverInput(sug.address);
+                        setIsSuggestionsOpen(false);
+                        // Trigger validation so UI updates immediately
+                        form.validateFields(['receiver']).catch(() => {});
+                        // Save selection so it's restored if popup is closed
+                        saveCurrentState();
                       }}
                     >
                       <span className="truncate max-w-[75%]">{sug.label}</span>
