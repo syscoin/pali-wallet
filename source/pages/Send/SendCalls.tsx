@@ -159,6 +159,28 @@ export const SendCalls = () => {
       const receipts: any[] = [];
       const from = callsData.from || activeAccount.address;
 
+      // Pre-resolve ENS names in batch when multiple ENS destinations are present
+      let batchEnsMap: Record<string, string | null> = {};
+      try {
+        const ensNamesToResolve = Array.from(
+          new Set(
+            selectedCallsData
+              .map((call) => String(call.to || '').toLowerCase())
+              .filter((to) => to && !to.startsWith('0x') && to.endsWith('.eth'))
+              .filter((toLower) => !(toLower in ensNameToAddress))
+          )
+        );
+        if (ensNamesToResolve.length >= 2) {
+          batchEnsMap = (await controllerEmitter(
+            ['wallet', 'batchResolveEns'],
+            [ensNamesToResolve, { fallbackToProvider: false }]
+          )) as Record<string, string | null>;
+        }
+      } catch (e) {
+        // Non-fatal; fall back to per-name resolution inside the loop
+        batchEnsMap = {};
+      }
+
       // Get the starting nonce once via MainController (avoids web3Provider issues)
       const startingNonce = (await controllerEmitter(
         ['wallet', 'getRecommendedNonceForBatch'],
@@ -200,7 +222,13 @@ export const SendCalls = () => {
             if (!isHex) {
               if (isEns) {
                 const cached = ensNameToAddress[lower];
-                let resolved: string | null = cached || null;
+                // Prefer batch result (if available), then cache
+                let resolved: string | null =
+                  (batchEnsMap && lower in batchEnsMap
+                    ? batchEnsMap[lower]
+                    : undefined) ??
+                  cached ??
+                  null;
                 if (!resolved) {
                   try {
                     resolved = (await controllerEmitter(
@@ -524,7 +552,7 @@ export const SendCalls = () => {
                       <p className="text-xs text-brand-gray200">
                         {t('send.to')}:
                       </p>
-                      <p className="text-sm text-brand-white font-mono">
+                      <div className="text-sm text-brand-white font-mono">
                         {(() => {
                           const toRaw = String(call.to);
                           // If the dapp passed an address, just show ellipsized address with tooltip=address
@@ -554,7 +582,7 @@ export const SendCalls = () => {
                             </Tooltip>
                           );
                         })()}
-                      </p>
+                      </div>
                     </div>
                   )}
 
