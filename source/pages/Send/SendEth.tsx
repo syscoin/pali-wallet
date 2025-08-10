@@ -1104,6 +1104,8 @@ export const SendEth = () => {
                 onChange={(e) => {
                   const v = e.target.value || '';
                   setReceiverInput(v);
+                  // Keep Form state in sync so validation can react to typing
+                  form.setFieldValue('receiver', v);
                   setIsSuggestionsOpen(true);
                   buildSuggestions(v);
                 }}
@@ -1129,12 +1131,16 @@ export const SendEth = () => {
                               form.setFieldValue('receiver', resolved);
                               setReceiverInput(resolved);
                               setIsSuggestionsOpen(false);
+                              // Force validation so UI updates from red to green immediately
+                              form.validateFields(['receiver']).catch(() => {});
                             }
                           });
                         } else {
                           form.setFieldValue('receiver', sug.address);
                           setReceiverInput(sug.address);
                           setIsSuggestionsOpen(false);
+                          // Force validation so UI updates from red to green immediately
+                          form.validateFields(['receiver']).catch(() => {});
                         }
                       }}
                     >
