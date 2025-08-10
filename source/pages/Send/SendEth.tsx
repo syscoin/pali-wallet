@@ -234,7 +234,7 @@ export const SendEth = () => {
           if (!to || seen.has(to)) return;
           const maybeName = (ensCache as any)?.[to]?.name;
           const display = maybeName || to;
-          if (!q || display.includes(q)) {
+          if (!q || String(display).toLowerCase().includes(q)) {
             results.push({ label: display, address: tx.to, type: 'recent' });
             seen.add(to);
           }
@@ -250,11 +250,11 @@ export const SendEth = () => {
         });
       }
 
-      // De-duplicate by address, preserve order
+      // De-duplicate by address (case-insensitive), preserve order and collapse account/recent duplicates
       const deduped: typeof results = [];
       const added = new Set<string>();
       for (const item of results) {
-        const key = `${item.type}:${item.address.toLowerCase()}`;
+        const key = item.address.toLowerCase();
         if (!added.has(key)) {
           deduped.push(item);
           added.add(key);
