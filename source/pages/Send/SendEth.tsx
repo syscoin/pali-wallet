@@ -1140,7 +1140,7 @@ export const SendEth = () => {
                         setReceiverInput(sug.address);
                         setIsSuggestionsOpen(false);
                         // Trigger validation so UI updates immediately
-                        form.validateFields(['receiver']).catch(() => {});
+                        form.validateFields(['receiver']).catch(() => null);
                         // Save selection so it's restored if popup is closed
                         saveCurrentState();
                       }}
