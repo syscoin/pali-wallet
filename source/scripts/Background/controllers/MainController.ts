@@ -170,6 +170,30 @@ class MainController {
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
+  private persistentProviderAbortControllers = new Map<
+    string,
+    AbortController
+  >();
+
+  // Get or create a persistent provider for a given RPC URL
+  private getOrCreatePersistentProvider(url: string): CustomJsonRpcProvider {
+    const existing = this.persistentProviders.get(url);
+    if (existing) return existing;
+
+    const abortController = new AbortController();
+    const provider = new CustomJsonRpcProvider(abortController.signal, url);
+    this.persistentProviders.set(url, provider);
+    this.persistentProviderAbortControllers.set(url, abortController);
+    return provider;
+  }
+
+  // Resolve the configured Ethereum mainnet provider (cached)
+  private getEnsMainnetProvider(): CustomJsonRpcProvider | null {
+    const { networks } = store.getState().vaultGlobal;
+    const mainnet = networks?.ethereum?.[1];
+    if (!mainnet?.url) return null;
+    return this.getOrCreatePersistentProvider(mainnet.url);
+  }
 
   // Cache for UTXO network price data (same pattern as EVM)
   private utxoPriceDataCache = new Map<
@@ -4752,6 +4776,25 @@ class MainController {
         if (typeof provider.removeAllListeners === 'function') {
           provider.removeAllListeners();
         }
+
+        // Abort any in-flight requests
+        const controller = this.persistentProviderAbortControllers.get(url);
+        if (controller) {
+          try {
+            controller.abort();
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Attempt to destroy/cleanup provider internals if supported
+        if (typeof (provider as any).destroy === 'function') {
+          try {
+            (provider as any).destroy();
+          } catch (e) {
+            // ignore
+          }
+        }
       } catch (error) {
         console.warn(
           `[MainController] Error cleaning up provider for ${url}:`,
@@ -4762,6 +4805,7 @@ class MainController {
 
     // Clear the map
     this.persistentProviders.clear();
+    this.persistentProviderAbortControllers.clear();
   }
   /**
    * Get current network platform - delegates to EvmAssetsController
@@ -5026,20 +5070,12 @@ class MainController {
       return null;
     }
 
-    const { networks } = store.getState().vaultGlobal;
-    const mainnet = networks?.ethereum?.[1];
-    if (!mainnet?.url) {
+    const provider = this.getEnsMainnetProvider();
+    if (!provider) {
       throw new Error(
         'Ethereum mainnet RPC not configured. Cannot resolve ENS.'
       );
     }
-
-    // Build a throwaway provider to mainnet
-    const abortController = new AbortController();
-    const provider = new CustomJsonRpcProvider(
-      abortController.signal,
-      mainnet.url
-    );
 
     // Call resolver via ethers-style method if available
     let resolved: string | null = null;
@@ -5071,19 +5107,12 @@ class MainController {
       return null;
     }
 
-    const { networks } = store.getState().vaultGlobal;
-    const mainnet = networks?.ethereum?.[1];
-    if (!mainnet?.url) {
+    const provider = this.getEnsMainnetProvider();
+    if (!provider) {
       throw new Error(
         'Ethereum mainnet RPC not configured. Cannot reverse-resolve ENS.'
       );
     }
-
-    const abortController = new AbortController();
-    const provider = new CustomJsonRpcProvider(
-      abortController.signal,
-      mainnet.url
-    );
 
     let name: string | null = null;
     try {
