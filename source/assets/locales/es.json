@@ -347,6 +347,7 @@
     "plusGasFee": " + Tarifa de Gas",
     "gasFeeApprox": "Tarifa de Gas: ≈",
     "plusFees": "(+ tarifas)",
+    "fee": "Tarifa",
     "total": "Total",
     "gasLimitTooLow": "El límite de gas debe ser mayor a 42000",
     "priorityFeeTooHigh": "La tarifa de prioridad debe ser menor que la tarifa máxima",

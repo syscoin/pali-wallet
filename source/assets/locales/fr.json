@@ -486,6 +486,7 @@
     "plusGasFee": " + Frais de Gas",
     "gasFeeApprox": "Frais de Gas: ≈",
     "plusFees": "(+ frais)",
+    "fee": "Frais",
     "total": "Total",
     "gasLimitTooLow": "La limite de gaz doit être supérieure à 42000",
     "priorityFeeTooHigh": "Les frais de priorité doivent être inférieurs aux frais max",

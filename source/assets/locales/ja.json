@@ -491,6 +491,7 @@
     "plusGasFee": " + ガス手数料",
     "gasFeeApprox": "ガス手数料: ≈",
     "plusFees": "(+ 手数料)",
+    "fee": "手数料",
     "total": "合計",
     "gasLimitTooLow": "ガスリミットは42000より大きくする必要があります",
     "priorityFeeTooHigh": "優先手数料は最大手数料より小さくする必要があります",

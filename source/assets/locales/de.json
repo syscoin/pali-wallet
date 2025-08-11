@@ -491,6 +491,7 @@
     "plusGasFee": " + Gasgebühr",
     "gasFeeApprox": "Gasgebühr: ≈",
     "plusFees": "(+ Gebühren)",
+    "fee": "Gebühr",
     "total": "Gesamt",
     "gasLimitTooLow": "Das Gaslimit muss größer als 42000 sein",
     "priorityFeeTooHigh": "Die Prioritätsgebühr muss kleiner als die Maximalgebühr sein",

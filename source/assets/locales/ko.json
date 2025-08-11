@@ -491,6 +491,7 @@
     "plusGasFee": " + 가스 수수료",
     "gasFeeApprox": "가스 수수료: ≈",
     "plusFees": "(+ 수수료)",
+    "fee": "수수료",
     "total": "총계",
     "gasLimitTooLow": "가스 한도는 42000보다 커야 합니다",
     "priorityFeeTooHigh": "우선 수수료는 최대 수수료보다 작아야 합니다",

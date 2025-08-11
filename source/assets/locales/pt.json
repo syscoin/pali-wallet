@@ -328,6 +328,7 @@
     "plusGasFee": " + Taxa de Gas",
     "gasFeeApprox": "Taxa de Gas: ≈",
     "plusFees": "(+ taxas)",
+    "fee": "Taxa",
     "total": "Total",
     "tx": "Transação",
     "rbfOption": "Desative esta opção para Replace-by-fee (RBF). Quando ativado, permite substituição de transação com taxas {{currency}} mais altas.",

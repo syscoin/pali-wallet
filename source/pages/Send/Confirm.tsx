@@ -792,12 +792,29 @@ export const SendConfirm = () => {
                       tokenId: numericTokenId, // The actual NFT token ID
                       isLegacy: !isEIP1559Compatible,
                       gasPrice: BigNumber.from(gasPrice).toHexString(),
+                      maxPriorityFeePerGas: parseUnits(
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
+                        9
+                      ),
+                      maxFeePerGas: parseUnits(
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
+                        9
+                      ),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
                             fee.gasLimit ||
                               basicTxValues.defaultGasLimit ||
-                              85000
+                              150000
                           ),
                     },
                   ],
@@ -952,9 +969,7 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
-    if (isEIP1559Compatible === undefined) {
-      return; // Wait for EIP1559 compatibility check to complete
-    }
+    const eipModeUnknown = isEIP1559Compatible === undefined;
 
     // Skip fee recalculation when using custom fees
     if (customFee.isCustom) {
@@ -987,7 +1002,7 @@ export const SendConfirm = () => {
       return;
     }
 
-    if (isEIP1559Compatible === false) {
+    if (!eipModeUnknown && isEIP1559Compatible === false) {
       // Don't retry if we already have an error
       if (feeCalculationError || isCalculatingFees) {
         return;
@@ -1047,31 +1062,35 @@ export const SendConfirm = () => {
       const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
       const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
 
-      const gasLimit = basicTxValues.defaultGasLimit || 42000;
-      const initialFeeDetails = {
-        maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
-        baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
-        maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
-        gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
-      };
+      // Guard against invalid zero values from cache
+      if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
+        const gasLimit = basicTxValues.defaultGasLimit || 42000;
+        const initialFeeDetails = {
+          maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+          baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+          maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
+          gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
+        };
 
-      const formattedTxObject = {
-        from: basicTxValues.sender,
-        to: basicTxValues.receivingAddress,
-        chainId: activeNetwork.chainId,
-        maxFeePerGas: maxFeeBN,
-        maxPriorityFeePerGas: maxPriorityBN,
-      };
+        const formattedTxObject = {
+          from: basicTxValues.sender,
+          to: basicTxValues.receivingAddress,
+          chainId: activeNetwork.chainId,
+          maxFeePerGas: maxFeeBN,
+          maxPriorityFeePerGas: maxPriorityBN,
+        };
 
-      setTxObjectState(formattedTxObject);
-      setFee(initialFeeDetails as any);
+        setTxObjectState(formattedTxObject);
+        setFee(initialFeeDetails as any);
 
-      // Cache the result
-      setFeeCalculationCache(
-        (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
-      );
+        // Cache the result
+        setFeeCalculationCache(
+          (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
+        );
 
-      return; // Skip recalculation
+        return; // Skip recalculation
+      }
+      // If cached values were invalid, fall through to recompute
     }
 
     // Debounce fee calculation to prevent rapid successive calls
@@ -1087,18 +1106,17 @@ export const SendConfirm = () => {
             'getFeeDataWithDynamicMaxPriorityFeePerGas',
           ])) as any;
 
+        // Treat zero/invalid values as an error to avoid endless "Calculating..."
+        const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
+        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
+        if (maxFeeBN.isZero() || maxPriorityBN.isZero()) {
+          throw new Error('Invalid fee data (zeros)');
+        }
+
         const initialFeeDetails = {
-          maxFeePerGas: parseFloat(formatGweiValue(maxFeePerGas)),
-          baseFee: parseFloat(
-            formatGweiValue(
-              BigNumber.from(maxFeePerGas).sub(
-                BigNumber.from(maxPriorityFeePerGas)
-              )
-            )
-          ),
-          maxPriorityFeePerGas: parseFloat(
-            formatGweiValue(maxPriorityFeePerGas)
-          ),
+          maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+          baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+          maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
           gasLimit: basicTxValues.defaultGasLimit || 42000, // Always use appropriate default gas limit
         };
 
@@ -1106,8 +1124,8 @@ export const SendConfirm = () => {
           from: basicTxValues.sender,
           to: basicTxValues.receivingAddress,
           chainId: activeNetwork.chainId,
-          maxFeePerGas,
-          maxPriorityFeePerGas,
+          maxFeePerGas: maxFeeBN,
+          maxPriorityFeePerGas: maxPriorityBN,
         };
 
         setTxObjectState(formattedTxObject);
@@ -1181,7 +1199,8 @@ export const SendConfirm = () => {
         : fee?.gasLimit || basicTxValues.defaultGasLimit || 0
     );
 
-    if (!gasLimit) return 0;
+    // If values aren't ready yet, indicate pending by returning undefined
+    if (!gasLimit) return undefined as unknown as number;
 
     // Handle legacy transactions (non-EIP1559)
     if (isEIP1559Compatible === false) {
@@ -1191,7 +1210,8 @@ export const SendConfirm = () => {
           : parseFloat(formatGweiValue(gasPrice))
       );
 
-      if (isNaN(gasPriceValue) || isNaN(gasLimit)) return 0;
+      if (isNaN(gasPriceValue) || isNaN(gasLimit))
+        return undefined as unknown as number;
 
       // Use BigNumber to prevent overflow for large gas prices
       const gasLimitBN = BigNumber.from(gasLimit);
@@ -1203,14 +1223,15 @@ export const SendConfirm = () => {
     }
 
     // Handle EIP-1559 transactions
-    if (!fee?.maxFeePerGas) return 0;
+    if (!fee?.maxFeePerGas) return undefined as unknown as number;
 
     const feePerGas = Number(
       customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas
     );
 
     // Ensure we don't return NaN
-    if (isNaN(feePerGas) || isNaN(gasLimit)) return 0;
+    if (isNaN(feePerGas) || isNaN(gasLimit))
+      return undefined as unknown as number;
 
     // Use BigNumber to prevent overflow for large gas prices
     const gasLimitBN = BigNumber.from(gasLimit);
@@ -1560,7 +1581,6 @@ export const SendConfirm = () => {
                   </span>
                 </div>
                 {!isBitcoinBased &&
-                  !basicTxValues.token?.isNft &&
                   !feeCalculationError &&
                   (isEIP1559Compatible ? (
                     <span

@@ -353,6 +353,7 @@
     "plusGasFee": " + Gas Fee",
     "gasFeeApprox": "Gas Fee: ≈",
     "plusFees": "(+ fees)",
+    "fee": "Fee",
     "total": "Total",
     "parameterInterpretation": "Parameter Interpretation",
     "addressMatch": "Address Match: ",
