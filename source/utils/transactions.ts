@@ -167,9 +167,58 @@ export const getTransactionDisplayInfo = async (
         console.error('Error getting token info:', error);
       }
 
-      // Fallback: show raw value with truncated contract address as symbol
+      // Fallbacks when token metadata is not available (e.g., list view skips fetch):
+      // - Best-effort NFT identification to improve Activity list display without network calls
+      // - Otherwise, show a generic token transfer with unknown decimals
+
+      // If we can infer NFT type purely from the method selector, surface that so
+      // the Activity list can render helpful strings like "1 NFT #123" or "2 NFT #3"
+      try {
+        // ERC-1155 safeTransferFrom has an unambiguous selector
+        if (isErc1155Tx) {
+          const nftAmount = Number(getERC1155TransferValue(tx)) || 1;
+          const inferredTokenId = getERC1155TokenId(tx) || undefined;
+          return {
+            displayValue: nftAmount,
+            formattedValue: String(nftAmount),
+            displaySymbol: 'NFT',
+            isErc20Transfer: true,
+            actualRecipient: actualRecipient || tokenAddress,
+            isNft: true,
+            tokenId: inferredTokenId,
+          };
+        }
+
+        // ERC-721 safeTransferFrom selectors are also unambiguous vs ERC-20
+        const safeTransferFrom3Selector = id(
+          'safeTransferFrom(address,address,uint256)'
+        ).slice(0, 10);
+        const safeTransferFrom4Selector = id(
+          'safeTransferFrom(address,address,uint256,bytes)'
+        ).slice(0, 10);
+        const isErc721Safe =
+          !!tx?.input &&
+          (tx.input.startsWith(safeTransferFrom3Selector) ||
+            tx.input.startsWith(safeTransferFrom4Selector));
+        const erc721TokenId = isErc721Safe ? getERC721TokenId(tx) : null;
+        if (isErc721Safe && erc721TokenId) {
+          return {
+            displayValue: 1,
+            formattedValue: '1',
+            displaySymbol: 'NFT',
+            isErc20Transfer: true,
+            actualRecipient: actualRecipient || tokenAddress,
+            isNft: true,
+            tokenId: erc721TokenId,
+          };
+        }
+      } catch (nftInferenceError) {
+        // Non-fatal: fall through to generic unknown token handling below
+        // console.warn('NFT inference failed', nftInferenceError);
+      }
+
+      // Generic unknown token fallback: show raw value with truncated contract address as symbol
       // Since we don't know if it's an NFT or the decimals, flag it
-      // For unknown tokens, we'll show the raw value with a warning
       // and format it as if it might be 18 decimals (most common)
       const possibleFormattedValue = parseFloat(formatUnits(tokenValue, 18));
       const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
@@ -191,6 +240,32 @@ export const getTransactionDisplayInfo = async (
         hasUnknownDecimals: true, // Flag that we don't know the decimals
       };
     }
+  }
+
+  // If no input/decoding but the `to` matches a known NFT in user's assets,
+  // infer an NFT transfer to avoid showing misleading native 0 values in lists.
+  try {
+    if (!isTokenTx && tx?.to) {
+      const { accounts, activeAccount, accountAssets } = store.getState().vault;
+      const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+      const userAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
+      const token = userAssets?.ethereum?.find(
+        (asset: any) =>
+          asset.contractAddress?.toLowerCase() === String(tx.to).toLowerCase()
+      );
+      if (token?.isNft) {
+        return {
+          displayValue: 1,
+          formattedValue: '1',
+          displaySymbol: String(token.tokenSymbol || 'NFT').toUpperCase(),
+          isErc20Transfer: true,
+          actualRecipient: tx.to || currentAccount?.address || '',
+          isNft: true,
+        };
+      }
+    }
+  } catch {
+    // Ignore heuristic failure and continue to native currency handling
   }
 
   // Native currency transaction
