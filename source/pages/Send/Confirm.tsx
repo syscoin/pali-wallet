@@ -390,6 +390,14 @@ export const SendConfirm = () => {
           ]) as ITxState;
 
           let value = parseUnits(String(basicTxValues.amount), 'ether');
+          const floorToDecimals = (num: string | number, decimals: number) => {
+            const s = String(num);
+            const parts = s.split('.');
+            if (parts.length === 1) return s;
+            const [intPart, fracPart] = parts;
+            const truncated = fracPart.slice(0, decimals); // floor, do not round
+            return truncated.length > 0 ? `${intPart}.${truncated}` : intPart;
+          };
 
           try {
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
@@ -397,7 +405,8 @@ export const SendConfirm = () => {
             if (basicTxValues.isMax) {
               // Use the already-fetched EVM balance (ETH units)
               const actualBalanceEth = balance;
-              value = parseUnits(safeToFixed(actualBalanceEth), 'ether');
+              const balanceStrFloored = floorToDecimals(actualBalanceEth, 18);
+              value = parseUnits(balanceStrFloored, 'ether');
               const gasLimit = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
@@ -481,7 +490,6 @@ export const SendConfirm = () => {
 
               return;
             }
-
             // Use atomic wrapper for EIP-1559 transactions
             await controllerEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
