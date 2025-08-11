@@ -108,6 +108,29 @@ export const isBlindSigningError = (error: any): boolean => {
   );
 };
 
+/**
+ * Detect common EVM insufficient funds errors from providers/libraries
+ * Covers patterns like:
+ *  - "insufficient funds for gas * price + value"
+ *  - "insufficient funds for intrinsic transaction cost"
+ *  - Ethers.js Logger error code: INSUFFICIENT_FUNDS
+ */
+export const isEvmInsufficientFundsError = (error: any): boolean => {
+  const message = error?.message || '';
+  const lowerMessage = message.toLowerCase();
+
+  if (error?.code === 'INSUFFICIENT_FUNDS') return true;
+
+  return (
+    lowerMessage.includes('insufficient funds') ||
+    lowerMessage.includes('insufficient funds for gas * price + value') ||
+    lowerMessage.includes(
+      'insufficient funds for intrinsic transaction cost'
+    ) ||
+    lowerMessage.includes('base fee exceeds gas limit')
+  );
+};
+
 export const isSyscoinLibError = (error: any): boolean =>
   // Check for structured Syscoin library errors
   error?.code === 'SYSCOIN_ERROR' ||
@@ -240,6 +263,13 @@ export const handleTransactionError = (
   // Handle device locked
   if (isDeviceLockedError(error)) {
     alert.warning(t('settings.lockedDevice'));
+    return true;
+  }
+
+  // Handle EVM insufficient funds errors (gas/value)
+  if (isEvmInsufficientFundsError(error)) {
+    // Show a concise message that clearly points to gas fees requirement
+    alert.error(t('send.insufficientFundsForGas'));
     return true;
   }
 
