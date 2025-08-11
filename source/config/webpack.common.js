@@ -150,18 +150,7 @@ module.exports = {
         removeAttributeQuotes: true,
       },
     }),
-    new HtmlWebpackPlugin({
-      template: join(viewsPath, 'offscreen.html'),
-      inject: 'body',
-      chunks: ['vendor'],
-      hash: true,
-      filename: 'offscreen.html',
-      minify: {
-        removeComments: true,
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-      },
-    }),
+    // Offscreen document removed
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
       inject: 'body',
@@ -204,10 +193,7 @@ module.exports = {
             ignore: [],
           },
         },
-        {
-          from: 'source/scripts/offscreen-setup.js',
-          to: 'source/scripts/offscreen-setup.js',
-        },
+        // offscreen-setup.js removed
       ],
     }),
     new CopyWebpackPlugin({

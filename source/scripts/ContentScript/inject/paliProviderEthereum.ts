@@ -177,13 +177,34 @@ export class PaliInpageProviderEth extends BaseProvider {
               break;
             case 'pali_blockExplorerChanged':
               break;
-            case EMITTED_NOTIFICATIONS.includes(method):
-              //TODO: implement subscription messages
-              throw {
-                code: 69,
-                message:
-                  'Pali EthereumProvider: Does not yet have subscription to rpc methods',
-              };
+            case EMITTED_NOTIFICATIONS.includes(method): {
+              // Forward eth_subscription notifications to dapps via EIP-1193 'message' event
+              // params is expected to be { subscription, result }
+              const payload = {
+                type: 'eth_subscription',
+                data: params,
+              } as any;
+
+              try {
+                // EIP-1193 standard
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                this.emit?.('message', payload);
+              } catch (e) {
+                // no-op
+              }
+
+              try {
+                // Legacy 'data' event some libs still listen to
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                this.emit?.('data', { method, params });
+              } catch (e) {
+                // no-op
+              }
+
+              break;
+            }
             default:
               console.warn(
                 '[PaliEthProvider] Unknown notification method:',

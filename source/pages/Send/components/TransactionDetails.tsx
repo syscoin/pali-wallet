@@ -87,7 +87,7 @@ export const TransactionDetailsComponent = (
     alert.info(getCopyMessage(fieldType));
   };
 
-  // Calculate total fee: (gasLimit * maxFeePerGas) / 10^18 to get fee in native currency
+  // Calculate total fee: legacy uses gasPrice; EIP-1559 shows Max fee (gasLimit * maxFeePerGas)
   const gasLimit = customFee.isCustom ? customFee.gasLimit : fee.gasLimit;
 
   // Determine if this is a legacy transaction based on the original fee object
@@ -97,10 +97,10 @@ export const TransactionDetailsComponent = (
   const gasPriceGwei = customFee.isCustom
     ? isLegacyTx
       ? customFee.gasPrice
-      : customFee.maxFeePerGas
+      : customFee.maxFeePerGas // use maxFeePerGas for EIP-1559 "Max"
     : isLegacyTx
     ? fee.gasPrice
-    : fee.maxFeePerGas;
+    : fee.maxFeePerGas; // shows Max fee
 
   // Convert from Gwei to Wei (multiply by 10^9) then calculate total fee
   // Show actual gas price, even if 0 (test networks now handle cancellation properly)
@@ -120,6 +120,7 @@ export const TransactionDetailsComponent = (
   const finalFee = Number(formatEther(totalFeeWeiBN));
 
   const formattedFinalFee = removeScientificNotation(finalFee);
+  const feeLabelKey = isLegacyTx ? 'send.estimatedGasFee' : 'send.maxFee';
 
   useEffect(() => {
     if (tx && tx.value) {
@@ -228,7 +229,7 @@ export const TransactionDetailsComponent = (
       </div>
 
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
-        {t('send.estimatedGasFee')}
+        {t(feeLabelKey)}
         <div className="flex text-white text-xs">
           {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
           <div
@@ -249,10 +250,19 @@ export const TransactionDetailsComponent = (
         <div className="text-white text-xs">
           <Input
             type="number"
-            className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            className="input-medium outline-0 w-16 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
             placeholder={String(tx.nonce)}
             defaultValue={tx.nonce}
-            onChange={(e) => setCustomNonce(Number(e.target.value))}
+            onChange={(e) => {
+              const value = e.target.value;
+              const parsed = Number(value);
+              if (!Number.isFinite(parsed)) return;
+              const intVal = Math.max(0, Math.floor(parsed));
+              setCustomNonce(intVal);
+            }}
           />
         </div>
       </div>

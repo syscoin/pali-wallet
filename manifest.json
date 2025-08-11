@@ -16,7 +16,6 @@
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
-    "offscreen",
     "scripting",
     "notifications"
   ],
@@ -63,7 +62,11 @@
       "resources": [
         "js/inpage.bundle.js",
         "js/handleWindowProperties.bundle.js",
-        "js/pali.bundle.js"
+        "js/pali.bundle.js",
+        "assets/all_assets/favicon-16.png",
+        "assets/all_assets/favicon-32.png",
+        "assets/all_assets/favicon-48.png",
+        "assets/all_assets/favicon-128.png"
       ],
       "matches": [
         "<all_urls>"

@@ -61,8 +61,46 @@ export const EMITTED_NOTIFICATIONS = Object.freeze([
 ]);
 
 export const announceProvider = (provider: any, uuid: string) => {
+  const localIconUrl = (() => {
+    try {
+      // Try extension API first (available in content script contexts)
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const maybeChromeUrl = chrome?.runtime?.getURL?.(
+        'assets/all_assets/favicon-48.png'
+      );
+      if (maybeChromeUrl) return maybeChromeUrl;
+    } catch (_) {
+      return undefined;
+    }
+    // Fallback: derive extension origin from the inpage script tag URL
+    try {
+      // Find the script element whose src points to our inpage bundle
+      const scripts = Array.from(
+        document.getElementsByTagName('script')
+      ) as HTMLScriptElement[];
+      const inpageScript = scripts.find(
+        (s) =>
+          s.src &&
+          (s.src.includes('/js/inpage.bundle.js') ||
+            s.src.startsWith('chrome-extension://'))
+      );
+      if (inpageScript && inpageScript.src) {
+        const origin = new URL(inpageScript.src).origin;
+        return `${origin}/assets/all_assets/favicon-48.png`;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return undefined;
+  })();
+
+  // Prefer HTTPS icon to bypass site CSP that blocks chrome-extension:// images
+  const httpsIcon =
+    'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/all_assets/favicon-128.png';
+
   const providerInfo: IEIP6963ProviderInfo = {
-    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/all_assets/favicon-48.png',
+    icon: localIconUrl || httpsIcon || '',
     name: 'Pali Wallet',
     rdns: 'com.paliwallet',
     uuid,
