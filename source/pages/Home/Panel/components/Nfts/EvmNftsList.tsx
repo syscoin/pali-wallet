@@ -14,6 +14,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { truncate, navigateWithContext, ellipsis } from 'utils/index';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
+import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
   state: {
@@ -191,7 +192,11 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
                 >
                   {truncate(collection.symbol, 10).toUpperCase()}
                 </span>
-                <span className="text-brand-gray200 text-[10px]">
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getTokenTypeBadgeColor(
+                    collection.tokenStandard
+                  )}`}
+                >
                   {collection.tokenStandard}
                 </span>
               </div>

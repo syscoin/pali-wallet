@@ -4,6 +4,7 @@ module.exports = {
   content: [
     './source/components/**/*.{html,js,jsx,ts,tsx}',
     './source/pages/**/*.{html,js,jsx,ts,tsx}',
+    './source/utils/**/*.{html,js,jsx,ts,tsx}',
     './views/*.html',
   ],
   media: false, //darkMode is outdated
