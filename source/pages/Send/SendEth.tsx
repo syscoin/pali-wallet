@@ -377,9 +377,15 @@ export const SendEth = () => {
           return;
         }
 
-        const getAsset = activeAccountAssets?.ethereum?.find(
-          (item: ITokenEthProps) => item.contractAddress === value
-        );
+        // Prefer selecting by unique asset id (handles ERC-1155 tokenId correctly).
+        // Fallback to contractAddress match for legacy/non-ERC1155 tokens.
+        const getAsset =
+          activeAccountAssets?.ethereum?.find(
+            (item: ITokenEthProps) => item.id === value
+          ) ||
+          activeAccountAssets?.ethereum?.find(
+            (item: ITokenEthProps) => item.contractAddress === value
+          );
 
         if (getAsset) {
           setSelectedAsset(getAsset);
@@ -1218,9 +1224,7 @@ export const SendEth = () => {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        handleSelectedAsset(
-                                          item.contractAddress
-                                        )
+                                        handleSelectedAsset(item.id)
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
