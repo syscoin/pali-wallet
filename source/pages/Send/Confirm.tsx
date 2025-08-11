@@ -1456,6 +1456,16 @@ export const SendConfirm = () => {
                         </button>
                       </div>
                     </div>
+
+                    {/* Decimals */}
+                    <div className="bg-bkg-3 rounded-lg px-3 py-2 mt-2">
+                      <p className="text-brand-gray200 text-xs mb-1">
+                        {t('settings.decimals')}
+                      </p>
+                      <div className="text-white text-sm font-mono">
+                        {basicTxValues.token.decimals ?? 'N/A'}
+                      </div>
+                    </div>
                   </>
                 )}
 
