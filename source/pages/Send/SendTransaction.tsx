@@ -357,35 +357,43 @@ export const SendTransaction = () => {
                 'getRecommendedGasPrice',
               ]).then((gas) => BigNumber.from(gas)); // This returns wei already, so BigNumber.from is fine
 
+          // Determine if we have a valid destination address. For contract deployments, omit 'to'
+          const zeroAddress = '0x0000000000000000000000000000000000000000';
+          const candidateTo =
+            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
+          const toField: string | undefined =
+            candidateTo && candidateTo.toLowerCase() !== zeroAddress
+              ? candidateTo
+              : undefined;
+
+          const baseLegacyTx: any = {
+            ...txWithoutType,
+            value: txWithoutType.value
+              ? safeBigNumber(
+                  txWithoutType.value,
+                  '0x0',
+                  'transaction value'
+                ).toHexString()
+              : '0x0', // Convert value to hex string using safe conversion
+            nonce: customNonce,
+            gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
+            gasLimit: BigNumber.from(
+              Boolean(
+                customFee.isCustom &&
+                  customFee.gasLimit &&
+                  customFee.gasLimit > 0
+              )
+                ? customFee.gasLimit
+                : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+                ? tx.gasLimit // Keep as BigNumber
+                : fee.gasLimit || 42000 // Fallback to fee or default
+            ).toHexString(), // Convert to hex string for ethers
+            ...(toField ? { to: toField } : {}),
+          };
+
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
-            [
-              {
-                ...txWithoutType,
-                to: resolvedTo || toRaw,
-                value: txWithoutType.value
-                  ? safeBigNumber(
-                      txWithoutType.value,
-                      '0x0',
-                      'transaction value'
-                    ).toHexString()
-                  : '0x0', // Convert value to hex string using safe conversion
-                nonce: customNonce,
-                gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
-                gasLimit: BigNumber.from(
-                  Boolean(
-                    customFee.isCustom &&
-                      customFee.gasLimit &&
-                      customFee.gasLimit > 0
-                  )
-                    ? customFee.gasLimit
-                    : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
-                    ? tx.gasLimit // Keep as BigNumber
-                    : fee.gasLimit || 42000 // Fallback to fee or default
-                ).toHexString(), // Convert to hex string for ethers
-              },
-              isLegacyTransaction,
-            ],
+            [baseLegacyTx, isLegacyTransaction],
             false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
@@ -393,45 +401,54 @@ export const SendTransaction = () => {
           );
         } else {
           // EIP-1559 transaction handling
+          // Determine if we have a valid destination address. For contract deployments, omit 'to'
+          const zeroAddress = '0x0000000000000000000000000000000000000000';
+          const candidateTo =
+            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
+          const toField: string | undefined =
+            candidateTo && candidateTo.toLowerCase() !== zeroAddress
+              ? candidateTo
+              : undefined;
+
+          const base1559Tx: any = {
+            ...txToSend,
+            value: txToSend.value
+              ? safeBigNumber(
+                  txToSend.value,
+                  '0x0',
+                  'transaction value'
+                ).toHexString()
+              : '0x0', // Convert value to hex string using safe conversion
+            nonce: customNonce,
+            maxPriorityFeePerGas: Boolean(
+              customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+            )
+              ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
+              : tx.maxPriorityFeePerGas &&
+                BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
+              ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
+              : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
+            maxFeePerGas: Boolean(
+              customFee.isCustom && customFee.maxFeePerGas > 0
+            )
+              ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
+              : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
+              ? tx.maxFeePerGas // Use the BigNumber from tx
+              : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
+            gasLimit: Boolean(
+              customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
+            )
+              ? BigNumber.from(customFee.gasLimit)
+              : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+              ? tx.gasLimit // Use the BigNumber from tx
+              : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
+            ...(toField ? { to: toField } : {}),
+          };
+
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
-              {
-                ...txToSend,
-                to: resolvedTo || toRaw,
-                value: txToSend.value
-                  ? safeBigNumber(
-                      txToSend.value,
-                      '0x0',
-                      'transaction value'
-                    ).toHexString()
-                  : '0x0', // Convert value to hex string using safe conversion
-                nonce: customNonce,
-                maxPriorityFeePerGas: Boolean(
-                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                )
-                  ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
-                  : tx.maxPriorityFeePerGas &&
-                    BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
-                  ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
-                  : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
-                maxFeePerGas: Boolean(
-                  customFee.isCustom && customFee.maxFeePerGas > 0
-                )
-                  ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
-                  : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
-                  ? tx.maxFeePerGas // Use the BigNumber from tx
-                  : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
-                gasLimit: Boolean(
-                  customFee.isCustom &&
-                    customFee.gasLimit &&
-                    customFee.gasLimit > 0
-                )
-                  ? BigNumber.from(customFee.gasLimit)
-                  : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
-                  ? tx.gasLimit // Use the BigNumber from tx
-                  : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
-              },
+              base1559Tx,
               false, // isLegacy = false for EIP-1559
             ],
             false,

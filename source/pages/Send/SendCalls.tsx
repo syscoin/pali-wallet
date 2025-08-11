@@ -313,12 +313,21 @@ export const SendCalls = () => {
           }
 
           // Prepare transaction with incremented nonce
-          const tx = {
+          // Omit 'to' for contract deployments or invalid/zero addresses
+          const zeroAddress = '0x0000000000000000000000000000000000000000';
+          const candidateTo =
+            toResolved && toResolved.startsWith('0x') ? toResolved : undefined;
+          const toField =
+            candidateTo && candidateTo.toLowerCase() !== zeroAddress
+              ? candidateTo
+              : undefined;
+
+          const tx: any = {
             from,
-            to: toResolved,
             value: call.value || '0x0',
             data: call.data || '0x',
             nonce: startingNonce + i, // Use incremented nonce to prevent conflicts
+            ...(toField ? { to: toField } : {}),
           };
 
           // Update status to sending
