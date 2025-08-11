@@ -19,9 +19,7 @@ const ConnectHardwareWalletView: FC = () => {
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
   );
-  const { accounts, isBitcoinBased } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { accounts } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const { controllerEmitter, isUnlocked } = useController();
@@ -338,18 +336,16 @@ const ConnectHardwareWalletView: FC = () => {
                   >
                     Trezor
                   </button>
-                  {!isBitcoinBased && (
-                    <button
-                      className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
-                      onClick={() =>
-                        setSelectedHardwareWallet(HardWallets.LEDGER)
-                      }
-                      id="ledger-btn"
-                      disabled={!isUnlocked}
-                    >
-                      Ledger
-                    </button>
-                  )}
+                  <button
+                    className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                    onClick={() =>
+                      setSelectedHardwareWallet(HardWallets.LEDGER)
+                    }
+                    id="ledger-btn"
+                    disabled={!isUnlocked}
+                  >
+                    Ledger
+                  </button>
                 </div>
               )}
             </div>
