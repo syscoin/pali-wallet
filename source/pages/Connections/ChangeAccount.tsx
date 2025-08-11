@@ -183,6 +183,14 @@ export const ChangeAccount = () => {
   const { host, eventName } = queryData;
   const { t } = useTranslation();
 
+  const isBridgeHost = React.useMemo(() => {
+    const safeHost = (host || '').toLowerCase();
+    return (
+      safeHost.includes('bridge.syscoin.org') ||
+      safeHost.includes('bridge-staging.syscoin.org')
+    );
+  }, [host]);
+
   // Helper to check if account is valid for current network type
   const isAccountValidForNetwork = (account: any) => {
     if (!account) return false;
@@ -221,6 +229,14 @@ export const ChangeAccount = () => {
       currentAccountType !== undefined ? currentAccountType : null
     );
   const [isChanging, setIsChanging] = useState<boolean>(false);
+
+  const showTrezorUtxoDisclaimer = React.useMemo(
+    () =>
+      isBitcoinBased &&
+      isBridgeHost &&
+      accountType === KeyringAccountType.Trezor,
+    [isBitcoinBased, isBridgeHost, accountType]
+  );
 
   // Helper function to get tokens for an account
   const getAccountTokens = useCallback(
@@ -343,6 +359,14 @@ export const ChangeAccount = () => {
               ? t('connections.requestingPermissions')
               : t('connections.selectAccountToConnect')}
           </p>
+
+          {showTrezorUtxoDisclaimer && (
+            <div className="mt-3 p-3 bg-red-900/20 border border-red-500 rounded-lg">
+              <p className="text-red-400 text-xs">
+                Trezor is not supported for UTXO accounts on Syscoin Bridge.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Accounts list */}
