@@ -113,10 +113,22 @@ const EvmTransactionItem = React.memo(
     });
 
     // Create a stable cache key for memoization
-    const cacheKey = useMemo(
-      () => `${tx.hash}-${tx.value}-${tx.to}-${tx.input}`,
-      [tx.hash, tx.value, tx.to, tx.input]
-    );
+    const cacheKey = useMemo(() => {
+      const tm = tokenMeta || ({} as any);
+      const tmSig = `${tm.contractAddress || ''}-${tm.decimals ?? ''}-${
+        tm.tokenSymbol || tm.symbol || ''
+      }`;
+      return `${tx.hash}-${tx.value}-${tx.to}-${tx.input}-${tmSig}`;
+    }, [
+      tx.hash,
+      tx.value,
+      tx.to,
+      tx.input,
+      tokenMeta?.contractAddress,
+      tokenMeta?.decimals,
+      tokenMeta?.tokenSymbol,
+      tokenMeta?.symbol,
+    ]);
 
     // Effect to get proper transaction display info
     React.useEffect(() => {
@@ -163,7 +175,15 @@ const EvmTransactionItem = React.memo(
       return () => {
         cancelled = true;
       };
-    }, [cacheKey, currency, tx]);
+    }, [
+      cacheKey,
+      currency,
+      tx,
+      tokenMeta?.contractAddress,
+      tokenMeta?.decimals,
+      tokenMeta?.tokenSymbol,
+      tokenMeta?.symbol,
+    ]);
 
     const finalTxValue = displayInfo.displayValue;
     const formattedValue = displayInfo.formattedValue;
@@ -486,7 +506,9 @@ const EvmTransactionItem = React.memo(
     prevProps.t === nextProps.t &&
     (prevProps.tokenMeta?.logo ?? '') === (nextProps.tokenMeta?.logo ?? '') &&
     (prevProps.tokenMeta?.tokenSymbol ?? prevProps.tokenMeta?.symbol ?? '') ===
-      (nextProps.tokenMeta?.tokenSymbol ?? nextProps.tokenMeta?.symbol ?? '')
+      (nextProps.tokenMeta?.tokenSymbol ?? nextProps.tokenMeta?.symbol ?? '') &&
+    (prevProps.tokenMeta?.contractAddress ?? '') ===
+      (nextProps.tokenMeta?.contractAddress ?? '')
 );
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
@@ -682,6 +704,16 @@ export const EvmTransactionsList = ({
     }
     return map;
   }, [activeAssets?.ethereum]);
+
+  // Invalidate cached display info when the assets list changes so decimals/symbols refresh immediately
+  useEffect(() => {
+    txDisplayInfoCache.clear();
+  }, [activeAssets?.ethereum?.length, chainId]);
+
+  // Also clear cache when switching accounts to avoid stale tokenMeta across accounts
+  useEffect(() => {
+    txDisplayInfoCache.clear();
+  }, [currentAccount?.address]);
 
   return (
     <>
