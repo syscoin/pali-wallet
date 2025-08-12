@@ -33,6 +33,7 @@ import {
   getTokenTypeBadgeColor,
   navigateWithContext,
   saveNavigationState,
+  truncateToDecimals,
 } from 'utils/index';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
@@ -1235,7 +1236,7 @@ export const SendEth = () => {
                                               '...'
                                             : item.tokenSymbol}
                                         </p>
-                                        {item.isNft && (
+                                        {item.isNft ? (
                                           <span className="text-[10px] text-brand-gray200 font-mono">
                                             {ellipsis(
                                               item.contractAddress,
@@ -1257,6 +1258,14 @@ export const SendEth = () => {
                                                     : item.tokenId}
                                                 </>
                                               )}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] text-brand-gray200 font-mono">
+                                            {ellipsis(
+                                              item.contractAddress,
+                                              4,
+                                              4
+                                            )}
                                           </span>
                                         )}
                                       </div>
@@ -1384,6 +1393,28 @@ export const SendEth = () => {
 
                         // For regular tokens
                         if (isToken) {
+                          // Enforce token decimal precision on the raw string input
+                          const decimalsAllowed = Number(
+                            selectedAsset?.decimals ?? 18
+                          );
+                          const valueString = String(value);
+                          if (valueString.includes('.')) {
+                            const fractional = valueString.split('.')[1] || '';
+                            if (
+                              decimalsAllowed === 0 &&
+                              fractional.length > 0
+                            ) {
+                              return Promise.reject(
+                                t('send.amountMustBePositiveInteger')
+                              );
+                            }
+                            if (
+                              decimalsAllowed > 0 &&
+                              fractional.length > decimalsAllowed
+                            ) {
+                              return Promise.reject(t('send.invalidAmount'));
+                            }
+                          }
                           // REQUIRE verified balance for ERC-20 tokens
                           if (verifiedERC20Balance === null) {
                             return Promise.reject(
@@ -1509,7 +1540,11 @@ export const SendEth = () => {
                     type="number"
                     step={
                       selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-721'
+                      selectedAsset?.tokenStandard === 'ERC-1155'
+                        ? '1'
+                        : selectedAsset &&
+                          !selectedAsset.isNft &&
+                          Number(selectedAsset.decimals) === 0
                         ? '1'
                         : 'any'
                     }
@@ -1566,7 +1601,36 @@ export const SendEth = () => {
                         setIsMaxSend(false);
                       }
                     }}
-                    onBlur={handleFieldBlur}
+                    onBlur={(e) => {
+                      try {
+                        const raw = String(e?.target?.value ?? '');
+                        if (!raw) {
+                          handleFieldBlur();
+                          return;
+                        }
+                        // Auto-truncate on blur for fungible tokens (ERC-20 only)
+                        if (selectedAsset && !selectedAsset.isNft) {
+                          const decimalsAllowed = Number(
+                            selectedAsset.decimals ?? 18
+                          );
+                          const nextValue: string = truncateToDecimals(
+                            raw,
+                            Math.max(0, decimalsAllowed)
+                          );
+                          if (nextValue !== raw) {
+                            form.setFieldValue('amount', nextValue);
+                            formValuesRef.current = {
+                              ...formValuesRef.current,
+                              amount: nextValue,
+                            };
+                          }
+                        }
+                      } finally {
+                        // Re-run validation and persist blur handling
+                        form.validateFields(['amount']).catch(() => null);
+                        handleFieldBlur();
+                      }
+                    }}
                   />
                 </Form.Item>
 
