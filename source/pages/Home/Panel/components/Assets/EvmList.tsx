@@ -258,17 +258,13 @@ export const EvmAssetsList = () => {
   const isSearching = searchValue !== deferredSearchValue;
   const isSorting = sortByValue !== deferredSortByValue;
 
-  const { isLoadingAssets } = useSelector(
-    (rootState: RootState) => rootState.vaultGlobal.loadingStates
-  );
   const { networkStatus } = useSelector(
     (rootState: RootState) => rootState.vaultGlobal
   );
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  const loadingValidation =
-    (isCoinSelected && isLoadingAssets) || isNetworkChanging;
+  const loadingValidation = isNetworkChanging;
 
   // Track if we've already restored scroll position to prevent duplicate restoration
   const hasRestoredScrollRef = useRef(false);

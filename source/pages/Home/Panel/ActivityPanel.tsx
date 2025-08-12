@@ -18,7 +18,7 @@ export const TransactionsPanel = () => {
   // ✅ OPTIMIZED: Use compound selectors to reduce re-renders
   const { account: activeAccount, transactions: accountTransactions } =
     useSelector(selectActiveAccountWithTransactions);
-  const { activeNetwork, isBitcoinBased, isLoadingTxs, isSwitchingAccount } =
+  const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
 
   const { t } = useTranslation();
@@ -58,15 +58,12 @@ export const TransactionsPanel = () => {
 
   // Use a stable reference for transactions update
   useEffect(() => {
-    if (!isLoadingTxs) {
-      if (transactions.length === 0 && previousTransactions.length > 0) {
-        updatePreviousTransactions([]);
-      } else if (transactions.length > 0) {
-        updatePreviousTransactions(transactions);
-      }
+    if (transactions.length === 0 && previousTransactions.length > 0) {
+      updatePreviousTransactions([]);
+    } else if (transactions.length > 0) {
+      updatePreviousTransactions(transactions);
     }
   }, [
-    isLoadingTxs,
     transactions.length, // Use length instead of the array itself
     previousTransactions.length, // Use length for stable comparison
     updatePreviousTransactions,
@@ -136,10 +133,7 @@ export const TransactionsPanel = () => {
     );
   }, [activeAccount, adjustedExplorer, isBitcoinBased, t]);
 
-  const isLoading = useMemo(
-    () => isLoadingTxs || isSwitchingAccount,
-    [isLoadingTxs, isSwitchingAccount]
-  );
+  const isLoading = useMemo(() => isSwitchingAccount, [isSwitchingAccount]);
 
   const allTransactions = useMemo(
     () => (hasTransactions ? transactions : previousTransactions),

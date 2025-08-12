@@ -24,10 +24,7 @@ export interface IAccountTransactions {
 
 // Loading states interface for transient UI states
 export interface ILoadingStates {
-  isLoadingAssets: boolean;
   isLoadingBalances: boolean;
-  isLoadingNfts: boolean;
-  isLoadingTxs: boolean;
 }
 
 // Global state shared across all slip44s (stored in main state)

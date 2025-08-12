@@ -68,9 +68,7 @@ import {
   switchNetworkError,
   switchNetworkSuccess,
   setError as setStoreError,
-  setIsLoadingAssets,
   setIsLoadingBalances,
-  setIsLoadingTxs,
   setNetwork,
   removeNetwork,
   setIsPollingUpdate,
@@ -3137,10 +3135,7 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            // Only set loading state for non-polling updates
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(true));
-            }
+            // For background transaction updates, do not toggle UI loading flags
 
             // Safe access to transaction objects with error handling
             const web3Provider = this.ethereumTransaction?.web3Provider;
@@ -3245,10 +3240,7 @@ class MainController {
               notificationManager.updatePendingTransactionBadge(txs);
             }
 
-            // Clear loading state on success only if we set it
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(false));
-            }
+            // No-op for loading flags; transactions update fully in background
             resolve();
           } catch (error) {
             reject(error);
@@ -3625,10 +3617,7 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
-    // Set loading state immediately for non-polling updates
-    if (!isPolling) {
-      store.dispatch(setIsLoadingAssets(true));
-    }
+    // Background assets update: do not toggle loading flags
 
     // For polling, we don't need keyring access - we're just fetching public asset balances
     // Only check if unlocked for non-polling operations
@@ -3638,8 +3627,7 @@ class MainController {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling asset updates'
         );
-        // Clear loading state and return
-        store.dispatch(setIsLoadingAssets(false));
+        // Return early without toggling UI flags
         return Promise.resolve();
       }
     }
@@ -3652,12 +3640,8 @@ class MainController {
     // Check if account exists before proceeding
     if (!currentAccount) {
       console.warn('[updateAssetsFromCurrentAccount] Active account not found');
-      store.dispatch(setIsLoadingAssets(false));
       return Promise.resolve();
     }
-
-    // Capture isPolling for use in the inner async function
-    const isPollingUpdate = isPolling;
 
     const { currentPromise: assetsPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -3700,10 +3684,6 @@ class MainController {
 
             if (validateIfIsInvalidDispatch) {
               // Skip dispatch but still resolve - empty data might be valid
-              // Only clear loading state if we set it
-              if (!isPollingUpdate) {
-                store.dispatch(setIsLoadingAssets(false));
-              }
               resolve();
               return;
             }
@@ -3716,10 +3696,7 @@ class MainController {
               })
             );
 
-            // Clear loading state on success only if we set it
-            if (!isPollingUpdate) {
-              store.dispatch(setIsLoadingAssets(false));
-            }
+            // Background: no loading flags
             resolve();
           } catch (error) {
             reject(error);
@@ -4014,71 +3991,46 @@ class MainController {
       latestTx: getLatestTx(currentAccountTransactions),
     });
 
-    // Use Promise.allSettled for coordinated updates
-    // This ensures all updates complete even if some fail
-    const updatePromises = [
-      this.updateAssetsFromCurrentAccount({
+    // Fire-and-forget heavy updates (assets + transactions) in background with polling mode
+    // so they do not toggle loading flags or block UI.
+    try {
+      void this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
-        isPolling,
-      }),
-      this.updateUserTransactionsState({
+        isPolling: true, // background
+      });
+    } catch {}
+
+    try {
+      void this.updateUserTransactionsState({
         isBitcoinBased,
         activeNetwork,
-        isPolling,
+        isPolling: true, // background
         isRapidPolling,
-      }),
-      this.updateUserNativeBalance({
+      });
+    } catch {}
+
+    // Await only native balance to drive latency/status indicator
+    let balanceFailed = false;
+    try {
+      await this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
         isPolling,
-      }),
-    ];
-
-    const results = await Promise.allSettled(updatePromises);
-
-    // Log any failures for debugging and track which operations failed
-    let balanceFailed = false;
-    let transactionsFailed = false;
-    let assetsFailed = false;
-
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        // Track which specific operations failed
-        if (index === 0) assetsFailed = true;
-        if (index === 1) transactionsFailed = true;
-        if (index === 2) balanceFailed = true;
-      }
-    });
-
-    // Clear loading states only for operations that succeeded
-    // Keep loading states active for failed operations to show error state
-    // Only clear if we set them in the first place (not polling)
-    if (!isPolling) {
-      const loadingStates = store.getState().vaultGlobal.loadingStates;
-
-      if (!assetsFailed && loadingStates.isLoadingAssets) {
-        store.dispatch(setIsLoadingAssets(false));
-      }
-
-      if (!transactionsFailed && loadingStates.isLoadingTxs) {
-        store.dispatch(setIsLoadingTxs(false));
-      }
-
-      if (!balanceFailed && loadingStates.isLoadingBalances) {
-        store.dispatch(setIsLoadingBalances(false));
-      }
+      });
+      // Clear balance loading state if we set it earlier
+      // Balance loading flag is managed by caller; no change here
+    } catch (_err) {
+      balanceFailed = true;
     }
 
-    // If any core operation failed, set network status to error so timeout/error handling can trigger chain error page
-    // But only for non-polling updates - we don't want to show error UI during background polling
-    if (balanceFailed || transactionsFailed || assetsFailed) {
+    // If balance failed, set network status to error so timeout/error handling can trigger chain error page
+    // Heavy updates run in background and don't affect initial connection status
+    if (balanceFailed) {
       console.error('[MainController] Account update failed', {
         balanceFailed,
-        transactionsFailed,
-        assetsFailed,
         isPolling,
       });
       store.dispatch(switchNetworkError());

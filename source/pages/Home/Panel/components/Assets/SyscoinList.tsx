@@ -28,10 +28,9 @@ export const SyscoinAssetsList = () => {
     activeAccount,
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
-  const {
-    networkStatus,
-    loadingStates: { isLoadingAssets },
-  } = useSelector((state: RootState) => state.vaultGlobal);
+  const { networkStatus } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
@@ -252,7 +251,7 @@ export const SyscoinAssetsList = () => {
 
   return (
     <>
-      {isLoadingAssets || isNetworkChanging ? (
+      {isNetworkChanging ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
         </div>

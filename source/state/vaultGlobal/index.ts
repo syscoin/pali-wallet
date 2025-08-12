@@ -21,9 +21,6 @@ const initialState: IGlobalState = {
   // Transient loading states - always start as false
   loadingStates: {
     isLoadingBalances: false,
-    isLoadingTxs: false,
-    isLoadingAssets: false,
-    isLoadingNfts: false,
   },
   networks: PALI_NETWORKS_STATE,
   isPollingUpdate: false,
@@ -81,23 +78,12 @@ const vaultGlobalSlice = createSlice({
     resetLoadingStates(state: IGlobalState) {
       state.loadingStates = {
         isLoadingBalances: false,
-        isLoadingTxs: false,
-        isLoadingAssets: false,
-        isLoadingNfts: false,
       };
     },
     setIsLoadingBalances(state: IGlobalState, action: PayloadAction<boolean>) {
       state.loadingStates.isLoadingBalances = action.payload;
     },
-    setIsLoadingTxs(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingTxs = action.payload;
-    },
-    setIsLoadingAssets(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingAssets = action.payload;
-    },
-    setIsLoadingNfts(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingNfts = action.payload;
-    },
+
     setActiveSlip44(state: IGlobalState, action: PayloadAction<number>) {
       state.activeSlip44 = action.payload;
     },
@@ -324,9 +310,6 @@ export const {
   rehydrate,
   resetLoadingStates,
   setIsLoadingBalances,
-  setIsLoadingTxs,
-  setIsLoadingAssets,
-  setIsLoadingNfts,
   setActiveSlip44,
   setAdvancedSettings,
   setError,

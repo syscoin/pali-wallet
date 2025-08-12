@@ -70,13 +70,11 @@ export const selectVaultCoreData = createSelector(
   [
     (state: RootState) => state.vault.activeNetwork,
     (state: RootState) => state.vault.isBitcoinBased,
-    (state: RootState) => state.vaultGlobal.loadingStates.isLoadingTxs,
     (state: RootState) => state.vaultGlobal.isSwitchingAccount,
   ],
-  (activeNetwork, isBitcoinBased, isLoadingTxs, isSwitchingAccount) => ({
+  (activeNetwork, isBitcoinBased, isSwitchingAccount) => ({
     activeNetwork,
     isBitcoinBased,
-    isLoadingTxs,
     isSwitchingAccount,
   })
 );

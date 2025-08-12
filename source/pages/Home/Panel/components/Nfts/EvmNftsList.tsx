@@ -106,12 +106,6 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
   // NFTs are automatically updated through regular asset polling
 
-  // ✅ MEMOIZED: Loading state - use assets loading state since NFTs come with assets
-  const isLoadingAssets = useSelector(
-    (rootState: RootState) =>
-      rootState.vaultGlobal.loadingStates.isLoadingAssets
-  );
-
   const handleNftClick = useCallback(
     (collection: any) => {
       // Capture current scroll position
@@ -133,14 +127,6 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     },
     [navigate, searchParams, state]
   );
-
-  if (isLoadingAssets) {
-    return (
-      <div className="w-full h-64 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-white" />
-      </div>
-    );
-  }
 
   if (collections.length === 0) {
     return null; // Let the parent AssetsPanel handle empty state with Import Token link
