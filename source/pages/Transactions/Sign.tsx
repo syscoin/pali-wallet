@@ -28,12 +28,18 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Use shallow equality checks to prevent unnecessary re-renders
   const { activeAccount: activeAccountData, accounts } = useSelector(
-    (state: RootState) => state.vault
+    (state: RootState) => state.vault,
+    (prev, next) =>
+      prev.activeAccount?.type === next.activeAccount?.type &&
+      prev.activeAccount?.id === next.activeAccount?.id &&
+      prev.accounts === next.accounts
   );
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
   const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+    (state: RootState) => state.vault.activeNetwork,
+    (prev, next) => prev?.chainId === next?.chainId && prev?.url === next?.url
   );
 
   // Handle initial data loading
@@ -199,7 +205,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
             </div>
 
             {/* Transaction Details Section */}
-            <div className="w-full max-w-2xl mx-auto px-6">
+            <div className="w-full">
               <SyscoinTransactionDetailsFromPSBT
                 psbt={data}
                 showTechnicalDetails={false}
@@ -246,4 +252,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   );
 };
 
-export default Sign;
+// Memoize the component to prevent unnecessary re-renders during rapid polling
+export default React.memo(
+  Sign,
+  (prevProps, nextProps) =>
+    // Only re-render if signOnly prop changes
+    prevProps.signOnly === nextProps.signOnly
+);

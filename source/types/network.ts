@@ -40,6 +40,9 @@ export type IKeyringBalances = {
 export interface IKeyringAccountState {
   address: string;
   balances: IKeyringBalances;
+  // Per-chain EVM tx count hint (chainId -> txCount)
+  // Used to decide if explorer paging can be enabled safely
+  evmTxCountByChainId?: Record<number, number>;
   id: number;
   isImported: boolean;
   isLedgerWallet: boolean;
@@ -59,6 +62,7 @@ export const initialActiveHdAccountState: IKeyringAccountState = {
   isTrezorWallet: false,
   isLedgerWallet: false,
   label: 'Account 1',
+  evmTxCountByChainId: {},
   xprv: '',
   xpub: '',
   isImported: false,

@@ -18,7 +18,6 @@ const MV2_OPTIONS = {
     'tabs',
     'storage',
     'activeTab',
-    '*://*.eth/',
     'clipboardWrite',
     'unlimitedStorage',
     'http://localhost:8545/',
@@ -60,6 +59,10 @@ const MV2_OPTIONS = {
     'js/inpage.bundle.js',
     'js/handleWindowProperties.bundle.js',
     'js/pali.bundle.js',
+    'assets/all_assets/favicon-16.png',
+    'assets/all_assets/favicon-32.png',
+    'assets/all_assets/favicon-48.png',
+    'assets/all_assets/favicon-128.png',
   ],
   commands: {
     _execute_browser_action: {
@@ -73,7 +76,7 @@ const MV2_OPTIONS = {
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '3.5.0',
+  version: '4.0.0',
   icons: {
     16: 'assets/all_assets/favicon-16.png',
     32: 'assets/all_assets/favicon-32.png',
@@ -96,7 +99,6 @@ const MV3_OPTIONS = {
     'http://*/*',
     'https://*/*',
     '*://connect.trezor.io/9/*',
-    '*://*.eth/',
     'http://localhost:8545/',
   ],
   content_security_policy: {
@@ -132,6 +134,10 @@ const MV3_OPTIONS = {
         'js/inpage.bundle.js',
         'js/handleWindowProperties.bundle.js',
         'js/pali.bundle.js',
+        'assets/all_assets/favicon-16.png',
+        'assets/all_assets/favicon-32.png',
+        'assets/all_assets/favicon-48.png',
+        'assets/all_assets/favicon-128.png',
       ],
       matches: ['<all_urls>'],
     },

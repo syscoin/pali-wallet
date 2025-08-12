@@ -1,6 +1,6 @@
 import { removeScientificNotation } from '.';
 
-// Truncate values without around using regex
+// Truncate values without rounding using regex
 const truncateNumberWithoutRound = (
   value: number | string,
   precision: number
@@ -11,6 +11,15 @@ const truncateNumberWithoutRound = (
 
   return truncatedValue;
 };
+
+/**
+ * Public helper to truncate a numeric string/number to a fixed number of decimal places
+ * without rounding. Preserves sign and integer part.
+ */
+export const truncateToDecimals = (
+  value: number | string,
+  precision: number
+): string => truncateNumberWithoutRound(value, Math.max(0, precision));
 
 // Get all type of values BigInt or not, truncate using the correct validation and return value formatted
 export const verifyZerosInBalanceAndFormat = (

@@ -1,8 +1,10 @@
+import { BigNumber } from '@ethersproject/bignumber';
+import { formatEther, parseUnits } from '@ethersproject/units';
 import { Input } from 'antd';
-import isNaN from 'lodash/isNaN';
 import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useSelector as useReduxSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
@@ -50,7 +52,7 @@ export const TransactionDetailsComponent = (
   const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter } = useController();
   const [, copy] = useCopyClipboard();
-  const [currentTxValue, setCurrentTxValue] = useState<number>(0);
+  const [currentTxValue, setCurrentTxValue] = useState<string>('0');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     isBlacklisted: boolean;
     reason?: string;
@@ -61,6 +63,8 @@ export const TransactionDetailsComponent = (
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  // Prefer rendering ENS name when available in cache for destination
+  const ensCache = useReduxSelector((s: RootState) => s.vaultGlobal.ensCache);
 
   // Helper function to get appropriate copy message based on field type
   const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
@@ -83,17 +87,49 @@ export const TransactionDetailsComponent = (
     alert.info(getCopyMessage(fieldType));
   };
 
-  const finalFee =
-    +removeScientificNotation(
-      customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas
-    ) /
-    10 ** 9;
+  // Calculate total fee: legacy uses gasPrice; EIP-1559 shows Max fee (gasLimit * maxFeePerGas)
+  const gasLimit = customFee.isCustom ? customFee.gasLimit : fee.gasLimit;
+
+  // Determine if this is a legacy transaction based on the original fee object
+  const isLegacyTx = fee.gasPrice !== undefined;
+
+  // Use the appropriate fee field based on transaction type
+  const gasPriceGwei = customFee.isCustom
+    ? isLegacyTx
+      ? customFee.gasPrice
+      : customFee.maxFeePerGas // use maxFeePerGas for EIP-1559 "Max"
+    : isLegacyTx
+    ? fee.gasPrice
+    : fee.maxFeePerGas; // shows Max fee
+
+  // Convert from Gwei to Wei (multiply by 10^9) then calculate total fee
+  // Show actual gas price, even if 0 (test networks now handle cancellation properly)
+  const displayGasPrice = gasPriceGwei ?? 0;
+
+  // Use BigNumber to prevent overflow when multiplying large numbers
+  const gasLimitBN = BigNumber.from(gasLimit || 0);
+  // Limit to 9 decimal places to avoid parseUnits error
+  const gasPriceStr =
+    typeof displayGasPrice === 'number'
+      ? displayGasPrice.toFixed(9)
+      : parseFloat(displayGasPrice).toFixed(9);
+  const gasPriceWeiBN = parseUnits(gasPriceStr, 'gwei');
+  const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
+
+  // Convert to ETH for display (safe as we're only using for display)
+  const finalFee = Number(formatEther(totalFeeWeiBN));
 
   const formattedFinalFee = removeScientificNotation(finalFee);
+  const feeLabelKey = isLegacyTx ? 'send.estimatedGasFee' : 'send.maxFee';
 
   useEffect(() => {
-    if (tx && tx.value && !isNaN(Number(tx.value))) {
-      setCurrentTxValue(tx.value);
+    if (tx && tx.value) {
+      // tx.value is in wei, store as string to preserve precision
+      if (BigNumber.isBigNumber(tx.value)) {
+        setCurrentTxValue(tx.value.toString());
+      } else {
+        setCurrentTxValue(String(tx.value));
+      }
     }
   }, [tx]);
 
@@ -146,7 +182,12 @@ export const TransactionDetailsComponent = (
         {t('send.to')}
         <div className="text-white text-xs">
           <Tooltip content={tx.to} childrenClassName="flex">
-            {ellipsis(tx.to, 7, 15)}
+            {(() => {
+              const toLower = (tx.to || '').toLowerCase();
+              const cachedName = (ensCache as any)?.[toLower]?.name;
+              const label = cachedName || tx.to;
+              return ellipsis(label, 7, 15);
+            })()}
             {
               <IconButton
                 onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
@@ -188,7 +229,7 @@ export const TransactionDetailsComponent = (
       </div>
 
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
-        {t('send.estimatedGasFee')}
+        {t(feeLabelKey)}
         <div className="flex text-white text-xs">
           {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
           <div
@@ -209,10 +250,19 @@ export const TransactionDetailsComponent = (
         <div className="text-white text-xs">
           <Input
             type="number"
-            className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            className="input-medium outline-0 w-16 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
             placeholder={String(tx.nonce)}
             defaultValue={tx.nonce}
-            onChange={(e) => setCustomNonce(Number(e.target.value))}
+            onChange={(e) => {
+              const value = e.target.value;
+              const parsed = Number(value);
+              if (!Number.isFinite(parsed)) return;
+              const intVal = Math.max(0, Math.floor(parsed));
+              setCustomNonce(intVal);
+            }}
           />
         </div>
       </div>
@@ -221,7 +271,7 @@ export const TransactionDetailsComponent = (
         Total ({t('send.amountAndFee')})
         <span className="text-white text-xs">
           {removeScientificNotation(
-            Number(currentTxValue) / 10 ** 18 + finalFee
+            parseFloat(formatEther(currentTxValue)) + finalFee
           )}{' '}
           {activeNetwork.currency?.toUpperCase()}
         </span>

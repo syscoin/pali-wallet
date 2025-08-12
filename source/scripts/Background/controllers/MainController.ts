@@ -1,5 +1,7 @@
 // Removed unused import: ethErrors
 
+import { Contract } from '@ethersproject/contracts';
+import { namehash } from '@ethersproject/hash';
 import {
   KeyringManager,
   IKeyringAccountState,
@@ -25,10 +27,9 @@ import {
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
-import { getController } from '..';
+import { getController, notificationManager } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
-import { notificationManager } from '../notification-manager';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -67,9 +68,7 @@ import {
   switchNetworkError,
   switchNetworkSuccess,
   setError as setStoreError,
-  setIsLoadingAssets,
   setIsLoadingBalances,
-  setIsLoadingTxs,
   setNetwork,
   removeNetwork,
   setIsPollingUpdate,
@@ -78,6 +77,7 @@ import {
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
+  setEnsName,
 } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
@@ -170,6 +170,246 @@ class MainController {
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
+  private persistentProviderAbortControllers = new Map<
+    string,
+    AbortController
+  >();
+
+  // Get or create a persistent provider for a given RPC URL
+  private getOrCreatePersistentProvider(url: string): CustomJsonRpcProvider {
+    const existing = this.persistentProviders.get(url);
+    if (existing) return existing;
+
+    const abortController = new AbortController();
+    const provider = new CustomJsonRpcProvider(abortController.signal, url);
+    this.persistentProviders.set(url, provider);
+    this.persistentProviderAbortControllers.set(url, abortController);
+    return provider;
+  }
+
+  // Resolve the configured Ethereum mainnet provider (cached)
+  private getEnsMainnetProvider(): CustomJsonRpcProvider | null {
+    const { networks } = store.getState().vaultGlobal;
+    const mainnet = networks?.ethereum?.[1];
+    if (!mainnet?.url) return null;
+    return this.getOrCreatePersistentProvider(mainnet.url);
+  }
+
+  /**
+   * Batch resolve multiple ENS names to addresses using on-chain Multicall3 on Ethereum mainnet.
+   * Falls back to per-name provider.resolveName for entries that fail (e.g., CCIP-read resolvers).
+   * Returns a map of name -> address (or null if not resolvable).
+   */
+  public async batchResolveEns(
+    names: string[],
+    options?: { fallbackToProvider?: boolean }
+  ): Promise<Record<string, string | null>> {
+    const result: Record<string, string | null> = {};
+    const uniqueNames = Array.from(
+      new Set(
+        (names || []).filter((n) => typeof n === 'string' && n.endsWith('.eth'))
+      )
+    );
+    if (uniqueNames.length === 0) return result;
+
+    const provider = this.getEnsMainnetProvider();
+    if (!provider) {
+      throw new Error(
+        'Ethereum mainnet RPC not configured. Cannot batch-resolve ENS.'
+      );
+    }
+
+    // Minimal ABIs
+    const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11';
+    const ENS_REGISTRY_ADDRESS = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
+
+    const MULTICALL3_ABI = [
+      'function aggregate3(tuple(address target, bool allowFailure, bytes callData)[] calls) public view returns (tuple(bool success, bytes returnData)[])',
+    ];
+    const ENS_REGISTRY_ABI = [
+      'function resolver(bytes32 node) external view returns (address)',
+    ];
+    const ENS_RESOLVER_ABI = [
+      'function addr(bytes32 node) external view returns (address)',
+    ];
+
+    const multicall = new Contract(
+      MULTICALL3_ADDRESS,
+      MULTICALL3_ABI,
+      provider as any
+    );
+    const registry = new Contract(
+      ENS_REGISTRY_ADDRESS,
+      ENS_REGISTRY_ABI,
+      provider as any
+    );
+
+    // Phase 1: resolver() lookups
+    const nodes = uniqueNames.map((n) => namehash(n));
+    const resolverCalls = nodes.map((node) => ({
+      target: ENS_REGISTRY_ADDRESS,
+      allowFailure: true,
+      callData: registry.interface.encodeFunctionData('resolver', [node]),
+    }));
+
+    let resolverResults: Array<{ returnData: string; success: boolean }>;
+    try {
+      resolverResults = await multicall.aggregate3(resolverCalls);
+    } catch (_e) {
+      // If multicall is unavailable or fails, optionally fall back to provider
+      if (options?.fallbackToProvider !== false) {
+        await Promise.all(
+          uniqueNames.map(async (name) => {
+            try {
+              const addr = await (provider as any).resolveName(name);
+              const normalized =
+                addr && typeof addr === 'string' && addr.startsWith('0x')
+                  ? addr
+                  : null;
+              result[name] = normalized;
+              if (normalized) {
+                store.dispatch(
+                  setEnsName({ address: normalized.toLowerCase(), name })
+                );
+              }
+            } catch {
+              result[name] = null;
+            }
+          })
+        );
+        return result;
+      }
+      // No fallback requested; return nulls
+      uniqueNames.forEach((n) => (result[n] = null));
+      return result;
+    }
+
+    // Decode resolver addresses
+    const resolverAddresses = resolverResults.map((r) => {
+      if (!r.success || r.returnData === '0x')
+        return '0x0000000000000000000000000000000000000000';
+      try {
+        const [addr] = registry.interface.decodeFunctionResult(
+          'resolver',
+          r.returnData
+        );
+        return addr as string;
+      } catch {
+        return '0x0000000000000000000000000000000000000000';
+      }
+    });
+
+    // Phase 2: resolver.addr(node) lookups for those with non-zero resolver
+    const addrCalls: Array<{
+      allowFailure: boolean;
+      callData: string;
+      target: string;
+    } | null> = resolverAddresses.map((resolverAddr, i) => {
+      if (!resolverAddr || /^0x0{40}$/i.test(resolverAddr.replace(/^0x/, '')))
+        return null;
+      const resolver = new Contract(
+        resolverAddr,
+        ENS_RESOLVER_ABI,
+        provider as any
+      );
+      return {
+        target: resolverAddr,
+        allowFailure: true,
+        callData: resolver.interface.encodeFunctionData('addr', [nodes[i]]),
+      };
+    });
+
+    const validAddrCalls = addrCalls.filter(Boolean) as Array<{
+      allowFailure: boolean;
+      callData: string;
+      target: string;
+    }>;
+
+    let addrResults: Array<{ returnData: string; success: boolean }> = [];
+    if (validAddrCalls.length > 0) {
+      try {
+        addrResults = await multicall.aggregate3(validAddrCalls);
+      } catch (_e) {
+        // Ignore; we'll fall back per-name below for unresolved entries if allowed
+      }
+    }
+
+    // Map back results
+    let addrResultIndex = 0;
+    uniqueNames.forEach((name, i) => {
+      const hasResolver = !!addrCalls[i];
+      if (!hasResolver) {
+        result[name] = null;
+        return;
+      }
+      const r = addrResults[addrResultIndex++];
+      if (r && r.success && r.returnData && r.returnData !== '0x') {
+        try {
+          const resolver = new Contract(
+            resolverAddresses[i],
+            ENS_RESOLVER_ABI,
+            provider as any
+          );
+          const [addr] = resolver.interface.decodeFunctionResult(
+            'addr',
+            r.returnData
+          );
+          const normalized =
+            addr && typeof addr === 'string' && addr.startsWith('0x')
+              ? (addr as string)
+              : null;
+          result[name] = normalized;
+          if (normalized) {
+            store.dispatch(
+              setEnsName({ address: normalized.toLowerCase(), name })
+            );
+          }
+        } catch {
+          result[name] = null;
+        }
+      } else {
+        result[name] = null;
+      }
+    });
+
+    // Optional fallback for nulls to support CCIP-read or custom resolver logic
+    if (options?.fallbackToProvider !== false) {
+      const unresolved = uniqueNames.filter((n) => !result[n]);
+      if (unresolved.length > 0) {
+        // Limit concurrency to avoid rate limiting
+        const CONCURRENCY = 3;
+        let index = 0;
+        const runNext = async (): Promise<void> => {
+          if (index >= unresolved.length) return;
+          const name = unresolved[index++];
+          try {
+            const addr = await (provider as any).resolveName(name);
+            const normalized =
+              addr && typeof addr === 'string' && addr.startsWith('0x')
+                ? addr
+                : null;
+            result[name] = normalized;
+            if (normalized) {
+              store.dispatch(
+                setEnsName({ address: normalized.toLowerCase(), name })
+              );
+            }
+          } catch {
+            result[name] = null;
+          } finally {
+            await runNext();
+          }
+        };
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, unresolved.length) }, () =>
+            runNext()
+          )
+        );
+      }
+    }
+
+    return result;
+  }
 
   // Cache for UTXO network price data (same pattern as EVM)
   private utxoPriceDataCache = new Map<
@@ -402,6 +642,8 @@ class MainController {
         }
 
         // Update vault state with correct network info
+        // This is critical for slip44 switches where we load vault from storage
+        // The loaded vault might have stale network info that needs updating
         store.dispatch(setNetworkChange({ activeNetwork: network }));
       }
 
@@ -1967,11 +2209,6 @@ class MainController {
     // Stop all rapid polling when wallet is locked
     this.stopAllRapidPolling();
 
-    // Clear notification state when wallet is locked
-    // Preserve pending transaction tracking when wallet is locked
-    // This allows notifications to still show when transactions confirm
-    notificationManager.clearState(true);
-
     store.dispatch(setLastLogin());
 
     // Send lockStateChanged event which will trigger accountsChanged internally
@@ -2089,6 +2326,16 @@ class MainController {
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
+
+        // Get the new account data for notification
+        const newAccountData = store.getState().vault.accounts[type][id];
+        // Notify about account change (notification manager handles validation)
+        if (newAccountData && newAccountData.address) {
+          notificationManager.notifyAccountChange({
+            address: newAccountData.address,
+            label: newAccountData.label,
+          });
+        }
 
         // Defer heavy operations to prevent blocking the UI
         if (sync) {
@@ -2837,6 +3084,22 @@ class MainController {
         transaction: transactionWithMetadata,
       })
     );
+
+    // Notify about new accelerated/replacement transaction (shows as pending)
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (account) {
+      notificationManager.notifyTransaction({
+        transaction: transactionWithMetadata,
+        type: 'pending',
+        account: {
+          address: account.address,
+          label: account.label,
+        },
+        network: activeNetwork,
+        isEvm: true,
+      });
+    }
   }
 
   public updateUserTransactionsState({
@@ -2872,10 +3135,7 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            // Only set loading state for non-polling updates
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(true));
-            }
+            // For background transaction updates, do not toggle UI loading flags
 
             // Safe access to transaction objects with error handling
             const web3Provider = this.ethereumTransaction?.web3Provider;
@@ -2892,6 +3152,80 @@ class MainController {
 
             // Dispatch transactions for both UTXO and EVM
             if (txs && !isEmpty(txs)) {
+              // Get the current account for notifications
+              const account = accounts[activeAccount.type]?.[activeAccount.id];
+
+              // Get previous transactions for comparison
+              const previousTxs =
+                currentAccountTxs?.[isBitcoinBased ? 'syscoin' : 'ethereum']?.[
+                  activeNetwork.chainId
+                ] || [];
+
+              // Create a map of previous transactions by hash/txid for easy lookup
+              const previousTxMap = new Map();
+              previousTxs.forEach((tx: any) => {
+                const txId = tx.hash || tx.txid;
+                if (txId) {
+                  previousTxMap.set(txId, tx);
+                }
+              });
+
+              // Notify about transaction updates
+              // Always check for notifications, even during polling - users should be notified
+              // about new transactions discovered in the background while using dapps
+              if (account) {
+                txs.forEach((tx: any) => {
+                  const txId = tx.hash || tx.txid;
+                  const previousTx = txId ? previousTxMap.get(txId) : undefined;
+                  const isCurrentConfirmed = isTransactionInBlock(tx);
+                  const wasPreviouslyConfirmed = previousTx
+                    ? isTransactionInBlock(previousTx)
+                    : false;
+
+                  // New pending transaction
+                  if (!previousTx && !isCurrentConfirmed) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'pending',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: !isBitcoinBased,
+                    });
+                  }
+
+                  // Transaction just confirmed
+                  if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'confirmed',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: !isBitcoinBased,
+                    });
+                  }
+
+                  // Failed transaction (EVM only)
+                  if (!isBitcoinBased && tx.status === 0 && !previousTx) {
+                    notificationManager.notifyTransaction({
+                      transaction: tx,
+                      type: 'failed',
+                      account: {
+                        address: account.address,
+                        label: account.label,
+                      },
+                      network: activeNetwork,
+                      isEvm: true,
+                    });
+                  }
+                });
+              }
+
               store.dispatch(
                 setAccountTransactions({
                   chainId: activeNetwork.chainId,
@@ -2901,12 +3235,12 @@ class MainController {
                   transactions: txs,
                 })
               );
+
+              // Update pending transaction badge
+              notificationManager.updatePendingTransactionBadge(txs);
             }
 
-            // Clear loading state on success only if we set it
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(false));
-            }
+            // No-op for loading flags; transactions update fully in background
             resolve();
           } catch (error) {
             reject(error);
@@ -2944,7 +3278,7 @@ class MainController {
         valueIn: '0',
         version: 0,
         vin: [],
-        vout: {} as any,
+        vout: [] as any,
       };
 
       store.dispatch(
@@ -2954,6 +3288,22 @@ class MainController {
           transaction: minimalTx as ISysTransaction,
         })
       );
+
+      // Notify about new pending transaction
+      const { accounts, activeAccount } = store.getState().vault;
+      const account = accounts[activeAccount.type]?.[activeAccount.id];
+      if (account) {
+        notificationManager.notifyTransaction({
+          transaction: minimalTx,
+          type: 'pending',
+          account: {
+            address: account.address,
+            label: account.label,
+          },
+          network: activeNetwork,
+          isEvm: false,
+        });
+      }
 
       // Start rapid polling for this transaction
       try {
@@ -2999,6 +3349,22 @@ class MainController {
         transaction: txWithTimestamp,
       })
     );
+
+    // Notify about new pending transaction
+    const { accounts, activeAccount } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (account) {
+      notificationManager.notifyTransaction({
+        transaction: txWithTimestamp,
+        type: 'pending',
+        account: {
+          address: account.address,
+          label: account.label,
+        },
+        network: activeNetwork,
+        isEvm: !isBitcoinBased,
+      });
+    }
 
     // Start rapid polling for this transaction to detect confirmation quickly
     try {
@@ -3251,10 +3617,7 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
-    // Set loading state immediately for non-polling updates
-    if (!isPolling) {
-      store.dispatch(setIsLoadingAssets(true));
-    }
+    // Background assets update: do not toggle loading flags
 
     // For polling, we don't need keyring access - we're just fetching public asset balances
     // Only check if unlocked for non-polling operations
@@ -3264,8 +3627,7 @@ class MainController {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling asset updates'
         );
-        // Clear loading state and return
-        store.dispatch(setIsLoadingAssets(false));
+        // Return early without toggling UI flags
         return Promise.resolve();
       }
     }
@@ -3278,12 +3640,8 @@ class MainController {
     // Check if account exists before proceeding
     if (!currentAccount) {
       console.warn('[updateAssetsFromCurrentAccount] Active account not found');
-      store.dispatch(setIsLoadingAssets(false));
       return Promise.resolve();
     }
-
-    // Capture isPolling for use in the inner async function
-    const isPollingUpdate = isPolling;
 
     const { currentPromise: assetsPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -3326,10 +3684,6 @@ class MainController {
 
             if (validateIfIsInvalidDispatch) {
               // Skip dispatch but still resolve - empty data might be valid
-              // Only clear loading state if we set it
-              if (!isPollingUpdate) {
-                store.dispatch(setIsLoadingAssets(false));
-              }
               resolve();
               return;
             }
@@ -3342,10 +3696,7 @@ class MainController {
               })
             );
 
-            // Clear loading state on success only if we set it
-            if (!isPollingUpdate) {
-              store.dispatch(setIsLoadingAssets(false));
-            }
+            // Background: no loading flags
             resolve();
           } catch (error) {
             reject(error);
@@ -3640,71 +3991,46 @@ class MainController {
       latestTx: getLatestTx(currentAccountTransactions),
     });
 
-    // Use Promise.allSettled for coordinated updates
-    // This ensures all updates complete even if some fail
-    const updatePromises = [
-      this.updateAssetsFromCurrentAccount({
+    // Fire-and-forget heavy updates (assets + transactions) in background with polling mode
+    // so they do not toggle loading flags or block UI.
+    try {
+      void this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
-        isPolling,
-      }),
-      this.updateUserTransactionsState({
+        isPolling: true, // background
+      });
+    } catch {}
+
+    try {
+      void this.updateUserTransactionsState({
         isBitcoinBased,
         activeNetwork,
-        isPolling,
+        isPolling: true, // background
         isRapidPolling,
-      }),
-      this.updateUserNativeBalance({
+      });
+    } catch {}
+
+    // Await only native balance to drive latency/status indicator
+    let balanceFailed = false;
+    try {
+      await this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
         isPolling,
-      }),
-    ];
-
-    const results = await Promise.allSettled(updatePromises);
-
-    // Log any failures for debugging and track which operations failed
-    let balanceFailed = false;
-    let transactionsFailed = false;
-    let assetsFailed = false;
-
-    results.forEach((result, index) => {
-      if (result.status === 'rejected') {
-        // Track which specific operations failed
-        if (index === 0) assetsFailed = true;
-        if (index === 1) transactionsFailed = true;
-        if (index === 2) balanceFailed = true;
-      }
-    });
-
-    // Clear loading states only for operations that succeeded
-    // Keep loading states active for failed operations to show error state
-    // Only clear if we set them in the first place (not polling)
-    if (!isPolling) {
-      const loadingStates = store.getState().vaultGlobal.loadingStates;
-
-      if (!assetsFailed && loadingStates.isLoadingAssets) {
-        store.dispatch(setIsLoadingAssets(false));
-      }
-
-      if (!transactionsFailed && loadingStates.isLoadingTxs) {
-        store.dispatch(setIsLoadingTxs(false));
-      }
-
-      if (!balanceFailed && loadingStates.isLoadingBalances) {
-        store.dispatch(setIsLoadingBalances(false));
-      }
+      });
+      // Clear balance loading state if we set it earlier
+      // Balance loading flag is managed by caller; no change here
+    } catch (_err) {
+      balanceFailed = true;
     }
 
-    // If any core operation failed, set network status to error so timeout/error handling can trigger chain error page
-    // But only for non-polling updates - we don't want to show error UI during background polling
-    if (balanceFailed || transactionsFailed || assetsFailed) {
+    // If balance failed, set network status to error so timeout/error handling can trigger chain error page
+    // Heavy updates run in background and don't affect initial connection status
+    if (balanceFailed) {
       console.error('[MainController] Account update failed', {
         balanceFailed,
-        transactionsFailed,
-        assetsFailed,
         isPolling,
       });
       store.dispatch(switchNetworkError());
@@ -4133,6 +4459,8 @@ class MainController {
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
+    // Notify about network change (notification manager handles validation)
+    notificationManager.notifyNetworkChange(network);
 
     // Execute updates synchronously if requested, otherwise with a small delay
     if (syncUpdates) {
@@ -4207,7 +4535,7 @@ class MainController {
         },
         {
           method: PaliEvents.accountsChanged,
-          params: null,
+          params: [activeAccountData.address],
         },
       ]);
     } else {
@@ -4333,6 +4661,42 @@ class MainController {
     return this.evmTransactionsController.fetchTransactionDetailsFromAPI(
       hash,
       apiUrl
+    );
+  }
+
+  /**
+   * Paged fetch for EVM transactions via explorer API (Etherscan/Blockscout-compatible)
+   */
+  public async getEvmTransactionsPage(
+    address: string,
+    chainId: number,
+    apiUrl: string,
+    page: number,
+    offset: number = 30
+  ) {
+    return this.evmTransactionsController.fetchTransactionsPageFromAPI(
+      address,
+      chainId,
+      apiUrl,
+      page,
+      offset
+    );
+  }
+
+  /**
+   * Paged fetch for UTXO (Blockbook) transactions by xpub
+   */
+  public async getSysTransactionsPage(
+    xpub: string,
+    url: string,
+    page: number,
+    pageSize: number = 30
+  ) {
+    return this.transactionsManager.sys.fetchTransactionsPageFromBlockbook(
+      xpub,
+      url,
+      page,
+      pageSize
     );
   }
 
@@ -4582,6 +4946,25 @@ class MainController {
         if (typeof provider.removeAllListeners === 'function') {
           provider.removeAllListeners();
         }
+
+        // Abort any in-flight requests
+        const controller = this.persistentProviderAbortControllers.get(url);
+        if (controller) {
+          try {
+            controller.abort();
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Attempt to destroy/cleanup provider internals if supported
+        if (typeof (provider as any).destroy === 'function') {
+          try {
+            (provider as any).destroy();
+          } catch (e) {
+            // ignore
+          }
+        }
       } catch (error) {
         console.warn(
           `[MainController] Error cleaning up provider for ${url}:`,
@@ -4592,6 +4975,7 @@ class MainController {
 
     // Clear the map
     this.persistentProviders.clear();
+    this.persistentProviderAbortControllers.clear();
   }
   /**
    * Get current network platform - delegates to EvmAssetsController
@@ -4841,6 +5225,78 @@ class MainController {
 
   public getErc1155Abi(): any[] {
     return getErc55Abi(); // Note: getErc55Abi returns ERC1155 ABI
+  }
+
+  /**
+   * Resolve ENS name on Ethereum mainnet and persist in global ENS cache.
+   * Returns the resolved 0x address or null if not resolvable.
+   */
+  public async resolveEns(name: string): Promise<string | null> {
+    if (
+      !name ||
+      typeof name !== 'string' ||
+      !name.toLowerCase().endsWith('.eth')
+    ) {
+      return null;
+    }
+
+    const provider = this.getEnsMainnetProvider();
+    if (!provider) {
+      throw new Error(
+        'Ethereum mainnet RPC not configured. Cannot resolve ENS.'
+      );
+    }
+
+    // Call resolver via ethers-style method if available
+    let resolved: string | null = null;
+    try {
+      // ethers.js Web3Provider/JsonRpcProvider implements resolveName
+      // CustomJsonRpcProvider extends JsonRpcProvider so resolveName is available
+      // However, to keep types simple here, use (provider as any)
+      resolved = await (provider as any).resolveName(name);
+    } catch (e) {
+      // Best-effort; fall through to null
+      resolved = null;
+    }
+
+    if (resolved && typeof resolved === 'string' && resolved.startsWith('0x')) {
+      // Persist in vaultGlobal ENS cache so UI can render ENS consistently
+      const addressLower = resolved.toLowerCase();
+      store.dispatch(setEnsName({ address: addressLower, name }));
+      return resolved;
+    }
+    return null;
+  }
+
+  /**
+   * Reverse-resolve an Ethereum address to an ENS name on mainnet.
+   * Returns the ENS name or null if not resolvable. Persists into ENS cache.
+   */
+  public async reverseResolveEns(address: string): Promise<string | null> {
+    if (!address || typeof address !== 'string' || !address.startsWith('0x')) {
+      return null;
+    }
+
+    const provider = this.getEnsMainnetProvider();
+    if (!provider) {
+      throw new Error(
+        'Ethereum mainnet RPC not configured. Cannot reverse-resolve ENS.'
+      );
+    }
+
+    let name: string | null = null;
+    try {
+      name = await (provider as any).lookupAddress(address);
+    } catch (_e) {
+      name = null;
+    }
+
+    if (name && typeof name === 'string') {
+      const addressLower = address.toLowerCase();
+      store.dispatch(setEnsName({ address: addressLower, name }));
+      return name;
+    }
+    return null;
   }
 
   /**

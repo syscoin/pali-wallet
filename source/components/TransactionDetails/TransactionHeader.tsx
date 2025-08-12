@@ -1,11 +1,10 @@
 import React from 'react';
 
-import { removeScientificNotation } from 'utils/index';
-
 interface ITransactionHeaderProps {
   displayInfo: {
     displaySymbol: string;
     displayValue: number | string;
+    formattedValue?: string;
     isNft: boolean;
     tokenId?: string;
   } | null;
@@ -25,15 +24,15 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
   const formatDisplayValue = () => {
     if (!displayInfo) return '...';
 
-    const value = isNaN(Number(displayInfo.displayValue))
-      ? '0'
-      : removeScientificNotation(Number(displayInfo.displayValue));
+    const valueStr = displayInfo.formattedValue ?? '0';
 
     if (displayInfo.isNft && displayInfo.tokenId) {
-      return `${value} ${displayInfo.displaySymbol} #${displayInfo.tokenId}`;
+      return `${String(valueStr)} ${displayInfo.displaySymbol} #${
+        displayInfo.tokenId
+      }`;
     }
 
-    return `${value} ${displayInfo.displaySymbol}`;
+    return `${String(valueStr)} ${displayInfo.displaySymbol}`;
   };
 
   return (

@@ -52,7 +52,7 @@ export interface ITxState {
   nonce?: number;
   to: string;
   token?: any;
-  value: number;
+  value: BigNumber | string | number; // Should be BigNumber or string for wei values to avoid precision loss
 }
 
 export interface IFeeState {
@@ -68,11 +68,12 @@ export interface ITransactionParams {
   from: string;
   gas?: string;
   gasLimit?: string | number;
+  gasPrice?: string | number;
   maxFeePerGas?: string | number;
   maxPriorityFeePerGas?: string | number;
   to: string;
   type?: string;
-  value?: number;
+  value?: string | number; // Should be string for wei values to avoid precision loss
 }
 export interface IDecodedTx {
   inputs: any[];

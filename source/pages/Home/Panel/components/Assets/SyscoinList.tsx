@@ -28,10 +28,12 @@ export const SyscoinAssetsList = () => {
     activeAccount,
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
-  const {
-    networkStatus,
-    loadingStates: { isLoadingAssets },
-  } = useSelector((state: RootState) => state.vaultGlobal);
+  const { networkStatus } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
   const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
@@ -64,6 +66,27 @@ export const SyscoinAssetsList = () => {
     () => assets?.syscoin?.filter((asset) => asset.chainId === chainId) || [],
     [assets?.syscoin, chainId]
   );
+
+  // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
+  const pendingAssetGuids = useMemo(() => {
+    const txs =
+      accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
+        chainId
+      ] || [];
+    const set = new Set<string>();
+    for (const tx of txs) {
+      if (!tx || (tx.confirmations || 0) > 0) continue;
+      const transfers = Array.isArray((tx as any).tokenTransfers)
+        ? (tx as any).tokenTransfers
+        : [];
+      for (const tr of transfers) {
+        if (tr && tr.token !== undefined && tr.token !== null) {
+          set.add(String(tr.token));
+        }
+      }
+    }
+    return set;
+  }, [accountTransactions, activeAccount, chainId]);
 
   // Memoize delete handlers
   const handleDeleteClickMemo = useCallback((asset: any) => {
@@ -122,13 +145,17 @@ export const SyscoinAssetsList = () => {
             <tr className="flex items-center justify-between font-poppins font-normal">
               <td className="flex items-center gap-3">
                 {/* Token Logo */}
-                <TokenIcon
-                  logo={asset.image || getTokenLogo(asset.symbol)}
-                  assetGuid={String(asset.assetGuid)}
-                  symbol={asset.symbol}
-                  size={24}
-                  className="hover:shadow-md hover:scale-110 transition-all duration-200"
-                />
+                <Tooltip content={asset.name || asset.symbol}>
+                  <span className="inline-flex items-center justify-center">
+                    <TokenIcon
+                      logo={asset.image || getTokenLogo(asset.symbol)}
+                      assetGuid={String(asset.assetGuid)}
+                      symbol={asset.symbol}
+                      size={24}
+                      className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                    />
+                  </span>
+                </Tooltip>
 
                 <div className="flex flex-col">
                   <div className="flex items-center gap-x-2">
@@ -147,8 +174,20 @@ export const SyscoinAssetsList = () => {
                       className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
                       onClick={() => handleAssetClick(asset)}
                     >
-                      {`${truncate(asset.symbol, 12).toUpperCase()}`}
+                      {truncate(asset.symbol, 12).toUpperCase()}
                     </span>
+
+                    {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
+                    {((typeof asset.unconfirmedBalance === 'number' &&
+                      asset.unconfirmedBalance !== 0) ||
+                      pendingAssetGuids.has(String(asset.assetGuid))) && (
+                      <span
+                        className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"
+                        title={t('send.pending')}
+                      >
+                        {t('send.pending')}
+                      </span>
+                    )}
 
                     {asset.contract &&
                       asset.contract !==
@@ -212,7 +251,7 @@ export const SyscoinAssetsList = () => {
 
   return (
     <>
-      {isLoadingAssets || isNetworkChanging ? (
+      {isNetworkChanging ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
         </div>

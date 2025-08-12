@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -11,6 +11,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
 const SwitchChain: React.FC = () => {
   const { host, ...data } = useQueryData();
@@ -20,6 +21,8 @@ const SwitchChain: React.FC = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const prevChainIdRef = useRef(activeNetwork.chainId);
+  const prevKindRef = useRef(activeNetwork.kind);
   const networks = useSelector(
     (state: RootState) => state.vaultGlobal.networks
   );
@@ -29,10 +32,16 @@ const SwitchChain: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
+      // Perform the network switch and wait for state update
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
-
+      try {
+        await waitForNetworkSwitch(network.chainId, 5000);
+      } catch (_e) {
+        // Best-effort; continue without blocking close
+      }
       setConfirmed(true);
       setLoading(false);
+      // Dispatch MUST be right before window.close for subsequent popups timing
       const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, null);
       window.close();
@@ -46,10 +55,10 @@ const SwitchChain: React.FC = () => {
   const CurrentChains = () => {
     const fromChain = (
       <ChainIcon
-        chainId={activeNetwork.chainId}
+        chainId={prevChainIdRef.current}
         size={100}
         className=""
-        networkKind={INetworkType.Ethereum}
+        networkKind={prevKindRef.current}
         fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
       />
     );

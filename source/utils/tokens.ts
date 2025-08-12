@@ -48,8 +48,9 @@ export const getTokenTypeBadgeColor = (type: string | undefined): string => {
       return `bg-orange-500 bg-opacity-80 text-white`;
 
     // Syscoin Token Types
+    case 'spt':
     case 'sptallocated':
-      return `bg-blue-500 bg-opacity-80 text-white`;
+      return `bg-brand-royalbluemedium bg-opacity-80 text-white`;
 
     // Default
     default:

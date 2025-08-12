@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { usePrice } from 'hooks/index';
 import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 import { formatTransactionValue } from 'utils/index';
 
 interface IFiatComponent {
@@ -16,9 +17,14 @@ export const FiatComponent: FC<IFiatComponent> = ({ transactionValue }) => {
   );
   const { getFiatAmount } = usePrice();
 
+  const nativeSymbol = (
+    activeNetwork.currency ||
+    (activeNetwork.kind === INetworkType.Ethereum ? 'ETH' : 'SYS')
+  ).toUpperCase();
+
   const { crypto, formattedFiatAmount } = formatTransactionValue(
     transactionValue,
-    activeNetwork.currency?.toUpperCase() || 'ETH',
+    nativeSymbol,
     fiat.asset,
     getFiatAmount
   );

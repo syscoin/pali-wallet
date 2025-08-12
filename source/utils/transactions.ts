@@ -1,5 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { id } from '@ethersproject/hash';
+import { formatUnits } from '@ethersproject/units';
 import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -16,28 +17,20 @@ import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
  * Uses the same logic as notification manager for consistent display
  * @param tx Transaction object
  * @param currency Network currency (e.g., 'ETH', 'NEVM')
- * @param tokenCache Cache of known token info by contract address
- * @param skipUnknownTokenFetch New parameter to skip fetching unknown tokens
+ * @param skipUnknownTokenFetch Skip fetching unknown tokens
  * @param controller Optional controller instance for background context calls
  * @returns Object with displayValue, displaySymbol, isErc20Transfer, actualRecipient, isNft, and hasUnknownDecimals
  */
 export const getTransactionDisplayInfo = async (
   tx: any,
   currency: string,
-  tokenCache?: Map<
-    string,
-    {
-      decimals: number;
-      isNft: boolean;
-      symbol: string;
-    }
-  >,
-  skipUnknownTokenFetch = false, // New parameter to skip fetching unknown tokens
+  skipUnknownTokenFetch = false,
   controller?: any
 ): Promise<{
   actualRecipient: string;
   displaySymbol: string;
   displayValue: number | string;
+  formattedValue: string;
   hasUnknownDecimals?: boolean;
   isErc20Transfer: boolean; // Note: This includes all token transfers (ERC20/721/1155), not just ERC20
   isNft: boolean;
@@ -60,34 +53,6 @@ export const getTransactionDisplayInfo = async (
     const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
 
     if (tokenValue && tokenAddress) {
-      // First check enhanced cache for this contract address
-      const cachedToken = tokenCache?.get(tokenAddress.toLowerCase());
-      if (cachedToken) {
-        const { symbol, decimals, isNft } = cachedToken;
-
-        if (isNft) {
-          // For NFTs, show count as numeric value (same as ERC20 tokens)
-          const nftCount = Number(tokenValue);
-          return {
-            displayValue: nftCount,
-            displaySymbol: symbol.toUpperCase(),
-            isErc20Transfer: true, // This includes all token transfers (ERC20/721/1155)
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: true,
-            tokenId: tokenId || undefined,
-          };
-        } else {
-          // Regular ERC-20 token with known decimals
-          return {
-            displayValue: Number(tokenValue) / Math.pow(10, decimals),
-            displaySymbol: symbol.toUpperCase(),
-            isErc20Transfer: true,
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: false,
-          };
-        }
-      }
-
       // Try to get token info from user's assets or fetch from controller
       try {
         const { accounts, activeAccount, accountAssets } =
@@ -106,13 +71,19 @@ export const getTransactionDisplayInfo = async (
 
           if (token) {
             const isNft = token.isNft || false;
-            const decimals = Number(token.decimals) || (isNft ? 0 : 18);
+            const rawDecimals = isNft ? 0 : Number(token.decimals ?? 18);
+            const decimals =
+              Number.isFinite(rawDecimals) && rawDecimals >= 0
+                ? rawDecimals
+                : 18;
 
             if (isNft) {
-              // For NFTs, show count as numeric value (same as cached tokens)
-              const nftCount = Number(tokenValue);
+              // For NFTs: if ERC-721, displayValue should be 1 and tokenId is the ID
+              // If ERC-1155, tokenValue represents the amount transferred
+              const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
               return {
                 displayValue: nftCount,
+                formattedValue: String(nftCount),
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
@@ -121,8 +92,10 @@ export const getTransactionDisplayInfo = async (
               };
             } else {
               // Regular ERC-20 token
+              const numeric = parseFloat(formatUnits(tokenValue, decimals));
               return {
-                displayValue: Number(tokenValue) / Math.pow(10, decimals),
+                displayValue: numeric,
+                formattedValue: formatFullPrecisionBalance(numeric, 4),
                 displaySymbol: token.tokenSymbol.toUpperCase(),
                 isErc20Transfer: true,
                 actualRecipient: actualRecipient || tokenAddress,
@@ -153,22 +126,32 @@ export const getTransactionDisplayInfo = async (
 
             if (tokenDetails) {
               const isNft = tokenDetails.isNft || false;
-              const decimals = isNft ? 0 : tokenDetails.decimals || 18;
+              const rawDecimals = isNft
+                ? 0
+                : Number(tokenDetails.decimals ?? 18);
+              const decimals =
+                Number.isFinite(rawDecimals) && rawDecimals >= 0
+                  ? rawDecimals
+                  : 18;
 
               if (isNft) {
-                // For NFTs, show count instead of formatted value
-                const nftCount = Number(tokenValue);
+                // For NFTs: if ERC-721, count is 1; if ERC-1155, use provided amount
+                const nftCount = isErc1155Tx ? Number(tokenValue) : 1;
                 return {
-                  displayValue: `${nftCount} NFT${nftCount !== 1 ? 's' : ''}`,
+                  displayValue: nftCount,
+                  formattedValue: String(nftCount),
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
                   isNft: true,
+                  tokenId: tokenId || undefined,
                 };
               } else {
                 // Regular ERC-20 token
+                const numeric = parseFloat(formatUnits(tokenValue, decimals));
                 return {
-                  displayValue: Number(tokenValue) / Math.pow(10, decimals),
+                  displayValue: numeric,
+                  formattedValue: formatFullPrecisionBalance(numeric, 4),
                   displaySymbol: tokenDetails.symbol.toUpperCase(),
                   isErc20Transfer: true,
                   actualRecipient: actualRecipient || tokenAddress,
@@ -184,19 +167,76 @@ export const getTransactionDisplayInfo = async (
         console.error('Error getting token info:', error);
       }
 
-      // Fallback: show raw value with truncated contract address as symbol
+      // Fallbacks when token metadata is not available (e.g., list view skips fetch):
+      // - Best-effort NFT identification to improve Activity list display without network calls
+      // - Otherwise, show a generic token transfer with unknown decimals
+
+      // If we can infer NFT type purely from the method selector, surface that so
+      // the Activity list can render helpful strings like "1 NFT #123" or "2 NFT #3"
+      try {
+        // ERC-1155 safeTransferFrom has an unambiguous selector
+        if (isErc1155Tx) {
+          const nftAmount = Number(getERC1155TransferValue(tx)) || 1;
+          const inferredTokenId = getERC1155TokenId(tx) || undefined;
+          return {
+            displayValue: nftAmount,
+            formattedValue: String(nftAmount),
+            displaySymbol: 'NFT',
+            isErc20Transfer: true,
+            actualRecipient: actualRecipient || tokenAddress,
+            isNft: true,
+            tokenId: inferredTokenId,
+          };
+        }
+
+        // ERC-721: handle both safeTransferFrom and transferFrom signatures
+        const safeTransferFrom3Selector = id(
+          'safeTransferFrom(address,address,uint256)'
+        ).slice(0, 10);
+        const safeTransferFrom4Selector = id(
+          'safeTransferFrom(address,address,uint256,bytes)'
+        ).slice(0, 10);
+        const transferFromSelector = id(
+          'transferFrom(address,address,uint256)'
+        ).slice(0, 10);
+
+        const isErc721Candidate =
+          !!tx?.input &&
+          (tx.input.startsWith(safeTransferFrom3Selector) ||
+            tx.input.startsWith(safeTransferFrom4Selector) ||
+            tx.input.startsWith(transferFromSelector));
+
+        const erc721TokenId = isErc721Candidate ? getERC721TokenId(tx) : null;
+        if (isErc721Candidate && erc721TokenId) {
+          return {
+            displayValue: 1,
+            formattedValue: '1',
+            displaySymbol: 'NFT',
+            isErc20Transfer: true,
+            actualRecipient: actualRecipient || tokenAddress,
+            isNft: true,
+            tokenId: erc721TokenId,
+          };
+        }
+      } catch (nftInferenceError) {
+        // Non-fatal: fall through to generic unknown token handling below
+        // console.warn('NFT inference failed', nftInferenceError);
+      }
+
+      // Generic unknown token fallback: show raw value with truncated contract address as symbol
       // Since we don't know if it's an NFT or the decimals, flag it
-      // For unknown tokens, we'll show the raw value with a warning
       // and format it as if it might be 18 decimals (most common)
-      const possibleFormattedValue = Number(tokenValue) / Math.pow(10, 18);
+      const possibleFormattedValue = parseFloat(formatUnits(tokenValue, 18));
       const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
 
+      const unknownStr = isLikelyWholeNumber
+        ? tokenValue.toString() // Likely an NFT or low decimal token
+        : possibleFormattedValue < 0.000001
+        ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
+        : `~${possibleFormattedValue.toFixed(6)}`; // Regular amount with ~ to indicate uncertainty
       return {
-        displayValue: isLikelyWholeNumber
-          ? tokenValue.toString() // Likely an NFT or low decimal token
-          : possibleFormattedValue < 0.000001
-          ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
-          : `~${possibleFormattedValue.toFixed(6)}`, // Regular amount with ~ to indicate uncertainty
+        displayValue: unknownStr,
+        formattedValue: unknownStr,
         displaySymbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
           -4
         )}`,
@@ -208,26 +248,64 @@ export const getTransactionDisplayInfo = async (
     }
   }
 
+  // If no input/decoding but the `to` matches a known NFT in user's assets,
+  // infer an NFT transfer to avoid showing misleading native 0 values in lists.
+  try {
+    if (!isTokenTx && tx?.to) {
+      const { accounts, activeAccount, accountAssets } = store.getState().vault;
+      const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+      const userAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
+      const token = userAssets?.ethereum?.find(
+        (asset: any) =>
+          asset.contractAddress?.toLowerCase() === String(tx.to).toLowerCase()
+      );
+      if (token?.isNft) {
+        return {
+          displayValue: 1,
+          formattedValue: '1',
+          displaySymbol: String(token.tokenSymbol || 'NFT').toUpperCase(),
+          isErc20Transfer: true,
+          actualRecipient: tx.to || currentAccount?.address || '',
+          isNft: true,
+        };
+      }
+    }
+  } catch {
+    // Ignore heuristic failure and continue to native currency handling
+  }
+
   // Native currency transaction
   const rawValue = tx.value;
   let numericValue = 0;
 
-  if (typeof rawValue === 'string') {
-    if (rawValue.startsWith('0x')) {
-      numericValue = parseInt(rawValue, 16) / 1e18;
-    } else {
-      numericValue = Number(rawValue) / 1e18;
+  try {
+    // Use formatUnits to avoid precision loss and handle BigNumberish inputs
+    // Accept hex string, decimal string, BigNumber-like, or number
+    // Normalize to a value acceptable by formatUnits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let bigNumberishValue: any = rawValue;
+    if (rawValue && typeof rawValue === 'object') {
+      // Support ethers-style objects with hex/_hex
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const asAny: any = rawValue;
+      if (typeof asAny.hex === 'string') {
+        bigNumberishValue = asAny.hex;
+      } else if (typeof asAny._hex === 'string') {
+        bigNumberishValue = asAny._hex;
+      }
     }
-  } else if (rawValue?.hex) {
-    numericValue = parseInt(rawValue.hex, 16) / 1e18;
-  } else if ((rawValue as any)?._hex) {
-    numericValue = parseInt((rawValue as any)._hex, 16) / 1e18;
-  } else if (typeof rawValue === 'number') {
-    numericValue = rawValue / 1e18;
+
+    const formatted = formatUnits(bigNumberishValue ?? '0', 18);
+    numericValue = Number.isFinite(Number(formatted))
+      ? parseFloat(formatted)
+      : 0;
+  } catch {
+    numericValue = 0;
   }
 
   return {
     displayValue: numericValue,
+    formattedValue: formatFullPrecisionBalance(numericValue, 4),
     displaySymbol: currency.toUpperCase(),
     isErc20Transfer: false,
     actualRecipient: tx.to || '', // For native transfers, tx.to is the actual recipient
@@ -276,7 +354,8 @@ const cancelTransaction = async (
   isLegacy: boolean,
   chainId: number,
   alert: any,
-  t: (key: string) => string
+  t: (key: string) => string,
+  fallbackNonce?: number
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -288,7 +367,7 @@ const cancelTransaction = async (
   try {
     const response = await controllerEmitter(
       ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
-      [txHash, isLegacy]
+      [txHash, isLegacy, fallbackNonce]
     );
 
     if (!response) {
@@ -391,15 +470,23 @@ export const handleUpdateTransaction = async ({
     alert: any;
     chainId: number;
     isLegacy: boolean;
+    nonce?: number;
     txHash: string;
     updateType: UpdateTxAction;
   };
 }) => {
-  const { alert, chainId, isLegacy, txHash, updateType } = updateData;
+  const { alert, chainId, isLegacy, txHash, updateType, nonce } = updateData;
 
   switch (updateType) {
     case UpdateTxAction.Cancel:
-      return await cancelTransaction(txHash, isLegacy, chainId, alert, t);
+      return await cancelTransaction(
+        txHash,
+        isLegacy,
+        chainId,
+        alert,
+        t,
+        nonce
+      );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(txHash, isLegacy, chainId, alert, t);
   }

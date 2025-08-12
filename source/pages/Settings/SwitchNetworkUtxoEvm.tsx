@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
+import { ChainIcon } from 'components/ChainIcon';
 import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { RootState } from 'state/store';
+import { INetworkType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { getNetworkChain } from 'utils/network';
 import { waitForNetworkSwitch } from 'utils/stateWaitUtils';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
@@ -15,6 +18,10 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const prevNetworkRef = useRef(activeNetwork);
+  const prevChainIdRef = useRef(activeNetwork?.chainId);
+  const prevKindRef = useRef(activeNetwork?.kind);
 
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
@@ -37,32 +44,26 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     );
   }
 
-  const isNewChainBtcBased = newChainValue === 'syscoin';
-
-  const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
+  const previousNetworkName = prevNetworkRef.current?.label || 'N/A';
 
   const onSubmit = async () => {
     setLoading(true);
     try {
-      // Initiate network switch
+      // Perform the network switch and wait for state update
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         [newNetwork, true]
       );
-
-      // Wait for state to actually update with the new network
       try {
-        await waitForNetworkSwitch(newNetwork.chainId, 3000);
-      } catch (stateError) {
-        console.warn('State update confirmation timed out, proceeding anyway');
+        await waitForNetworkSwitch(newNetwork.chainId, 5000);
+      } catch (_e) {
+        // Best-effort; continue without blocking close
       }
 
-      const type = data.eventName;
       setConfirmed(true);
       setLoading(false);
-
-      // Dispatch event and close window immediately to avoid race condition
-      // where the dapp might trigger another popup in response
+      // Dispatch MUST happen immediately before closing to avoid timing issues with subsequent popups
+      const type = data.eventName;
       dispatchBackgroundEvent(`${type}.${host}`, null);
       window.close();
     } catch (networkError) {
@@ -84,31 +85,41 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
           </div>
           <div className="flex flex-col items-center justify-center w-full">
             <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                {t('settings.previousChainType')}
-                <span className="text-brand-royalblue text-xs">
-                  {previousChain}
+              <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.previousChain')}
+                <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                  <ChainIcon
+                    chainId={prevChainIdRef.current}
+                    size={18}
+                    networkKind={prevKindRef.current}
+                  />
+                  {previousNetworkName}
                 </span>
-              </p>
+              </div>
 
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                {t('settings.newChainType')}
-                <span className="text-brand-royalblue text-xs">
-                  {newChainValue}
+              <div className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                {t('settings.newChain')}
+                <span className="flex items-center gap-2 text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                  <ChainIcon
+                    chainId={newNetwork?.chainId}
+                    size={18}
+                    networkKind={INetworkType.Syscoin}
+                  />
+                  {newNetwork?.label || newChainValue}
                 </span>
-              </p>
+              </div>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkUrl')}
-                <span className="text-brand-royalblue text-xs">
+                <span className="text-brand-royalblue text-xs break-all transition-opacity hover:opacity-90">
                   {newNetwork?.url || 'N/A'}
                 </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.newNetworkChainId')}
-                <span className="text-brand-royalblue text-xs">
-                  {newNetwork?.chainId || 'N/A'}
+                <span className="text-brand-royalblue text-xs transition-opacity hover:opacity-90">
+                  {newNetwork?.chainId ?? 'N/A'}
                 </span>
               </p>
             </div>

@@ -2,14 +2,9 @@ import React from 'react';
 
 export const LoadingComponent = ({ opacity = 100 }: { opacity?: number }) => (
   <div
-    className="absolute flex items-center justify-center bg-brand-blue600"
+    className="absolute z-[60] top-[120px] left-0 right-0 bottom-0 flex items-center justify-center bg-brand-blue600"
     style={{
-      zIndex: 60,
       opacity: opacity / 100,
-      top: '120px', // Below header (80px) + banner (68px)
-      left: 0,
-      right: 0,
-      bottom: 0,
       height: 'calc(100vh - 120px)',
     }}
   >

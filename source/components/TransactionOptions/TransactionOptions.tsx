@@ -32,7 +32,7 @@ const CancelIcon = React.memo(() => (
 ));
 CancelIcon.displayName = 'CancelIcon';
 
-export const TransactionOptions: React.FC<ITransactionOptions> = ({
+const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
   transaction,
   alert,
@@ -45,10 +45,11 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 
   const { t } = useTranslation();
   const { navigate } = useUtils();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  // Select only what we need to minimize re-renders
+  const explorer = useSelector(
+    (state: RootState) => state.vault.activeNetwork.explorer
   );
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
@@ -68,6 +69,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 isLegacy: isLegacyTransaction,
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
+                nonce: transaction.nonce,
               },
               t,
             });
@@ -104,6 +106,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
       state: {
         id: null,
         hash: transaction.hash,
+        tx: transaction,
       },
     });
   }, [transaction.hash]);
@@ -131,97 +134,93 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
             </Menu.Button>
 
             <div className="absolute right-0 z-10 h-[15rem]">
-              <Menu.Items
-                as="div"
-                className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
-                font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out
-                transform ${
-                  open
-                    ? 'opacity-100 scale-100 pointer-events-auto'
-                    : 'opacity-0 scale-95 pointer-events-none'
-                }`}
-                static
-              >
-                <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
-                  {t('transactions.pendingTransaction')}
-                </h1>
-                <Menu.Item>
-                  {({ active }) => (
-                    <li
-                      className={`
+              {open && (
+                <Menu.Items
+                  as="div"
+                  className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
+                  font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out transform opacity-100 scale-100 pointer-events-auto`}
+                >
+                  <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
+                    {t('transactions.pendingTransaction')}
+                  </h1>
+                  <Menu.Item>
+                    {({ active }) => (
+                      <li
+                        className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
                     flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
                     transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
-                      onClick={handleGoTxDetails}
-                    >
-                      <div className="w-5 mr-3">
-                        <ExternalLinkIcon />
-                      </div>
-                      <span className="text-sm text-brand-white">
-                        {t('transactions.seeDetails')}
-                      </span>
-                    </li>
-                  )}
-                </Menu.Item>
-                <Menu.Item>
-                  {({ active }) => (
-                    <li
-                      className={`
+                        onClick={handleGoTxDetails}
+                      >
+                        <div className="w-5 mr-3">
+                          <ExternalLinkIcon />
+                        </div>
+                        <span className="text-sm text-brand-white">
+                          {t('transactions.seeDetails')}
+                        </span>
+                      </li>
+                    )}
+                  </Menu.Item>
+                  <Menu.Item>
+                    {({ active }) => (
+                      <li
+                        className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
                     flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
                     transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
-                      onClick={openTransactionOnExplorer}
-                    >
-                      <div className="w-5 mr-3">
-                        <ExternalLinkIcon />
-                      </div>
-                      <span className="text-sm text-brand-white">
-                        {t('transactions.seeOnBlockExplorer')}
-                      </span>
-                    </li>
-                  )}
-                </Menu.Item>
-                <Menu.Item>
-                  {({ active }) => (
-                    <li
-                      className={`
+                        onClick={openTransactionOnExplorer}
+                      >
+                        <div className="w-5 mr-3">
+                          <ExternalLinkIcon />
+                        </div>
+                        <span className="text-sm text-brand-white">
+                          {t('transactions.seeOnBlockExplorer')}
+                        </span>
+                      </li>
+                    )}
+                  </Menu.Item>
+                  <Menu.Item>
+                    {({ active }) => (
+                      <li
+                        className={`
                     ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
                     flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
                     transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
-                      onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                    >
-                      <div className="w-5 mr-3">
-                        <SpeedUpIcon />
-                      </div>
-                      <span className="text-sm text-brand-white">
-                        {t('header.speedUp')}
-                      </span>
-                    </li>
-                  )}
-                </Menu.Item>
-                <Menu.Item>
-                  {({ active }) => (
-                    <li
-                      className={`
+                        onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+                      >
+                        <div className="w-5 mr-3">
+                          <SpeedUpIcon />
+                        </div>
+                        <span className="text-sm text-brand-white">
+                          {t('header.speedUp')}
+                        </span>
+                      </li>
+                    )}
+                  </Menu.Item>
+                  <Menu.Item>
+                    {({ active }) => (
+                      <li
+                        className={`
                   ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
                   flex items-center justify-start text-brand-white w-full p-2 rounded-md
                   transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                   `}
-                      onClick={() => handleOnClick(UpdateTxAction.Cancel)}
-                    >
-                      <div className="w-5 mr-3">
-                        <CancelIcon />
-                      </div>
-                      <span className="text-sm text-brand-white">
-                        {t('buttons.cancel')}
-                      </span>
-                    </li>
-                  )}
-                </Menu.Item>
-              </Menu.Items>
+                        onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                      >
+                        <div className="w-5 mr-3">
+                          <CancelIcon />
+                        </div>
+                        <span className="text-sm text-brand-white">
+                          {t('buttons.cancel')}
+                        </span>
+                      </li>
+                    )}
+                  </Menu.Item>
+                </Menu.Items>
+              )}
             </div>
           </>
         )}
@@ -229,3 +228,18 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
     </>
   );
 };
+
+export const TransactionOptions = React.memo(
+  TransactionOptionsBase,
+  (prev, next) => {
+    const prevTx: any = prev.transaction as any;
+    const nextTx: any = next.transaction as any;
+    return (
+      prev.chainId === next.chainId &&
+      prev.alert === next.alert &&
+      prevTx?.hash === nextTx?.hash &&
+      prevTx?.nonce === nextTx?.nonce &&
+      prevTx?.isCanceled === nextTx?.isCanceled
+    );
+  }
+);

@@ -21,15 +21,15 @@ export const DetailsView = () => {
 
   const location = useLocation();
   const {
-    state: { id, hash, nftCollection, nftData },
+    state: { id, hash, nftCollection, nftData, tx },
   }: any = location;
 
   const isAsset = id && !hash;
   const isNft = Boolean(nftCollection && nftData);
 
-  const { explorer } = activeNetwork;
-
-  const adjustedExplorer = useAdjustedExplorer(explorer);
+  const adjustedExplorer = useAdjustedExplorer(
+    activeNetwork.explorer || activeNetwork.url
+  );
 
   const openEthExplorer = () => {
     const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
@@ -39,12 +39,9 @@ export const DetailsView = () => {
   };
 
   const openSysExplorer = () => {
-    window.open(
-      `${adjustUrl(activeNetwork.url)}${isAsset ? 'asset' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-      '_blank'
-    );
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    const url = `${base}${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`;
+    window.open(url, '_blank');
   };
 
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
@@ -63,7 +60,7 @@ export const DetailsView = () => {
             ) : isAsset ? (
               <AssetDetails id={id} />
             ) : (
-              <TransactionDetails hash={hash} />
+              <TransactionDetails hash={hash} tx={tx} />
             )}
 
             {!isAsset && !isNft ? (

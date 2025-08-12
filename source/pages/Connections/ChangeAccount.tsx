@@ -134,25 +134,29 @@ const TokenIconStack = React.memo(
       <div className="flex items-center">
         <div className="flex">
           {visibleTokens.map((token, index) => (
-            <div
+            <Tooltip
               key={
                 token.id || token.contractAddress || token.assetGuid || index
               }
-              className="relative"
-              style={{
-                marginLeft: index > 0 ? '-8px' : '0',
-                zIndex: visibleTokens.length - index,
-              }}
+              content={token.name || token.symbol}
             >
-              <TokenIcon
-                logo={token.logo}
-                contractAddress={token.contractAddress}
-                assetGuid={token.assetGuid}
-                symbol={token.symbol}
-                size={16}
-                className="border border-bkg-3 rounded-full"
-              />
-            </div>
+              <div
+                className="relative hover:scale-110 hover:shadow-md transition-transform duration-200"
+                style={{
+                  marginLeft: index > 0 ? '-8px' : '0',
+                  zIndex: visibleTokens.length - index,
+                }}
+              >
+                <TokenIcon
+                  logo={token.logo}
+                  contractAddress={token.contractAddress}
+                  assetGuid={token.assetGuid}
+                  symbol={token.symbol}
+                  size={16}
+                  className="border border-bkg-3 rounded-full"
+                />
+              </div>
+            </Tooltip>
           ))}
         </div>
         {remainingCount > 0 && (
@@ -178,6 +182,14 @@ export const ChangeAccount = () => {
   const queryData = useQueryData();
   const { host, eventName } = queryData;
   const { t } = useTranslation();
+
+  const isBridgeHost = React.useMemo(() => {
+    const safeHost = (host || '').toLowerCase();
+    return (
+      safeHost.includes('bridge.syscoin.org') ||
+      safeHost.includes('bridge-staging.syscoin.org')
+    );
+  }, [host]);
 
   // Helper to check if account is valid for current network type
   const isAccountValidForNetwork = (account: any) => {
@@ -217,6 +229,14 @@ export const ChangeAccount = () => {
       currentAccountType !== undefined ? currentAccountType : null
     );
   const [isChanging, setIsChanging] = useState<boolean>(false);
+
+  const showTrezorUtxoDisclaimer = React.useMemo(
+    () =>
+      isBitcoinBased &&
+      isBridgeHost &&
+      accountType === KeyringAccountType.Trezor,
+    [isBitcoinBased, isBridgeHost, accountType]
+  );
 
   // Helper function to get tokens for an account
   const getAccountTokens = useCallback(
@@ -339,6 +359,14 @@ export const ChangeAccount = () => {
               ? t('connections.requestingPermissions')
               : t('connections.selectAccountToConnect')}
           </p>
+
+          {showTrezorUtxoDisclaimer && (
+            <div className="mt-3 p-3 bg-red-900/20 border border-red-500 rounded-lg">
+              <p className="text-red-400 text-xs">
+                Trezor is not supported for UTXO accounts on Syscoin Bridge.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Accounts list */}

@@ -419,7 +419,7 @@ export const ImportToken: React.FC = () => {
         const tokenToSave: ITokenEthProps = {
           tokenSymbol: asset.symbol.toUpperCase(),
           contractAddress: asset.contractAddress,
-          decimals: asset.decimals || 18,
+          decimals: Number(asset.decimals ?? 18),
           isNft:
             asset.isNft ??
             ['ERC-721', 'ERC-1155'].includes(asset.tokenStandard || 'ERC-20'),

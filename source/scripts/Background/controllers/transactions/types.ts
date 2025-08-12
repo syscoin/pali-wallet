@@ -121,6 +121,18 @@ export interface IEvmTransactionsController {
     includePending?: boolean
   ) => Promise<{
     error?: string;
+    hasMore?: boolean;
+    transactions: IEvmTransactionResponse[] | null;
+  }>;
+  fetchTransactionsPageFromAPI: (
+    address: string,
+    chainId: number,
+    apiUrl: string,
+    page: number,
+    offset?: number
+  ) => Promise<{
+    error?: string;
+    hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }>;
   getUserTransactionByDefaultProvider: (
@@ -146,17 +158,46 @@ export interface ISysTransaction {
   blockHeight: number;
   blockTime: number;
   confirmations: number;
+  // Array of token transfer details
+  direction?: 'sent' | 'received';
   fees: string;
   hex: string;
+  // SPT transaction type (e.g., 'assetallocation_send', 'syscoin_burn_to_allocation')
+  tokenTransfers?: any[];
+  tokenType?: string;
   txid: string;
   value: string;
   valueIn: string;
   version: number;
-  vin: ISyscoinVIn[];
-  vout: ISyscoinVOut;
+  vin: Array<
+    ISyscoinVIn & {
+      assetInfo?: {
+        assetGuid: string;
+        value?: number | string;
+        valueStr?: string;
+      };
+      isOwn?: boolean;
+    }
+  >;
+  vout: Array<
+    ISyscoinVOut & {
+      assetInfo?: {
+        assetGuid: string;
+        value?: number | string;
+        valueStr?: string;
+      };
+      isOwn?: boolean;
+    }
+  >; // Transaction outputs
 }
 
 export interface ISysTransactionsController {
+  fetchTransactionsPageFromBlockbook: (
+    xpub: string,
+    networkUrl: string,
+    page: number,
+    pageSize?: number
+  ) => Promise<ISysTransaction[]>;
   getInitialUserTransactionsByXpub: (
     xpub: string,
     networkUrl: string

@@ -4,6 +4,7 @@ module.exports = {
   content: [
     './source/components/**/*.{html,js,jsx,ts,tsx}',
     './source/pages/**/*.{html,js,jsx,ts,tsx}',
+    './source/utils/**/*.{html,js,jsx,ts,tsx}',
     './views/*.html',
   ],
   media: false, //darkMode is outdated
@@ -86,7 +87,8 @@ module.exports = {
         'spin-slow': 'spin 3s linear infinite',
         'drop-up': 'dropFadeInUp 1.5s linear',
         'drop-down': 'dropFadeInDown 1.5s linear',
-        fadeIn: 'fadeIn 0.3s ease-in-out',
+        fadeIn: 'fadeIn 0.2s ease-out',
+        slideIn: 'slideIn 0.2s ease-out',
       },
       keyframes: {
         dropFadeInDown: {
@@ -100,6 +102,10 @@ module.exports = {
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        slideIn: {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
         },
       },
     },

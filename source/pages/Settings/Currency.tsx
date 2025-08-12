@@ -228,12 +228,12 @@ const CurrencyView = () => {
         })} ${selectedCoin.toUpperCase() || 'USD'}`}
       />
 
-      <div className="flex flex-col gap-y-6">
+      <div className="flex flex-col gap-y-6 items-center justify-center text-center w-full">
         <p className="mb-2 text-left text-white text-sm">
           {t('settings.setYourPreferred')}
         </p>
 
-        <Menu as="div" className="relative inline-block text-left">
+        <Menu as="div" className="relative inline-block text-left w-[352px]">
           {({ open }) => (
             <>
               <Menu.Button
@@ -326,20 +326,20 @@ const CurrencyView = () => {
         </Menu>
 
         <div
-          className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group"
+          className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-6 border border-brand-blue600 hover:border-brand-blue500 transition-all duration-200 group w-[352px] mx-auto"
           key={`balance-${selectedCoin}`}
         >
           <p className="text-brand-gray200 text-xs mb-4">
             {t('components.currentBalance')}
           </p>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 w-full">
             <span className="text-4xl transform transition-transform duration-200 group-hover:scale-110">
               {currencyFlags[selectedCoin.toLowerCase()] || '💰'}
             </span>
             {activeNetwork.chainId === 5700 ? (
-              <div className="flex flex-col items-start">
-                <div className="flex gap-x-1 items-baseline">
-                  <p className="font-poppins text-2xl font-medium text-white">
+              <div className="flex flex-col items-start min-w-0 w-full">
+                <div className="flex gap-x-1 items-baseline min-w-0 w-full">
+                  <p className="font-poppins text-2xl font-medium text-white truncate">
                     {formatNumber(Number(actualBalance) || 0)}
                   </p>
                   <p className="font-poppins text-sm text-brand-gray300">
@@ -351,9 +351,9 @@ const CurrencyView = () => {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col items-start">
-                <div className="flex gap-x-1 items-baseline">
-                  <p className="font-poppins text-2xl font-medium text-white">
+              <div className="flex flex-col items-start min-w-0 w-full">
+                <div className="flex gap-x-1 items-baseline min-w-0 w-full">
+                  <p className="font-poppins text-2xl font-medium text-white truncate">
                     {formatNumber(actualBalance || 0)}
                   </p>
                   <p className="font-poppins text-sm text-brand-gray300">

@@ -292,7 +292,8 @@ const CustomRPCView = () => {
         url: rpcUrl.trim(),
         label: formData?.label || '',
         symbol: formData?.symbol || '',
-        explorer: isSyscoinRpc ? rpcUrl.trim() : formData?.explorer || '',
+        // Let user provide a public explorer for UTXO; fallback to url if empty
+        explorer: (formData?.explorer || '').trim() || rpcUrl.trim(),
         apiUrl: isSyscoinRpc ? '' : formData?.apiUrl || '',
         chainId: formData?.chainId || '',
         isSyscoinRpc,
@@ -414,7 +415,8 @@ const CustomRPCView = () => {
     // Prepare data for UTXO networks - set appropriate defaults
     if (isSyscoinRpc) {
       // Keep the symbol as provided - it's required and should be auto-filled
-      data.explorer = data.url; // For UTXO, the Blockbook URL is the explorer
+      // Allow user to specify a public explorer; fallback to URL if empty
+      data.explorer = (data.explorer || '').trim() || data.url;
       data.apiUrl = ''; // UTXO networks don't use separate API URLs
       // Preserve user-provided chainId for UTXO networks, don't override to 0
       if (typeof data.chainId === 'string') {
@@ -545,9 +547,10 @@ const CustomRPCView = () => {
     url: currentNetwork?.url ?? '',
     chainId: currentNetwork?.chainId ?? '',
     symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-    explorer: isSyscoinRpc
-      ? currentNetwork?.url ?? ''
-      : currentNetwork?.explorer ?? '',
+    explorer:
+      (currentNetwork?.explorer && currentNetwork.explorer.trim()) ||
+      currentNetwork?.url ||
+      '',
     apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
   };
 
@@ -592,9 +595,10 @@ const CustomRPCView = () => {
         url: currentNetwork?.url ?? '',
         chainId: currentNetwork?.chainId ?? '',
         symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-        explorer: isSyscoinRpc
-          ? currentNetwork?.url ?? ''
-          : currentNetwork?.explorer ?? '',
+        explorer:
+          (currentNetwork?.explorer && currentNetwork.explorer.trim()) ||
+          currentNetwork?.url ||
+          '',
         apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
       };
       form.setFieldsValue(formValues);
@@ -1271,38 +1275,36 @@ const CustomRPCView = () => {
             }}
           />
         </Form.Item>
-        {!isSyscoinRpc && (
-          <Form.Item
-            hasFeedback
-            className="md:w-full"
-            name="explorer"
-            rules={[
-              {
-                required: false,
-                message: t('settings.explorerUrlRequired'),
+        <Form.Item
+          hasFeedback
+          className="md:w-full"
+          name="explorer"
+          rules={[
+            {
+              required: false,
+              message: t('settings.explorerUrlRequired'),
+            },
+            () => ({
+              validator(_, value) {
+                if (!value || value.trim() === '') {
+                  return Promise.resolve();
+                }
+                if (validateUrl(value.trim())) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(
+                  new Error(t('settings.validUrlRequired'))
+                );
               },
-              () => ({
-                validator(_, value) {
-                  if (!value || value.trim() === '') {
-                    return Promise.resolve();
-                  }
-                  if (validateUrl(value.trim())) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(
-                    new Error(t('settings.validUrlRequired'))
-                  );
-                },
-              }),
-            ]}
-          >
-            <Input
-              type="text"
-              placeholder={t('settings.explorer')}
-              className="custom-input-normal relative"
-            />
-          </Form.Item>
-        )}
+            }),
+          ]}
+        >
+          <Input
+            type="text"
+            placeholder={t('settings.explorer')}
+            className="custom-input-normal relative"
+          />
+        </Form.Item>
         {!isSyscoinRpc && (
           <div className="md:w-full">
             <div className="flex items-center gap-2 mb-2">

@@ -1,5 +1,5 @@
 import React, {
-  Fragment,
+  useMemo,
   useState,
   useDeferredValue,
   startTransition,
@@ -38,138 +38,134 @@ interface IDefaultEvmAssets {
   };
 }
 
-const DefaultEvmAssets = ({
-  searchValue,
-  sortByValue,
-  state,
-}: IDefaultEvmAssets) => {
-  const { navigate } = useUtils();
-  const { controllerEmitter } = useController();
-  const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
+const DefaultEvmAssets = React.memo(
+  function DefaultEvmAssetsComponent({
+    searchValue,
+    sortByValue,
+    state,
+  }: IDefaultEvmAssets) {
+    const { navigate } = useUtils();
+    const { controllerEmitter } = useController();
+    const { t } = useTranslation();
+    const [searchParams] = useSearchParams();
 
-  // Confirmation modal state
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-  const [tokenToDelete, setTokenToDelete] = useState<ITokenEthProps | null>(
-    null
-  );
+    // Confirmation modal state
+    const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+    const [tokenToDelete, setTokenToDelete] = useState<ITokenEthProps | null>(
+      null
+    );
 
-  const {
-    accountAssets,
-    activeAccount,
-    activeNetwork: { chainId },
-  } = useSelector((rootState: RootState) => rootState.vault);
+    const {
+      accountAssets,
+      activeAccount,
+      activeNetwork: { chainId },
+    } = useSelector((rootState: RootState) => rootState.vault);
 
-  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
+    const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
 
-  // Separate regular tokens from NFTs as requested
-  const allAssets =
-    assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
-  const currentChainAssets = allAssets.filter((token) => !token.isNft);
+    // Separate regular tokens from NFTs as requested
+    const allAssets =
+      assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
+    const currentChainAssets = allAssets.filter((token) => !token.isNft);
 
-  const assetsSorted = (tokens: ITokenEthProps[], sortBy: string) => {
-    const sortedAssets = [...tokens]; // Create a copy to avoid mutating original array
+    const filteredAssets = useMemo(() => {
+      const tokens = currentChainAssets || [];
+      const lowercaseSearchValue = searchValue?.toLowerCase() || '';
+      const isHexSearch = lowercaseSearchValue.startsWith('0x');
 
-    switch (sortBy) {
-      case 'Name':
-        return sortedAssets.sort(
-          (a, b) =>
-            a.name?.localeCompare(b.name) ||
-            a.tokenSymbol.localeCompare(b.tokenSymbol)
-        );
-      case 'Balance':
-        // Sort by balance in descending order (highest balance first)
-        return sortedAssets.sort((a, b) => b.balance - a.balance);
-      default:
-        return sortedAssets;
-    }
-  };
+      let working = tokens;
+      if (lowercaseSearchValue.length > 0) {
+        working = tokens.filter((token) => {
+          const lowercaseTokenName = token.name?.toLowerCase() || '';
+          const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
+          const lowercaseContractAddress = token.contractAddress.toLowerCase();
+          return isHexSearch
+            ? lowercaseContractAddress.includes(lowercaseSearchValue)
+            : lowercaseTokenName.includes(lowercaseSearchValue) ||
+                lowercaseTokenSymbol.includes(lowercaseSearchValue);
+        });
+      }
+      if (sortByValue?.length > 0) {
+        const sorted = [...working];
+        switch (sortByValue) {
+          case 'Name':
+            sorted.sort(
+              (a, b) =>
+                a.name?.localeCompare(b.name) ||
+                a.tokenSymbol.localeCompare(b.tokenSymbol)
+            );
+            break;
+          case 'Balance':
+            sorted.sort((a, b) => b.balance - a.balance);
+            break;
+          default:
+            break;
+        }
+        return sorted;
+      }
+      return working;
+    }, [currentChainAssets, searchValue, sortByValue]);
 
-  const assetsFilteredBySearch = currentChainAssets.filter((token) => {
-    const lowercaseSearchValue = searchValue?.toLowerCase();
-    const isHexSearch = searchValue.startsWith('0x');
-
-    const lowercaseTokenName = token.name?.toLowerCase() || '';
-    const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
-    const lowercaseContractAddress = token.contractAddress.toLowerCase();
-
-    if (isHexSearch) {
-      return lowercaseContractAddress.includes(lowercaseSearchValue);
-    } else {
-      return (
-        lowercaseTokenName.includes(lowercaseSearchValue) ||
-        lowercaseTokenSymbol.includes(lowercaseSearchValue)
-      );
-    }
-  });
-
-  // Apply filters and sorting in the correct order
-  let filteredAssets = currentChainAssets;
-
-  // First apply search filter if there's a search value
-  if (searchValue?.length > 0) {
-    filteredAssets = assetsFilteredBySearch;
-  }
-
-  // Then apply sorting to the filtered results
-  if (sortByValue?.length > 0) {
-    filteredAssets = assetsSorted(filteredAssets, sortByValue);
-  }
-
-  // Delete confirmation handlers
-  const handleDeleteClick = (token: ITokenEthProps) => {
-    setTokenToDelete(token);
-    setShowDeleteConfirmation(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (tokenToDelete) {
-      controllerEmitter(
-        ['wallet', 'deleteTokenInfo'],
-        [tokenToDelete.contractAddress, chainId, tokenToDelete.tokenId]
-      );
-    }
-    setShowDeleteConfirmation(false);
-    setTokenToDelete(null);
-  };
-
-  const handleCancelDelete = () => {
-    setShowDeleteConfirmation(false);
-    setTokenToDelete(null);
-  };
-
-  const handleAssetClick = (token: ITokenEthProps) => {
-    // Capture current scroll position
-    const scrollPosition = window.scrollY || 0;
-
-    const returnContext = {
-      returnRoute: '/home',
-      tab: searchParams.get('tab') || 'assets',
-      scrollPosition,
-      state,
+    // Delete confirmation handlers
+    const handleDeleteClick = (token: ITokenEthProps) => {
+      setTokenToDelete(token);
+      setShowDeleteConfirmation(true);
     };
 
-    navigateWithContext(
-      navigate,
-      '/home/details',
-      { id: token.id, hash: null },
-      returnContext
-    );
-  };
+    const handleConfirmDelete = () => {
+      if (tokenToDelete) {
+        controllerEmitter(
+          ['wallet', 'deleteTokenInfo'],
+          [tokenToDelete.contractAddress, chainId, tokenToDelete.tokenId]
+        );
+      }
+      setShowDeleteConfirmation(false);
+      setTokenToDelete(null);
+    };
 
-  return (
-    <>
-      {filteredAssets?.map((token: ITokenEthProps) => (
-        <Fragment key={token.id}>
-          <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
+    const handleCancelDelete = () => {
+      setShowDeleteConfirmation(false);
+      setTokenToDelete(null);
+    };
+
+    const handleAssetClick = (token: ITokenEthProps) => {
+      // Capture current scroll position
+      const scrollPosition = window.scrollY || 0;
+
+      const returnContext = {
+        returnRoute: '/home',
+        tab: searchParams.get('tab') || 'assets',
+        scrollPosition,
+        state,
+      };
+
+      navigateWithContext(
+        navigate,
+        '/home/details',
+        { id: token.id, hash: null },
+        returnContext
+      );
+    };
+
+    return (
+      <>
+        {filteredAssets?.map((token: ITokenEthProps) => (
+          <li
+            key={token.id}
+            className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
+          >
             <div className="flex gap-3 items-center justify-start">
-              <TokenIcon
-                logo={token.logo}
-                contractAddress={token.contractAddress}
-                symbol={token.tokenSymbol}
-                size={24}
-                className="hover:shadow-md hover:scale-110 transition-all duration-200"
-              />
+              <Tooltip content={token.name || token.tokenSymbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={token.logo}
+                    contractAddress={token.contractAddress}
+                    symbol={token.tokenSymbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
 
               <p className="flex items-center gap-x-2">
                 <span className="text-brand-white">
@@ -213,24 +209,30 @@ const DefaultEvmAssets = ({
               </Tooltip>
             </div>
           </li>
-        </Fragment>
-      ))}
+        ))}
 
-      <ConfirmationModal
-        show={showDeleteConfirmation}
-        onClick={handleConfirmDelete}
-        onClose={handleCancelDelete}
-        title={t('tokens.deleteToken', {
-          symbol: tokenToDelete?.tokenSymbol || 'Token',
-        })}
-        description={t('tokens.confirmDeleteTokenEvm', {
-          symbol: tokenToDelete?.tokenSymbol || 'this token',
-        })}
-        buttonText={t('buttons.delete')}
-      />
-    </>
-  );
-};
+        <ConfirmationModal
+          show={showDeleteConfirmation}
+          onClick={handleConfirmDelete}
+          onClose={handleCancelDelete}
+          title={t('tokens.deleteToken', {
+            symbol: tokenToDelete?.tokenSymbol || 'Token',
+          })}
+          description={t('tokens.confirmDeleteTokenEvm', {
+            symbol: tokenToDelete?.tokenSymbol || 'this token',
+          })}
+          buttonText={t('buttons.delete')}
+        />
+      </>
+    );
+  },
+  (prev, next) =>
+    prev.searchValue === next.searchValue &&
+    prev.sortByValue === next.sortByValue &&
+    prev.state.isCoinSelected === next.state.isCoinSelected &&
+    prev.state.searchValue === next.state.searchValue &&
+    prev.state.sortByValue === next.state.sortByValue
+);
 
 // todo: create a loading state
 export const EvmAssetsList = () => {
@@ -256,17 +258,13 @@ export const EvmAssetsList = () => {
   const isSearching = searchValue !== deferredSearchValue;
   const isSorting = sortByValue !== deferredSortByValue;
 
-  const { isLoadingAssets } = useSelector(
-    (rootState: RootState) => rootState.vaultGlobal.loadingStates
-  );
   const { networkStatus } = useSelector(
     (rootState: RootState) => rootState.vaultGlobal
   );
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  const loadingValidation =
-    (isCoinSelected && isLoadingAssets) || isNetworkChanging;
+  const loadingValidation = isNetworkChanging;
 
   // Track if we've already restored scroll position to prevent duplicate restoration
   const hasRestoredScrollRef = useRef(false);

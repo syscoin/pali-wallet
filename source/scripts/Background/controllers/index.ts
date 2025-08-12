@@ -82,20 +82,20 @@ const MasterController = (
 
     const { activeNetwork } = externalStore.getState().vault;
 
+    // Only migrate UTXO Syscoin mainnet if using a deprecated RPC pattern
+    const DEPRECATED_RPC_PATTERN = 'blockbook.elint.services';
     if (
-      currentRpcSysUtxoMainnet &&
-      currentRpcSysUtxoMainnet.url !== SYSCOIN_UTXO_MAINNET_NETWORK.url
+      currentRpcSysUtxoMainnet?.url &&
+      currentRpcSysUtxoMainnet.url.includes(DEPRECATED_RPC_PATTERN)
     ) {
-      // Update only this specific network, not all networks
       externalStore.dispatch(
         setNetwork({
           network: SYSCOIN_UTXO_MAINNET_NETWORK,
-          isEdit: true, // Mark as edit to preserve other properties
+          isEdit: true,
         })
       );
     }
 
-    const DEPRECATED_RPC_PATTERN = 'blockbook.elint.services';
     const isSysUtxoMainnetWithDeprecatedRpc =
       activeNetwork?.chainId === CHAIN_IDS.SYSCOIN_MAINNET &&
       activeNetwork?.url?.includes(DEPRECATED_RPC_PATTERN);

@@ -4,10 +4,8 @@ import Decrypt_ from './Decrypt';
 import EncryptPubKey_ from './EncryptPubKey';
 import Sign_ from './Sign';
 import EthSign_ from './SignEth';
-import Transaction from './Transaction';
 
 //* Transactions history / generic wrapper
-export const Transactions = () => <Transaction type="Send" />;
 
 //* Sign
 export const Sign = () => <Sign_ signOnly />;

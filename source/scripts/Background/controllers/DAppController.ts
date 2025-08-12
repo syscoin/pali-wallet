@@ -87,23 +87,25 @@ const DAppController = (): IDAppController => {
     notificationManager.notifyDappConnection(dapp.host, true);
 
     // Always dispatch events to ensure dapp state is updated
-    isBitcoinBased
-      ? _dispatchPaliEvent(
-          dapp.host,
-          {
-            method: PaliSyscoinEvents.xpubChanged,
-            params: account.xpub,
-          },
-          PaliSyscoinEvents.xpubChanged
-        )
-      : _dispatchPaliEvent(
-          dapp.host,
-          {
-            method: PaliEvents.accountsChanged,
-            params: [_dapps[dapp.host].activeAddress],
-          },
-          PaliEvents.accountsChanged
-        );
+    if (isBitcoinBased) {
+      // Send xpubChanged and also accountsChanged with the UTXO address for dapps expecting accountsChanged semantics
+      _dispatchPaliEvent(
+        dapp.host,
+        {
+          method: PaliSyscoinEvents.xpubChanged,
+          params: account.xpub,
+        },
+        PaliSyscoinEvents.xpubChanged
+      );
+    }
+    _dispatchPaliEvent(
+      dapp.host,
+      {
+        method: PaliEvents.accountsChanged,
+        params: [account.address],
+      },
+      PaliEvents.accountsChanged
+    );
   };
 
   const requestPermissions = (
@@ -185,12 +187,24 @@ const DAppController = (): IDAppController => {
       ? account.xpub
       : account.address;
 
-    // Dispatch accountsChanged event to notify dapp of new permissions
+    // For UTXO, also send xpubChanged for consumers that track xpub directly
+    if (isBitcoinBased) {
+      _dispatchPaliEvent(
+        host,
+        {
+          method: PaliSyscoinEvents.xpubChanged,
+          params: account.xpub,
+        },
+        PaliSyscoinEvents.xpubChanged
+      );
+    }
+
+    // Always dispatch accountsChanged with the address for consistency across network types
     _dispatchPaliEvent(
       host,
       {
         method: PaliEvents.accountsChanged,
-        params: [_dapps[host].activeAddress],
+        params: [account.address],
       },
       PaliEvents.accountsChanged
     );
@@ -230,23 +244,24 @@ const DAppController = (): IDAppController => {
       ? account.xpub
       : account.address;
 
-    isBitcoinBased
-      ? _dispatchPaliEvent(
-          host,
-          {
-            method: PaliSyscoinEvents.xpubChanged,
-            params: account.xpub,
-          },
-          PaliSyscoinEvents.xpubChanged
-        )
-      : _dispatchPaliEvent(
-          host,
-          {
-            method: PaliEvents.accountsChanged,
-            params: [_dapps[host].activeAddress],
-          },
-          PaliEvents.accountsChanged
-        );
+    if (isBitcoinBased) {
+      _dispatchPaliEvent(
+        host,
+        {
+          method: PaliSyscoinEvents.xpubChanged,
+          params: account.xpub,
+        },
+        PaliSyscoinEvents.xpubChanged
+      );
+    }
+    _dispatchPaliEvent(
+      host,
+      {
+        method: PaliEvents.accountsChanged,
+        params: [account.address],
+      },
+      PaliEvents.accountsChanged
+    );
   };
 
   const disconnect = (host: string) => {

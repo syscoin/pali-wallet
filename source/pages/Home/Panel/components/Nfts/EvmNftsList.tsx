@@ -14,6 +14,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { truncate, navigateWithContext, ellipsis } from 'utils/index';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
+import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
   state: {
@@ -105,12 +106,6 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
   // NFTs are automatically updated through regular asset polling
 
-  // ✅ MEMOIZED: Loading state - use assets loading state since NFTs come with assets
-  const isLoadingAssets = useSelector(
-    (rootState: RootState) =>
-      rootState.vaultGlobal.loadingStates.isLoadingAssets
-  );
-
   const handleNftClick = useCallback(
     (collection: any) => {
       // Capture current scroll position
@@ -133,14 +128,6 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     [navigate, searchParams, state]
   );
 
-  if (isLoadingAssets) {
-    return (
-      <div className="w-full h-64 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-white" />
-      </div>
-    );
-  }
-
   if (collections.length === 0) {
     return null; // Let the parent AssetsPanel handle empty state with Import Token link
   }
@@ -155,13 +142,17 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
           <div className="flex gap-3 items-center justify-start flex-1">
             {/* NFT Icon */}
             {collection.logo ? (
-              <TokenIcon
-                logo={collection.logo}
-                contractAddress={collection.contractAddress}
-                symbol={collection.symbol}
-                size={24}
-                className="hover:shadow-md hover:scale-110 transition-all duration-200"
-              />
+              <Tooltip content={collection.name || collection.symbol}>
+                <span className="inline-flex items-center justify-center">
+                  <TokenIcon
+                    logo={collection.logo}
+                    contractAddress={collection.contractAddress}
+                    symbol={collection.symbol}
+                    size={24}
+                    className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                  />
+                </span>
+              </Tooltip>
             ) : (
               <div
                 className="w-6 h-6 rounded bg-gradient-to-br from-brand-royalblue to-brand-pink200 
@@ -187,7 +178,11 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
                 >
                   {truncate(collection.symbol, 10).toUpperCase()}
                 </span>
-                <span className="text-brand-gray200 text-[10px]">
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${getTokenTypeBadgeColor(
+                    collection.tokenStandard
+                  )}`}
+                >
                   {collection.tokenStandard}
                 </span>
               </div>

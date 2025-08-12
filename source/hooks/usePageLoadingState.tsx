@@ -30,7 +30,7 @@ export const usePageLoadingState = (
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
-  const { isLoadingBalances, isLoadingTxs } = useSelector(
+  const { isLoadingBalances } = useSelector(
     (state: RootState) => state.vaultGlobal.loadingStates
   );
   const isPollingUpdate = useSelector(
@@ -58,9 +58,8 @@ export const usePageLoadingState = (
   // Determine if we're loading
   const isNetworkChanging = networkStatus === 'switching';
   const isConnecting = networkStatus === 'connecting';
-  // Consider balance and transaction loading (non-polling) as network operations that should timeout
+  // Consider balance loading (non-polling) as a network operation that should timeout
   const isNonPollingBalanceLoad = isLoadingBalances && !isPollingUpdate;
-  const isNonPollingTxLoad = isLoadingTxs && !isPollingUpdate;
 
   const isLoading =
     navigationLoading ||
@@ -68,7 +67,6 @@ export const usePageLoadingState = (
     isConnecting ||
     isSwitchingAccount ||
     isNonPollingBalanceLoad ||
-    isNonPollingTxLoad ||
     additionalLoadingConditions.some((condition) => condition);
 
   // Handle network operation timeout (switching or non-polling balance load)
@@ -86,12 +84,7 @@ export const usePageLoadingState = (
     }
 
     // Timeout for network switching OR non-polling balance/transaction loads (like after unlock/retry) OR connecting
-    if (
-      isNetworkChanging ||
-      isNonPollingBalanceLoad ||
-      isNonPollingTxLoad ||
-      isConnecting
-    ) {
+    if (isNetworkChanging || isNonPollingBalanceLoad || isConnecting) {
       // Set 10-second timeout for network operations
       timeoutRef.current = setTimeout(() => {
         setHasTimedOut(true);
@@ -110,7 +103,6 @@ export const usePageLoadingState = (
   }, [
     isNetworkChanging,
     isNonPollingBalanceLoad,
-    isNonPollingTxLoad,
     isConnecting,
     shouldEnableTimeout,
   ]);

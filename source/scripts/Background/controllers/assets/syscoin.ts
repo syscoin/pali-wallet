@@ -1,3 +1,4 @@
+import { formatUnits } from '@ethersproject/units';
 import { getAsset } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import { isNil } from 'lodash';
@@ -107,14 +108,76 @@ const SysAssetsControler = (): ISysAssetsController => {
         ? []
         : validTokens;
 
-    const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
-      preventUndefined
-        .filter((token: any) => token.assetGuid)
-        .map((tokenAsset: any) => ({
-          ...tokenAsset,
+    // Group tokens by assetGuid to aggregate multiple UTXOs
+    const tokensByAssetGuid = new Map<string, any[]>();
+
+    preventUndefined
+      .filter((token: any) => token.assetGuid)
+      .forEach((tokenAsset: any) => {
+        const guid = String(tokenAsset.assetGuid);
+        if (!tokensByAssetGuid.has(guid)) {
+          tokensByAssetGuid.set(guid, []);
+        }
+        tokensByAssetGuid.get(guid)!.push(tokenAsset);
+      });
+
+    // Aggregate balances for each unique asset
+    const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] = Array.from(
+      tokensByAssetGuid.entries()
+    )
+      .map(([assetGuid, tokens]) => {
+        // Take the first token as the base (for metadata)
+        const firstToken = tokens[0];
+        const decimals = firstToken.decimals || 8;
+
+        // Sum up balances from all UTXOs for this asset
+        let totalConfirmedBalance = 0;
+        let totalUnconfirmedBalance = 0;
+        let totalSent = BigInt(0);
+        let totalReceived = BigInt(0);
+        let totalTransfers = 0;
+
+        tokens.forEach((token: any) => {
+          // Add confirmed balance
+          totalConfirmedBalance += parseFloat(
+            formatUnits(String(token.balance || 0), decimals)
+          );
+
+          // Add unconfirmed delta (can be positive or negative)
+          // Blockbook now provides per-address SPT unconfirmed deltas
+          const unconfirmedRaw =
+            token.unconfirmedBalance !== undefined
+              ? token.unconfirmedBalance
+              : 0;
+          totalUnconfirmedBalance += parseFloat(
+            formatUnits(String(unconfirmedRaw || 0), decimals)
+          );
+
+          // Sum up totals (using BigInt to avoid precision issues)
+          totalSent += BigInt(token.totalSent || 0);
+          totalReceived += BigInt(token.totalReceived || 0);
+          totalTransfers += token.transfers || 0;
+        });
+
+        // Real-time balance is confirmed + unconfirmed delta
+        const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
+
+        return {
+          ...firstToken,
+          assetGuid: assetGuid,
+          // Use aggregated balances
+          balance: displayBalance,
+          confirmedBalance: totalConfirmedBalance,
+          unconfirmedBalance: totalUnconfirmedBalance,
+          totalSent: formatUnits(totalSent.toString(), decimals),
+          totalReceived: formatUnits(totalReceived.toString(), decimals),
+          transfers: totalTransfers,
           chainId: networkChainId,
-        }))
-        .slice(0, MAX_TOKENS_DISPLAY);
+          // Include count of UTXOs for debugging
+          utxoCount: tokens.length,
+        };
+      })
+      .slice(0, MAX_TOKENS_DISPLAY);
 
     console.log(
       `[SysAssetsController] Found ${getOnlyTokensWithAssetGuid.length} SPT tokens for user (from ${preventUndefined.length} total entries)`
@@ -159,7 +222,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       }
 
       // Get user's balance for this asset (optional)
-      let balance = 0;
+      let balance: number = 0;
       try {
         // Blockbook doesn't support filtering by assetGuid, so we fetch all tokens
         const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -174,14 +237,26 @@ const SysAssetsControler = (): ISysAssetsController => {
         // tokens array contains regular UTXO addresses without assetGuid
         const tokens = accountData.tokensAsset || [];
 
-        // Find the specific token by assetGuid
-        const tokenData = tokens.find(
+        // Find ALL tokens with this assetGuid to aggregate balances
+        const matchingTokens = tokens.filter(
           (t: any) => t.assetGuid?.toString() === assetGuid
         );
 
-        if (tokenData && tokenData.balance !== undefined) {
-          // Keep balance in satoshis - it will be converted for display in UI
-          balance = Number(tokenData.balance);
+        if (matchingTokens.length > 0) {
+          // Convert from satoshis to display format and aggregate across all UTXOs
+          const decimals = assetData.decimals || 8;
+
+          // Sum up balances from all UTXOs for this asset
+          balance = matchingTokens.reduce((total: number, token: any) => {
+            const tokenBalance = parseFloat(
+              formatUnits(String(token.balance || 0), decimals)
+            );
+            return total + tokenBalance;
+          }, 0);
+
+          console.log(
+            `[SysAssetsController] Found ${matchingTokens.length} UTXOs for asset ${assetGuid}, total balance: ${balance}`
+          );
         }
       } catch (balanceError) {
         console.warn(
@@ -259,21 +334,78 @@ const SysAssetsControler = (): ISysAssetsController => {
       typeof validTokens === 'undefined' || validTokens === undefined
         ? []
         : validTokens;
-    //We need to get only tokens that has AssetGuid property
-    const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
-      preventUndefined.filter(
-        (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
-      );
+
+    // Group tokens by assetGuid to aggregate multiple UTXOs
+    const tokensByAssetGuid = new Map<string, any[]>();
+
+    preventUndefined
+      .filter((token: any) => !isNil(token.assetGuid))
+      .forEach((tokenAsset: any) => {
+        const guid = String(tokenAsset.assetGuid);
+        if (!tokensByAssetGuid.has(guid)) {
+          tokensByAssetGuid.set(guid, []);
+        }
+        tokensByAssetGuid.get(guid)!.push(tokenAsset);
+      });
+
+    // Aggregate balances for each unique asset
+    const aggregatedTokensMap = new Map<string, ISysTokensAssetReponse>();
+
+    tokensByAssetGuid.forEach((tokens, assetGuid) => {
+      // Take the first token as the base (for metadata)
+      const firstToken = tokens[0];
+      const decimals = firstToken.decimals || 8;
+
+      // Sum up balances from all UTXOs for this asset
+      let totalConfirmedBalance = 0;
+      let totalUnconfirmedBalance = 0;
+      let totalSent = BigInt(0);
+      let totalReceived = BigInt(0);
+      let totalTransfers = 0;
+
+      tokens.forEach((token: any) => {
+        // Add confirmed balance
+        totalConfirmedBalance += parseFloat(
+          formatUnits(String(token.balance || 0), decimals)
+        );
+
+        // Add unconfirmed delta (positive for receiver, negative for sender)
+        const unconfirmedRaw =
+          token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
+        totalUnconfirmedBalance += parseFloat(
+          formatUnits(String(unconfirmedRaw || 0), decimals)
+        );
+
+        // Sum up totals (using BigInt to avoid precision issues)
+        totalSent += BigInt(token.totalSent || 0);
+        totalReceived += BigInt(token.totalReceived || 0);
+        totalTransfers += token.transfers || 0;
+      });
+
+      // Real-time balance is confirmed + unconfirmed delta
+      const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
+
+      aggregatedTokensMap.set(assetGuid, {
+        ...firstToken,
+        assetGuid: assetGuid,
+        balance: displayBalance,
+        confirmedBalance: totalConfirmedBalance,
+        unconfirmedBalance: totalUnconfirmedBalance,
+        totalSent: formatUnits(totalSent.toString(), decimals),
+        totalReceived: formatUnits(totalReceived.toString(), decimals),
+        transfers: totalTransfers,
+        chainId: networkChainId,
+        type: 'SPTAllocated',
+      });
+    });
 
     // Get existing manually imported tokens from state
     const { activeAccount, accountAssets } = store.getState().vault;
     const existingAssets =
       accountAssets[activeAccount.type]?.[activeAccount.id]?.syscoin || [];
 
-    // Create a map of blockchain tokens for easy lookup
-    const blockchainTokensMap = new Map(
-      getOnlyTokensWithAssetGuid.map((token) => [token.assetGuid, token])
-    );
+    // Use aggregated tokens map for lookups
+    const blockchainTokensMap = aggregatedTokensMap;
 
     // Update all manually imported tokens
     const updatedTokens: ISysTokensAssetReponse[] = existingAssets
@@ -282,25 +414,14 @@ const SysAssetsControler = (): ISysAssetsController => {
         const blockchainToken = blockchainTokensMap.get(asset.assetGuid!);
 
         if (blockchainToken) {
-          // Token found in blockchain response - use updated data
-          // Convert all satoshi values to display format
-          const decimals = blockchainToken.decimals || 8;
-          const divisor = Math.pow(10, decimals);
-          return {
-            ...blockchainToken,
-            balance: blockchainToken.balance / divisor,
-            totalSent: String(Number(blockchainToken.totalSent) / divisor),
-            totalReceived: String(
-              Number(blockchainToken.totalReceived) / divisor
-            ),
-            chainId: networkChainId,
-            type: 'SPTAllocated',
-          };
+          // Token found in blockchain response - use aggregated data
+          return blockchainToken;
         } else {
           // Token not in blockchain response - set balance to 0
           return {
             assetGuid: asset.assetGuid!,
             balance: 0,
+            unconfirmedBalance: 0,
             decimals: asset.decimals,
             name: asset.name || asset.symbol,
             path: '',

@@ -1,6 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber';
-import { hexlify } from '@ethersproject/bytes';
-import { parseUnits } from '@ethersproject/units';
+import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -26,8 +25,10 @@ import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
+import { formatGweiValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
   logError,
@@ -38,6 +39,7 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
+import { safeToFixed } from 'utils/safeToFixed';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -59,6 +61,9 @@ export const SendConfirm = () => {
   );
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const ensCache = useSelector(
+    (state: RootState) => state.vaultGlobal.ensCache
+  );
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const location = useLocation();
@@ -74,7 +79,7 @@ export const SendConfirm = () => {
     gasPrice: 0,
   });
 
-  const [gasPrice, setGasPrice] = useState<number>(0);
+  const [gasPrice, setGasPrice] = useState<string>('0');
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   // Removed unused haveError state
@@ -84,6 +89,56 @@ export const SendConfirm = () => {
   const [copied, copy] = useCopyClipboard();
 
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+
+  // Resolve ENS lazily (tooltip + enforcement)
+  const [resolvedToAddress, setResolvedToAddress] = useState<string | null>(
+    null
+  );
+  const ensNameToAddress = useSelector(selectEnsNameToAddress);
+
+  useEffect(() => {
+    const maybeName = String((state as any)?.tx?.receivingAddress || '');
+    if (!maybeName || !maybeName.toLowerCase().endsWith('.eth')) {
+      setResolvedToAddress(null);
+      return;
+    }
+    // Cache-first: check background-derived map name -> address
+    const cached = ensNameToAddress[maybeName.toLowerCase()];
+    (async () => {
+      try {
+        const addr =
+          cached ||
+          ((await controllerEmitter(['wallet', 'resolveEns'], [maybeName])) as
+            | string
+            | null);
+        if (addr && typeof addr === 'string' && addr.startsWith('0x')) {
+          setResolvedToAddress(addr);
+        } else {
+          setResolvedToAddress(null);
+        }
+      } catch {
+        setResolvedToAddress(null);
+      }
+    })();
+  }, [state, ensNameToAddress]);
+
+  // Display destination: prefer resolved address when input was ENS
+  const toRaw = useMemo(
+    () => String((state as any)?.tx?.receivingAddress || ''),
+    [state]
+  );
+  const tooltipToAddress = useMemo(
+    () =>
+      toRaw.toLowerCase().endsWith('.eth') ? resolvedToAddress || toRaw : toRaw,
+    [toRaw, resolvedToAddress]
+  );
+  const labelToDisplay = useMemo(() => {
+    if (toRaw.toLowerCase().endsWith('.eth')) return toRaw; // show ENS input
+    const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+    return cachedName || toRaw;
+  }, [toRaw, ensCache]);
+
+  // We always display addresses; ENS names are only used as input and resolved to addresses
 
   // Add fee calculation cache and debouncing
   const [feeCalculationCache, setFeeCalculationCache] = useState<
@@ -98,7 +153,6 @@ export const SendConfirm = () => {
   // Handle both normal navigation and restoration
   const basicTxValues = state.tx;
   const cachedGasData = basicTxValues?.cachedGasData;
-
   // Initialize fee state after basicTxValues is available
   const [fee, setFee] = useState<IFeeState>({
     gasLimit: basicTxValues?.defaultGasLimit || 42000,
@@ -211,22 +265,16 @@ export const SendConfirm = () => {
     }
   };
 
-  // Helper function to safely convert fee values to numbers and format them
-  const safeToFixed = (value: any, decimals = 9): string => {
-    const numValue = Number(value);
-    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
-  };
-
   const getLegacyGasPrice = async () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
     )
-      ? customFee.gasPrice * 10 ** 9 // Convert to WEI because injected gasPrices comes in GWEI
+      ? parseUnits(safeToFixed(customFee.gasPrice), 9).toString() // Convert Gwei to Wei using parseUnits, keep as string for precision
       : await controllerEmitter([
           'wallet',
           'ethereumTransaction',
           'getRecommendedGasPrice',
-        ]).then((gas) => BigNumber.from(gas).toNumber());
+        ]).then((gas) => BigNumber.from(gas).toString());
 
     // Always use a valid gas limit - custom, default from tx type, or fallback
     const gasLimit =
@@ -236,7 +284,7 @@ export const SendConfirm = () => {
 
     const initialFee = { ...INITIAL_FEE, gasLimit };
 
-    initialFee.gasPrice = correctGasPrice;
+    initialFee.gasPrice = parseFloat(formatGweiValue(correctGasPrice)); // Convert wei back to Gwei for display using safe conversion
 
     // Use startTransition for non-critical fee updates
     startTransition(() => {
@@ -267,6 +315,16 @@ export const SendConfirm = () => {
 
     if (activeAccount && balance >= 0) {
       setLoading(true);
+
+      // Enforce ENS resolution: if user provided an ENS name and it couldn't be resolved, block
+      const rawTo = String(basicTxValues?.receivingAddress || '');
+      const isEnsInput = rawTo.toLowerCase().endsWith('.eth');
+      if (isEnsInput && !resolvedToAddress) {
+        setLoading(false);
+        alert.error(t('send.unableToResolveEns'));
+        return;
+      }
+      const destinationTo = resolvedToAddress || rawTo;
 
       // Handle transactions based on type
       const transactionType =
@@ -332,11 +390,23 @@ export const SendConfirm = () => {
           ]) as ITxState;
 
           let value = parseUnits(String(basicTxValues.amount), 'ether');
+          const floorToDecimals = (num: string | number, decimals: number) => {
+            const s = String(num);
+            const parts = s.split('.');
+            if (parts.length === 1) return s;
+            const [intPart, fracPart] = parts;
+            const truncated = fracPart.slice(0, decimals); // floor, do not round
+            return truncated.length > 0 ? `${intPart}.${truncated}` : intPart;
+          };
 
           try {
-            // For MAX sends, deduct gas fees from the value
-            // This is required because ethers.js validates balance >= value + gas
+            // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
+            // The amount from basicTxValues might be rounded for display, causing precision issues
             if (basicTxValues.isMax) {
+              // Use the already-fetched EVM balance (ETH units)
+              const actualBalanceEth = balance;
+              const balanceStrFloored = floorToDecimals(actualBalanceEth, 18);
+              value = parseUnits(balanceStrFloored, 'ether');
               const gasLimit = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
@@ -344,11 +414,9 @@ export const SendConfirm = () => {
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
                 const maxFeePerGasWei = parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? safeToFixed(customFee.maxFeePerGas)
-                      : safeToFixed(fee.maxFeePerGas)
-                  ),
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? safeToFixed(customFee.maxFeePerGas)
+                    : safeToFixed(fee.maxFeePerGas),
                   9
                 );
                 const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
@@ -376,15 +444,16 @@ export const SendConfirm = () => {
                   [
                     {
                       ...restTx,
-                      value,
-                      gasPrice: hexlify(gasPrice),
-                      gasLimit: validateCustomGasLimit
-                        ? BigNumber.from(customFee.gasLimit)
-                        : BigNumber.from(
-                            fee.gasLimit ||
+                      to: destinationTo,
+                      value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
+                      gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
+                      gasLimit: BigNumber.from(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit
+                          : fee.gasLimit ||
                               basicTxValues.defaultGasLimit ||
                               42000
-                          ),
+                      ).toHexString(), // Convert to hex string
                     },
                     !isEIP1559Compatible,
                   ],
@@ -421,22 +490,20 @@ export const SendConfirm = () => {
 
               return;
             }
-
             // Use atomic wrapper for EIP-1559 transactions
             await controllerEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
               [
                 {
                   ...restTx,
-                  value,
+                  to: destinationTo,
+                  value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
-                    String(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? safeToFixed(customFee.maxPriorityFeePerGas)
-                        : safeToFixed(fee.maxPriorityFeePerGas)
-                    ),
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas),
                     9
                   ),
                   maxFeePerGas: parseUnits(
@@ -465,25 +532,26 @@ export const SendConfirm = () => {
 
             return;
           } catch (error: any) {
-            // For MAX sends, if we get insufficient funds error, retry with slightly less
+            // For MAX sends, if we get insufficient funds error, retry with a buffer
+            // This can happen due to gas price fluctuations between estimation and execution
             if (
               basicTxValues.isMax &&
               error.message?.includes('insufficient funds')
             ) {
-              const reducedValue = value.sub(BigNumber.from('10000'));
+              const buffer = BigNumber.from('100000');
+              const reducedValue = value.sub(buffer);
 
               if (reducedValue.gt(0)) {
                 const retryTxObject = {
                   ...restTx,
-                  value: reducedValue,
+                  to: destinationTo,
+                  value: reducedValue.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
-                    String(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? safeToFixed(customFee.maxPriorityFeePerGas)
-                        : safeToFixed(fee.maxPriorityFeePerGas)
-                    ),
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas),
                     9
                   ),
                   maxFeePerGas: parseUnits(
@@ -567,59 +635,6 @@ export const SendConfirm = () => {
           switch (transactionType) {
             //HANDLE ERC20 TRANSACTION
             case TransactionType.ERC20:
-              if (isEIP1559Compatible === false) {
-                try {
-                  // Use atomic wrapper for legacy ERC20 transactions
-                  await controllerEmitter(
-                    ['wallet', 'sendAndSaveTokenTransaction'],
-                    [
-                      'ERC20',
-                      {
-                        networkUrl: activeNetwork.url,
-                        receiver: txObjectState.to,
-                        tokenAddress: basicTxValues.token.contractAddress,
-                        tokenAmount: `${basicTxValues.amount}`,
-                        isLegacy: !isEIP1559Compatible,
-                        decimals: basicTxValues?.token?.decimals,
-                        gasPrice: hexlify(gasPrice),
-                        gasLimit: validateCustomGasLimit
-                          ? BigNumber.from(customFee.gasLimit)
-                          : BigNumber.from(
-                              fee.gasLimit ||
-                                basicTxValues.defaultGasLimit ||
-                                65000
-                            ),
-                      },
-                    ],
-                    false,
-                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                      ? 300000 // 5 minutes timeout for hardware wallet operations
-                      : 10000 // Default 10 seconds for regular wallets
-                  );
-
-                  setConfirmed(true);
-                  setLoading(false);
-                  return;
-                } catch (error: any) {
-                  // Handle specific errors with detailed messages
-                  const wasHandledSpecifically = handleTransactionError(
-                    error,
-                    alert,
-                    t,
-                    activeAccount,
-                    activeNetwork,
-                    basicTxValues
-                  );
-
-                  if (!wasHandledSpecifically) {
-                    logError('error send ERC20', 'Transaction', error);
-                    alert.error(t('send.cantCompleteTxs'));
-                  }
-
-                  setLoading(false);
-                }
-                break;
-              }
               try {
                 await controllerEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
@@ -627,30 +642,27 @@ export const SendConfirm = () => {
                     'ERC20',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
                       maxPriorityFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom &&
-                              customFee.maxPriorityFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxPriorityFeePerGas)
-                            : safeToFixed(fee.maxPriorityFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
                         9
                       ),
                       maxFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom && customFee.maxFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxFeePerGas)
-                            : safeToFixed(fee.maxFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
                         9
                       ),
                       gasLimit: validateCustomGasLimit
@@ -671,8 +683,6 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle blind signing requirement
-                // Handle specific errors (blacklist, cancellation, device issues, etc.)
                 const wasHandledSpecifically = handleTransactionError(
                   error,
                   alert,
@@ -682,13 +692,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC20', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -723,24 +731,41 @@ export const SendConfirm = () => {
                     'ERC721',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId, // The actual NFT token ID
+                      tokenId: numericTokenId,
                       isLegacy: !isEIP1559Compatible,
-                      gasPrice: hexlify(gasPrice),
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
+                      maxPriorityFeePerGas: parseUnits(
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
+                        9
+                      ),
+                      maxFeePerGas: parseUnits(
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
+                        9
+                      ),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
                             fee.gasLimit ||
                               basicTxValues.defaultGasLimit ||
-                              85000
+                              150000
                           ),
                     },
                   ],
                   false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000 // 5 minutes timeout for hardware wallet operations
-                    : 10000 // Default 10 seconds for regular wallets
+                    ? 300000
+                    : 10000
                 );
 
                 setConfirmed(true);
@@ -757,13 +782,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC721', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -798,33 +821,29 @@ export const SendConfirm = () => {
                     'ERC1155',
                     {
                       networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
+                      receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId, // The actual NFT token ID
-                      tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
+                      tokenId: numericTokenId,
+                      tokenAmount: String(basicTxValues.amount),
                       isLegacy: !isEIP1559Compatible,
                       maxPriorityFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom &&
-                              customFee.maxPriorityFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxPriorityFeePerGas)
-                            : safeToFixed(fee.maxPriorityFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas),
                         9
                       ),
                       maxFeePerGas: parseUnits(
-                        String(
-                          Boolean(
-                            customFee.isCustom && customFee.maxFeePerGas > 0
-                          )
-                            ? safeToFixed(customFee.maxFeePerGas)
-                            : safeToFixed(fee.maxFeePerGas)
-                        ),
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas),
                         9
                       ),
-                      gasPrice: hexlify(gasPrice),
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
                       gasLimit: validateCustomGasLimit
                         ? BigNumber.from(customFee.gasLimit)
                         : BigNumber.from(
@@ -836,8 +855,8 @@ export const SendConfirm = () => {
                   ],
                   false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000 // 5 minutes timeout for hardware wallet operations
-                    : 10000 // Default 10 seconds for regular wallets
+                    ? 300000
+                    : 10000
                 );
 
                 setConfirmed(true);
@@ -853,13 +872,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC1155', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -892,9 +909,7 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
-    if (isEIP1559Compatible === undefined) {
-      return; // Wait for EIP1559 compatibility check to complete
-    }
+    const eipModeUnknown = isEIP1559Compatible === undefined;
 
     // Skip fee recalculation when using custom fees
     if (customFee.isCustom) {
@@ -927,7 +942,7 @@ export const SendConfirm = () => {
       return;
     }
 
-    if (isEIP1559Compatible === false) {
+    if (!eipModeUnknown && isEIP1559Compatible === false) {
       // Don't retry if we already have an error
       if (feeCalculationError || isCalculatingFees) {
         return;
@@ -982,35 +997,40 @@ export const SendConfirm = () => {
     // If we have cached gas data from SendEth, use it immediately
     if (cachedGasData && !customFee.isCustom) {
       const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
-      const gasLimit = basicTxValues.defaultGasLimit || 42000;
-      const initialFeeDetails = {
-        maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
-        baseFee:
-          (BigNumber.from(maxFeePerGas).toNumber() -
-            BigNumber.from(maxPriorityFeePerGas).toNumber()) /
-          10 ** 9,
-        maxPriorityFeePerGas:
-          BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-        gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
-      };
 
-      const formattedTxObject = {
-        from: basicTxValues.sender,
-        to: basicTxValues.receivingAddress,
-        chainId: activeNetwork.chainId,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      };
+      // Convert hex strings back to BigNumbers (they were serialized for navigation)
+      const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
+      const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
 
-      setTxObjectState(formattedTxObject);
-      setFee(initialFeeDetails as any);
+      // Guard against invalid zero values from cache
+      if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
+        const gasLimit = basicTxValues.defaultGasLimit || 42000;
+        const initialFeeDetails = {
+          maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+          baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+          maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
+          gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
+        };
 
-      // Cache the result
-      setFeeCalculationCache(
-        (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
-      );
+        const formattedTxObject = {
+          from: basicTxValues.sender,
+          to: basicTxValues.receivingAddress,
+          chainId: activeNetwork.chainId,
+          maxFeePerGas: maxFeeBN,
+          maxPriorityFeePerGas: maxPriorityBN,
+        };
 
-      return; // Skip recalculation
+        setTxObjectState(formattedTxObject);
+        setFee(initialFeeDetails as any);
+
+        // Cache the result
+        setFeeCalculationCache(
+          (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
+        );
+
+        return; // Skip recalculation
+      }
+      // If cached values were invalid, fall through to recompute
     }
 
     // Debounce fee calculation to prevent rapid successive calls
@@ -1026,14 +1046,17 @@ export const SendConfirm = () => {
             'getFeeDataWithDynamicMaxPriorityFeePerGas',
           ])) as any;
 
+        // Treat zero/invalid values as an error to avoid endless "Calculating..."
+        const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
+        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
+        if (maxFeeBN.isZero() || maxPriorityBN.isZero()) {
+          throw new Error('Invalid fee data (zeros)');
+        }
+
         const initialFeeDetails = {
-          maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
-          baseFee:
-            (BigNumber.from(maxFeePerGas).toNumber() -
-              BigNumber.from(maxPriorityFeePerGas).toNumber()) /
-            10 ** 9,
-          maxPriorityFeePerGas:
-            BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+          maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+          baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+          maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
           gasLimit: basicTxValues.defaultGasLimit || 42000, // Always use appropriate default gas limit
         };
 
@@ -1041,8 +1064,8 @@ export const SendConfirm = () => {
           from: basicTxValues.sender,
           to: basicTxValues.receivingAddress,
           chainId: activeNetwork.chainId,
-          maxFeePerGas,
-          maxPriorityFeePerGas,
+          maxFeePerGas: maxFeeBN,
+          maxPriorityFeePerGas: maxPriorityBN,
         };
 
         setTxObjectState(formattedTxObject);
@@ -1116,32 +1139,47 @@ export const SendConfirm = () => {
         : fee?.gasLimit || basicTxValues.defaultGasLimit || 0
     );
 
-    if (!gasLimit) return 0;
+    // If values aren't ready yet, indicate pending by returning undefined
+    if (!gasLimit) return undefined as unknown as number;
 
     // Handle legacy transactions (non-EIP1559)
     if (isEIP1559Compatible === false) {
       const gasPriceValue = Number(
         customFee.isCustom && customFee.gasPrice > 0
           ? customFee.gasPrice
-          : gasPrice / 10 ** 9
+          : parseFloat(formatGweiValue(gasPrice))
       );
 
-      if (isNaN(gasPriceValue) || isNaN(gasLimit)) return 0;
+      if (isNaN(gasPriceValue) || isNaN(gasLimit))
+        return undefined as unknown as number;
 
-      return (gasPriceValue * gasLimit) / 10 ** 9;
+      // Use BigNumber to prevent overflow for large gas prices
+      const gasLimitBN = BigNumber.from(gasLimit);
+      // Limit to 9 decimal places to avoid parseUnits error
+      const gasPriceStr = gasPriceValue.toFixed(9);
+      const gasPriceWeiBN = parseUnits(gasPriceStr, 'gwei');
+      const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
+      return Number(formatEther(totalFeeWeiBN));
     }
 
     // Handle EIP-1559 transactions
-    if (!fee?.maxFeePerGas) return 0;
+    if (!fee?.maxFeePerGas) return undefined as unknown as number;
 
     const feePerGas = Number(
       customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas
     );
 
     // Ensure we don't return NaN
-    if (isNaN(feePerGas) || isNaN(gasLimit)) return 0;
+    if (isNaN(feePerGas) || isNaN(gasLimit))
+      return undefined as unknown as number;
 
-    return (feePerGas * gasLimit) / 10 ** 9;
+    // Use BigNumber to prevent overflow for large gas prices
+    const gasLimitBN = BigNumber.from(gasLimit);
+    // Limit to 9 decimal places to avoid parseUnits error
+    const feePerGasStr = feePerGas.toFixed(9);
+    const feePerGasWeiBN = parseUnits(feePerGasStr, 'gwei');
+    const totalFeeWeiBN = gasLimitBN.mul(feePerGasWeiBN);
+    return Number(formatEther(totalFeeWeiBN));
   }, [
     fee?.gasLimit,
     fee?.maxFeePerGas,
@@ -1216,11 +1254,11 @@ export const SendConfirm = () => {
                     {t('settings.contractAddress')}
                   </p>
                   <div className="flex items-center gap-2">
-                    <p className="text-white text-sm font-mono">
+                    <span className="text-white text-sm font-mono">
                       <Tooltip content={basicTxValues.token.contractAddress}>
                         {ellipsis(basicTxValues.token.contractAddress, 8, 6)}
                       </Tooltip>
-                    </p>
+                    </span>
                     <button
                       type="button"
                       onClick={() => copy(basicTxValues.token.contractAddress)}
@@ -1242,7 +1280,7 @@ export const SendConfirm = () => {
                     <p className="text-brand-gray200 text-xs mb-1">
                       {t('send.tokenId')}
                     </p>
-                    <p className="text-white font-medium">
+                    <div className="text-white font-medium">
                       {basicTxValues.token.tokenId ? (
                         basicTxValues.token.tokenId.length > 20 ? (
                           <Tooltip content={basicTxValues.token.tokenId}>
@@ -1256,7 +1294,7 @@ export const SendConfirm = () => {
                           Missing Token ID
                         </span>
                       )}
-                    </p>
+                    </div>
                   </div>
 
                   {/* Amount (for ERC-1155) */}
@@ -1290,7 +1328,7 @@ export const SendConfirm = () => {
                   </p>
                 </div>
 
-                {/* Token Details (if ERC20) */}
+                {/* Token Details (if ERC20 or SPT) */}
                 {basicTxValues.token && !basicTxValues.token.isNft && (
                   <>
                     {/* Token Name and Type */}
@@ -1302,35 +1340,51 @@ export const SendConfirm = () => {
                         </h3>
                         <span
                           className={`text-xs px-2 py-1 rounded-full ${getTokenTypeBadgeColor(
-                            'ERC-20'
+                            isBitcoinBased ? 'SPT' : 'ERC-20'
                           )}`}
                         >
-                          ERC-20
+                          {isBitcoinBased ? 'SPT' : 'ERC-20'}
                         </span>
                       </div>
                     </div>
 
-                    {/* Contract Address */}
+                    {/* Contract Address or Asset GUID */}
                     <div className="bg-bkg-3 rounded-lg px-3 py-2">
                       <p className="text-brand-gray200 text-xs mb-1">
-                        {t('settings.contractAddress')}
+                        {isBitcoinBased
+                          ? t('send.assetGuid')
+                          : t('settings.contractAddress')}
                       </p>
                       <div className="flex items-center gap-2">
-                        <p className="text-white text-sm font-mono">
+                        <span className="text-white text-sm font-mono">
                           <Tooltip
-                            content={basicTxValues.token.contractAddress}
+                            content={
+                              isBitcoinBased
+                                ? basicTxValues.token.guid ||
+                                  basicTxValues.token.assetGuid
+                                : basicTxValues.token.contractAddress
+                            }
                           >
-                            {ellipsis(
-                              basicTxValues.token.contractAddress,
-                              8,
-                              6
-                            )}
+                            {isBitcoinBased
+                              ? basicTxValues.token.guid ||
+                                basicTxValues.token.assetGuid ||
+                                'N/A'
+                              : ellipsis(
+                                  basicTxValues.token.contractAddress,
+                                  8,
+                                  6
+                                )}
                           </Tooltip>
-                        </p>
+                        </span>
                         <button
                           type="button"
                           onClick={() =>
-                            copy(basicTxValues.token.contractAddress)
+                            copy(
+                              isBitcoinBased
+                                ? basicTxValues.token.guid ||
+                                    basicTxValues.token.assetGuid
+                                : basicTxValues.token.contractAddress
+                            )
                           }
                           className="text-brand-gray200 hover:text-white transition-colors"
                         >
@@ -1340,6 +1394,16 @@ export const SendConfirm = () => {
                             className="w-4 h-4 text-brand-gray200 hover:text-white"
                           />
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Decimals */}
+                    <div className="bg-bkg-3 rounded-lg px-3 py-2 mt-2">
+                      <p className="text-brand-gray200 text-xs mb-1">
+                        {t('settings.decimals')}
+                      </p>
+                      <div className="text-white text-sm font-mono">
+                        {basicTxValues.token.decimals ?? 'N/A'}
                       </div>
                     </div>
                   </>
@@ -1370,18 +1434,14 @@ export const SendConfirm = () => {
                   childrenClassName="flex"
                 >
                   {ellipsis(basicTxValues.sender, 7, 15)}
-                  {
-                    <IconButton
-                      onClick={() => copy(basicTxValues.sender ?? '')}
-                    >
-                      <Icon
-                        wrapperClassname="flex items-center justify-center"
-                        name="Copy"
-                        isSvg
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  }
+                  <IconButton onClick={() => copy(basicTxValues.sender ?? '')}>
+                    <Icon
+                      wrapperClassname="flex items-center justify-center"
+                      name="Copy"
+                      isSvg
+                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                    />
+                  </IconButton>
                 </Tooltip>
               </span>
             </div>
@@ -1389,23 +1449,16 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.to')}
               <span className="text-white text-xs">
-                <Tooltip
-                  content={basicTxValues.receivingAddress}
-                  childrenClassName="flex"
-                >
-                  {ellipsis(basicTxValues.receivingAddress, 7, 15)}{' '}
-                  {
-                    <IconButton
-                      onClick={() => copy(basicTxValues.receivingAddress ?? '')}
-                    >
-                      <Icon
-                        wrapperClassname="flex items-center justify-center"
-                        name="Copy"
-                        isSvg
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  }
+                <Tooltip content={tooltipToAddress} childrenClassName="flex">
+                  {ellipsis(labelToDisplay, 7, 15)}{' '}
+                  <IconButton onClick={() => copy(tooltipToAddress ?? '')}>
+                    <Icon
+                      wrapperClassname="flex items-center justify-center"
+                      name="Copy"
+                      isSvg
+                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                    />
+                  </IconButton>
                 </Tooltip>
               </span>
             </div>
@@ -1478,7 +1531,6 @@ export const SendConfirm = () => {
                   </span>
                 </div>
                 {!isBitcoinBased &&
-                  !basicTxValues.token?.isNft &&
                   !feeCalculationError &&
                   (isEIP1559Compatible ? (
                     <span

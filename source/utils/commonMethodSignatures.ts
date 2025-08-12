@@ -148,8 +148,15 @@ export const formatMethodName = (
     return t('send.sent');
   }
 
-  // Try to get translation from i18n
-  const translationKey = `transactions.methodNames.${methodName}`;
+  // Normalize method name: decoded data may return full signature like
+  // "safeTransferFrom(address,address,uint256,uint256,bytes)". Our i18n keys
+  // use only the base name. Strip the parameter list if present.
+  const baseMethod = methodName.includes('(')
+    ? methodName.slice(0, methodName.indexOf('('))
+    : methodName;
+
+  // Try to get translation from i18n using the base method name
+  const translationKey = `transactions.methodNames.${baseMethod}`;
   const translated = t(translationKey, {
     symbol: nativeSymbol.toUpperCase(),
   });

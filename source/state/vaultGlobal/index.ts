@@ -21,13 +21,11 @@ const initialState: IGlobalState = {
   // Transient loading states - always start as false
   loadingStates: {
     isLoadingBalances: false,
-    isLoadingTxs: false,
-    isLoadingAssets: false,
-    isLoadingNfts: false,
   },
   networks: PALI_NETWORKS_STATE,
   isPollingUpdate: false,
   networkQuality: undefined,
+  ensCache: {},
 };
 
 const vaultGlobalSlice = createSlice({
@@ -80,23 +78,12 @@ const vaultGlobalSlice = createSlice({
     resetLoadingStates(state: IGlobalState) {
       state.loadingStates = {
         isLoadingBalances: false,
-        isLoadingTxs: false,
-        isLoadingAssets: false,
-        isLoadingNfts: false,
       };
     },
     setIsLoadingBalances(state: IGlobalState, action: PayloadAction<boolean>) {
       state.loadingStates.isLoadingBalances = action.payload;
     },
-    setIsLoadingTxs(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingTxs = action.payload;
-    },
-    setIsLoadingAssets(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingAssets = action.payload;
-    },
-    setIsLoadingNfts(state: IGlobalState, action: PayloadAction<boolean>) {
-      state.loadingStates.isLoadingNfts = action.payload;
-    },
+
     setActiveSlip44(state: IGlobalState, action: PayloadAction<number>) {
       state.activeSlip44 = action.payload;
     },
@@ -128,6 +115,17 @@ const vaultGlobalSlice = createSlice({
       action: PayloadAction<'idle' | 'switching' | 'error' | 'connecting'>
     ) {
       state.networkStatus = action.payload;
+    },
+    setEnsName(
+      state: IGlobalState,
+      action: PayloadAction<{ address: string; name: string }>
+    ) {
+      if (!state.ensCache) state.ensCache = {};
+      const addressLower = action.payload.address.toLowerCase();
+      state.ensCache[addressLower] = {
+        name: action.payload.name,
+        timestamp: Date.now(),
+      };
     },
     setIsSwitchingAccount(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isSwitchingAccount = action.payload;
@@ -312,9 +310,6 @@ export const {
   rehydrate,
   resetLoadingStates,
   setIsLoadingBalances,
-  setIsLoadingTxs,
-  setIsLoadingAssets,
-  setIsLoadingNfts,
   setActiveSlip44,
   setAdvancedSettings,
   setError,
@@ -336,6 +331,7 @@ export const {
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
+  setEnsName,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;

@@ -177,13 +177,34 @@ export class PaliInpageProviderEth extends BaseProvider {
               break;
             case 'pali_blockExplorerChanged':
               break;
-            case EMITTED_NOTIFICATIONS.includes(method):
-              //TODO: implement subscription messages
-              throw {
-                code: 69,
-                message:
-                  'Pali EthereumProvider: Does not yet have subscription to rpc methods',
-              };
+            case EMITTED_NOTIFICATIONS.includes(method): {
+              // Forward eth_subscription notifications to dapps via EIP-1193 'message' event
+              // params is expected to be { subscription, result }
+              const payload = {
+                type: 'eth_subscription',
+                data: params,
+              } as any;
+
+              try {
+                // EIP-1193 standard
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                this.emit?.('message', payload);
+              } catch (e) {
+                // no-op
+              }
+
+              try {
+                // Legacy 'data' event some libs still listen to
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                this.emit?.('data', { method, params });
+              } catch (e) {
+                // no-op
+              }
+
+              break;
+            }
             default:
               console.warn(
                 '[PaliEthProvider] Unknown notification method:',
@@ -436,6 +457,20 @@ export class PaliInpageProviderEth extends BaseProvider {
       }
     }
 
+    // If we're on a Bitcoin-based network, ignore account updates for the Ethereum provider
+    if (this._state.isBitcoinBased) {
+      this._state.accounts = [];
+      this.selectedAddress = null;
+      return;
+    }
+
+    // If any non-hex accounts are passed (e.g., UTXO addresses), ignore and do not emit
+    if (accounts.length > 0 && !isHexString(accounts[0])) {
+      this._state.accounts = [];
+      this.selectedAddress = null;
+      return;
+    }
+
     // emit accountsChanged if anything about the accounts array has changed
     // Note: It's normal for eth_accounts to return different accounts than what's in state,
     // especially when dapps are disconnected, during network switches, or permission changes.
@@ -486,7 +521,7 @@ export class PaliInpageProviderEth extends BaseProvider {
 
     // finally, after all state has been updated, emit the event
     if (this._state.initialized && accountsChanged) {
-      this.emit('accountsChanged', accounts);
+      this.emit('accountsChanged', this._state.accounts);
     }
   }
 
@@ -539,6 +574,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     isBitcoinBased?: boolean;
     networkVersion?: string;
   } = {}) {
+    // Accept '0x0' and networkVersion 0 during transitions without emitting errors
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,
@@ -547,8 +583,12 @@ export class PaliInpageProviderEth extends BaseProvider {
       return;
     }
 
-    if (this.isMetaMask && this.networkVersion !== networkVersion) {
-      this.networkVersion = networkVersion || null;
+    if (this.isMetaMask && this.networkVersion !== (networkVersion as any)) {
+      // Coerce to string to maintain web3 expectations
+      this.networkVersion =
+        networkVersion === undefined || networkVersion === null
+          ? null
+          : String(networkVersion);
     }
 
     if (chainId !== this.chainId) {

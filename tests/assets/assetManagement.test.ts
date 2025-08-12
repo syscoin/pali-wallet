@@ -2,27 +2,6 @@
 jest.mock('../../source/state/store');
 jest.mock('@sidhujag/sysweb3-utils');
 
-// Mock individual ethers packages
-jest.mock('@ethersproject/bignumber', () => ({
-  BigNumber: {
-    from: (value: string) => ({
-      toString: () => {
-        // Convert hex to decimal string
-        if (value.startsWith('0x')) {
-          return BigInt(value).toString();
-        }
-        return value;
-      },
-      gt: (other: any) => {
-        const thisValue = BigInt(value.startsWith('0x') ? value : `0x${value}`);
-        const otherValue = typeof other === 'bigint' ? other : BigInt(other);
-        return thisValue > otherValue;
-      },
-      _hex: value,
-    }),
-  },
-}));
-
 jest.mock('@ethersproject/units', () => ({
   parseEther: (value: string) => ({
     _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
@@ -50,10 +29,10 @@ jest.mock('@ethersproject/providers', () => ({
   JsonRpcProvider: jest.fn(),
 }));
 
+import { BigNumber } from '@ethersproject/bignumber';
 import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
-// Import the mocked BigNumber
-const { BigNumber } = jest.requireMock('@ethersproject/bignumber');
+// Import the real BigNumber (not mocked)
 
 // Import types from actual source
 import { ITokenEthProps } from '../../source/types/tokens';

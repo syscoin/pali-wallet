@@ -1,5 +1,5 @@
 import { BigNumber } from '@ethersproject/bignumber';
-import { parseEther, parseUnits } from '@ethersproject/units';
+import { parseEther, parseUnits, formatUnits } from '@ethersproject/units';
 import { Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { toSvg } from 'jdenticon';
@@ -21,6 +21,7 @@ import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
@@ -32,6 +33,7 @@ import {
   getTokenTypeBadgeColor,
   navigateWithContext,
   saveNavigationState,
+  truncateToDecimals,
 } from 'utils/index';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
@@ -50,6 +52,9 @@ export const SendEth = () => {
   const { account: activeAccount, assets: activeAccountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
+
+  // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
+  const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
 
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
@@ -93,6 +98,24 @@ export const SendEth = () => {
   >(null);
 
   const [form] = Form.useForm();
+  // Receiver suggestions / ENS state
+  const [receiverInput, setReceiverInput] = useState('');
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    { address: string; label: string; type: 'account' | 'recent' | 'ens' }[]
+  >([]);
+
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const ensCache = useSelector(
+    (state: RootState) => state.vaultGlobal.ensCache
+  );
+  const ensNameToAddress = useSelector(selectEnsNameToAddress);
+  const vaultActiveAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
 
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
@@ -100,8 +123,13 @@ export const SendEth = () => {
 
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
+    // Prefer live form values to avoid races when setFieldValue was just called
+    const currentFormValues =
+      typeof form?.getFieldsValue === 'function'
+        ? form.getFieldsValue()
+        : formValuesRef.current;
     const state = {
-      formValues: formValuesRef.current,
+      formValues: currentFormValues,
       selectedAsset,
       nftTokenIds,
       selectedNftTokenId,
@@ -122,14 +150,129 @@ export const SendEth = () => {
     isMaxSend,
     verifiedTokenBalance,
     location,
+    form,
   ]);
 
   // Update form values ref when they change (no save yet)
   const handleFormValuesChange = useCallback(
     (_changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
+      if (typeof allValues?.receiver === 'string') {
+        setReceiverInput(allValues.receiver);
+      }
     },
     []
+  );
+
+  // Initialize receiverInput from form on mount (restored state)
+  useEffect(() => {
+    const initialReceiver = form.getFieldValue('receiver');
+    if (typeof initialReceiver === 'string') {
+      setReceiverInput(initialReceiver);
+    }
+  }, [form]);
+
+  // Minimal ENS resolver via background method
+  const tryResolveEns = useCallback(
+    async (maybeEns: string): Promise<string | null> => {
+      if (!maybeEns || !maybeEns.toLowerCase().endsWith('.eth')) return null;
+      const key = maybeEns.toLowerCase();
+      // 1) Try cache first
+      const cached = ensNameToAddress[key];
+      if (cached && cached.startsWith('0x')) return cached;
+      // 2) Fallback to background resolver on mainnet
+      try {
+        const resolved = (await controllerEmitter(
+          ['wallet', 'resolveEns'],
+          [maybeEns]
+        )) as string | null;
+        if (
+          resolved &&
+          typeof resolved === 'string' &&
+          resolved.startsWith('0x')
+        ) {
+          return resolved;
+        }
+        return null;
+      } catch (_e) {
+        return null;
+      }
+    },
+    [ensNameToAddress]
+  );
+
+  // Build suggestions from local accounts and recent recipients
+  const buildSuggestions = useCallback(
+    (query: string) => {
+      const results: {
+        address: string;
+        label: string;
+        type: 'account' | 'recent' | 'ens';
+      }[] = [];
+      const q = String(query || '').toLowerCase();
+
+      // Local accounts (EVM)
+      try {
+        Object.values(accounts || {}).forEach((byId: any) => {
+          Object.values(byId || {}).forEach((acct: any) => {
+            const addressLower = String(acct?.address || '').toLowerCase();
+            const labelLower = String(acct?.label || '').toLowerCase();
+            if (!addressLower) return;
+            // Only show EVM-style addresses here
+            if (!addressLower.startsWith('0x')) return;
+            if (!q || addressLower.includes(q) || labelLower.includes(q)) {
+              results.push({
+                label: acct?.label || acct?.address,
+                address: acct.address,
+                type: 'account',
+              });
+            }
+          });
+        });
+      } catch {}
+
+      // Recent recipients for current account + chain
+      try {
+        const chainId = activeNetwork?.chainId;
+        const currentAccTxs =
+          accountTransactions?.[vaultActiveAccount.type]?.[
+            vaultActiveAccount.id
+          ]?.ethereum?.[chainId];
+        const seen = new Set<string>();
+        (currentAccTxs || []).forEach((tx: any) => {
+          const to = String(tx?.to || '').toLowerCase();
+          if (!to || seen.has(to)) return;
+          const maybeName = (ensCache as any)?.[to]?.name;
+          const display = maybeName || to;
+          if (!q || String(display).toLowerCase().includes(q)) {
+            results.push({ label: display, address: tx.to, type: 'recent' });
+            seen.add(to);
+          }
+        });
+      } catch {}
+
+      // ENS suggestion row when typing .eth
+      if (q.toLowerCase().endsWith('.eth')) {
+        results.unshift({
+          label: `${query} (ENS)`,
+          address: query,
+          type: 'ens',
+        });
+      }
+
+      // De-duplicate by address (case-insensitive), preserve order and collapse account/recent duplicates
+      const deduped: typeof results = [];
+      const added = new Set<string>();
+      for (const item of results) {
+        const key = item.address.toLowerCase();
+        if (!added.has(key)) {
+          deduped.push(item);
+          added.add(key);
+        }
+      }
+      setSuggestions(deduped.slice(0, 10));
+    },
+    [accounts, accountTransactions, activeAccount, activeNetwork]
   );
 
   // Save state when user blurs from input fields
@@ -196,18 +339,20 @@ export const SendEth = () => {
   // Track if we've already restored form values to prevent duplicate restoration
   const hasRestoredRef = useRef(false);
 
-  // Restore form values if coming back from navigation
+  // Restore form values if coming back from navigation or from saved state
   useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredRef.current
-    ) {
-      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
+    const hasScrollable = location.state?.scrollPosition !== undefined;
+    const hasFormValues = Boolean(location.state?.formValues);
+    if (!hasRestoredRef.current && (hasScrollable || hasFormValues)) {
+      const { formValues, isMaxSend: restoredIsMaxSend } = location.state || {};
 
       if (formValues) {
         hasRestoredRef.current = true;
         form.setFieldsValue(formValues);
         formValuesRef.current = formValues;
+        if (typeof formValues.receiver === 'string') {
+          setReceiverInput(formValues.receiver);
+        }
 
         // If this was a max send, recalculate the max amount
         if (restoredIsMaxSend) {
@@ -233,9 +378,15 @@ export const SendEth = () => {
           return;
         }
 
-        const getAsset = activeAccountAssets?.ethereum?.find(
-          (item: ITokenEthProps) => item.contractAddress === value
-        );
+        // Prefer selecting by unique asset id (handles ERC-1155 tokenId correctly).
+        // Fallback to contractAddress match for legacy/non-ERC1155 tokens.
+        const getAsset =
+          activeAccountAssets?.ethereum?.find(
+            (item: ITokenEthProps) => item.id === value
+          ) ||
+          activeAccountAssets?.ethereum?.find(
+            (item: ITokenEthProps) => item.contractAddress === value
+          );
 
         if (getAsset) {
           setSelectedAsset(getAsset);
@@ -355,7 +506,12 @@ export const SendEth = () => {
           try {
             const amountBN = parseEther(values.amount);
             const balanceBN = parseEther(balanceEth);
-            isMax = amountBN.eq(balanceBN);
+
+            // Check if amounts are equal or within a small tolerance (rounding tolerance)
+            // This handles cases where the displayed value might be slightly rounded
+            // 1000 wei = 0.000000000000001 ETH (negligible but accounts for display rounding)
+            const difference = balanceBN.sub(amountBN).abs();
+            isMax = difference.lte(1000); // Consider it max if difference is <= 1000 wei
           } catch {
             // If parsing fails, it's not a MAX send
             isMax = false;
@@ -479,14 +635,8 @@ export const SendEth = () => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
 
-    let explorerUrl;
-    if (isBitcoinBased) {
-      // For UTXO networks, use the network URL pattern
-      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
-    } else {
-      // For EVM networks, use the explorer pattern
-      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
-    }
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    const explorerUrl = `${base}address/${accountAddress}`;
 
     window.open(explorerUrl, '_blank');
   }, [
@@ -511,17 +661,25 @@ export const SendEth = () => {
 
     try {
       // Get fee data for EIP-1559 transaction
-      const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter([
+      const feeData = (await controllerEmitter([
         'wallet',
         'ethereumTransaction',
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
       ])) as any;
 
-      // Cache only the fee rates - gas limit will be handled by backend
-      setCachedFeeData({
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      });
+      // Only cache if we got valid fee data
+      if (feeData && feeData.maxFeePerGas && feeData.maxPriorityFeePerGas) {
+        const { maxFeePerGas, maxPriorityFeePerGas } = feeData;
+
+        // Cache only the fee rates - gas limit will be handled by backend
+        // IMPORTANT: Convert BigNumbers to hex strings for proper serialization through navigation
+        setCachedFeeData({
+          maxFeePerGas: BigNumber.from(maxFeePerGas || '0').toHexString(),
+          maxPriorityFeePerGas: BigNumber.from(
+            maxPriorityFeePerGas || '0'
+          ).toHexString(),
+        });
+      }
     } catch (error) {
       console.error('Error calculating gas fees:', error);
       // Don't cache on error, but don't block the UI either
@@ -700,8 +858,9 @@ export const SendEth = () => {
       )) as { balance: string; decimals: number; name: string; symbol: string };
 
       if (result) {
-        const balance = Number(result.balance) / Math.pow(10, result.decimals);
-        setVerifiedERC20Balance(balance);
+        // Use formatUnits to avoid precision loss with large token balances
+        const balance = formatUnits(result.balance, result.decimals);
+        setVerifiedERC20Balance(Number(balance)); // Safe to convert after formatting
       }
     } catch (error) {
       console.error('Error verifying ERC-20 balance:', error);
@@ -760,6 +919,32 @@ export const SendEth = () => {
     });
   }, [activeAccount?.address, activeAccount?.xpub]);
 
+  // Attach reverse ENS effect after handlers are defined
+  useEffect(() => {
+    const input = String(receiverInput || '');
+    const isAddress = input.startsWith('0x') && input.length > 10;
+    if (!isAddress) return;
+    const lower = input.toLowerCase();
+    if ((ensCache as any)?.[lower]?.name) return;
+    if (reverseEnsTimeoutRef.current) {
+      clearTimeout(reverseEnsTimeoutRef.current);
+      reverseEnsTimeoutRef.current = undefined;
+    }
+    reverseEnsTimeoutRef.current = setTimeout(async () => {
+      try {
+        await controllerEmitter(['wallet', 'reverseResolveEns'], [input]);
+        buildSuggestions(input);
+      } catch {}
+    }, 600);
+
+    return () => {
+      if (reverseEnsTimeoutRef.current) {
+        clearTimeout(reverseEnsTimeoutRef.current);
+        reverseEnsTimeoutRef.current = undefined;
+      }
+    };
+  }, [receiverInput, ensCache, controllerEmitter, buildSuggestions]);
+
   // Calculate gas fees when component mounts or asset changes
   useEffect(() => {
     // Only calculate for native ETH (not tokens)
@@ -767,6 +952,22 @@ export const SendEth = () => {
       calculateGasFees();
     }
   }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
+
+  // Close suggestions when clicking outside form
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // If click is outside any input container, close
+      if (!target.closest('.sender-custom-input')) {
+        setIsSuggestionsOpen(false);
+      }
+    };
+    document.addEventListener('click', onDocClick, { capture: true });
+    return () =>
+      document.removeEventListener('click', onDocClick, {
+        capture: true,
+      } as any);
+  }, []);
 
   return (
     <div className="w-full md:max-w-sm">
@@ -875,13 +1076,31 @@ export const SendEth = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
+                async validator(_, value) {
                   if (!value) {
                     return Promise.resolve();
                   }
 
+                  // Accept valid hex addresses directly
                   if (isValidEthereumAddress(value)) {
                     return Promise.resolve();
+                  }
+
+                  // Attempt ENS resolution for .eth names on mainnet
+                  if (
+                    typeof value === 'string' &&
+                    value.toLowerCase().endsWith('.eth')
+                  ) {
+                    const resolved = await tryResolveEns(value);
+                    if (resolved) {
+                      // Replace input with resolved address for submission
+                      form.setFieldValue('receiver', resolved);
+                      setReceiverInput(resolved);
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t('send.unableToResolveEns'))
+                    );
                   }
 
                   return Promise.reject(new Error('Invalid Ethereum address'));
@@ -889,11 +1108,53 @@ export const SendEth = () => {
               }),
             ]}
           >
-            <Input
-              type="text"
-              placeholder={t('send.receiver')}
-              onBlur={handleFieldBlur}
-            />
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder={t('send.receiver')}
+                value={receiverInput}
+                onChange={(e) => {
+                  const v = e.target.value || '';
+                  setReceiverInput(v);
+                  // Keep Form state in sync so validation can react to typing
+                  form.setFieldValue('receiver', v);
+                  setIsSuggestionsOpen(true);
+                  buildSuggestions(v);
+                }}
+                onFocus={() => {
+                  setIsSuggestionsOpen(true);
+                  buildSuggestions(receiverInput);
+                }}
+                onBlur={handleFieldBlur}
+              />
+              {isSuggestionsOpen && suggestions.length > 0 && (
+                <div className="absolute z-20 mt-1 w-full max-h-56 overflow-auto rounded-xl border border-bkg-3 bg-brand-blue800 shadow-2xl">
+                  {suggestions.map((sug, idx) => (
+                    <button
+                      type="button"
+                      key={`${sug.type}-${sug.address}-${idx}`}
+                      className="w-full text-left px-3 py-2 text-xs text-white hover:bg-alpha-whiteAlpha100 flex items-center justify-between"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        // Set the selected suggestion (ENS name or address). The validator will resolve ENS if needed.
+                        form.setFieldValue('receiver', sug.address);
+                        setReceiverInput(sug.address);
+                        setIsSuggestionsOpen(false);
+                        // Trigger validation so UI updates immediately
+                        form.validateFields(['receiver']).catch(() => null);
+                        // Save selection so it's restored if popup is closed
+                        saveCurrentState();
+                      }}
+                    >
+                      <span className="truncate max-w-[75%]">{sug.label}</span>
+                      <span className="text-[10px] text-brand-gray200 uppercase">
+                        {sug.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </Form.Item>
         </div>
 
@@ -958,9 +1219,7 @@ export const SendEth = () => {
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        handleSelectedAsset(
-                                          item.contractAddress
-                                        )
+                                        handleSelectedAsset(item.id)
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
@@ -971,7 +1230,7 @@ export const SendEth = () => {
                                               '...'
                                             : item.tokenSymbol}
                                         </p>
-                                        {item.isNft && (
+                                        {item.isNft ? (
                                           <span className="text-[10px] text-brand-gray200 font-mono">
                                             {ellipsis(
                                               item.contractAddress,
@@ -993,6 +1252,14 @@ export const SendEth = () => {
                                                     : item.tokenId}
                                                 </>
                                               )}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] text-brand-gray200 font-mono">
+                                            {ellipsis(
+                                              item.contractAddress,
+                                              4,
+                                              4
+                                            )}
                                           </span>
                                         )}
                                       </div>
@@ -1120,6 +1387,28 @@ export const SendEth = () => {
 
                         // For regular tokens
                         if (isToken) {
+                          // Enforce token decimal precision on the raw string input
+                          const decimalsAllowed = Number(
+                            selectedAsset?.decimals ?? 18
+                          );
+                          const valueString = String(value);
+                          if (valueString.includes('.')) {
+                            const fractional = valueString.split('.')[1] || '';
+                            if (
+                              decimalsAllowed === 0 &&
+                              fractional.length > 0
+                            ) {
+                              return Promise.reject(
+                                t('send.amountMustBePositiveInteger')
+                              );
+                            }
+                            if (
+                              decimalsAllowed > 0 &&
+                              fractional.length > decimalsAllowed
+                            ) {
+                              return Promise.reject(t('send.invalidAmount'));
+                            }
+                          }
                           // REQUIRE verified balance for ERC-20 tokens
                           if (verifiedERC20Balance === null) {
                             return Promise.reject(
@@ -1130,11 +1419,11 @@ export const SendEth = () => {
                           try {
                             const tokenBalanceBN = parseUnits(
                               String(verifiedERC20Balance),
-                              selectedAsset.decimals || 18
+                              Number(selectedAsset.decimals ?? 18)
                             );
                             const tokenValueBN = parseUnits(
                               String(value),
-                              selectedAsset.decimals || 18
+                              Number(selectedAsset.decimals ?? 18)
                             );
 
                             if (tokenValueBN.gt(tokenBalanceBN)) {
@@ -1191,6 +1480,7 @@ export const SendEth = () => {
                                     TransactionType.NATIVE_ETH
                                   ).toString()
                                 );
+                                // cachedFeeData.maxFeePerGas is already a hex string
                                 const maxFeePerGas = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );
@@ -1244,7 +1534,11 @@ export const SendEth = () => {
                     type="number"
                     step={
                       selectedAsset?.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-721'
+                      selectedAsset?.tokenStandard === 'ERC-1155'
+                        ? '1'
+                        : selectedAsset &&
+                          !selectedAsset.isNft &&
+                          Number(selectedAsset.decimals) === 0
                         ? '1'
                         : 'any'
                     }
@@ -1289,8 +1583,9 @@ export const SendEth = () => {
                           const inputBN = parseEther(inputValue);
                           const balanceBN = parseEther(balanceEth);
 
-                          // Set isMaxSend based on whether value equals balance
-                          setIsMaxSend(inputBN.eq(balanceBN));
+                          // Check if amounts are equal or within a small tolerance (rounding tolerance)
+                          const difference = balanceBN.sub(inputBN).abs();
+                          setIsMaxSend(difference.lte(1000)); // Consider it max if difference is <= 1000 wei
                         } catch {
                           // If parsing fails, it's not a MAX send
                           setIsMaxSend(false);
@@ -1300,7 +1595,36 @@ export const SendEth = () => {
                         setIsMaxSend(false);
                       }
                     }}
-                    onBlur={handleFieldBlur}
+                    onBlur={(e) => {
+                      try {
+                        const raw = String(e?.target?.value ?? '');
+                        if (!raw) {
+                          handleFieldBlur();
+                          return;
+                        }
+                        // Auto-truncate on blur for fungible tokens (ERC-20 only)
+                        if (selectedAsset && !selectedAsset.isNft) {
+                          const decimalsAllowed = Number(
+                            selectedAsset.decimals ?? 18
+                          );
+                          const nextValue: string = truncateToDecimals(
+                            raw,
+                            Math.max(0, decimalsAllowed)
+                          );
+                          if (nextValue !== raw) {
+                            form.setFieldValue('amount', nextValue);
+                            formValuesRef.current = {
+                              ...formValuesRef.current,
+                              amount: nextValue,
+                            };
+                          }
+                        }
+                      } finally {
+                        // Re-run validation and persist blur handling
+                        form.validateFields(['amount']).catch(() => null);
+                        handleFieldBlur();
+                      }
+                    }}
                   />
                 </Form.Item>
 

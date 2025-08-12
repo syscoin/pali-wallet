@@ -585,6 +585,19 @@ export const EvmAssetDetails = ({
                 </p>
               </li>
 
+              {/* Decimals (ERC-20) */}
+              <li
+                className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+                border-dashed border-bkg-white200 cursor-default transition-all duration-300"
+              >
+                <p className="font-normal text-xs">{t('settings.decimals')}</p>
+                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <span className="text-brand-white">
+                    {currentAsset.decimals ?? 'N/A'}
+                  </span>
+                </p>
+              </li>
+
               <li
                 className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300 
                  border-none"

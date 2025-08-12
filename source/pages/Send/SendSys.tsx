@@ -20,6 +20,7 @@ import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
 import { handleTransactionError } from 'utils/errorHandling';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
   isNFT,
@@ -133,6 +134,11 @@ export const SendSys = () => {
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
     setFeeRate(newFee);
+
+    // If in MAX send mode, recalculate the amount
+    // For UTXO, the backend handles fee subtraction for MAX sends
+    // So we keep the full balance in the amount field
+    // The isMaxSend flag tells the backend to subtract fees
   }, []);
 
   // ✅ OPTIMIZED: Fee fetching with proper dependencies
@@ -277,12 +283,9 @@ export const SendSys = () => {
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
-
-    window.open(
-      `${adjustUrl(activeNetwork.url)}address/${accountAddress}`,
-      '_blank'
-    );
-  }, [activeAccount?.address, activeNetwork.url]);
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    window.open(`${base}address/${accountAddress}`, '_blank');
+  }, [activeAccount?.address, activeNetwork.explorer, activeNetwork.url]);
 
   const RBFOnChange = useCallback(
     (value: any) => {
@@ -331,7 +334,7 @@ export const SendSys = () => {
               ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
               [
                 {
-                  amount: Number(amount),
+                  amount: amount, // Keep as string to preserve precision
                   receivingAddress: receiver,
                   feeRate,
                   txOptions: { rbf: RBF },
@@ -353,8 +356,8 @@ export const SendSys = () => {
 
           // Create transaction values object for centralized error handling
           const basicTxValues = {
-            fee: feeRate / 100000000, // Convert from satoshis to SYS
-            amount: Number(amount),
+            fee: parseFloat(formatSyscoinValue(feeRate.toString())), // Convert from satoshis to SYS safely
+            amount: amount, // Keep as string to preserve precision
           };
 
           // Handle all errors with centralized handler
@@ -441,7 +444,7 @@ export const SendSys = () => {
             ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
             [
               {
-                amount: Number(amount),
+                amount: amount, // Keep as string to preserve precision
                 receivingAddress: receiver,
                 feeRate,
                 txOptions: { rbf: RBF },
@@ -465,8 +468,8 @@ export const SendSys = () => {
 
           // Create transaction values object for centralized error handling
           const basicTxValues = {
-            fee: feeRate / 100000000, // Convert from satoshis to SYS
-            amount: Number(amount),
+            fee: parseFloat(formatSyscoinValue(feeRate.toString())), // Convert from satoshis to SYS safely
+            amount: amount, // Keep as string to preserve precision
           };
 
           // Handle all errors with centralized handler
@@ -518,7 +521,7 @@ export const SendSys = () => {
             tx: {
               sender: activeAccount?.address,
               receivingAddress: receiver,
-              amount: Number(amount),
+              amount: amount, // Keep as string to preserve precision
               fee: tokenFeeEstimate, // Actual fee amount (compliant with SysProvider API)
               feeRate: feeRate, // Add fee rate for transaction details display
               rbf: RBF, // RBF state for transaction details display
@@ -756,7 +759,7 @@ export const SendSys = () => {
                                         className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                                           isNFT(item.assetGuid)
                                             ? 'bg-gray-500 bg-opacity-80 text-white'
-                                            : 'bg-blue-500 bg-opacity-80 text-white'
+                                            : 'bg-brand-royalbluemedium bg-opacity-80 text-white'
                                         }`}
                                       >
                                         {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}

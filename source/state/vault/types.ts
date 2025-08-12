@@ -24,10 +24,7 @@ export interface IAccountTransactions {
 
 // Loading states interface for transient UI states
 export interface ILoadingStates {
-  isLoadingAssets: boolean;
   isLoadingBalances: boolean;
-  isLoadingNfts: boolean;
-  isLoadingTxs: boolean;
 }
 
 // Global state shared across all slip44s (stored in main state)
@@ -40,11 +37,15 @@ export interface IGlobalState {
     [k: string]: boolean | number; // Allow both boolean and number values
   };
 
+  // Optional ENS cache for quick display of names in UI (address -> { name, timestamp })
+  ensCache?: {
+    [addressLower: string]: { name: string; timestamp: number };
+  };
+
   // Global UI states
   error: string | null;
 
   hasEncryptedVault: boolean;
-
   hasEthProperty: boolean;
   // Track if current updates are from polling (background) vs user action
   isPollingUpdate: boolean;

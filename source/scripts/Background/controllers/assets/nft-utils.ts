@@ -1,3 +1,4 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import { Contract } from '@ethersproject/contracts';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
@@ -56,7 +57,7 @@ async function detectFakeNftContract(
 }
 
 export interface INftTokenInfo {
-  balance: number;
+  balance: number; // Display balance (decimals already applied, 0 for NFTs)
   tokenId: string;
   verified: boolean;
 }
@@ -181,11 +182,23 @@ export async function verifyERC1155OwnershipHelper(
     const accounts = new Array(tokenIds.length).fill(ownerAddress);
     const balances = await contract.balanceOfBatch(accounts, tokenIds);
 
-    return tokenIds.map((tokenId, index) => ({
-      tokenId,
-      balance: Number(balances[index]),
-      verified: true,
-    }));
+    // Compare using a BigNumber to avoid JS number overflow issues
+    const MAX_SAFE_BN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
+
+    return tokenIds.map((tokenId, index) => {
+      // ERC-1155 NFTs have 0 decimals, so display balance = raw balance
+      // Use toNumber() safely, checking for overflow
+      const balance = balances[index];
+      const displayBalance = balance.lte(MAX_SAFE_BN)
+        ? balance.toNumber()
+        : Number.MAX_SAFE_INTEGER; // Cap at max safe integer for display
+
+      return {
+        tokenId,
+        balance: displayBalance,
+        verified: true,
+      };
+    });
   } catch (error) {
     console.error('[NFT Utils] Error verifying ERC-1155 ownership:', error);
 
@@ -193,12 +206,18 @@ export async function verifyERC1155OwnershipHelper(
     try {
       const contract = new Contract(contractAddress, ERC1155_ABI, provider);
       const results: INftTokenInfo[] = [];
+      const MAX_SAFE_BN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
       for (const tokenId of tokenIds) {
         try {
           const balance = await contract.balanceOf(ownerAddress, tokenId);
+          // Safe conversion to number for display
+          const displayBalance = balance.lte(MAX_SAFE_BN)
+            ? balance.toNumber()
+            : Number.MAX_SAFE_INTEGER;
+
           results.push({
             tokenId,
-            balance: Number(balance),
+            balance: displayBalance,
             verified: true,
           });
         } catch {

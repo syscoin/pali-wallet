@@ -1,7 +1,6 @@
 import { Interface } from '@ethersproject/abi';
 import { BigNumber } from '@ethersproject/bignumber';
-import { hexlify } from '@ethersproject/bytes';
-import { parseUnits } from '@ethersproject/units';
+import { parseUnits, formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -13,11 +12,13 @@ import {
   Icon,
   IconButton,
   WarningModal,
+  Tooltip,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectEnsNameToAddress } from 'state/vault/selectors';
 import {
   ICustomFeeParams,
   IDecodedTx,
@@ -35,6 +36,8 @@ import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
+import { safeBigNumber } from 'utils/safeBigNumber';
+import { safeToFixed } from 'utils/safeToFixed';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 import { getErc20Abi } from 'utils/validations';
@@ -87,7 +90,10 @@ export const SendTransaction = () => {
     ? externalTx.txMetadata
     : state?.txMetadata || {};
 
-  const isLegacyTransaction = txMetadata.isLegacyTx || false;
+  // Detect legacy transaction based on the presence of gasPrice field
+  const isLegacyTransaction =
+    txMetadata.isLegacyTx ||
+    (dataTx?.gasPrice !== undefined && dataTx?.maxFeePerGas === undefined);
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType;
   const tokenStandard = txMetadata.tokenStandard;
@@ -138,17 +144,27 @@ export const SendTransaction = () => {
   const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
   const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
 
-  // Helper function to safely convert fee values to numbers and format them
-  const safeToFixed = (value: any, decimals = 9): string => {
-    const numValue = Number(value);
-    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
-  };
+  const formattedValueAndCurrency = useMemo(() => {
+    if (!tx?.value) return `0 ${activeNetwork.currency?.toUpperCase()}`;
 
-  const formattedValueAndCurrency = `${removeScientificNotation(
-    Number(tx?.value ? tx?.value : 0) / 10 ** 18
-  )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
+    try {
+      // Use formatEther to properly handle wei values without precision loss
+      const ethValue = formatEther(
+        BigNumber.isBigNumber(tx.value) ? tx.value : BigNumber.from(tx.value)
+      );
+      return `${removeScientificNotation(
+        Number(ethValue)
+      )} ${activeNetwork.currency?.toUpperCase()}`;
+    } catch (error) {
+      console.error('Error formatting value:', error);
+      return `0 ${activeNetwork.currency?.toUpperCase()}`;
+    }
+  }, [tx?.value, activeNetwork.currency]);
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
+
+  // Raw input 'to' (could be ENS or address)
+  const toRaw = String(dataTx?.to || '');
 
   // Memoize the validated transaction to prevent unnecessary re-renders
   const validatedDataTxWithoutType = useMemo(
@@ -168,6 +184,97 @@ export const SendTransaction = () => {
       dataTx.maxPriorityFeePerGas,
     ]
   );
+
+  // ENS handling: display and resolution
+  const ensCache = useSelector((s: RootState) => s.vaultGlobal.ensCache);
+  const nameToAddress = useSelector(selectEnsNameToAddress);
+  const [resolvedTo, setResolvedTo] = useState<string | null>(
+    toRaw.toLowerCase().endsWith('.eth') ? null : toRaw
+  );
+  // Track ENS resolution failure to avoid indefinite spinner and inform the user
+  const [ensResolutionFailed, setEnsResolutionFailed] =
+    useState<boolean>(false);
+
+  // Effective address for provider calls (never pass ENS to provider)
+  const toAddressForProvider = useMemo(
+    () => (toRaw.startsWith('0x') ? toRaw : resolvedTo || ''),
+    [toRaw, resolvedTo]
+  );
+
+  // Clone tx for estimation with resolved address
+  const txForEstimation = useMemo(
+    () =>
+      ({
+        ...validatedDataTxWithoutType,
+        to: toAddressForProvider || undefined,
+      } as ITransactionParams),
+    [validatedDataTxWithoutType, toAddressForProvider]
+  );
+  // Reverse cache name->address
+
+  // Lazy resolve if ENS name
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const isEns = toRaw.toLowerCase().endsWith('.eth');
+      if (!isEns) return;
+      const cached = nameToAddress[toRaw.toLowerCase()];
+      if (cached) {
+        if (!cancelled) setResolvedTo(cached);
+        return;
+      }
+      try {
+        const addr = (await controllerEmitter(
+          ['wallet', 'resolveEns'],
+          [toRaw]
+        )) as string | null;
+        if (!cancelled) {
+          setResolvedTo(addr || null);
+          if (!addr) {
+            // Mark failure and stop initial spinner so UI can render an error state
+            setEnsResolutionFailed(true);
+            setInitialLoading(false);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setResolvedTo(null);
+          setEnsResolutionFailed(true);
+          setInitialLoading(false);
+        }
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [toRaw, nameToAddress]);
+
+  const displayToLabel = useMemo(() => {
+    if (toRaw.toLowerCase().endsWith('.eth')) return toRaw; // show the ENS input
+    const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+    return cachedName || toRaw;
+  }, [toRaw, ensCache]);
+
+  // Lazy reverse-resolve for address input -> show ENS name if available later
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!toRaw || !toRaw.startsWith('0x')) return;
+      const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
+      if (cachedName) return;
+      try {
+        await controllerEmitter(['wallet', 'reverseResolveEns'], [toRaw]);
+        if (!cancelled) {
+          // ensCache will update via store; label will re-render from selector
+        }
+      } catch {}
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [toRaw, ensCache, controllerEmitter]);
 
   const handleConfirm = async () => {
     const {
@@ -203,14 +310,16 @@ export const SendTransaction = () => {
         const abi = await getErc20Abi();
         const erc20AbiInstance = new Interface(abi);
 
-        // The amount is already in the smallest unit (wei)
+        // Parse the custom allowance amount consistently as human-readable token units
         let parsedAmount;
         try {
-          // Direct wei/smallest unit input - no conversion needed
-          parsedAmount = BigNumber.from(
+          const customValue = String(
             customApprovedAllowanceAmount.customAllowanceValue
           );
+          const decimals = approvedTokenInfos?.tokenDecimals ?? 18;
+          parsedAmount = parseUnits(customValue, decimals);
         } catch (parseError) {
+          console.error('Error parsing amount:', parseError);
           alert.error('Invalid amount format. Please enter a valid number.');
           setLoading(false);
           return;
@@ -229,51 +338,58 @@ export const SendTransaction = () => {
         let response;
 
         if (isLegacyTransaction) {
-          // Legacy transaction handling
-          let txWithoutType = omitTransactionObjectData(txToSend, [
+          // Legacy transaction handling - MUST remove all EIP-1559 fields
+          const txWithoutType = omitTransactionObjectData(txToSend, [
             'type',
+            'maxFeePerGas',
+            'maxPriorityFeePerGas',
           ]) as ITxState;
-
-          // Remove EIP-1559 fields for legacy transactions
-          if (
-            txWithoutType.maxFeePerGas ||
-            txWithoutType.maxPriorityFeePerGas
-          ) {
-            txWithoutType = omitTransactionObjectData(txWithoutType, [
-              'maxFeePerGas',
-              'maxPriorityFeePerGas',
-            ]) as ITxState;
-          }
 
           const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
-            ? customFee.gasPrice * 10 ** 9
+            ? parseUnits(safeToFixed(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
+            : fee.gasPrice && fee.gasPrice > 0
+            ? parseUnits(safeToFixed(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
             : await controllerEmitter([
                 'wallet',
                 'ethereumTransaction',
                 'getRecommendedGasPrice',
-              ]);
+              ]).then((gas) => BigNumber.from(gas)); // This returns wei already, so BigNumber.from is fine
+
+          // Determine if we have a valid destination address. For contract deployments, omit 'to'
+          const candidateTo =
+            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
+          const toField: string | undefined = candidateTo;
+
+          const baseLegacyTx: any = {
+            ...txWithoutType,
+            value: txWithoutType.value
+              ? safeBigNumber(
+                  txWithoutType.value,
+                  '0x0',
+                  'transaction value'
+                ).toHexString()
+              : '0x0', // Convert value to hex string using safe conversion
+            nonce: customNonce,
+            gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
+            gasLimit: BigNumber.from(
+              Boolean(
+                customFee.isCustom &&
+                  customFee.gasLimit &&
+                  customFee.gasLimit > 0
+              )
+                ? customFee.gasLimit
+                : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+                ? tx.gasLimit // Keep as BigNumber
+                : fee.gasLimit || 42000 // Fallback to fee or default
+            ).toHexString(), // Convert to hex string for ethers
+            ...(toField ? { to: toField } : {}),
+          };
 
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
-            [
-              {
-                ...txWithoutType,
-                nonce: customNonce,
-                gasPrice: hexlify(Number(getLegacyGasFee)),
-                gasLimit: BigNumber.from(
-                  Boolean(
-                    customFee.isCustom &&
-                      customFee.gasLimit &&
-                      customFee.gasLimit > 0
-                  )
-                    ? customFee.gasLimit
-                    : fee.gasLimit
-                ),
-              },
-              isLegacyTransaction,
-            ],
+            [baseLegacyTx, isLegacyTransaction],
             false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
@@ -281,40 +397,50 @@ export const SendTransaction = () => {
           );
         } else {
           // EIP-1559 transaction handling
+          // Determine if we have a valid destination address. For contract deployments, omit 'to'
+          const candidateTo =
+            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
+          const toField: string | undefined = candidateTo;
+
+          const base1559Tx: any = {
+            ...txToSend,
+            value: txToSend.value
+              ? safeBigNumber(
+                  txToSend.value,
+                  '0x0',
+                  'transaction value'
+                ).toHexString()
+              : '0x0', // Convert value to hex string using safe conversion
+            nonce: customNonce,
+            maxPriorityFeePerGas: Boolean(
+              customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+            )
+              ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
+              : tx.maxPriorityFeePerGas &&
+                BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
+              ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
+              : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
+            maxFeePerGas: Boolean(
+              customFee.isCustom && customFee.maxFeePerGas > 0
+            )
+              ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
+              : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
+              ? tx.maxFeePerGas // Use the BigNumber from tx
+              : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
+            gasLimit: Boolean(
+              customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
+            )
+              ? BigNumber.from(customFee.gasLimit)
+              : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
+              ? tx.gasLimit // Use the BigNumber from tx
+              : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
+            ...(toField ? { to: toField } : {}),
+          };
+
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
-              {
-                ...txToSend,
-                nonce: customNonce,
-                maxPriorityFeePerGas: parseUnits(
-                  String(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                    )
-                      ? safeToFixed(customFee.maxPriorityFeePerGas)
-                      : safeToFixed(fee.maxPriorityFeePerGas)
-                  ),
-                  9
-                ),
-                maxFeePerGas: parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? safeToFixed(customFee.maxFeePerGas)
-                      : safeToFixed(fee.maxFeePerGas)
-                  ),
-                  9
-                ),
-                gasLimit: BigNumber.from(
-                  Boolean(
-                    customFee.isCustom &&
-                      customFee.gasLimit &&
-                      customFee.gasLimit > 0
-                  )
-                    ? customFee.gasLimit
-                    : fee.gasLimit
-                ),
-              },
+              base1559Tx,
               false, // isLegacy = false for EIP-1559
             ],
             false,
@@ -376,11 +502,12 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
+        // If ENS input and not resolved yet, don't call provider
+        if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
+          return; // wait until resolvedTo is ready
+        }
         const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
-          await fetchGasAndDecodeFunction(
-            validatedDataTxWithoutType as ITransactionParams,
-            activeNetwork
-          );
+          await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
 
         // Only update state if component is still mounted
         if (isMounted) {
@@ -407,7 +534,16 @@ export const SendTransaction = () => {
       }
     };
 
-    getGasAndFunction();
+    // If the request used an ENS name that failed to resolve, skip gas estimation
+    if (
+      !(
+        toRaw.toLowerCase().endsWith('.eth') &&
+        !toAddressForProvider &&
+        ensResolutionFailed
+      )
+    ) {
+      getGasAndFunction();
+    }
 
     return () => {
       isMounted = false;
@@ -416,7 +552,13 @@ export const SendTransaction = () => {
         clearTimeout(closeTimeoutId);
       }
     };
-  }, [validatedDataTxWithoutType, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
+  }, [
+    txForEstimation,
+    toAddressForProvider,
+    toRaw,
+    activeNetwork.chainId,
+    ensResolutionFailed,
+  ]); // ensure we wait for resolved address
 
   // Check for contract interaction with non-contract address
   useEffect(() => {
@@ -424,7 +566,7 @@ export const SendTransaction = () => {
       // Only check once per transaction
       if (
         hasCheckedContract ||
-        !dataTx?.to ||
+        !toAddressForProvider ||
         !dataTx?.data ||
         isCheckingContract
       ) {
@@ -440,8 +582,8 @@ export const SendTransaction = () => {
 
       // Skip contract deployments (no 'to' address)
       if (
-        !dataTx.to ||
-        dataTx.to === '0x0000000000000000000000000000000000000000'
+        !toAddressForProvider ||
+        toAddressForProvider === '0x0000000000000000000000000000000000000000'
       ) {
         return;
       }
@@ -452,7 +594,7 @@ export const SendTransaction = () => {
         // Check if address is a contract
         const isContract = await controllerEmitter(
           ['wallet', 'isContractAddress'],
-          [dataTx.to]
+          [toAddressForProvider]
         );
 
         // Show warning if sending call data to non-contract address
@@ -468,14 +610,23 @@ export const SendTransaction = () => {
       }
     };
 
-    if (!initialLoading && dataTx?.to) {
+    if (
+      !initialLoading &&
+      (toAddressForProvider || !toRaw.toLowerCase().endsWith('.eth'))
+    ) {
       checkContract();
     }
-  }, [dataTx?.to, dataTx?.data, hasCheckedContract, initialLoading]);
+  }, [
+    toAddressForProvider,
+    toRaw,
+    dataTx?.data,
+    hasCheckedContract,
+    initialLoading,
+  ]);
 
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);
-  }, [tx]);
+  }, [formattedValueAndCurrency]);
 
   // Navigate when transaction is confirmed
   useEffect(() => {
@@ -528,9 +679,13 @@ export const SendTransaction = () => {
             symbol: string;
           };
 
+          // Preserve zero-decimal tokens; fallback to 18 only if missing/invalid
+          const parsed = Number(tokenInfo.decimals);
+          const safeDecimals =
+            Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
           setApprovedTokenInfos({
             tokenSymbol: tokenInfo.symbol,
-            tokenDecimals: Number(tokenInfo.decimals) || 18, // Ensure it's a number
+            tokenDecimals: safeDecimals,
           });
         } else if (
           approvalType === 'erc721-single' ||
@@ -745,8 +900,14 @@ export const SendTransaction = () => {
                         maxWidth: '150px',
                       }}
                     >
-                      <span>{ellipsis(dataTx.to)}</span>
-                      <IconButton onClick={() => copy(dataTx.to)}>
+                      <Tooltip
+                        content={
+                          resolvedTo || (toRaw.startsWith('0x') ? toRaw : '')
+                        }
+                      >
+                        <span>{ellipsis(displayToLabel)}</span>
+                      </Tooltip>
+                      <IconButton onClick={() => copy(resolvedTo || toRaw)}>
                         <Icon
                           name="copy"
                           className="text-brand-white hover:text-fields-input-borderfocus"
@@ -916,6 +1077,18 @@ export const SendTransaction = () => {
                 {t('buttons.confirm')}
               </PrimaryButton>
             </div>
+          </div>
+        </div>
+      ) : // Render a clear error state when ENS couldn't be resolved
+      ensResolutionFailed ? (
+        <div className="flex items-center justify-center min-h-[400px] px-6 text-center">
+          <div className="bg-bkg-2 border border-bkg-4 rounded-2xl p-4 max-w-md w-full">
+            <p className="text-white text-sm mb-2">
+              {t('send.unableToResolveEns')}
+            </p>
+            <p className="text-brand-gray200 text-xs">
+              {t('send.verifyEnsOrUseAddress')}
+            </p>
           </div>
         </div>
       ) : null}

@@ -369,27 +369,26 @@ export const validateAndManageUserTransactions = (
   const userAddress = account.address.toLowerCase();
 
   const filteredTxs = providerTxs
-    .filter(
-      (tx) =>
-        (tx.from?.toLowerCase() === userAddress ||
-          tx.to?.toLowerCase() === userAddress) &&
+    .filter((tx: any) => {
+      const fromAddr = tx.from?.toLowerCase();
+      const toCandidate = (tx.tokenRecipient || tx.to)?.toLowerCase();
+      return (
+        (fromAddr === userAddress || toCandidate === userAddress) &&
         // Include valid transactions: either pending (missing block info) or confirmed (has both)
-        // Pending: missing blockHash OR blockNumber
-        // Confirmed: has both blockHash AND blockNumber
         (!tx.blockHash || !tx.blockNumber || (tx.blockHash && tx.blockNumber))
-    )
-    .map((tx) => {
-      // Add direction field to transaction
+      );
+    })
+    .map((tx: any) => {
+      // Add direction field to transaction using tokenRecipient when present
       const fromAddress = tx.from?.toLowerCase();
-      const toAddress = tx.to?.toLowerCase();
+      const toCandidate = (tx.tokenRecipient || tx.to)?.toLowerCase();
 
-      // Determine transaction direction
       let direction = 'unknown';
-      if (fromAddress === userAddress && toAddress !== userAddress) {
+      if (fromAddress === userAddress && toCandidate !== userAddress) {
         direction = 'sent';
-      } else if (fromAddress !== userAddress && toAddress === userAddress) {
+      } else if (fromAddress !== userAddress && toCandidate === userAddress) {
         direction = 'received';
-      } else if (fromAddress === userAddress && toAddress === userAddress) {
+      } else if (fromAddress === userAddress && toCandidate === userAddress) {
         direction = 'self';
       }
 
