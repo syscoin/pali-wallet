@@ -186,6 +186,8 @@ export const SendCalls = () => {
         ['wallet', 'getRecommendedNonceForBatch'],
         [from]
       )) as number;
+      // Track the nonce we actually use to avoid gaps when skipping transactions
+      let currentNonce = startingNonce;
 
       // Reset status only for selected transactions (for retry functionality)
       setTransactionStatuses((prev) => {
@@ -312,21 +314,17 @@ export const SendCalls = () => {
             }
           }
 
-          // Prepare transaction with incremented nonce
-          // Omit 'to' for contract deployments or invalid/zero addresses
-          const zeroAddress = '0x0000000000000000000000000000000000000000';
+          // Prepare transaction
+          // Include 'to' whenever a hex address is provided (including zero address)
           const candidateTo =
             toResolved && toResolved.startsWith('0x') ? toResolved : undefined;
-          const toField =
-            candidateTo && candidateTo.toLowerCase() !== zeroAddress
-              ? candidateTo
-              : undefined;
+          const toField = candidateTo;
 
           const tx: any = {
             from,
             value: call.value || '0x0',
             data: call.data || '0x',
-            nonce: startingNonce + i, // Use incremented nonce to prevent conflicts
+            nonce: currentNonce, // Increment only when a tx is actually sent to avoid gaps
             ...(toField ? { to: toField } : {}),
           };
 
@@ -356,6 +354,9 @@ export const SendCalls = () => {
             newStatuses[originalIndex] = { status: 'success', txHash };
             return newStatuses;
           });
+
+          // Only advance nonce when a transaction was successfully broadcast
+          currentNonce += 1;
 
           // No delay needed - using incremented nonces prevents conflicts
         } catch (error) {

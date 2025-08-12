@@ -358,13 +358,9 @@ export const SendTransaction = () => {
               ]).then((gas) => BigNumber.from(gas)); // This returns wei already, so BigNumber.from is fine
 
           // Determine if we have a valid destination address. For contract deployments, omit 'to'
-          const zeroAddress = '0x0000000000000000000000000000000000000000';
           const candidateTo =
             resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
-          const toField: string | undefined =
-            candidateTo && candidateTo.toLowerCase() !== zeroAddress
-              ? candidateTo
-              : undefined;
+          const toField: string | undefined = candidateTo;
 
           const baseLegacyTx: any = {
             ...txWithoutType,
@@ -402,13 +398,9 @@ export const SendTransaction = () => {
         } else {
           // EIP-1559 transaction handling
           // Determine if we have a valid destination address. For contract deployments, omit 'to'
-          const zeroAddress = '0x0000000000000000000000000000000000000000';
           const candidateTo =
             resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
-          const toField: string | undefined =
-            candidateTo && candidateTo.toLowerCase() !== zeroAddress
-              ? candidateTo
-              : undefined;
+          const toField: string | undefined = candidateTo;
 
           const base1559Tx: any = {
             ...txToSend,
