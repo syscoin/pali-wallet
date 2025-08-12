@@ -91,6 +91,7 @@ const MV3_OPTIONS = {
     'activeTab',
     'clipboardWrite',
     'unlimitedStorage',
+    'offscreen',
     'scripting',
     'notifications',
   ],

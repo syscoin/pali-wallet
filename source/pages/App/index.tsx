@@ -32,7 +32,14 @@ import App from './App';
 // Make this file a module to satisfy TypeScript's isolatedModules
 export {};
 
-{
+// Check if this is an offscreen document - if so, just exit
+// The offscreen document only needs to load the bundles for caching
+if (window.__PALI_OFFSCREEN__) {
+  console.log(
+    '[App] Running in offscreen document - skipping app initialization'
+  );
+  // Exit early - we've already loaded all the bundles which is what we wanted
+} else {
   // Only run the app if we're not in offscreen mode
   const appRootElement = document.getElementById('app-root');
 

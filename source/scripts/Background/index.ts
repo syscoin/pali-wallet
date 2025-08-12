@@ -10,6 +10,7 @@ import { handleFiatPrice } from 'scripts/Background/handlers/handleFiatPrice';
 import { handleListeners } from 'scripts/Background/handlers/handleListeners';
 import { handleMasterControllerInstance } from 'scripts/Background/handlers/handleMasterControllerInstance';
 import { handleMasterControllerResponses } from 'scripts/Background/handlers/handleMasterControllerResponses';
+import { initializeOffscreenPreload } from 'scripts/Background/handlers/handleOffscreenPreload';
 import { handleStartPolling } from 'scripts/Background/handlers/handleStartPolling';
 import { handleObserveStateChanges } from 'scripts/Background/handlers/handleStateChanges';
 
@@ -31,6 +32,12 @@ const MAX_INIT_ATTEMPTS = 3;
 const RETRY_DELAY = 2000; // 2 seconds
 
 console.log('[Background] Initializing controller...');
+
+// Start offscreen preload IMMEDIATELY - don't wait for controller
+// This ensures the popup loads instantly when clicked
+initializeOffscreenPreload().catch((error) => {
+  console.error('[Background] Failed to initialize offscreen preload:', error);
+});
 
 // Initialize with retry logic
 const initializeWithRetry = async (attempt = 1): Promise<void> => {

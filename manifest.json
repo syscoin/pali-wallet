@@ -16,6 +16,7 @@
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
+    "offscreen",
     "scripting",
     "notifications"
   ],

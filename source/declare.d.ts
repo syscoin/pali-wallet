@@ -15,5 +15,5 @@ declare module 'react-notifications-component';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 declare interface Window {
-  // __PALI_OFFSCREEN__ removed
+  __PALI_OFFSCREEN__?: boolean;
 }

@@ -49,9 +49,40 @@ if (externalRootElement) {
   clearNavigationState()
     .then(() => {
       console.log('[External] Cleared navigation state for external popup');
+
+      // Prefer fast-path: request current state from background (authoritative)
+      return new Promise<any>((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: 'getCurrentState' }, (bgState) => {
+            if (chrome.runtime.lastError) {
+              console.warn(
+                '[External] Failed to get state from background:',
+                chrome.runtime.lastError
+              );
+              resolve(null);
+              return;
+            }
+            resolve(bgState || null);
+          });
+        } catch (e) {
+          console.warn('[External] Error sending getCurrentState:', e);
+          resolve(null);
+        }
+      });
+    })
+    .then((backgroundState) => {
+      if (backgroundState) {
+        return rehydrateStore(store, backgroundState);
+      }
+      // Fallback to storage-based rehydrate if background did not respond
       return rehydrateStore(store);
     })
     .then(() => {
+      // Ensure background polling is running for updates (no immediate cost)
+      try {
+        chrome.runtime.sendMessage({ type: 'startPolling' });
+      } catch {}
+
       const root = ReactDOM.createRoot(externalRootElement);
       root.render(
         <React.StrictMode>
