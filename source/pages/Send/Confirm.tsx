@@ -635,59 +635,6 @@ export const SendConfirm = () => {
           switch (transactionType) {
             //HANDLE ERC20 TRANSACTION
             case TransactionType.ERC20:
-              if (isEIP1559Compatible === false) {
-                try {
-                  // Use atomic wrapper for legacy ERC20 transactions
-                  await controllerEmitter(
-                    ['wallet', 'sendAndSaveTokenTransaction'],
-                    [
-                      'ERC20',
-                      {
-                        networkUrl: activeNetwork.url,
-                        receiver: destinationTo,
-                        tokenAddress: basicTxValues.token.contractAddress,
-                        tokenAmount: `${basicTxValues.amount}`,
-                        isLegacy: !isEIP1559Compatible,
-                        decimals: basicTxValues?.token?.decimals,
-                        gasPrice: BigNumber.from(gasPrice).toHexString(),
-                        gasLimit: validateCustomGasLimit
-                          ? BigNumber.from(customFee.gasLimit)
-                          : BigNumber.from(
-                              fee.gasLimit ||
-                                basicTxValues.defaultGasLimit ||
-                                65000
-                            ),
-                      },
-                    ],
-                    false,
-                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                      ? 300000 // 5 minutes timeout for hardware wallet operations
-                      : 10000 // Default 10 seconds for regular wallets
-                  );
-
-                  setConfirmed(true);
-                  setLoading(false);
-                  return;
-                } catch (error: any) {
-                  // Handle specific errors with detailed messages
-                  const wasHandledSpecifically = handleTransactionError(
-                    error,
-                    alert,
-                    t,
-                    activeAccount,
-                    activeNetwork,
-                    basicTxValues
-                  );
-
-                  if (!wasHandledSpecifically) {
-                    logError('error send ERC20', 'Transaction', error);
-                    alert.error(t('send.cantCompleteTxs'));
-                  }
-
-                  setLoading(false);
-                }
-                break;
-              }
               try {
                 await controllerEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
@@ -700,6 +647,7 @@ export const SendConfirm = () => {
                       tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
+                      gasPrice: BigNumber.from(gasPrice).toHexString(),
                       maxPriorityFeePerGas: parseUnits(
                         Boolean(
                           customFee.isCustom &&
@@ -735,8 +683,6 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                // Handle blind signing requirement
-                // Handle specific errors (blacklist, cancellation, device issues, etc.)
                 const wasHandledSpecifically = handleTransactionError(
                   error,
                   alert,
@@ -746,13 +692,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC20', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -789,7 +733,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId, // The actual NFT token ID
+                      tokenId: numericTokenId,
                       isLegacy: !isEIP1559Compatible,
                       gasPrice: BigNumber.from(gasPrice).toHexString(),
                       maxPriorityFeePerGas: parseUnits(
@@ -820,8 +764,8 @@ export const SendConfirm = () => {
                   ],
                   false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000 // 5 minutes timeout for hardware wallet operations
-                    : 10000 // Default 10 seconds for regular wallets
+                    ? 300000
+                    : 10000
                 );
 
                 setConfirmed(true);
@@ -838,13 +782,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC721', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -881,8 +823,8 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId: numericTokenId, // The actual NFT token ID
-                      tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
+                      tokenId: numericTokenId,
+                      tokenAmount: String(basicTxValues.amount),
                       isLegacy: !isEIP1559Compatible,
                       maxPriorityFeePerGas: parseUnits(
                         Boolean(
@@ -913,8 +855,8 @@ export const SendConfirm = () => {
                   ],
                   false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000 // 5 minutes timeout for hardware wallet operations
-                    : 10000 // Default 10 seconds for regular wallets
+                    ? 300000
+                    : 10000
                 );
 
                 setConfirmed(true);
@@ -930,13 +872,11 @@ export const SendConfirm = () => {
                   basicTxValues
                 );
 
-                // For errors that were handled specifically, just stop loading
                 if (wasHandledSpecifically) {
                   setLoading(false);
                   return;
                 }
 
-                // For all other unhandled errors, show generic message
                 logError('error send ERC1155', 'Transaction', error);
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
