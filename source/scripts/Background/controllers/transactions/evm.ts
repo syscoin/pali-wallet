@@ -132,6 +132,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     web3Provider?: CustomJsonRpcProvider
   ): Promise<{
     error?: string;
+    hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
     // Shared mapper for API items (txlist or tokentx) to internal shape
@@ -307,7 +308,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             }
           }
         }
-        return { transactions: tokenOnly, error: undefined };
+        return { transactions: tokenOnly, error: undefined, hasMore: false };
       } catch (e) {
         const errorMsg = `Explorer API request failed with status ${response.status}`;
         return { transactions: null, error: errorMsg };
@@ -464,6 +465,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     return {
       transactions: finalTransactions, // Return the array (even if empty) - empty array is valid
       error: undefined, // No error when we get a valid response with empty results
+      hasMore: finalTransactions.length >= 30, // heuristic for initial load
     };
   };
 
@@ -475,6 +477,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     offset = 30
   ): Promise<{
     error?: string;
+    hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
     try {
@@ -600,35 +603,41 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       };
 
       let baseTxs: IEvmTransactionResponse[] = [];
+      let baseCount = 0;
       if (
         (data.status === '1' ||
           (data.status === '0' && Array.isArray(data.result))) &&
         Array.isArray(data.result)
       ) {
         baseTxs = data.result.map((tx: any) => mapApiTx(tx, chainId));
+        baseCount = data.result.length;
       }
 
-      const tokenEvents: any[] = [];
+      // Build quick lookup of token transfers by tx hash to annotate base txs
+      const tokenEventsByHash = new Map<string, any[]>();
       try {
-        if (token20Data && Array.isArray(token20Data.result))
-          tokenEvents.push(...token20Data.result);
+        if (token20Data && Array.isArray(token20Data.result)) {
+          for (const ev of token20Data.result) {
+            const h = String(ev.hash || '').toLowerCase();
+            if (!h) continue;
+            const arr = tokenEventsByHash.get(h) || [];
+            arr.push(ev);
+            tokenEventsByHash.set(h, arr);
+          }
+        }
       } catch {}
 
-      const tokenTxs = tokenEvents.map((ev: any) => {
-        const base = mapApiTx(ev, chainId, ev.contractAddress);
-        return { ...base, tokenRecipient: ev.to } as any;
+      // Annotate base txs with tokenRecipient when a matching token transfer exists
+      const annotated = baseTxs.map((tx: any) => {
+        const h = String(tx.hash || '').toLowerCase();
+        const ev = tokenEventsByHash.get(h)?.[0];
+        if (!ev) return tx;
+        return { ...tx, tokenRecipient: ev.to };
       });
 
-      const seen = new Set(baseTxs.map((t) => t.hash));
-      const merged = [...baseTxs];
-      for (const t of tokenTxs) {
-        if (!seen.has(t.hash)) {
-          merged.push(t);
-          seen.add(t.hash);
-        }
-      }
-      merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      return { transactions: merged };
+      annotated.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const hasMore = baseCount >= offset;
+      return { transactions: annotated, hasMore };
     } catch (err: any) {
       return { transactions: null, error: String(err?.message || err) };
     }

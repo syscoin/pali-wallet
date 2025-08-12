@@ -121,6 +121,7 @@ export interface IEvmTransactionsController {
     includePending?: boolean
   ) => Promise<{
     error?: string;
+    hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }>;
   fetchTransactionsPageFromAPI: (
@@ -131,6 +132,7 @@ export interface IEvmTransactionsController {
     offset?: number
   ) => Promise<{
     error?: string;
+    hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }>;
   getUserTransactionByDefaultProvider: (

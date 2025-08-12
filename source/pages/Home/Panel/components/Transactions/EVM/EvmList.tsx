@@ -32,6 +32,12 @@ import {
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+type EvmPageResponse = {
+  error?: string;
+  hasMore?: boolean;
+  transactions: any[] | null;
+};
+
 // Simple in-memory cache for display info to avoid repeated async work in lists (short TTL)
 const txDisplayInfoCache = new Map<string, { data: any; ts: number }>();
 const TX_DISPLAY_TTL_MS = 3 * 60 * 1000; // 3 minutes
@@ -541,21 +547,29 @@ export const EvmTransactionsList = ({
   >([]);
   const combinedTransactions = useMemo(() => {
     if (!extraTransactions.length) return userTransactions;
-    const seen = new Set<string>();
-    const result: ITransactionInfoEvm[] = [];
-    // Base first (usually newest)
+    // Prefer base txlist entries over earlier tokentx placeholders when hashes collide
+    const byHash = new Map<string, ITransactionInfoEvm>();
+    // Seed with base list
     for (const tx of userTransactions) {
       const key = (tx as any).hash || (tx as any).txid || '';
-      if (key) seen.add(key);
-      result.push(tx);
+      if (!key) continue;
+      byHash.set(key, tx);
     }
+    // Merge extras, allowing base entries (no tokenRecipient) to replace token-only ones
     for (const tx of extraTransactions) {
       const key = (tx as any).hash || (tx as any).txid || '';
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      result.push(tx);
+      if (!key) continue;
+      const existing = byHash.get(key) as any;
+      const isCurrentBase = (tx as any)?.tokenRecipient === undefined;
+      const isExistingTokenOnly =
+        existing && (existing as any)?.tokenRecipient !== undefined;
+      if (!existing) {
+        byHash.set(key, tx);
+      } else if (isCurrentBase && isExistingTokenOnly) {
+        byHash.set(key, tx);
+      }
     }
-    return result;
+    return Array.from(byHash.values());
   }, [userTransactions, extraTransactions]);
 
   const {
@@ -767,7 +781,7 @@ export const EvmTransactionsList = ({
                     const res = (await controllerEmitter(
                       ['wallet', 'getEvmTransactionsPage'],
                       [currentAccount?.address, chainId, apiUrl, nextPage, 30]
-                    )) as { error?: string; transactions: any[] | null };
+                    )) as EvmPageResponse;
                     if (res?.error) {
                       alert.warning(res.error);
                     } else if (Array.isArray(res?.transactions)) {
@@ -775,7 +789,7 @@ export const EvmTransactionsList = ({
                       if (newTxs.length > 0) {
                         setExtraTransactions((prev) => [...prev, ...newTxs]);
                         setNextPage((p) => p + 1);
-                        if (newTxs.length < 30) setHasMoreServer(false);
+                        if (res?.hasMore === false) setHasMoreServer(false);
                       } else {
                         setHasMoreServer(false);
                       }
