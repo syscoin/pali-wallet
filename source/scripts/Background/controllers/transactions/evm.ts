@@ -286,16 +286,24 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       responses[0]?.status === 'fulfilled'
         ? (responses[0] as PromiseFulfilledResult<Response>).value
         : (undefined as any as Response);
-    const pendingResponse =
-      responses[1]?.status === 'fulfilled'
-        ? (responses[1] as PromiseFulfilledResult<Response>).value
-        : undefined;
-    const token20Response =
-      responses[2]?.status === 'fulfilled'
-        ? (responses[2] as PromiseFulfilledResult<Response>).value
+
+    // Correctly map optional responses based on whether includePending was requested
+    let nextIndex = 1;
+    const pendingResponse: Response | undefined = includePending
+      ? responses[nextIndex]?.status === 'fulfilled'
+        ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
+        : undefined
+      : undefined;
+    if (includePending) {
+      nextIndex += 1;
+    }
+
+    const token20Response: Response | undefined =
+      responses[nextIndex]?.status === 'fulfilled'
+        ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
         : undefined;
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       // Graceful degradation: if tokentx succeeded, return token transfers only
       try {
         const tokenOnly: any[] = [];
@@ -310,7 +318,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         }
         return { transactions: tokenOnly, error: undefined, hasMore: false };
       } catch (e) {
-        const errorMsg = `Explorer API request failed with status ${response.status}`;
+        const errorStatus = response ? `${response.status}` : 'unknown';
+        const errorMsg = `Explorer API request failed with status ${errorStatus}`;
         return { transactions: null, error: errorMsg };
       }
     }
@@ -321,7 +330,17 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     if (token20Response && token20Response.ok)
       parsePromises.push(token20Response.json());
 
-    const [data, pendingData, token20Data] = await Promise.all(parsePromises);
+    const parsed = await Promise.all(parsePromises);
+    const data = parsed[0];
+    let pendingData: any;
+    let token20Data: any;
+    let parsedIndex = 1;
+    if (includePending && pendingResponse) {
+      pendingData = parsed[parsedIndex++];
+    }
+    if (token20Response && token20Response.ok) {
+      token20Data = parsed[parsedIndex++];
+    }
 
     // Handle API error responses
     // Status "0" with "No transactions found" is not an error, it's a valid empty result
