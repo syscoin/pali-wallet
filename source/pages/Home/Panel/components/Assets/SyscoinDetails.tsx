@@ -593,7 +593,9 @@ export const SyscoinAssetDetails = ({
         <div className="w-full flex flex-col items-center justify-center gap-y-2 mb-6">
           <div className="text-brand-white hover:text-brand-deepPink100">
             <a
-              href={`${adjustUrl(activeNetwork.url)}asset/${id}`}
+              href={`${adjustUrl(
+                activeNetwork.explorer || activeNetwork.url
+              )}asset/${id}`}
               target="_blank"
               className="flex items-center justify-center gap-x-2"
               rel="noreferrer"

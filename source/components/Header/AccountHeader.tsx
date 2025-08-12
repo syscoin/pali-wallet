@@ -6,7 +6,6 @@ import { useSelector } from 'react-redux';
 import { IconButton, Icon, Tooltip, ConfirmationModal } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useUtils } from 'hooks/index';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
@@ -54,8 +53,6 @@ export const AccountHeader: React.FC = () => {
     [networkStatus]
   );
 
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
-
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
       const returnContext = createNavigationContext('/home');
@@ -73,22 +70,10 @@ export const AccountHeader: React.FC = () => {
     const accountAddress = currentAccount?.address;
     if (!accountAddress) return;
 
-    let explorerUrl;
-    if (isBitcoinBased) {
-      // For UTXO networks, use the network URL pattern
-      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
-    } else {
-      // For EVM networks, use the explorer pattern
-      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
-    }
-
-    window.open(explorerUrl, '_blank');
-  }, [
-    currentAccount?.address,
-    isBitcoinBased,
-    activeNetwork.url,
-    adjustedExplorer,
-  ]);
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    const url = `${base}address/${accountAddress}`;
+    window.open(url, '_blank');
+  }, [currentAccount?.address, activeNetwork.explorer, activeNetwork.url]);
 
   const handleVerifyAddress = useCallback(async () => {
     try {

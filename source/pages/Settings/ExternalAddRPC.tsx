@@ -98,7 +98,7 @@ const CustomRPCExternal = () => {
         url: rpcUrl.trim(),
         label: formData?.label || '',
         symbol: formData?.symbol || '',
-        explorer: formData?.explorer || '',
+        explorer: (formData?.explorer || '').trim() || rpcUrl.trim(),
         apiUrl: formData?.apiUrl || '',
         chainId: formData?.chainId || '',
         isSyscoinRpc: false,

@@ -635,14 +635,8 @@ export const SendEth = () => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
 
-    let explorerUrl;
-    if (isBitcoinBased) {
-      // For UTXO networks, use the network URL pattern
-      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
-    } else {
-      // For EVM networks, use the explorer pattern
-      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
-    }
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    const explorerUrl = `${base}address/${accountAddress}`;
 
     window.open(explorerUrl, '_blank');
   }, [

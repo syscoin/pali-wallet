@@ -23,12 +23,9 @@ export const TransactionsPanel = () => {
 
   const { t } = useTranslation();
 
-  // ✅ MEMOIZED: Explorer URLs
-  const networkExplorer = useAdjustedExplorer(activeNetwork.explorer);
-  const adjustedNetworkUrl = useAdjustedExplorer(activeNetwork.url);
-  const adjustedExplorer = useMemo(
-    () => (isBitcoinBased ? adjustedNetworkUrl : networkExplorer),
-    [isBitcoinBased, adjustedNetworkUrl, networkExplorer]
+  // ✅ MEMOIZED: Explorer base (use explorer if set, fallback to url)
+  const adjustedExplorer = useAdjustedExplorer(
+    activeNetwork.explorer || activeNetwork.url
   );
 
   const [previousTransactions, setPreviousTransactions] = useState([]);

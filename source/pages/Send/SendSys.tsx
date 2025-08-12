@@ -283,12 +283,9 @@ export const SendSys = () => {
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
-
-    window.open(
-      `${adjustUrl(activeNetwork.url)}address/${accountAddress}`,
-      '_blank'
-    );
-  }, [activeAccount?.address, activeNetwork.url]);
+    const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
+    window.open(`${base}address/${accountAddress}`, '_blank');
+  }, [activeAccount?.address, activeNetwork.explorer, activeNetwork.url]);
 
   const RBFOnChange = useCallback(
     (value: any) => {
