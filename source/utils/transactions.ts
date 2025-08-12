@@ -189,19 +189,25 @@ export const getTransactionDisplayInfo = async (
           };
         }
 
-        // ERC-721 safeTransferFrom selectors are also unambiguous vs ERC-20
+        // ERC-721: handle both safeTransferFrom and transferFrom signatures
         const safeTransferFrom3Selector = id(
           'safeTransferFrom(address,address,uint256)'
         ).slice(0, 10);
         const safeTransferFrom4Selector = id(
           'safeTransferFrom(address,address,uint256,bytes)'
         ).slice(0, 10);
-        const isErc721Safe =
+        const transferFromSelector = id(
+          'transferFrom(address,address,uint256)'
+        ).slice(0, 10);
+
+        const isErc721Candidate =
           !!tx?.input &&
           (tx.input.startsWith(safeTransferFrom3Selector) ||
-            tx.input.startsWith(safeTransferFrom4Selector));
-        const erc721TokenId = isErc721Safe ? getERC721TokenId(tx) : null;
-        if (isErc721Safe && erc721TokenId) {
+            tx.input.startsWith(safeTransferFrom4Selector) ||
+            tx.input.startsWith(transferFromSelector));
+
+        const erc721TokenId = isErc721Candidate ? getERC721TokenId(tx) : null;
+        if (isErc721Candidate && erc721TokenId) {
           return {
             displayValue: 1,
             formattedValue: '1',
