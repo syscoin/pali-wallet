@@ -6,7 +6,7 @@ jobs:
     name: yarn test-all
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v3
         with:
           node-version: '23.11.1'
@@ -17,7 +17,7 @@ jobs:
     name: Create env file with gh secrets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v3
         with:
           node-version: '23.11.1'
