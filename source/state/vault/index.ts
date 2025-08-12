@@ -239,8 +239,15 @@ const VaultState = createSlice({
         throw new Error('Use dedicated asset/transaction reducers instead');
       }
 
-      if (!(property in state.accounts[type][id]))
-        throw new Error('Unable to set property. Unknown key');
+      if (!(property in state.accounts[type][id])) {
+        // Allow creating new whitelisted properties introduced via migrations
+        if (property === 'evmTxCountByChainId') {
+          if (property === 'evmTxCountByChainId')
+            (state.accounts[type][id] as any).evmTxCountByChainId = {};
+        } else {
+          throw new Error('Unable to set property. Unknown key');
+        }
+      }
 
       state.accounts[type][id][property] = value;
     },
@@ -262,8 +269,14 @@ const VaultState = createSlice({
         throw new Error('Use dedicated asset/transaction reducers instead');
       }
 
-      if (!(property in state.accounts[type][id]))
-        throw new Error('Unable to set property. Unknown key');
+      if (!(property in state.accounts[type][id])) {
+        if (property === 'evmTxCountByChainId') {
+          if (property === 'evmTxCountByChainId')
+            (state.accounts[type][id] as any).evmTxCountByChainId = {};
+        } else {
+          throw new Error('Unable to set property. Unknown key');
+        }
+      }
 
       state.accounts[type][id][property] = value;
     },

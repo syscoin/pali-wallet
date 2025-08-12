@@ -2,6 +2,7 @@ import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
 
 import store from 'state/store';
+import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
@@ -9,14 +10,6 @@ import {
   findUserTxsInProviderByBlocksRange,
   validateAndManageUserTransactions,
 } from './utils';
-
-// Cache for address transaction counts to optimize Blockscout API calls
-// Key: chainId:address, Value: { hasTransactions: boolean, timestamp: number }
-// This works around a Blockscout bug (prior to v6.12) where passing offset parameter
-// on addresses with no transactions triggers a massive union query that causes rate limiting
-// We make an initial request without offset to check if address has transactions,
-// then use offset only for addresses with transactions in subsequent requests
-const addressTxCountCache = new Map<string, boolean>();
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
@@ -135,11 +128,62 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     address: string,
     chainId: number,
     apiUrl?: string,
-    includePending = false
+    includePending = false,
+    web3Provider?: CustomJsonRpcProvider
   ): Promise<{
     error?: string;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
+    // Shared mapper for API items (txlist or tokentx) to internal shape
+    const mapApiTx = (
+      item: any,
+      chainIdForMap: number,
+      overrideTo?: string
+    ) => {
+      // Validate timestamp into a sane range
+      let timestamp = parseInt(item.timeStamp, 10);
+      const now = Math.floor(Date.now() / 1000);
+      const oneYearFromNow = now + 365 * 24 * 60 * 60;
+      const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
+      if (
+        !timestamp ||
+        isNaN(timestamp) ||
+        timestamp < tenYearsAgo ||
+        timestamp > oneYearFromNow
+      ) {
+        timestamp = now;
+      }
+      const blockNumberParsed =
+        item.blockNumber !== undefined && item.blockNumber !== null
+          ? parseInt(item.blockNumber)
+          : undefined;
+      const confirmationsParsed =
+        item.confirmations !== undefined && item.confirmations !== null
+          ? parseInt(item.confirmations)
+          : 0;
+      const nonceParsed =
+        item.nonce !== undefined && item.nonce !== null
+          ? parseInt(item.nonce)
+          : undefined;
+      return {
+        hash: item.hash,
+        from: item.from,
+        to: overrideTo ?? item.to,
+        value: item.value,
+        blockNumber: blockNumberParsed,
+        blockHash: item.blockHash,
+        timestamp,
+        confirmations: confirmationsParsed,
+        chainId: chainIdForMap,
+        input: item.input,
+        gasPrice: item.gasPrice,
+        gas: item.gas || item.gasLimit,
+        nonce: nonceParsed,
+        // eslint-disable-next-line camelcase
+        txreceipt_status: item.txreceipt_status || item.isError || null,
+        isError: item.isError || null,
+      } as any;
+    };
     if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
 
     // Most block explorers (Etherscan, Polygonscan, Blockscout, etc.) use this same API format
@@ -156,13 +200,41 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     url.searchParams.set('address', address);
     url.searchParams.set('sort', 'desc');
 
-    // Check cache to see if we know if address has transactions
-    const cacheKey = `${chainId}:${address.toLowerCase()}`;
-    const cached = addressTxCountCache.get(cacheKey);
+    // Decide whether to include paging using persisted or probed tx count
+    let evmTxCount: number | undefined;
+    let nativeBalanceHint = 0;
+    try {
+      const { accounts, activeAccount } = store.getState().vault;
+      const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
+      if (acc) {
+        // Chain-specific hint takes precedence
+        const byChain = acc.evmTxCountByChainId || {};
+        if (typeof byChain[chainId] === 'number') evmTxCount = byChain[chainId];
+      }
+      // Use native balance as a secondary hint: if > 0, txlist almost certainly non-empty
+      nativeBalanceHint = Number(acc?.balances?.ethereum || 0);
+    } catch {}
 
-    // Only include offset if we have valid cache showing the address has transactions
-    // First time requests (no cache) won't include offset to avoid Blockscout bug
-    const shouldIncludeOffset = cached;
+    if ((evmTxCount === undefined || evmTxCount === 0) && web3Provider) {
+      try {
+        const count = await web3Provider.getTransactionCount(address);
+        evmTxCount = Number(count || 0);
+        const { accounts, activeAccount } = store.getState().vault;
+        const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
+        const byChain = { ...(acc?.evmTxCountByChainId || {}) };
+        byChain[chainId] = evmTxCount;
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'evmTxCountByChainId',
+            value: byChain,
+          })
+        );
+      } catch (e) {
+        evmTxCount = 0; // safe default
+      }
+    }
+
+    const shouldIncludeOffset = (evmTxCount || 0) > 0 || nativeBalanceHint > 0;
 
     if (shouldIncludeOffset) {
       url.searchParams.set('page', '1');
@@ -176,7 +248,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     // Prepare fetch promises for parallel execution
-    const fetchPromises = [retryableFetch(url.toString())];
+    const fetchPromises: Promise<Response>[] = [retryableFetch(url.toString())];
 
     // Add pending transactions fetch if requested
     let pendingUrl: URL | null = null;
@@ -193,22 +265,62 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       fetchPromises.push(retryableFetch(pendingUrl.toString()));
     }
 
-    // Execute both fetches in parallel
-    const responses = await Promise.all(fetchPromises);
-    const [response, pendingResponse] = responses;
+    // Token transfer endpoint (use tokentx only for Blockscout compatibility)
+    const token20Url = new URL(apiUrl);
+    token20Url.searchParams.set('module', 'account');
+    token20Url.searchParams.set('action', 'tokentx');
+    token20Url.searchParams.set('address', address);
+    token20Url.searchParams.set('sort', 'desc');
+    if (shouldIncludeOffset) {
+      token20Url.searchParams.set('page', '1');
+      token20Url.searchParams.set('offset', '30');
+    }
+    if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
+
+    fetchPromises.push(retryableFetch(token20Url.toString()));
+
+    // Execute all fetches in parallel (tolerate partial failures)
+    const responses = await Promise.allSettled(fetchPromises);
+    const response =
+      responses[0]?.status === 'fulfilled'
+        ? (responses[0] as PromiseFulfilledResult<Response>).value
+        : (undefined as any as Response);
+    const pendingResponse =
+      responses[1]?.status === 'fulfilled'
+        ? (responses[1] as PromiseFulfilledResult<Response>).value
+        : undefined;
+    const token20Response =
+      responses[2]?.status === 'fulfilled'
+        ? (responses[2] as PromiseFulfilledResult<Response>).value
+        : undefined;
 
     if (!response.ok) {
-      const errorMsg = `Explorer API request failed with status ${response.status}`;
-      return { transactions: null, error: errorMsg };
+      // Graceful degradation: if tokentx succeeded, return token transfers only
+      try {
+        const tokenOnly: any[] = [];
+        if (token20Response && token20Response.ok) {
+          const token20Data = await token20Response.json();
+          if (Array.isArray(token20Data?.result)) {
+            for (const ev of token20Data.result) {
+              const base = mapApiTx(ev, chainId, ev.contractAddress);
+              tokenOnly.push({ ...base, tokenRecipient: ev.to } as any);
+            }
+          }
+        }
+        return { transactions: tokenOnly, error: undefined };
+      } catch (e) {
+        const errorMsg = `Explorer API request failed with status ${response.status}`;
+        return { transactions: null, error: errorMsg };
+      }
     }
 
-    // Parse both responses in parallel
-    const parsePromises = [response.json()];
-    if (pendingResponse) {
-      parsePromises.push(pendingResponse.json());
-    }
+    // Parse all responses in parallel (gate optional ones by ok)
+    const parsePromises: Promise<any>[] = [response.json()];
+    if (pendingResponse) parsePromises.push(pendingResponse.json());
+    if (token20Response && token20Response.ok)
+      parsePromises.push(token20Response.json());
 
-    const [data, pendingData] = await Promise.all(parsePromises);
+    const [data, pendingData, token20Data] = await Promise.all(parsePromises);
 
     // Handle API error responses
     // Status "0" with "No transactions found" is not an error, it's a valid empty result
@@ -231,6 +343,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     let allTransactions: IEvmTransactionResponse[] = [];
+    let baseTxCount = 0; // Number of txs returned by txlist (exclude tokentx)
 
     // Both Etherscan and Blockscout use the same response format
     // Handle both status "1" (success) and status "0" with valid empty results
@@ -243,47 +356,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       // Note: txlist returns transactions that are in blocks (including those with 0 confirmations)
       // It does NOT return transactions that are only in the mempool (truly pending)
       // For mempool transactions, use pendingtxlist action
-      const transactions = data.result.map((tx: any) => {
-        // Validate timestamp
-        let timestamp = parseInt(tx.timeStamp, 10);
-        const currentTime = Math.floor(Date.now() / 1000);
-        const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
-        const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
-
-        if (
-          !timestamp ||
-          isNaN(timestamp) ||
-          timestamp < tenYearsAgo ||
-          timestamp > oneYearFromNow
-        ) {
-          console.warn(
-            `Invalid timestamp from API for tx ${tx.hash}: ${tx.timeStamp}, using current time`
-          );
-          timestamp = currentTime;
-        }
-        return {
-          hash: tx.hash,
-          from: tx.from,
-          to: tx.to,
-          value: tx.value,
-          blockNumber: parseInt(tx.blockNumber),
-          blockHash: tx.blockHash,
-          timestamp: timestamp,
-          confirmations: parseInt(tx.confirmations),
-          chainId: chainId,
-          input: tx.input,
-          gasPrice: tx.gasPrice,
-          gas: tx.gas || tx.gasLimit, // Blockscout may use 'gas' or 'gasLimit'
-          nonce:
-            tx.nonce !== undefined && tx.nonce !== null
-              ? parseInt(tx.nonce)
-              : undefined,
-          // Include transaction status from API
-          // eslint-disable-next-line camelcase
-          txreceipt_status: tx.txreceipt_status || tx.isError || null,
-          isError: tx.isError || null,
-        };
-      });
+      baseTxCount = data.result.length;
+      const transactions = data.result.map((tx: any) => mapApiTx(tx, chainId));
 
       allTransactions = transactions;
     }
@@ -337,11 +411,49 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       }
     }
 
-    // Cache whether this address has transactions (only if not already cached or cache expired)
-    if (cacheKey) {
-      const hasTransactions = allTransactions.length > 0;
-      addressTxCountCache.set(cacheKey, hasTransactions);
+    // Normalize token transfer events to transaction-like entries (tokentx only)
+    const tokenEventResults: any[] = [];
+    try {
+      if (token20Data && Array.isArray(token20Data.result))
+        tokenEventResults.push(...token20Data.result);
+    } catch {}
+
+    const tokenTransactions = tokenEventResults.map((ev: any) => {
+      const base = mapApiTx(ev, chainId, ev.contractAddress);
+      return { ...base, tokenRecipient: ev.to } as any;
+    });
+
+    // Merge and deduplicate by hash (prefer base txlist entries when present)
+    const seenHashes = new Set(allTransactions.map((t) => t.hash));
+    for (const t of tokenTransactions) {
+      if (!seenHashes.has(t.hash)) {
+        allTransactions.push(t);
+        seenHashes.add(t.hash);
+      }
     }
+
+    // Sort by timestamp desc to maintain expected order after merge
+    allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    // Cache whether this address has transactions (only if not already cached or cache expired)
+    // Persist updated hint on account (0 or >=1)
+    try {
+      const hasTransactionsInTxList = baseTxCount > 0;
+      const newCount = hasTransactionsInTxList
+        ? Math.max(1, evmTxCount || 0)
+        : 0;
+      // Maintain only per-chain counts going forward
+      const { accounts, activeAccount } = store.getState().vault;
+      const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
+      const byChain = { ...(acc?.evmTxCountByChainId || {}) };
+      byChain[chainId] = newCount;
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'evmTxCountByChainId',
+          value: byChain,
+        })
+      );
+    } catch {}
 
     // If we didn't use offset, limit to 30 for consistency
     // This applies to first-time requests and addresses with no transactions
@@ -373,49 +485,150 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('action', 'txlist');
       url.searchParams.set('address', address);
       url.searchParams.set('sort', 'desc');
-      url.searchParams.set('page', String(page));
-      url.searchParams.set('offset', String(offset));
-      if (existingApiKey) url.searchParams.set('apikey', existingApiKey);
 
-      const response = await retryableFetch(url.toString());
+      // Only include page/offset when vault hint says this chain has tx history
+      let shouldIncludeOffset = false;
+      try {
+        const { accounts, activeAccount } = store.getState().vault;
+        const acc = accounts[activeAccount.type]?.[activeAccount.id] as any;
+        const byChain = acc?.evmTxCountByChainId || {};
+        shouldIncludeOffset = Number(byChain[chainId] || 0) > 0;
+      } catch {}
+
+      if (shouldIncludeOffset) {
+        url.searchParams.set('page', String(page));
+        url.searchParams.set('offset', String(offset));
+      }
+
+      if (existingApiKey) url.searchParams.set('apikey', existingApiKey);
+      // Token endpoint for the same page (tokentx only)
+      const token20Url = new URL(apiUrl);
+      token20Url.searchParams.set('module', 'account');
+      token20Url.searchParams.set('action', 'tokentx');
+      token20Url.searchParams.set('address', address);
+      token20Url.searchParams.set('sort', 'desc');
+      if (shouldIncludeOffset) {
+        token20Url.searchParams.set('page', String(page));
+        token20Url.searchParams.set('offset', String(offset));
+      }
+
+      if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
+
+      const [response, token20Resp] = await Promise.all([
+        retryableFetch(url.toString()),
+        retryableFetch(token20Url.toString()),
+      ]);
+
       if (!response.ok) {
+        // Graceful degradation: if token20 succeeded, return those events
+        if (token20Resp && token20Resp.ok) {
+          try {
+            const token20Data = await token20Resp.json();
+            const tokenEvents: any[] = [];
+            if (Array.isArray(token20Data?.result))
+              tokenEvents.push(...token20Data.result);
+            const tokenTxs = tokenEvents.map((ev: any) => {
+              const base = mapApiTx(ev, chainId, ev.contractAddress);
+              return { ...base, tokenRecipient: ev.to } as any;
+            });
+            return { transactions: tokenTxs };
+          } catch (err) {
+            return {
+              transactions: null,
+              error: `Explorer API status ${response.status}`,
+            };
+          }
+        }
         return {
           transactions: null,
           error: `Explorer API status ${response.status}`,
         };
       }
-      const data = await response.json();
+      const [data, token20Data] = await Promise.all([
+        response.json(),
+        token20Resp.ok ? token20Resp.json() : Promise.resolve(null),
+      ]);
+
+      // Shared mapper for API items (txlist or tokentx) to internal shape
+      const mapApiTx = (
+        item: any,
+        chainIdForMap: number,
+        overrideTo?: string
+      ) => {
+        let timestamp = parseInt(item.timeStamp, 10);
+        const now = Math.floor(Date.now() / 1000);
+        const oneYearFromNow = now + 365 * 24 * 60 * 60;
+        const tenYearsAgo = now - 10 * 365 * 24 * 60 * 60;
+        if (
+          !timestamp ||
+          isNaN(timestamp) ||
+          timestamp < tenYearsAgo ||
+          timestamp > oneYearFromNow
+        ) {
+          timestamp = now;
+        }
+        const blockNumberParsed =
+          item.blockNumber !== undefined && item.blockNumber !== null
+            ? parseInt(item.blockNumber)
+            : undefined;
+        const confirmationsParsed =
+          item.confirmations !== undefined && item.confirmations !== null
+            ? parseInt(item.confirmations)
+            : 0;
+        const nonceParsed =
+          item.nonce !== undefined && item.nonce !== null
+            ? parseInt(item.nonce)
+            : undefined;
+        return {
+          hash: item.hash,
+          from: item.from,
+          to: overrideTo ?? item.to,
+          value: item.value,
+          blockNumber: blockNumberParsed,
+          blockHash: item.blockHash,
+          timestamp,
+          confirmations: confirmationsParsed,
+          chainId: chainIdForMap,
+          input: item.input,
+          gasPrice: item.gasPrice,
+          gas: item.gas || item.gasLimit,
+          nonce: nonceParsed,
+          // eslint-disable-next-line camelcase
+          txreceipt_status: item.txreceipt_status || item.isError || null,
+          isError: item.isError || null,
+        } as any;
+      };
+
+      let baseTxs: IEvmTransactionResponse[] = [];
       if (
         (data.status === '1' ||
           (data.status === '0' && Array.isArray(data.result))) &&
         Array.isArray(data.result)
       ) {
-        const txs = data.result.map((tx: any) => ({
-          hash: tx.hash,
-          from: tx.from,
-          to: tx.to,
-          value: tx.value,
-          blockNumber: parseInt(tx.blockNumber),
-          blockHash: tx.blockHash,
-          timestamp:
-            parseInt(tx.timeStamp, 10) || Math.floor(Date.now() / 1000),
-          confirmations: parseInt(tx.confirmations),
-          chainId,
-          input: tx.input,
-          gasPrice: tx.gasPrice,
-          gas: tx.gas || tx.gasLimit,
-          nonce:
-            tx.nonce !== undefined && tx.nonce !== null
-              ? parseInt(tx.nonce)
-              : undefined,
-          // eslint-disable-next-line camelcase
-          txreceipt_status: tx.txreceipt_status || tx.isError || null,
-          isError: tx.isError || null,
-        }));
-        return { transactions: txs };
+        baseTxs = data.result.map((tx: any) => mapApiTx(tx, chainId));
       }
-      const errorMsg = data.result || data.message || 'Explorer API error';
-      return { transactions: null, error: errorMsg };
+
+      const tokenEvents: any[] = [];
+      try {
+        if (token20Data && Array.isArray(token20Data.result))
+          tokenEvents.push(...token20Data.result);
+      } catch {}
+
+      const tokenTxs = tokenEvents.map((ev: any) => {
+        const base = mapApiTx(ev, chainId, ev.contractAddress);
+        return { ...base, tokenRecipient: ev.to } as any;
+      });
+
+      const seen = new Set(baseTxs.map((t) => t.hash));
+      const merged = [...baseTxs];
+      for (const t of tokenTxs) {
+        if (!seen.has(t.hash)) {
+          merged.push(t);
+          seen.add(t.hash);
+        }
+      }
+      merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return { transactions: merged };
     } catch (err: any) {
       return { transactions: null, error: String(err?.message || err) };
     }
@@ -487,7 +700,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         currentAccount.address,
         currentNetworkChainId,
         activeNetwork.apiUrl,
-        true
+        true,
+        web3Provider
       );
 
       if (apiResult.transactions !== null) {
