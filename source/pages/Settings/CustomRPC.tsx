@@ -1006,12 +1006,12 @@ const CustomRPCView = () => {
                 </span>
                 <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
                   {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
-                    ? currentNetwork.slip44 || currentNetwork.chainId
+                    ? currentNetwork.slip44 ?? currentNetwork.chainId
                     : currentNetwork.chainId}
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
-                ${currentNetwork.currency.toUpperCase()} •{' '}
+                ${(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
                 {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}
