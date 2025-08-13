@@ -52,7 +52,6 @@ const ConnectHardwareWalletView: FC = () => {
           await controllerEmitter(
             ['wallet', 'importTrezorAccountFromController'],
             [],
-            false,
             300000 // 5 minutes timeout for hardware wallet operations
           );
 
@@ -72,7 +71,6 @@ const ConnectHardwareWalletView: FC = () => {
           await controllerEmitter(
             ['wallet', 'importLedgerAccountFromController'],
             [],
-            false,
             300000 // 5 minutes timeout for hardware wallet operations
           );
 

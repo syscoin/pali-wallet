@@ -140,19 +140,11 @@ const CustomRPCView = () => {
     apiUrl: string
   ): Promise<{ error?: string; success: boolean }> => {
     try {
-      console.log('testBlockExplorerApi called with:', apiUrl);
-      console.log('About to call controllerEmitter with path:', [
-        'wallet',
-        'testExplorerApi',
-      ]);
-
       // Use the controller's testExplorerApi method
       const result = await controllerEmitter(
         ['wallet', 'testExplorerApi'],
         [apiUrl]
       );
-
-      console.log('controllerEmitter result:', result);
 
       // The controller returns { success: boolean; error?: string }
       // Make sure we properly handle the response

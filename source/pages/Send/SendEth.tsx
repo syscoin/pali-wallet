@@ -455,14 +455,7 @@ export const SendEth = () => {
         console.error(error);
       }
     },
-    [
-      activeAccount.address,
-      activeAccountAssets,
-      controllerEmitter,
-      alert,
-      t,
-      form,
-    ]
+    [activeAccount.address, activeAccountAssets, alert, t, form]
   );
 
   const finalSymbolToNextStep = useMemo(() => {
@@ -943,7 +936,7 @@ export const SendEth = () => {
         reverseEnsTimeoutRef.current = undefined;
       }
     };
-  }, [receiverInput, ensCache, controllerEmitter, buildSuggestions]);
+  }, [receiverInput, ensCache, buildSuggestions]);
 
   // Calculate gas fees when component mounts or asset changes
   useEffect(() => {

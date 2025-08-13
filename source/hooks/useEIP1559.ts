@@ -84,7 +84,6 @@ export const useEIP1559 = () => {
   }, [
     activeNetwork?.chainId,
     isBitcoinBased,
-    controllerEmitter,
     forceRecheckTrigger,
     isEIP1559Compatible,
   ]);
