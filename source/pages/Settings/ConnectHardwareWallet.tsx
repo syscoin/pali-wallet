@@ -60,7 +60,7 @@ const ConnectHardwareWalletView: FC = () => {
           setIsLoading(false);
           break;
         case HardWallets.LEDGER:
-          const LEDGER_USB_VENDOR_ID = '0x2c97';
+          const LEDGER_USB_VENDOR_ID = 0x2c97;
 
           if ((navigator as any).hid?.requestDevice) {
             await (navigator as any).hid.requestDevice({
