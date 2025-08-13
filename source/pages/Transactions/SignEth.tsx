@@ -115,7 +115,6 @@ const EthSign: React.FC<ISign> = () => {
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
           [data],
-          false,
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
@@ -124,7 +123,6 @@ const EthSign: React.FC<ISign> = () => {
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
           [data],
-          false,
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
@@ -149,7 +147,6 @@ const EthSign: React.FC<ISign> = () => {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
             [address, typedData, 'V1'],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -158,7 +155,6 @@ const EthSign: React.FC<ISign> = () => {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
             [address, typedData, 'V3'],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -167,7 +163,6 @@ const EthSign: React.FC<ISign> = () => {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
             [address, typedData, 'V4'],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets

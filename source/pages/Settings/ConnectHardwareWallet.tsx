@@ -52,7 +52,6 @@ const ConnectHardwareWalletView: FC = () => {
           await controllerEmitter(
             ['wallet', 'importTrezorAccountFromController'],
             [],
-            false,
             300000 // 5 minutes timeout for hardware wallet operations
           );
 
@@ -60,11 +59,18 @@ const ConnectHardwareWalletView: FC = () => {
           setIsLoading(false);
           break;
         case HardWallets.LEDGER:
+          const LEDGER_USB_VENDOR_ID = 0x2c97;
+
+          if ((navigator as any).hid?.requestDevice) {
+            await (navigator as any).hid.requestDevice({
+              filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
+            });
+          }
+
           // Ledger connection is handled internally by ensureConnection
           await controllerEmitter(
             ['wallet', 'importLedgerAccountFromController'],
             [],
-            false,
             300000 // 5 minutes timeout for hardware wallet operations
           );
 
@@ -176,24 +182,6 @@ const ConnectHardwareWalletView: FC = () => {
     };
   }, [navigate]);
 
-  useEffect(() => {
-    // Set HTML attributes to prevent translation
-    document.documentElement.setAttribute('translate', 'no');
-    document.documentElement.setAttribute('lang', 'en');
-
-    // Add meta tag if it doesn't exist
-    if (!document.querySelector('meta[name="google"]')) {
-      const meta = document.createElement('meta');
-      meta.name = 'google';
-      meta.content = 'notranslate';
-      document.head.appendChild(meta);
-    }
-
-    return () => {
-      // Cleanup if needed
-    };
-  }, []);
-
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-brand-blue600 overflow-y-auto">
       <div className="w-full max-w-md px-4 min-h-popup flex flex-col py-8">
@@ -285,7 +273,7 @@ const ConnectHardwareWalletView: FC = () => {
             onClose={() => {
               // Give user clear instructions about next steps
               const shouldClose = window.confirm(
-                'Hardware wallet setup complete! Close this window and reopen Pali to use your hardware wallet. Your account is saved and will be available when you restart Pali.\n\nClose now?'
+                t('settings.hardwareWalletSetupConfirm')
               );
               if (shouldClose) {
                 // Close the entire browser window/tab

@@ -231,17 +231,7 @@ export const ConnectWallet = () => {
       console.error('Failed to connect wallet:', error);
       setIsConnecting(false);
     }
-  }, [
-    host,
-    chain,
-    chainId,
-    accountId,
-    accountType,
-    date,
-    accounts,
-    controllerEmitter,
-    eventName,
-  ]);
+  }, [host, chain, chainId, accountId, accountType, date, accounts, eventName]);
 
   const onConfirm = () => {
     // Check if the host is in the trusted apps list

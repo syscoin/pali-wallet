@@ -129,7 +129,6 @@ export const EvmAssetDetails = ({
   }, [
     currentAsset?.contractAddress,
     is1155,
-    controllerEmitter,
     navigationState?.isImportPreview,
     fullAccount?.address,
   ]);

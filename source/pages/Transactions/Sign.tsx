@@ -80,7 +80,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               pathIn: data?.pathIn,
             },
           ],
-          false,
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
@@ -97,7 +96,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               pathIn: data?.pathIn,
             },
           ],
-          false,
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets

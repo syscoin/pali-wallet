@@ -143,7 +143,6 @@ export const ImportToken: React.FC = () => {
   }, [
     activeAccount?.address,
     importedAssetIds,
-    controllerEmitter,
     alert,
     t,
     activeNetwork.chainId,
@@ -219,12 +218,7 @@ export const ImportToken: React.FC = () => {
         debouncedValidationRef.current = null;
       }
     };
-  }, [
-    activeAccount?.address,
-    controllerEmitter,
-    activeAccountAssets,
-    activeNetwork.chainId,
-  ]);
+  }, [activeAccount?.address, activeAccountAssets, activeNetwork.chainId]);
 
   // Handle custom contract input change
   useEffect(() => {
@@ -276,7 +270,7 @@ export const ImportToken: React.FC = () => {
         setIsVerifyingTokenId(false);
       }
     },
-    [customTokenDetails, activeAccount.address, controllerEmitter]
+    [customTokenDetails, activeAccount.address]
   );
 
   // Verify token ID when it changes

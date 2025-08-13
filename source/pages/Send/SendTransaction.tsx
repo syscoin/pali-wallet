@@ -274,7 +274,7 @@ export const SendTransaction = () => {
     return () => {
       cancelled = true;
     };
-  }, [toRaw, ensCache, controllerEmitter]);
+  }, [toRaw, ensCache]);
 
   const handleConfirm = async () => {
     const {
@@ -390,7 +390,6 @@ export const SendTransaction = () => {
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [baseLegacyTx, isLegacyTransaction],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -443,7 +442,6 @@ export const SendTransaction = () => {
               base1559Tx,
               false, // isLegacy = false for EIP-1559
             ],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -728,7 +726,6 @@ export const SendTransaction = () => {
     approvalType,
     dataTx?.to,
     activeAccount.address,
-    controllerEmitter,
     decodedTxData,
   ]);
 

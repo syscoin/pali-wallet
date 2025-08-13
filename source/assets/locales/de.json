@@ -105,6 +105,7 @@
     "orderTrezor": "Bestellen Sie eine Trezor-Wallet und bewahren Sie Ihre Gelder im Cold Storage auf.",
     "orderLedger": "Bestellen Sie eine Ledger-Wallet und bewahren Sie Ihre Gelder im Cold Storage auf.",
     "buyNow": "Jetzt kaufen",
+    "hardwareWalletSetupConfirm": "Einrichtung der Hardware-Wallet abgeschlossen! Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um Ihre Hardware-Wallet zu verwenden. Ihr Konto wurde gespeichert und ist verfügbar, wenn Sie Pali neu starten.\n\nJetzt schließen?",
     "createAccount": "KONTO ERSTELLEN",
     "yourNewAccount": "Ihr neues Konto wurde erstellt",
     "nameYourNewAccount": "Benennen Sie Ihr neues Konto",
