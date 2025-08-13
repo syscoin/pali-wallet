@@ -1003,7 +1003,8 @@ const CustomRPCView = () => {
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
-                ${(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
+                {'$'}
+                {(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
                 {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}
