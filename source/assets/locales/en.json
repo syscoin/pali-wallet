@@ -423,6 +423,7 @@
     "orderTrezor": "Order a Trezor wallet and keep your funds in cold storage.",
     "orderLedger": "Order a Ledger wallet and keep your funds in cold storage.",
     "buyNow": "Buy now",
+    "hardwareWalletSetupConfirm": "Hardware wallet setup complete! Close this window and reopen Pali to use your hardware wallet. Your account is saved and will be available when you restart Pali.\n\nClose now?",
     "createAccount": "CREATE ACCOUNT",
     "yourNewAccount": "Your new account has been created",
     "nameYourNewAccount": "Name your new account",

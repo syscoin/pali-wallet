@@ -105,6 +105,7 @@
     "orderTrezor": "订购Trezor钱包并将您的资金保存在冷存储中。",
     "orderLedger": "订购Ledger钱包并将您的资金保存在冷存储中。",
     "buyNow": "立即购买",
+    "hardwareWalletSetupConfirm": "硬件钱包设置已完成！请关闭此窗口并重新打开 Pali 以使用您的硬件钱包。您的账户已保存，并将在重新启动 Pali 后可用。\n\n现在关闭吗？",
     "createAccount": "创建账户",
     "yourNewAccount": "您的新账户已创建",
     "nameYourNewAccount": "命名您的新账户",

@@ -105,6 +105,7 @@
     "orderTrezor": "Trezor 지갑을 주문하고 콜드 스토리지에 자금을 보관하세요.",
     "orderLedger": "Ledger 지갑을 주문하고 콜드 스토리지에 자금을 보관하세요.",
     "buyNow": "지금 구매",
+    "hardwareWalletSetupConfirm": "하드웨어 지갑 설정이 완료되었습니다! 이 창을 닫고 Pali를 다시 열어 하드웨어 지갑을 사용하세요. 계정이 저장되었으며 Pali를 다시 시작하면 사용할 수 있습니다.\n\n지금 닫을까요?",
     "createAccount": "계정 만들기",
     "yourNewAccount": "새 계정이 생성되었습니다",
     "nameYourNewAccount": "새 계정 이름 지정",

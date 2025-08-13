@@ -275,7 +275,7 @@ const ConnectHardwareWalletView: FC = () => {
             onClose={() => {
               // Give user clear instructions about next steps
               const shouldClose = window.confirm(
-                'Hardware wallet setup complete! Close this window and reopen Pali to use your hardware wallet. Your account is saved and will be available when you restart Pali.\n\nClose now?'
+                t('settings.hardwareWalletSetupConfirm')
               );
               if (shouldClose) {
                 // Close the entire browser window/tab

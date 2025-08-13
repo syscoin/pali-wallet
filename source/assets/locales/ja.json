@@ -105,6 +105,7 @@
     "orderTrezor": "Trezorウォレットを注文して、コールドストレージに資金を保管してください。",
     "orderLedger": "Ledgerウォレットを注文して、コールドストレージに資金を保管してください。",
     "buyNow": "今すぐ購入",
+    "hardwareWalletSetupConfirm": "ハードウェアウォレットの設定が完了しました！ このウィンドウを閉じて Pali を再度開き、ハードウェアウォレットを使用してください。 アカウントは保存され、Pali を再起動すると利用可能になります。\n\n今すぐ閉じますか？",
     "createAccount": "アカウントを作成",
     "yourNewAccount": "新しいアカウントが作成されました",
     "nameYourNewAccount": "新しいアカウントに名前を付ける",
