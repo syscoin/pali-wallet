@@ -29,7 +29,10 @@ export const Tooltip: React.FC<ITooltip> = ({
         <div
           className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none 
           ${className} 
-          ${String(content).length >= 20 && 'max-w-full whitespace-nowrap'}`}
+          ${
+            String(content).length >= 20 &&
+            'max-w-full whitespace-normal break-words'
+          }`}
         >
           {content}
         </div>
