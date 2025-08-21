@@ -90,10 +90,12 @@ export const SendTransaction = () => {
     ? externalTx.txMetadata
     : state?.txMetadata || {};
 
-  // Detect legacy transaction based on the presence of gasPrice field
+  // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
+  const explicitType = (dataTx as any)?.type;
   const isLegacyTransaction =
-    txMetadata.isLegacyTx ||
-    (dataTx?.gasPrice !== undefined && dataTx?.maxFeePerGas === undefined);
+    Boolean(txMetadata.isLegacyTx) ||
+    explicitType === 0 ||
+    explicitType === '0x0';
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType;
   const tokenStandard = txMetadata.tokenStandard;
