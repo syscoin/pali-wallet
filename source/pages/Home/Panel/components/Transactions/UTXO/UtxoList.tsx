@@ -148,15 +148,17 @@ const UtxoTransactionsListComponentBase = ({
 
       <div className="flex flex-[0.8] flex-col gap-1">
         {formatTimeStampUtxo(tx[blocktime] * 1000)}
-        <div
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full max-w-fit transition-all duration-200 hover:scale-105 hover:brightness-110 cursor-default"
-          style={sptInfo.bgStyle}
-        >
-          <span className="text-xs">{sptInfo.icon}</span>
-          <span className="text-xs font-medium text-white">
-            {sptInfo.label}
-          </span>
-        </div>
+        {intent && (
+          <div
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full max-w-fit transition-all duration-200 hover:scale-105 hover:brightness-110 cursor-default"
+            style={sptInfo.bgStyle}
+          >
+            <span className="text-xs">{sptInfo.icon}</span>
+            <span className="text-xs font-medium text-white">
+              {sptInfo.label}
+            </span>
+          </div>
+        )}
         {sptAmountDisplay && (
           <div
             className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"

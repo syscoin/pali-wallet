@@ -146,7 +146,7 @@ class NotificationManager {
 
     // Determine transaction type label using unified function
     const finalTokenType = detectedTokenType || tx.tokenType;
-    if (finalTokenType) {
+    if (finalTokenType && value !== '0') {
       transactionTypeLabel = getSyscoinTransactionTypeLabel(finalTokenType);
     }
 

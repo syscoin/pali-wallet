@@ -232,16 +232,57 @@ export const getSyscoinIntentAmount = (
     return null;
   }
 
-  // ALLOCATION_SEND and others: First asset output value
-  const firstAsset = vout.find((v: ITransactionVout) => v && v.assetInfo);
-
-  if (firstAsset?.assetInfo) {
-    const info = firstAsset.assetInfo;
+  // ALLOCATION_SEND and similar: compute NET asset delta for the current user.
+  // Sum owned inputs (spent) and owned outputs (received) per assetGuid.
+  // Only show SPT intent when net != 0; otherwise treat as native SYS-only send.
+  const toNumber = (info: IAssetInfo | undefined): number => {
+    if (!info) return 0;
     const dec = decimalsByGuid.get(info.assetGuid);
+    return parseAssetValue(info, dec);
+  };
+
+  const sumByGuid = (items: (ITransactionVin | ITransactionVout)[]) => {
+    const map = new Map<string, number>();
+    for (const it of items) {
+      if (!it || it.isOwn !== true || !it.assetInfo) continue;
+      const guid = it.assetInfo.assetGuid;
+      const prev = map.get(guid) || 0;
+      const val = toNumber(it.assetInfo);
+      map.set(guid, prev + val);
+    }
+    return map;
+  };
+
+  const ownedInputs = sumByGuid(vin as any);
+  const ownedOutputs = sumByGuid(vout as any);
+
+  // Build union of guids
+  const allGuids = new Set<string>([
+    ...ownedInputs.keys(),
+    ...ownedOutputs.keys(),
+  ]);
+
+  let bestGuid: string | null = null;
+  let bestAbsNet = 0;
+  let bestNet = 0;
+  for (const guid of allGuids) {
+    const outVal = ownedOutputs.get(guid) || 0;
+    const inVal = ownedInputs.get(guid) || 0;
+    const net = outVal - inVal; // positive => net received, negative => net sent
+    const absNet = Math.abs(net);
+    if (absNet > bestAbsNet) {
+      bestAbsNet = absNet;
+      bestNet = net;
+      bestGuid = guid;
+    }
+  }
+
+  if (bestGuid && bestAbsNet > 0) {
+    const dec = decimalsByGuid.get(bestGuid);
     return {
-      amount: parseAssetValue(info, dec),
+      amount: Math.abs(bestNet),
       decimals: dec,
-      symbol: symbolByGuid.get(info.assetGuid),
+      symbol: symbolByGuid.get(bestGuid),
     };
   }
 
