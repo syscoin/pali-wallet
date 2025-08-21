@@ -61,13 +61,24 @@ export const validatePrivateKeyValue = async (
     }
 
     try {
-      const result = (await controllerEmitter(
+      // Check extended key format first
+      const zprvResult = (await controllerEmitter(
         ['wallet', 'validateZprv'],
         [privKey, networkToValidate]
       )) as { isValid: boolean } | undefined;
-      return result?.isValid || false;
+      if (zprvResult?.isValid) return true;
+
+      // Fallback to WIF validation for single-address keys
+      const wifResult = (await controllerEmitter(
+        ['wallet', 'validateWif'],
+        [privKey, networkToValidate]
+      )) as { isValid: boolean } | undefined;
+      return wifResult?.isValid || false;
     } catch (error) {
-      console.error('validatePrivateKeyValue: Error validating zprv:', error);
+      console.error(
+        'validatePrivateKeyValue: Error validating UTXO key:',
+        error
+      );
       return false;
     }
   }

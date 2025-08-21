@@ -1045,6 +1045,10 @@ class MainController {
     return this.getActiveKeyring().validateZprv(zprv, targetNetwork);
   }
 
+  public validateWif(wif: string, targetNetwork?: any) {
+    return (this.getActiveKeyring() as any).validateWif(wif, targetNetwork);
+  }
+
   public get trezorSigner() {
     return this.getActiveKeyring().trezorSigner;
   }

@@ -28,9 +28,13 @@ const cleanupCache = () => {
 // Create a unique key for the request
 const createRequestKey = (
   networkUrl: string,
-  xpub: string,
-  requestOptions: string
-): string => `${networkUrl}::${xpub}::${requestOptions}`;
+  xpubOrAddress: string,
+  requestOptions: string,
+  isXpub: boolean
+): string =>
+  `${networkUrl}::${
+    isXpub ? 'xpub' : 'addr'
+  }::${xpubOrAddress}::${requestOptions}`;
 
 /**
  * Wrapper around sys.utils.fetchBackendAccount that provides request deduplication
@@ -38,15 +42,24 @@ const createRequestKey = (
  */
 export const fetchBackendAccountCached = async (
   networkUrl: string,
-  xpub: string,
+  xpubOrAddress: string,
   requestOptions: string,
-  parseData: boolean,
+  _parseData: boolean,
   signal?: AbortSignal
 ): Promise<any> => {
   // Clean up old entries
   cleanupCache();
 
-  const cacheKey = createRequestKey(networkUrl, xpub, requestOptions);
+  // Detect whether the identifier is an XPUB-like or address
+  const looksLikeXpub = /^(xpub|tpub|zpub|vpub)/i.test(xpubOrAddress);
+  const isXpub = looksLikeXpub;
+
+  const cacheKey = createRequestKey(
+    networkUrl,
+    xpubOrAddress,
+    requestOptions,
+    isXpub
+  );
 
   // Check if we have an in-flight request for the same parameters
   const cachedEntry = requestCache.get(cacheKey);
@@ -73,7 +86,7 @@ export const fetchBackendAccountCached = async (
   );
 
   const requestPromise = sys.utils
-    .fetchBackendAccount(networkUrl, xpub, requestOptions, parseData)
+    .fetchBackendAccount(networkUrl, xpubOrAddress, requestOptions, isXpub)
     .catch((error) => {
       // If the request was aborted, throw a specific error
       if (abortController.signal.aborted) {

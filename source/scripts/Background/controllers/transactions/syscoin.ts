@@ -9,26 +9,34 @@ import { treatAndSortTransactions } from './utils';
 
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
-    xpub: string,
+    xpubOrAddress: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
     const requestOptions = 'details=txs&pageSize=30';
 
     const { transactions }: { transactions: ISysTransaction[] } =
-      await fetchBackendAccountCached(networkUrl, xpub, requestOptions, true);
+      await fetchBackendAccountCached(
+        networkUrl,
+        xpubOrAddress,
+        requestOptions,
+        true
+      );
 
     // Ensure we always return an array, even if transactions is falsy
     return Array.isArray(transactions) ? transactions : [];
   };
 
   const pollingSysTransactions = async (
-    xpub: string,
+    xpubOrAddress: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
 
-    const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
+    const getSysTxs = await getInitialUserTransactionsByXpub(
+      xpubOrAddress,
+      networkUrl
+    );
 
     // Ensure syscoinUserTransactions is always an array
     const syscoinUserTransactions = clone(
@@ -67,14 +75,19 @@ const SysTransactionController = (): ISysTransactionsController => {
   };
 
   const fetchTransactionsPageFromBlockbook = async (
-    xpub: string,
+    xpubOrAddress: string,
     networkUrl: string,
     page: number,
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
     const requestOptions = `details=txs&page=${page}&pageSize=${pageSize}`;
     const { transactions }: { transactions: ISysTransaction[] } =
-      await fetchBackendAccountCached(networkUrl, xpub, requestOptions, true);
+      await fetchBackendAccountCached(
+        networkUrl,
+        xpubOrAddress,
+        requestOptions,
+        true
+      );
     return Array.isArray(transactions) ? transactions : [];
   };
 

@@ -73,13 +73,13 @@ const SysAssetsControler = (): ISysAssetsController => {
    * Scans the blockchain for all SPT tokens the user owns
    */
   const getUserOwnedTokens = async (
-    xpub: string
+    xpubOrAddress: string
   ): Promise<ISysTokensAssetReponse[]> => {
     const { activeNetwork } = store.getState().vault;
     const networkUrl = activeNetwork.url;
     const networkChainId = activeNetwork.chainId;
 
-    const cacheKey = `${xpub}::${networkUrl}::${networkChainId}`;
+    const cacheKey = `${xpubOrAddress}::${networkUrl}::${networkChainId}`;
     const cached = userTokensCache.get(cacheKey);
     const now = Date.now();
 
@@ -93,7 +93,7 @@ const SysAssetsControler = (): ISysAssetsController => {
 
     const { tokensAsset } = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
-      xpub,
+      xpubOrAddress,
       requestOptions,
       true
     );
@@ -198,7 +198,7 @@ const SysAssetsControler = (): ISysAssetsController => {
    */
   const validateSPTOnly = async (
     assetGuid: string,
-    xpub: string,
+    xpubOrAddress: string,
     networkUrl: string
   ): Promise<ITokenSysProps | null> => {
     try {
@@ -228,7 +228,7 @@ const SysAssetsControler = (): ISysAssetsController => {
         const requestOptions = 'details=tokenBalances&tokens=nonzero';
         const accountData = await fetchBackendAccountCached(
           ensureTrailingSlash(networkUrl),
-          xpub,
+          xpubOrAddress,
           requestOptions,
           true
         );
@@ -312,7 +312,7 @@ const SysAssetsControler = (): ISysAssetsController => {
   };
 
   const getSysAssetsByXpub = async (
-    xpub: string,
+    xpubOrAddress: string,
     networkUrl: string,
     networkChainId: number
   ): Promise<ISysTokensAssetReponse[]> => {
@@ -320,7 +320,7 @@ const SysAssetsControler = (): ISysAssetsController => {
 
     const { tokensAsset } = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
-      xpub,
+      xpubOrAddress,
       requestOptions,
       true
     );
