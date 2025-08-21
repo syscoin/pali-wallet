@@ -1309,7 +1309,7 @@ const CustomRPCView = () => {
                   name="Info"
                   isSvg
                   size={14}
-                  className="text-brand-gray200 hover:text-white cursor-pointer"
+                  className="text-brand-gray200 hover:text-white cursor-default"
                 />
               </Tooltip>
             </div>
