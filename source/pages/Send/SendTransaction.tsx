@@ -90,10 +90,12 @@ export const SendTransaction = () => {
     ? externalTx.txMetadata
     : state?.txMetadata || {};
 
-  // Detect legacy transaction based on the presence of gasPrice field
+  // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
+  const explicitType = (dataTx as any)?.type;
   const isLegacyTransaction =
-    txMetadata.isLegacyTx ||
-    (dataTx?.gasPrice !== undefined && dataTx?.maxFeePerGas === undefined);
+    Boolean(txMetadata.isLegacyTx) ||
+    explicitType === 0 ||
+    explicitType === '0x0';
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType;
   const tokenStandard = txMetadata.tokenStandard;
@@ -274,7 +276,7 @@ export const SendTransaction = () => {
     return () => {
       cancelled = true;
     };
-  }, [toRaw, ensCache, controllerEmitter]);
+  }, [toRaw, ensCache]);
 
   const handleConfirm = async () => {
     const {
@@ -390,7 +392,6 @@ export const SendTransaction = () => {
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [baseLegacyTx, isLegacyTransaction],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -443,7 +444,6 @@ export const SendTransaction = () => {
               base1559Tx,
               false, // isLegacy = false for EIP-1559
             ],
-            false,
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -728,7 +728,6 @@ export const SendTransaction = () => {
     approvalType,
     dataTx?.to,
     activeAccount.address,
-    controllerEmitter,
     decodedTxData,
   ]);
 

@@ -1045,6 +1045,10 @@ class MainController {
     return this.getActiveKeyring().validateZprv(zprv, targetNetwork);
   }
 
+  public validateWif(wif: string, targetNetwork?: any) {
+    return (this.getActiveKeyring() as any).validateWif(wif, targetNetwork);
+  }
+
   public get trezorSigner() {
     return this.getActiveKeyring().trezorSigner;
   }
@@ -3170,10 +3174,15 @@ class MainController {
                 }
               });
 
+              // Suppress notifications on first sync for this account/chain to avoid spam
+              // Baseline at current latest transactions and notify only for subsequent updates
+              const hasPreviousTxs =
+                Array.isArray(previousTxs) && previousTxs.length > 0;
+
               // Notify about transaction updates
               // Always check for notifications, even during polling - users should be notified
               // about new transactions discovered in the background while using dapps
-              if (account) {
+              if (account && hasPreviousTxs) {
                 txs.forEach((tx: any) => {
                   const txId = tx.hash || tx.txid;
                   const previousTx = txId ? previousTxMap.get(txId) : undefined;

@@ -20,7 +20,7 @@ const isRuntimeAvailable = (): boolean => {
 export async function controllerEmitter<
   T extends IMasterController,
   P extends Methods<T>
->(methods: P, params?: any[], importMethod = false, timeout = 10000) {
+>(methods: P, params?: any[], timeout = 10000) {
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 500; // Start with 500ms to reduce spam
@@ -49,7 +49,6 @@ export async function controllerEmitter<
               data: {
                 methods,
                 params: params || [],
-                importMethod,
               },
             },
             (response) => {

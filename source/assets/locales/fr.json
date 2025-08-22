@@ -105,6 +105,7 @@
     "orderTrezor": "Commandez un portefeuille Trezor et gardez vos fonds en stockage froid.",
     "orderLedger": "Commandez un portefeuille Ledger et gardez vos fonds en stockage froid.",
     "buyNow": "Acheter maintenant",
+    "hardwareWalletSetupConfirm": "Configuration du portefeuille matériel terminée ! Fermez cette fenêtre et rouvrez Pali pour utiliser votre portefeuille matériel. Votre compte a été enregistré et sera disponible lorsque vous redémarrerez Pali.\n\nFermer maintenant ?",
     "createAccount": "CRÉER UN COMPTE",
     "yourNewAccount": "Votre nouveau compte a été créé",
     "nameYourNewAccount": "Nommez votre nouveau compte",

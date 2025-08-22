@@ -345,7 +345,6 @@ export const SendConfirm = () => {
                   isLedger: activeAccount.isLedgerWallet,
                 },
               ],
-              false,
               activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                 ? 300000 // 5 minutes timeout for hardware wallet operations
                 : 10000 // Default 10 seconds for regular wallets
@@ -457,7 +456,6 @@ export const SendConfirm = () => {
                     },
                     !isEIP1559Compatible,
                   ],
-                  false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
                     : 10000 // Default 10 seconds for regular wallets
@@ -521,7 +519,6 @@ export const SendConfirm = () => {
                       ),
                 },
               ],
-              false,
               activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                 ? 300000 // 5 minutes timeout for hardware wallet operations
                 : 10000 // Default 10 seconds for regular wallets
@@ -574,7 +571,6 @@ export const SendConfirm = () => {
                   await controllerEmitter(
                     ['wallet', 'sendAndSaveEthTransaction'],
                     [retryTxObject, !isEIP1559Compatible],
-                    false,
                     activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                       ? 300000 // 5 minutes timeout for hardware wallet operations
                       : 10000 // Default 10 seconds for regular wallets
@@ -674,7 +670,6 @@ export const SendConfirm = () => {
                           ),
                     },
                   ],
-                  false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
                     : 10000 // Default 10 seconds for regular wallets
@@ -762,7 +757,6 @@ export const SendConfirm = () => {
                           ),
                     },
                   ],
-                  false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000
                     : 10000
@@ -853,7 +847,6 @@ export const SendConfirm = () => {
                           ),
                     },
                   ],
-                  false,
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000
                     : 10000
@@ -1126,7 +1119,6 @@ export const SendConfirm = () => {
     cachedGasData,
     feeCalculationError, // Added feeCalculationError to dependencies
     retryTrigger, // Added retryTrigger to dependencies
-    // Removed unstable dependencies: controllerEmitter, navigate, alert, t, getLegacyGasPrice
   ]);
 
   const getCalculatedFee = useMemo(() => {

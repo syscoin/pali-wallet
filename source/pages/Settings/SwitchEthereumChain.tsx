@@ -29,6 +29,19 @@ const SwitchChain: React.FC = () => {
   const network = networks.ethereum[chainId];
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
+  const getTypeBadge = (kind?: INetworkType) => {
+    const isUtxo = kind === INetworkType.Syscoin;
+    const text = isUtxo ? 'UTXO' : 'EVM';
+    const colorClass = isUtxo ? 'bg-brand-pink' : 'bg-brand-blue';
+    return (
+      <span
+        className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${colorClass}`}
+      >
+        {text}
+      </span>
+    );
+  };
   const onSubmit = async () => {
     setLoading(true);
     try {
@@ -91,6 +104,15 @@ const SwitchChain: React.FC = () => {
           </div>
           <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
             <CurrentChains />
+            <div className="mt-2 flex items-center gap-2 text-brand-royalblue text-xs">
+              <span className="flex items-center gap-1">
+                {getTypeBadge(prevKindRef.current)}
+              </span>
+              <Icon name="arrowright" isSvg size={16} />
+              <span className="flex items-center gap-1">
+                {getTypeBadge(INetworkType.Ethereum)}
+              </span>
+            </div>
           </div>
         </div>
 

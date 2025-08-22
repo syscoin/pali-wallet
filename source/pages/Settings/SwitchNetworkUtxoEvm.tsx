@@ -23,6 +23,19 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const prevChainIdRef = useRef(activeNetwork?.chainId);
   const prevKindRef = useRef(activeNetwork?.kind);
 
+  const getTypeBadge = (kind?: INetworkType) => {
+    const isUtxo = kind === INetworkType.Syscoin;
+    const text = isUtxo ? 'UTXO' : 'EVM';
+    const colorClass = isUtxo ? 'bg-brand-pink' : 'bg-brand-blue';
+    return (
+      <span
+        className={`px-1.5 py-0.5 text-[10px] font-medium text-white rounded-full ${colorClass}`}
+      >
+        {text}
+      </span>
+    );
+  };
+
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
     console.error('[SwitchNetworkUtxoEvm] Missing required data:', {
@@ -94,6 +107,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                     networkKind={prevKindRef.current}
                   />
                   {previousNetworkName}
+                  {getTypeBadge(prevKindRef.current)}
                 </span>
               </div>
 
@@ -106,6 +120,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                     networkKind={INetworkType.Syscoin}
                   />
                   {newNetwork?.label || newChainValue}
+                  {getTypeBadge(newNetwork?.kind ?? INetworkType.Syscoin)}
                 </span>
               </div>
 

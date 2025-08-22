@@ -14,9 +14,10 @@ const SyscoinBalanceController = (): ISysBalanceController => {
   ) => {
     const requestDetails = 'details=basic&pageSize=0';
 
+    const xpubOrAddress = currentAccount.xpub || currentAccount.address;
     const accountData = await fetchBackendAccountCached(
       networkUrl,
-      currentAccount.xpub,
+      xpubOrAddress,
       requestDetails,
       true
     );

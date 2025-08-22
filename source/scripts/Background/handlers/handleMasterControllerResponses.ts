@@ -14,7 +14,7 @@ export const handleMasterControllerResponses = (
         return false;
       }
 
-      const { methods, params, importMethod } = data;
+      const { methods, params } = data;
 
       let targetMethod = MasterControllerInstance;
 
@@ -26,12 +26,11 @@ export const handleMasterControllerResponses = (
         }
       }
 
-      if (typeof targetMethod === 'function' || importMethod) {
+      if (typeof targetMethod === 'function') {
         Promise.resolve()
           .then(async () => {
-            const response = importMethod
-              ? targetMethod
-              : await (targetMethod as any)(...params);
+            // Always execute the method; never attempt to send functions over messaging
+            const response = await (targetMethod as any)(...params);
             return response;
           })
           .then(sendResponse)

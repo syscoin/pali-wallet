@@ -65,9 +65,16 @@ export const waitForTransactionInState = async (
   timeoutMs: number = 10000
 ): Promise<void> => {
   await waitForStateCondition((state) => {
-    const { transactions } = state.vault;
-    const found = Object.values(transactions || {}).some(
-      (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
+    const vault = state.vault;
+    const activeId = vault?.activeAccount?.id;
+    const activeType = vault?.activeAccount?.type;
+    const accountTxs = vault?.accountTransactions?.[activeType]?.[activeId];
+    if (!accountTxs) return undefined;
+    const allTxArrays = Object.values(accountTxs || {}) as any[]; // { ethereum: {}, syscoin: {} }
+    const found = allTxArrays.some((txsByHash: any) =>
+      Object.values(txsByHash || {}).some(
+        (tx: any) => tx?.hash?.toLowerCase() === txHash.toLowerCase()
+      )
     );
     return found ? true : undefined;
   }, timeoutMs);

@@ -416,6 +416,7 @@
     "orderTrezor": "Encomende uma carteira Trezor e mantenha seus fundos em armazenamento frio.",
     "orderLedger": "Encomende uma carteira Ledger e mantenha seus fundos em armazenamento frio.",
     "buyNow": "Comprar agora",
+    "hardwareWalletSetupConfirm": "Configuração da carteira de hardware concluída! Feche esta janela e reabra o Pali para usar sua carteira de hardware. Sua conta foi salva e estará disponível quando você reiniciar o Pali.\n\nDeseja fechar agora?",
     "createAccount": "CRIAR CONTA",
     "yourNewAccount": "Sua nova conta foi criada",
     "nameYourNewAccount": "Nomeie sua nova conta",

@@ -140,19 +140,11 @@ const CustomRPCView = () => {
     apiUrl: string
   ): Promise<{ error?: string; success: boolean }> => {
     try {
-      console.log('testBlockExplorerApi called with:', apiUrl);
-      console.log('About to call controllerEmitter with path:', [
-        'wallet',
-        'testExplorerApi',
-      ]);
-
       // Use the controller's testExplorerApi method
       const result = await controllerEmitter(
         ['wallet', 'testExplorerApi'],
         [apiUrl]
       );
-
-      console.log('controllerEmitter result:', result);
 
       // The controller returns { success: boolean; error?: string }
       // Make sure we properly handle the response
@@ -1006,12 +998,13 @@ const CustomRPCView = () => {
                 </span>
                 <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
                   {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
-                    ? currentNetwork.slip44 || currentNetwork.chainId
+                    ? currentNetwork.slip44 ?? currentNetwork.chainId
                     : currentNetwork.chainId}
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
-                ${currentNetwork.currency.toUpperCase()} •{' '}
+                {'$'}
+                {(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
                 {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}
@@ -1316,7 +1309,7 @@ const CustomRPCView = () => {
                   name="Info"
                   isSvg
                   size={14}
-                  className="text-brand-gray200 hover:text-white cursor-pointer"
+                  className="text-brand-gray200 hover:text-white cursor-default"
                 />
               </Tooltip>
             </div>

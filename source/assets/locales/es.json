@@ -424,6 +424,7 @@
     "orderTrezor": "Ordena un monedero Trezor y guarda tus fondos en almacenamiento en frío.",
     "orderLedger": "Ordena un monedero Ledger y guarda tus fondos en almacenamiento en frío.",
     "buyNow": "Comprar ahora",
+    "hardwareWalletSetupConfirm": "¡Configuración del monedero de hardware completada! Cierra esta ventana y vuelve a abrir Pali para usar tu monedero de hardware. Tu cuenta se ha guardado y estará disponible cuando reinicies Pali.\n\n¿Cerrar ahora?",
     "createAccount": "CREAR CUENTA",
     "yourNewAccount": "Tu nueva cuenta ha sido creada",
     "nameYourNewAccount": "Nombrar tu nueva cuenta",
