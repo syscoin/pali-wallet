@@ -25,6 +25,8 @@ const ImportAccountView = () => {
   //* States
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [watchOnly, setWatchOnly] = useState(false);
+  const [validIdentifier, setValidIdentifier] = useState(false);
 
   const {
     accounts,
@@ -42,7 +44,9 @@ const ImportAccountView = () => {
     if (form.getFieldValue('privKey')) {
       try {
         const account = await controllerEmitter(
-          ['wallet', 'importAccountFromPrivateKey'],
+          watchOnly
+            ? ['wallet', 'importWatchOnlyFromController']
+            : ['wallet', 'importAccountFromPrivateKey'],
           [form.getFieldValue('privKey'), form.getFieldValue('label')]
         );
 
@@ -102,6 +106,15 @@ const ImportAccountView = () => {
               id="account-name-input"
             />
           </Form.Item>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-white text-sm">Watch-only</label>
+            <input
+              type="checkbox"
+              checked={watchOnly}
+              onChange={(e) => setWatchOnly(e.target.checked)}
+              className="toggle-checkbox"
+            />
+          </div>
           <Form.Item
             name="privKey"
             className="md:w-full"
@@ -110,41 +123,50 @@ const ImportAccountView = () => {
               { required: true, message: '' },
               () => ({
                 async validator(_, value) {
-                  const isValid = await validatePrivateKeyValue(
-                    value,
-                    isBitcoinBased,
-                    activeNetwork
-                  );
-
-                  if (isValid) {
-                    setValidPrivateKey(true);
-                    return Promise.resolve();
-                  }
-
-                  setValidPrivateKey(false);
-
-                  // Check if it's a network type mismatch
-                  const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
-                  const prefix = value.substring(0, 4);
-                  const looksLikeZprv = zprvPrefixes.includes(prefix);
-                  const looksLikeEvm =
-                    value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
-
-                  if (!isBitcoinBased && looksLikeZprv) {
-                    return Promise.reject(
-                      new Error(t('settings.utxoKeyOnEvmError'))
+                  if (!watchOnly) {
+                    const isValid = await validatePrivateKeyValue(
+                      value,
+                      isBitcoinBased,
+                      activeNetwork
                     );
-                  }
-
-                  if (isBitcoinBased && looksLikeEvm) {
+                    if (isValid) {
+                      setValidPrivateKey(true);
+                      setValidIdentifier(false);
+                      return Promise.resolve();
+                    }
+                    setValidPrivateKey(false);
+                    // Check if it's a network type mismatch
+                    const zprvPrefixes = ['zprv', 'vprv', 'xprv', 'tprv'];
+                    const prefix = value.substring(0, 4);
+                    const looksLikeZprv = zprvPrefixes.includes(prefix);
+                    const looksLikeEvm =
+                      value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
+                    if (!isBitcoinBased && looksLikeZprv) {
+                      return Promise.reject(
+                        new Error(t('settings.utxoKeyOnEvmError'))
+                      );
+                    }
+                    if (isBitcoinBased && looksLikeEvm) {
+                      return Promise.reject(
+                        new Error(t('settings.evmKeyOnUtxoError'))
+                      );
+                    }
                     return Promise.reject(
-                      new Error(t('settings.evmKeyOnUtxoError'))
+                      new Error(t('settings.invalidPrivateKeyFormat'))
                     );
+                  } else {
+                    // Watch-only: accept any non-empty input; validate on submit
+                    const hasValue = !!(
+                      value && String(value).trim().length > 0
+                    );
+                    setValidIdentifier(hasValue);
+                    setValidPrivateKey(false);
+                    return hasValue
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          new Error(t('settings.invalidPrivateKeyFormat'))
+                        );
                   }
-
-                  return Promise.reject(
-                    new Error(t('settings.invalidPrivateKeyFormat'))
-                  );
                 },
               }),
             ]}
@@ -152,7 +174,11 @@ const ImportAccountView = () => {
             <Input
               type="text"
               className="custom-input-normal relative"
-              placeholder={t('settings.yourPrivateKey')}
+              placeholder={
+                watchOnly
+                  ? 'Address / XPUB / Descriptor'
+                  : t('settings.yourPrivateKey')
+              }
               id="account-name-input"
             />
           </Form.Item>
@@ -164,7 +190,7 @@ const ImportAccountView = () => {
             loading={isImporting}
             onClick={handleImportAccount}
             fullWidth={true}
-            disabled={!validPrivateKey}
+            disabled={watchOnly ? !validIdentifier : !validPrivateKey}
           >
             {t('buttons.import')}
           </NeutralButton>

@@ -50,9 +50,13 @@ export const fetchBackendAccountCached = async (
   // Clean up old entries
   cleanupCache();
 
-  // Detect whether the identifier is an XPUB-like or address
+  // Detect whether the identifier is an XPUB-like or descriptor; descriptors use xpub endpoint
   const looksLikeXpub = /^(xpub|tpub|zpub|vpub)/i.test(xpubOrAddress);
-  const isXpub = looksLikeXpub;
+  const looksLikeDescriptor =
+    /^(addr|pkh|wpkh|sh|wsh|tr|combo|multi|sortedmulti)\s*\(/i.test(
+      xpubOrAddress
+    );
+  const isXpub = looksLikeXpub || looksLikeDescriptor;
 
   const cacheKey = createRequestKey(
     networkUrl,
