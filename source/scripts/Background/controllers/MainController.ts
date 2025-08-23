@@ -1089,8 +1089,8 @@ class MainController {
     return this.getActiveKeyring().getActiveAccount();
   }
 
-  public createNewSeed() {
-    return this.getActiveKeyring().createNewSeed();
+  public createNewSeed(wordCount?: number) {
+    return this.getActiveKeyring().createNewSeed(wordCount);
   }
 
   private async forgetMainWallet(pwd: string) {

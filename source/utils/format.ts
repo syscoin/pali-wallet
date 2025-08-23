@@ -240,7 +240,8 @@ export const formatSeedPhrase = (seed: string) => {
   const formattedSeed = seedWithoutDoubleSpaces.trim();
   const seedLength = formattedSeed.split(' ').length;
 
-  if (seedLength === 12) {
+  const allowedWordCounts = new Set([12, 15, 18, 21, 24]);
+  if (allowedWordCounts.has(seedLength)) {
     return formattedSeed;
   } else {
     return { seedLength, seedLengthError: true };
