@@ -56,7 +56,7 @@ export const ConfirmPhrase = ({
 
   return (
     <OnboardingLayout title={t('seedConfirm.confirmRecovery')}>
-      <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out">
+      <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out pb-36 md:pb-48">
         <>
           <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-[rgba(255, 255, 255, 0.16)] before:border-b before:border-[rgba(255, 255, 255, 0.16)] box-border transition-all duration-300 md:w-9/12">
             {newList.map((phrase, idx) => (
@@ -85,18 +85,20 @@ export const ConfirmPhrase = ({
             ))}
           </section>
 
-          <div className="absolute bottom-12">
-            <Button
-              className={`bg-brand-deepPink100 ${
-                orgList.length ? 'opacity-60' : 'opacity-100'
-              } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
-              type="button"
-              onClick={() => {
-                !orgList?.length ? handleValidate() : null;
-              }}
-            >
-              {t('buttons.validate')}
-            </Button>
+          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+            <div className="flex justify-center gap-3">
+              <Button
+                className={`bg-brand-deepPink100 ${
+                  orgList.length ? 'opacity-60' : 'opacity-100'
+                } w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+                type="button"
+                onClick={() => {
+                  !orgList?.length ? handleValidate() : null;
+                }}
+              >
+                {t('buttons.validate')}
+              </Button>
+            </div>
           </div>
         </>
         {showModal && !passed && (

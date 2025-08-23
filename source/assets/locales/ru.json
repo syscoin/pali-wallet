@@ -35,7 +35,8 @@
     "retryConnect": "Повторить подключение",
     "delete": "Удалить",
     "remove": "Удалить",
-    "errorDescription": "Описание ошибки"
+    "errorDescription": "Описание ошибки",
+    "generate": "Сгенерировать"
   },
   "header": {
     "importAccount": "Импорт аккаунта",
@@ -310,7 +311,7 @@
   },
   "import": {
     "importModalWordMissing": "Слово отсутствует!",
-    "importModalSeed": "Сид-фраза должна содержать 12 или 24 слова, а вы ввели {{seedLength}}.",
+    "importModalSeed": "Сид-фраза должна содержать 12, 15, 18, 21 или 24 слов(а), а вы ввели {{seedLength}}.",
     "importAttention": "ВНИМАНИЕ: ",
     "importingYourAccount": "После импорта кошелька вам необходимо заново добавить аппаратные кошельки и настроить персональные параметры кошелька.",
     "pasteYourWalletSeed": "Вставьте сид-фразу вашего кошелька"

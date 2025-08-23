@@ -1089,8 +1089,8 @@ class MainController {
     return this.getActiveKeyring().getActiveAccount();
   }
 
-  public createNewSeed() {
-    return this.getActiveKeyring().createNewSeed();
+  public createNewSeed(wordCount?: number) {
+    return this.getActiveKeyring().createNewSeed(wordCount);
   }
 
   private async forgetMainWallet(pwd: string) {
@@ -2929,6 +2929,37 @@ class MainController {
       );
     }, 10);
 
+    return importedAccount;
+  }
+
+  public async importWatchOnlyFromController(
+    identifier: string,
+    label?: string
+  ) {
+    const importedAccount = await (
+      this.getActiveKeyring() as any
+    ).importWatchOnly(identifier, label);
+    store.dispatch(
+      createAccount({
+        account: importedAccount,
+        accountType: KeyringAccountType.Imported,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: importedAccount.id,
+        type: KeyringAccountType.Imported,
+      })
+    );
+    await this.saveWalletState('import-account-watch-only', true, true);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(false, true).catch((err) => {
+        console.warn(
+          '[MainController] Post-import refresh failed:',
+          err?.message || err
+        );
+      });
+    }, 10);
     return importedAccount;
   }
 

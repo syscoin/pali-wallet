@@ -35,7 +35,8 @@
     "retryConnect": "Reintentar conectar",
     "delete": "Eliminar",
     "remove": "Remover",
-    "errorDescription": "Descripción del error"
+    "errorDescription": "Descripción del error",
+    "generate": "Generar"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -165,7 +166,7 @@
   },
   "import": {
     "importModalWordMissing": "Palabra faltante",
-    "importModalSeed": "La frase de semilla debe tener 12 o 24 palabras y has insertado {{seedLength}}.",
+    "importModalSeed": "La frase semilla debe tener 12, 15, 18, 21 o 24 palabras y has introducido {{seedLength}}.",
     "importAttention": "Atención:",
     "importingYourAccount": "Después de importar, deberás volver a agregar tus carteras hardware y ajustar la configuración personal.",
     "pasteYourWalletSeed": "Escribe tu frase semilla"

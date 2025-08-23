@@ -35,7 +35,8 @@
     "retryConnect": "다시 연결",
     "delete": "삭제",
     "remove": "제거",
-    "errorDescription": "오류 설명"
+    "errorDescription": "오류 설명",
+    "generate": "생성"
   },
   "header": {
     "importAccount": "계정 가져오기",
@@ -310,7 +311,7 @@
   },
   "import": {
     "importModalWordMissing": "단어가 누락되었습니다!",
-    "importModalSeed": "시드 구문은 12개 또는 24개의 단어여야 하며 {{seedLength}}개를 입력했습니다.",
+    "importModalSeed": "시드 구문은 12, 15, 18, 21 또는 24개의 단어여야 하며 {{seedLength}}개를 입력했습니다.",
     "importAttention": "주의: ",
     "importingYourAccount": "지갑을 가져온 후에는 하드웨어 지갑을 다시 추가하고 지갑의 개인 설정을 조정해야 합니다.",
     "pasteYourWalletSeed": "지갑 시드 구문을 붙여넣으세요"

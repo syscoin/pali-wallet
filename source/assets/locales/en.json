@@ -35,7 +35,8 @@
     "retryConnect": "Retry connect",
     "delete": "Delete",
     "remove": "Remove",
-    "errorDescription": "Error description"
+    "errorDescription": "Error description",
+    "generate": "Generate"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -165,7 +166,7 @@
   },
   "import": {
     "importModalWordMissing": "Word missing!",
-    "importModalSeed": "The seed phrase must be 12 or 24 words and you inserted {{seedLength}}.",
+    "importModalSeed": "The seed phrase must be 12, 15, 18, 21 or 24 words and you inserted {{seedLength}}.",
     "importAttention": "ATTENTION: ",
     "importingYourAccount": "After importing your wallet you must add again your hardware wallets and adjust the wallet's personal settings.",
     "pasteYourWalletSeed": "Paste your wallet seed phrase"

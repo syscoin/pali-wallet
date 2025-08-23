@@ -35,7 +35,8 @@
     "retryConnect": "Réessayer de se connecter",
     "delete": "Supprimer",
     "remove": "Retirer",
-    "errorDescription": "Description de l'erreur"
+    "errorDescription": "Description de l'erreur",
+    "generate": "Générer"
   },
   "header": {
     "importAccount": "Importer un compte",
@@ -305,7 +306,7 @@
   },
   "import": {
     "importModalWordMissing": "Mot manquant !",
-    "importModalSeed": "La phrase de récupération doit contenir 12 ou 24 mots et vous en avez inséré {{seedLength}}.",
+    "importModalSeed": "La phrase de récupération doit contenir 12, 15, 18, 21 ou 24 mots et vous en avez saisi {{seedLength}}.",
     "importAttention": "ATTENTION : ",
     "importingYourAccount": "Après l'importation de votre portefeuille, vous devrez ajouter à nouveau vos portefeuilles matériels et ajuster les paramètres personnels.",
     "pasteYourWalletSeed": "Collez votre phrase de récupération"
