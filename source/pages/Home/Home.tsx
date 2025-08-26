@@ -237,6 +237,8 @@ export const Home = () => {
       const matches = fiatPriceValue.match(/[\d\.]+/g);
       if (matches && matches.length > 0) {
         const numberValue = Number(matches[0]);
+        // Preserve original formatted string when fiat is zero
+        if (numberValue === 0) return fiatPriceValue;
         return formatMillionNumber(numberValue);
       }
       return fiatPriceValue;
