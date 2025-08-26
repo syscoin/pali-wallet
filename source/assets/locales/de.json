@@ -35,7 +35,8 @@
     "retryConnect": "Erneut verbinden",
     "delete": "Löschen",
     "remove": "Entfernen",
-    "errorDescription": "Fehlerbeschreibung"
+    "errorDescription": "Fehlerbeschreibung",
+    "generate": "Generieren"
   },
   "header": {
     "importAccount": "Konto importieren",
@@ -310,7 +311,7 @@
   },
   "import": {
     "importModalWordMissing": "Wort fehlt!",
-    "importModalSeed": "Die Seed-Phrase muss 12 oder 24 Wörter enthalten und Sie haben {{seedLength}} eingegeben.",
+    "importModalSeed": "Die Seed-Phrase muss 12, 15, 18, 21 oder 24 Wörter enthalten, und Sie haben {{seedLength}} eingegeben.",
     "importAttention": "ACHTUNG: ",
     "importingYourAccount": "Nach dem Importieren Ihres Wallets müssen Sie Ihre Hardware-Wallets erneut hinzufügen und die persönlichen Wallet-Einstellungen anpassen.",
     "pasteYourWalletSeed": "Fügen Sie Ihre Wallet-Seed-Phrase ein"

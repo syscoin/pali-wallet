@@ -35,7 +35,8 @@
     "retryConnect": "再接続",
     "delete": "削除",
     "remove": "削除",
-    "errorDescription": "エラー説明"
+    "errorDescription": "エラーの説明",
+    "generate": "生成"
   },
   "header": {
     "importAccount": "アカウントインポート",
@@ -310,7 +311,7 @@
   },
   "import": {
     "importModalWordMissing": "単語が不足しています！",
-    "importModalSeed": "シードフレーズは12または24単語である必要があり、{{seedLength}}単語入力されました。",
+    "importModalSeed": "シードフレーズは12、15、18、21、または24単語である必要があり、{{seedLength}}単語入力されました。",
     "importAttention": "注意：",
     "importingYourAccount": "ウォレットをインポートした後、ハードウェアウォレットを再度追加し、ウォレットの個人設定を調整する必要があります。",
     "pasteYourWalletSeed": "ウォレットのシードフレーズを貼り付けてください"

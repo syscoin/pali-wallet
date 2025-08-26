@@ -35,7 +35,8 @@
     "retryConnect": "重试连接",
     "delete": "删除",
     "remove": "移除",
-    "errorDescription": "错误描述"
+    "errorDescription": "错误描述",
+    "generate": "生成"
   },
   "header": {
     "importAccount": "导入账户",
@@ -529,7 +530,7 @@
   },
   "import": {
     "importModalWordMissing": "缺少单词！",
-    "importModalSeed": "助记词必须是12或24个单词，您输入了{{seedLength}}个。",
+    "importModalSeed": "助记词必须是12、15、18、21或24个单词，您输入了{{seedLength}}个。",
     "importAttention": "注意：",
     "importingYourAccount": "导入钱包后，您必须重新添加硬件钱包并调整钱包的个人设置。",
     "pasteYourWalletSeed": "粘贴您的钱包助记词"
