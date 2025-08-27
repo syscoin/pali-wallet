@@ -3003,10 +3003,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.532":
-  version "1.0.532"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.532.tgz#97a8394a234adacdf43091be56e1144efe987941"
-  integrity sha512-zG8oU6rXHhjVsiun074Ix91CshkumBAyf0k9Y8/eFiIjgwdraLN3b2nOi4x4WZ/PjEJYD0iZgdAoPsmWGub7hA==
+"@sidhujag/sysweb3-keyring@^1.0.533":
+  version "1.0.533"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.533.tgz#392283e3f1b2eabb8a3ae513568296f23c82776e"
+  integrity sha512-podcWzQIpdGg5kuBFERHIQ5f+paonRVwu8xyiltg8AqP9aezzsLTWlcvuFIdUMdhl8jw/EsJmQAAO021ludjzg==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
