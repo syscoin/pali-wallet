@@ -526,7 +526,9 @@
     "walletLoggedOut": "A carteira está desconectada",
     "closeAndReopenPali": "Feche esta janela e reabra o Pali para autenticar e conectar sua carteira de hardware",
     "activeAccountNotFound": "Erro: Conta ativa não encontrada",
-    "paliWalletBrowserExtension": "Extensão do Navegador Pali Wallet"
+    "paliWalletBrowserExtension": "Extensão do Navegador Pali Wallet",
+    "addressType": "Tipo de endereço",
+    "taprootDisabled": "Assinatura Taproot em breve"
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",

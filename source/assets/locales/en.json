@@ -531,7 +531,9 @@
     "walletLoggedOut": "Wallet is logged out",
     "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet",
     "activeAccountNotFound": "Error: Active account not found",
-    "paliWalletBrowserExtension": "Pali Wallet Browser Extension"
+    "paliWalletBrowserExtension": "Pali Wallet Browser Extension",
+    "addressType": "Address type",
+    "taprootDisabled": "Taproot signing coming soon"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

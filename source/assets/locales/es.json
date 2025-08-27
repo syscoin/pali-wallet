@@ -531,7 +531,9 @@
     "walletLoggedOut": "La billetera está desconectada",
     "closeAndReopenPali": "Cierre esta ventana y reabra Pali para autenticarse y conectar su billetera de hardware",
     "activeAccountNotFound": "Error: Cuenta activa no encontrada",
-    "paliWalletBrowserExtension": "Extensión del Navegador Pali Wallet"
+    "paliWalletBrowserExtension": "Extensión del Navegador Pali Wallet",
+    "addressType": "Tipo de dirección",
+    "taprootDisabled": "La firma Taproot estará disponible pronto"
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

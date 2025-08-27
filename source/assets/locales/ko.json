@@ -213,7 +213,9 @@
     "walletLoggedOut": "지갑이 로그아웃되었습니다",
     "closeAndReopenPali": "이 창을 닫고 Pali를 다시 열어서 인증하고 하드웨어 지갑을 연결하세요",
     "activeAccountNotFound": "오류: 활성 계정을 찾을 수 없습니다",
-    "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장"
+    "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장",
+    "addressType": "주소 유형",
+    "taprootDisabled": "Taproot 서명은 곧 지원됩니다"
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 8자)",
