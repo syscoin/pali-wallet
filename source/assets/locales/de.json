@@ -214,8 +214,7 @@
     "closeAndReopenPali": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um sich zu authentifizieren und Ihre Hardware-Wallet zu verbinden",
     "activeAccountNotFound": "Fehler: Aktives Konto nicht gefunden",
     "paliWalletBrowserExtension": "Pali Wallet Browser-Erweiterung",
-    "addressType": "Adresstyp",
-    "taprootDisabled": "Taproot-Signierung bald verfügbar"
+    "addressType": "Adresstyp"
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",

@@ -214,8 +214,7 @@
     "closeAndReopenPali": "Закройте это окно и снова откройте Pali для аутентификации и подключения аппаратного кошелька",
     "activeAccountNotFound": "Ошибка: Активный аккаунт не найден",
     "paliWalletBrowserExtension": "Расширение для браузера Pali Wallet",
-    "addressType": "Тип адреса",
-    "taprootDisabled": "Подпись Taproot скоро будет доступна"
+    "addressType": "Тип адреса"
   },
   "components": {
     "newPassword": "Новый пароль (мин. 8 символов)",

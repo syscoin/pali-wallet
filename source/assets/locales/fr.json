@@ -214,8 +214,7 @@
     "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel",
     "activeAccountNotFound": "Erreur: Compte actif non trouvé",
     "paliWalletBrowserExtension": "Extension de Navigateur Pali Wallet",
-    "addressType": "Type d'adresse",
-    "taprootDisabled": "Signature Taproot bientôt disponible"
+    "addressType": "Type d'adresse"
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",

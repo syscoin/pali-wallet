@@ -2903,7 +2903,7 @@ class MainController {
   public async importAccountFromPrivateKey(
     privKey: string,
     label?: string,
-    options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' }
+    options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' | 'p2tr' }
   ) {
     const importedAccount = await (
       this.getActiveKeyring() as any
@@ -3453,7 +3453,6 @@ class MainController {
   public async signSendAndSaveTransaction(params: {
     isLedger?: boolean; // For UTXO transactions
     isTrezor?: boolean;
-    pathIn?: string;
     psbt?: any;
   }): Promise<any> {
     const { isBitcoinBased } = store.getState().vault;
@@ -3468,7 +3467,6 @@ class MainController {
           psbt: params.psbt,
           isTrezor: params.isTrezor,
           isLedger: params.isLedger,
-          pathIn: params.pathIn,
         });
 
         // Step 2: Send the transaction
