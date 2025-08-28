@@ -8,7 +8,7 @@ export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
   label: 'Syscoin Mainnet',
   currency: 'sys',
   url: 'https://blockbook.syscoin.org/',
-  explorer: 'https://blockbook.syscoin.org/',
+  explorer: 'https://explorer-blockbook.syscoin.org/',
   default: true,
   kind: INetworkType.Syscoin,
 });
@@ -19,7 +19,7 @@ export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
   label: 'Syscoin Testnet',
   currency: 'tsys',
   url: 'https://blockbook-dev.syscoin.org/',
-  explorer: 'https://blockbook-dev.syscoin.org/',
+  explorer: 'https://explorer-blockbook-dev.syscoin.org/',
   default: false,
   kind: INetworkType.Syscoin,
 });

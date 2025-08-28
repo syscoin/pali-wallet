@@ -1,6 +1,6 @@
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -27,6 +27,9 @@ const ImportAccountView = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [watchOnly, setWatchOnly] = useState(false);
   const [validIdentifier, setValidIdentifier] = useState(false);
+  const [selectedUtxoAddressType, setSelectedUtxoAddressType] = useState<
+    'p2wpkh' | 'p2pkh'
+  >('p2wpkh');
 
   const {
     accounts,
@@ -47,7 +50,15 @@ const ImportAccountView = () => {
           watchOnly
             ? ['wallet', 'importWatchOnlyFromController']
             : ['wallet', 'importAccountFromPrivateKey'],
-          [form.getFieldValue('privKey'), form.getFieldValue('label')]
+          watchOnly
+            ? [form.getFieldValue('privKey'), form.getFieldValue('label')]
+            : [
+                form.getFieldValue('privKey'),
+                form.getFieldValue('label'),
+                isBitcoinBased
+                  ? { utxoAddressType: selectedUtxoAddressType }
+                  : undefined,
+              ]
         );
 
         if (account) setIsAccountImported(true);
@@ -65,6 +76,20 @@ const ImportAccountView = () => {
       }
     }
   };
+
+  // Simple WIF heuristic for showing the address-type selector: only on UTXO networks, not watch-only, not extended keys
+  const showAddressTypeSelector = useMemo(() => {
+    if (watchOnly || !isBitcoinBased) return false;
+    const value: string = form.getFieldValue('privKey') || '';
+    if (!value) return false;
+    const prefix = value.substring(0, 4);
+    const looksLikeExtended = ['zprv', 'vprv', 'xprv', 'tprv'].includes(prefix);
+    const looksLikeHex =
+      value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
+    if (looksLikeExtended || looksLikeHex) return false;
+    // If basic validation passed, treat as WIF and show selector
+    return validPrivateKey;
+  }, [watchOnly, isBitcoinBased, form, validPrivateKey]);
 
   return (
     <>
@@ -106,6 +131,40 @@ const ImportAccountView = () => {
               id="account-name-input"
             />
           </Form.Item>
+          {showAddressTypeSelector && (
+            <div className="mb-2 text-left">
+              <label className="block text-white text-sm mb-2">
+                {t('settings.addressType')}
+              </label>
+              <div className="flex gap-3">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="utxoAddressType"
+                    checked={selectedUtxoAddressType === 'p2wpkh'}
+                    onChange={() => setSelectedUtxoAddressType('p2wpkh')}
+                  />
+                  <span className="text-white text-sm">SegWit (P2WPKH)</span>
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="utxoAddressType"
+                    checked={selectedUtxoAddressType === 'p2pkh'}
+                    onChange={() => setSelectedUtxoAddressType('p2pkh')}
+                  />
+                  <span className="text-white text-sm">Legacy (P2PKH)</span>
+                </label>
+                <label
+                  className="inline-flex items-center gap-2 opacity-50 cursor-not-allowed"
+                  title={t('settings.taprootDisabled')}
+                >
+                  <input type="radio" name="utxoAddressType" disabled />
+                  <span className="text-white text-sm">Taproot (P2TR)</span>
+                </label>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-2">
             <label className="text-white text-sm">Watch-only</label>
             <input

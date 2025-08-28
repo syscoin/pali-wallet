@@ -74,9 +74,13 @@ const UtxoTransactionsListComponentBase = ({
   const isSentByUs = anyVinOwn;
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
-  // Native SYS amount from first vout
+  // Native SYS amount: prefer output to our address for watch-only single-address accounts
+  // Fallback to first vout when no match (legacy behavior)
   if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
-    const value = Number(tx.vout[0]?.value || 0); // satoshis
+    const candidateVout =
+      tx.vout.find((v: any) => v?.isOwn === true) || tx.vout[0];
+
+    const value = Number(candidateVout?.value || 0); // satoshis
     if (!isNaN(value) && value > 0) {
       const baseSymbol = activeNetwork?.currency
         ? String(activeNetwork.currency).toUpperCase()

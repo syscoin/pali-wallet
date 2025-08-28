@@ -15,6 +15,7 @@ import {
   clearRpcCaches,
   retryableFetch,
   validateRpcBatchUniversal,
+  getNetworkConfig,
 } from '@sidhujag/sysweb3-network';
 import { txUtils, ITxid } from '@sidhujag/sysweb3-utils';
 import {
@@ -26,6 +27,7 @@ import {
 } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
+import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
@@ -2898,11 +2900,14 @@ class MainController {
     }
   }
 
-  public async importAccountFromPrivateKey(privKey: string, label?: string) {
-    const importedAccount = await this.getActiveKeyring().importAccount(
-      privKey,
-      label
-    );
+  public async importAccountFromPrivateKey(
+    privKey: string,
+    label?: string,
+    options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' }
+  ) {
+    const importedAccount = await (
+      this.getActiveKeyring() as any
+    ).importAccount(privKey, label, options);
     store.dispatch(
       createAccount({
         account: importedAccount,
@@ -5249,7 +5254,23 @@ class MainController {
    * Validate Syscoin address for the given network
    */
   public validateSysAddress(address: string, chainId: number): boolean {
-    return isValidSYSAddress(address, chainId);
+    // Accept any valid UTXO address type for this network (bech32 and legacy base58)
+    if (isValidSYSAddress(address, chainId)) return true;
+
+    try {
+      const { activeNetwork: network } = store.getState().vault;
+      const { networks } = getNetworkConfig(network.slip44, network.currency);
+      const isTestnet = network.slip44 === 1;
+      const bitcoinjsNetwork = isTestnet ? networks.testnet : networks.mainnet;
+      // Try parsing as base58 legacy toOutputScript; will throw if invalid or wrong network
+      syscoinjs.utils.bitcoinjs.address.toOutputScript(
+        address,
+        bitcoinjsNetwork
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /**

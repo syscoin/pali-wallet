@@ -213,7 +213,9 @@
     "walletLoggedOut": "ウォレットがログアウトしています",
     "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください",
     "activeAccountNotFound": "エラー：アクティブなアカウントが見つかりません",
-    "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能"
+    "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能",
+    "addressType": "アドレスタイプ",
+    "taprootDisabled": "Taproot 署名は近日対応"
   },
   "components": {
     "newPassword": "新しいパスワード（最低8文字）",

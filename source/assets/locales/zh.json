@@ -213,7 +213,9 @@
     "walletLoggedOut": "钱包已注销",
     "closeAndReopenPali": "关闭此窗口并重新打开 Pali 以进行身份验证并连接您的硬件钱包",
     "activeAccountNotFound": "错误：未找到活跃账户",
-    "paliWalletBrowserExtension": "Pali钱包浏览器扩展"
+    "paliWalletBrowserExtension": "Pali钱包浏览器扩展",
+    "addressType": "地址类型",
+    "taprootDisabled": "Taproot 签名即将推出"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",
