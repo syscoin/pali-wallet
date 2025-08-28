@@ -2424,17 +2424,18 @@
   integrity sha512-fLgJnDOXFmuVlB38rUN5SmU7hAFQcCjrg3Vrxz67KTY7YHFnSNEKvX4avmEBdOI0yTCxZjwMCFEqsC8k2+Wd3g==
 
 "@metamask/utils@^11.0.1":
-  version "11.4.2"
-  resolved "https://registry.yarnpkg.com/@metamask/utils/-/utils-11.4.2.tgz#8c83e1a962dbd1e451c4f607e8356dc2d189c24b"
-  integrity sha512-TygCcGmUbhmpxjYMm+mx68kRiJ80jYV54/Aa8gUFBv4cTX7ulX2XZKr8CJoJAw3K3FN5ZvCRmU0IzWZFaonwhA==
+  version "11.5.0"
+  resolved "https://registry.yarnpkg.com/@metamask/utils/-/utils-11.5.0.tgz#b933ed7f6bc39c7f9debd330ec2befda55c5e78b"
+  integrity sha512-fgPTBWyFhGp8VZ5HsWniY5qZIb9DfusRB8ssw8unGIomICCK+cnEcV2xajhpPJ6QPH62y1KyVHF+VbXKrgilLA==
   dependencies:
     "@ethereumjs/tx" "^4.2.0"
     "@metamask/superstruct" "^3.1.0"
     "@noble/hashes" "^1.3.1"
     "@scure/base" "^1.1.3"
     "@types/debug" "^4.1.7"
+    "@types/lodash" "^4.17.20"
     debug "^4.3.4"
-    lodash.memoize "^4.1.2"
+    lodash "^4.17.21"
     pony-cause "^2.1.10"
     semver "^7.5.4"
     uuid "^9.0.1"
@@ -3006,10 +3007,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.544":
-  version "1.0.544"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.544.tgz#06a0012e7ea0a05a279a43e1d400ffd4a764120c"
-  integrity sha512-6ks94++L6nCh57p1i4poiTplftIwQiEn8bAUR6FJVO4xa5RrKRsoucWm06oL3q2JKi8j4xjv/xPG0DwTK3sOxQ==
+"@sidhujag/sysweb3-keyring@^1.0.545":
+  version "1.0.545"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.545.tgz#513a17571fa334fcbc0db25143dbe54359e50d6c"
+  integrity sha512-OOYxaGvL8acwOdZEPajsW1A9XWY7bu576oySg+n+SmVXp0oP6nf5b6xZR04z31tzFXmoXzpX2whN0+XfQPriog==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -3033,7 +3034,7 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.27"
     "@sidhujag/sysweb3-network" "^1.0.105"
-    "@sidhujag/sysweb3-utils" "^1.0.267"
+    "@sidhujag/sysweb3-utils" "^1.1.269"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -3057,10 +3058,10 @@
     "@ethersproject/bytes" "^5.8.0"
     eth-chains "^1.0.0"
 
-"@sidhujag/sysweb3-utils@^1.0.267":
-  version "1.1.267"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.267.tgz#603ba471de5d9348087172f557d8ae44527112d1"
-  integrity sha512-QnULthWuS+lcofdtCENDhAVoDQjufp6wo0VLZAsD1xLYMPC5TAqosGuPKso4VlwuOArK/JWPA/qmBm4RGA36uQ==
+"@sidhujag/sysweb3-utils@^1.1.269":
+  version "1.1.269"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.269.tgz#850391f1f7b030b3704c75dc8594dc5ecdcd66cb"
+  integrity sha512-3lYnReTV5gt/C3JpORN22tQTl6Si4qdUFV9TsLFl0sBSX6wq3ygi2bNA4lSazCkZIqbXNuDEEWpRITdQ42Qy+g==
   dependencies:
     "@ethersproject/address" "^5.8.0"
     "@ethersproject/contracts" "^5.8.0"
@@ -4089,6 +4090,11 @@
   version "0.0.29"
   resolved "https://registry.yarnpkg.com/@types/json5/-/json5-0.0.29.tgz#ee28707ae94e11d2b827bcbe5270bcea7f3e71ee"
   integrity sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==
+
+"@types/lodash@^4.17.20":
+  version "4.17.20"
+  resolved "https://registry.yarnpkg.com/@types/lodash/-/lodash-4.17.20.tgz#1ca77361d7363432d29f5e55950d9ec1e1c6ea93"
+  integrity sha512-H3MHACvFUEiujabxhaI/ImO6gUrd8oOurg7LQtS7mbwIXA/cUqWrvBsaeJ23aZEPk1TAYkurjfMbSELfoCXlGA==
 
 "@types/mime@^1":
   version "1.3.5"
@@ -5577,12 +5583,12 @@ browserify-zlib@^0.2.0:
     pako "~1.0.5"
 
 browserslist@^4.0.0, browserslist@^4.23.0, browserslist@^4.24.0, browserslist@^4.24.4, browserslist@^4.25.3:
-  version "4.25.3"
-  resolved "https://registry.yarnpkg.com/browserslist/-/browserslist-4.25.3.tgz#9167c9cbb40473f15f75f85189290678b99b16c5"
-  integrity sha512-cDGv1kkDI4/0e5yON9yM5G/0A5u8sf5TnmdX5C9qHzI9PPu++sQ9zjm1k9NiOrf3riY4OkK0zSGqfvJyJsgCBQ==
+  version "4.25.4"
+  resolved "https://registry.yarnpkg.com/browserslist/-/browserslist-4.25.4.tgz#ebdd0e1d1cf3911834bab3a6cd7b917d9babf5af"
+  integrity sha512-4jYpcjabC606xJ3kw2QwGEZKX0Aw7sgQdZCvIK9dhVSPh76BKo+C+btT1RRofH7B+8iNpEbgGNVWiLki5q93yg==
   dependencies:
-    caniuse-lite "^1.0.30001735"
-    electron-to-chromium "^1.5.204"
+    caniuse-lite "^1.0.30001737"
+    electron-to-chromium "^1.5.211"
     node-releases "^2.0.19"
     update-browserslist-db "^1.1.3"
 
@@ -5777,7 +5783,7 @@ caniuse-api@^3.0.0:
     lodash.memoize "^4.1.2"
     lodash.uniq "^4.5.0"
 
-caniuse-lite@^1.0.0, caniuse-lite@^1.0.30001702, caniuse-lite@^1.0.30001735:
+caniuse-lite@^1.0.0, caniuse-lite@^1.0.30001702, caniuse-lite@^1.0.30001737:
   version "1.0.30001737"
   resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001737.tgz#8292bb7591932ff09e9a765f12fdf5629a241ccc"
   integrity sha512-BiloLiXtQNrY5UyF0+1nSJLXUENuhka2pzy2Fx5pGxqavdrxSCW4U6Pn/PoG3Efspi2frRbHpBV2XsrPE6EDlw==
@@ -6476,9 +6482,9 @@ date-fns@2.x, date-fns@^2.29.3:
     "@babel/runtime" "^7.21.0"
 
 dayjs@1.x:
-  version "1.11.14"
-  resolved "https://registry.yarnpkg.com/dayjs/-/dayjs-1.11.14.tgz#aa47cd445471acac25d55deb101557dd827eff60"
-  integrity sha512-E8fIdSxUlyqSA8XYGnNa3IkIzxtEmFjI+JU/6ic0P1zmSqyL6HyG5jHnpPjRguDNiaHLpfvHKWFiohNsJLqcJQ==
+  version "1.11.15"
+  resolved "https://registry.yarnpkg.com/dayjs/-/dayjs-1.11.15.tgz#fd7fd2db6fc92f08ffe4adc306756d45db00ada3"
+  integrity sha512-MC+DfnSWiM9APs7fpiurHGCoeIx0Gdl6QZBy+5lu8MbYKN5FZEXqOgrundfibdfhGZ15o9hzmZ2xJjZnbvgKXQ==
 
 debounce@^1.2.1:
   version "1.2.1"
@@ -6858,7 +6864,7 @@ eip55@^2.1.1:
   dependencies:
     keccak "^3.0.3"
 
-electron-to-chromium@^1.5.204:
+electron-to-chromium@^1.5.211:
   version "1.5.211"
   resolved "https://registry.yarnpkg.com/electron-to-chromium/-/electron-to-chromium-1.5.211.tgz#749317bf9cf894c06f67980940cf8074e5eb08ca"
   integrity sha512-IGBvimJkotaLzFnwIVgW9/UD/AOJ2tByUmeOrtqBfACSbAw5b1G0XpvdaieKyc7ULmbwXVx+4e4Be8pOPBrYkw==
@@ -7380,7 +7386,14 @@ eth-json-rpc-middleware@^6.0.0:
     pify "^3.0.0"
     safe-event-emitter "^1.0.1"
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/eth-object/-/eth-object-1.0.3.tgz#5e7a58615793e570c6b1c009eb282876b4d059b6"
+  integrity sha512-VOWso/tO0Pz66wNlzUveYN0FgaqHQGVr+n60GL6QWQSUW3kwTyyaMxrHNnaDCeq/61YvMUxygGr9FJsnmWKqEg==
+  dependencies:
+    eth-util-lite "^1.0.1"
+
+"eth-object@git+https://github.com/syscoin/eth-object.git":
   version "1.0.3"
   resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
@@ -13190,10 +13203,10 @@ svgo@^3.2.0:
     csso "^5.0.5"
     picocolors "^1.0.0"
 
-syscoinjs-lib@^1.0.265:
-  version "1.0.265"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.265.tgz#a4bfc10112e57192411ee96ee4a16a8e00700b50"
-  integrity sha512-PnEvMtSCn2nCnIJIpY/n/ke+VkSOJcda6Okmi4zUTyVYr9xtV3SvzKZhvx4SOSlOh0jftbrZ+1uFJ996NKTgcw==
+syscoinjs-lib@^1.0.266:
+  version "1.0.266"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.266.tgz#b3795e55ab75453e96ed2afbae47fe6bfa1919fc"
+  integrity sha512-ZD4ra3eSe+YUWEsyaZAtv/iiERcEcuQrO9FqW0KkH1JBCCUs4vcCI0vEy3ySb5nrnddd2TGZChnkgnGNDDTekQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abi" "^5.8.0"
