@@ -1,5 +1,3 @@
-import 'emoji-log';
-
 // Log immediately to show background script is starting
 console.log(
   '[Background] Service worker starting at',
