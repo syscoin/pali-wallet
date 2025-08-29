@@ -648,7 +648,7 @@ export const EvmAssetDetails = ({
 
           <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
             <a
-              href={`${adjustedExplorer}token/${id} `}
+              href={`${adjustedExplorer}token/${currentAsset.contractAddress}`}
               target="_blank"
               className="flex items-center justify-center gap-x-2"
               rel="noreferrer"
