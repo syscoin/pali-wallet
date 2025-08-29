@@ -198,7 +198,7 @@
     "importWalletWarning": "导入钱包警告！",
     "thisActionErases": "此操作会清除您当前的钱包。",
     "toRestoreThis": "要在将来恢复此当前钱包，请确保您拥有恢复短语。",
-    "allYourSettings": "您的所有设置，如自定义代币和导入的账户，都将丢失，但是您的资金是安全的！",
+    "allYourSettings": "此设备上的所有设置（自定义代币和导入的账户）都将被移除。这不会移动或删除链上资金，但导入账户的加密私钥将从此设备中清除。如果您没有密钥恢复短语或这些私钥，您可能会永久失去对这些资产的访问权限。",
     "removeAccount": "移除账户",
     "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
     "accountRemovedSuccessfully": "账户删除成功",

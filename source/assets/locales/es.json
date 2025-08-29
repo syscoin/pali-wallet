@@ -516,7 +516,7 @@
     "importWalletWarning": "¡ADVERTENCIA DE IMPORTACIÓN DE MONEDERO!",
     "thisActionErases": "Esta acción borra tu monedero actual.",
     "toRestoreThis": "Para restaurar este monedero actual en el futuro, asegúrate de tener la frase de recuperación.",
-    "allYourSettings": "Todas tus configuraciones, como tokens personalizados y cuentas importadas, se perderán, sin embargo, ¡tus fondos están seguros!",
+    "allYourSettings": "Todos los ajustes en este dispositivo (tokens personalizados y cuentas importadas) serán eliminados. Esto no mueve ni elimina fondos en la cadena, pero las claves privadas cifradas de las cuentas importadas se borrarán de este dispositivo. Si no tienes la Frase de Recuperación Secreta o esas claves privadas, podrías perder el acceso a esos activos de forma permanente.",
     "removeAccount": "Eliminar cuenta",
     "removeAccountConfirmation": "¿Estás seguro de que deseas eliminar la cuenta {{accountType}} \"{{accountName}}\"? Siempre puedes recrear la cuenta más tarde si es necesario.",
     "accountRemovedSuccessfully": "Cuenta eliminada exitosamente",

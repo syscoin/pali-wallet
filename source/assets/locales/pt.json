@@ -509,7 +509,7 @@
     "importWalletWarning": "AVISO DE IMPORTAÇÃO DE CARTEIRA!",
     "thisActionErases": "Esta ação apaga sua carteira atual.",
     "toRestoreThis": "Para restaurar esta carteira atual no futuro, certifique-se de ter a frase de recuperação.",
-    "allYourSettings": "Todas as suas configurações, como tokens personalizados e contas importadas, serão perdidas, no entanto, seus fundos estão salvos!",
+    "allYourSettings": "Todas as configurações neste dispositivo (tokens personalizados e contas importadas) serão removidas. Isso não move nem exclui fundos on-chain, mas as chaves privadas criptografadas das contas importadas serão apagadas deste dispositivo. Se você não tiver a Frase de Recuperação Secreta ou essas chaves privadas, poderá perder permanentemente o acesso a esses ativos.",
     "removeAccount": "Remover conta",
     "removeAccountConfirmation": "Tem certeza de que deseja remover a conta {{accountType}} \"{{accountName}}\"? Você sempre pode recriar a conta mais tarde se necessário.",
     "accountRemovedSuccessfully": "Conta removida com sucesso",
