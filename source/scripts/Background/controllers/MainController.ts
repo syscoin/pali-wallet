@@ -39,6 +39,7 @@ import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
 import {
   createAccount,
+  initializeCleanVaultForSlip44,
   forgetWallet,
   removeAccount,
   setAccountLabel,
@@ -72,6 +73,7 @@ import {
   setError as setStoreError,
   setIsLoadingBalances,
   setNetwork,
+  setNetworks,
   removeNetwork,
   setIsPollingUpdate,
   startConnecting,
@@ -96,7 +98,10 @@ import {
   accountSwitchMutex,
 } from 'utils/asyncMutex';
 import { areBalancesDifferent } from 'utils/balance';
-import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
+import {
+  SYSCOIN_UTXO_MAINNET_NETWORK,
+  PALI_NETWORKS_STATE,
+} from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
@@ -195,6 +200,128 @@ class MainController {
     const mainnet = networks?.ethereum?.[1];
     if (!mainnet?.url) return null;
     return this.getOrCreatePersistentProvider(mainnet.url);
+  }
+
+  // Centralized reset routine used by both forgetWallet and createWallet(import)
+  private async resetWalletState(options?: { resetNetworks?: boolean }) {
+    const { resetNetworks = false } = options || {};
+
+    // Clear all timers first to prevent any background operations
+    this.clearAllTimers();
+
+    // Clean up notification manager to prevent memory leaks
+    notificationManager.cleanup();
+
+    // Properly dispose of all keyrings to prevent memory leaks
+    this.disposeAllKeyrings();
+
+    // Clear all keyring instances from memory
+    this.keyrings.clear();
+
+    // Clean up persistent providers
+    this.cleanupPersistentProviders();
+
+    // Cancel any pending async operations
+    if (this.cancellablePromises.transactionPromise) {
+      this.cancellablePromises.transactionPromise.cancel();
+    }
+    if (this.cancellablePromises.assetsPromise) {
+      this.cancellablePromises.assetsPromise.cancel();
+    }
+    if (this.cancellablePromises.balancePromise) {
+      this.cancellablePromises.balancePromise.cancel();
+    }
+    if (this.cancellablePromises.nftsPromise) {
+      this.cancellablePromises.nftsPromise.cancel();
+    }
+    if (this.currentPromise) {
+      this.currentPromise.cancel();
+      this.currentPromise = null;
+    }
+
+    // Stop auto-lock timer
+    await this.stopAutoLockTimer();
+
+    // Reset internal state flags
+    this.justUnlocked = false;
+    this.isStartingUp = false;
+    this.isAccountSwitching = false;
+    this.isNetworkSwitching = false;
+
+    // Clear vault cache
+    vaultCache.clearCache();
+
+    // Clear all in-memory caches and session data
+    if (this.transactionsManager) {
+      this.transactionsManager.utils.clearCache();
+    }
+    clearProviderCache();
+    clearFetchBackendAccountCache();
+    clearRpcCaches();
+
+    // Clear all vault-related storage completely
+    try {
+      await chromeStorage.removeItem('sysweb3-vault');
+      await chromeStorage.removeItem('sysweb3-vault-keys');
+    } catch (error) {
+      console.error(
+        '[MainController] Error clearing vault storage during reset:',
+        error
+      );
+    }
+
+    // Clear all slip44-specific vault states and persisted Redux state
+    try {
+      const allItems = await new Promise<{ [key: string]: any }>(
+        (resolve, reject) => {
+          chrome.storage.local.get(null, (items) => {
+            if (chrome.runtime.lastError) {
+              reject(
+                new Error(
+                  `Failed to get all items: ${chrome.runtime.lastError.message}`
+                )
+              );
+              return;
+            }
+            resolve(items);
+          });
+        }
+      );
+
+      const keysToRemove = Object.keys(allItems).filter(
+        (key) =>
+          key.match(/^state-vault-\d+$/) ||
+          key.startsWith('sysweb3-vault-') ||
+          key === 'state' ||
+          key.startsWith('state-')
+      );
+
+      if (keysToRemove.length > 0) {
+        await Promise.all(
+          keysToRemove.map((key) => chromeStorage.removeItem(key))
+        );
+      }
+    } catch (error) {
+      console.error(
+        '[MainController] Error clearing slip44 vault states during reset:',
+        error
+      );
+    }
+
+    // Clear global settings via Redux
+    store.dispatch(setHasEncryptedVault(false));
+    store.dispatch(
+      setAdvancedSettings({
+        advancedProperty: 'refresh',
+        value: false,
+        isFirstTime: true,
+      })
+    );
+
+    // Optionally reset networks to defaults (used by import flow and forget wallet)
+    if (resetNetworks) {
+      store.dispatch(setNetworks(PALI_NETWORKS_STATE));
+    }
   }
 
   /**
@@ -1480,121 +1607,10 @@ class MainController {
     // FIRST: Validate password - throws if wrong password or wallet locked
     // This prevents unnecessary cleanup if validation fails
     await this.forgetMainWallet(pwd);
-
     // Now proceed with cleanup since password is valid
-    // Clear all timers first to prevent any background operations
-    this.clearAllTimers();
+    await this.resetWalletState({ resetNetworks: true });
 
-    // Clean up notification manager to prevent memory leaks
-    notificationManager.cleanup();
-
-    // Properly dispose of all keyrings to prevent memory leaks
-    this.disposeAllKeyrings();
-
-    // Clear all keyring instances from memory
-    this.keyrings.clear();
-
-    // Clean up persistent providers
-    this.cleanupPersistentProviders();
-
-    // Cancel any pending async operations
-    if (this.cancellablePromises.transactionPromise) {
-      this.cancellablePromises.transactionPromise.cancel();
-    }
-    if (this.cancellablePromises.assetsPromise) {
-      this.cancellablePromises.assetsPromise.cancel();
-    }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
-    if (this.cancellablePromises.nftsPromise) {
-      this.cancellablePromises.nftsPromise.cancel();
-    }
-    if (this.currentPromise) {
-      this.currentPromise.cancel();
-      this.currentPromise = null;
-    }
-
-    // Stop auto-lock timer
-    await this.stopAutoLockTimer();
-
-    // Reset internal state flags
-    this.justUnlocked = false;
-    this.isStartingUp = false;
-    this.isAccountSwitching = false;
-    this.isNetworkSwitching = false;
-
-    // Clear vault cache (no emergency save - we're forgetting the wallet!)
-    vaultCache.clearCache();
-
-    // Clear all in-memory caches and session data
-    if (this.transactionsManager) {
-      this.transactionsManager.utils.clearCache();
-    }
-    clearProviderCache();
-    clearFetchBackendAccountCache();
-    clearRpcCaches();
-
-    // Clear all vault-related storage completely
-    // Remove vault from Chrome storage (both legacy and current keys)
-    try {
-      await chromeStorage.removeItem('sysweb3-vault');
-      await chromeStorage.removeItem('sysweb3-vault-keys');
-    } catch (error) {
-      console.error('Error clearing vault storage:', error);
-    }
-
-    // Clear all slip44-specific vault states
-    try {
-      // Note: chromeStorage doesn't have a direct equivalent to chrome.storage.local.get(null)
-      // so we'll keep this as direct chrome.storage.local for now as it's a specialized operation
-      const allItems = await new Promise<{ [key: string]: any }>(
-        (resolve, reject) => {
-          chrome.storage.local.get(null, (items) => {
-            if (chrome.runtime.lastError) {
-              reject(
-                new Error(
-                  `Failed to get all items: ${chrome.runtime.lastError.message}`
-                )
-              );
-              return;
-            }
-            resolve(items);
-          });
-        }
-      );
-
-      const keysToRemove = Object.keys(allItems).filter(
-        (key) =>
-          key.match(/^state-vault-\d+$/) ||
-          key.startsWith('sysweb3-vault-') ||
-          key === 'state' ||
-          key.startsWith('state-')
-      );
-
-      if (keysToRemove.length > 0) {
-        // Remove keys individually using chromeStorage
-        await Promise.all(
-          keysToRemove.map((key) => chromeStorage.removeItem(key))
-        );
-      }
-    } catch (error) {
-      console.error('Error clearing slip44 vault states:', error);
-    }
-
-    // Clear global settings via Redux
-    store.dispatch(setHasEncryptedVault(false));
-    store.dispatch(
-      setAdvancedSettings({
-        advancedProperty: 'refresh',
-        value: false,
-        isFirstTime: true,
-      })
-    );
-
-    // Reset activeSlip44 to default after forgetting wallet
-    // This ensures clean state regardless of what the previous wallet supported
-
+    // Reset activeSlip44 to default after forgetting wallet to ensure clean state
     store.dispatch(setActiveSlip44(DEFAULT_UTXO_SLIP44));
     console.log(
       `[MainController] Reset activeSlip44 to default: ${DEFAULT_UTXO_SLIP44}`
@@ -2088,6 +2104,17 @@ class MainController {
 
   public async createWallet(password: string, phrase: string): Promise<void> {
     try {
+      // Ensure a FULL reset before creating a new wallet (import/fresh create)
+      await this.resetWalletState({ resetNetworks: true });
+
+      // Reset active slip44 and create a TRULY clean vault for default UTXO network
+      store.dispatch(setActiveSlip44(DEFAULT_UTXO_SLIP44));
+      store.dispatch(forgetWallet());
+      store.dispatch(
+        // Clean slate: no accounts/assets/txs; sets activeNetwork to provided network
+        initializeCleanVaultForSlip44(SYSCOIN_UTXO_MAINNET_NETWORK)
+      );
+
       // CRITICAL FIX: Ensure vault state is properly initialized before keyring operations
       // The keyring manager expects activeNetwork and activeAccount to exist
       const currentVaultState = store.getState().vault;
