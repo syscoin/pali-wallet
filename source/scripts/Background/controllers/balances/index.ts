@@ -1,6 +1,5 @@
 import {
   CustomJsonRpcProvider,
-  CustomL2JsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
 
@@ -13,7 +12,7 @@ const BalancesManager = (): IBalancesManager => {
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+    provider: CustomJsonRpcProvider
   ) => {
     switch (isBitcoinBased) {
       case true:
