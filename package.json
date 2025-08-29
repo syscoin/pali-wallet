@@ -75,6 +75,7 @@
     "bignumber.js": "^9.1.2",
     "currency-symbol-map": "^5.1.0",
     "currency.js": "^2.0.4",
+    "date-fns": "^2.30.0",
     "dotenv": "^16.4.7",
     "eslint-config-prettier": "^8.10.0",
     "eslint-plugin-import": "^2.23.3",
