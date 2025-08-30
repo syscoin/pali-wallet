@@ -44,7 +44,7 @@ export const Faucet: React.FC = () => {
       case FaucetStatusResponse.SUCCESS:
         return t('faucet.Close');
       case FaucetStatusResponse.ERROR:
-        return t('faucet.tryAgain');
+        return t('faucet.grabTokens');
       default:
         return '';
     }
