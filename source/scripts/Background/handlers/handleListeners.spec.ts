@@ -95,7 +95,6 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   },
   // Mock other necessary constants or types if their absence causes import errors
   CustomJsonRpcProvider: jest.fn(),
-  CustomL2JsonRpcProvider: jest.fn(),
   // Mock network utility functions used in constants.ts
   getSyscoinUTXOMainnetNetwork: jest.fn(() => ({
     chainId: 57,

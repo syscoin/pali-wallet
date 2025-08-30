@@ -198,7 +198,7 @@
     "importWalletWarning": "AVERTISSEMENT D'IMPORTATION DE PORTEFEUILLE !",
     "thisActionErases": "Cette action efface votre portefeuille actuel.",
     "toRestoreThis": "Pour restaurer ce portefeuille actuel à l'avenir, assurez-vous d'avoir la phrase de récupération.",
-    "allYourSettings": "Tous vos paramètres, comme les jetons personnalisés et les comptes importés, seront perdus, cependant, vos fonds sont sauvegardés !",
+    "allYourSettings": "Tous les paramètres sur cet appareil (jetons personnalisés et comptes importés) seront supprimés. Cela ne déplace ni ne supprime les fonds on-chain, mais les clés privées chiffrées des comptes importés seront effacées de cet appareil. Sans la phrase de récupération secrète ou ces clés privées, vous pourriez perdre définitivement l'accès à ces actifs.",
     "removeAccount": "Supprimer le compte",
     "removeAccountConfirmation": "Êtes-vous sûr de vouloir supprimer le compte {{accountType}} \"{{accountName}}\" ? Vous pouvez toujours recréer le compte plus tard si nécessaire.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
@@ -214,8 +214,7 @@
     "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel",
     "activeAccountNotFound": "Erreur: Compte actif non trouvé",
     "paliWalletBrowserExtension": "Extension de Navigateur Pali Wallet",
-    "addressType": "Type d'adresse",
-    "taprootDisabled": "Signature Taproot bientôt disponible"
+    "addressType": "Type d'adresse"
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",

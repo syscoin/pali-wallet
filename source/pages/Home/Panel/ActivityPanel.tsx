@@ -108,11 +108,23 @@ export const TransactionsPanel = () => {
   const OpenTransactionExplorer = useMemo(() => {
     if (!activeAccount) return null;
 
-    const { xpub, address: userAddress } = activeAccount;
+    const { xpub, address: userAddress, isImported } = activeAccount as any;
 
-    const explorerUrl = `${adjustedExplorer}${
-      isBitcoinBased ? 'xpub' : 'address'
-    }/${isBitcoinBased ? xpub : userAddress}`;
+    // Use xpub for HD UTXO accounts, but for imported UTXO accounts (or when xpub is absent)
+    // use address path. For EVM, always use address.
+    const useAddressPathForUtxo = isBitcoinBased && (isImported || !xpub);
+    const pathSegment = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? 'address'
+        : 'xpub'
+      : 'address';
+    const identifier = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? userAddress
+        : xpub
+      : userAddress;
+
+    const explorerUrl = `${adjustedExplorer}${pathSegment}/${identifier}`;
 
     const openExplorer = () => window.open(explorerUrl, '_blank');
 

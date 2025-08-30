@@ -21,32 +21,51 @@ export const validateAndManageUserAssets = (
   const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
 
   const assetsValueToUse = isForEvm ? assets?.ethereum : assets?.syscoin;
-  //@ts-ignore
-  const userClonedAssets = clone(compact(assetsValueToUse));
+  const userClonedAssets = isForEvm
+    ? (clone(compact(assetsValueToUse as ITokenEthProps[])) as ITokenEthProps[])
+    : (clone(
+        compact(assetsValueToUse as ISysTokensAssetReponse[])
+      ) as ISysTokensAssetReponse[]);
 
   const tokenPropertyToUseAtGroupBy = isForEvm
     ? 'contractAddress'
     : 'assetGuid';
 
   const validateIfTokensIsEquals = isEqual(
-    sortBy(userClonedAssets, (asset) => {
-      // For ERC-1155, create a composite key with contractAddress and tokenId
-      if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
-        return `${(asset.contractAddress || '').toLowerCase()}-${
+    sortBy(
+      userClonedAssets,
+      (asset: ISysTokensAssetReponse | ITokenEthProps) => {
+        // For ERC-1155, create a composite key with contractAddress and tokenId
+        if (
+          isForEvm &&
+          'tokenStandard' in asset &&
+          asset.tokenStandard === 'ERC-1155' &&
           asset.tokenId
-        }`;
+        ) {
+          return `${(asset.contractAddress || '').toLowerCase()}-${
+            asset.tokenId
+          }`;
+        }
+        return asset[tokenPropertyToUseAtGroupBy];
       }
-      return asset[tokenPropertyToUseAtGroupBy];
-    }),
-    sortBy(fetchedAssetsOrTokens, (asset) => {
-      // For ERC-1155, create a composite key with contractAddress and tokenId
-      if (isForEvm && asset.tokenStandard === 'ERC-1155' && asset.tokenId) {
-        return `${(asset.contractAddress || '').toLowerCase()}-${
+    ),
+    sortBy(
+      fetchedAssetsOrTokens,
+      (asset: ISysTokensAssetReponse | ITokenEthProps) => {
+        // For ERC-1155, create a composite key with contractAddress and tokenId
+        if (
+          isForEvm &&
+          'tokenStandard' in asset &&
+          asset.tokenStandard === 'ERC-1155' &&
           asset.tokenId
-        }`;
+        ) {
+          return `${(asset.contractAddress || '').toLowerCase()}-${
+            asset.tokenId
+          }`;
+        }
+        return asset[tokenPropertyToUseAtGroupBy];
       }
-      return asset[tokenPropertyToUseAtGroupBy];
-    })
+    )
   );
 
   //Return a empty array to we don't need to dispatch something at the Polling
@@ -67,13 +86,16 @@ export const validateAndManageUserAssets = (
     (a, b) => {
       // For EVM, compare contractAddress and tokenId (for ERC-1155)
       if (isForEvm) {
+        const aEvm = a as ITokenEthProps;
+        const bEvm = b as ITokenEthProps;
         const sameContract =
-          (a.contractAddress || '').toLowerCase() ===
-          (b.contractAddress || '').toLowerCase();
-        const sameTokenId = a.tokenId === b.tokenId;
+          (aEvm.contractAddress || '').toLowerCase() ===
+          (bEvm.contractAddress || '').toLowerCase();
+        const sameTokenId = aEvm.tokenId === bEvm.tokenId;
         // For ERC-1155, both contractAddress and tokenId must match
         // For other tokens, just contractAddress needs to match
-        return a.tokenStandard === 'ERC-1155' || b.tokenStandard === 'ERC-1155'
+        return aEvm.tokenStandard === 'ERC-1155' ||
+          bEvm.tokenStandard === 'ERC-1155'
           ? sameContract && sameTokenId
           : sameContract;
       }

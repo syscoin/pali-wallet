@@ -1,6 +1,5 @@
 import {
   CustomJsonRpcProvider,
-  CustomL2JsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
 
@@ -22,7 +21,7 @@ export interface IBalancesManagerUtils {
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider | null
+    provider: CustomJsonRpcProvider | null
   ) => Promise<string>;
 }
 

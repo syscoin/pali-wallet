@@ -516,7 +516,7 @@
     "importWalletWarning": "IMPORT WALLET WARNING!",
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it's saved!",
+    "allYourSettings": "All settings on this device (custom tokens and imported accounts) will be removed. This does not move or delete on-chain funds, but the encrypted private keys for imported accounts will be erased from this device. If you do not have the Secret Recovery Phrase or those private keys, you may permanently lose access to those assets.",
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
     "accountRemovedSuccessfully": "Account removed successfully",
@@ -532,8 +532,7 @@
     "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet",
     "activeAccountNotFound": "Error: Active account not found",
     "paliWalletBrowserExtension": "Pali Wallet Browser Extension",
-    "addressType": "Address type",
-    "taprootDisabled": "Taproot signing coming soon"
+    "addressType": "Address type"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

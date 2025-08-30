@@ -1,14 +1,13 @@
 import { formatEther } from '@ethersproject/units';
 import {
   CustomJsonRpcProvider,
-  CustomL2JsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
 
 import { IEvmBalanceController } from './types';
 
 const EvmBalanceController = (
-  web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+  web3Provider: CustomJsonRpcProvider
 ): IEvmBalanceController => {
   const getEvmBalanceForAccount = async (
     currentAccount: IKeyringAccountState
