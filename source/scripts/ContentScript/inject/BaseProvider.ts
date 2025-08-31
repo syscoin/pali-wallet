@@ -328,7 +328,7 @@ export class BaseProvider extends EventEmitter {
           type,
           data,
         },
-        '*'
+        window.location.origin
       );
     });
 }
