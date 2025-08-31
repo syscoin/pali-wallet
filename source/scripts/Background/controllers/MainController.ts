@@ -1374,23 +1374,33 @@ class MainController {
     advancedProperty: string,
     value: boolean | number
   ) {
-    // Update Redux state
-    store.dispatch(setAdvancedSettings({ advancedProperty, value }));
+    // Normalize and validate autolock value before storing/acting
+    let normalizedValue: boolean | number = value;
+    if (advancedProperty === 'autolock') {
+      const minutesRaw: any = value as any;
+      let minutes = Number(minutesRaw);
+      if (!Number.isFinite(minutes)) {
+        minutes = 0; // Disable on invalid input
+      }
+      // Allow 0 to disable; otherwise clamp to 5-120
+      if (minutes !== 0) {
+        minutes = Math.max(5, Math.min(120, minutes));
+      }
+      normalizedValue = minutes;
+    }
+
+    // Update Redux state with normalized value
+    store.dispatch(
+      setAdvancedSettings({ advancedProperty, value: normalizedValue })
+    );
 
     // Save wallet state after changing settings - this is user activity
     this.saveWalletState('update-settings', true);
 
-    // If this is the autolock setting, handle timer
-    if (advancedProperty === 'autolock' && typeof value === 'number') {
-      // Validate timer range (0 to disable, or 5-120 minutes)
-      if (value !== 0 && (value < 5 || value > 120)) {
-        throw new Error(
-          'Auto-lock timer must be 0 (disabled) or between 5 and 120 minutes'
-        );
-      }
-
-      // If value is 0, stop the timer. Otherwise, restart it
-      if (value === 0) {
+    // If this is the autolock setting, handle timer using normalized value
+    if (advancedProperty === 'autolock') {
+      const minutes = Number(normalizedValue);
+      if (!Number.isFinite(minutes) || minutes === 0) {
         await this.stopAutoLockTimer();
       } else {
         await this.startAutoLockTimer();
@@ -1403,10 +1413,12 @@ class MainController {
       const vaultGlobalState = store.getState().vaultGlobal;
 
       // Get the timer value from advancedSettings
-      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock ?? 0; // Use 0 (disabled) as default
+      const autoLockRaw: any =
+        (vaultGlobalState?.advancedSettings?.autolock as any) ?? 0; // Use 0 (disabled) as default
+      const minutes = Number(autoLockRaw);
 
-      // If autolock is 0, it's disabled - don't start the timer
-      if (autoLockTimer === 0) {
+      // If autolock is <= 0 or invalid, it's disabled - don't start the timer
+      if (!Number.isFinite(minutes) || minutes <= 0) {
         console.log('[MainController] Auto-lock is disabled (set to 0)');
         return;
       }
@@ -1420,11 +1432,11 @@ class MainController {
 
       // Create Chrome alarm for auto-lock
       chrome.alarms.create(this.autoLockAlarmName, {
-        delayInMinutes: autoLockTimer as number,
+        delayInMinutes: minutes,
       });
 
       console.log(
-        `[MainController] Auto-lock timer started: ${autoLockTimer} minutes`
+        `[MainController] Auto-lock timer started: ${minutes} minutes`
       );
     } catch (error) {
       console.error('[MainController] Error in startAutoLockTimer:', error);
@@ -1465,11 +1477,12 @@ class MainController {
           const vaultGlobalState = store.getState().vaultGlobal;
 
           // Get the timer value from advancedSettings
-          const autoLockTimer =
-            vaultGlobalState?.advancedSettings?.autolock ?? 0; // Use 0 (disabled) as default
+          const autoLockRaw: any =
+            (vaultGlobalState?.advancedSettings?.autolock as any) ?? 0; // Use 0 (disabled) as default
+          const minutes = Number(autoLockRaw);
 
-          // Only restart timer if it's enabled (not 0) and wallet is unlocked
-          if (autoLockTimer !== 0 && this.isUnlocked()) {
+          // Only restart timer if it's enabled (> 0) and wallet is unlocked
+          if (Number.isFinite(minutes) && minutes > 0 && this.isUnlocked()) {
             // Restart the timer
             this.startAutoLockTimer().catch((error) => {
               console.error(
@@ -1790,10 +1803,14 @@ class MainController {
         ]);
       }, 10);
 
-      // Start auto-lock timer if enabled (not 0)
+      // Start auto-lock timer if enabled (> 0)
       const { advancedSettings } = store.getState().vaultGlobal;
-      if (advancedSettings?.autolock && advancedSettings.autolock !== 0) {
-        await this.startAutoLockTimer();
+      {
+        const _raw = (advancedSettings?.autolock as any) ?? 0;
+        const _minutes = Number(_raw);
+        if (Number.isFinite(_minutes) && _minutes > 0) {
+          await this.startAutoLockTimer();
+        }
       }
 
       // Clear startup flags after 2 seconds
@@ -2177,10 +2194,14 @@ class MainController {
       // Use sync=true to ensure save completes before continuing
       await this.saveWalletState('create-wallet', true, true);
 
-      // Start auto-lock timer if enabled (not 0)
+      // Start auto-lock timer if enabled (> 0)
       const { advancedSettings } = store.getState().vaultGlobal;
-      if (advancedSettings?.autolock && advancedSettings.autolock !== 0) {
-        await this.startAutoLockTimer();
+      {
+        const _raw = (advancedSettings?.autolock as any) ?? 0;
+        const _minutes = Number(_raw);
+        if (Number.isFinite(_minutes) && _minutes > 0) {
+          await this.startAutoLockTimer();
+        }
       }
 
       setTimeout(() => {
