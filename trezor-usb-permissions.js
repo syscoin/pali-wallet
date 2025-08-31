@@ -19,20 +19,16 @@
       });
       setStatus('USB permission granted. You can close this tab/window.');
       try {
-        if (window.opener) {
-          let openerOrigin = '*';
+        if (window.opener && document.referrer) {
           try {
-            if (document.referrer) {
-              let url = new URL(document.referrer);
-              openerOrigin = url.origin;
+            let url = new URL(document.referrer);
+            if (url.origin && url.origin !== 'null') {
+              window.opener.postMessage(
+                { type: 'trezor-usb-permission-granted' },
+                url.origin
+              );
             }
-          } catch (_) {
-            openerOrigin = '*';
-          }
-          window.opener.postMessage(
-            { type: 'trezor-usb-permission-granted' },
-            openerOrigin
-          );
+          } catch (_) {}
         }
       } catch (_) {}
     } catch (e) {
