@@ -2629,10 +2629,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.553":
-  version "1.0.553"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.553.tgz#7b85a3bac9af48bee4d5459ba0af63c430fb6d8e"
-  integrity sha512-S8kfmjbEPIVn8KHzOM9N+AZk2V3Yzr69ls0iD+Q74qdqMmZ0Hf7Xx2aAT3zu8Z6Hncv6R2dBs88/ZGj6GlnatQ==
+"@sidhujag/sysweb3-keyring@^1.0.554":
+  version "1.0.554"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.554.tgz#8fa51973bb9b56e39dd3eec39160c25e6d6c7df1"
+  integrity sha512-EHVunibrNobizZiPjfny7cCZK3Q/J1GglUG3SxelVxKEa/JJgLgmnHyrufrlztrAVj0PQRotxIbBCIcYRAg4IQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abstract-provider" "^5.8.0"
@@ -2659,7 +2659,6 @@
     "@trezor/utxo-lib" "^1.0.12"
     bip32-path "^0.4.2"
     bitcoin-ops "^1.4.1"
-    bitcoinjs-lib "^7.0.0-rc.0"
     crypto-js "^4.1.1"
     ethereumjs-util "^7.1.5"
 
