@@ -15,7 +15,10 @@
         return;
       }
       await navigator.usb.requestDevice({
-        filters: [{ vendorId: 0x534c }, { vendorId: 0x1209 }],
+        filters: [
+          { vendorId: 0x1209, productId: 0x53c0 }, // Trezor bootloader (WebUSB)
+          { vendorId: 0x1209, productId: 0x53c1 }, // Trezor firmware (WebUSB)
+        ],
       });
       setStatus('USB permission granted. You can close this tab/window.');
     } catch (e) {
