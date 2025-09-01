@@ -18,19 +18,6 @@
         filters: [{ vendorId: 0x534c }, { vendorId: 0x1209 }],
       });
       setStatus('USB permission granted. You can close this tab/window.');
-      try {
-        if (window.opener && document.referrer) {
-          try {
-            let url = new URL(document.referrer);
-            if (url.origin && url.origin !== 'null') {
-              window.opener.postMessage(
-                { type: 'trezor-usb-permission-granted' },
-                url.origin
-              );
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
     } catch (e) {
       setStatus(e && e.message ? e.message : 'USB permission error', true);
     }
@@ -38,16 +25,9 @@
 
   // Simple inline UI
   window.addEventListener('DOMContentLoaded', function () {
-    let btn = document.createElement('button');
-    btn.textContent = 'Grant USB permission';
-    btn.style.cssText =
-      'margin:16px;padding:8px 12px;border-radius:9999px;border:0;background:#2563eb;color:#fff;cursor:pointer;';
-    btn.onclick = requestUsb;
-    document.body.appendChild(btn);
-    let p = document.createElement('p');
-    p.id = 'status';
-    p.style.cssText =
-      'font:13px system-ui, sans-serif; color:#475569; margin-left:16px;';
-    document.body.appendChild(p);
+    let btn = document.getElementById('grant-btn');
+    if (btn) {
+      btn.addEventListener('click', requestUsb);
+    }
   });
 })();
