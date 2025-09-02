@@ -87,7 +87,6 @@ const MV3_OPTIONS = {
   short_name: 'pali',
   permissions: [
     'hid',
-    'usb',
     'alarms',
     'storage',
     'activeTab',
@@ -136,8 +135,6 @@ const MV3_OPTIONS = {
         'js/inpage.bundle.js',
         'js/handleWindowProperties.bundle.js',
         'js/pali.bundle.js',
-        'trezor-usb-permissions.html',
-        'trezor-usb-permissions.js',
         'assets/all_assets/favicon-16.png',
         'assets/all_assets/favicon-32.png',
         'assets/all_assets/favicon-48.png',
