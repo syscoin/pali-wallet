@@ -2629,10 +2629,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.556":
-  version "1.0.556"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.556.tgz#a9b190f44e3d3257e8022d28b6396946590ebaeb"
-  integrity sha512-SnCmfbaHehjFYkD9EbLcYnI/9HziHdpCjayOVND6lraTD8hrcxfOebwQ97pGXNy24s305PgcwDx8Au9H9M9XHA==
+"@sidhujag/sysweb3-keyring@^1.0.557":
+  version "1.0.557"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.557.tgz#90448a95a2c53441805ff37820341d4c2c51e6b5"
+  integrity sha512-003AGkwNbk95okodECGz/qlrnktCZ+tNDoB7PZistpxf2Dohl7bUfArh90lZJbWfR/CopfGCLU3rYMkXUOOweQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abstract-provider" "^5.8.0"
@@ -2652,8 +2652,8 @@
     "@ledgerhq/logs" "^6.10.1"
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.27"
-    "@sidhujag/sysweb3-network" "^1.0.105"
-    "@sidhujag/sysweb3-utils" "^1.1.270"
+    "@sidhujag/sysweb3-network" "^1.0.106"
+    "@sidhujag/sysweb3-utils" "^1.1.271"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.6.2"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2662,22 +2662,22 @@
     crypto-js "^4.1.1"
     ethereumjs-util "^7.1.5"
 
-"@sidhujag/sysweb3-network@^1.0.105":
-  version "1.0.105"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.105.tgz#d76eac5ccfe789086b4de2dee8772ab56ced11e6"
-  integrity sha512-Eajo1OhtMWqy8Yu5+WJvuymT+Dk+JIVU+zkCTRa0XmnBwWGrDIYgWNS4HVDdAJBmPhqFduSt5fLFBe91NrG5Nw==
+"@sidhujag/sysweb3-network@^1.0.106":
+  version "1.0.106"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.106.tgz#9dea9db4634aa9c90f3de4924275eff598b9b16b"
+  integrity sha512-ecC5zDlEhV13DRSZqwEuFuX6S2yP6BVnOYXd0Ub7NmhjNGU/fpnTWznWn6n/NnwsBBhuTV4sdAEbY9sjfdDE/g==
   dependencies:
     "@ethersproject/bytes" "^5.8.0"
     eth-chains "^1.0.0"
 
-"@sidhujag/sysweb3-utils@^1.1.270":
-  version "1.1.270"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.270.tgz#7999ad86819c7b770b1dd5afabc7e9a15f09e0be"
-  integrity sha512-jBNbWktfMKPflKGSH5XzCChbE750/+ku7uGvg92yEL6keyb8rqKW6MLOhjR+MrMI7rgMxo3Np9Ne8MXUL3U0YQ==
+"@sidhujag/sysweb3-utils@^1.1.271":
+  version "1.1.271"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.271.tgz#fc9cebc4fa5f962b6e3aae93b93dd696e78c5f89"
+  integrity sha512-2FkFzViKSgs7DfzIjsf0OYP6bZ4smoGynKQYxBSW2/hugvJs/0KAMJB0ATe5WMapKNo8PKG3Pmgv0OjyOhms3g==
   dependencies:
     "@ethersproject/address" "^5.8.0"
     "@ethersproject/contracts" "^5.8.0"
-    "@sidhujag/sysweb3-network" "^1.0.105"
+    "@sidhujag/sysweb3-network" "^1.0.106"
     bech32 "^2.0.0"
     crypto-js "^4.1.1"
 
