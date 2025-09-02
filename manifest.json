@@ -12,7 +12,6 @@
   "short_name": "pali",
   "permissions": [
     "hid",
-    "usb",
     "alarms",
     "storage",
     "activeTab",
