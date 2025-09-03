@@ -1973,7 +1973,7 @@
     "@ledgerhq/logs" "^6.13.0"
     rxjs "^7.8.1"
 
-"@ledgerhq/hw-transport-webhid@^6.30.4":
+"@ledgerhq/hw-transport-webhid@^6.30.5":
   version "6.30.5"
   resolved "https://registry.yarnpkg.com/@ledgerhq/hw-transport-webhid/-/hw-transport-webhid-6.30.5.tgz#9948c0376700a58d235132a78ba4d0da0c058d09"
   integrity sha512-dEUrV7afbw1HIAz4NrcstihtiVEZ7osmigjWhHR1kcBvkP9JKFUjplQkCGshfhocgTVasA8RzUF9lgTDMR6VOw==
@@ -2629,10 +2629,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.27.tgz#b7dd7d065c1845519e91ac470540ab94721eb33b"
   integrity sha512-aeUJpk+DiziPJbD6HFnfixKZj0T4HYStshjk6+adziftLwamNc3MIp+MtIVZwtzvNpbzIXwAnuJM/QXQsc01NQ==
 
-"@sidhujag/sysweb3-keyring@^1.0.559":
-  version "1.0.559"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.559.tgz#c9d494e9cf830b5f5ba3623887acc5cde2e08b2a"
-  integrity sha512-3QqapfAos2zkAyK6wVYMK94QPnZ35GTDHkfaqrF2aTuJNDpsWTCGMVrjU3kDE/5q3jjc1p/6U5snT34Cnc3mdQ==
+"@sidhujag/sysweb3-keyring@^1.0.560":
+  version "1.0.560"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.560.tgz#48682d2e6b985a781a347fe2af5a359288d6b241"
+  integrity sha512-zmfGhcoZF097NLpDIzA5s67IU9ekbjE95/cmQGtud1EAucUN0YjQUvEbknNo8llQpSiFq9NeUeJBNA25cKf6zg==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abstract-provider" "^5.8.0"
@@ -2648,7 +2648,7 @@
     "@ethersproject/units" "^5.8.0"
     "@ethersproject/wallet" "^5.8.0"
     "@ledgerhq/hw-app-eth" "^6.45.12"
-    "@ledgerhq/hw-transport-webhid" "^6.30.4"
+    "@ledgerhq/hw-transport-webhid" "^6.30.5"
     "@ledgerhq/logs" "^6.10.1"
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.27"
