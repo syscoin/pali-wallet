@@ -936,15 +936,22 @@ class MainController {
       }
 
       // Lock all other keyrings for security AFTER everything is complete
-      // This prevents interfering with the session transfer or state updates
-      this.keyrings.forEach((keyring, keyringSlip44) => {
+      // Await to guarantee hardware transports are fully released
+      for (const [keyringSlip44, keyring] of this.keyrings.entries()) {
         if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
           console.log(
             `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
           );
-          keyring.lockWallet();
+          try {
+            await keyring.lockWallet();
+          } catch (lockErr) {
+            console.warn(
+              `[MainController] Failed to lock non-active keyring ${keyringSlip44}:`,
+              lockErr
+            );
+          }
         }
-      });
+      }
     } catch (error) {
       console.error('[MainController] Error in switchActiveKeyring:', error);
       throw error;
