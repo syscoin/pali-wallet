@@ -734,7 +734,10 @@ const extractUtxoAddressFromPsbt = async (
   }
 
   try {
-    const psbtObj = PsbtUtils.fromPali(psbtData);
+    const psbtObj = PsbtUtils.fromPali(
+      psbtData,
+      store.getState().vault.activeNetwork
+    );
 
     // Look through inputs to find the first unsigned input that belongs to our wallet
     if (psbtObj?.data?.inputs) {

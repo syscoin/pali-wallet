@@ -198,7 +198,7 @@
     "importWalletWarning": "WALLET-IMPORT-WARNUNG!",
     "thisActionErases": "Diese Aktion löscht Ihre aktuelle Wallet.",
     "toRestoreThis": "Um diese aktuelle Wallet in Zukunft wiederherzustellen, stellen Sie sicher, dass Sie die Wiederherstellungsphrase haben.",
-    "allYourSettings": "Alle Ihre Einstellungen, wie benutzerdefinierte Token und importierte Konten, gehen verloren, jedoch sind Ihre Gelder sicher!",
+    "allYourSettings": "Alle Einstellungen auf diesem Gerät (benutzerdefinierte Token und importierte Konten) werden entfernt. Dies verschiebt oder löscht keine On-Chain-Gelder, aber die verschlüsselten privaten Schlüssel für importierte Konten werden von diesem Gerät gelöscht. Wenn Sie die Secret Recovery Phrase oder diese privaten Schlüssel nicht besitzen, können Sie den Zugriff auf diese Vermögenswerte dauerhaft verlieren.",
     "removeAccount": "Konto entfernen",
     "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
@@ -214,8 +214,7 @@
     "closeAndReopenPali": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um sich zu authentifizieren und Ihre Hardware-Wallet zu verbinden",
     "activeAccountNotFound": "Fehler: Aktives Konto nicht gefunden",
     "paliWalletBrowserExtension": "Pali Wallet Browser-Erweiterung",
-    "addressType": "Adresstyp",
-    "taprootDisabled": "Taproot-Signierung bald verfügbar"
+    "addressType": "Adresstyp"
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",

@@ -1,5 +1,3 @@
-import 'emoji-log';
-
 // Log immediately to show background script is starting
 console.log(
   '[Background] Service worker starting at',
@@ -151,8 +149,21 @@ function startKeepalive() {
     const now = Date.now();
     const timeSinceLastActivity = now - lastActivity;
 
-    // If there's been recent activity (within 2 minutes), keep the service worker alive
-    if (timeSinceLastActivity < 2 * 60 * 1000) {
+    // Determine if we should force-keep-alive based on unlock state
+    let shouldForceKeepAlive = false;
+    try {
+      if (isReady) {
+        const unlocked = getController().wallet.isUnlocked();
+        // If wallet is unlocked, keep the worker alive.
+        // Autolock alarm (when configured) will lock and naturally stop keepalive via isUnlocked=false.
+        shouldForceKeepAlive = unlocked;
+      }
+    } catch (e) {
+      // Ignore readiness or getter errors; fallback to normal behavior
+    }
+
+    // If there's been recent activity (within 2 minutes) OR wallet is unlocked, keep the service worker alive
+    if (timeSinceLastActivity < 2 * 60 * 1000 || shouldForceKeepAlive) {
       // Perform a minimal operation to keep the service worker active
       chrome.storage.local.get('keepalive', () => {
         // Just reading from storage is enough to keep the worker alive
@@ -164,9 +175,9 @@ function startKeepalive() {
         }
       });
     } else {
-      // No recent activity, stop the keepalive to allow natural termination
+      // No recent activity and wallet is locked, stop the keepalive to allow natural termination
       console.debug(
-        '[Keepalive] No recent activity, allowing service worker to sleep'
+        '[Keepalive] No recent activity and locked, allowing service worker to sleep'
       );
       if (keepaliveInterval) {
         clearInterval(keepaliveInterval);

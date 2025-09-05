@@ -198,7 +198,7 @@
     "importWalletWarning": "지갑 가져오기 경고!",
     "thisActionErases": "이 작업은 현재 지갑을 지웁니다.",
     "toRestoreThis": "향후 이 현재 지갑을 복원하려면 복구 구문이 있는지 확인하세요.",
-    "allYourSettings": "사용자 정의 토큰 및 가져온 계정과 같은 모든 설정이 손실되지만 자금은 안전합니다!",
+    "allYourSettings": "이 기기의 모든 설정(사용자 지정 토큰 및 가져온 계정)이 삭제됩니다. 이는 온체인 자금을 이동하거나 삭제하지 않지만, 가져온 계정의 암호화된 개인 키는 이 기기에서 삭제됩니다. 시크릿 복구 구문 또는 해당 개인 키가 없으면 해당 자산에 대한 접근을 영구적으로 잃을 수 있습니다.",
     "removeAccount": "계정 제거",
     "removeAccountConfirmation": "{{accountType}} 계정 \"{{accountName}}\"을(를) 제거하시겠습니까? 필요하면 언제든지 계정을 다시 만들 수 있습니다.",
     "accountRemovedSuccessfully": "계정이 성공적으로 제거되었습니다",
@@ -214,8 +214,7 @@
     "closeAndReopenPali": "이 창을 닫고 Pali를 다시 열어서 인증하고 하드웨어 지갑을 연결하세요",
     "activeAccountNotFound": "오류: 활성 계정을 찾을 수 없습니다",
     "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장",
-    "addressType": "주소 유형",
-    "taprootDisabled": "Taproot 서명은 곧 지원됩니다"
+    "addressType": "주소 유형"
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 8자)",

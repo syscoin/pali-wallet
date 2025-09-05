@@ -17,7 +17,7 @@ import {
   faucetTxSyscoinNEVMInfo,
   faucetTxSyscoinNEVMTestnetInfo,
 } from 'utils/constants';
-import { claimFaucet } from 'utils/faucet';
+import { claimFaucet, getExternalFaucetUrl } from 'utils/faucet';
 
 // Define reducer action types
 type FaucetAction =
@@ -159,12 +159,24 @@ export const useFaucetComponentStates = () => {
   }, [chainId, account.address]);
 
   const handleFaucetButton = useCallback(() => {
-    if (
-      state.status === FaucetStatusResponse.REQUEST ||
-      state.status === FaucetStatusResponse.ERROR
-    ) {
+    if (state.status === FaucetStatusResponse.REQUEST) {
       handleRequestFaucet();
-    } else if (state.status === FaucetStatusResponse.SUCCESS) {
+      return;
+    }
+
+    if (state.status === FaucetStatusResponse.ERROR) {
+      // Open external faucet hub as provider is unavailable (#714)
+      const url = getExternalFaucetUrl();
+      try {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } catch (e) {
+        // Fallback: navigate to internal route that can show link if window.open blocked
+        navigate('/home');
+      }
+      return;
+    }
+
+    if (state.status === FaucetStatusResponse.SUCCESS) {
       navigate('/home');
     }
   }, [state.status, handleRequestFaucet, navigate]);

@@ -27,3 +27,9 @@ export const claimFaucet = async (chainId: number, walletAddress: string) => {
     return err;
   }
 };
+
+// External fallback faucet portal. The integrated provider is unavailable (#714),
+// so we guide users to the official faucet hub which provides updated instructions/links.
+export const getExternalFaucetUrl = (): string =>
+  // Keep generic to avoid stale deep-links; the faucet hub can route appropriately.
+  'https://faucet.syscoin.org';

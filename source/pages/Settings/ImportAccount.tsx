@@ -28,7 +28,7 @@ const ImportAccountView = () => {
   const [watchOnly, setWatchOnly] = useState(false);
   const [validIdentifier, setValidIdentifier] = useState(false);
   const [selectedUtxoAddressType, setSelectedUtxoAddressType] = useState<
-    'p2wpkh' | 'p2pkh'
+    'p2wpkh' | 'p2pkh' | 'p2tr'
   >('p2wpkh');
 
   const {
@@ -155,11 +155,13 @@ const ImportAccountView = () => {
                   />
                   <span className="text-white text-sm">Legacy (P2PKH)</span>
                 </label>
-                <label
-                  className="inline-flex items-center gap-2 opacity-50 cursor-not-allowed"
-                  title={t('settings.taprootDisabled')}
-                >
-                  <input type="radio" name="utxoAddressType" disabled />
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="utxoAddressType"
+                    checked={selectedUtxoAddressType === 'p2tr'}
+                    onChange={() => setSelectedUtxoAddressType('p2tr')}
+                  />
                   <span className="text-white text-sm">Taproot (P2TR)</span>
                 </label>
               </div>

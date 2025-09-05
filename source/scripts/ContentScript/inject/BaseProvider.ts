@@ -322,13 +322,15 @@ export class BaseProvider extends EventEmitter {
       // Browser will automatically clean up when user navigates away or closes tab
       // This prevents authentication timeouts and provides better UX
 
+      const targetOrigin = window.location.origin;
+
       window.postMessage(
         {
           id,
           type,
           data,
         },
-        '*'
+        targetOrigin
       );
     });
 }

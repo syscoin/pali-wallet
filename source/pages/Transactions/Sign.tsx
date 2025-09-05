@@ -77,7 +77,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               psbt: data,
               isTrezor: activeAccount.isTrezorWallet,
               isLedger: activeAccount.isLedgerWallet,
-              pathIn: data?.pathIn,
             },
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -93,7 +92,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               psbt: data,
               isTrezor: activeAccount.isTrezorWallet,
               isLedger: activeAccount.isLedgerWallet,
-              pathIn: data?.pathIn,
             },
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
