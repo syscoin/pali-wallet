@@ -79,12 +79,9 @@ export const AccountHeader: React.FC = () => {
     try {
       setIsLoading(true);
 
-      // Determine which hardware wallet type to use
-      const signerType = isLedger ? 'ledgerSigner' : 'trezorSigner';
-
-      // Use type assertion for legacy controller methods
+      // Route through ethereumTransaction.verifyUtxoAddress, which dispatches to the correct HW
       await (controllerEmitter as any)(
-        ['wallet', signerType, 'utxo', 'verifyUtxoAddress'],
+        ['wallet', 'ethereumTransaction', 'verifyUtxoAddress'],
         [activeAccount?.id, activeNetwork.currency, activeNetwork.slip44],
         300000 // 5 minutes timeout for hardware wallet operations
       );

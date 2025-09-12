@@ -1185,14 +1185,6 @@ class MainController {
     return (this.getActiveKeyring() as any).validateWif(wif, targetNetwork);
   }
 
-  public get trezorSigner() {
-    return this.getActiveKeyring().trezorSigner;
-  }
-
-  public get ledgerSigner() {
-    return this.getActiveKeyring().ledgerSigner;
-  }
-
   public getChangeAddress(id: number) {
     return this.getActiveKeyring().getChangeAddress(id);
   }
