@@ -65,6 +65,7 @@
         "js/inpage.bundle.js",
         "js/handleWindowProperties.bundle.js",
         "js/pali.bundle.js",
+        "assets/all_assets/*",
         "assets/all_assets/favicon-16.png",
         "assets/all_assets/favicon-32.png",
         "assets/all_assets/favicon-48.png",
