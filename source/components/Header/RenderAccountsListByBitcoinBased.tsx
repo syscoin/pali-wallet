@@ -107,15 +107,23 @@ const RenderAccountsListByBitcoinBased =
 
     const handleAccountSwitch = useCallback(
       async (id: number, type: KeyringAccountType, close: () => void) => {
+        if (switchingAccount?.id === id && switchingAccount?.type === type) {
+          return;
+        }
+
         setSwitchingAccount({ id, type });
         try {
           await setActiveAccount(id, type);
-          close();
+          setTimeout(() => {
+            close();
+          }, 50);
+        } catch (e) {
+          console.error('Error switching account:', e);
         } finally {
           setSwitchingAccount(null);
         }
       },
-      [setActiveAccount]
+      [setActiveAccount, switchingAccount]
     );
 
     const isAccountSwitching = useCallback(
@@ -136,26 +144,29 @@ const RenderAccountsListByBitcoinBased =
       (
         account: any,
         accountType: KeyringAccountType,
-        index: number,
+        uniqueKey: string,
         close: () => void
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
+        const isSwitching = isAccountSwitching(account.id, accountType);
+        const isActive = isAccountActive(account.id, accountType);
 
         return (
           <li
-            className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+            className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm
           font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
            transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-             isAccountSwitching(account.id, accountType)
+             isSwitching
                ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
                : ''
            }`}
-            onClick={() => {
-              if (isAccountSwitching(account.id, accountType)) return;
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isSwitching || isActive) return;
               handleAccountSwitch(account.id, accountType, close);
             }}
-            id={`account-${accountType}-${index}`}
-            key={`${accountType}-${account.id}`}
+            key={uniqueKey}
+            id={uniqueKey}
           >
             {/* Background glow effect on hover */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
@@ -172,7 +183,7 @@ const RenderAccountsListByBitcoinBased =
 
             {/* Right side: Badge + Checkmark */}
             <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-              {isAccountSwitching(account.id, accountType) ? (
+              {isSwitching ? (
                 <LoadingSvg
                   className={`w-4 animate-spin h-4 ${badgeInfo.loadingColor}`}
                 />
@@ -183,7 +194,7 @@ const RenderAccountsListByBitcoinBased =
                   >
                     {badgeInfo.label}
                   </span>
-                  {isAccountActive(account.id, accountType) && (
+                  {isActive && (
                     <div className="transform group-hover:scale-110 transition-transform duration-300">
                       <Icon name="check" className="w-4 h-4" color="#8EC100" />
                     </div>
@@ -198,39 +209,42 @@ const RenderAccountsListByBitcoinBased =
     );
 
     // Memoize the account list computation
-    const accountsList = useMemo(
-      () =>
-        Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
-          Object.values(accountsOfType || {}).map((account, index) => ({
+    const accountsList = useMemo(() => {
+      let globalIndex = 0;
+      return Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
+        Object.values(accountsOfType || {}).map((account) => {
+          const uniqueKey = `account-${accountType}-${
+            account.id
+          }-${globalIndex++}`;
+          return {
             account,
             accountType: accountType as KeyringAccountType,
-            index,
-          }))
-        ),
-      [accounts]
-    );
+            uniqueKey,
+          };
+        })
+      );
+    }, [accounts]);
 
     const isAnySwitching = switchingAccount !== null;
 
     return (
-      <Menu.Item>
-        {({ close }) => (
-          <div
-            className={`relative w-full block ${
-              isAnySwitching ? 'pointer-events-none' : ''
-            }`}
-          >
-            {/* Gray overlay when any account is switching */}
-            {isAnySwitching && (
-              <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
+      <>
+        {accountsList.map(({ account, accountType, uniqueKey }) => (
+          <Menu.Item key={uniqueKey}>
+            {({ close }) => (
+              <div
+                className={`relative w-full block ${
+                  isAnySwitching && !isAccountSwitching(account.id, accountType)
+                    ? 'opacity-50 pointer-events-none'
+                    : ''
+                }`}
+              >
+                {renderAccount(account, accountType, uniqueKey, close)}
+              </div>
             )}
-
-            {accountsList.map(({ account, accountType, index }) =>
-              renderAccount(account, accountType, index, close)
-            )}
-          </div>
-        )}
-      </Menu.Item>
+          </Menu.Item>
+        ))}
+      </>
     );
   });
 
