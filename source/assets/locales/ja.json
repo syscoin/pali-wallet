@@ -217,9 +217,9 @@
     "addressType": "アドレスタイプ"
   },
   "components": {
-    "newPassword": "新しいパスワード（最低8文字）",
+    "newPassword": "新しいパスワード（最低12文字）",
     "confirmPassword": "パスワードを確認",
-    "atLeast": "最低8文字、小文字1文字、数字1文字。",
+    "atLeast": "最低12文字、大文字1文字、小文字1文字、数字1文字、特殊文字1文字（!@#$%^&*...）。",
     "doNotForget": "パスワードを保存することを忘れないでください。ウォレットのロックを解除するには、このパスワードが必要です。",
     "feeRateLabel": "手数料レート ({{currency}}/byte)",
     "gasPriceLabel": "ガス価格 (gwei)",
