@@ -34,6 +34,7 @@ import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
+import { loadSlip44State, saveSlip44State } from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
@@ -1696,7 +1697,8 @@ class MainController {
       }
 
       this.lockAllKeyrings();
-      const { canLogin, needsAccountCreation } = await this.unlock(pwd);
+      const { canLogin, needsAccountCreation, needsXprvMigration } =
+        await this.unlock(pwd);
 
       if (!canLogin) {
         console.error('[MainController] Unlock failed - invalid password');
@@ -1747,6 +1749,161 @@ class MainController {
             error
           );
           throw new Error('Failed to create account after migration');
+        }
+      }
+
+      // Handle xprv migration from hash-based to PBKDF2-based encryption
+      // IMPORTANT: Migrate ALL slip44 vaults, not just the active one
+      if (needsXprvMigration) {
+        console.log(
+          '[MainController] Migrating xprv values to PBKDF2-based encryption...'
+        );
+
+        try {
+          const keyring = this.getActiveKeyring();
+          const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+          let totalMigratedCount = 0;
+
+          // Helper function to migrate accounts in a vault state
+          const migrateVaultAccounts = (
+            accounts: any
+          ): { count: number; migratedAccounts: any } => {
+            const migratedAccounts = { ...accounts };
+            let count = 0;
+
+            for (const accountType of Object.values(KeyringAccountType)) {
+              const accountsOfType = accounts[accountType];
+              if (!accountsOfType) continue;
+
+              migratedAccounts[accountType] = { ...accountsOfType };
+
+              for (const accountId of Object.keys(accountsOfType)) {
+                const id = Number(accountId);
+                const account = accountsOfType[id];
+
+                // Skip accounts without xprv (e.g., watch-only, Trezor, Ledger)
+                if (!account?.xprv || account.xprv === '') continue;
+
+                try {
+                  // Migrate the xprv from legacy encryption to new PBKDF2-based encryption
+                  const migratedXprv = keyring.migrateXprv(account.xprv);
+                  migratedAccounts[accountType][id] = {
+                    ...account,
+                    xprv: migratedXprv,
+                  };
+                  count++;
+                  console.log(
+                    `[MainController] Migrated xprv for ${accountType}:${id}`
+                  );
+                } catch (migrateError) {
+                  console.error(
+                    `[MainController] Failed to migrate xprv for ${accountType}:${id}:`,
+                    migrateError
+                  );
+                  // Keep original account data if migration fails
+                }
+              }
+            }
+
+            return { migratedAccounts, count };
+          };
+
+          // 1. Migrate active vault (current Redux state)
+          const activeVaultState = store.getState().vault;
+          const { migratedAccounts: activeAccounts, count: activeCount } =
+            migrateVaultAccounts(activeVaultState.accounts);
+
+          // Update Redux store with migrated accounts
+          for (const accountType of Object.values(KeyringAccountType)) {
+            const accountsOfType = activeAccounts[accountType];
+            if (!accountsOfType) continue;
+
+            for (const accountId of Object.keys(accountsOfType)) {
+              const id = Number(accountId);
+              const account = accountsOfType[id];
+              const originalAccount =
+                activeVaultState.accounts[accountType]?.[id];
+
+              // Only dispatch if xprv actually changed
+              if (originalAccount && account.xprv !== originalAccount.xprv) {
+                store.dispatch(
+                  setAccountPropertyByIdAndType({
+                    id,
+                    type: accountType,
+                    property: 'xprv',
+                    value: account.xprv,
+                  })
+                );
+              }
+            }
+          }
+          totalMigratedCount += activeCount;
+
+          // Save active vault state
+          await this.saveWalletState('xprv-migration-active', true, true);
+
+          // 2. Migrate OTHER slip44 vaults stored in paliStorage
+          const slip44sToMigrate = [DEFAULT_UTXO_SLIP44, DEFAULT_EVM_SLIP44];
+
+          for (const slip44 of slip44sToMigrate) {
+            // Skip the active slip44 (already migrated above)
+            if (slip44 === activeSlip44) continue;
+
+            try {
+              const storedVaultState = await loadSlip44State(slip44);
+              if (!storedVaultState || !storedVaultState.accounts) {
+                console.log(
+                  `[MainController] No vault found for slip44 ${slip44}, skipping`
+                );
+                continue;
+              }
+
+              console.log(
+                `[MainController] Migrating slip44 ${slip44} vault from storage...`
+              );
+
+              const { migratedAccounts, count } = migrateVaultAccounts(
+                storedVaultState.accounts
+              );
+
+              if (count > 0) {
+                // Save the migrated vault back to storage
+                const migratedVaultState = {
+                  ...storedVaultState,
+                  accounts: migratedAccounts,
+                };
+                await saveSlip44State(slip44, migratedVaultState);
+                totalMigratedCount += count;
+
+                // Also clear the vault cache so it reloads the migrated data
+                vaultCache.clearSlip44FromCache(slip44);
+
+                console.log(
+                  `[MainController] Migrated ${count} accounts for slip44 ${slip44}`
+                );
+              }
+            } catch (slip44Error) {
+              console.error(
+                `[MainController] Failed to migrate slip44 ${slip44} vault:`,
+                slip44Error
+              );
+              // Continue with other slip44s even if one fails
+            }
+          }
+
+          // Clear the legacy session password after ALL migrations are complete
+          keyring.clearLegacySession();
+
+          console.log(
+            `[MainController] xprv migration completed. Migrated ${totalMigratedCount} accounts total.`
+          );
+        } catch (migrationError) {
+          console.error(
+            '[MainController] Error during xprv migration:',
+            migrationError
+          );
+          // Don't throw - allow unlock to proceed even if migration fails
+          // The fallback decryption will continue to work
         }
       }
 
