@@ -16,7 +16,7 @@ import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 
 const ForgetWalletView = () => {
-  const { navigate, alert } = useUtils();
+  const { navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const isBitcoinBased = useSelector(
@@ -37,14 +37,11 @@ const ForgetWalletView = () => {
   // Loading state for submit action
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Cached seed for copying
+  // Cached seed for display (view-only)
   const [cachedSeed, setCachedSeed] = useState<string>('');
 
   // Password validation state
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
-
-  // Copy state for SeedPhraseDisplay
-  const [copied, setCopied] = useState<boolean>(false);
 
   const [form] = Form.useForm();
 
@@ -80,23 +77,6 @@ const ForgetWalletView = () => {
       form.setFieldsValue({ seed: '' }); // Clear seed field
     }
   }, [hasAccountFunds, form]);
-
-  // Copy seed phrase to clipboard using SeedPhraseDisplay
-  const handleCopySeed = useCallback(
-    async (seedPhrase: string) => {
-      try {
-        await navigator.clipboard.writeText(seedPhrase);
-        alert.success(t('settings.seedPhraseCopied'));
-        setCopied(true);
-        // Reset copied state after a delay
-        setTimeout(() => setCopied(false), 2000);
-      } catch (error) {
-        console.error('Failed to copy seed:', error);
-        alert.error(t('buttons.error'));
-      }
-    },
-    [alert, t]
-  );
 
   const onSubmit = useCallback(
     async ({ password }: { password: string }) => {
@@ -171,8 +151,6 @@ const ForgetWalletView = () => {
                   seedPhrase={cachedSeed}
                   isEnabled={isPasswordValid}
                   showEyeToggle={true}
-                  onCopy={handleCopySeed}
-                  copied={copied}
                   displayMode="textarea"
                 />
               </Form.Item>
