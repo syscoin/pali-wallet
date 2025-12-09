@@ -19,11 +19,8 @@ const PhraseView = () => {
   // Password validation state like ForgetWallet
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
-  // Copy state for SeedPhraseDisplay
-  const [copied, setCopied] = useState<boolean>(false);
-
   const { t } = useTranslation();
-  const { navigate, alert } = useUtils();
+  const { navigate } = useUtils();
   const location = useLocation();
   const { controllerEmitter } = useController();
 
@@ -49,23 +46,6 @@ const PhraseView = () => {
     setPhrase(undefined);
     setIsPasswordValid(false);
   }, []);
-
-  // Copy seed phrase to clipboard using alert like ForgetWallet
-  const handleCopyToClipboard = useCallback(
-    async (seedPhrase: string) => {
-      try {
-        await navigator.clipboard.writeText(seedPhrase);
-        alert.success(t('settings.seedPhraseCopied'));
-        setCopied(true);
-        // Reset copied state after a delay
-        setTimeout(() => setCopied(false), 2000);
-      } catch (error) {
-        console.error('Failed to copy seed:', error);
-        alert.error(t('buttons.error'));
-      }
-    },
-    [alert, t]
-  );
 
   // Navigation callback
   const handleClose = useCallback(() => {
@@ -102,8 +82,6 @@ const PhraseView = () => {
               seedPhrase={phrase}
               isEnabled={isPasswordValid}
               showEyeToggle={true}
-              onCopy={handleCopyToClipboard}
-              copied={copied}
               displayMode="textarea"
             />
           </Form.Item>

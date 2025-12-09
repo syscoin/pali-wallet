@@ -12,7 +12,6 @@ export const CreatePhrase = ({ password }: { password: string }) => {
   const [wordCount, setWordCount] = useState<number>(12);
   const { t } = useTranslation();
 
-  const [copied, setCopied] = useState<boolean>(false);
   const [isTermsConfirmed, setIsTermsConfirmed] = useState<boolean>(false);
 
   const navigate = useNavigate();
@@ -24,17 +23,6 @@ export const CreatePhrase = ({ password }: { password: string }) => {
       }
     );
   }, [controllerEmitter, wordCount]);
-
-  const handleCopyToClipboard = useCallback(async (seedPhrase: string) => {
-    try {
-      await navigator.clipboard.writeText(seedPhrase);
-      setCopied(true);
-      // Reset copied state after a delay
-      setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy seed:', error);
-    }
-  }, []);
 
   const handleNext = useCallback(() => {
     if (isTermsConfirmed) {
@@ -73,8 +61,6 @@ export const CreatePhrase = ({ password }: { password: string }) => {
           seedPhrase={seed}
           isEnabled={true}
           showEyeToggle={true}
-          onCopy={handleCopyToClipboard}
-          copied={copied}
           displayMode="words"
           className="w-[17.5rem] max-w-[17.5rem]"
         />
