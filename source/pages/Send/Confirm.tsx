@@ -25,7 +25,10 @@ import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
-import { selectEnsNameToAddress } from 'state/vault/selectors';
+import {
+  selectEnsNameToAddress,
+  selectValidEnsCache,
+} from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
 import { formatGweiValue } from 'utils/formatSyscoinValue';
@@ -61,9 +64,8 @@ export const SendConfirm = () => {
   );
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-  const ensCache = useSelector(
-    (state: RootState) => state.vaultGlobal.ensCache
-  );
+  // Use valid (non-expired) ENS cache for security
+  const ensCache = useSelector(selectValidEnsCache);
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const location = useLocation();
