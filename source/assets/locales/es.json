@@ -39,9 +39,9 @@
     "generate": "Generar"
   },
   "components": {
-    "newPassword": "Nueva contraseña (mín. 8 caracteres)",
+    "newPassword": "Nueva contraseña (mín. 12 caracteres)",
     "confirmPassword": "Confirmar contraseña",
-    "atLeast": "Al menos 8 caracteres, 1 en minúscula y 1 numérico.",
+    "atLeast": "Al menos 12 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial (!@#$%^&*...).",
     "doNotForget": "No olvides guardar tu contraseña. Necesitarás esta contraseña para desbloquear tu billetera.",
     "feeRateLabel": "Tarifa ({{currency}}/byte)",
     "gasPriceLabel": "Precio del Gas (gwei)",

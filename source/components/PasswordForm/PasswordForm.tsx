@@ -75,7 +75,9 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
               message: '',
             },
             {
-              pattern: /^(?=.*[a-z])(?=.*[0-9])(?=.{8,})/,
+              // Strong password requirements: 12+ chars, uppercase, lowercase, number, special char
+              pattern:
+                /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/,
               message: '',
             },
           ]}

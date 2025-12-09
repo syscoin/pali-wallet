@@ -39,9 +39,9 @@
     "generate": "Gerar"
   },
   "components": {
-    "newPassword": "Nova senha (mín. 8 caracteres)",
+    "newPassword": "Nova senha (mín. 12 caracteres)",
     "confirmPassword": "Confirmar senha",
-    "atLeast": "Pelo menos 8 caracteres, 1 minúscula e 1 numeral.",
+    "atLeast": "Pelo menos 12 caracteres, 1 maiúscula, 1 minúscula, 1 número e 1 caractere especial (!@#$%^&*...).",
     "doNotForget": "Não esqueça de salvar sua senha. Você precisará desta senha para desbloquear sua carteira.",
     "feeRateLabel": "Taxa ({{currency}}/byte)",
     "gasPriceLabel": "Preço do gás (gwei)",

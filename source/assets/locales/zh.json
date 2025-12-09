@@ -217,9 +217,9 @@
     "addressType": "地址类型"
   },
   "components": {
-    "newPassword": "新密码（至少8个字符）",
+    "newPassword": "新密码（至少12个字符）",
     "confirmPassword": "确认密码",
-    "atLeast": "至少8个字符，1个小写字母和1个数字。",
+    "atLeast": "至少12个字符，1个大写字母，1个小写字母，1个数字和1个特殊字符（!@#$%^&*...）。",
     "doNotForget": "不要忘记保存您的密码。您需要此密码来解锁您的钱包。",
     "feeRateLabel": "费率 ({{currency}}/字节)",
     "gasPriceLabel": "燃气价格 (gwei)",

@@ -217,9 +217,9 @@
     "addressType": "주소 유형"
   },
   "components": {
-    "newPassword": "새 비밀번호 (최소 8자)",
+    "newPassword": "새 비밀번호 (최소 12자)",
     "confirmPassword": "비밀번호 확인",
-    "atLeast": "최소 8자, 소문자 1개, 숫자 1개.",
+    "atLeast": "최소 12자, 대문자 1개, 소문자 1개, 숫자 1개, 특수문자 1개 (!@#$%^&*...).",
     "doNotForget": "비밀번호를 저장하는 것을 잊지 마세요. 지갑을 잠금 해제하려면 이 비밀번호가 필요합니다.",
     "feeRateLabel": "수수료율 ({{currency}}/바이트)",
     "gasPriceLabel": "가스 가격 (gwei)",
