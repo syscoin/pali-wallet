@@ -21,8 +21,11 @@ import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { selectEnsNameToAddress } from 'state/vault/selectors';
-import { selectActiveAccountWithAssets } from 'state/vault/selectors';
+import {
+  selectEnsNameToAddress,
+  selectActiveAccountWithAssets,
+  selectValidEnsCache,
+} from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
   getAssetBalance,
@@ -106,9 +109,8 @@ export const SendEth = () => {
   >([]);
 
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const ensCache = useSelector(
-    (state: RootState) => state.vaultGlobal.ensCache
-  );
+  // Use valid (non-expired) ENS cache for security
+  const ensCache = useSelector(selectValidEnsCache);
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
   const vaultActiveAccount = useSelector(
     (state: RootState) => state.vault.activeAccount

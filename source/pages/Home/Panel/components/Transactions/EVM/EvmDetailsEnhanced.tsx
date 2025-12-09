@@ -14,7 +14,10 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import { selectActiveAccount } from 'state/vault/selectors';
+import {
+  selectActiveAccount,
+  selectValidEnsCache,
+} from 'state/vault/selectors';
 import { IDecodedTx } from 'types/transactions';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { camelCaseToText } from 'utils/index';
@@ -37,9 +40,8 @@ export const EvmTransactionDetailsEnhanced = ({
   tx: IEvmTransactionResponse;
 }) => {
   const { controllerEmitter } = useController();
-  const ensCache = useSelector(
-    (state: RootState) => state.vaultGlobal.ensCache
-  );
+  // Use valid (non-expired) ENS cache for security
+  const ensCache = useSelector(selectValidEnsCache);
   const {
     activeNetwork: { chainId, currency, apiUrl },
   } = useSelector((state: RootState) => state.vault);
