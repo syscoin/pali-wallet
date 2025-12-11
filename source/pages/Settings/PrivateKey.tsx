@@ -29,6 +29,8 @@ const PrivateKeyView = () => {
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
   const [currentXprv, setCurrentXprv] = useState<string>('');
+  const [isPrivateKeyVisible, setIsPrivateKeyVisible] =
+    useState<boolean>(false);
   const [form] = Form.useForm();
 
   const getDecryptedPrivateKey = async (key: string) => {
@@ -128,17 +130,45 @@ const PrivateKeyView = () => {
         />
       </Form>
 
-      <CopyCard
-        className="w-full md:max-w-md"
-        onClick={valid ? () => copyText(currentXprv) : undefined}
-        label={t('settings.yourPrivateKey')}
-      >
-        <p>
-          {valid && activeAccount.xpub
-            ? ellipsis(currentXprv, 4, 16)
-            : '********...************'}
-        </p>
-      </CopyCard>
+      {/* Private key display - view-only, no copy to prevent clipboard attacks */}
+      <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">
+        <div className="flex items-center justify-between w-full">
+          <p>{t('settings.yourPrivateKey')}</p>
+          {valid && currentXprv && (
+            <button
+              type="button"
+              onClick={() => setIsPrivateKeyVisible(!isPrivateKeyVisible)}
+              className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
+              title={isPrivateKeyVisible ? 'Hide' : 'Show'}
+            >
+              {isPrivateKeyVisible ? (
+                <img
+                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                  src="/assets/all_assets/visibleEye.svg"
+                  alt="Hide"
+                />
+              ) : (
+                <img
+                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                  src="/assets/all_assets/notVisibleEye.svg"
+                  alt="Show"
+                />
+              )}
+            </button>
+          )}
+        </div>
+        <div
+          className={`select-none ${
+            valid && currentXprv && !isPrivateKeyVisible ? 'filter blur-sm' : ''
+          }`}
+        >
+          <p>
+            {valid && activeAccount.xpub
+              ? ellipsis(currentXprv, 4, 16)
+              : '********...************'}
+          </p>
+        </div>
+      </div>
 
       {isBitcoinBased && (
         <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">

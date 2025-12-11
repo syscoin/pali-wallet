@@ -12,6 +12,7 @@ import { Tooltip } from 'components/Tooltip';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { selectValidEnsCache } from 'state/vault/selectors';
 import { IBlacklistCheckResult } from 'types/security';
 import {
   ICustomFeeParams,
@@ -64,7 +65,8 @@ export const TransactionDetailsComponent = (
     (state: RootState) => state.vault.activeNetwork
   );
   // Prefer rendering ENS name when available in cache for destination
-  const ensCache = useReduxSelector((s: RootState) => s.vaultGlobal.ensCache);
+  // Use valid (non-expired) ENS cache for security
+  const ensCache = useReduxSelector(selectValidEnsCache);
 
   // Helper function to get appropriate copy message based on field type
   const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {

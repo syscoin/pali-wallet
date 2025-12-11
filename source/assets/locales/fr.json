@@ -217,9 +217,9 @@
     "addressType": "Type d'adresse"
   },
   "components": {
-    "newPassword": "Nouveau mot de passe (8 caractères min.)",
+    "newPassword": "Nouveau mot de passe (12 caractères min.)",
     "confirmPassword": "Confirmer le mot de passe",
-    "atLeast": "Au moins 8 caractères, 1 en minuscule et 1 chiffre.",
+    "atLeast": "Au moins 12 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial (!@#$%^&*...).",
     "doNotForget": "N'oubliez pas de sauvegarder votre mot de passe. Vous aurez besoin de ce mot de passe pour déverrouiller votre portefeuille.",
     "feeRateLabel": "Tarif de frais ({{currency}}/byte)",
     "gasPriceLabel": "Prix du gaz (gwei)",

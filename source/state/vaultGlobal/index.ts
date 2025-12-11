@@ -4,6 +4,10 @@ import { IGlobalState } from '../vault/types';
 import { INetwork, INetworkType } from 'types/network';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
+// ENS cache TTL: 5 minutes (300,000 ms)
+// ENS names can change, so we don't cache them indefinitely for security
+export const ENS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 const initialState: IGlobalState = {
   activeSlip44: null,
   advancedSettings: {
@@ -122,10 +126,42 @@ const vaultGlobalSlice = createSlice({
     ) {
       if (!state.ensCache) state.ensCache = {};
       const addressLower = action.payload.address.toLowerCase();
-      state.ensCache[addressLower] = {
+      const now = Date.now();
+
+      // Clean up expired entries while adding new one (opportunistic cleanup)
+      const cleanedCache: typeof state.ensCache = {};
+      for (const [addr, entry] of Object.entries(state.ensCache)) {
+        if (now - entry.timestamp < ENS_CACHE_TTL_MS) {
+          cleanedCache[addr] = entry;
+        }
+      }
+
+      // Add the new entry
+      cleanedCache[addressLower] = {
         name: action.payload.name,
-        timestamp: Date.now(),
+        timestamp: now,
       };
+
+      state.ensCache = cleanedCache;
+    },
+    clearExpiredEnsCache(state: IGlobalState) {
+      // Clear all expired ENS cache entries
+      if (!state.ensCache) return;
+
+      const now = Date.now();
+      const cleanedCache: typeof state.ensCache = {};
+
+      for (const [addr, entry] of Object.entries(state.ensCache)) {
+        if (now - entry.timestamp < ENS_CACHE_TTL_MS) {
+          cleanedCache[addr] = entry;
+        }
+      }
+
+      state.ensCache = cleanedCache;
+    },
+    clearAllEnsCache(state: IGlobalState) {
+      // Clear the entire ENS cache (useful for security-sensitive operations)
+      state.ensCache = {};
     },
     setIsSwitchingAccount(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isSwitchingAccount = action.payload;
@@ -332,6 +368,8 @@ export const {
   resetNetworkQualityForNewNetwork,
   setPostNetworkSwitchLoading,
   setEnsName,
+  clearExpiredEnsCache,
+  clearAllEnsCache,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;

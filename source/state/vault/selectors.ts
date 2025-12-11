@@ -1,6 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 import { RootState } from 'state/store';
+import { ENS_CACHE_TTL_MS } from 'state/vaultGlobal';
 
 import { IAccountAssets, IAccountTransactions } from './types';
 
@@ -85,17 +86,50 @@ export const selectActiveAccountAndVaultData = createSelector(
   (account, assets, vaultData) => ({ account, assets, ...vaultData })
 );
 
-// ENS selectors
+// ENS selectors with TTL expiration support
 export const selectEnsCache = (state: RootState) => state.vaultGlobal.ensCache;
 
-// Derived map: nameLower -> addressLower, built once and memoized
-export const selectEnsNameToAddress = createSelector(
+/**
+ * Helper to check if an ENS cache entry is still valid (not expired)
+ * @param entry - The cache entry with timestamp
+ * @param now - Current timestamp (defaults to Date.now())
+ * @returns true if the entry is still valid
+ */
+export const isEnsCacheEntryValid = (
+  entry: { name: string; timestamp: number },
+  now: number = Date.now()
+): boolean => now - entry.timestamp < ENS_CACHE_TTL_MS;
+
+/**
+ * Selector that returns only non-expired ENS cache entries
+ * This ensures stale ENS lookups are not used for security
+ */
+export const selectValidEnsCache = createSelector(
   [selectEnsCache],
   (ensCache) => {
+    if (!ensCache) return {};
+    const now = Date.now();
+    const validCache: typeof ensCache = {};
+
+    for (const [addrLower, entry] of Object.entries(ensCache)) {
+      if (isEnsCacheEntryValid(entry, now)) {
+        validCache[addrLower] = entry;
+      }
+    }
+
+    return validCache;
+  }
+);
+
+// Derived map: nameLower -> addressLower, built once and memoized
+// Only includes non-expired entries for security
+export const selectEnsNameToAddress = createSelector(
+  [selectValidEnsCache],
+  (validEnsCache) => {
     const map: Record<string, string> = {};
-    if (!ensCache) return map;
+    if (!validEnsCache) return map;
     try {
-      for (const [addrLower, v] of Object.entries(ensCache as any)) {
+      for (const [addrLower, v] of Object.entries(validEnsCache as any)) {
         const nameLower = String((v as any)?.name || '').toLowerCase();
         if (nameLower) map[nameLower] = addrLower;
       }

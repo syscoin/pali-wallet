@@ -34,6 +34,7 @@ import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
+import { loadSlip44State, saveSlip44State } from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
@@ -549,11 +550,13 @@ class MainController {
     }
   >();
 
-  // Rate limiting for failed unlock attempts
+  // Rate limiting for failed unlock attempts (persisted to storage)
   private failedUnlockAttempts = 0;
   private lastFailedUnlockTime = 0;
   private readonly MAX_FAILED_ATTEMPTS = 5;
   private readonly LOCKOUT_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+  private readonly RATE_LIMIT_STORAGE_KEY = 'pali_rate_limit_state';
+  private rateLimitInitialized = false;
 
   private readonly UTXO_PRICE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache for price data
 
@@ -1197,8 +1200,27 @@ class MainController {
     return this.getActiveKeyring().getBip32Path(id, isChangeAddress);
   }
 
-  public getSeed(pwd: string) {
-    return this.getActiveKeyring().getSeed(pwd);
+  public async getSeed(pwd: string) {
+    // Check rate limiting before password validation
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
+    }
+
+    try {
+      const seed = await this.getActiveKeyring().getSeed(pwd);
+      // Reset rate limit on success
+      await this.resetRateLimit();
+      return seed;
+    } catch (error) {
+      // Record failed attempt if it's a password error
+      if (error.message === 'Invalid password') {
+        await this.recordFailedAttempt();
+      }
+      throw error;
+    }
   }
 
   public async getPrivateKeyByAccountId(
@@ -1206,11 +1228,30 @@ class MainController {
     accountType: any,
     pwd: string
   ) {
-    return await this.getActiveKeyring().getPrivateKeyByAccountId(
-      id,
-      accountType,
-      pwd
-    );
+    // Check rate limiting before password validation
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
+    }
+
+    try {
+      const privateKey = await this.getActiveKeyring().getPrivateKeyByAccountId(
+        id,
+        accountType,
+        pwd
+      );
+      // Reset rate limit on success
+      await this.resetRateLimit();
+      return privateKey;
+    } catch (error) {
+      // Record failed attempt if it's a password error
+      if (error.message === 'Invalid password') {
+        await this.recordFailedAttempt();
+      }
+      throw error;
+    }
   }
 
   public getActiveAccount() {
@@ -1225,21 +1266,150 @@ class MainController {
     return await this.getActiveKeyring().forgetMainWallet(pwd);
   }
 
-  public async unlock(pwd: string) {
+  /**
+   * Get remaining lockout time in seconds (for UI display)
+   * Returns 0 if not locked out
+   */
+  public async getRemainingLockoutTime(): Promise<number> {
+    return await this.checkRateLimit();
+  }
+
+  // =============================================
+  // Rate Limiting Persistence Methods
+  // =============================================
+
+  /**
+   * Load rate limiting state from persistent storage
+   * This ensures rate limits survive browser restarts
+   */
+  private async loadRateLimitState(): Promise<void> {
+    if (this.rateLimitInitialized) return;
+
+    try {
+      const stored = await chromeStorage.getItem(this.RATE_LIMIT_STORAGE_KEY);
+      if (stored && typeof stored === 'object') {
+        const { failedAttempts, lastFailedTime } = stored as {
+          failedAttempts: number;
+          lastFailedTime: number;
+        };
+        this.failedUnlockAttempts = failedAttempts || 0;
+        this.lastFailedUnlockTime = lastFailedTime || 0;
+
+        // Check if lockout has expired and reset if so
+        const now = Date.now();
+        if (this.failedUnlockAttempts >= this.MAX_FAILED_ATTEMPTS) {
+          const timeSinceLastFailed = now - this.lastFailedUnlockTime;
+          if (timeSinceLastFailed >= this.LOCKOUT_DURATION) {
+            // Reset expired lockout
+            this.failedUnlockAttempts = 0;
+            this.lastFailedUnlockTime = 0;
+            await this.saveRateLimitState();
+          }
+        }
+      }
+      this.rateLimitInitialized = true;
+    } catch (error) {
+      console.warn('[MainController] Failed to load rate limit state:', error);
+      this.rateLimitInitialized = true;
+    }
+  }
+
+  /**
+   * Save rate limiting state to persistent storage
+   */
+  private async saveRateLimitState(): Promise<void> {
+    try {
+      await chromeStorage.setItem(this.RATE_LIMIT_STORAGE_KEY, {
+        failedAttempts: this.failedUnlockAttempts,
+        lastFailedTime: this.lastFailedUnlockTime,
+      });
+    } catch (error) {
+      console.warn('[MainController] Failed to save rate limit state:', error);
+    }
+  }
+
+  /**
+   * Check if currently locked out due to too many failed attempts
+   * Returns remaining lockout time in seconds, or 0 if not locked out
+   */
+  private async checkRateLimit(): Promise<number> {
+    await this.loadRateLimitState();
+
+    if (this.failedUnlockAttempts >= this.MAX_FAILED_ATTEMPTS) {
+      const now = Date.now();
+      const timeSinceLastFailed = now - this.lastFailedUnlockTime;
+      if (timeSinceLastFailed < this.LOCKOUT_DURATION) {
+        return Math.ceil((this.LOCKOUT_DURATION - timeSinceLastFailed) / 1000);
+      } else {
+        // Reset after lockout period
+        this.failedUnlockAttempts = 0;
+        this.lastFailedUnlockTime = 0;
+        await this.saveRateLimitState();
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * Record a failed password attempt
+   */
+  private async recordFailedAttempt(): Promise<void> {
+    this.failedUnlockAttempts++;
+    this.lastFailedUnlockTime = Date.now();
+    await this.saveRateLimitState();
+  }
+
+  /**
+   * Reset rate limiting on successful authentication
+   */
+  private async resetRateLimit(): Promise<void> {
+    this.failedUnlockAttempts = 0;
+    this.lastFailedUnlockTime = 0;
+    await this.saveRateLimitState();
+  }
+
+  // =============================================
+  // End Rate Limiting Methods
+  // =============================================
+
+  public async unlock(pwd: string, skipRateLimit = false) {
     console.log('[MainController] Attempting to unlock wallet');
+
+    // Check rate limiting (skip for internal dry-run checks)
+    if (!skipRateLimit) {
+      const remainingLockout = await this.checkRateLimit();
+      if (remainingLockout > 0) {
+        throw new Error(
+          `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+        );
+      }
+    }
+
     try {
       const keyring = this.getActiveKeyring();
       const result = await keyring.unlock(pwd);
 
       if (result.canLogin) {
         console.log('[MainController] Wallet unlocked successfully');
+        // Reset rate limit on successful login
+        if (!skipRateLimit) {
+          await this.resetRateLimit();
+        }
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
+        // Record failed attempt
+        if (!skipRateLimit) {
+          await this.recordFailedAttempt();
+        }
       }
 
       return result;
     } catch (error) {
       console.error('[MainController] Error during wallet unlock:', error);
+      // Record failed attempt for password errors
+      if (!skipRateLimit) {
+        await this.recordFailedAttempt();
+      }
       throw error;
     }
   }
@@ -1616,9 +1786,28 @@ class MainController {
   }
 
   public async forgetWallet(pwd: string) {
-    // FIRST: Validate password - throws if wrong password or wallet locked
-    // This prevents unnecessary cleanup if validation fails
-    await this.forgetMainWallet(pwd);
+    // Check rate limiting before password validation
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
+    }
+
+    try {
+      // FIRST: Validate password - throws if wrong password or wallet locked
+      // This prevents unnecessary cleanup if validation fails
+      await this.forgetMainWallet(pwd);
+      // Reset rate limit on success
+      await this.resetRateLimit();
+    } catch (error) {
+      // Record failed attempt if it's a password error
+      if (error.message === 'Invalid password') {
+        await this.recordFailedAttempt();
+      }
+      throw error;
+    }
+
     // Now proceed with cleanup since password is valid
     await this.resetWalletState({ resetNetworks: true });
 
@@ -1638,21 +1827,12 @@ class MainController {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
-    // Check rate limiting for failed unlock attempts
-    const now = Date.now();
-    if (this.failedUnlockAttempts >= this.MAX_FAILED_ATTEMPTS) {
-      const timeSinceLastFailed = now - this.lastFailedUnlockTime;
-      if (timeSinceLastFailed < this.LOCKOUT_DURATION) {
-        const remainingTime = Math.ceil(
-          (this.LOCKOUT_DURATION - timeSinceLastFailed) / 1000
-        );
-        throw new Error(
-          `Too many failed attempts. Please wait ${remainingTime} seconds before trying again.`
-        );
-      } else {
-        // Reset after lockout period
-        this.failedUnlockAttempts = 0;
-      }
+    // Check rate limiting for failed unlock attempts (uses persisted state)
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
     }
 
     // Ensure clean network state during login
@@ -1696,7 +1876,8 @@ class MainController {
       }
 
       this.lockAllKeyrings();
-      const { canLogin, needsAccountCreation } = await this.unlock(pwd);
+      const { canLogin, needsAccountCreation, needsXprvMigration } =
+        await this.unlock(pwd, true); // Skip rate limiting - handled above
 
       if (!canLogin) {
         console.error('[MainController] Unlock failed - invalid password');
@@ -1705,9 +1886,8 @@ class MainController {
 
       console.log('[MainController] Unlock successful');
 
-      // Reset failed attempts on successful unlock
-      this.failedUnlockAttempts = 0;
-      this.lastFailedUnlockTime = 0;
+      // Reset failed attempts on successful unlock (persisted)
+      await this.resetRateLimit();
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
@@ -1747,6 +1927,161 @@ class MainController {
             error
           );
           throw new Error('Failed to create account after migration');
+        }
+      }
+
+      // Handle xprv migration from hash-based to PBKDF2-based encryption
+      // IMPORTANT: Migrate ALL slip44 vaults, not just the active one
+      if (needsXprvMigration) {
+        console.log(
+          '[MainController] Migrating xprv values to PBKDF2-based encryption...'
+        );
+
+        try {
+          const keyring = this.getActiveKeyring();
+          const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+          let totalMigratedCount = 0;
+
+          // Helper function to migrate accounts in a vault state
+          const migrateVaultAccounts = (
+            accounts: any
+          ): { count: number; migratedAccounts: any } => {
+            const migratedAccounts = { ...accounts };
+            let count = 0;
+
+            for (const accountType of Object.values(KeyringAccountType)) {
+              const accountsOfType = accounts[accountType];
+              if (!accountsOfType) continue;
+
+              migratedAccounts[accountType] = { ...accountsOfType };
+
+              for (const accountId of Object.keys(accountsOfType)) {
+                const id = Number(accountId);
+                const account = accountsOfType[id];
+
+                // Skip accounts without xprv (e.g., watch-only, Trezor, Ledger)
+                if (!account?.xprv || account.xprv === '') continue;
+
+                try {
+                  // Migrate the xprv from legacy encryption to new PBKDF2-based encryption
+                  const migratedXprv = keyring.migrateXprv(account.xprv);
+                  migratedAccounts[accountType][id] = {
+                    ...account,
+                    xprv: migratedXprv,
+                  };
+                  count++;
+                  console.log(
+                    `[MainController] Migrated xprv for ${accountType}:${id}`
+                  );
+                } catch (migrateError) {
+                  console.error(
+                    `[MainController] Failed to migrate xprv for ${accountType}:${id}:`,
+                    migrateError
+                  );
+                  // Keep original account data if migration fails
+                }
+              }
+            }
+
+            return { migratedAccounts, count };
+          };
+
+          // 1. Migrate active vault (current Redux state)
+          const activeVaultState = store.getState().vault;
+          const { migratedAccounts: activeAccounts, count: activeCount } =
+            migrateVaultAccounts(activeVaultState.accounts);
+
+          // Update Redux store with migrated accounts
+          for (const accountType of Object.values(KeyringAccountType)) {
+            const accountsOfType = activeAccounts[accountType];
+            if (!accountsOfType) continue;
+
+            for (const accountId of Object.keys(accountsOfType)) {
+              const id = Number(accountId);
+              const account = accountsOfType[id];
+              const originalAccount =
+                activeVaultState.accounts[accountType]?.[id];
+
+              // Only dispatch if xprv actually changed
+              if (originalAccount && account.xprv !== originalAccount.xprv) {
+                store.dispatch(
+                  setAccountPropertyByIdAndType({
+                    id,
+                    type: accountType,
+                    property: 'xprv',
+                    value: account.xprv,
+                  })
+                );
+              }
+            }
+          }
+          totalMigratedCount += activeCount;
+
+          // Save active vault state
+          await this.saveWalletState('xprv-migration-active', true, true);
+
+          // 2. Migrate OTHER slip44 vaults stored in paliStorage
+          const slip44sToMigrate = [DEFAULT_UTXO_SLIP44, DEFAULT_EVM_SLIP44];
+
+          for (const slip44 of slip44sToMigrate) {
+            // Skip the active slip44 (already migrated above)
+            if (slip44 === activeSlip44) continue;
+
+            try {
+              const storedVaultState = await loadSlip44State(slip44);
+              if (!storedVaultState || !storedVaultState.accounts) {
+                console.log(
+                  `[MainController] No vault found for slip44 ${slip44}, skipping`
+                );
+                continue;
+              }
+
+              console.log(
+                `[MainController] Migrating slip44 ${slip44} vault from storage...`
+              );
+
+              const { migratedAccounts, count } = migrateVaultAccounts(
+                storedVaultState.accounts
+              );
+
+              if (count > 0) {
+                // Save the migrated vault back to storage
+                const migratedVaultState = {
+                  ...storedVaultState,
+                  accounts: migratedAccounts,
+                };
+                await saveSlip44State(slip44, migratedVaultState);
+                totalMigratedCount += count;
+
+                // Also clear the vault cache so it reloads the migrated data
+                vaultCache.clearSlip44FromCache(slip44);
+
+                console.log(
+                  `[MainController] Migrated ${count} accounts for slip44 ${slip44}`
+                );
+              }
+            } catch (slip44Error) {
+              console.error(
+                `[MainController] Failed to migrate slip44 ${slip44} vault:`,
+                slip44Error
+              );
+              // Continue with other slip44s even if one fails
+            }
+          }
+
+          // Clear the legacy session password after ALL migrations are complete
+          keyring.clearLegacySession();
+
+          console.log(
+            `[MainController] xprv migration completed. Migrated ${totalMigratedCount} accounts total.`
+          );
+        } catch (migrationError) {
+          console.error(
+            '[MainController] Error during xprv migration:',
+            migrationError
+          );
+          // Don't throw - allow unlock to proceed even if migration fails
+          // The fallback decryption will continue to work
         }
       }
 
@@ -1825,10 +2160,9 @@ class MainController {
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
 
-      // Increment failed attempts if it's a password error
+      // Record failed attempt if it's a password error (persisted)
       if (error.message === 'Invalid password') {
-        this.failedUnlockAttempts++;
-        this.lastFailedUnlockTime = Date.now();
+        await this.recordFailedAttempt();
       }
 
       throw error;

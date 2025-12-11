@@ -39,9 +39,9 @@
     "generate": "Generate"
   },
   "components": {
-    "newPassword": "New password (min 8 chars)",
+    "newPassword": "New password (min 12 chars)",
     "confirmPassword": "Confirm password",
-    "atLeast": "At least 8 characters, 1 lower-case and 1 numeral.",
+    "atLeast": "At least 12 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character (!@#$%^&*...).",
     "doNotForget": "Do not forget to save your password. You will need this password to unlock your wallet.",
     "feeRateLabel": "Fee Rate ({{currency}}/byte)",
     "gasPriceLabel": "Gas Price (gwei)",

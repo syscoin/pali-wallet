@@ -71,7 +71,7 @@
     "@types/jest": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "antd": "^4.24.15",
-    "axios": "^1.7.9",
+    "axios": "^1.12.0",
     "bignumber.js": "^9.1.2",
     "currency-symbol-map": "^5.1.0",
     "currency.js": "^2.0.4",
@@ -113,7 +113,7 @@
     "@babel/plugin-transform-modules-commonjs": "^7.25.9",
     "@babel/plugin-transform-runtime": "^7.25.9",
     "@babel/preset-env": "^7.26.0",
-    "@playwright/test": "^1.49.1",
+    "@playwright/test": "^1.55.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -172,5 +172,16 @@
     "url": "https://github.com/syscoin/pali_wallet/issues"
   },
   "homepage": "https://github.com/syscoin/pali_wallet#readme",
-  "author": "Syscoin"
+  "author": "Syscoin",
+  "resolutions": {
+    "node-fetch": "^2.7.0",
+    "axios": "^1.12.0",
+    "node-forge": "^1.3.2",
+    "valibot": "^1.2.0",
+    "glob": "^10.5.0",
+    "cookie": "^0.7.0",
+    "tmp": "^0.2.4",
+    "jws": "^4.0.1",
+    "js-yaml": "^4.1.1"
+  }
 }

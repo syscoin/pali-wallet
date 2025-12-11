@@ -217,9 +217,9 @@
     "addressType": "Adresstyp"
   },
   "components": {
-    "newPassword": "Neues Passwort (min. 8 Zeichen)",
+    "newPassword": "Neues Passwort (min. 12 Zeichen)",
     "confirmPassword": "Passwort bestätigen",
-    "atLeast": "Mindestens 8 Zeichen, 1 Kleinbuchstabe und 1 Ziffer.",
+    "atLeast": "Mindestens 12 Zeichen, 1 Großbuchstabe, 1 Kleinbuchstabe, 1 Ziffer und 1 Sonderzeichen (!@#$%^&*...).",
     "doNotForget": "Vergessen Sie nicht, Ihr Passwort zu speichern. Sie benötigen dieses Passwort, um Ihre Wallet zu entsperren.",
     "feeRateLabel": "Gebührenrate ({{currency}}/Byte)",
     "gasPriceLabel": "Gaspreis (gwei)",
