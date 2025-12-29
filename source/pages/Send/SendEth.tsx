@@ -117,6 +117,46 @@ export const SendEth = () => {
     (state: RootState) => state.vault.accountTransactions
   );
 
+  // Disable MAX sends when there is a pending outgoing tx.
+  // Many RPCs do not expose a reliable "pending spendable" balance, so allowing MAX
+  // while the account has an in-flight tx often results in mempool rejection.
+  const hasPendingOutgoingEvmTx = useMemo(() => {
+    try {
+      if (!activeAccount?.address) return false;
+      const chainId = Number(activeNetwork?.chainId);
+      const txs =
+        accountTransactions?.[vaultActiveAccount.type]?.[vaultActiveAccount.id]
+          ?.ethereum?.[chainId] || [];
+      const fromLower = String(activeAccount.address).toLowerCase();
+      return (txs as any[]).some((tx) => {
+        const txFrom = String(tx?.from || '').toLowerCase();
+        if (!txFrom || txFrom !== fromLower) return false;
+        if (tx?.isCanceled) return false;
+        if (tx?.isReplaced) return false;
+        if (String(tx?.status || '').toLowerCase() === 'replaced') return false;
+        // Some networks/providers do not populate `confirmations` reliably (can remain 0
+        // even when mined). Treat as "pending" only if we have no on-chain inclusion info.
+        const hasBlockNumber =
+          tx?.blockNumber !== undefined &&
+          tx?.blockNumber !== null &&
+          Number(tx.blockNumber) > 0;
+        const hasBlockHash = Boolean(tx?.blockHash);
+        if (hasBlockNumber || hasBlockHash) return false; // mined/included
+
+        const confirmations = Number(tx?.confirmations ?? 0);
+        return confirmations === 0; // pending/unmined
+      });
+    } catch {
+      return false;
+    }
+  }, [
+    activeAccount?.address,
+    activeNetwork?.chainId,
+    accountTransactions,
+    vaultActiveAccount.id,
+    vaultActiveAccount.type,
+  ]);
+
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
@@ -511,6 +551,13 @@ export const SendEth = () => {
           }
         }
 
+        // If the user is trying to MAX-send while they already have a pending outgoing tx,
+        // block it to prevent mempool "insufficient funds" rejections.
+        if (!selectedAsset && isMax && hasPendingOutgoingEvmTx) {
+          alert.error(t('send.maxUnavailablePendingTx'));
+          return;
+        }
+
         // Prepare component state to preserve
         // Capture ALL form values at submission time
         const allFormValues = form.getFieldsValue();
@@ -577,6 +624,7 @@ export const SendEth = () => {
       form,
       nftTokenIds,
       selectedNftTokenId,
+      hasPendingOutgoingEvmTx,
       location.state?.returnContext,
     ]
   );
@@ -729,6 +777,10 @@ export const SendEth = () => {
     } else {
       // For native ETH, use full balance
       // The backend will handle gas deduction for MAX sends
+      if (hasPendingOutgoingEvmTx) {
+        alert.error(t('send.maxUnavailablePendingTx'));
+        return;
+      }
       fullBalance = calculateMaxAmount();
     }
 
@@ -752,6 +804,8 @@ export const SendEth = () => {
     verifiedERC20Balance,
     form,
     saveCurrentState,
+    hasPendingOutgoingEvmTx,
+    alert,
   ]);
 
   // Verify manually entered NFT token ID

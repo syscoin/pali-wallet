@@ -343,6 +343,7 @@
     "confirm": "CONFIRMAR",
     "insufficientFunds": "Fundos insuficientes",
     "insufficientFundsForGas": "Fundos insuficientes para cobrir as taxas de gás",
+    "maxUnavailablePendingTx": "MAX não está disponível enquanto você tiver uma transação pendente. Aguarde a confirmação.",
     "reduceFee": "Por favor, reduza as taxas para enviar a transação.",
     "hex": "Hex",
     "gasLimitTooLow": "O limite de gas deve ser maior que 42000",

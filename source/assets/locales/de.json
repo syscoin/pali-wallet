@@ -402,6 +402,7 @@
     "send": "SENDEN",
     "insufficientFunds": "Unzureichende Mittel",
     "insufficientFundsForGas": "Unzureichende Mittel zur Deckung der Gasgebühren",
+    "maxUnavailablePendingTx": "MAX ist nicht verfügbar, solange eine Transaktion aussteht. Bitte warten Sie, bis sie bestätigt wurde.",
     "balance": "Guthaben",
     "receiver": "Empfänger",
     "native": "Nativ",

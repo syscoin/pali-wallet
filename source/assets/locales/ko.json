@@ -402,6 +402,7 @@
     "send": "보내기",
     "insufficientFunds": "잔액 부족",
     "insufficientFundsForGas": "가스 수수료를 충당할 잔액이 부족합니다",
+    "maxUnavailablePendingTx": "대기 중인 거래가 있어 MAX를 사용할 수 없습니다. 확인될 때까지 기다려 주세요.",
     "balance": "잔액",
     "receiver": "수신자",
     "native": "네이티브",

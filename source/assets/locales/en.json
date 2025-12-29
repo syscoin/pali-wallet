@@ -262,6 +262,7 @@
     "send": "SEND",
     "insufficientFunds": "Insufficient funds",
     "insufficientFundsForGas": "Insufficient funds to cover gas fees",
+    "maxUnavailablePendingTx": "MAX is unavailable while you have a pending transaction. Please wait for it to confirm.",
     "balance": "Balance",
     "receiver": "Receiver",
     "native": "Native",

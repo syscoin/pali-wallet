@@ -374,6 +374,7 @@
     "hex": "Hex",
     "insufficientFunds": "残高不足",
     "insufficientFundsForGas": "ガス料金を支払うための残高が不足しています",
+    "maxUnavailablePendingTx": "保留中のトランザクションがあるためMAXは利用できません。確認されるまでお待ちください。",
     "reduceFee": "トランザクションを送信するには手数料を減らしてください。",
     "cantCompleteTxs": "取引を完了できません。後でもう一度お試しください。",
     "feeError": "手数料値の取得でエラーが発生しました。残高を確認して後でもう一度お試しください。",

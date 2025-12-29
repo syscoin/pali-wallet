@@ -227,6 +227,7 @@
     "confirm": "CONFIRMAR",
     "insufficientFunds": "Fondos insuficientes",
     "insufficientFundsForGas": "Fondos insuficientes para cubrir las tarifas de gas",
+    "maxUnavailablePendingTx": "MAX no está disponible mientras tengas una transacción pendiente. Espera a que se confirme.",
     "reduceFee": "Por favor, reduce las tarifas para enviar la transacción.",
     "method": "Método",
     "cantCompleteTxs": "No se pueden completar las transacciones. Inténtalo de nuevo más tarde.",

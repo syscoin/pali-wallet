@@ -397,6 +397,7 @@
     "send": "ENVOYER",
     "insufficientFunds": "Fonds insuffisants",
     "insufficientFundsForGas": "Fonds insuffisants pour couvrir les frais de gaz",
+    "maxUnavailablePendingTx": "MAX n’est pas disponible tant qu’une transaction est en attente. Veuillez attendre sa confirmation.",
     "balance": "Solde",
     "receiver": "Destinataire",
     "native": "Natif",

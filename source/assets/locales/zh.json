@@ -593,6 +593,7 @@
     "hex": "十六进制",
     "insufficientFunds": "余额不足",
     "insufficientFundsForGas": "余额不足以支付燃料费用",
+    "maxUnavailablePendingTx": "在有待确认的交易时无法使用MAX。请等待交易确认。",
     "reduceFee": "请减少费用以发送交易。",
     "cantCompleteTxs": "无法完成交易。请稍后再试。",
     "feeError": "获取费用值时出错，请验证您的余额并稍后再试。",
