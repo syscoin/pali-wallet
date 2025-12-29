@@ -1,5 +1,6 @@
 import { isEmpty } from 'lodash';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ISeedPhraseDisplayProps {
   /**
@@ -41,6 +42,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   className = '',
   displayMode = 'words',
 }) => {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState<boolean>(false);
 
   const mockedPhrase =
@@ -66,7 +68,7 @@ export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
             } ${
               showEyeToggle && !visible ? 'filter blur-sm' : ''
             } p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border border-border-default focus:border-fields-input-borderfocus rounded-[10px] outline-none resize-none select-none`}
-            placeholder={!isEnabled ? 'Enter your password' : ''}
+            placeholder={!isEnabled ? t('settings.enterYourPassword') : ''}
             value={displayPhrase}
             readOnly={true}
           />
