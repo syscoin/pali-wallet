@@ -57,7 +57,7 @@ export const handleMasterControllerInstance = async () => {
       }),
     ]);
 
-    // Check if vault exists - either new format or old format with currentSessionSalt
+    // Check if vault exists
     const hasVault = !!(vault && vaultKeys);
 
     // Set the flag in Redux to match actual vault existence

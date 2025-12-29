@@ -9,36 +9,27 @@ const migrations: Array<{
   handler: (state: any) => Promise<void>;
   version: string;
 }> = [
-  // Migrate old vault format with currentSessionSalt AND clean up vault data from main state
+  // Clean up vault data from main state storage
   {
     version: '4.0.0',
-    description:
-      'Migrate old vault format (currentSessionSalt) and clean up vault data from main state',
+    description: 'Clean up vault data from main state',
     handler: async (state: any) => {
       console.log('[Migration 4.0.0] Running migration checks...');
 
-      // Part 1: Check for old vault format
+      // Detect legacy vault-keys format so upgrade flows can handle it.
+      // The actual migration happens during unlock inside sysweb3-keyring.
       try {
         const vaultKeys = await chromeStorage.getItem('sysweb3-vault-keys');
-
         if (vaultKeys && vaultKeys.currentSessionSalt) {
           console.log(
-            '[Migration 4.0.0] Found old vault format with currentSessionSalt'
+            '[Migration 4.0.0] Detected legacy vault-keys with currentSessionSalt; will migrate on unlock'
           );
-          console.log(
-            '[Migration 4.0.0] Migration will be handled during wallet unlock in KeyringManager'
-          );
-          console.log(
-            '[Migration 4.0.0] NOTE: Accounts will be created after successful migration'
-          );
-          // The actual migration happens in KeyringManager.unlock()
-          // which properly handles the dual salt system and mnemonic decryption
         }
       } catch (error) {
         console.error('[Migration 4.0.0] Error checking vault-keys:', error);
       }
 
-      // Part 2: Clean up vault data from main state storage
+      // Clean up vault data from main state storage
       if (state && state.vault) {
         console.log(
           '[Migration 4.0.0] Found vault data in main state, cleaning up...'
