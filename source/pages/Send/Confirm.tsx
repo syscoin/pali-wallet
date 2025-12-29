@@ -389,6 +389,11 @@ export const SendConfirm = () => {
           ]) as ITxState;
 
           let value = parseUnits(String(basicTxValues.amount), 'ether');
+          // sysweb3-keyring enforces a minimum gasLimit of 65,000 for EVM tx validation.
+          // For MAX sends we must use the same minimum, otherwise MAX value deduction
+          // can overshoot once the tx is bumped at send time.
+          const MIN_EVM_SEND_GAS_LIMIT = BigNumber.from('65000');
+          let maxSendGasLimit: BigNumber | null = null;
           const floorToDecimals = (num: string | number, decimals: number) => {
             const s = String(num);
             const parts = s.split('.');
@@ -406,9 +411,13 @@ export const SendConfirm = () => {
               const actualBalanceEth = balance;
               const balanceStrFloored = floorToDecimals(actualBalanceEth, 18);
               value = parseUnits(balanceStrFloored, 'ether');
-              const gasLimit = BigNumber.from(
+              const gasLimitCandidate = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
+              const gasLimit = gasLimitCandidate.lt(MIN_EVM_SEND_GAS_LIMIT)
+                ? MIN_EVM_SEND_GAS_LIMIT
+                : gasLimitCandidate;
+              maxSendGasLimit = gasLimit;
 
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
@@ -446,12 +455,15 @@ export const SendConfirm = () => {
                       to: destinationTo,
                       value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                       gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
-                      gasLimit: BigNumber.from(
-                        validateCustomGasLimit
-                          ? customFee.gasLimit
-                          : fee.gasLimit ||
-                              basicTxValues.defaultGasLimit ||
-                              42000
+                      gasLimit: (
+                        maxSendGasLimit ||
+                        BigNumber.from(
+                          validateCustomGasLimit
+                            ? customFee.gasLimit
+                            : fee.gasLimit ||
+                                basicTxValues.defaultGasLimit ||
+                                42000
+                        )
                       ).toHexString(), // Convert to hex string
                     },
                     !isEIP1559Compatible,
@@ -512,11 +524,13 @@ export const SendConfirm = () => {
                     ),
                     9
                   ),
-                  gasLimit: validateCustomGasLimit
-                    ? BigNumber.from(customFee.gasLimit)
-                    : BigNumber.from(
-                        fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-                      ),
+                  gasLimit:
+                    maxSendGasLimit ||
+                    (validateCustomGasLimit
+                      ? BigNumber.from(customFee.gasLimit)
+                      : BigNumber.from(
+                          fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                        )),
                 },
               ],
               activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
@@ -559,11 +573,13 @@ export const SendConfirm = () => {
                     ),
                     9
                   ),
-                  gasLimit: BigNumber.from(
-                    validateCustomGasLimit
-                      ? customFee.gasLimit
-                      : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-                  ),
+                  gasLimit:
+                    maxSendGasLimit ||
+                    BigNumber.from(
+                      validateCustomGasLimit
+                        ? customFee.gasLimit
+                        : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                    ),
                 };
 
                 try {
