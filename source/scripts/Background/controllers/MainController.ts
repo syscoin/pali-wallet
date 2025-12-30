@@ -3115,14 +3115,19 @@ class MainController {
     }
   }
 
-  public getRecommendedFee() {
+  public async getRecommendedFee(): Promise<number | string> {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     try {
       if (isBitcoinBased) {
-        return this.syscoinTransaction.getRecommendedFee(activeNetwork.url);
+        return await this.syscoinTransaction.getRecommendedFee(
+          activeNetwork.url
+        );
       } else {
-        return this.ethereumTransaction.getRecommendedGasPrice(true);
+        // Return gas price in wei as a string (BigNumber-safe, no precision loss)
+        return (await this.ethereumTransaction.getRecommendedGasPrice(
+          false
+        )) as string;
       }
     } catch (error) {
       console.error('[MainController] Error getting recommended fee:', error);
