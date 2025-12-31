@@ -421,6 +421,13 @@ export const SendConfirm = () => {
                 : gasLimitCandidate;
               maxSendGasLimit = gasLimit;
 
+              // Add a conservative fixed buffer for MAX sends.
+              // Some networks can require additional intrinsic costs or see small fee variance
+              // between estimation and execution. We intentionally send slightly less than MAX.
+              // Keep this as a small *absolute* reserve (not a %), since these extra costs are
+              // typically additive rather than proportional to L2 execution gas.
+              const maxSendBufferWei = parseUnits('0.000001', 'ether'); // 0.000001 native
+
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
                 const maxFeePerGasWei = parseUnits(
@@ -430,12 +437,12 @@ export const SendConfirm = () => {
                   9
                 );
                 const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
-                value = value.sub(maxGasFeeWei);
+                value = value.sub(maxGasFeeWei).sub(maxSendBufferWei);
               } else {
                 // Legacy transaction
                 const gasPriceWei = BigNumber.from(gasPrice);
                 const gasFeeWei = gasLimit.mul(gasPriceWei);
-                value = value.sub(gasFeeWei);
+                value = value.sub(gasFeeWei).sub(maxSendBufferWei);
               }
 
               // Ensure value doesn't go negative
@@ -455,7 +462,6 @@ export const SendConfirm = () => {
                     {
                       ...restTx,
                       to: destinationTo,
-                      isMaxSend: Boolean(basicTxValues.isMax),
                       value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                       gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
                       gasLimit: (
@@ -510,7 +516,6 @@ export const SendConfirm = () => {
                 {
                   ...restTx,
                   to: destinationTo,
-                  isMaxSend: Boolean(basicTxValues.isMax),
                   value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
@@ -547,84 +552,6 @@ export const SendConfirm = () => {
 
             return;
           } catch (error: any) {
-            // For MAX sends, if we get insufficient funds error, retry with a buffer
-            // This can happen due to gas price fluctuations between estimation and execution
-            if (
-              basicTxValues.isMax &&
-              error.message?.includes('insufficient funds')
-            ) {
-              const buffer = BigNumber.from('100000');
-              const reducedValue = value.sub(buffer);
-
-              if (reducedValue.gt(0)) {
-                const retryTxObject = {
-                  ...restTx,
-                  to: destinationTo,
-                  // This retry intentionally sends slightly less than MAX to add a buffer.
-                  // Do NOT mark as isMaxSend, otherwise sysweb3 will recompute the value
-                  // and remove this buffer.
-                  isMaxSend: false,
-                  value: reducedValue.toHexString(), // Convert to hex string to avoid out-of-safe-range error
-                  maxPriorityFeePerGas: parseUnits(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                    )
-                      ? safeToFixed(customFee.maxPriorityFeePerGas)
-                      : safeToFixed(fee.maxPriorityFeePerGas),
-                    9
-                  ),
-                  maxFeePerGas: parseUnits(
-                    String(
-                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                        ? safeToFixed(customFee.maxFeePerGas)
-                        : safeToFixed(fee.maxFeePerGas)
-                    ),
-                    9
-                  ),
-                  gasLimit:
-                    maxSendGasLimit ||
-                    BigNumber.from(
-                      validateCustomGasLimit
-                        ? customFee.gasLimit
-                        : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
-                    ),
-                };
-
-                try {
-                  // Use atomic wrapper for retry
-                  await controllerEmitter(
-                    ['wallet', 'sendAndSaveEthTransaction'],
-                    [retryTxObject, !isEIP1559Compatible],
-                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                      ? 300000 // 5 minutes timeout for hardware wallet operations
-                      : 10000 // Default 10 seconds for regular wallets
-                  );
-
-                  setConfirmed(true);
-                  setLoading(false);
-                  return; // Exit early on success
-                } catch (retryError) {
-                  // If retry also fails, handle with specific error messages
-                  const wasHandledSpecifically = handleTransactionError(
-                    retryError,
-                    alert,
-                    t,
-                    activeAccount,
-                    activeNetwork,
-                    basicTxValues
-                  );
-
-                  if (!wasHandledSpecifically) {
-                    logError('error ETH retry', 'Transaction', retryError);
-                    alert.error(t('send.cantCompleteTxs'));
-                  }
-
-                  setLoading(false);
-                  return;
-                }
-              }
-            }
-
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
               error,
