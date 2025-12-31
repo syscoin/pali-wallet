@@ -455,6 +455,7 @@ export const SendConfirm = () => {
                     {
                       ...restTx,
                       to: destinationTo,
+                      isMaxSend: Boolean(basicTxValues.isMax),
                       value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                       gasPrice: BigNumber.from(gasPrice).toHexString(), // Use BigNumber for precision
                       gasLimit: (
@@ -509,6 +510,7 @@ export const SendConfirm = () => {
                 {
                   ...restTx,
                   to: destinationTo,
+                  isMaxSend: Boolean(basicTxValues.isMax),
                   value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
@@ -558,6 +560,10 @@ export const SendConfirm = () => {
                 const retryTxObject = {
                   ...restTx,
                   to: destinationTo,
+                  // This retry intentionally sends slightly less than MAX to add a buffer.
+                  // Do NOT mark as isMaxSend, otherwise sysweb3 will recompute the value
+                  // and remove this buffer.
+                  isMaxSend: false,
                   value: reducedValue.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
