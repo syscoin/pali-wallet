@@ -13,6 +13,12 @@ const EvmBalanceController = (
     currentAccount: IKeyringAccountState
   ) => {
     const provider = web3Provider;
+    if (!provider) {
+      console.error(
+        '[EvmBalanceController] Missing provider in getEvmBalanceForAccount'
+      );
+      return '0';
+    }
 
     const getBalance = await provider.getBalance(currentAccount.address);
 

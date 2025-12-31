@@ -14,13 +14,15 @@ const SysTransactionController = (): ISysTransactionsController => {
   ): Promise<ISysTransaction[]> => {
     const requestOptions = 'details=txs&pageSize=30';
 
-    const { transactions }: { transactions: ISysTransaction[] } =
-      await fetchBackendAccountCached(
-        networkUrl,
-        xpubOrAddress,
-        requestOptions,
-        true
-      );
+    const accountData = await fetchBackendAccountCached(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions,
+      true
+    );
+    const transactions = (accountData as any)?.transactions as
+      | ISysTransaction[]
+      | undefined;
 
     // Ensure we always return an array, even if transactions is falsy
     return Array.isArray(transactions) ? transactions : [];
@@ -81,13 +83,15 @@ const SysTransactionController = (): ISysTransactionsController => {
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
     const requestOptions = `details=txs&page=${page}&pageSize=${pageSize}`;
-    const { transactions }: { transactions: ISysTransaction[] } =
-      await fetchBackendAccountCached(
-        networkUrl,
-        xpubOrAddress,
-        requestOptions,
-        true
-      );
+    const accountData = await fetchBackendAccountCached(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions,
+      true
+    );
+    const transactions = (accountData as any)?.transactions as
+      | ISysTransaction[]
+      | undefined;
     return Array.isArray(transactions) ? transactions : [];
   };
 

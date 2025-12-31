@@ -1,7 +1,4 @@
-import {
-  CustomJsonRpcProvider,
-  IKeyringAccountState,
-} from '@sidhujag/sysweb3-keyring';
+import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 
 export interface IEvmBalanceController {
   getEvmBalanceForAccount: (
@@ -20,8 +17,7 @@ export interface IBalancesManagerUtils {
   getBalanceUpdatedForAccount: (
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
-    networkUrl: string,
-    provider: CustomJsonRpcProvider | null
+    networkUrl: string
   ) => Promise<string>;
 }
 

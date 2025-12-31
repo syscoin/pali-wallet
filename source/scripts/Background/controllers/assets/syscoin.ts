@@ -318,12 +318,13 @@ const SysAssetsControler = (): ISysAssetsController => {
   ): Promise<ISysTokensAssetReponse[]> => {
     const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
-    const { tokensAsset } = await fetchBackendAccountCached(
+    const accountData = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
       xpubOrAddress,
       requestOptions,
       true
     );
+    const tokensAsset = accountData?.tokensAsset;
 
     // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
     // tokens array contains regular UTXO addresses without assetGuid

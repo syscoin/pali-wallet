@@ -15,6 +15,7 @@ import isEmpty from 'lodash/isEmpty';
 
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
+import { getController } from 'scripts/Background';
 import store from 'state/store';
 import {
   ITokenEthProps,
@@ -1189,16 +1190,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
   > => {
     try {
-      const { activeNetwork } = store.getState().vault;
-
-      // Create a simple abort controller for the provider
-      const abortController = new AbortController();
-
-      // Create a provider for the current network
-      const provider = new CustomJsonRpcProvider(
-        abortController.signal,
-        activeNetwork.url
-      );
+      const provider = getController().wallet.ethereumTransaction.web3Provider;
 
       // Use the discovery function which handles both ERC-721 and ERC-1155
       const discovery = await discoverNftTokens(

@@ -1,8 +1,6 @@
-import {
-  CustomJsonRpcProvider,
-  IKeyringAccountState,
-} from '@sidhujag/sysweb3-keyring';
+import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 
+import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { IAccountTransactions } from 'state/vault/types';
 import { isTransactionInBlock } from 'utils/transactionUtils';
@@ -44,7 +42,6 @@ const TransactionsManager = (): ITransactionsManager => {
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider: CustomJsonRpcProvider,
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
     isRapidPolling?: boolean
@@ -82,10 +79,9 @@ const TransactionsManager = (): ITransactionsManager => {
         activeNetworkUrl
       );
     } else {
-      if (!web3Provider) {
-        console.error('No valid web3Provider for EVM transaction polling');
-        return [];
-      }
+      // Always pull the latest provider at call time (prevents stale references across network switches)
+      const web3Provider =
+        getController().wallet.ethereumTransaction.web3Provider;
       result = await EvmTransactionsController().pollingEvmTransactions(
         web3Provider,
         isPolling,

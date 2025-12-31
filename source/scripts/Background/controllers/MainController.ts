@@ -3413,14 +3413,11 @@ class MainController {
           try {
             // For background transaction updates, do not toggle UI loading flags
 
-            // Safe access to transaction objects with error handling
-            const web3Provider = this.ethereumTransaction?.web3Provider;
             const txs =
               await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
-                web3Provider,
                 currentAccountTxs,
                 isPolling,
                 isRapidPolling
@@ -4053,16 +4050,11 @@ class MainController {
           const startTime = Date.now();
 
           try {
-            // Safe access to transaction objects with error handling
-            const web3Provider = this.ethereumTransaction?.web3Provider;
-
             const updatedBalance =
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url,
-                web3Provider
-                // No need to pass a provider - let the manager use its own
+                activeNetwork.url
               );
 
             // Calculate latency
@@ -5471,16 +5463,10 @@ class MainController {
       throw new Error('NFT validation only supported on EVM networks');
     }
 
-    const abortController = new AbortController();
-    const provider = new CustomJsonRpcProvider(
-      abortController.signal,
-      activeNetwork.url
-    );
-
     return this.evmAssetsController.validateNftContract(
       contractAddress,
       walletAddress,
-      provider
+      this.ethereumTransaction.web3Provider
     );
   }
 
@@ -5737,23 +5723,11 @@ class MainController {
     networkUrl: string
   ): Promise<string> {
     try {
-      // For EVM networks, use the existing web3 provider
-      const provider = isBitcoinBased
-        ? null
-        : this.ethereumTransaction.web3Provider;
-
-      if (!isBitcoinBased && !provider) {
-        console.error(
-          '[MainController] No web3 provider available for EVM network'
-        );
-        return '0';
-      }
       const balance =
         await this.balancesManager.utils.getBalanceUpdatedForAccount(
           account,
           isBitcoinBased,
-          networkUrl,
-          provider
+          networkUrl
         );
 
       return balance;

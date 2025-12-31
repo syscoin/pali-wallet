@@ -218,7 +218,6 @@ export interface ITransactionsManagerUtils {
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider: CustomJsonRpcProvider,
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
     isRapidPolling?: boolean
