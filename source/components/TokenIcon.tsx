@@ -9,6 +9,12 @@ import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 // Add a simple LRU cap to prevent unbounded growth
 const MAX_CACHE_ENTRIES = 200;
 const tokenImageCache = new Map<string, string | null>();
+// Track when a cache key last failed so we can retry later
+const tokenImageFailureTs = new Map<string, number>();
+// Retry failed icon fetches after a short cooldown (prevents permanent "stuck" fallbacks)
+const FAILURE_RETRY_MS = 5 * 60 * 1000; // 5 minutes
+// If an image is too large to safely base64-cache, fall back to rendering the URL directly
+const MAX_CACHED_BLOB_BYTES = 256 * 1024; // 256KB
 
 // Track in-flight requests to prevent duplicate fetches
 const pendingTokenRequests = new Map<string, Promise<string | null>>();
@@ -70,6 +76,26 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       // Check cache first
       if (tokenImageCache.has(cacheKey)) {
         const cached = tokenImageCache.get(cacheKey);
+        // If we previously cached a failure (null), allow retry after cooldown
+        if (cached === null) {
+          const failedAt = tokenImageFailureTs.get(cacheKey) || 0;
+          if (failedAt && Date.now() - failedAt >= FAILURE_RETRY_MS) {
+            tokenImageCache.delete(cacheKey);
+            tokenImageFailureTs.delete(cacheKey);
+          } else {
+            return {
+              url: null,
+              error: true,
+              loading: false,
+            };
+          }
+        } else {
+          return {
+            url: cached,
+            error: false,
+            loading: false,
+          };
+        }
         return {
           url: cached,
           error: cached === null,
@@ -136,10 +162,18 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           if (!response.ok) throw new Error('Failed to fetch');
 
           const blob = await response.blob();
-          // Skip caching very large images to avoid memory bloat (~256KB)
-          if (blob.size > 256 * 1024) {
-            tokenImageCache.set(cacheKey, null);
-            return null;
+          // If it's too large for base64 caching, just cache the URL so it can still render reliably
+          if (blob.size > MAX_CACHED_BLOB_BYTES) {
+            // Enforce LRU cap
+            if (tokenImageCache.size >= MAX_CACHE_ENTRIES) {
+              const oldestKey = tokenImageCache.keys().next().value as
+                | string
+                | undefined;
+              if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
+            }
+            tokenImageCache.set(cacheKey, logo);
+            tokenImageFailureTs.delete(cacheKey);
+            return logo;
           }
           const reader = new FileReader();
 
@@ -154,6 +188,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
                 if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
               }
               tokenImageCache.set(cacheKey, dataUrl);
+              tokenImageFailureTs.delete(cacheKey);
               resolve(dataUrl);
             };
 
@@ -165,6 +200,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
                 if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
               }
               tokenImageCache.set(cacheKey, null);
+              tokenImageFailureTs.set(cacheKey, Date.now());
               resolve(null);
             };
 
@@ -173,6 +209,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
         } catch (err) {
           // Cache the failure to prevent repeated attempts
           tokenImageCache.set(cacheKey, null);
+          tokenImageFailureTs.set(cacheKey, Date.now());
           return null;
         }
       };
