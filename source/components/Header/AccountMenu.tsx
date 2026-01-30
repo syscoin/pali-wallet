@@ -1,6 +1,7 @@
 import { Menu } from '@headlessui/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
 import {
   AddUserSvg,
@@ -11,6 +12,7 @@ import {
 } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import {
   createNavigationContext,
@@ -23,6 +25,12 @@ export const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { t } = useTranslation();
+  const activeAccountMeta = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const isHardwareAccount =
+    activeAccountMeta?.type === KeyringAccountType.Ledger ||
+    activeAccountMeta?.type === KeyringAccountType.Trezor;
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     try {
       await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
@@ -87,24 +95,26 @@ export const AccountMenu: React.FC = () => {
         </li>
       </Menu.Item>
 
-      <Menu.Item>
-        <li
-          onClick={() => {
-            const returnContext = createNavigationContext('/home');
-            navigateWithContext(
-              navigate,
-              '/settings/account/private-key',
-              { fromMenu: true },
-              returnContext
-            );
-          }}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
-        >
-          <KeySvg className="mb-2 text-brand-white" />
+      {!isHardwareAccount && (
+        <Menu.Item>
+          <li
+            onClick={() => {
+              const returnContext = createNavigationContext('/home');
+              navigateWithContext(
+                navigate,
+                '/settings/account/private-key',
+                { fromMenu: true },
+                returnContext
+              );
+            }}
+            className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+          >
+            <KeySvg className="mb-2 text-brand-white" />
 
-          <span>{t('accountMenu.yourKeys')}</span>
-        </li>
-      </Menu.Item>
+            <span>{t('accountMenu.yourKeys')}</span>
+          </li>
+        </Menu.Item>
+      )}
 
       <Menu.Item>
         <li

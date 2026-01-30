@@ -166,6 +166,7 @@
     "password": "パスワード",
     "importAccountsWont": "インポートされたアカウントは、初期のPaliアカウント秘密リカバリーフレーズにリンクされません。",
     "yourPrivateKey": "あなたの秘密鍵",
+    "hardwareWalletPrivateKeyUnavailable": "ハードウェアウォレットアカウント: 秘密鍵は Ledger/Trezor デバイスから決して外部に出ないため、Pali ではエクスポートできません。",
     "utxoKeyOnEvmError": "これはUTXO秘密鍵のようです。インポートするにはUTXOネットワーク（Bitcoin/Syscoin）に切り替えてください。",
     "evmKeyOnUtxoError": "これはEVM秘密鍵のようです。インポートするにはEVMネットワークに切り替えてください。",
     "invalidPrivateKeyFormat": "無効な秘密鍵フォーマット",

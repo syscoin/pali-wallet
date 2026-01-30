@@ -8,6 +8,7 @@ import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
@@ -23,6 +24,9 @@ const PrivateKeyView = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const isHardwareAccount =
+    activeAccountMeta.type === KeyringAccountType.Ledger ||
+    activeAccountMeta.type === KeyringAccountType.Trezor;
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -111,64 +115,84 @@ const PrivateKeyView = () => {
         </CopyCard>
       )}
 
-      <Form
-        validateMessages={{ default: '' }}
-        name="phraseview"
-        form={form}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        autoComplete="off"
-      >
-        <ValidatedPasswordInput
-          onValidate={validatePassword}
-          onValidationSuccess={handleValidationSuccess}
-          onValidationError={handleValidationError}
-          placeholder={t('settings.enterYourPassword')}
+      {isHardwareAccount ? (
+        <Card type="info" className="my-4">
+          <p>{t('settings.hardwareWalletPrivateKeyUnavailable')}</p>
+        </Card>
+      ) : (
+        <Form
+          validateMessages={{ default: '' }}
+          name="phraseview"
           form={form}
-          name="password"
-          className="my-4"
-        />
-      </Form>
-
-      {/* Private key display - view-only, no copy to prevent clipboard attacks */}
-      <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">
-        <div className="flex items-center justify-between w-full">
-          <p>{t('settings.yourPrivateKey')}</p>
-          {valid && currentXprv && (
-            <button
-              type="button"
-              onClick={() => setIsPrivateKeyVisible(!isPrivateKeyVisible)}
-              className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
-              title={isPrivateKeyVisible ? 'Hide' : 'Show'}
-            >
-              {isPrivateKeyVisible ? (
-                <img
-                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
-                  src="/assets/all_assets/visibleEye.svg"
-                  alt="Hide"
-                />
-              ) : (
-                <img
-                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
-                  src="/assets/all_assets/notVisibleEye.svg"
-                  alt="Show"
-                />
-              )}
-            </button>
-          )}
-        </div>
-        <div
-          className={`select-none ${
-            valid && currentXprv && !isPrivateKeyVisible ? 'filter blur-sm' : ''
-          }`}
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 16 }}
+          autoComplete="off"
         >
-          <p>
-            {valid && activeAccount.xpub
-              ? ellipsis(currentXprv, 4, 16)
-              : '********...************'}
-          </p>
-        </div>
-      </div>
+          <ValidatedPasswordInput
+            onValidate={validatePassword}
+            onValidationSuccess={handleValidationSuccess}
+            onValidationError={handleValidationError}
+            placeholder={t('settings.enterYourPassword')}
+            form={form}
+            name="password"
+            className="my-4"
+          />
+        </Form>
+      )}
+
+      {!isHardwareAccount && (
+        <>
+          {/* Private key display - view-only, no copy to prevent clipboard attacks */}
+          <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">
+            <div className="flex items-center justify-between w-full">
+              <p>{t('settings.yourPrivateKey')}</p>
+              {valid && currentXprv && (
+                <button
+                  type="button"
+                  onClick={() => setIsPrivateKeyVisible(!isPrivateKeyVisible)}
+                  className="p-1 rounded hover:bg-gray-700 transition-colors duration-200"
+                  title={isPrivateKeyVisible ? 'Hide' : 'Show'}
+                >
+                  {isPrivateKeyVisible ? (
+                    <img
+                      className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                      src="/assets/all_assets/visibleEye.svg"
+                      alt="Hide"
+                    />
+                  ) : (
+                    <img
+                      className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                      src="/assets/all_assets/notVisibleEye.svg"
+                      alt="Show"
+                    />
+                  )}
+                </button>
+              )}
+            </div>
+            <div
+              className={`${
+                valid && currentXprv && !isPrivateKeyVisible
+                  ? 'select-none filter blur-sm'
+                  : ''
+              }`}
+            >
+              <p
+                className={`${
+                  valid && currentXprv && isPrivateKeyVisible
+                    ? 'font-mono break-all'
+                    : ''
+                }`}
+              >
+                {valid && currentXprv
+                  ? isPrivateKeyVisible
+                    ? currentXprv
+                    : ellipsis(currentXprv, 4, 16)
+                  : '********...************'}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {isBitcoinBased && (
         <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">

@@ -166,6 +166,7 @@
     "password": "Passwort",
     "importAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Geheimen Wiederherstellungsphrase verknüpft.",
     "yourPrivateKey": "Ihr privater Schlüssel",
+    "hardwareWalletPrivateKeyUnavailable": "Hardware-Wallet-Konto: Private Schlüssel verlassen Ledger/Trezor-Geräte nie, daher kann Pali sie nicht exportieren.",
     "utxoKeyOnEvmError": "Dies scheint ein UTXO-Privatschlüssel zu sein. Bitte wechseln Sie zu einem UTXO-Netzwerk (Bitcoin/Syscoin), um ihn zu importieren.",
     "evmKeyOnUtxoError": "Dies scheint ein EVM-Privatschlüssel zu sein. Bitte wechseln Sie zu einem EVM-Netzwerk, um ihn zu importieren.",
     "invalidPrivateKeyFormat": "Ungültiges Privatschlüsselformat",

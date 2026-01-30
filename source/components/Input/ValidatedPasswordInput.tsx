@@ -98,6 +98,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   const formRef = useRef(form);
   const nameRef = useRef(name);
   const errorMessageRef = useRef(errorMessage);
+  const validationRunIdRef = useRef(0);
 
   // Update refs when props change
   useEffect(() => {
@@ -129,11 +130,27 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
         return;
       }
 
+      // Mark this run as the latest. Any older async results should be ignored.
+      const runId = ++validationRunIdRef.current;
+
       setIsValidating(true);
       setValidationStatus('');
 
+      // Clear any previous error immediately so the UI doesn't flash red while validating
+      if (formRef.current) {
+        formRef.current.setFields([
+          {
+            name: nameRef.current,
+            errors: [],
+          },
+        ]);
+      }
+
       try {
         const result = await onValidateRef.current(password);
+
+        // Ignore stale results (user typed again while this was running)
+        if (runId !== validationRunIdRef.current) return;
 
         setValidationStatus('success');
 
@@ -153,6 +170,10 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
         }
       } catch (error) {
         console.error('Password validation error:', error);
+
+        // Ignore stale errors (user typed again while this was running)
+        if (runId !== validationRunIdRef.current) return;
+
         setValidationStatus('error');
 
         // Set form field error if form is provided
@@ -170,7 +191,10 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
           onValidationErrorRef.current(error);
         }
       } finally {
-        setIsValidating(false);
+        // Only the latest run should control the loading state
+        if (runId === validationRunIdRef.current) {
+          setIsValidating(false);
+        }
       }
     };
 

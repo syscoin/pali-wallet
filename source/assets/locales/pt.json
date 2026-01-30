@@ -478,6 +478,7 @@
     "password": "Senha",
     "importAccountsWont": "As contas importadas não se vincularão à sua Frase de Recuperação Secreta inicial da conta Pali.",
     "yourPrivateKey": "Sua Chave Privada",
+    "hardwareWalletPrivateKeyUnavailable": "Conta de carteira de hardware: As chaves privadas nunca saem dos dispositivos Ledger/Trezor, portanto o Pali não pode exportá-las.",
     "utxoKeyOnEvmError": "Isso parece ser uma chave privada UTXO. Por favor, mude para uma rede UTXO (Bitcoin/Syscoin) para importá-la.",
     "evmKeyOnUtxoError": "Isso parece ser uma chave privada EVM. Por favor, mude para uma rede EVM para importá-la.",
     "invalidPrivateKeyFormat": "Formato de chave privada inválido",

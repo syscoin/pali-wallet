@@ -166,6 +166,7 @@
     "password": "密码",
     "importAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语。",
     "yourPrivateKey": "您的私钥",
+    "hardwareWalletPrivateKeyUnavailable": "硬件钱包账户：私钥永远不会离开 Ledger/Trezor 设备，因此 Pali 无法导出它们。",
     "utxoKeyOnEvmError": "这似乎是一个UTXO私钥。请切换到UTXO网络（Bitcoin/Syscoin）以导入它。",
     "evmKeyOnUtxoError": "这似乎是一个EVM私钥。请切换到EVM网络以导入它。",
     "invalidPrivateKeyFormat": "无效的私钥格式",
