@@ -110,9 +110,15 @@ export const TransactionsPanel = () => {
 
     const { xpub, address: userAddress, isImported } = activeAccount as any;
 
-    // Use xpub for HD UTXO accounts, but for imported UTXO accounts (or when xpub is absent)
-    // use address path. For EVM, always use address.
-    const useAddressPathForUtxo = isBitcoinBased && (isImported || !xpub);
+    // Use xpub for UTXO accounts when available, including imported extended-key accounts.
+    // Only fall back to /address for:
+    // - EVM chains (always address)
+    // - UTXO single-address imports (WIF) where xpub === address
+    // - missing xpub
+    const isSingleAddressUtxoImport =
+      Boolean(isImported) && Boolean(xpub) && xpub === userAddress;
+    const useAddressPathForUtxo =
+      isBitcoinBased && (!xpub || isSingleAddressUtxoImport);
     const pathSegment = isBitcoinBased
       ? useAddressPathForUtxo
         ? 'address'
@@ -124,7 +130,9 @@ export const TransactionsPanel = () => {
         : xpub
       : userAddress;
 
-    const explorerUrl = `${adjustedExplorer}${pathSegment}/${identifier}`;
+    const explorerUrl = `${adjustedExplorer}${pathSegment}/${encodeURIComponent(
+      identifier
+    )}`;
 
     const openExplorer = () => window.open(explorerUrl, '_blank');
 

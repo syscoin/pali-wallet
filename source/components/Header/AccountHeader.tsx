@@ -68,12 +68,41 @@ export const AccountHeader: React.FC = () => {
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = currentAccount?.address;
+    const xpub = (currentAccount as any)?.xpub as string | undefined;
+    const isImported = Boolean((currentAccount as any)?.isImported);
     if (!accountAddress) return;
 
+    // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
+    // Fall back to /address for:
+    // - EVM chains
+    // - UTXO single-address imports (WIF) where xpub === address
+    // - missing xpub
+    const isSingleAddressUtxoImport =
+      isImported && Boolean(xpub) && xpub === accountAddress;
+    const useAddressPathForUtxo =
+      isBitcoinBased && (!xpub || isSingleAddressUtxoImport);
+    const pathSegment = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? 'address'
+        : 'xpub'
+      : 'address';
+    const identifier = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? accountAddress
+        : xpub!
+      : accountAddress;
+
     const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
-    const url = `${base}address/${accountAddress}`;
+    const url = `${base}${pathSegment}/${encodeURIComponent(identifier)}`;
     window.open(url, '_blank');
-  }, [currentAccount?.address, activeNetwork.explorer, activeNetwork.url]);
+  }, [
+    currentAccount?.address,
+    (currentAccount as any)?.xpub,
+    (currentAccount as any)?.isImported,
+    isBitcoinBased,
+    activeNetwork.explorer,
+    activeNetwork.url,
+  ]);
 
   const handleVerifyAddress = useCallback(async () => {
     try {

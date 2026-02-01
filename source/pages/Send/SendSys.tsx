@@ -45,6 +45,9 @@ export const SendSys = () => {
   const { account: activeAccount, assets: accountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -282,10 +285,40 @@ export const SendSys = () => {
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
+    const xpub = (activeAccount as any)?.xpub as string | undefined;
+    const isImported = Boolean((activeAccount as any)?.isImported);
     if (!accountAddress) return;
+
+    // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
+    // Fall back to /address for UTXO single-address imports (WIF) where xpub === address.
+    const isSingleAddressUtxoImport =
+      isImported && Boolean(xpub) && xpub === accountAddress;
+    const useAddressPathForUtxo =
+      isBitcoinBased && (!xpub || isSingleAddressUtxoImport);
+    const pathSegment = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? 'address'
+        : 'xpub'
+      : 'address';
+    const identifier = isBitcoinBased
+      ? useAddressPathForUtxo
+        ? accountAddress
+        : xpub!
+      : accountAddress;
+
     const base = adjustUrl(activeNetwork.explorer || activeNetwork.url);
-    window.open(`${base}address/${accountAddress}`, '_blank');
-  }, [activeAccount?.address, activeNetwork.explorer, activeNetwork.url]);
+    window.open(
+      `${base}${pathSegment}/${encodeURIComponent(identifier)}`,
+      '_blank'
+    );
+  }, [
+    activeAccount?.address,
+    (activeAccount as any)?.xpub,
+    (activeAccount as any)?.isImported,
+    isBitcoinBased,
+    activeNetwork.explorer,
+    activeNetwork.url,
+  ]);
 
   const RBFOnChange = useCallback(
     (value: any) => {
