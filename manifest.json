@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Pali Wallet",
-  "version": "4.0.0",
+  "name": "Pali Wallet Canary",
+  "version": "4.0.10",
   "icons": {
     "16": "assets/all_assets/favicon-16.png",
     "32": "assets/all_assets/favicon-32.png",
