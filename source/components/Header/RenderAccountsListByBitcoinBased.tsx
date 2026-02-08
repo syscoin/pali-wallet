@@ -104,6 +104,10 @@ const RenderAccountsListByBitcoinBased =
 
     const accounts = useSelector((state: RootState) => state.vault.accounts);
     const activeAccount = useSelector(selectActiveAccountRef);
+    // When the accounts list is scrollable, a first click can be swallowed by inertial scrolling
+    // (common on trackpads) or by focus/blur interactions. Handle selection on mouse pointer-down
+    // so the first interaction reliably switches accounts.
+    const lastMouseDownKeyRef = React.useRef<string | null>(null);
 
     const handleAccountSwitch = useCallback(
       async (id: number, type: KeyringAccountType, close: () => void) => {
@@ -140,6 +144,11 @@ const RenderAccountsListByBitcoinBased =
         close: () => void
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
+        const key = `${accountType}-${account.id}`;
+        const triggerSwitch = () => {
+          if (isAccountSwitching(account.id, accountType)) return;
+          handleAccountSwitch(account.id, accountType, close);
+        };
 
         return (
           <li
@@ -150,12 +159,26 @@ const RenderAccountsListByBitcoinBased =
                ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
                : ''
            }`}
+            onPointerDown={(e) => {
+              // Only do this for mouse clicks to avoid breaking touch scrolling.
+              if ((e as any).pointerType !== 'mouse') return;
+              // Only left button.
+              if ((e as any).button !== 0) return;
+              lastMouseDownKeyRef.current = key;
+              // Prevent focus changes that can cause the Menu to shift/scroll before click fires.
+              e.preventDefault();
+              triggerSwitch();
+            }}
             onClick={() => {
-              if (isAccountSwitching(account.id, accountType)) return;
-              handleAccountSwitch(account.id, accountType, close);
+              // If we already handled this interaction on pointer-down, ignore the click.
+              if (lastMouseDownKeyRef.current === key) {
+                lastMouseDownKeyRef.current = null;
+                return;
+              }
+              triggerSwitch();
             }}
             id={`account-${accountType}-${index}`}
-            key={`${accountType}-${account.id}`}
+            key={key}
           >
             {/* Background glow effect on hover */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
