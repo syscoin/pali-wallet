@@ -110,13 +110,19 @@ const sendFastStatePatches = (
     previousState.vaultGlobal.isPostNetworkSwitchLoading !==
       nextState.vaultGlobal.isPostNetworkSwitchLoading ||
     previousState.vaultGlobal.networkQuality !==
-      nextState.vaultGlobal.networkQuality
+      nextState.vaultGlobal.networkQuality ||
+    previousState.vaultGlobal.isSwitchingAccount !==
+      nextState.vaultGlobal.isSwitchingAccount ||
+    previousState.vaultGlobal.isPollingUpdate !==
+      nextState.vaultGlobal.isPollingUpdate
   ) {
     sendRuntimeMessage({
       type: 'CONTROLLER_NETWORK_STATUS_CHANGE',
       data: {
         isPostNetworkSwitchLoading:
           nextState.vaultGlobal.isPostNetworkSwitchLoading,
+        isPollingUpdate: nextState.vaultGlobal.isPollingUpdate,
+        isSwitchingAccount: nextState.vaultGlobal.isSwitchingAccount,
         networkQuality: nextState.vaultGlobal.networkQuality,
         networkStatus: nextState.vaultGlobal.networkStatus,
         networkTarget: nextState.vaultGlobal.networkTarget,

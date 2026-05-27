@@ -123,7 +123,9 @@ const vaultGlobalSlice = createSlice({
     setNetworkRuntimeState(
       state: IGlobalState,
       action: PayloadAction<{
+        isPollingUpdate?: boolean;
         isPostNetworkSwitchLoading?: boolean;
+        isSwitchingAccount?: boolean;
         networkQuality?: IGlobalState['networkQuality'];
         networkStatus?: 'idle' | 'switching' | 'error' | 'connecting';
         networkTarget?: INetwork;
@@ -131,6 +133,8 @@ const vaultGlobalSlice = createSlice({
     ) {
       const {
         isPostNetworkSwitchLoading,
+        isPollingUpdate,
+        isSwitchingAccount,
         networkQuality,
         networkStatus,
         networkTarget,
@@ -153,6 +157,19 @@ const vaultGlobalSlice = createSlice({
         )
       ) {
         state.isPostNetworkSwitchLoading = isPostNetworkSwitchLoading;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'isPollingUpdate')
+      ) {
+        state.isPollingUpdate = isPollingUpdate;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          action.payload,
+          'isSwitchingAccount'
+        )
+      ) {
+        state.isSwitchingAccount = isSwitchingAccount;
       }
       if (
         Object.prototype.hasOwnProperty.call(action.payload, 'networkQuality')
