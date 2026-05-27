@@ -12,7 +12,18 @@ const isLegacyBuiltInPolygonNetwork = (network?: INetwork) =>
     network.coingeckoId === 'matic-network' ||
     network.coingeckoPlatformId === 'polygon-pos');
 
-const replaceDefaultEvmNetworks = (networks: any) => {
+const isLegacyBuiltInEthereumNetwork = (network?: INetwork) =>
+  network?.chainId === CHAIN_IDS.ETHEREUM_MAINNET &&
+  network.default === true &&
+  network.label === 'Ethereum Mainnet' &&
+  network.currency === 'eth' &&
+  network.url === 'https://eth.llamarpc.com' &&
+  network.explorer === 'https://etherscan.io/' &&
+  network.apiUrl === 'https://eth.blockscout.com/api' &&
+  network.coingeckoId === 'ethereum' &&
+  network.coingeckoPlatformId === 'ethereum';
+
+const migrateDefaultEvmNetworks = (networks: any) => {
   if (!networks?.ethereum) return false;
 
   let changed = false;
@@ -22,15 +33,19 @@ const replaceDefaultEvmNetworks = (networks: any) => {
     changed = true;
   }
 
-  Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(([chainId, network]) => {
-    const chainIdNum = Number(chainId);
-    const existingNetwork = networks.ethereum[chainIdNum];
+  if (
+    isLegacyBuiltInEthereumNetwork(
+      networks.ethereum[CHAIN_IDS.ETHEREUM_MAINNET]
+    )
+  ) {
+    networks.ethereum[CHAIN_IDS.ETHEREUM_MAINNET] =
+      PALI_NETWORKS_STATE.ethereum[CHAIN_IDS.ETHEREUM_MAINNET];
+    changed = true;
+  }
 
-    if (
-      (network as INetwork).default === true &&
-      (!existingNetwork || existingNetwork.default === true)
-    ) {
-      networks.ethereum[chainIdNum] = network;
+  [CHAIN_IDS.BASE_MAINNET, CHAIN_IDS.ARBITRUM_ONE].forEach((chainId) => {
+    if (!networks.ethereum[chainId]) {
+      networks.ethereum[chainId] = PALI_NETWORKS_STATE.ethereum[chainId];
       changed = true;
     }
   });
@@ -105,11 +120,11 @@ const migrations: Array<{
 
       let stateChanged = false;
 
-      if (replaceDefaultEvmNetworks(state?.vaultGlobal?.networks)) {
+      if (migrateDefaultEvmNetworks(state?.vaultGlobal?.networks)) {
         stateChanged = true;
       }
 
-      if (state?.vaultGlobal?.networkTarget?.chainId === 137) {
+      if (isLegacyBuiltInPolygonNetwork(state?.vaultGlobal?.networkTarget)) {
         state.vaultGlobal.networkTarget =
           PALI_NETWORKS_STATE.ethereum[CHAIN_IDS.BASE_MAINNET];
         stateChanged = true;
