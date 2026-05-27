@@ -63,7 +63,6 @@ export const usePageLoadingState = (
 
   const isLoading =
     navigationLoading ||
-    isNetworkChanging ||
     isConnecting ||
     isSwitchingAccount ||
     isNonPollingBalanceLoad ||

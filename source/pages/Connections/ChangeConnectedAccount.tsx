@@ -155,7 +155,7 @@ export const ChangeConnectedAccount = () => {
     try {
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [connectedAccount.id, accountType, true]
+        [connectedAccount.id, accountType]
       );
       // Dispatch event right before closing
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
@@ -250,6 +250,7 @@ export const ChangeConnectedAccount = () => {
                     <LazyAccountBalance
                       account={connectedAccount}
                       accountType={accountType}
+                      fetchOnMissingBalance={false}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}
@@ -311,6 +312,7 @@ export const ChangeConnectedAccount = () => {
                     <LazyAccountBalance
                       account={activeAccount}
                       accountType={activeAccountRef.type}
+                      fetchOnMissingBalance={false}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}

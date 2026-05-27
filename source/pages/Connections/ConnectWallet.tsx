@@ -220,7 +220,7 @@ export const ConnectWallet = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType, true]
+        [accountId, accountType]
       );
 
       // Return null - the method handler will return the actual address
@@ -440,6 +440,7 @@ export const ConnectWallet = () => {
                                     <LazyAccountBalance
                                       account={acc}
                                       accountType={keyringType}
+                                      fetchOnMissingBalance={false}
                                       showFiat={true}
                                       showSkeleton={true}
                                       precision={8}

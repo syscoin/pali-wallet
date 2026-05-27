@@ -15,10 +15,12 @@ export const TxsPanel: FC = () => {
   const [searchParams] = useSearchParams();
 
   // Access network information to determine if Assets tab should be enabled
-  const {
-    activeNetwork: { chainId },
-    isBitcoinBased,
-  } = useSelector((state: RootState) => state.vault);
+  const chainId = useSelector(
+    (state: RootState) => state.vault.activeNetwork.chainId
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   // Assets tab should only be enabled for Syscoin networks (mainnet: 57, testnet: 5700)
   // Other UTXO networks (Bitcoin, Litecoin, etc.) don't support SPT assets

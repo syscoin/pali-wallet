@@ -1,7 +1,52 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
 import { getIsMigratedVersion } from 'state/paliStorage';
+import { INetwork } from 'types/network';
+import { CHAIN_IDS, PALI_NETWORKS_STATE } from 'utils/constants';
 import { chromeStorage } from 'utils/storageAPI';
+
+const isLegacyBuiltInPolygonNetwork = (network?: INetwork) =>
+  network?.chainId === 137 &&
+  network.default === true &&
+  (network.label?.toLowerCase().includes('polygon') ||
+    network.coingeckoId === 'matic-network' ||
+    network.coingeckoPlatformId === 'polygon-pos');
+
+const replaceDefaultEvmNetworks = (networks: any) => {
+  if (!networks?.ethereum) return false;
+
+  let changed = false;
+
+  if (isLegacyBuiltInPolygonNetwork(networks.ethereum[137])) {
+    delete networks.ethereum[137];
+    changed = true;
+  }
+
+  Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(([chainId, network]) => {
+    const chainIdNum = Number(chainId);
+    const existingNetwork = networks.ethereum[chainIdNum];
+
+    if (
+      (network as INetwork).default === true &&
+      (!existingNetwork || existingNetwork.default === true)
+    ) {
+      networks.ethereum[chainIdNum] = network;
+      changed = true;
+    }
+  });
+
+  return changed;
+};
+
+const migratePolygonActiveNetworkToBase = (vaultState: any) => {
+  if (!isLegacyBuiltInPolygonNetwork(vaultState?.activeNetwork)) return false;
+
+  const activeNetwork = PALI_NETWORKS_STATE.ethereum[CHAIN_IDS.BASE_MAINNET];
+  vaultState.activeChain = activeNetwork.kind;
+  vaultState.activeNetwork = activeNetwork;
+  vaultState.isBitcoinBased = false;
+  return true;
+};
 
 // Define migration entries in order
 const migrations: Array<{
@@ -46,6 +91,40 @@ const migrations: Array<{
       } else {
         console.log('[Migration 4.0.0] No vault data found in main state');
       }
+    },
+  },
+  {
+    version: '4.0.12',
+    description: 'Replace built-in Polygon default with Base and Arbitrum',
+    handler: async (state: any) => {
+      console.log('[Migration 4.0.12] Updating built-in EVM defaults...');
+
+      let stateChanged = false;
+
+      if (replaceDefaultEvmNetworks(state?.vaultGlobal?.networks)) {
+        stateChanged = true;
+      }
+
+      if (state?.vaultGlobal?.networkTarget?.chainId === 137) {
+        state.vaultGlobal.networkTarget =
+          PALI_NETWORKS_STATE.ethereum[CHAIN_IDS.BASE_MAINNET];
+        stateChanged = true;
+      }
+
+      if (migratePolygonActiveNetworkToBase(state?.vault)) {
+        stateChanged = true;
+      }
+
+      if (stateChanged) {
+        await chromeStorage.setItem('state', state);
+      }
+
+      const evmVaultState = await chromeStorage.getItem('state-vault-60');
+      if (migratePolygonActiveNetworkToBase(evmVaultState)) {
+        await chromeStorage.setItem('state-vault-60', evmVaultState);
+      }
+
+      console.log('[Migration 4.0.12] Built-in EVM defaults updated');
     },
   },
 ];

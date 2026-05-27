@@ -322,7 +322,7 @@ export const ChangeAccount = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType, true]
+        [accountId, accountType]
       );
 
       // Dispatch event right before closing
@@ -473,6 +473,7 @@ export const ChangeAccount = () => {
                                   <LazyAccountBalance
                                     account={acc}
                                     accountType={keyringType}
+                                    fetchOnMissingBalance={false}
                                     showFiat={true}
                                     showSkeleton={true}
                                     precision={8}

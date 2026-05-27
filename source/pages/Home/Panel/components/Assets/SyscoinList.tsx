@@ -18,23 +18,23 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccountAssets,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
-  const {
-    accountAssets,
-    activeAccount,
-    activeNetwork: { chainId },
-  } = useSelector((state: RootState) => state.vault);
-  const { networkStatus } = useSelector(
-    (state: RootState) => state.vaultGlobal
+  const assets = useSelector(selectActiveAccountAssets);
+  const chainId = useSelector(
+    (state: RootState) => state.vault.activeNetwork.chainId
   );
-  const accountTransactions = useSelector(
-    (state: RootState) => state.vault.accountTransactions
+  const networkStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.networkStatus
   );
-  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
+  const accountTransactions = useSelector(selectActiveAccountTransactions);
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -69,10 +69,7 @@ export const SyscoinAssetsList = () => {
 
   // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
   const pendingAssetGuids = useMemo(() => {
-    const txs =
-      accountTransactions?.[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
-        chainId
-      ] || [];
+    const txs = accountTransactions?.syscoin?.[chainId] || [];
     const set = new Set<string>();
     for (const tx of txs) {
       if (!tx || (tx.confirmations || 0) > 0) continue;
@@ -86,7 +83,7 @@ export const SyscoinAssetsList = () => {
       }
     }
     return set;
-  }, [accountTransactions, activeAccount, chainId]);
+  }, [accountTransactions, chainId]);
 
   // Memoize delete handlers
   const handleDeleteClickMemo = useCallback((asset: any) => {

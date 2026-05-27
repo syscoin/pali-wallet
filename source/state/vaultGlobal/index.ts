@@ -50,7 +50,7 @@ const vaultGlobalSlice = createSlice({
       }
 
       // Then, add any missing default networks from PALI_NETWORKS_STATE
-      // This ensures new default networks added in updates are included
+      // This ensures new default networks added in updates are included.
       Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(
         ([chainId, network]) => {
           if (

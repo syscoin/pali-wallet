@@ -104,8 +104,9 @@ const MasterController = (
       externalStore.dispatch(setActiveNetwork(SYSCOIN_UTXO_MAINNET_NETWORK));
     }
 
-    // Migration: Add any missing default networks from PALI_NETWORKS_STATE
-    // This only adds networks that don't exist, doesn't overwrite existing ones
+    // Add any missing built-in default networks from PALI_NETWORKS_STATE.
+    // One-time default replacements live in MigrationController so future
+    // user-added networks are not removed or overwritten on every startup.
     Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(
       ([chainId, network]) => {
         const chainIdNum = Number(chainId);
@@ -115,7 +116,6 @@ const MasterController = (
             !globalNetworks[TransactionsType.Ethereum] ||
             !globalNetworks[TransactionsType.Ethereum][chainIdNum])
         ) {
-          // Network is missing, add it
           externalStore.dispatch(
             setNetwork({
               network: network as INetwork,

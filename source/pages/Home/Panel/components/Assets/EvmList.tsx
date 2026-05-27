@@ -19,6 +19,7 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
   navigateWithContext,
@@ -55,13 +56,10 @@ const DefaultEvmAssets = React.memo(
       null
     );
 
-    const {
-      accountAssets,
-      activeAccount,
-      activeNetwork: { chainId },
-    } = useSelector((rootState: RootState) => rootState.vault);
-
-    const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
+    const assets = useSelector(selectActiveAccountAssets);
+    const chainId = useSelector(
+      (rootState: RootState) => rootState.vault.activeNetwork.chainId
+    );
 
     // Separate regular tokens from NFTs as requested
     const allAssets =

@@ -15,7 +15,8 @@ import {
 export const CHAIN_IDS = {
   SYSCOIN_MAINNET: 57,
   SYSCOIN_TESTNET: 5700,
-  POLYGON_MAINNET: 137,
+  BASE_MAINNET: 8453,
+  ARBITRUM_ONE: 42161,
   SYSCOIN_NEVM_TESTNET: 5700,
   ZKSYS_TANENBAUM_TESTNET: 57057,
   ROLLUX_MAINNET: 570,
@@ -180,29 +181,42 @@ export const PALI_NETWORKS_STATE = {
     [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]: ZKSYS_TANENBAUM_TESTNET_NETWORK_57057,
     [CHAIN_IDS.ETHEREUM_MAINNET]: {
       chainId: CHAIN_IDS.ETHEREUM_MAINNET,
-      url: 'https://eth.llamarpc.com',
+      url: 'https://ethereum-rpc.publicnode.com',
       label: 'Ethereum Mainnet',
       default: true,
       currency: 'eth',
-      explorer: 'https://etherscan.io/',
+      explorer: 'https://etherscan.io',
       apiUrl: 'https://eth.blockscout.com/api',
       kind: INetworkType.Ethereum,
       slip44: 60, // Ethereum
       coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
       coingeckoPlatformId: 'ethereum', // Platform ID for token searches
     } as INetwork,
-    [CHAIN_IDS.POLYGON_MAINNET]: {
-      chainId: CHAIN_IDS.POLYGON_MAINNET,
-      currency: 'matic',
+    [CHAIN_IDS.BASE_MAINNET]: {
+      chainId: CHAIN_IDS.BASE_MAINNET,
+      currency: 'eth',
       default: true,
-      label: 'Polygon Mainnet',
-      url: 'https://polygon-rpc.com',
-      apiUrl: 'https://polygon.blockscout.com/api',
-      explorer: 'https://polygonscan.com',
+      label: 'Base',
+      url: 'https://mainnet.base.org',
+      apiUrl: 'https://base.blockscout.com/api',
+      explorer: 'https://basescan.org',
       kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44
-      coingeckoId: 'matic-network', // Native token (MATIC) CoinGecko ID
-      coingeckoPlatformId: 'polygon-pos', // Platform ID for token searches
+      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
+      coingeckoPlatformId: 'base', // Platform ID for token searches
+    } as INetwork,
+    [CHAIN_IDS.ARBITRUM_ONE]: {
+      chainId: CHAIN_IDS.ARBITRUM_ONE,
+      currency: 'eth',
+      default: true,
+      label: 'Arbitrum One',
+      url: 'https://arb1.arbitrum.io/rpc',
+      apiUrl: 'https://arbitrum.blockscout.com/api',
+      explorer: 'https://arbiscan.io',
+      kind: INetworkType.Ethereum,
+      slip44: 60, // EVM networks use Ethereum's slip44
+      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
+      coingeckoPlatformId: 'arbitrum-one', // Platform ID for token searches
     } as INetwork,
   },
   syscoin: getDefaultUTXONetworks(), // Use coins.ts as single source of truth

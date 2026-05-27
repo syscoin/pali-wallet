@@ -6,16 +6,20 @@ import { useSearchParams } from 'react-router-dom';
 
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { createNavigationContext, navigateWithContext } from 'utils/index';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
   const { t } = useTranslation();
-  const { accountAssets, activeAccount, isBitcoinBased, activeNetwork } =
-    useSelector((state: RootState) => state.vault);
-  const assets = accountAssets?.[activeAccount.type]?.[activeAccount.id];
-  const { chainId } = activeNetwork;
+  const assets = useSelector(selectActiveAccountAssets);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const chainId = useSelector(
+    (state: RootState) => state.vault.activeNetwork.chainId
+  );
   const [searchParams] = useSearchParams();
 
   // Ensure assets exists before filtering
