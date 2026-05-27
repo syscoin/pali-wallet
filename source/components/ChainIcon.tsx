@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from 'react';
 
+import ZkSysIcon from '../assets/all_assets/zksys-icon.svg';
 import {
   BtcChainSvg,
   ChainFallbackSvg,
@@ -46,6 +47,7 @@ const KNOWN_CHAIN_ICONS: {
   '11155111-ethereum': EthChainSvg, // Ethereum Sepolia (testnet)
   '57-ethereum': SysChainSvg, // Syscoin NEVM Mainnet
   '5700-ethereum': SysChainSvg, // Syscoin NEVM Testnet
+  '57057-ethereum': ZkSysIcon, // zkTanenbaum Testnet
   '570-ethereum': RolluxChainSvg, // Rollux Mainnet
   '57000-ethereum': RolluxChainSvg, // Rollux Testnet
 

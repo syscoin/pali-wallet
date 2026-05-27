@@ -17,6 +17,7 @@ export const CHAIN_IDS = {
   SYSCOIN_TESTNET: 5700,
   POLYGON_MAINNET: 137,
   SYSCOIN_NEVM_TESTNET: 5700,
+  ZKSYS_TANENBAUM_TESTNET: 57057,
   ROLLUX_MAINNET: 570,
   ROLLUX_TESTNET: 57000,
   ETHEREUM_MAINNET: 1,
@@ -78,6 +79,19 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.tanenbaum.io/api',
   explorer: 'https://explorer.tanenbaum.io/',
+  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
+} as INetwork;
+
+export const ZKSYS_TANENBAUM_TESTNET_NETWORK_57057 = {
+  chainId: CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET,
+  url: 'https://rpc-zk.tanenbaum.io',
+  label: 'zkTanenbaum',
+  default: true,
+  currency: 'tsys',
+  kind: INetworkType.Ethereum,
+  slip44: 60, // EVM networks use Ethereum's slip44
+  apiUrl: 'https://explorer-zk.tanenbaum.io/api',
+  explorer: 'https://explorer-zk.tanenbaum.io',
   coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
 } as INetwork;
 
@@ -163,6 +177,7 @@ export const PALI_NETWORKS_STATE = {
     [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_MAINNET_NETWORK,
     [CHAIN_IDS.ROLLUX_MAINNET]: ROLLUX_DEFAULT_NETWORK.network,
     [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
+    [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]: ZKSYS_TANENBAUM_TESTNET_NETWORK_57057,
     [CHAIN_IDS.ETHEREUM_MAINNET]: {
       chainId: CHAIN_IDS.ETHEREUM_MAINNET,
       url: 'https://eth.llamarpc.com',
