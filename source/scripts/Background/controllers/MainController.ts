@@ -4774,7 +4774,7 @@ class MainController {
         await this.setFiat();
         await this.getLatestUpdateForCurrentAccount(false);
       } finally {
-        this.saveWalletState('network-switch-after-updates');
+        await this.saveWalletState('network-switch-after-updates', false, true);
       }
       // Don't throw error here - let the UI handle the network status
     } else {
