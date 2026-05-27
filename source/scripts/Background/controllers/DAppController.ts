@@ -26,10 +26,13 @@ interface IDappsSession {
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
 
-  const persistDappState = (operation: string) => {
-    saveMainState().catch((error) => {
+  const persistDappState = async (operation: string) => {
+    try {
+      await saveMainState();
+    } catch (error) {
       console.error(`[DAppController] Failed to persist ${operation}:`, error);
-    });
+      throw error;
+    }
   };
 
   // Message handler is registered in handleListeners - no need to register here
@@ -270,7 +273,7 @@ const DAppController = (): IDAppController => {
     );
   };
 
-  const disconnect = (host: string) => {
+  const disconnect = async (host: string) => {
     try {
       const previousConnectedDapps = getAll();
       const isInActiveSession = Boolean(_dapps[host]);
@@ -279,7 +282,7 @@ const DAppController = (): IDAppController => {
         case true:
           _dapps[host].activeAddress = null;
           store.dispatch(removeDApp(host));
-          persistDappState('dapp disconnect');
+          await persistDappState('dapp disconnect');
 
           // Trigger disconnection notification
           notificationManager.notifyDappConnection(host, false);
@@ -316,7 +319,7 @@ const DAppController = (): IDAppController => {
         case false:
           if (previousConnectedDapps[host]) {
             store.dispatch(removeDApp(host));
-            persistDappState('dapp disconnect');
+            await persistDappState('dapp disconnect');
 
             // Trigger disconnection notification
             notificationManager.notifyDappConnection(host, false);

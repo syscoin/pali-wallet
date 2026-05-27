@@ -25,7 +25,7 @@ export interface IDAppController {
    * Removes a connection with a DApp
    * @emits disconnect
    */
-  disconnect: (host: string) => void;
+  disconnect: (host: string) => Promise<void>;
   /**
    * Retrieves a DApp
    */

@@ -262,7 +262,7 @@ export class WalletMethodHandler implements IMethodHandler {
           // For now, any revocation request will disconnect the dapp entirely
           // This matches the current behavior but avoids reconnection loops
           if (Object.keys(permissionsToRevoke).length > 0) {
-            dapp.disconnect(host);
+            await dapp.disconnect(host);
           }
 
           // Return null per EIP-2255 spec
