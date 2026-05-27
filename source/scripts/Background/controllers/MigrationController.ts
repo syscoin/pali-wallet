@@ -1,16 +1,20 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
 import { getIsMigratedVersion } from 'state/paliStorage';
-import { INetwork } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
 import { CHAIN_IDS, PALI_NETWORKS_STATE } from 'utils/constants';
 import { chromeStorage } from 'utils/storageAPI';
 
 const isLegacyBuiltInPolygonNetwork = (network?: INetwork) =>
   network?.chainId === 137 &&
   network.default === true &&
-  (network.label?.toLowerCase().includes('polygon') ||
-    network.coingeckoId === 'matic-network' ||
-    network.coingeckoPlatformId === 'polygon-pos');
+  network.label === 'Polygon Mainnet' &&
+  network.currency === 'matic' &&
+  network.url === 'https://polygon-rpc.com' &&
+  network.explorer === 'https://polygonscan.com' &&
+  network.apiUrl === 'https://polygon.blockscout.com/api' &&
+  network.coingeckoId === 'matic-network' &&
+  network.coingeckoPlatformId === 'polygon-pos';
 
 const isLegacyBuiltInEthereumNetwork = (network?: INetwork) =>
   network?.chainId === CHAIN_IDS.ETHEREUM_MAINNET &&
@@ -53,6 +57,19 @@ const migrateDefaultEvmNetworks = (networks: any) => {
   return changed;
 };
 
+const clearVaultAccountBalances = (vaultState: any) => {
+  Object.values(vaultState?.accounts || {}).forEach((accountsById: any) => {
+    Object.values(accountsById || {}).forEach((account: any) => {
+      if (account?.balances) {
+        account.balances = {
+          [INetworkType.Syscoin]: -1,
+          [INetworkType.Ethereum]: -1,
+        };
+      }
+    });
+  });
+};
+
 const migratePolygonActiveNetworkToBase = (vaultState: any) => {
   if (!isLegacyBuiltInPolygonNetwork(vaultState?.activeNetwork)) return false;
 
@@ -60,6 +77,7 @@ const migratePolygonActiveNetworkToBase = (vaultState: any) => {
   vaultState.activeChain = activeNetwork.kind;
   vaultState.activeNetwork = activeNetwork;
   vaultState.isBitcoinBased = false;
+  clearVaultAccountBalances(vaultState);
   return true;
 };
 
