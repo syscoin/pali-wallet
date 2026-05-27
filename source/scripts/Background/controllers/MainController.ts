@@ -3602,10 +3602,18 @@ class MainController {
           `[MainController] Starting rapid polling for transaction ${tx.txid}`
         );
         this.startRapidTransactionPolling(tx.txid, activeNetwork.chainId, true);
-        this.saveWalletState('send-and-save-transaction', true);
       } catch (error) {
         console.error(
           '[MainController] Failed to start rapid transaction polling:',
+          error
+        );
+      }
+
+      try {
+        await this.saveWalletState('send-and-save-transaction', true, true);
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to persist sent transaction:',
           error
         );
       }
@@ -3673,10 +3681,18 @@ class MainController {
         activeNetwork.chainId,
         isBitcoinBased
       );
-      this.saveWalletState('send-and-save-transaction', true);
     } catch (error) {
       console.error(
         '[MainController] Failed to start rapid transaction polling:',
+        error
+      );
+    }
+
+    try {
+      await this.saveWalletState('send-and-save-transaction', true, true);
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to persist sent transaction:',
         error
       );
     }
