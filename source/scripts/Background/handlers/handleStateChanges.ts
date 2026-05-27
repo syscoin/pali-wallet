@@ -206,6 +206,10 @@ const isHotPathOnlyChange = (
     return false;
   }
 
+  if (previousState.spamFilter !== nextState.spamFilter) {
+    return false;
+  }
+
   const vaultGlobalIsHotOnly =
     previousState.vaultGlobal === nextState.vaultGlobal ||
     shallowEqualExcept(previousState.vaultGlobal, nextState.vaultGlobal, [
