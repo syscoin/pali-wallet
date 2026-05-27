@@ -202,12 +202,15 @@ export const Home = () => {
         activeNetwork?.chainId ?? 'unknown-chain',
         activeAccountRef.type,
         activeAccountRef.id,
+        currentAccount?.xpub ?? currentAccount?.address ?? 'unknown-account',
         isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
       ].join(':'),
     [
       activeAccountRef.id,
       activeAccountRef.type,
       activeNetwork?.chainId,
+      currentAccount?.address,
+      currentAccount?.xpub,
       isBitcoinBased,
     ]
   );
