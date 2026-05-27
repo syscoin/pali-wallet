@@ -61,6 +61,85 @@ const scheduleStateBroadcast = (nextState: typeof currentState) => {
   }, STATE_BROADCAST_DEBOUNCE_MS);
 };
 
+const shallowEqualExcept = (
+  previousValue: Record<string, any>,
+  nextValue: Record<string, any>,
+  ignoredKeys: string[]
+) => {
+  const ignored = new Set(ignoredKeys);
+  const keys = new Set([
+    ...Object.keys(previousValue || {}),
+    ...Object.keys(nextValue || {}),
+  ]);
+
+  for (const key of keys) {
+    if (ignored.has(key)) {
+      continue;
+    }
+
+    if (previousValue?.[key] !== nextValue?.[key]) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const isOnlyActiveAccountBalanceChange = (
+  previousState: typeof currentState,
+  nextState: typeof currentState,
+  networkType: INetworkType
+) => {
+  const activeAccount = nextState.vault.activeAccount;
+  const previousAccounts = previousState.vault.accounts;
+  const nextAccounts = nextState.vault.accounts;
+  const previousTypeAccounts = previousAccounts[activeAccount.type] || {};
+  const nextTypeAccounts = nextAccounts[activeAccount.type] || {};
+  const activeAccountKey = String(activeAccount.id);
+  const previousAccount = previousTypeAccounts[activeAccount.id];
+  const nextAccount = nextTypeAccounts[activeAccount.id];
+
+  if (!previousAccount || !nextAccount) {
+    return false;
+  }
+
+  const accountTypes = new Set([
+    ...Object.keys(previousAccounts),
+    ...Object.keys(nextAccounts),
+  ]);
+
+  for (const accountType of accountTypes) {
+    if (accountType !== activeAccount.type) {
+      if (previousAccounts[accountType] !== nextAccounts[accountType]) {
+        return false;
+      }
+      continue;
+    }
+
+    const accountIds = new Set([
+      ...Object.keys(previousTypeAccounts),
+      ...Object.keys(nextTypeAccounts),
+    ]);
+
+    for (const accountId of accountIds) {
+      if (accountId !== activeAccountKey) {
+        if (previousTypeAccounts[accountId] !== nextTypeAccounts[accountId]) {
+          return false;
+        }
+      }
+    }
+  }
+
+  if (!shallowEqualExcept(previousAccount, nextAccount, ['balances'])) {
+    return false;
+  }
+
+  return (
+    previousAccount.balances?.[networkType] !==
+    nextAccount.balances?.[networkType]
+  );
+};
+
 const sendFastStatePatches = (
   previousState: typeof currentState,
   nextState: typeof currentState
@@ -87,14 +166,22 @@ const sendFastStatePatches = (
       data: {
         activeAccount: nextState.vault.activeAccount,
         activeNetwork: nextNetwork,
-        accounts: nextState.vault.accounts,
         networkStatus: nextState.vaultGlobal.networkStatus,
       },
     });
     sentPatch = true;
   }
 
-  if (previousState.vault.accounts !== nextState.vault.accounts) {
+  const previousActiveAccount = previousState.vault.activeAccount;
+  const nextActiveAccount = nextState.vault.activeAccount;
+  const networkType = nextState.vault.isBitcoinBased
+    ? INetworkType.Syscoin
+    : INetworkType.Ethereum;
+
+  if (
+    previousState.vault.accounts !== nextState.vault.accounts &&
+    !isOnlyActiveAccountBalanceChange(previousState, nextState, networkType)
+  ) {
     sendRuntimeMessage({
       type: 'CONTROLLER_ACCOUNTS_CHANGE',
       data: nextState.vault.accounts,
@@ -131,9 +218,6 @@ const sendFastStatePatches = (
     sentPatch = true;
   }
 
-  const previousActiveAccount = previousState.vault.activeAccount;
-  const nextActiveAccount = nextState.vault.activeAccount;
-
   if (
     previousActiveAccount.id !== nextActiveAccount.id ||
     previousActiveAccount.type !== nextActiveAccount.type
@@ -152,9 +236,6 @@ const sendFastStatePatches = (
   const nextAccount =
     nextState.vault.accounts[nextActiveAccount.type]?.[nextActiveAccount.id];
 
-  const networkType = nextState.vault.isBitcoinBased
-    ? INetworkType.Syscoin
-    : INetworkType.Ethereum;
   const previousBalance = previousAccount?.balances?.[networkType];
   const nextBalance = nextAccount?.balances?.[networkType];
 
@@ -171,30 +252,6 @@ const sendFastStatePatches = (
   }
 
   return sentPatch;
-};
-
-const shallowEqualExcept = (
-  previousValue: Record<string, any>,
-  nextValue: Record<string, any>,
-  ignoredKeys: string[]
-) => {
-  const ignored = new Set(ignoredKeys);
-  const keys = new Set([
-    ...Object.keys(previousValue || {}),
-    ...Object.keys(nextValue || {}),
-  ]);
-
-  for (const key of keys) {
-    if (ignored.has(key)) {
-      continue;
-    }
-
-    if (previousValue?.[key] !== nextValue?.[key]) {
-      return false;
-    }
-  }
-
-  return true;
 };
 
 const isHotPathOnlyChange = (

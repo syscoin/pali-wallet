@@ -180,7 +180,9 @@ export const useRouterLogic = () => {
       }
 
       if (message.type === 'CONTROLLER_NETWORK_CHANGE' && message.data) {
-        store.dispatch(setAccounts(message.data.accounts));
+        if (message.data.accounts) {
+          store.dispatch(setAccounts(message.data.accounts));
+        }
         store.dispatch(setActiveAccount(message.data.activeAccount));
         store.dispatch(
           setNetworkChange({ activeNetwork: message.data.activeNetwork })

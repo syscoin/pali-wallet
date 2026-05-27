@@ -2568,7 +2568,10 @@ class MainController {
         if (sync) {
           await this.saveWalletState('account-switch', true, true);
         } else {
-          this.saveWalletState('account-switch', true);
+          // Normal in-wallet account switches are session state. Persisting the
+          // whole slip44 vault here can cause a delayed UI hitch on large wallets;
+          // dapp flows that close immediately pass sync=true above.
+          this.resetAutoLockTimer();
         }
 
         // Get the new account data for notification
