@@ -48,6 +48,14 @@ const migratePolygonActiveNetworkToBase = (vaultState: any) => {
   return true;
 };
 
+const getMainStateForStorage = (state: any) => {
+  if (!state?.vault) return state;
+
+  const { vault: _vault, ...mainState } = state;
+  void _vault; // Keep legacy vault data out of the main state storage key.
+  return mainState;
+};
+
 // Define migration entries in order
 const migrations: Array<{
   description: string;
@@ -80,12 +88,8 @@ const migrations: Array<{
           '[Migration 4.0.0] Found vault data in main state, cleaning up...'
         );
 
-        // Create cleaned state without vault
-        const { vault: _vault, ...cleanedState } = state;
-        void _vault; // Mark as intentionally unused
-
         // Save cleaned state
-        await chromeStorage.setItem('state', cleanedState);
+        await chromeStorage.setItem('state', getMainStateForStorage(state));
 
         console.log('[Migration 4.0.0] Vault data removed from main state');
       } else {
@@ -116,7 +120,7 @@ const migrations: Array<{
       }
 
       if (stateChanged) {
-        await chromeStorage.setItem('state', state);
+        await chromeStorage.setItem('state', getMainStateForStorage(state));
       }
 
       const evmVaultState = await chromeStorage.getItem('state-vault-60');
