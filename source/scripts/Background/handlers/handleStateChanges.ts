@@ -104,11 +104,23 @@ const sendFastStatePatches = (
 
   if (
     previousState.vaultGlobal.networkStatus !==
-    nextState.vaultGlobal.networkStatus
+      nextState.vaultGlobal.networkStatus ||
+    previousState.vaultGlobal.networkTarget !==
+      nextState.vaultGlobal.networkTarget ||
+    previousState.vaultGlobal.isPostNetworkSwitchLoading !==
+      nextState.vaultGlobal.isPostNetworkSwitchLoading ||
+    previousState.vaultGlobal.networkQuality !==
+      nextState.vaultGlobal.networkQuality
   ) {
     sendRuntimeMessage({
       type: 'CONTROLLER_NETWORK_STATUS_CHANGE',
-      data: nextState.vaultGlobal.networkStatus,
+      data: {
+        isPostNetworkSwitchLoading:
+          nextState.vaultGlobal.isPostNetworkSwitchLoading,
+        networkQuality: nextState.vaultGlobal.networkQuality,
+        networkStatus: nextState.vaultGlobal.networkStatus,
+        networkTarget: nextState.vaultGlobal.networkTarget,
+      },
     });
     sentPatch = true;
   }

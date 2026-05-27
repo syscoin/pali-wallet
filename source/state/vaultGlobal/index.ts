@@ -120,6 +120,46 @@ const vaultGlobalSlice = createSlice({
     ) {
       state.networkStatus = action.payload;
     },
+    setNetworkRuntimeState(
+      state: IGlobalState,
+      action: PayloadAction<{
+        isPostNetworkSwitchLoading?: boolean;
+        networkQuality?: IGlobalState['networkQuality'];
+        networkStatus?: 'idle' | 'switching' | 'error' | 'connecting';
+        networkTarget?: INetwork;
+      }>
+    ) {
+      const {
+        isPostNetworkSwitchLoading,
+        networkQuality,
+        networkStatus,
+        networkTarget,
+      } = action.payload;
+
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkStatus')
+      ) {
+        state.networkStatus = networkStatus;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkTarget')
+      ) {
+        state.networkTarget = networkTarget;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          action.payload,
+          'isPostNetworkSwitchLoading'
+        )
+      ) {
+        state.isPostNetworkSwitchLoading = isPostNetworkSwitchLoading;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkQuality')
+      ) {
+        state.networkQuality = networkQuality;
+      }
+    },
     setEnsName(
       state: IGlobalState,
       action: PayloadAction<{ address: string; name: string }>
@@ -350,6 +390,7 @@ export const {
   setAdvancedSettings,
   setError,
   setNetworkStatus,
+  setNetworkRuntimeState,
   setIsSwitchingAccount,
   setLastLogin,
   setHasEncryptedVault,

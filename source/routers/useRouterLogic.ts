@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+﻿import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -14,7 +14,7 @@ import {
   setAccountPropertyByIdAndType,
   setNetworkChange,
 } from 'state/vault';
-import { setNetworkStatus } from 'state/vaultGlobal';
+import { setNetworkRuntimeState, setNetworkStatus } from 'state/vaultGlobal';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 export const useRouterLogic = () => {
@@ -171,7 +171,11 @@ export const useRouterLogic = () => {
       }
 
       if (message.type === 'CONTROLLER_NETWORK_STATUS_CHANGE' && message.data) {
-        store.dispatch(setNetworkStatus(message.data));
+        if (typeof message.data === 'string') {
+          store.dispatch(setNetworkStatus(message.data));
+        } else {
+          store.dispatch(setNetworkRuntimeState(message.data));
+        }
         return true;
       }
 
