@@ -11,6 +11,10 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import {
   formatDisplayValue,
@@ -225,15 +229,12 @@ export const UtxoTransactionsList = ({
 }) => {
   const { t } = useTranslation();
   const { alert } = useUtils();
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const currentAccount = useSelector(selectActiveAccount);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const accountTransactions = useSelector(
-    (state: RootState) => state.vault.accountTransactions
+  const currentAccountTransactions = useSelector(
+    selectActiveAccountTransactions
   );
 
   const { chainId, url: networkUrl } = activeNetwork as any;
@@ -266,10 +267,6 @@ export const UtxoTransactionsList = ({
   const prevConfirmationState = useRef<{ [txid: string]: number }>({});
   const isFirstRender = useRef(true);
   const lastToastTime = useRef<number>(0);
-
-  const currentAccountTransactions =
-    accountTransactions[activeAccount.type]?.[activeAccount.id];
-  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
 
   const array = filteredTransactions as ITransactionInfoUtxo[];
 

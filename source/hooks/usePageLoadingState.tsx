@@ -63,9 +63,7 @@ export const usePageLoadingState = (
 
   const isLoading =
     navigationLoading ||
-    isNetworkChanging ||
     isConnecting ||
-    isSwitchingAccount ||
     isNonPollingBalanceLoad ||
     additionalLoadingConditions.some((condition) => condition);
 

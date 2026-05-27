@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, memo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -17,6 +17,10 @@ import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountRef,
+} from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { toNumericBalance } from 'utils/balance';
 import {
@@ -26,6 +30,8 @@ import {
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
+
+const homeBalanceCache: Record<string, string> = {};
 
 // Memoize expensive balance formatting
 const BalanceDisplay = memo(
@@ -118,13 +124,17 @@ export const Home = () => {
     (priceState: RootState) => priceState.price.fiat
   );
 
-  const {
-    accounts,
-    activeAccount,
-    activeNetwork,
-    isBitcoinBased,
-    shouldShowFaucetModal: isOpenFaucetModal,
-  } = useSelector((rootState: RootState) => rootState.vault);
+  const currentAccount = useSelector(selectActiveAccount);
+  const activeAccountRef = useSelector(selectActiveAccountRef);
+  const activeNetwork = useSelector(
+    (rootState: RootState) => rootState.vault.activeNetwork
+  );
+  const isBitcoinBased = useSelector(
+    (rootState: RootState) => rootState.vault.isBitcoinBased
+  );
+  const isOpenFaucetModal = useSelector(
+    (rootState: RootState) => rootState.vault.shouldShowFaucetModal
+  );
   const {
     lastLogin,
     loadingStates: { isLoadingBalances },
@@ -186,31 +196,57 @@ export const Home = () => {
     [isBitcoinBased, activeNetwork?.chainId]
   );
 
-  // Calculate values that depend on data that might not be ready yet
-  const currentAccount = useMemo(() => {
-    if (!accounts || !activeAccount) return null;
-    return accounts[activeAccount.type]?.[activeAccount.id] || null;
-  }, [accounts, activeAccount]);
+  const balanceCacheKey = useMemo(
+    () =>
+      [
+        activeNetwork?.chainId ?? 'unknown-chain',
+        activeAccountRef.type,
+        activeAccountRef.id,
+        currentAccount?.xpub ?? currentAccount?.address ?? 'unknown-account',
+        isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
+      ].join(':'),
+    [
+      activeAccountRef.id,
+      activeAccountRef.type,
+      activeNetwork?.chainId,
+      currentAccount?.address,
+      currentAccount?.xpub,
+      isBitcoinBased,
+    ]
+  );
 
-  const rawBalance = useMemo(() => {
-    // Always return -1 during post-network switch to prevent flashing
-    if (isPostNetworkSwitchLoading) return '-1';
-
+  const currentBalanceValue = useMemo(() => {
     if (!currentAccount?.balances) return '-1';
+
     const balance = isBitcoinBased
       ? currentAccount.balances[INetworkType.Syscoin]
       : currentAccount.balances[INetworkType.Ethereum];
-    // During network switches, treat -1 and undefined/null as loading states
+
     return balance === undefined || balance === null || balance === -1
       ? '-1'
       : String(balance);
-  }, [currentAccount?.balances, isBitcoinBased, isPostNetworkSwitchLoading]);
+  }, [currentAccount?.balances, isBitcoinBased]);
+
+  useEffect(() => {
+    if (currentBalanceValue !== '-1') {
+      homeBalanceCache[balanceCacheKey] = currentBalanceValue;
+    }
+  }, [balanceCacheKey, currentBalanceValue]);
+
+  const cachedBalance = homeBalanceCache[balanceCacheKey];
+
+  const rawBalance = useMemo(
+    () =>
+      currentBalanceValue !== '-1'
+        ? currentBalanceValue
+        : cachedBalance ?? '-1',
+    [cachedBalance, currentBalanceValue]
+  );
 
   // Actual balance for display (convert -1 to 0)
   const actualBalance = useMemo(
-    () =>
-      rawBalance === '-1' || isPostNetworkSwitchLoading ? '0' : rawBalance,
-    [rawBalance, isPostNetworkSwitchLoading]
+    () => (rawBalance === '-1' ? '0' : rawBalance),
+    [rawBalance]
   );
 
   const moreThanMillion = useMemo(
@@ -255,18 +291,17 @@ export const Home = () => {
     (rootState: RootState) => rootState.vaultGlobal.networkStatus
   );
 
-  // Show skeleton loader when:
-  // 1. Balance is -1 (no data) or we're in post-network switch loading
-  // 2. Network is in error, connecting, or switching state
-  // 3. Balance is loading (non-polling) and balance is not yet loaded
-  // 4. Always during post-network switch to prevent any flashing
+  // Show skeleton only when no balance is known for this account/network yet.
+  // Background refreshes should update the value behind the scenes instead of
+  // making the already-rendered home view unusable.
   const isLoadingBalance =
     rawBalance === '-1' ||
-    isPostNetworkSwitchLoading ||
-    (isLoadingBalances && !isPollingUpdate) ||
-    networkStatus === 'error' ||
-    networkStatus === 'connecting' ||
-    networkStatus === 'switching';
+    (rawBalance === '-1' &&
+      (isPostNetworkSwitchLoading ||
+        (isLoadingBalances && !isPollingUpdate) ||
+        networkStatus === 'error' ||
+        networkStatus === 'connecting' ||
+        networkStatus === 'switching'));
 
   // Derived state for faucet visibility
   const shouldShowFaucet = useMemo(
@@ -288,7 +323,7 @@ export const Home = () => {
   );
 
   // Early returns only AFTER all hooks are called
-  if (!accounts || !activeAccount || !activeNetwork || !currentAccount) {
+  if (!activeNetwork || !currentAccount) {
     // This should be handled by AppLayout's PageLoadingOverlay instead
     return null;
   }

@@ -5,8 +5,16 @@ import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { rehydrate as dappRehydrate } from 'state/dapp';
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
+import {
+  setAccounts,
+  setActiveAccount,
+  setAccountPropertyByIdAndType,
+  setNetworkChange,
+} from 'state/vault';
+import { setNetworkRuntimeState, setNetworkStatus } from 'state/vaultGlobal';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 export const useRouterLogic = () => {
@@ -22,8 +30,11 @@ export const useRouterLogic = () => {
   const { navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
   const { networkStatus } = useSelector(
     (state: RootState) => state.vaultGlobal
@@ -133,25 +144,82 @@ export const useRouterLogic = () => {
 
   useEffect(() => {
     let isRehydrating = false;
+    let pendingState: any = null;
+
+    const processState = (state: any) => {
+      isRehydrating = true;
+      rehydrateStore(store, state).finally(() => {
+        if (pendingState) {
+          const nextState = pendingState;
+          pendingState = null;
+          processState(nextState);
+        } else {
+          isRehydrating = false;
+        }
+      });
+    };
 
     function handleStateChange(message: any) {
-      if (message.type === 'CONTROLLER_STATE_CHANGE' && message.data) {
-        // This handler only processes ongoing state changes from background
-        // Initial state is handled by App.tsx via getCurrentState request
-        // This ensures single source of truth and prevents double rehydration
+      if (message.type === 'CONTROLLER_DAPP_STATE_CHANGE' && message.data) {
+        store.dispatch(dappRehydrate(message.data));
+        return true;
+      }
 
-        // Prevent rehydration loops by checking if we're already rehydrating
+      if (message.type === 'CONTROLLER_ACCOUNTS_CHANGE' && message.data) {
+        store.dispatch(setAccounts(message.data));
+        return true;
+      }
+
+      if (message.type === 'CONTROLLER_NETWORK_STATUS_CHANGE' && message.data) {
+        if (typeof message.data === 'string') {
+          store.dispatch(setNetworkStatus(message.data));
+        } else {
+          store.dispatch(setNetworkRuntimeState(message.data));
+        }
+        return true;
+      }
+
+      if (message.type === 'CONTROLLER_NETWORK_CHANGE' && message.data) {
+        if (message.data.accounts) {
+          store.dispatch(setAccounts(message.data.accounts));
+        }
+        store.dispatch(setActiveAccount(message.data.activeAccount));
+        store.dispatch(
+          setNetworkChange({ activeNetwork: message.data.activeNetwork })
+        );
+        store.dispatch(setNetworkStatus(message.data.networkStatus));
+        return true;
+      }
+
+      if (message.type === 'CONTROLLER_ACTIVE_ACCOUNT_CHANGE' && message.data) {
+        store.dispatch(setActiveAccount(message.data));
+        return true;
+      }
+
+      if (
+        message.type === 'CONTROLLER_ACCOUNT_BALANCE_CHANGE' &&
+        message.data
+      ) {
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: message.data.id,
+            type: message.data.type,
+            property: 'balances',
+            value: message.data.balances,
+          })
+        );
+        return true;
+      }
+
+      if (message.type === 'CONTROLLER_STATE_CHANGE' && message.data) {
+        // This handler only processes ongoing state changes from background.
+        // Initial state is handled by App.tsx via getCurrentState request.
         if (isRehydrating) {
-          console.warn(
-            '[useRouterLogic] Skipping rehydration - already in progress'
-          );
+          pendingState = message.data;
           return true;
         }
 
-        isRehydrating = true;
-        rehydrateStore(store, message.data).finally(() => {
-          isRehydrating = false;
-        });
+        processState(message.data);
         return true;
       }
       return false;

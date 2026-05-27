@@ -76,7 +76,6 @@ import {
   setNetworks,
   removeNetwork,
   setIsPollingUpdate,
-  startConnecting,
   updateNetworkQualityLatency,
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
@@ -1965,9 +1964,6 @@ class MainController {
       // through KeyringManager methods for security
       store.dispatch(setLastLogin());
 
-      // Set connecting status for initial connection attempt
-      store.dispatch(startConnecting());
-
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
         // Fetch fresh fiat prices immediately after successful unlock
@@ -1978,11 +1974,12 @@ class MainController {
               error
             )
           ),
-          this.getLatestUpdateForCurrentAccount(false, true).catch((error) =>
-            console.error(
-              '[MainController] Failed to update account after unlock:',
-              error
-            )
+          this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
+            (error) =>
+              console.error(
+                '[MainController] Failed to update account after unlock:',
+                error
+              )
           ),
         ]);
       }, 10);
@@ -2500,8 +2497,8 @@ class MainController {
       })
     );
 
-    // Save wallet state after creating account
-    // Use sync=true to ensure save completes before verification
+    // Persist before returning so MV3 service worker teardown cannot lose the
+    // newly created account after the UI reports success.
     await this.saveWalletState('create-account', true, true);
 
     // Double-check the account was stored correctly
@@ -2523,14 +2520,19 @@ class MainController {
     }
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false, true).catch((error) => {
-        console.error(
-          '[MainController] Failed to update account after creation:',
-          error
-        );
-        // This is non-critical - account was created successfully
-        // The balance/transaction update will happen on next poll
-      });
+      this.getLatestUpdateForCurrentAccount(true, true, false, true)
+        .catch((error) => {
+          console.error(
+            '[MainController] Failed to update account after creation:',
+            error
+          );
+          // This is non-critical - account was created successfully
+          // The balance/transaction update will happen on next poll
+        })
+        .finally(() => {
+          store.dispatch(setIsPollingUpdate(false));
+          store.dispatch(setPostNetworkSwitchLoading(false));
+        });
     }, 10);
     return newAccount;
   }
@@ -2563,6 +2565,14 @@ class MainController {
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
+        if (sync) {
+          await this.saveWalletState('account-switch', true, true);
+        } else {
+          // Normal in-wallet account switches are session state. Persisting the
+          // whole slip44 vault here can cause a delayed UI hitch on large wallets;
+          // dapp flows that close immediately pass sync=true above.
+          this.resetAutoLockTimer();
+        }
 
         // Get the new account data for notification
         const newAccountData = store.getState().vault.accounts[type][id];
@@ -2573,6 +2583,11 @@ class MainController {
             label: newAccountData.label,
           });
         }
+
+        // The active account has changed; let the UI become interactive while
+        // balance refresh continues in the background. Account selection is
+        // session state; avoid full vault serialization on this hot path.
+        store.dispatch(setIsSwitchingAccount(false));
 
         // Defer heavy operations to prevent blocking the UI
         if (sync) {
@@ -2590,7 +2605,7 @@ class MainController {
 
   private async performPostAccountSwitchOperations() {
     try {
-      await this.getLatestUpdateForCurrentAccount(false, true);
+      await this.getLatestUpdateForCurrentAccount(true, true, false, true);
       // IMPORTANT: We do NOT automatically update dapp connections when switching accounts.
       // Each dapp maintains its own connection to a specific account. When a dapp needs
       // to interact with its connected account while a different account is active,
@@ -2604,8 +2619,8 @@ class MainController {
     } catch (error) {
       console.error('Error in post-account-switch operations:', error);
     } finally {
-      store.dispatch(setIsSwitchingAccount(false));
-      await this.saveWalletState('account-switch', true, true); // sync=true for immediate save
+      store.dispatch(setIsPollingUpdate(false));
+      store.dispatch(setPostNetworkSwitchLoading(false));
     }
   }
 
@@ -3589,10 +3604,18 @@ class MainController {
           `[MainController] Starting rapid polling for transaction ${tx.txid}`
         );
         this.startRapidTransactionPolling(tx.txid, activeNetwork.chainId, true);
-        await this.saveWalletState('send-and-save-transaction', true, true);
       } catch (error) {
         console.error(
           '[MainController] Failed to start rapid transaction polling:',
+          error
+        );
+      }
+
+      try {
+        await this.saveWalletState('send-and-save-transaction', true, true);
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to persist sent transaction:',
           error
         );
       }
@@ -3660,10 +3683,18 @@ class MainController {
         activeNetwork.chainId,
         isBitcoinBased
       );
-      await this.saveWalletState('send-and-save-transaction', true, true);
     } catch (error) {
       console.error(
         '[MainController] Failed to start rapid transaction polling:',
+        error
+      );
+    }
+
+    try {
+      await this.saveWalletState('send-and-save-transaction', true, true);
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to persist sent transaction:',
         error
       );
     }
@@ -4144,7 +4175,8 @@ class MainController {
   public async getLatestUpdateForCurrentAccount(
     isPolling = false,
     forceUpdate = false, // Force update even if just unlocked
-    isRapidPolling = false // Skip expensive operations for rapid polling
+    isRapidPolling = false, // Skip expensive operations for rapid polling
+    skipHeavyUpdates = false
   ): Promise<boolean> {
     // Set polling state early so getActiveKeyring knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
@@ -4263,24 +4295,27 @@ class MainController {
     });
 
     // Fire-and-forget heavy updates (assets + transactions) in background with polling mode
-    // so they do not toggle loading flags or block UI.
-    try {
-      void this.updateAssetsFromCurrentAccount({
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-        isPolling: true, // background
-      });
-    } catch {}
+    // so they do not toggle loading flags or block UI. Account switches skip these
+    // immediate scans; polling and explicit panel pagination can refresh them later.
+    if (!skipHeavyUpdates) {
+      try {
+        void this.updateAssetsFromCurrentAccount({
+          isBitcoinBased,
+          activeNetwork,
+          activeAccount,
+          isPolling: true, // background
+        });
+      } catch {}
 
-    try {
-      void this.updateUserTransactionsState({
-        isBitcoinBased,
-        activeNetwork,
-        isPolling: true, // background
-        isRapidPolling,
-      });
-    } catch {}
+      try {
+        void this.updateUserTransactionsState({
+          isBitcoinBased,
+          activeNetwork,
+          isPolling: true, // background
+          isRapidPolling,
+        });
+      } catch {}
+    }
 
     // Await only native balance to drive latency/status indicator
     let balanceFailed = false;
@@ -4297,14 +4332,17 @@ class MainController {
       balanceFailed = true;
     }
 
-    // If balance failed, set network status to error so timeout/error handling can trigger chain error page
-    // Heavy updates run in background and don't affect initial connection status
+    // If a user-blocking balance load fails, surface the network error. Polling
+    // and startup/background refreshes should not push the UI to the slow network
+    // screen; they can retry on the next refresh.
     if (balanceFailed) {
       console.error('[MainController] Account update failed', {
         balanceFailed,
         isPolling,
       });
-      store.dispatch(switchNetworkError());
+      if (!isPolling) {
+        store.dispatch(switchNetworkError());
+      }
     } else {
       // Balance succeeded - check if we need to clear connecting, switching, or error state
       const currentNetworkStatus = store.getState().vaultGlobal.networkStatus;
@@ -4747,7 +4785,7 @@ class MainController {
       Promise.resolve().then(async () => {
         try {
           await this.setFiat();
-          await this.getLatestUpdateForCurrentAccount(false);
+          await this.getLatestUpdateForCurrentAccount(false, true);
         } catch (error) {
           console.error(
             '[MainController] Failed to update after network change:',
@@ -4756,15 +4794,7 @@ class MainController {
           // Don't change network status here - it's already set to success
           // The error is just for balance updates, not the network switch itself
         } finally {
-          // Ensure state is saved synchronously even on error
-          try {
-            await this.saveWalletState('network-switch-final', false, true);
-          } catch (saveError) {
-            console.error(
-              '[MainController] Failed to save final state:',
-              saveError
-            );
-          }
+          this.saveWalletState('network-switch-after-updates');
         }
       });
     }
@@ -4776,9 +4806,12 @@ class MainController {
       );
       return;
     }
-    // Get latest updates for the newly active account
-    const { accounts } = store.getState().vault;
-    const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
+    // Re-read after setNetworkChange/keyring activation. Slip44 switches can replace
+    // the vault state, so the pre-switch activeAccount reference may no longer exist.
+    const { accounts, activeAccount: currentActiveAccount } =
+      store.getState().vault;
+    const activeAccountData =
+      accounts[currentActiveAccount.type]?.[currentActiveAccount.id];
     this.handleStateChange([
       {
         method: PaliEvents.chainChanged,
@@ -4798,11 +4831,19 @@ class MainController {
       },
     ]);
 
+    if (!activeAccountData?.address) {
+      console.warn(
+        '[MainController] Skipping account change notification after network switch because active account data is missing',
+        currentActiveAccount
+      );
+      return;
+    }
+
     if (isBitcoinBased) {
       this.handleStateChange([
         {
           method: PaliEvents.xpubChanged,
-          params: activeAccountData.xpub,
+          params: activeAccountData.xpub ?? null,
         },
         {
           method: PaliEvents.accountsChanged,

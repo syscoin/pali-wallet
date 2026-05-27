@@ -22,6 +22,7 @@ interface ILazyAccountBalanceProps {
   account: IKeyringAccountState;
   accountType?: string;
   className?: string;
+  fetchOnMissingBalance?: boolean;
   onBalanceLoad?: (balance: string) => void;
   precision?: number;
   showFiat?: boolean;
@@ -34,6 +35,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   showFiat = true,
   showSkeleton = true,
   className = '',
+  fetchOnMissingBalance = true,
   precision = 4,
   onBalanceLoad,
 }) => {
@@ -143,6 +145,13 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       return;
     }
 
+    if (!fetchOnMissingBalance) {
+      setBalance(null);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
     // Check rate limiting
     if (!canMakeRequest()) {
       // Schedule a retry after the rate limit window
@@ -178,6 +187,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   }, [
     account.balances,
     isBitcoinBased,
+    fetchOnMissingBalance,
     getCacheKey,
     canMakeRequest,
     fetchBalance,
@@ -227,11 +237,16 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
   // Show skeleton if loading OR if we don't have a balance yet (and existing balance is -1)
   const shouldShowSkeleton =
+    fetchOnMissingBalance &&
     showSkeleton &&
     (isLoading ||
       (balance === null &&
         (account.balances?.ethereum === -1 ||
           account.balances?.syscoin === -1)));
+
+  const hasMissingBalance =
+    balance === null &&
+    (account.balances?.ethereum === -1 || account.balances?.syscoin === -1);
 
   if (shouldShowSkeleton) {
     return (
@@ -240,6 +255,15 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
         {showFiat && (
           <SkeletonLoader width="60px" height="16px" className="mt-1" />
         )}
+      </div>
+    );
+  }
+
+  if (!fetchOnMissingBalance && hasMissingBalance) {
+    return (
+      <div className={className}>
+        <p className="text-sm font-medium text-brand-white">--</p>
+        {showFiat && <p className="text-xs text-brand-graylight">--</p>}
       </div>
     );
   }

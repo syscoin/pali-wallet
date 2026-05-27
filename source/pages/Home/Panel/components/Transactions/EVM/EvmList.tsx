@@ -18,7 +18,11 @@ import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
-import { selectActiveAccountAssets } from 'state/vault/selectors';
+import {
+  selectActiveAccount,
+  selectActiveAccountAssets,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import {
   isContractInteraction,
@@ -526,17 +530,13 @@ export const EvmTransactionsList = ({
 }) => {
   const { t } = useTranslation();
   const { alert } = useUtils();
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const currentAccount = useSelector(selectActiveAccount);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const activeAssets = useSelector(selectActiveAccountAssets);
-
-  const accountTransactions = useSelector(
-    (state: RootState) => state.vault.accountTransactions
+  const currentAccountTransactions = useSelector(
+    selectActiveAccountTransactions
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
@@ -590,10 +590,6 @@ export const EvmTransactionsList = ({
   const prevConfirmationState = useRef<{ [hash: string]: number }>({});
   const isFirstRender = useRef(true);
   const lastToastTime = useRef<number>(0);
-
-  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-  const currentAccountTransactions =
-    accountTransactions[activeAccount.type]?.[activeAccount.id];
 
   // Create a stable dependency by tracking only transaction count and confirmation sum
   const ethereumTxs = currentAccountTransactions?.ethereum?.[chainId] || [];

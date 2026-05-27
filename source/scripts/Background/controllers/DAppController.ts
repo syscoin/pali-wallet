@@ -4,7 +4,7 @@ import { INetwork } from '@sidhujag/sysweb3-network';
 import { notificationManager } from '../notification-manager';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
-import store from 'state/store';
+import store, { saveMainState } from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
@@ -25,6 +25,15 @@ interface IDappsSession {
  */
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
+
+  const persistDappState = async (operation: string) => {
+    try {
+      await saveMainState();
+    } catch (error) {
+      console.error(`[DAppController] Failed to persist ${operation}:`, error);
+      throw error;
+    }
+  };
 
   // Message handler is registered in handleListeners - no need to register here
   // This prevents duplicate listener registration which causes "message port closed" errors
@@ -264,7 +273,7 @@ const DAppController = (): IDAppController => {
     );
   };
 
-  const disconnect = (host: string) => {
+  const disconnect = async (host: string) => {
     try {
       const previousConnectedDapps = getAll();
       const isInActiveSession = Boolean(_dapps[host]);
@@ -273,6 +282,7 @@ const DAppController = (): IDAppController => {
         case true:
           _dapps[host].activeAddress = null;
           store.dispatch(removeDApp(host));
+          await persistDappState('dapp disconnect');
 
           // Trigger disconnection notification
           notificationManager.notifyDappConnection(host, false);
@@ -309,6 +319,7 @@ const DAppController = (): IDAppController => {
         case false:
           if (previousConnectedDapps[host]) {
             store.dispatch(removeDApp(host));
+            await persistDappState('dapp disconnect');
 
             // Trigger disconnection notification
             notificationManager.notifyDappConnection(host, false);

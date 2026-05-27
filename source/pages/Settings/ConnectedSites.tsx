@@ -1,5 +1,5 @@
 import { Dialog } from '@headlessui/react';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -24,26 +24,39 @@ const ConnectedSites = () => {
 
   // Get dapps directly from Redux state
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
+  const [hiddenHosts, setHiddenHosts] = useState<Set<string>>(() => new Set());
+  const [disconnectingHost, setDisconnectingHost] = useState<string | null>(
+    null
+  );
 
   // Show all dapps since they're connected globally (one account per dapp)
-  const dappsList = Object.values(dapps);
+  const dappsList = useMemo(
+    () => Object.values(dapps).filter((dapp) => !hiddenHosts.has(dapp.host)),
+    [dapps, hiddenHosts]
+  );
 
   const [selected, setSelected] = useState<IDApp>();
 
   const disconnectSelected = async () => {
     if (!selected) return;
 
+    const host = selected.host;
+    setDisconnectingHost(host);
+    setHiddenHosts((hosts) => new Set(hosts).add(host));
+    setSelected(undefined);
+
     try {
       // The controller will dispatch removeDApp action internally
-      await controllerEmitter(['dapp', 'disconnect'], [selected.host]);
-      await controllerEmitter(
-        ['wallet', 'saveCurrentState'],
-        ['connected-sites-disconnect']
-      );
-      // Close the modal
-      setSelected(undefined);
+      await controllerEmitter(['dapp', 'disconnect'], [host]);
     } catch (error) {
       console.error('Error disconnecting dapp:', error);
+      setHiddenHosts((hosts) => {
+        const nextHosts = new Set(hosts);
+        nextHosts.delete(host);
+        return nextHosts;
+      });
+    } finally {
+      setDisconnectingHost(null);
     }
   };
 
@@ -76,7 +89,10 @@ const ConnectedSites = () => {
                 )}
               </div>
 
-              <IconButton onClick={() => setSelected(_dapp)}>
+              <IconButton
+                disabled={disconnectingHost === _dapp.host}
+                onClick={() => setSelected(_dapp)}
+              >
                 <EditIconSvg className="w-4" />
               </IconButton>
             </li>
@@ -124,8 +140,17 @@ const ConnectedSites = () => {
                   <div className="flex items-center justify-between m-3 text-brand-white">
                     <p>{truncate(selected.host, 35)}</p>
 
-                    <IconButton onClick={disconnectSelected}>
-                      <Icon name="delete" />
+                    <IconButton
+                      disabled={disconnectingHost === selected.host}
+                      onClick={disconnectSelected}
+                    >
+                      {disconnectingHost === selected.host ? (
+                        <span className="text-xs text-brand-graylight">
+                          Removing...
+                        </span>
+                      ) : (
+                        <Icon name="delete" />
+                      )}
                     </IconButton>
                   </div>
 

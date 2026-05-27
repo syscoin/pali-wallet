@@ -1,6 +1,8 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from 'react';
 
+import ArbitrumIcon from '../assets/all_assets/arbitrum-icon.svg';
+import BaseIcon from '../assets/all_assets/base-icon.svg';
 import ZkSysIcon from '../assets/all_assets/zksys-icon.svg';
 import {
   BtcChainSvg,
@@ -50,6 +52,8 @@ const KNOWN_CHAIN_ICONS: {
   '57057-ethereum': ZkSysIcon, // zkTanenbaum Testnet
   '570-ethereum': RolluxChainSvg, // Rollux Mainnet
   '57000-ethereum': RolluxChainSvg, // Rollux Testnet
+  '8453-ethereum': BaseIcon, // Base Mainnet
+  '42161-ethereum': ArbitrumIcon, // Arbitrum One
 
   // UTXO networks (chainId-networkType) - using chainId from coins.ts
   '0-syscoin': BtcChainSvg, // Bitcoin Mainnet (slip44: 0)

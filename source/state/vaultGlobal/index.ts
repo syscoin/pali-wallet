@@ -50,7 +50,7 @@ const vaultGlobalSlice = createSlice({
       }
 
       // Then, add any missing default networks from PALI_NETWORKS_STATE
-      // This ensures new default networks added in updates are included
+      // This ensures new default networks added in updates are included.
       Object.entries(PALI_NETWORKS_STATE.ethereum).forEach(
         ([chainId, network]) => {
           if (
@@ -119,6 +119,63 @@ const vaultGlobalSlice = createSlice({
       action: PayloadAction<'idle' | 'switching' | 'error' | 'connecting'>
     ) {
       state.networkStatus = action.payload;
+    },
+    setNetworkRuntimeState(
+      state: IGlobalState,
+      action: PayloadAction<{
+        isPollingUpdate?: boolean;
+        isPostNetworkSwitchLoading?: boolean;
+        isSwitchingAccount?: boolean;
+        networkQuality?: IGlobalState['networkQuality'];
+        networkStatus?: 'idle' | 'switching' | 'error' | 'connecting';
+        networkTarget?: INetwork;
+      }>
+    ) {
+      const {
+        isPostNetworkSwitchLoading,
+        isPollingUpdate,
+        isSwitchingAccount,
+        networkQuality,
+        networkStatus,
+        networkTarget,
+      } = action.payload;
+
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkStatus')
+      ) {
+        state.networkStatus = networkStatus;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkTarget')
+      ) {
+        state.networkTarget = networkTarget;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          action.payload,
+          'isPostNetworkSwitchLoading'
+        )
+      ) {
+        state.isPostNetworkSwitchLoading = isPostNetworkSwitchLoading;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'isPollingUpdate')
+      ) {
+        state.isPollingUpdate = isPollingUpdate;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(
+          action.payload,
+          'isSwitchingAccount'
+        )
+      ) {
+        state.isSwitchingAccount = isSwitchingAccount;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(action.payload, 'networkQuality')
+      ) {
+        state.networkQuality = networkQuality;
+      }
     },
     setEnsName(
       state: IGlobalState,
@@ -350,6 +407,7 @@ export const {
   setAdvancedSettings,
   setError,
   setNetworkStatus,
+  setNetworkRuntimeState,
   setIsSwitchingAccount,
   setLastLogin,
   setHasEncryptedVault,
