@@ -220,7 +220,7 @@ export const ConnectWallet = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType]
+        [accountId, accountType, true]
       );
 
       // Return null - the method handler will return the actual address

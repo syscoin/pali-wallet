@@ -322,7 +322,7 @@ export const ChangeAccount = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType]
+        [accountId, accountType, true]
       );
 
       // Dispatch event right before closing

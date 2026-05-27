@@ -2497,14 +2497,9 @@ class MainController {
       })
     );
 
-    // Account creation is deterministic from the seed. Persist in the background
-    // so creating later-index UTXO accounts does not block on full vault storage.
-    void this.saveWalletState('create-account', true, true).catch((error) => {
-      console.error(
-        '[MainController] Failed to persist created account:',
-        error
-      );
-    });
+    // Persist before returning so MV3 service worker teardown cannot lose the
+    // newly created account after the UI reports success.
+    await this.saveWalletState('create-account', true, true);
 
     // Double-check the account was stored correctly
     const { accounts } = store.getState().vault;
@@ -2570,7 +2565,11 @@ class MainController {
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
-        this.saveWalletState('account-switch', true);
+        if (sync) {
+          await this.saveWalletState('account-switch', true, true);
+        } else {
+          this.saveWalletState('account-switch', true);
+        }
 
         // Get the new account data for notification
         const newAccountData = store.getState().vault.accounts[type][id];

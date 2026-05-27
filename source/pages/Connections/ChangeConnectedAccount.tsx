@@ -155,7 +155,7 @@ export const ChangeConnectedAccount = () => {
     try {
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [connectedAccount.id, accountType]
+        [connectedAccount.id, accountType, true]
       );
       // Dispatch event right before closing
       dispatchBackgroundEvent(`${eventName}.${host}`, null);
