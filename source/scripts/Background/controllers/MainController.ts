@@ -2570,6 +2570,7 @@ class MainController {
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
+        this.saveWalletState('account-switch', true);
 
         // Get the new account data for notification
         const newAccountData = store.getState().vault.accounts[type][id];
@@ -4774,6 +4775,8 @@ class MainController {
           );
           // Don't change network status here - it's already set to success
           // The error is just for balance updates, not the network switch itself
+        } finally {
+          this.saveWalletState('network-switch-after-updates');
         }
       });
     }
