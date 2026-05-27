@@ -4767,7 +4767,7 @@ class MainController {
       Promise.resolve().then(async () => {
         try {
           await this.setFiat();
-          await this.getLatestUpdateForCurrentAccount(false, true, false, true);
+          await this.getLatestUpdateForCurrentAccount(false, true);
         } catch (error) {
           console.error(
             '[MainController] Failed to update after network change:',
