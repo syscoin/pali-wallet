@@ -99,7 +99,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
     const tokenListUrl = new URL(`${baseUrl}/api`);
 
     // Extract API key if it's already in the original URL
-    const existingApiKey = url.searchParams.get('apikey');
+    const existingApiKey =
+      url.searchParams.get('apikey') || url.searchParams.get('apiKey');
 
     // Build the API request
     tokenListUrl.searchParams.set('module', 'account');
@@ -111,7 +112,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
       tokenListUrl.searchParams.set('apikey', existingApiKey);
     }
 
-    const response = await retryableFetch(tokenListUrl.toString());
+    const response = await retryableFetch(tokenListUrl.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`API request failed with status ${response.status}`);
@@ -128,6 +135,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return [];
     }
 
+    if (!Array.isArray(data.result)) {
+      console.warn(
+        '[EvmAssetsController] API returned tokenlist result in an unexpected format'
+      );
+      return [];
+    }
+
     const tokens = data.result;
 
     // Helper function to detect tokens with invisible/funny characters in name
@@ -140,7 +154,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     // Convert to ITokenSearchResult format and filter out tokens with funny characters
     const results: ITokenSearchResult[] = tokens
-      .filter((token: any) => !hasInvisibleChars(token.name || '')) // Filter out tokens with invisible chars in name
+      .filter(
+        (token: any) =>
+          token?.contractAddress && !hasInvisibleChars(token.name || '')
+      ) // Filter malformed entries and names with invisible chars
       .map((token: any) => {
         // Check if it's an NFT based on type
         const tokenType = token.type || 'ERC-20';
