@@ -311,9 +311,19 @@ export const SendConfirm = () => {
   }, [navigate, alert, t, getLegacyGasPrice]);
 
   const handleConfirm = async () => {
-    const balance = isBitcoinBased
+    let balance = isBitcoinBased
       ? activeAccount.balances[INetworkType.Syscoin]
       : activeAccount.balances[INetworkType.Ethereum];
+
+    try {
+      const refreshedBalance = (await controllerEmitter(
+        ['wallet', 'refreshActiveAccountBalances'],
+        [{ includeAssets: false }]
+      )) as { nativeBalance: string };
+      balance = Number(refreshedBalance.nativeBalance || 0);
+    } catch (error) {
+      console.error('Failed to refresh balance before confirming:', error);
+    }
 
     if (activeAccount && balance >= 0) {
       setLoading(true);

@@ -72,6 +72,40 @@ export const SendSys = () => {
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
 
+  useEffect(() => {
+    const refreshBalances = async () => {
+      try {
+        await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: true }]
+        );
+      } catch (error) {
+        console.error('Failed to refresh send balances:', error);
+      }
+    };
+
+    refreshBalances();
+  }, [activeAccount?.address, activeNetwork.chainId]);
+
+  useEffect(() => {
+    if (!selectedAsset || !accountAssets?.syscoin) return;
+
+    const refreshedAsset = Object.values(accountAssets.syscoin).find(
+      (asset) => String(asset.assetGuid) === String(selectedAsset.assetGuid)
+    );
+
+    if (
+      refreshedAsset &&
+      Number(refreshedAsset.balance || 0) !== Number(selectedAsset.balance || 0)
+    ) {
+      setSelectedAsset(refreshedAsset);
+    }
+  }, [
+    accountAssets?.syscoin,
+    selectedAsset?.assetGuid,
+    selectedAsset?.balance,
+  ]);
+
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
     const state = {

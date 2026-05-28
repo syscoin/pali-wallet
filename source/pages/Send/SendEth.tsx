@@ -163,6 +163,47 @@ export const SendEth = () => {
   const formValuesRef = useRef<any>({});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
 
+  useEffect(() => {
+    const refreshBalances = async () => {
+      try {
+        await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: true }]
+        );
+      } catch (error) {
+        console.error('Failed to refresh send balances:', error);
+      }
+    };
+
+    refreshBalances();
+  }, [activeAccount?.address, activeNetwork.chainId]);
+
+  useEffect(() => {
+    if (!selectedAsset || !activeAccountAssets?.ethereum) return;
+
+    const refreshedAsset = activeAccountAssets.ethereum.find((asset) => {
+      const sameContract =
+        asset.contractAddress?.toLowerCase() ===
+        selectedAsset.contractAddress?.toLowerCase();
+      const sameTokenId =
+        String(asset.tokenId || '') === String(selectedAsset.tokenId || '');
+
+      return sameContract && sameTokenId;
+    });
+
+    if (
+      refreshedAsset &&
+      Number(refreshedAsset.balance) !== Number(selectedAsset.balance)
+    ) {
+      setSelectedAsset(refreshedAsset);
+    }
+  }, [
+    activeAccountAssets?.ethereum,
+    selectedAsset?.balance,
+    selectedAsset?.contractAddress,
+    selectedAsset?.tokenId,
+  ]);
+
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
     // Prefer live form values to avoid races when setFieldValue was just called

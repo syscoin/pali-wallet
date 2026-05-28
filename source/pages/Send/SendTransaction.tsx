@@ -279,15 +279,21 @@ export const SendTransaction = () => {
   }, [toRaw, ensCache]);
 
   const handleConfirm = async () => {
-    const {
-      balances: { ethereum },
-    } = activeAccount;
+    setLoading(true);
 
-    const balance = ethereum;
+    let balance = Number(activeAccount?.balances?.ethereum || 0);
+
+    try {
+      const refreshedBalance = (await controllerEmitter(
+        ['wallet', 'refreshActiveAccountBalances'],
+        [{ includeAssets: false }]
+      )) as { nativeBalance: string };
+      balance = Number(refreshedBalance.nativeBalance || 0);
+    } catch (error) {
+      console.error('Failed to refresh balance before sending:', error);
+    }
 
     if (activeAccount && balance > 0) {
-      setLoading(true);
-
       let txToSend = tx;
 
       // Handle approval-specific data encoding
@@ -487,6 +493,7 @@ export const SendTransaction = () => {
         return error;
       }
     } else {
+      setLoading(false);
       alert.error(t('send.enoughFunds'));
       if (isExternal) {
         clearNavigationState();
@@ -506,6 +513,10 @@ export const SendTransaction = () => {
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
           return; // wait until resolvedTo is ready
         }
+        await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: true }]
+        );
         const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
           await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
 

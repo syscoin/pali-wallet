@@ -4172,6 +4172,59 @@ class MainController {
     return balancePromise;
   }
 
+  public async refreshActiveAccountBalances({
+    includeAssets = false,
+    isPolling = false,
+  }: {
+    includeAssets?: boolean;
+    isPolling?: boolean;
+  } = {}): Promise<{ assetsUpdated: boolean; nativeBalance: string }> {
+    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
+      store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+
+    if (!currentAccount) {
+      throw new Error('Active account not found');
+    }
+
+    await this.updateUserNativeBalance({
+      activeAccount,
+      activeNetwork,
+      isBitcoinBased,
+      isPolling,
+    });
+
+    let assetsUpdated = false;
+    if (includeAssets) {
+      try {
+        await this.updateAssetsFromCurrentAccount({
+          activeAccount,
+          activeNetwork,
+          isBitcoinBased,
+          isPolling,
+        });
+        assetsUpdated = true;
+      } catch (error) {
+        console.warn(
+          '[MainController] Asset refresh failed during balance preflight:',
+          error
+        );
+      }
+    }
+
+    const latestState = store.getState().vault;
+    const latestAccount =
+      latestState.accounts[activeAccount.type]?.[activeAccount.id];
+    const networkType = isBitcoinBased
+      ? INetworkType.Syscoin
+      : INetworkType.Ethereum;
+
+    return {
+      assetsUpdated,
+      nativeBalance: String(latestAccount?.balances?.[networkType] ?? '0'),
+    };
+  }
+
   public async getLatestUpdateForCurrentAccount(
     isPolling = false,
     forceUpdate = false, // Force update even if just unlocked
