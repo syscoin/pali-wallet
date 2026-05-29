@@ -168,7 +168,7 @@ export const SendEth = () => {
       try {
         await controllerEmitter(
           ['wallet', 'refreshActiveAccountBalances'],
-          [{ includeAssets: true }]
+          [{ includeAssets: false }]
         );
       } catch (error) {
         console.error('Failed to refresh send balances:', error);
