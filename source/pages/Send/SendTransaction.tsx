@@ -100,6 +100,30 @@ export const SendTransaction = () => {
   const approvalType = txMetadata.approvalType;
   const tokenStandard = txMetadata.tokenStandard;
 
+  const targetedErc20ContractAddress = useMemo(() => {
+    if (!dataTx?.to) return null;
+
+    const method = String(decodedTxData?.method || '').toLowerCase();
+    const normalizedTokenStandard = String(tokenStandard || '').toUpperCase();
+    const isErc20Approval = isApproval && approvalType === 'erc20-amount';
+    const isErc20LikeStandard = ['ERC-20', 'ERC-777', 'ERC-4626'].includes(
+      normalizedTokenStandard
+    );
+    const isErc20LikeMethod = ['approve', 'transfer', 'transferfrom'].includes(
+      method
+    );
+
+    return isErc20Approval || isErc20LikeStandard || isErc20LikeMethod
+      ? dataTx.to
+      : null;
+  }, [
+    dataTx?.to,
+    decodedTxData?.method,
+    tokenStandard,
+    isApproval,
+    approvalType,
+  ]);
+
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -279,15 +303,21 @@ export const SendTransaction = () => {
   }, [toRaw, ensCache]);
 
   const handleConfirm = async () => {
-    const {
-      balances: { ethereum },
-    } = activeAccount;
+    setLoading(true);
 
-    const balance = ethereum;
+    let balance = Number(activeAccount?.balances?.ethereum || 0);
+
+    try {
+      const refreshedBalance = (await controllerEmitter(
+        ['wallet', 'refreshActiveAccountBalances'],
+        [{ includeAssets: false }]
+      )) as { nativeBalance: string };
+      balance = Number(refreshedBalance.nativeBalance || 0);
+    } catch (error) {
+      console.error('Failed to refresh balance before sending:', error);
+    }
 
     if (activeAccount && balance > 0) {
-      setLoading(true);
-
       let txToSend = tx;
 
       // Handle approval-specific data encoding
@@ -487,6 +517,7 @@ export const SendTransaction = () => {
         return error;
       }
     } else {
+      setLoading(false);
       alert.error(t('send.enoughFunds'));
       if (isExternal) {
         clearNavigationState();
@@ -506,6 +537,15 @@ export const SendTransaction = () => {
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
           return; // wait until resolvedTo is ready
         }
+        await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [
+            {
+              includeAssets: false,
+              targetEvmTokenContractAddress: targetedErc20ContractAddress,
+            },
+          ]
+        );
         const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
           await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
 
@@ -558,6 +598,7 @@ export const SendTransaction = () => {
     toRaw,
     activeNetwork.chainId,
     ensResolutionFailed,
+    targetedErc20ContractAddress,
   ]); // ensure we wait for resolved address
 
   // Check for contract interaction with non-contract address
