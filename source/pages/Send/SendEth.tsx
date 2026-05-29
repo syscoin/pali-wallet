@@ -187,8 +187,12 @@ export const SendEth = () => {
         selectedAsset.contractAddress?.toLowerCase();
       const sameTokenId =
         String(asset.tokenId || '') === String(selectedAsset.tokenId || '');
+      const sameChain =
+        (asset.chainId || activeNetwork.chainId) === activeNetwork.chainId &&
+        (selectedAsset.chainId || activeNetwork.chainId) ===
+          activeNetwork.chainId;
 
-      return sameContract && sameTokenId;
+      return sameContract && sameTokenId && sameChain;
     });
 
     if (
@@ -200,8 +204,10 @@ export const SendEth = () => {
   }, [
     activeAccountAssets?.ethereum,
     selectedAsset?.balance,
+    selectedAsset?.chainId,
     selectedAsset?.contractAddress,
     selectedAsset?.tokenId,
+    activeNetwork.chainId,
   ]);
 
   // Save navigation state when user completes interaction
