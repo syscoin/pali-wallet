@@ -2,6 +2,7 @@
 
 import { Contract } from '@ethersproject/contracts';
 import { namehash } from '@ethersproject/hash';
+import { formatUnits } from '@ethersproject/units';
 import {
   KeyringManager,
   IKeyringAccountState,
@@ -4175,9 +4176,11 @@ class MainController {
   public async refreshActiveAccountBalances({
     includeAssets = false,
     isPolling = false,
+    targetEvmTokenContractAddress,
   }: {
     includeAssets?: boolean;
     isPolling?: boolean;
+    targetEvmTokenContractAddress?: string;
   } = {}): Promise<{ assetsUpdated: boolean; nativeBalance: string }> {
     const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
       store.getState().vault;
@@ -4207,6 +4210,18 @@ class MainController {
       } catch (error) {
         console.warn(
           '[MainController] Asset refresh failed during balance preflight:',
+          error
+        );
+      }
+    }
+
+    if (!isBitcoinBased && targetEvmTokenContractAddress) {
+      try {
+        await this.refreshActiveEvmTokenBalance(targetEvmTokenContractAddress);
+        assetsUpdated = true;
+      } catch (error) {
+        console.warn(
+          '[MainController] Target token refresh failed during balance preflight:',
           error
         );
       }
@@ -5010,6 +5025,72 @@ class MainController {
       accountAddress,
       this.ethereumTransaction.web3Provider
     );
+  }
+
+  public async refreshActiveEvmTokenBalance(contractAddress: string) {
+    const { accounts, accountAssets, activeAccount, activeNetwork } =
+      store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+
+    if (!currentAccount?.address || !contractAddress) {
+      throw new Error('Active account or token contract not found');
+    }
+
+    const tokenInfo = await this.getERC20TokenInfo(
+      contractAddress,
+      currentAccount.address
+    );
+    const currentAssets = accountAssets[activeAccount.type]?.[
+      activeAccount.id
+    ] || {
+      ethereum: [],
+      syscoin: [],
+    };
+    const contractLower = contractAddress.toLowerCase();
+    const formattedBalance = parseFloat(
+      formatUnits(tokenInfo.balance || '0', tokenInfo.decimals)
+    );
+    const existingAsset = currentAssets.ethereum.find(
+      (asset) =>
+        !asset.isNft &&
+        asset.contractAddress?.toLowerCase() === contractLower &&
+        (!asset.chainId || asset.chainId === activeNetwork.chainId)
+    );
+
+    const refreshedAsset: ITokenEthProps = {
+      ...existingAsset,
+      chainId: existingAsset?.chainId || activeNetwork.chainId,
+      contractAddress: existingAsset?.contractAddress || contractAddress,
+      isNft: false,
+      tokenStandard: existingAsset?.tokenStandard || 'ERC-20',
+      balance: formattedBalance,
+      decimals: tokenInfo.decimals,
+      name: tokenInfo.name,
+      tokenSymbol: tokenInfo.symbol,
+    };
+
+    if (!existingAsset) {
+      return refreshedAsset;
+    }
+
+    const ethereumAssets = currentAssets.ethereum.map((asset) =>
+      !asset.isNft &&
+      asset.contractAddress?.toLowerCase() === contractLower &&
+      (!asset.chainId || asset.chainId === activeNetwork.chainId)
+        ? refreshedAsset
+        : asset
+    );
+
+    store.dispatch(
+      setAccountAssets({
+        accountId: activeAccount.id,
+        accountType: activeAccount.type,
+        property: 'ethereum',
+        value: ethereumAssets,
+      })
+    );
+
+    return refreshedAsset;
   }
 
   // Direct transaction EVM method for UI access
