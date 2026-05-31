@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
+import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { logError } from 'utils/logger';
 import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
@@ -74,6 +75,11 @@ export const CreatePasskeyAccount = () => {
           },
         ]
       )) as any;
+
+      await controllerEmitter(
+        ['dapp', 'changeAccount'],
+        [host, account.id, KeyringAccountType.PasskeySmartAccount]
+      );
 
       dispatchBackgroundEvent(`${eventName}.${host}`, {
         address: account.address,
