@@ -2868,6 +2868,16 @@ class MainController {
     return getPasskeyFactoryAddress(activeNetwork.chainId);
   }
 
+  public assertPasskeySmartAccountSupported(): boolean {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+
+    getPasskeyFactoryAddress(activeNetwork.chainId);
+    return true;
+  }
+
   private async assertPasskeyExecutionTargetAllowed(target: string) {
     const blacklistResult = await blacklistService.checkAddress(
       getAddress(target)

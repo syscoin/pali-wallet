@@ -99,6 +99,21 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
 
+  const isActiveAccountAddress = (value: unknown) =>
+    typeof value === 'string' && value.toLowerCase() === address.toLowerCase();
+
+  const getPersonalSignMessage = () => {
+    if (isActiveAccountAddress(data[0])) {
+      return data[1] || '';
+    }
+
+    if (isActiveAccountAddress(data[1])) {
+      return data[0] || '';
+    }
+
+    throw { message: t('send.signingForWrongAddress') };
+  };
+
   const encodePasskey1271Signature = async (hash: string) => {
     if (!activeAccount.passkey) {
       throw { message: t('send.passkeyActiveAccountRequired') };
@@ -129,12 +144,7 @@ const EthSign: React.FC<ISign> = () => {
 
   const getPasskeySignHash = (typedData?: any) => {
     if (data.eventName === 'personal_sign') {
-      const isFirstParamAddress =
-        data[0] &&
-        typeof data[0] === 'string' &&
-        data[0].startsWith('0x') &&
-        data[0].length === 42;
-      const msg = isFirstParamAddress ? data[1] || '' : data[0] || '';
+      const msg = getPersonalSignMessage();
       return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
     }
 
@@ -342,32 +352,9 @@ const EthSign: React.FC<ISign> = () => {
     }
     if (data.eventName === 'personal_sign') {
       let msg = '';
-      let requestedAddress = '';
-
-      // Standard parameter order for personal_sign is [message, address]
-      // Some dapps may send [address, message] for compatibility
-      // Check if first param looks like an Ethereum address
-      const isFirstParamAddress =
-        data[0] &&
-        typeof data[0] === 'string' &&
-        data[0].startsWith('0x') &&
-        data[0].length === 42;
-
-      if (isFirstParamAddress) {
-        // Non-standard order: [address, message]
-        requestedAddress = data[0];
-        msg = data[1] || '';
-      } else {
-        // Standard order: [message, address]
-        msg = data[0] || '';
-        requestedAddress = data[1] || '';
-      }
-
-      // Validate that the requested address matches the active account
-      if (
-        requestedAddress &&
-        requestedAddress.toLowerCase() !== activeAccount.address.toLowerCase()
-      ) {
+      try {
+        msg = getPersonalSignMessage();
+      } catch {
         setErrorMsg(t('send.signingForWrongAddress'));
         return;
       }
