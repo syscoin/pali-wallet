@@ -1,13 +1,16 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
+import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
 import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
+import { PASSKEY_FACTORY_ADDRESSES } from 'utils/passkey/contracts';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -18,6 +21,12 @@ const CreateAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
   const location = useLocation();
+  const activeNetwork = useSelector(
+    ({ vault }: RootState) => vault.activeNetwork
+  );
+  const isPasskeySupported = Boolean(
+    PASSKEY_FACTORY_ADDRESSES[activeNetwork.chainId]
+  );
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
@@ -157,23 +166,25 @@ const CreateAccount = () => {
               {t('buttons.create')}
             </NeutralButton>
 
-            <div className="mt-4 rounded-lg border border-dashed border-brand-blue500/50 p-4 text-left">
-              <p className="mb-2 text-sm font-medium text-white">
-                {t('settings.createPasskeyAccount')}
-              </p>
-              <p className="mb-4 text-xs text-brand-graylight">
-                {t('settings.createPasskeyAccountDescription')}
-              </p>
-              <NeutralButton
-                type="button"
-                disabled={passkeyLoading || loading}
-                loading={passkeyLoading}
-                onClick={createPasskeyAccount}
-                fullWidth
-              >
-                {t('settings.createPasskeyAccount')}
-              </NeutralButton>
-            </div>
+            {isPasskeySupported && (
+              <div className="mt-4 rounded-lg border border-dashed border-brand-blue500/50 p-4 text-left">
+                <p className="mb-2 text-sm font-medium text-white">
+                  {t('settings.createPasskeyAccount')}
+                </p>
+                <p className="mb-4 text-xs text-brand-graylight">
+                  {t('settings.createPasskeyAccountDescription')}
+                </p>
+                <NeutralButton
+                  type="button"
+                  disabled={passkeyLoading || loading}
+                  loading={passkeyLoading}
+                  onClick={createPasskeyAccount}
+                  fullWidth
+                >
+                  {t('settings.createPasskeyAccount')}
+                </NeutralButton>
+              </div>
+            )}
           </div>
         </Form>
       )}

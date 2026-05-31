@@ -114,6 +114,18 @@ const EthSign: React.FC<ISign> = () => {
     throw { message: t('send.signingForWrongAddress') };
   };
 
+  const getEthSignPayload = () => {
+    if (isActiveAccountAddress(data[0])) {
+      return String(data[1] || '');
+    }
+
+    if (isActiveAccountAddress(data[1])) {
+      return String(data[0] || '');
+    }
+
+    throw { message: t('send.signingForWrongAddress') };
+  };
+
   const encodePasskey1271Signature = async (hash: string) => {
     if (!activeAccount.passkey) {
       throw { message: t('send.passkeyActiveAccountRequired') };
@@ -149,7 +161,7 @@ const EthSign: React.FC<ISign> = () => {
     }
 
     if (data.eventName === 'eth_sign') {
-      const payload = String(data[1] || data[0] || '');
+      const payload = getEthSignPayload();
       if (!isHexString(payload, 32)) {
         throw {
           message: t('send.passkeyEthSignHashRequired'),
