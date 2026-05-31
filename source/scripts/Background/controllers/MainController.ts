@@ -39,7 +39,6 @@ import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
-import { updateDAppAccount } from 'state/dapp';
 import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
@@ -3695,7 +3694,7 @@ class MainController {
     }
 
     const { dapps } = store.getState().dapp;
-    const date = Date.now();
+    const controller = getController();
     for (const [host, dapp] of Object.entries(dapps)) {
       const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
       if (
@@ -3708,13 +3707,10 @@ class MainController {
         continue;
       }
 
-      store.dispatch(
-        updateDAppAccount({
-          host,
-          accountId: fallbackAccount.id,
-          accountType: fallbackAccount.type,
-          date,
-        })
+      controller.dapp.changeAccount(
+        host,
+        fallbackAccount.id,
+        fallbackAccount.type
       );
     }
   }
