@@ -126,6 +126,19 @@ const EthSign: React.FC<ISign> = () => {
     throw { message: t('send.signingForWrongAddress') };
   };
 
+  const getTypedDataPayload = () => {
+    let typedData;
+    if (isActiveAccountAddress(data[0])) {
+      typedData = data[1];
+    } else if (isActiveAccountAddress(data[1])) {
+      typedData = data[0];
+    } else {
+      throw { message: t('send.signingForWrongAddress') };
+    }
+
+    return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
+  };
+
   const encodePasskey1271Signature = async (hash: string) => {
     if (!activeAccount.passkey) {
       throw { message: t('send.passkeyActiveAccountRequired') };
@@ -207,37 +220,21 @@ const EthSign: React.FC<ISign> = () => {
       let response = '';
       const type = data.eventName;
       if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+        const typedData =
+          data.eventName === 'eth_signTypedData' ||
+          data.eventName === 'eth_signTypedData_v3' ||
+          data.eventName === 'eth_signTypedData_v4'
+            ? getTypedDataPayload()
+            : undefined;
+        const signHash = getPasskeySignHash(typedData);
+
         await controllerEmitter(
           ['wallet', 'ensurePasskeySmartAccountDeployed'],
           [],
           300000
         );
 
-        let typedData;
-        if (
-          data.eventName === 'eth_signTypedData' ||
-          data.eventName === 'eth_signTypedData_v3' ||
-          data.eventName === 'eth_signTypedData_v4'
-        ) {
-          if (
-            typeof data[0] === 'string' &&
-            data[0].toLowerCase() === address.toLowerCase()
-          ) {
-            typedData = data[1];
-          } else if (
-            typeof data[1] === 'string' &&
-            data[1].toLowerCase() === address.toLowerCase()
-          ) {
-            typedData = data[0];
-          } else {
-            throw { message: t('send.signingForWrongAddress') };
-          }
-          if (typeof typedData === 'string') typedData = JSON.parse(typedData);
-        }
-
-        response = await encodePasskey1271Signature(
-          getPasskeySignHash(typedData)
-        );
+        response = await encodePasskey1271Signature(signHash);
       } else if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
