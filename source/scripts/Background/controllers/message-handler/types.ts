@@ -34,6 +34,7 @@ export enum MethodRoute {
   ChangeAccount = 'change-account',
   ChangeActiveConnectedAccount = 'change-active-connected-account',
   Connect = 'connect-wallet',
+  CreatePasskeyAccount = 'create-passkey-account',
   DecryptKey = 'tx/decrypt',
   EncryptKey = 'tx/encryptKey',
   EthSign = 'tx/ethSign',

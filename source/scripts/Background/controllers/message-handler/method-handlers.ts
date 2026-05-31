@@ -454,6 +454,11 @@ export class WalletMethodHandler implements IMethodHandler {
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
+      case 'createPasskeyAccount':
+        return {
+          label: params?.[0]?.label,
+          sponsor: params?.[0]?.sponsor,
+        };
       case 'sendCalls':
         // Parse the sendCalls parameters
         return params?.[0] || {};

@@ -201,6 +201,9 @@ const ConnectWallet = lazy(() =>
 const ChangeAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.ChangeAccount }))
 );
+const CreatePasskeyAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.CreatePasskeyAccount }))
+);
 const ChangeConnectedAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.ChangeConnectedAccount }))
 );
@@ -357,6 +360,10 @@ export const Router = () => {
               <Route path="phrase" element={<SeedConfirm />} />
               <Route path="login" element={<Start isExternal={true} />} />
               <Route path="connect-wallet" element={<ConnectWallet />} />
+              <Route
+                path="create-passkey-account"
+                element={<CreatePasskeyAccount />}
+              />
               <Route path="change-account" element={<ChangeAccount />} />
               <Route
                 path="change-active-connected-account"

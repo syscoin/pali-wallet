@@ -30,7 +30,8 @@ export const AccountMenu: React.FC = () => {
   );
   const isHardwareAccount =
     activeAccountMeta?.type === KeyringAccountType.Ledger ||
-    activeAccountMeta?.type === KeyringAccountType.Trezor;
+    activeAccountMeta?.type === KeyringAccountType.Trezor ||
+    activeAccountMeta?.type === KeyringAccountType.PasskeySmartAccount;
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     try {
       await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);

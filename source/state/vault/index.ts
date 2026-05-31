@@ -37,6 +37,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
+    [KeyringAccountType.PasskeySmartAccount]: {},
   },
   accountAssets: {
     [KeyringAccountType.HDAccount]: {
@@ -48,6 +49,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
+    [KeyringAccountType.PasskeySmartAccount]: {},
   },
   accountTransactions: {
     [KeyringAccountType.HDAccount]: {
@@ -59,6 +61,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
+    [KeyringAccountType.PasskeySmartAccount]: {},
   },
   activeAccount: {
     id: 0,
@@ -75,6 +78,18 @@ const initialState: IVaultState = {
   },
 };
 
+const ensureAccountTypeBuckets = (state: IVaultState) => {
+  Object.values(KeyringAccountType).forEach((accountType) => {
+    if (!state.accounts[accountType]) state.accounts[accountType] = {};
+    if (!state.accountAssets[accountType])
+      state.accountAssets[accountType] = {};
+    if (!state.accountTransactions[accountType])
+      state.accountTransactions[accountType] = {};
+  });
+
+  return state;
+};
+
 const VaultState = createSlice({
   name: 'vault',
   initialState,
@@ -82,7 +97,7 @@ const VaultState = createSlice({
     rehydrate(_state: IVaultState, action: PayloadAction<IVaultState>) {
       // Complete replacement - ensures loaded vault state is exactly what was saved
       // This matches the behavior of initializeCleanVaultForSlip44 for consistency
-      return action.payload;
+      return ensureAccountTypeBuckets(action.payload);
     },
     setAccounts(
       state: IVaultState,
@@ -296,18 +311,21 @@ const VaultState = createSlice({
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
+          [KeyringAccountType.PasskeySmartAccount]: {},
         },
         accountAssets: {
           [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default assets!
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
+          [KeyringAccountType.PasskeySmartAccount]: {},
         },
         accountTransactions: {
           [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default transactions!
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
+          [KeyringAccountType.PasskeySmartAccount]: {},
         },
         activeAccount: {
           id: 0, // Will be updated when first account is created
@@ -340,6 +358,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
+        [KeyringAccountType.PasskeySmartAccount]: {},
       };
       state.accountAssets = {
         [KeyringAccountType.HDAccount]: {
@@ -351,6 +370,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
+        [KeyringAccountType.PasskeySmartAccount]: {},
       };
       state.accountTransactions = {
         [KeyringAccountType.HDAccount]: {
@@ -362,6 +382,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
+        [KeyringAccountType.PasskeySmartAccount]: {},
       };
       state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },

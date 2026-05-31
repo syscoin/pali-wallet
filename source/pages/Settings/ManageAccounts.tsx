@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
-import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
+import { LockIconSvg, PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import {
   IconButton,
   Icon,
@@ -77,6 +77,16 @@ const ACCOUNT_TYPE_CONFIG = {
           filter:
             'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
         }}
+        {...props}
+      />
+    ),
+  },
+  [KeyringAccountType.PasskeySmartAccount]: {
+    label: 'Passkey',
+    bgColor: 'bg-purple-500',
+    icon: (props: any) => (
+      <LockIconSvg
+        className="mr-1 w-6 h-6 text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300"
         {...props}
       />
     ),

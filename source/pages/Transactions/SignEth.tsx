@@ -1,3 +1,6 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
+import { arrayify, isHexString } from '@ethersproject/bytes';
+import { hashMessage, _TypedDataEncoder } from '@ethersproject/hash';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -19,6 +22,7 @@ import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
 import { getNetworkChain } from 'utils/network';
+import { getPasskeyAssertion } from 'utils/passkey';
 
 interface ISign {
   send?: boolean;
@@ -95,6 +99,75 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
 
+  const encodePasskey1271Signature = async (hash: string) => {
+    if (!activeAccount.passkey) {
+      throw { message: t('send.passkeyActiveAccountRequired') };
+    }
+
+    const assertion = await getPasskeyAssertion(
+      activeAccount.passkey.credentialId,
+      hash
+    );
+
+    return defaultAbiCoder.encode(
+      [
+        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+      ],
+      [
+        {
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          typeOffset: assertion.typeOffset,
+          challengeOffset: assertion.challengeOffset,
+          originOffset: assertion.originOffset,
+          r: assertion.r,
+          s: assertion.s,
+        },
+      ]
+    );
+  };
+
+  const getPasskeySignHash = (typedData?: any) => {
+    if (data.eventName === 'personal_sign') {
+      const isFirstParamAddress =
+        data[0] &&
+        typeof data[0] === 'string' &&
+        data[0].startsWith('0x') &&
+        data[0].length === 42;
+      const msg = isFirstParamAddress ? data[1] || '' : data[0] || '';
+      return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
+    }
+
+    if (data.eventName === 'eth_sign') {
+      const payload = String(data[1] || data[0] || '');
+      if (!isHexString(payload, 32)) {
+        throw {
+          message: t('send.passkeyEthSignHashRequired'),
+        };
+      }
+      return payload;
+    }
+
+    if (typedData) {
+      if (data.eventName === 'eth_signTypedData') {
+        throw {
+          message: t('send.passkeyLegacyTypedDataUnsupported'),
+        };
+      }
+
+      const { domain, types, message: typedMessage } = typedData;
+      const sanitizedTypes = { ...types };
+      delete sanitizedTypes.EIP712Domain;
+      return _TypedDataEncoder.hash(
+        domain || {},
+        sanitizedTypes,
+        typedMessage || {}
+      );
+    }
+
+    throw { message: t('send.passkeyUnsupportedSigningRequest') };
+  };
+
   const onSubmit = async () => {
     setLoading(true);
 
@@ -111,7 +184,33 @@ const EthSign: React.FC<ISign> = () => {
     try {
       let response = '';
       const type = data.eventName;
-      if (data.eventName === 'eth_sign')
+      if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+        let typedData;
+        if (
+          data.eventName === 'eth_signTypedData' ||
+          data.eventName === 'eth_signTypedData_v3' ||
+          data.eventName === 'eth_signTypedData_v4'
+        ) {
+          if (
+            typeof data[0] === 'string' &&
+            data[0].toLowerCase() === address.toLowerCase()
+          ) {
+            typedData = data[1];
+          } else if (
+            typeof data[1] === 'string' &&
+            data[1].toLowerCase() === address.toLowerCase()
+          ) {
+            typedData = data[0];
+          } else {
+            throw { message: t('send.signingForWrongAddress') };
+          }
+          if (typeof typedData === 'string') typedData = JSON.parse(typedData);
+        }
+
+        response = await encodePasskey1271Signature(
+          getPasskeySignHash(typedData)
+        );
+      } else if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
           [data],

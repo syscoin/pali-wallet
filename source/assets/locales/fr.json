@@ -215,7 +215,11 @@
     "closeAndReopenPali": "Fermez cette fenêtre et rouvrez Pali pour vous authentifier et connecter votre portefeuille matériel",
     "activeAccountNotFound": "Erreur: Compte actif non trouvé",
     "paliWalletBrowserExtension": "Extension de Navigateur Pali Wallet",
-    "addressType": "Type d'adresse"
+    "addressType": "Type d'adresse",
+    "passkey": "Passkey",
+    "passkeyAccount": "Compte Passkey",
+    "createPasskeyAccount": "Créer un compte Passkey",
+    "createPasskeyAccountDescription": "Utilisez Touch ID, Face ID, Windows Hello, la biométrie Android ou une clé de sécurité pour approuver les transactions de compte intelligent sur zkSYS."
   },
   "components": {
     "newPassword": "Nouveau mot de passe (12 caractères min.)",
@@ -304,7 +308,20 @@
     "selectAccountToConnect": "Sélectionnez le compte que vous souhaitez connecter avec ce site",
     "currentlyConnected": "Actuellement connecté",
     "noAddress": "Aucune adresse",
-    "loadingAccounts": "Chargement des comptes..."
+    "loadingAccounts": "Chargement des comptes...",
+    "dappFallback": "Cette application",
+    "passkeyDefaultLabel": "Passkey de {{host}}",
+    "userRejectedPasskeyCreation": "L'utilisateur a refusé la création du compte Passkey",
+    "unableToCreatePasskeyAccount": "Impossible de créer le compte Passkey",
+    "createPasskeyAccountTitle": "Créer un compte Passkey",
+    "createPasskeyAccountDescription": "{{host}} souhaite que Pali crée un compte intelligent zkSYS contrôlé par la passkey de votre appareil. Pali ne stocke que des métadonnées publiques ; la clé privée reste dans votre authentificateur.",
+    "sponsorPolicy": "Politique du sponsor : {{policy}}",
+    "sponsorGasOnly": "Sponsor de gas optionnel",
+    "sponsorRequired": "Approbation du sponsor requise",
+    "sponsorDisabled": "Aucun sponsor",
+    "sponsorUrl": "URL du sponsor : {{url}}",
+    "sponsorSigner": "Signataire du sponsor : {{signer}}",
+    "sponsorRequiredWarning": "Ce compte exigera une coautorisation du sponsor avant que Pali puisse exécuter des transactions depuis celui-ci."
   },
   "import": {
     "importModalWordMissing": "Mot manquant !",
@@ -529,7 +546,13 @@
     "invalidEthSignFormat": "Format de message eth_sign invalide. Chaîne hex de 32 octets (64 caractères) attendue, obtenu : \"{{message}}\". Pour signer du texte arbitraire, la dapp devrait utiliser personal_sign.",
     "unableToResolveEns": "Impossible de résoudre le nom ENS",
     "invalidDestination": "Destination invalide",
-    "verifyEnsOrUseAddress": "Veuillez vérifier l’ENS du destinataire ou utiliser une adresse 0x."
+    "verifyEnsOrUseAddress": "Veuillez vérifier l’ENS du destinataire ou utiliser une adresse 0x.",
+    "passkeyContractDeploymentUnsupported": "Les comptes Passkey ne prennent pas encore en charge le déploiement de contrats.",
+    "passkeyMulticallUnsupported": "Les comptes Passkey ne prennent pas encore en charge les lots multi-appels.",
+    "passkeyActiveAccountRequired": "Le compte actif n'est pas un compte Passkey",
+    "passkeyEthSignHashRequired": "Passkey eth_sign nécessite un hash de 32 octets afin que les vérificateurs EIP-1271 puissent le reproduire",
+    "passkeyLegacyTypedDataUnsupported": "Les comptes Passkey ne prennent pas encore en charge la signature typed-data V1 héritée",
+    "passkeyUnsupportedSigningRequest": "Demande de signature Passkey non prise en charge"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",

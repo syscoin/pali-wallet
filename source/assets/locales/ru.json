@@ -215,7 +215,11 @@
     "closeAndReopenPali": "Закройте это окно и снова откройте Pali для аутентификации и подключения аппаратного кошелька",
     "activeAccountNotFound": "Ошибка: Активный аккаунт не найден",
     "paliWalletBrowserExtension": "Расширение для браузера Pali Wallet",
-    "addressType": "Тип адреса"
+    "addressType": "Тип адреса",
+    "passkey": "Passkey",
+    "passkeyAccount": "Аккаунт Passkey",
+    "createPasskeyAccount": "Создать аккаунт Passkey",
+    "createPasskeyAccountDescription": "Используйте Touch ID, Face ID, Windows Hello, биометрию Android или ключ безопасности для подтверждения транзакций смарт-аккаунта в zkSYS."
   },
   "components": {
     "newPassword": "Новый пароль (мин. 12 символов)",
@@ -304,7 +308,20 @@
     "selectAccountToConnect": "Выберите аккаунт, который вы хотите подключить к этому сайту",
     "currentlyConnected": "В настоящее время подключен",
     "noAddress": "Нет адреса",
-    "loadingAccounts": "Загрузка аккаунтов..."
+    "loadingAccounts": "Загрузка аккаунтов...",
+    "dappFallback": "Это приложение",
+    "passkeyDefaultLabel": "Passkey для {{host}}",
+    "userRejectedPasskeyCreation": "Пользователь отклонил создание аккаунта Passkey",
+    "unableToCreatePasskeyAccount": "Не удалось создать аккаунт Passkey",
+    "createPasskeyAccountTitle": "Создать аккаунт Passkey",
+    "createPasskeyAccountDescription": "{{host}} хочет, чтобы Pali создал смарт-аккаунт zkSYS, управляемый passkey вашего устройства. Pali хранит только публичные метаданные; приватный ключ остается в вашем аутентификаторе.",
+    "sponsorPolicy": "Политика спонсора: {{policy}}",
+    "sponsorGasOnly": "Спонсор газа необязателен",
+    "sponsorRequired": "Требуется одобрение спонсора",
+    "sponsorDisabled": "Без спонсора",
+    "sponsorUrl": "URL спонсора: {{url}}",
+    "sponsorSigner": "Подписант спонсора: {{signer}}",
+    "sponsorRequiredWarning": "Этот аккаунт потребует соавторизации спонсора, прежде чем Pali сможет выполнять транзакции от его имени."
   },
   "titles": {
     "assetDetails": "ДЕТАЛИ АКТИВА",
@@ -534,7 +551,13 @@
     "invalidEthSignFormat": "Неверный формат сообщения eth_sign. Ожидается 32-байтовая hex-строка (64 символа), получено: \"{{message}}\". Для подписи произвольного текста dapp должен использовать personal_sign.",
     "unableToResolveEns": "Не удалось разрешить имя ENS",
     "invalidDestination": "Недопустимый адрес назначения",
-    "verifyEnsOrUseAddress": "Проверьте ENS получателя или используйте адрес 0x."
+    "verifyEnsOrUseAddress": "Проверьте ENS получателя или используйте адрес 0x.",
+    "passkeyContractDeploymentUnsupported": "Аккаунты Passkey пока не поддерживают развертывание контрактов.",
+    "passkeyMulticallUnsupported": "Аккаунты Passkey пока не поддерживают пакеты с несколькими вызовами.",
+    "passkeyActiveAccountRequired": "Активный аккаунт не является аккаунтом Passkey",
+    "passkeyEthSignHashRequired": "Passkey eth_sign требует 32-байтный хэш, чтобы проверяющие EIP-1271 могли его воспроизвести",
+    "passkeyLegacyTypedDataUnsupported": "Аккаунты Passkey пока не поддерживают устаревшую подпись typed-data V1",
+    "passkeyUnsupportedSigningRequest": "Неподдерживаемый запрос подписи Passkey"
   },
   "start": {
     "paliDoesnt": "Pali не хранит ваш пароль. Восстановление доступа требует сброса кошелька с помощью секретной фразы восстановления.",

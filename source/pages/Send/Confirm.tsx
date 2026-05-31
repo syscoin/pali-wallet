@@ -42,6 +42,7 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
+import { getPasskeyAssertion } from 'utils/passkey';
 import { safeToFixed } from 'utils/safeToFixed';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -394,6 +395,59 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case TransactionType.NATIVE_ETH:
+          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+            try {
+              const amount = parseUnits(
+                String(
+                  removeScientificNotation(String(basicTxValues.amount || '0'))
+                ),
+                18
+              ).toHexString();
+              const prepared = (await controllerEmitter(
+                ['wallet', 'preparePasskeyExecution'],
+                [
+                  {
+                    target: destinationTo,
+                    value: amount,
+                    data: '0x',
+                  },
+                ],
+                300000
+              )) as any;
+              const assertion = await getPasskeyAssertion(
+                activeAccount.passkey.credentialId,
+                prepared.actionHash
+              );
+
+              await controllerEmitter(
+                ['wallet', 'submitPasskeyExecution'],
+                [
+                  {
+                    execution: prepared.execution,
+                    proof: {
+                      authenticatorData: assertion.authenticatorData,
+                      clientDataJSON: assertion.clientDataJSON,
+                      challengeOffset: assertion.challengeOffset,
+                      originOffset: assertion.originOffset,
+                      r: assertion.r,
+                      s: assertion.s,
+                      typeOffset: assertion.typeOffset,
+                    },
+                  },
+                ],
+                300000
+              );
+
+              setConfirmed(true);
+              setLoading(false);
+            } catch (error: any) {
+              logError('error', 'Transaction', error);
+              alert.error(error?.message || t('send.cantCompleteTxs'));
+              setLoading(false);
+            }
+            return;
+          }
+
           const restTx = omitTransactionObjectData(txObjectState, [
             'chainId',
             'maxFeePerGas',

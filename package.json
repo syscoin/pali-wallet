@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "4.0.14",
+  "version": "4.0.15",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
@@ -55,13 +55,14 @@
     "@ethersproject/hash": "^5.8.0",
     "@ethersproject/providers": "^5.8.0",
     "@ethersproject/strings": "^5.8.0",
+    "@ethersproject/transactions": "^5.8.0",
     "@ethersproject/units": "^5.8.0",
     "@ethersproject/wallet": "^5.8.0",
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^1.0.6",
     "@reduxjs/toolkit": "^2.8.2",
     "@sidhujag/sysweb3-core": "^1.0.28",
-    "@sidhujag/sysweb3-keyring": "^1.0.587",
+    "@sidhujag/sysweb3-keyring": "^1.0.588",
     "@sidhujag/sysweb3-network": "^1.0.107",
     "@sidhujag/sysweb3-utils": "^1.1.272",
     "@tippyjs/react": "^4.2.6",
