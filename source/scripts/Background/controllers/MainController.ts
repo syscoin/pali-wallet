@@ -2,6 +2,7 @@
 
 import { getAddress } from '@ethersproject/address';
 import { BigNumber } from '@ethersproject/bignumber';
+import { isHexString } from '@ethersproject/bytes';
 import { AddressZero, HashZero } from '@ethersproject/constants';
 import { Contract } from '@ethersproject/contracts';
 import { id as hashText, namehash } from '@ethersproject/hash';
@@ -3608,6 +3609,71 @@ class MainController {
     }
   }
 
+  private isAccountCompatibleWithNetwork(
+    account: any,
+    type: PaliKeyringAccountType,
+    network: INetwork
+  ): boolean {
+    if (!account) return false;
+
+    if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+      return (
+        network.kind === INetworkType.Ethereum &&
+        Number(account?.passkey?.chainId) === Number(network.chainId)
+      );
+    }
+
+    const address = account.address;
+    if (typeof address !== 'string') return false;
+
+    return network.kind === INetworkType.Syscoin
+      ? !isHexString(address)
+      : isHexString(address);
+  }
+
+  private ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+    const { accounts, activeAccount } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+
+    if (
+      this.isAccountCompatibleWithNetwork(
+        currentAccount,
+        activeAccount.type,
+        network
+      )
+    ) {
+      return;
+    }
+
+    for (const [accountType, accountsOfType] of Object.entries(accounts)) {
+      for (const account of Object.values(accountsOfType || {}) as any[]) {
+        if (
+          this.isAccountCompatibleWithNetwork(
+            account,
+            accountType as PaliKeyringAccountType,
+            network
+          )
+        ) {
+          store.dispatch(
+            setActiveAccount({
+              id: account.id,
+              type: accountType as PaliKeyringAccountType,
+            })
+          );
+          return;
+        }
+      }
+    }
+
+    console.warn(
+      '[MainController] No compatible account found after network switch',
+      {
+        network: network.chainId,
+        activeAccount,
+      }
+    );
+  }
+
   public async setActiveNetwork(
     network: INetwork,
     syncUpdates = false
@@ -5824,6 +5890,7 @@ class MainController {
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
+    this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
