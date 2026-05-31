@@ -3512,6 +3512,16 @@ class MainController {
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
       try {
+        const { isBitcoinBased } = store.getState().vault;
+        if (
+          isBitcoinBased &&
+          String(type) === PaliKeyringAccountType.PasskeySmartAccount
+        ) {
+          throw new Error(
+            'Passkey accounts are only available on EVM networks'
+          );
+        }
+
         // Cancel any pending async operations before switching accounts
         if (this.cancellablePromises.transactionPromise) {
           this.cancellablePromises.transactionPromise.cancel();

@@ -117,6 +117,9 @@ const RenderAccountsListByBitcoinBased =
     } | null>(null);
 
     const accounts = useSelector((state: RootState) => state.vault.accounts);
+    const isBitcoinBased = useSelector(
+      (state: RootState) => state.vault.isBitcoinBased
+    );
     const activeAccount = useSelector(selectActiveAccountRef);
     // When the accounts list is scrollable, a first click can be swallowed by inertial scrolling
     // (common on trackpads) or by focus/blur interactions. Handle selection on mouse pointer-down
@@ -237,14 +240,21 @@ const RenderAccountsListByBitcoinBased =
     // Memoize the account list computation
     const accountsList = useMemo(
       () =>
-        Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
-          Object.values(accountsOfType || {}).map((account, index) => ({
+        Object.entries(accounts).flatMap(([accountType, accountsOfType]) => {
+          if (
+            isBitcoinBased &&
+            accountType === KeyringAccountType.PasskeySmartAccount
+          ) {
+            return [];
+          }
+
+          return Object.values(accountsOfType || {}).map((account, index) => ({
             account,
             accountType: accountType as KeyringAccountType,
             index,
-          }))
-        ),
-      [accounts]
+          }));
+        }),
+      [accounts, isBitcoinBased]
     );
 
     const isAnySwitching = switchingAccount !== null;
