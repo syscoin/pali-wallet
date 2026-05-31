@@ -117,6 +117,9 @@ const RenderAccountsListByBitcoinBased =
     } | null>(null);
 
     const accounts = useSelector((state: RootState) => state.vault.accounts);
+    const activeNetwork = useSelector(
+      (state: RootState) => state.vault.activeNetwork
+    );
     const isBitcoinBased = useSelector(
       (state: RootState) => state.vault.isBitcoinBased
     );
@@ -240,21 +243,26 @@ const RenderAccountsListByBitcoinBased =
     // Memoize the account list computation
     const accountsList = useMemo(
       () =>
-        Object.entries(accounts).flatMap(([accountType, accountsOfType]) => {
-          if (
-            isBitcoinBased &&
-            accountType === KeyringAccountType.PasskeySmartAccount
-          ) {
-            return [];
-          }
+        Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
+          Object.values(accountsOfType || {})
+            .filter((account: any) => {
+              if (accountType !== KeyringAccountType.PasskeySmartAccount) {
+                return true;
+              }
 
-          return Object.values(accountsOfType || {}).map((account, index) => ({
-            account,
-            accountType: accountType as KeyringAccountType,
-            index,
-          }));
-        }),
-      [accounts, isBitcoinBased]
+              return (
+                !isBitcoinBased &&
+                Number(account?.passkey?.chainId) ===
+                  Number(activeNetwork.chainId)
+              );
+            })
+            .map((account, index) => ({
+              account,
+              accountType: accountType as KeyringAccountType,
+              index,
+            }))
+        ),
+      [accounts, activeNetwork.chainId, isBitcoinBased]
     );
 
     const isAnySwitching = switchingAccount !== null;

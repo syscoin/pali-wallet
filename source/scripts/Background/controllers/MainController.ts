@@ -3512,14 +3512,22 @@ class MainController {
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
       try {
-        const { isBitcoinBased } = store.getState().vault;
-        if (
-          isBitcoinBased &&
-          String(type) === PaliKeyringAccountType.PasskeySmartAccount
-        ) {
-          throw new Error(
-            'Passkey accounts are only available on EVM networks'
-          );
+        const { accounts, activeNetwork, isBitcoinBased } =
+          store.getState().vault;
+        if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+          const account = accounts[type]?.[id] as any;
+          if (isBitcoinBased) {
+            throw new Error(
+              'Passkey accounts are only available on EVM networks'
+            );
+          }
+          if (
+            Number(account?.passkey?.chainId) !== Number(activeNetwork.chainId)
+          ) {
+            throw new Error(
+              'Passkey account is not available on the active network'
+            );
+          }
         }
 
         // Cancel any pending async operations before switching accounts
