@@ -2568,6 +2568,19 @@ class MainController {
     metadata: IPasskeySmartAccountMetadata;
   }): Promise<any> {
     const { accounts } = store.getState().vault;
+    const normalizedAddress = params.address.toLowerCase();
+    const accountAlreadyExists = Object.values(accounts).some(
+      (accountsByType: Record<number, any>) =>
+        Object.values(accountsByType || {}).some(
+          (account: any) =>
+            account?.address?.toLowerCase?.() === normalizedAddress
+        )
+    );
+
+    if (accountAlreadyExists) {
+      throw new Error('Account already exists on your Wallet.');
+    }
+
     const passkeyAccounts =
       accounts[PaliKeyringAccountType.PasskeySmartAccount] || {};
     const existingIds = Object.values(passkeyAccounts)
