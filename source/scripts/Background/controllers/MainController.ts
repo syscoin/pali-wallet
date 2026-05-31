@@ -2816,7 +2816,6 @@ class MainController {
     callback: () => Promise<T>
   ): Promise<T> {
     const original = store.getState().vault.activeAccount;
-    let callbackSucceeded = false;
     store.dispatch(
       setActiveAccount({
         id: gasPayer.account.id,
@@ -2825,9 +2824,7 @@ class MainController {
     );
 
     try {
-      const result = await callback();
-      callbackSucceeded = true;
-      return result;
+      return await callback();
     } finally {
       store.dispatch(setActiveAccount(original));
       try {
@@ -2837,9 +2834,6 @@ class MainController {
           true
         );
       } catch (error) {
-        if (callbackSucceeded) {
-          throw error;
-        }
         console.error(
           '[MainController] Failed to persist restored active account after passkey gas payer operation:',
           error
@@ -2862,6 +2856,18 @@ class MainController {
     }
   }
 
+  private assertPasskeyAccountNetwork(metadata: IPasskeySmartAccountMetadata) {
+    const { activeNetwork } = store.getState().vault;
+    if (
+      activeNetwork.kind !== INetworkType.Ethereum ||
+      metadata.chainId !== activeNetwork.chainId
+    ) {
+      throw new Error('Passkey account is not available on the active network');
+    }
+
+    return getPasskeyFactoryAddress(activeNetwork.chainId);
+  }
+
   public async ensurePasskeySmartAccountDeployed(): Promise<boolean> {
     const { activeAccount, activeNetwork, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
@@ -2869,6 +2875,9 @@ class MainController {
     if (!account?.isPasskeySmartAccount || !account.passkey) {
       throw new Error('Active account is not a passkey account');
     }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    const factoryAddress = this.assertPasskeyAccountNetwork(metadata);
 
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
@@ -2880,7 +2889,6 @@ class MainController {
       return false;
     }
 
-    const metadata = account.passkey as IPasskeySmartAccountMetadata;
     const gasPrice = (await this.ethereumTransaction.getRecommendedGasPrice(
       false
     )) as string;
@@ -2912,9 +2920,7 @@ class MainController {
           gasLimit: gasLimit.toNumber(),
           maxFeePerGas: 0,
           maxPriorityFeePerGas: 0,
-          to:
-            metadata.factoryAddress ||
-            getPasskeyFactoryAddress(activeNetwork.chainId),
+          to: metadata.factoryAddress || factoryAddress,
           value: 0,
         },
         true
@@ -3013,6 +3019,9 @@ class MainController {
       throw new Error('Active account is not a passkey account');
     }
 
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+
     const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
     let sponsorProof = emptySponsorProof;
     const sponsorResult = await this.resolvePasskeySponsorResult(
@@ -3027,11 +3036,10 @@ class MainController {
           account.address,
           params.execution,
           params.proof,
-          account.passkey as IPasskeySmartAccountMetadata
+          metadata
         );
         return { hash: sponsorResult.txHash };
       } catch (error) {
-        const metadata = account.passkey as IPasskeySmartAccountMetadata;
         if (
           metadata.sponsor?.mode !== PasskeySponsorMode.GasOnly ||
           error instanceof PasskeyRelayedTransactionNotFoundError
