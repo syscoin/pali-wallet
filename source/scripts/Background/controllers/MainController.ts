@@ -3060,12 +3060,19 @@ class MainController {
     );
     if (sponsorResult.type === 'relayed') {
       try {
-        await this.verifyPasskeyRelayedTransaction(
+        const txResponse = await this.verifyPasskeyRelayedTransaction(
           sponsorResult.txHash,
           account.address,
           params.execution,
           params.proof,
           metadata
+        );
+        await this.sendAndSaveTransaction(
+          txResponse as IEvmTransactionResponse,
+          {
+            id: account.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+          }
         );
         return { hash: sponsorResult.txHash };
       } catch (error) {
@@ -3489,7 +3496,7 @@ class MainController {
           ).getActionHash(expectedExecution);
           verifyPasskeyRelayedSponsorProof(actionHash, decoded[2], metadata);
         }
-        return;
+        return tx;
       }
       await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
