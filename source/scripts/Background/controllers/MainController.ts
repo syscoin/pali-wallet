@@ -2816,6 +2816,7 @@ class MainController {
     callback: () => Promise<T>
   ): Promise<T> {
     const original = store.getState().vault.activeAccount;
+    let callbackSucceeded = false;
     store.dispatch(
       setActiveAccount({
         id: gasPayer.account.id,
@@ -2824,9 +2825,26 @@ class MainController {
     );
 
     try {
-      return await callback();
+      const result = await callback();
+      callbackSucceeded = true;
+      return result;
     } finally {
       store.dispatch(setActiveAccount(original));
+      try {
+        await this.saveWalletState(
+          'restore-passkey-active-account',
+          false,
+          true
+        );
+      } catch (error) {
+        if (callbackSucceeded) {
+          throw error;
+        }
+        console.error(
+          '[MainController] Failed to persist restored active account after passkey gas payer operation:',
+          error
+        );
+      }
     }
   }
 

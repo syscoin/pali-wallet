@@ -185,6 +185,12 @@ const EthSign: React.FC<ISign> = () => {
       let response = '';
       const type = data.eventName;
       if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+        await controllerEmitter(
+          ['wallet', 'ensurePasskeySmartAccountDeployed'],
+          [],
+          300000
+        );
+
         let typedData;
         if (
           data.eventName === 'eth_signTypedData' ||
