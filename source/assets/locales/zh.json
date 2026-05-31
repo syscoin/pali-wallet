@@ -310,8 +310,6 @@
     "loadingAccounts": "正在加载账户...",
     "dappFallback": "此应用",
     "passkeyDefaultLabel": "{{host}} 通行密钥",
-    "userRejectedPasskeyCreation": "用户拒绝创建通行密钥账户",
-    "unableToCreatePasskeyAccount": "无法创建通行密钥账户",
     "createPasskeyAccountTitle": "创建通行密钥账户",
     "createPasskeyAccountDescription": "{{host}} 希望 Pali 创建一个由你设备通行密钥控制的 zkSYS 智能账户。Pali 只存储公开元数据；私钥保留在你的认证器中。",
     "sponsorPolicy": "赞助策略：{{policy}}",

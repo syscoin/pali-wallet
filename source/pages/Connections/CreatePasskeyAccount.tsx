@@ -5,6 +5,7 @@ import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { logError } from 'utils/logger';
 import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
 
 export const CreatePasskeyAccount = () => {
@@ -25,9 +26,6 @@ export const CreatePasskeyAccount = () => {
       : t('connections.sponsorDisabled');
 
   const reject = () => {
-    dispatchBackgroundEvent(`${eventName}.${host}`, {
-      error: t('connections.userRejectedPasskeyCreation'),
-    });
     window.close();
   };
 
@@ -84,12 +82,7 @@ export const CreatePasskeyAccount = () => {
     } catch (error) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
-        dispatchBackgroundEvent(`${eventName}.${host}`, {
-          error:
-            error instanceof Error
-              ? error.message
-              : t('connections.unableToCreatePasskeyAccount'),
-        });
+        logError('Passkey account creation failed', 'UI', error);
         window.close();
       }
     } finally {
@@ -139,7 +132,7 @@ export const CreatePasskeyAccount = () => {
 
       <div className="flex gap-3">
         <SecondaryButton type="button" fullWidth onClick={reject}>
-          Cancel
+          {t('buttons.cancel')}
         </SecondaryButton>
         <PrimaryButton
           type="button"

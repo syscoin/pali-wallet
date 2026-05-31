@@ -310,8 +310,6 @@
     "loadingAccounts": "Chargement des comptes...",
     "dappFallback": "Cette application",
     "passkeyDefaultLabel": "Passkey de {{host}}",
-    "userRejectedPasskeyCreation": "L'utilisateur a refusé la création du compte Passkey",
-    "unableToCreatePasskeyAccount": "Impossible de créer le compte Passkey",
     "createPasskeyAccountTitle": "Créer un compte Passkey",
     "createPasskeyAccountDescription": "{{host}} souhaite que Pali crée un compte intelligent zkSYS contrôlé par la passkey de votre appareil. Pali ne stocke que des métadonnées publiques ; la clé privée reste dans votre authentificateur.",
     "sponsorPolicy": "Politique du sponsor : {{policy}}",

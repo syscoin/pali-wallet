@@ -310,8 +310,6 @@
     "loadingAccounts": "Загрузка аккаунтов...",
     "dappFallback": "Это приложение",
     "passkeyDefaultLabel": "Passkey для {{host}}",
-    "userRejectedPasskeyCreation": "Пользователь отклонил создание аккаунта Passkey",
-    "unableToCreatePasskeyAccount": "Не удалось создать аккаунт Passkey",
     "createPasskeyAccountTitle": "Создать аккаунт Passkey",
     "createPasskeyAccountDescription": "{{host}} хочет, чтобы Pali создал смарт-аккаунт zkSYS, управляемый passkey вашего устройства. Pali хранит только публичные метаданные; приватный ключ остается в вашем аутентификаторе.",
     "sponsorPolicy": "Политика спонсора: {{policy}}",

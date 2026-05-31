@@ -310,8 +310,6 @@
     "loadingAccounts": "계정 로딩 중...",
     "dappFallback": "이 앱",
     "passkeyDefaultLabel": "{{host}} 패스키",
-    "userRejectedPasskeyCreation": "사용자가 패스키 계정 생성을 거부했습니다",
-    "unableToCreatePasskeyAccount": "패스키 계정을 만들 수 없습니다",
     "createPasskeyAccountTitle": "패스키 계정 만들기",
     "createPasskeyAccountDescription": "{{host}}에서 기기 패스키로 제어되는 zkSYS 스마트 계정을 Pali가 만들도록 요청합니다. Pali는 공개 메타데이터만 저장하며 개인 키는 인증 장치에 남아 있습니다.",
     "sponsorPolicy": "스폰서 정책: {{policy}}",

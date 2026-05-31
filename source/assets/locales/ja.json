@@ -310,8 +310,6 @@
     "loadingAccounts": "アカウントを読み込み中...",
     "dappFallback": "このアプリ",
     "passkeyDefaultLabel": "{{host}} パスキー",
-    "userRejectedPasskeyCreation": "ユーザーがパスキーアカウントの作成を拒否しました",
-    "unableToCreatePasskeyAccount": "パスキーアカウントを作成できません",
     "createPasskeyAccountTitle": "パスキーアカウントを作成",
     "createPasskeyAccountDescription": "{{host}} は、デバイスのパスキーで制御される zkSYS スマートアカウントを Pali に作成させようとしています。Pali が保存するのは公開メタデータのみで、秘密鍵は認証器に残ります。",
     "sponsorPolicy": "スポンサー方針: {{policy}}",
