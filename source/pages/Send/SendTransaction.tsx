@@ -408,7 +408,7 @@ export const SendTransaction = () => {
               {
                 target: candidateTo,
                 value: passkeyTxValue,
-                data: validateTransactionDataValue(txToSend.data),
+                data: validateTransactionDataValue(txToSend.data) || '0x',
               },
             ],
             300000
