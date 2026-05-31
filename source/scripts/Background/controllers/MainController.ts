@@ -2896,6 +2896,29 @@ class MainController {
     }
   }
 
+  private normalizePasskeyExecutionPayload(params: {
+    data?: string;
+    target: string;
+    value: string;
+  }) {
+    const target = getAddress(params.target);
+    const value = BigNumber.from(params.value);
+    if (value.lt(0)) {
+      throw new Error('Passkey execution value cannot be negative');
+    }
+
+    const data = params.data || '0x';
+    if (!isHexString(data)) {
+      throw new Error('Passkey execution data must be hex bytes');
+    }
+
+    return {
+      data,
+      target,
+      value: value.toString(),
+    };
+  }
+
   public async ensurePasskeySmartAccountDeployed(): Promise<boolean> {
     const { activeAccount, activeNetwork, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
@@ -2991,7 +3014,8 @@ class MainController {
       value: string;
     };
   }> {
-    await this.assertPasskeyExecutionTargetAllowed(params.target);
+    const normalizedParams = this.normalizePasskeyExecutionPayload(params);
+    await this.assertPasskeyExecutionTargetAllowed(normalizedParams.target);
     await this.ensurePasskeySmartAccountDeployed();
 
     const { activeAccount, accounts } = store.getState().vault;
@@ -3003,9 +3027,9 @@ class MainController {
     );
     const nonce = await contract.nonce();
     const execution = {
-      target: params.target,
-      value: params.value,
-      data: params.data || '0x',
+      target: normalizedParams.target,
+      value: normalizedParams.value,
+      data: normalizedParams.data,
       nonce: nonce.toString(),
       deadline: Math.floor(Date.now() / 1000) + 15 * 60,
     };
