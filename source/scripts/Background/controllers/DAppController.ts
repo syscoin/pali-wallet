@@ -269,6 +269,27 @@ const DAppController = (): IDAppController => {
     );
   };
 
+  const syncAccountSession = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    const date = Date.now();
+    const { accounts, isBitcoinBased } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId];
+    if (!account) return;
+
+    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+
+    if (!_dapps[host]) {
+      _dapps[host] = { activeAddress: '', hasWindow: false };
+    }
+
+    _dapps[host].activeAddress = isBitcoinBased
+      ? account.xpub
+      : account.address;
+  };
+
   const disconnect = async (host: string) => {
     try {
       const previousConnectedDapps = getAll();
@@ -608,6 +629,7 @@ const DAppController = (): IDAppController => {
     setup,
     connect,
     changeAccount,
+    syncAccountSession,
     disconnect,
     requestPermissions,
     hasWindow,

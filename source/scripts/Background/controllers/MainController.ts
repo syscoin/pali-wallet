@@ -3707,7 +3707,7 @@ class MainController {
         continue;
       }
 
-      controller.dapp.changeAccount(
+      controller.dapp.syncAccountSession(
         host,
         fallbackAccount.id,
         fallbackAccount.type
