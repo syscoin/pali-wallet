@@ -52,6 +52,7 @@ const CreateAccount = () => {
       const deploymentSalt = bytesToHex(
         crypto.getRandomValues(new Uint8Array(32))
       );
+      await controllerEmitter(['wallet', 'assertPasskeySmartAccountSupported']);
       const credential = await createPasskeyCredential({
         accountName: label,
         challengeHex: bytesToHex(challenge),
