@@ -55,15 +55,19 @@ export const AccountHeader: React.FC = () => {
 
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
+      if (!account || !activeAccount?.type) {
+        return;
+      }
+
       const returnContext = createNavigationContext('/home');
       navigateWithContext(
         navigate,
         '/settings/edit-account',
-        account,
+        { ...account, accountType: activeAccount.type },
         returnContext
       );
     },
-    [navigate]
+    [activeAccount?.type, navigate]
   );
 
   const openAccountInExplorer = useCallback(() => {

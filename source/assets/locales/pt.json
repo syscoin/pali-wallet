@@ -549,7 +549,6 @@
     "activeAccountNotFound": "Erro: Conta ativa não encontrada",
     "paliWalletBrowserExtension": "Extensão do Navegador Pali Wallet",
     "addressType": "Tipo de endereço",
-    "passkey": "Passkey",
     "passkeyAccount": "Conta Passkey",
     "createPasskeyAccount": "Criar conta Passkey",
     "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, biometria do Android ou uma chave de segurança para aprovar transações de conta inteligente na zkSYS."

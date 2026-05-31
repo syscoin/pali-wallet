@@ -2868,6 +2868,23 @@ class MainController {
     return getPasskeyFactoryAddress(activeNetwork.chainId);
   }
 
+  private async assertPasskeyExecutionTargetAllowed(target: string) {
+    const blacklistResult = await blacklistService.checkAddress(
+      getAddress(target)
+    );
+    if (
+      blacklistResult.isBlacklisted &&
+      (blacklistResult.severity === 'critical' ||
+        blacklistResult.severity === 'high')
+    ) {
+      throw new Error(
+        `Passkey transaction blocked: ${
+          blacklistResult.reason || 'Execution target address is blacklisted'
+        }. Severity: ${blacklistResult.severity}`
+      );
+    }
+  }
+
   public async ensurePasskeySmartAccountDeployed(): Promise<boolean> {
     const { activeAccount, activeNetwork, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
@@ -2963,6 +2980,7 @@ class MainController {
       value: string;
     };
   }> {
+    await this.assertPasskeyExecutionTargetAllowed(params.target);
     await this.ensurePasskeySmartAccountDeployed();
 
     const { activeAccount, accounts } = store.getState().vault;
@@ -3021,6 +3039,7 @@ class MainController {
 
     const metadata = account.passkey as IPasskeySmartAccountMetadata;
     this.assertPasskeyAccountNetwork(metadata);
+    await this.assertPasskeyExecutionTargetAllowed(params.execution.target);
 
     const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
     let sponsorProof = emptySponsorProof;

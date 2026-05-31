@@ -216,7 +216,6 @@
     "activeAccountNotFound": "エラー：アクティブなアカウントが見つかりません",
     "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能",
     "addressType": "アドレスタイプ",
-    "passkey": "パスキー",
     "passkeyAccount": "パスキーアカウント",
     "createPasskeyAccount": "パスキーアカウントを作成",
     "createPasskeyAccountDescription": "Touch ID、Face ID、Windows Hello、Android 生体認証、またはセキュリティキーを使って、zkSYS 上のスマートアカウント取引を承認します。"

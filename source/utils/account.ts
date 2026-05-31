@@ -11,13 +11,18 @@ export const removeXprv = (account: IKeyringAccountState): IOmmitedAccount => {
 export const removeSensitiveDataFromVault = (
   vault: IVaultState
 ): IOmittedVault => {
-  const accounts = {};
+  const accounts = {
+    [KeyringAccountType.HDAccount]: {},
+    [KeyringAccountType.Imported]: {},
+    [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
+    [KeyringAccountType.PasskeySmartAccount]: {},
+  };
 
-  for (const account of Object.values(vault.accounts.HDAccount)) {
-    accounts[KeyringAccountType.HDAccount][account.id] = removeXprv(account);
-  }
-  for (const account of Object.values(vault.accounts.Imported)) {
-    accounts[KeyringAccountType.Imported][account.id] = removeXprv(account);
+  for (const accountType of Object.values(KeyringAccountType)) {
+    for (const account of Object.values(vault.accounts[accountType] || {})) {
+      accounts[accountType][account.id] = removeXprv(account);
+    }
   }
 
   return {

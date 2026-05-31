@@ -216,7 +216,6 @@
     "activeAccountNotFound": "Fehler: Aktives Konto nicht gefunden",
     "paliWalletBrowserExtension": "Pali Wallet Browser-Erweiterung",
     "addressType": "Adresstyp",
-    "passkey": "Passkey",
     "passkeyAccount": "Passkey-Konto",
     "createPasskeyAccount": "Passkey-Konto erstellen",
     "createPasskeyAccountDescription": "Verwende Touch ID, Face ID, Windows Hello, Android-Biometrie oder einen Sicherheitsschlüssel, um Smart-Account-Transaktionen auf zkSYS zu genehmigen."

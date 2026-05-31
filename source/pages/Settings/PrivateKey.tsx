@@ -26,7 +26,8 @@ const PrivateKeyView = () => {
   );
   const isHardwareAccount =
     activeAccountMeta.type === KeyringAccountType.Ledger ||
-    activeAccountMeta.type === KeyringAccountType.Trezor;
+    activeAccountMeta.type === KeyringAccountType.Trezor ||
+    activeAccountMeta.type === KeyringAccountType.PasskeySmartAccount;
 
   const { useCopyClipboard, alert } = useUtils();
 

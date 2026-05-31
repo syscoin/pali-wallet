@@ -132,7 +132,7 @@ const ManageAccountsView = React.memo(() => {
   const [isRemoving, setIsRemoving] = useState(false);
 
   const editAccount = useCallback(
-    (account: IKeyringAccountState) => {
+    (account: IKeyringAccountState, accountType: KeyringAccountType) => {
       // Create navigation context with scroll position from the ul element
       const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
 
@@ -144,7 +144,7 @@ const ManageAccountsView = React.memo(() => {
       navigateWithContext(
         navigate,
         '/settings/edit-account',
-        account,
+        { ...account, accountType },
         returnContext
       );
     },
@@ -253,7 +253,7 @@ const ManageAccountsView = React.memo(() => {
 
           <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
-              onClick={() => editAccount(account)}
+              onClick={() => editAccount(account, accountType)}
               type="primary"
               shape="circle"
             >

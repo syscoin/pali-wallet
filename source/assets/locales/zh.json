@@ -216,7 +216,6 @@
     "activeAccountNotFound": "错误：未找到活跃账户",
     "paliWalletBrowserExtension": "Pali钱包浏览器扩展",
     "addressType": "地址类型",
-    "passkey": "通行密钥",
     "passkeyAccount": "通行密钥账户",
     "createPasskeyAccount": "创建通行密钥账户",
     "createPasskeyAccountDescription": "使用 Touch ID、Face ID、Windows Hello、Android 生物识别或安全密钥来批准 zkSYS 上的智能账户交易。"

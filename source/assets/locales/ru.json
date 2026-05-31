@@ -216,7 +216,6 @@
     "activeAccountNotFound": "Ошибка: Активный аккаунт не найден",
     "paliWalletBrowserExtension": "Расширение для браузера Pali Wallet",
     "addressType": "Тип адреса",
-    "passkey": "Passkey",
     "passkeyAccount": "Аккаунт Passkey",
     "createPasskeyAccount": "Создать аккаунт Passkey",
     "createPasskeyAccountDescription": "Используйте Touch ID, Face ID, Windows Hello, биометрию Android или ключ безопасности для подтверждения транзакций смарт-аккаунта в zkSYS."
