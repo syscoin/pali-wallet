@@ -3106,7 +3106,11 @@ class MainController {
           to: account.address,
           value: 0,
         },
-        true
+        true,
+        {
+          id: account.id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+        }
       )
     );
   }
@@ -4507,7 +4511,8 @@ class MainController {
   }
 
   private async sendAndSaveTransaction(
-    tx: IEvmTransactionResponse | ISysTransaction | ITxid
+    tx: IEvmTransactionResponse | ISysTransaction | ITxid,
+    targetAccount?: { id: number; type: PaliKeyringAccountType }
   ) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
@@ -4531,6 +4536,8 @@ class MainController {
 
       store.dispatch(
         setSingleTransactionToState({
+          accountId: targetAccount?.id,
+          accountType: targetAccount?.type,
           chainId: activeNetwork.chainId,
           networkType: TransactionsType.Syscoin,
           transaction: minimalTx as ISysTransaction,
@@ -4539,7 +4546,8 @@ class MainController {
 
       // Notify about new pending transaction
       const { accounts, activeAccount } = store.getState().vault;
-      const account = accounts[activeAccount.type]?.[activeAccount.id];
+      const accountInfo = targetAccount ?? activeAccount;
+      const account = accounts[accountInfo.type]?.[accountInfo.id];
       if (account) {
         notificationManager.notifyTransaction({
           transaction: minimalTx,
@@ -4598,6 +4606,8 @@ class MainController {
 
     store.dispatch(
       setSingleTransactionToState({
+        accountId: targetAccount?.id,
+        accountType: targetAccount?.type,
         chainId: activeNetwork.chainId,
         networkType: isBitcoinBased
           ? TransactionsType.Syscoin
@@ -4608,7 +4618,8 @@ class MainController {
 
     // Notify about new pending transaction
     const { accounts, activeAccount } = store.getState().vault;
-    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    const accountInfo = targetAccount ?? activeAccount;
+    const account = accounts[accountInfo.type]?.[accountInfo.id];
     if (account) {
       notificationManager.notifyTransaction({
         transaction: txWithTimestamp,
@@ -4722,7 +4733,8 @@ class MainController {
    */
   public async sendAndSaveEthTransaction(
     params: any,
-    isLegacy?: boolean
+    isLegacy?: boolean,
+    targetAccount?: { id: number; type: PaliKeyringAccountType }
   ): Promise<IEvmTransactionResponse> {
     try {
       const controller = getController();
@@ -4751,7 +4763,7 @@ class MainController {
         );
 
       // Save the transaction (this will also clear navigation state)
-      await this.sendAndSaveTransaction(txResponse);
+      await this.sendAndSaveTransaction(txResponse, targetAccount);
 
       return txResponse;
     } catch (error) {

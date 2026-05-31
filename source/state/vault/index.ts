@@ -443,27 +443,32 @@ const VaultState = createSlice({
     setSingleTransactionToState: (
       state: IVaultState,
       action: PayloadAction<{
+        accountId?: number;
+        accountType?: KeyringAccountType;
         chainId: number;
         networkType: TransactionsType;
         transaction: IEvmTransaction | ISysTransaction;
       }>
     ) => {
       const { activeAccount } = state;
-      const { networkType, chainId, transaction } = action.payload;
+      const { accountId, accountType, networkType, chainId, transaction } =
+        action.payload;
+      const targetAccountId = accountId ?? activeAccount.id;
+      const targetAccountType = accountType ?? activeAccount.type;
 
       // Ensure accountTransactions exists for this account
-      if (!state.accountTransactions[activeAccount.type]) {
-        state.accountTransactions[activeAccount.type] = {};
+      if (!state.accountTransactions[targetAccountType]) {
+        state.accountTransactions[targetAccountType] = {};
       }
-      if (!state.accountTransactions[activeAccount.type][activeAccount.id]) {
-        state.accountTransactions[activeAccount.type][activeAccount.id] = {
+      if (!state.accountTransactions[targetAccountType][targetAccountId]) {
+        state.accountTransactions[targetAccountType][targetAccountId] = {
           ethereum: {},
           syscoin: {},
         };
       }
 
       const currentAccountTransactions =
-        state.accountTransactions[activeAccount.type][activeAccount.id];
+        state.accountTransactions[targetAccountType][targetAccountId];
 
       // Check if the networkType exists in the current account's transactions
       if (!currentAccountTransactions[networkType]) {
