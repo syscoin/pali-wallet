@@ -39,6 +39,7 @@ import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
+import { updateDAppAccount } from 'state/dapp';
 import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
@@ -3631,19 +3632,8 @@ class MainController {
       : isHexString(address);
   }
 
-  private ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
-    const { accounts, activeAccount } = store.getState().vault;
-    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-
-    if (
-      this.isAccountCompatibleWithNetwork(
-        currentAccount,
-        activeAccount.type,
-        network
-      )
-    ) {
-      return;
-    }
+  private getFirstCompatibleAccountForNetwork(network: INetwork) {
+    const { accounts } = store.getState().vault;
 
     for (const [accountType, accountsOfType] of Object.entries(accounts)) {
       for (const account of Object.values(accountsOfType || {}) as any[]) {
@@ -3654,24 +3644,79 @@ class MainController {
             network
           )
         ) {
-          store.dispatch(
-            setActiveAccount({
-              id: account.id,
-              type: accountType as PaliKeyringAccountType,
-            })
-          );
-          return;
+          return {
+            account,
+            id: account.id,
+            type: accountType as PaliKeyringAccountType,
+          };
         }
       }
     }
 
-    console.warn(
-      '[MainController] No compatible account found after network switch',
-      {
-        network: network.chainId,
-        activeAccount,
+    return null;
+  }
+
+  private ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+    const { accounts, activeAccount } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    let fallbackAccount = this.isAccountCompatibleWithNetwork(
+      currentAccount,
+      activeAccount.type,
+      network
+    )
+      ? {
+          account: currentAccount,
+          id: activeAccount.id,
+          type: activeAccount.type,
+        }
+      : null;
+
+    if (!fallbackAccount) {
+      fallbackAccount = this.getFirstCompatibleAccountForNetwork(network);
+      if (fallbackAccount) {
+        store.dispatch(
+          setActiveAccount({
+            id: fallbackAccount.id,
+            type: fallbackAccount.type,
+          })
+        );
       }
-    );
+    }
+
+    if (!fallbackAccount) {
+      console.warn(
+        '[MainController] No compatible account found after network switch',
+        {
+          network: network.chainId,
+          activeAccount,
+        }
+      );
+      return;
+    }
+
+    const { dapps } = store.getState().dapp;
+    const date = Date.now();
+    for (const [host, dapp] of Object.entries(dapps)) {
+      const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
+      if (
+        this.isAccountCompatibleWithNetwork(
+          dappAccount,
+          dapp.accountType,
+          network
+        )
+      ) {
+        continue;
+      }
+
+      store.dispatch(
+        updateDAppAccount({
+          host,
+          accountId: fallbackAccount.id,
+          accountType: fallbackAccount.type,
+          date,
+        })
+      );
+    }
   }
 
   public async setActiveNetwork(
