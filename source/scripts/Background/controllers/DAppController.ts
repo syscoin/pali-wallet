@@ -55,8 +55,13 @@ const DAppController = (): IDAppController => {
     }
 
     try {
-      const { isBitcoinBased } = store.getState().vault;
       const { host } = new URL(sender.url);
+      if (!isConnected(host)) {
+        delete _dapps[host];
+        return;
+      }
+
+      const { isBitcoinBased } = store.getState().vault;
       const activeAccount = isBitcoinBased
         ? getAccount(host)?.xpub
         : getAccount(host)?.address;
