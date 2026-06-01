@@ -212,6 +212,14 @@ export const ChangeAccount = () => {
   let currentAccountId = queryData.currentAccountId;
   let currentAccountType = queryData.currentAccountType;
 
+  if (currentAccountId !== undefined && currentAccountType !== undefined) {
+    const queryAccount = accounts?.[currentAccountType]?.[currentAccountId];
+    if (!isAccountValidForNetwork(queryAccount, currentAccountType)) {
+      currentAccountId = undefined;
+      currentAccountType = undefined;
+    }
+  }
+
   // If not in query data, try dapp state
   if (currentAccountId === undefined && dapp[host]) {
     const dappAccount =
@@ -227,8 +235,12 @@ export const ChangeAccount = () => {
 
   // Final fallback to active account
   if (currentAccountId === undefined) {
-    currentAccountId = activeAccount?.id;
-    currentAccountType = activeAccount?.type;
+    const activeAccountData =
+      accounts?.[activeAccount?.type]?.[activeAccount?.id];
+    if (isAccountValidForNetwork(activeAccountData, activeAccount?.type)) {
+      currentAccountId = activeAccount?.id;
+      currentAccountType = activeAccount?.type;
+    }
   }
 
   // Initialize state with null to properly track if user has made a selection
