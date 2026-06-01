@@ -283,13 +283,19 @@ export const ConnectWallet = () => {
         const dapp: any = await controllerEmitter(['dapp', 'get'], [host]);
 
         if (dapp) {
-          setCurrentAccountId(dapp?.accountId);
-          setCurrentAccountType(dapp?.accountType);
+          const dappAccount = accounts?.[dapp.accountType]?.[dapp.accountId];
+          if (isAccountValidForNetwork(dappAccount, dapp.accountType)) {
+            setCurrentAccountId(dapp.accountId);
+            setCurrentAccountType(dapp.accountType);
 
-          // Set the connected account as selected by default
-          setAccountId(dapp?.accountId);
-          setAccountType(dapp?.accountType);
-        } else {
+            // Set the connected account as selected by default
+            setAccountId(dapp.accountId);
+            setAccountType(dapp.accountType);
+          } else if (isAccountValidForNetwork(activeAccountData, type)) {
+            setAccountId(id);
+            setAccountType(type);
+          }
+        } else if (isAccountValidForNetwork(activeAccountData, type)) {
           // If no existing connection, select the active account by default
           setAccountId(id);
           setAccountType(type);
@@ -300,7 +306,7 @@ export const ConnectWallet = () => {
         setIsLoading(false);
       }
     })();
-  }, [host, id, type]);
+  }, [accounts, activeAccountData, host, id, isAccountValidForNetwork, type]);
 
   // Remove the auto-close effect - let user make the choice
 
