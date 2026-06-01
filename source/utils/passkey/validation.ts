@@ -1,4 +1,4 @@
-import { arrayify, splitSignature } from '@ethersproject/bytes';
+import { arrayify, isHexString, splitSignature } from '@ethersproject/bytes';
 import { hashMessage } from '@ethersproject/hash';
 import { recoverAddress } from '@ethersproject/transactions';
 
@@ -161,11 +161,12 @@ export const getPasskeyGasPayerCandidates = (
   const isSoftwareAccount = (accountType?: KeyringAccountType) =>
     accountType === KeyringAccountType.HDAccount ||
     accountType === KeyringAccountType.Imported;
+  const hasEvmAddress = (account: any) => isHexString(account?.address, 20);
 
   if (activeAccount && isSoftwareAccount(activeAccount.type)) {
     const activeGasPayer =
       accounts[activeAccount.type]?.[activeAccount.id] || null;
-    if (activeGasPayer?.address) {
+    if (hasEvmAddress(activeGasPayer)) {
       candidates.push({
         account: activeGasPayer,
         accountType: activeAccount.type,
@@ -176,7 +177,7 @@ export const getPasskeyGasPayerCandidates = (
   for (const accountType of accountTypes) {
     for (const account of Object.values(accounts[accountType] || {}) as any[]) {
       if (
-        account?.address &&
+        hasEvmAddress(account) &&
         !candidates.some(
           (candidate) =>
             candidate.accountType === accountType &&

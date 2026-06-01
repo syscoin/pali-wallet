@@ -235,13 +235,13 @@ export const ConnectWallet = () => {
     setIsConnecting(true);
     try {
       await controllerEmitter(
-        ['dapp', 'connect'],
-        [{ host, chain, chainId, accountId, accountType, date }]
+        ['wallet', 'setAccount'],
+        [accountId, accountType, true]
       );
 
       await controllerEmitter(
-        ['wallet', 'setAccount'],
-        [accountId, accountType, true]
+        ['dapp', 'connect'],
+        [{ host, chain, chainId, accountId, accountType, date }]
       );
 
       // Return null - the method handler will return the actual address

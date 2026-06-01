@@ -242,6 +242,37 @@ describe('passkey validation utilities', () => {
     ).toEqual([{ account: hd0, accountType: KeyringAccountType.HDAccount }]);
   });
 
+  it('filters non-EVM software accounts from gas payer candidates', () => {
+    const hd0 = {
+      address: '0x1111111111111111111111111111111111111111',
+      id: 0,
+    };
+    const importedUtxo = {
+      address: 'sys1q2d4h3j5k6l7m8n9p0q2d4h3j5k6l7m8n9p0q',
+      id: 0,
+    };
+    const importedEvm = {
+      address: '0x3333333333333333333333333333333333333333',
+      id: 1,
+    };
+
+    expect(
+      getPasskeyGasPayerCandidates(
+        {
+          [KeyringAccountType.HDAccount]: { 0: hd0 },
+          [KeyringAccountType.Imported]: {
+            0: importedUtxo,
+            1: importedEvm,
+          },
+        },
+        { id: 0, type: KeyringAccountType.Imported }
+      )
+    ).toEqual([
+      { account: hd0, accountType: KeyringAccountType.HDAccount },
+      { account: importedEvm, accountType: KeyringAccountType.Imported },
+    ]);
+  });
+
   it('selects an unfunded deterministic gas payer candidate for address prediction', () => {
     const hd0 = {
       address: '0x1111111111111111111111111111111111111111',
