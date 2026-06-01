@@ -146,6 +146,7 @@ export const ConnectWallet = () => {
     (state: RootState) => state.vault
   );
   const { id, type } = activeAccountData;
+  const activeAccount = accounts?.[type]?.[id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -291,11 +292,11 @@ export const ConnectWallet = () => {
             // Set the connected account as selected by default
             setAccountId(dapp.accountId);
             setAccountType(dapp.accountType);
-          } else if (isAccountValidForNetwork(activeAccountData, type)) {
+          } else if (isAccountValidForNetwork(activeAccount, type)) {
             setAccountId(id);
             setAccountType(type);
           }
-        } else if (isAccountValidForNetwork(activeAccountData, type)) {
+        } else if (isAccountValidForNetwork(activeAccount, type)) {
           // If no existing connection, select the active account by default
           setAccountId(id);
           setAccountType(type);
@@ -306,7 +307,7 @@ export const ConnectWallet = () => {
         setIsLoading(false);
       }
     })();
-  }, [accounts, activeAccountData, host, id, isAccountValidForNetwork, type]);
+  }, [accounts, activeAccount, host, id, isAccountValidForNetwork, type]);
 
   // Remove the auto-close effect - let user make the choice
 
