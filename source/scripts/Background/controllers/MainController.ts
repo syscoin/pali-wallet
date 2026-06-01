@@ -2629,17 +2629,6 @@ class MainController {
         type: PaliKeyringAccountType.PasskeySmartAccount,
       })
     );
-    if (!store.getState().vault.passkeyCredentialProfile) {
-      store.dispatch(
-        setPasskeyCredentialProfile({
-          credentialId: params.metadata.credentialId,
-          credentialIdHash: params.metadata.credentialIdHash,
-          backupStatus: params.metadata.backupStatus,
-          passkeyName: params.metadata.passkeyName,
-          publicKey: params.metadata.publicKey,
-        })
-      );
-    }
 
     await this.saveWalletState('create-passkey-smart-account', true, true);
     setTimeout(() => {
