@@ -165,7 +165,7 @@ export const SendCalls = () => {
               transactionStatuses[index].status !== 'success')
         );
 
-      if (activeAccount.isPasskeySmartAccount && selectedCallsData.length > 1) {
+      if (activeAccount.isPasskeySmartAccount && callsData.calls.length > 1) {
         throw new Error(t('send.passkeyMulticallUnsupported'));
       }
 
