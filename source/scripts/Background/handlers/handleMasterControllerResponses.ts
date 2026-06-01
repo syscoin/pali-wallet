@@ -1,10 +1,6 @@
 import { IMasterController } from 'scripts/Background/controllers';
 import { extractErrorMessage } from 'utils/index';
 
-const TAB_ORIGIN_BLOCKED_CONTROLLER_ACTIONS = new Set([
-  'wallet.savePasskeyCredentialProfile',
-]);
-
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
@@ -19,9 +15,10 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
-      const methodPath = Array.isArray(methods) ? methods.join('.') : '';
-      if (sender.tab && TAB_ORIGIN_BLOCKED_CONTROLLER_ACTIONS.has(methodPath)) {
-        throw new Error('Method not available from connected sites');
+      if (sender.tab) {
+        throw new Error(
+          'Controller actions are not available from connected sites'
+        );
       }
 
       let targetMethod = MasterControllerInstance;
