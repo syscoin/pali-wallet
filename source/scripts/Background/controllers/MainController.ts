@@ -2953,13 +2953,15 @@ class MainController {
       return false;
     }
 
-    const gasPrice = (await this.ethereumTransaction.getRecommendedGasPrice(
-      false
-    )) as string;
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
     const gasLimit = BigNumber.from(3_000_000);
     const gasPayer = await this.getPasskeyDeploymentGasPayer(
       metadata,
-      BigNumber.from(gasPrice).mul(gasLimit)
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
     );
     const data = passkeyFactoryInterface.encodeFunctionData('createAccount', [
       metadata.publicKey.x,
@@ -2980,14 +2982,13 @@ class MainController {
           chainId: activeNetwork.chainId,
           data,
           from: gasPayer.account.address,
-          gasPrice,
           gasLimit: gasLimit.toNumber(),
-          maxFeePerGas: 0,
-          maxPriorityFeePerGas: 0,
+          maxFeePerGas,
+          maxPriorityFeePerGas,
           to: metadata.factoryAddress || factoryAddress,
           value: 0,
         },
-        true
+        false
       );
       await tx.wait?.();
     });
@@ -3125,12 +3126,14 @@ class MainController {
       sponsorProof = sponsorResult.sponsorProof;
     }
 
-    const gasPrice = (await this.ethereumTransaction.getRecommendedGasPrice(
-      false
-    )) as string;
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
     const gasLimit = BigNumber.from(1_000_000);
     const gasPayer = await this.getDefaultPasskeyGasPayer(
-      BigNumber.from(gasPrice).mul(gasLimit)
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
     );
     const data = passkeySmartAccountInterface.encodeFunctionData('execute', [
       params.execution,
@@ -3144,14 +3147,13 @@ class MainController {
           chainId: activeNetwork.chainId,
           data,
           from: gasPayer.account.address,
-          gasPrice,
           gasLimit: gasLimit.toNumber(),
-          maxFeePerGas: 0,
-          maxPriorityFeePerGas: 0,
+          maxFeePerGas,
+          maxPriorityFeePerGas,
           to: account.address,
           value: 0,
         },
-        true,
+        false,
         {
           id: account.id,
           type: PaliKeyringAccountType.PasskeySmartAccount,
