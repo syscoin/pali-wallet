@@ -227,7 +227,7 @@ const DAppController = (): IDAppController => {
     return response;
   };
 
-  const changeAccount = (
+  const changeAccount = async (
     host: string,
     accountId: number,
     accountType: KeyringAccountType
@@ -250,6 +250,7 @@ const DAppController = (): IDAppController => {
     }
 
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+    await persistDappState('dapp account change');
     _dapps[host].activeAddress = isBitcoinBased
       ? account.xpub
       : account.address;

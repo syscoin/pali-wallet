@@ -15,7 +15,7 @@ export interface IDAppController {
     host: string,
     accountId: number,
     accountType: KeyringAccountType
-  ) => void;
+  ) => Promise<void>;
   /**
    * Completes a connection with a DApp
    * @emits connect
