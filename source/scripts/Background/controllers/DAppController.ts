@@ -297,7 +297,7 @@ const DAppController = (): IDAppController => {
 
       switch (isInActiveSession) {
         case true:
-          _dapps[host].activeAddress = null;
+          delete _dapps[host];
           store.dispatch(removeDApp(host));
           await persistDappState('dapp disconnect');
 
