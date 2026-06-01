@@ -2629,6 +2629,19 @@ class MainController {
     );
 
     await this.saveWalletState('create-passkey-smart-account', true, true);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(true, true, false, true)
+        .catch((error) => {
+          console.error(
+            '[MainController] Failed to update passkey account after creation:',
+            error
+          );
+        })
+        .finally(() => {
+          store.dispatch(setIsPollingUpdate(false));
+          store.dispatch(setPostNetworkSwitchLoading(false));
+        });
+    }, 10);
     return newAccount;
   }
 
