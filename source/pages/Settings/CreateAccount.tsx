@@ -30,6 +30,7 @@ const CreateAccount = () => {
     PasskeyBackupStatus | undefined
   >();
   const [showPolicyOptions, setShowPolicyOptions] = useState<boolean>(false);
+  const [recoverySponsorUrl, setRecoverySponsorUrl] = useState<string>('');
   const [sponsorPolicyText, setSponsorPolicyText] = useState<string>('');
   const [sponsorSigner, setSponsorSigner] = useState<string>('');
   const [sponsorUrl, setSponsorUrl] = useState<string>('');
@@ -126,6 +127,9 @@ const CreateAccount = () => {
           {
             credentialId: assertion.credentialId,
             credentialIdHash: assertion.credentialIdHash,
+            sponsorUrls: recoverySponsorUrl.trim()
+              ? [recoverySponsorUrl.trim()]
+              : [],
           },
         ],
         300000
@@ -477,6 +481,17 @@ const CreateAccount = () => {
                   {t('settings.createPasskeyAccount')}
                 </NeutralButton>
                 <div className="mt-3">
+                  <Input
+                    className="custom-input-normal mb-3"
+                    disabled={
+                      passkeyLoading || passkeyRecoveryLoading || loading
+                    }
+                    placeholder={t('settings.sponsorServiceUrl')}
+                    value={recoverySponsorUrl}
+                    onChange={(event) =>
+                      setRecoverySponsorUrl(event.target.value)
+                    }
+                  />
                   <NeutralButton
                     type="button"
                     disabled={

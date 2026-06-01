@@ -2662,6 +2662,7 @@ class MainController {
   public async recoverPasskeySmartAccounts(params: {
     credentialId: string;
     credentialIdHash: string;
+    sponsorUrls?: string[];
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
     recovered: number;
@@ -2728,6 +2729,7 @@ class MainController {
             log,
             provider,
             recoveryId,
+            sponsorUrls: params.sponsorUrls,
           })
         )
       );
@@ -2901,6 +2903,7 @@ class MainController {
     log,
     provider,
     recoveryId,
+    sponsorUrls,
   }: {
     credentialId: string;
     credentialIdHash: string;
@@ -2908,6 +2911,7 @@ class MainController {
     log: any;
     provider: any;
     recoveryId: string;
+    sponsorUrls?: string[];
   }): Promise<{
     address: string;
     metadata: IPasskeySmartAccountMetadata;
@@ -2960,8 +2964,12 @@ class MainController {
     const sponsor = this.recoverPasskeySponsorMetadata(
       Number(sponsorMode),
       sponsorSigner,
-      sponsorUrlHash
+      sponsorUrlHash,
+      sponsorUrls
     );
+    if (!sponsor) {
+      return null;
+    }
 
     return {
       address,
@@ -2992,8 +3000,9 @@ class MainController {
   private recoverPasskeySponsorMetadata(
     sponsorMode: number,
     sponsorSigner: string,
-    sponsorUrlHash: string
-  ): IPasskeySmartAccountMetadata['sponsor'] {
+    sponsorUrlHash: string,
+    sponsorUrls?: string[]
+  ): IPasskeySmartAccountMetadata['sponsor'] | null {
     const mode =
       sponsorMode === PasskeyContractSponsorMode.Required
         ? PasskeySponsorMode.Required
@@ -3001,14 +3010,30 @@ class MainController {
         ? PasskeySponsorMode.GasOnly
         : PasskeySponsorMode.Disabled;
 
+    const normalizedSponsorUrlHash =
+      sponsorUrlHash && sponsorUrlHash !== HashZero
+        ? sponsorUrlHash.toLowerCase()
+        : '';
+    const sponsorUrl = (sponsorUrls || [])
+      .map((url) => (typeof url === 'string' ? url.trim() : ''))
+      .filter(Boolean)
+      .find((url) => hashText(url).toLowerCase() === normalizedSponsorUrlHash);
+
+    if (
+      mode === PasskeySponsorMode.Required &&
+      normalizedSponsorUrlHash &&
+      !sponsorUrl
+    ) {
+      return null;
+    }
+
     return {
       mode,
       ...(sponsorSigner && sponsorSigner !== AddressZero
         ? { signer: getAddress(sponsorSigner) }
         : {}),
-      ...(sponsorUrlHash && sponsorUrlHash !== HashZero
-        ? { urlHash: sponsorUrlHash }
-        : {}),
+      ...(sponsorUrl ? { url: sponsorUrl } : {}),
+      ...(normalizedSponsorUrlHash ? { urlHash: sponsorUrlHash } : {}),
     };
   }
 
