@@ -14,6 +14,7 @@ export const CreatePasskeyAccount = () => {
   const { eventName, host, label, sponsor } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [useSeparatePasskey, setUseSeparatePasskey] = useState(false);
   const displayHost = host || t('connections.dappFallback');
   const requestedLabel =
     label || t('connections.passkeyDefaultLabel', { host: displayHost });
@@ -34,31 +35,63 @@ export const CreatePasskeyAccount = () => {
     setLoading(true);
 
     try {
-      const challenge = crypto.getRandomValues(new Uint8Array(32));
       const deploymentSalt = bytesToHex(
         crypto.getRandomValues(new Uint8Array(32))
       );
       await controllerEmitter(['wallet', 'assertPasskeySmartAccountSupported']);
-      const credential = await createPasskeyCredential({
-        accountName: requestedLabel,
-        challengeHex: bytesToHex(challenge),
-        userDisplayName: requestedLabel,
-      });
+      let credential = useSeparatePasskey
+        ? null
+        : ((await controllerEmitter([
+            'wallet',
+            'getPasskeyCredentialProfile',
+          ])) as any);
+      if (!credential) {
+        const challenge = crypto.getRandomValues(new Uint8Array(32));
+        const passkeyName = useSeparatePasskey
+          ? requestedLabel
+          : t('settings.passkeyAccount');
+        const newCredential = await createPasskeyCredential({
+          accountName: passkeyName,
+          challengeHex: bytesToHex(challenge),
+          userDisplayName: passkeyName,
+        });
+        const profile = {
+          credentialId: newCredential.credentialId,
+          credentialIdHash: newCredential.credentialIdHash,
+          backupStatus: newCredential.backupStatus,
+          passkeyName,
+          publicKey: {
+            originHash: newCredential.originHash,
+            originLength: newCredential.originLength,
+            rpIdHash: newCredential.rpIdHash,
+            x: newCredential.x,
+            y: newCredential.y,
+          },
+        };
+        credential = useSeparatePasskey
+          ? profile
+          : await controllerEmitter(
+              ['wallet', 'savePasskeyCredentialProfile'],
+              [profile]
+            );
+      }
+      const credentialPublicKey = credential.publicKey || credential;
       const prepared = (await controllerEmitter(
         ['wallet', 'preparePasskeySmartAccount'],
         [
           {
             credentialId: credential.credentialId,
             credentialIdHash: credential.credentialIdHash,
+            backupStatus: credential.backupStatus,
             deploymentSalt,
             label: requestedLabel,
             passkeyName: requestedLabel,
             publicKey: {
-              originHash: credential.originHash,
-              originLength: credential.originLength,
-              rpIdHash: credential.rpIdHash,
-              x: credential.x,
-              y: credential.y,
+              originHash: credentialPublicKey.originHash,
+              originLength: credentialPublicKey.originLength,
+              rpIdHash: credentialPublicKey.rpIdHash,
+              x: credentialPublicKey.x,
+              y: credentialPublicKey.y,
             },
             sponsor,
           },
@@ -134,6 +167,24 @@ export const CreatePasskeyAccount = () => {
               {t('connections.sponsorRequiredWarning')}
             </p>
           )}
+          <p className="mt-3 text-xs text-warning-error">
+            {t('settings.passkeyPolicyLocked')}
+          </p>
+          <label className="mt-4 flex items-start gap-2 text-xs text-brand-graylight">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={useSeparatePasskey}
+              disabled={loading}
+              onChange={(event) => setUseSeparatePasskey(event.target.checked)}
+            />
+            <span>
+              <span className="block font-medium text-white">
+                {t('settings.useSeparatePasskey')}
+              </span>
+              <span>{t('settings.useSeparatePasskeyDescription')}</span>
+            </span>
+          </label>
         </div>
       </div>
 

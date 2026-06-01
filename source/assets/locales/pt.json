@@ -549,7 +549,44 @@
     "addressType": "Tipo de endereço",
     "passkeyAccount": "Conta Passkey",
     "createPasskeyAccount": "Criar conta Passkey",
-    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, biometria do Android ou uma chave de segurança para aprovar transações de conta inteligente na zkSYS."
+    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, biometria do Android ou uma chave de segurança para aprovar transações de conta inteligente na zkSYS.",
+    "recoverPasskeyAccounts": "Recuperar contas Passkey",
+    "passkeyAccountsRecovered": "{{count}} conta(s) Passkey recuperada(s)",
+    "noPasskeyAccountsRecovered": "Nenhuma conta Passkey recuperável foi encontrada para esta passkey.",
+    "failedToRecoverPasskey": "Falha ao recuperar contas Passkey",
+    "useSeparatePasskey": "Usar uma passkey separada para esta conta",
+    "useSeparatePasskeyDescription": "Avançado: a Pali criará uma nova credencial. A recuperação pode exigir a aprovação de cada passkey separada individualmente.",
+    "sharedPasskeyReady": "Passkey compartilhada da Pali encontrada",
+    "sharedPasskeyWillBeCreated": "A Pali criará uma passkey compartilhada",
+    "recoverPasskeyAccountsDescription": "A recuperação restaura todas as contas da passkey aprovada. Se você usou passkeys separadas, execute a recuperação novamente e aprove a próxima.",
+    "customizeAccountPolicy": "Personalizar política da conta",
+    "hideAccountPolicy": "Ocultar opções de política",
+    "passkeyPolicyLocked": "Esta política é bloqueada na criação da conta.",
+    "sponsorServiceUrl": "URL do serviço patrocinador",
+    "sponsorSignerAddress": "Endereço do assinante patrocinador",
+    "sponsorPolicyText": "Nota de política (opcional)",
+    "sponsorUrlRequired": "Sponsored Gas requer uma URL de serviço patrocinador.",
+    "sponsorSignerRequired": "Managed Account requer um endereço de assinante patrocinador.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "Conta pessoal",
+        "description": "Nenhum patrocinador é necessário. A Pali pode usar o saldo da sua wallet para pagar gas quando necessário."
+      },
+      "gasOnly": {
+        "title": "Gas patrocinado",
+        "description": "Um patrocinador pode pagar o gas da transação, mas sua passkey continua sendo a única autoridade da conta."
+      },
+      "required": {
+        "title": "Conta gerenciada / coassinada",
+        "description": "A aprovação do patrocinador é exigida para transações. Use para contas institucionais ou controladas por política."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "Passkey com backup disponível, não reportada como sincronizada",
+      "deviceBound": "Passkey vinculada ao dispositivo",
+      "synced": "Passkey sincronizada",
+      "unavailable": "Status de backup indisponível"
+    }
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",

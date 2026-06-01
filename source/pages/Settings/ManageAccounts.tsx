@@ -182,6 +182,8 @@ const ManageAccountsView = React.memo(() => {
 
       // For HD accounts, must keep at least one
       if (accountType === KeyringAccountType.HDAccount) {
+        if (account.id === 0) return false;
+
         const hdAccountsCount = Object.keys(accounts.HDAccount).length;
         if (hdAccountsCount <= 1) return false;
       }

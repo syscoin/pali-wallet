@@ -218,7 +218,44 @@
     "addressType": "Adresstyp",
     "passkeyAccount": "Passkey-Konto",
     "createPasskeyAccount": "Passkey-Konto erstellen",
-    "createPasskeyAccountDescription": "Verwende Touch ID, Face ID, Windows Hello, Android-Biometrie oder einen Sicherheitsschlüssel, um Smart-Account-Transaktionen auf zkSYS zu genehmigen."
+    "createPasskeyAccountDescription": "Verwende Touch ID, Face ID, Windows Hello, Android-Biometrie oder einen Sicherheitsschlüssel, um Smart-Account-Transaktionen auf zkSYS zu genehmigen.",
+    "recoverPasskeyAccounts": "Passkey-Konten wiederherstellen",
+    "passkeyAccountsRecovered": "{{count}} Passkey-Konto/Konten wiederhergestellt",
+    "noPasskeyAccountsRecovered": "Für diesen Passkey wurden keine wiederherstellbaren Passkey-Konten gefunden.",
+    "failedToRecoverPasskey": "Passkey-Konten konnten nicht wiederhergestellt werden",
+    "useSeparatePasskey": "Separaten Passkey für dieses Konto verwenden",
+    "useSeparatePasskeyDescription": "Erweitert: Pali erstellt eine neue Anmeldeinformation. Die Wiederherstellung kann eine separate Bestätigung jedes einzelnen Passkeys erfordern.",
+    "sharedPasskeyReady": "Gemeinsamer Pali-Passkey gefunden",
+    "sharedPasskeyWillBeCreated": "Pali erstellt einen gemeinsamen Passkey",
+    "recoverPasskeyAccountsDescription": "Die Wiederherstellung stellt alle Konten für den bestätigten Passkey wieder her. Wenn du separate Passkeys verwendet hast, starte die Wiederherstellung erneut und bestätige den nächsten.",
+    "customizeAccountPolicy": "Kontorichtlinie anpassen",
+    "hideAccountPolicy": "Richtlinienoptionen ausblenden",
+    "passkeyPolicyLocked": "Diese Richtlinie wird bei der Kontoerstellung gesperrt.",
+    "sponsorServiceUrl": "Sponsor-Service-URL",
+    "sponsorSignerAddress": "Sponsor-Signer-Adresse",
+    "sponsorPolicyText": "Richtlinienhinweis (optional)",
+    "sponsorUrlRequired": "Sponsored Gas erfordert eine Sponsor-Service-URL.",
+    "sponsorSignerRequired": "Managed Account erfordert eine Sponsor-Signer-Adresse.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "Persönliches Konto",
+        "description": "Kein Sponsor erforderlich. Pali kann bei Bedarf dein Wallet-Guthaben zum Bezahlen von Gas verwenden."
+      },
+      "gasOnly": {
+        "title": "Gesponsertes Gas",
+        "description": "Ein Sponsor kann Transaktionsgas bezahlen, aber dein Passkey bleibt die einzige Kontoautorität."
+      },
+      "required": {
+        "title": "Verwaltetes / mitunterzeichnetes Konto",
+        "description": "Für Transaktionen ist Sponsor-Genehmigung erforderlich. Für institutionelle oder richtliniengesteuerte Konten."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "Backup-fähiger Passkey, nicht als synchronisiert gemeldet",
+      "deviceBound": "Gerätegebundener Passkey",
+      "synced": "Synchronisierter Passkey",
+      "unavailable": "Backup-Status nicht verfügbar"
+    }
   },
   "components": {
     "newPassword": "Neues Passwort (min. 12 Zeichen)",

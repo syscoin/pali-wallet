@@ -57,6 +57,7 @@ import {
   setSingleTransactionToState,
   setAccountAssets,
   setAccountTransactions,
+  setPasskeyCredentialProfile,
 } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import vaultCache, {
@@ -90,6 +91,7 @@ import {
 import {
   INetworkType,
   IPasskeySmartAccountMetadata,
+  IPasskeyCredentialProfile,
   KeyringAccountType as PaliKeyringAccountType,
   PasskeySponsorMode,
 } from 'types/network';
@@ -2627,6 +2629,17 @@ class MainController {
         type: PaliKeyringAccountType.PasskeySmartAccount,
       })
     );
+    if (!store.getState().vault.passkeyCredentialProfile) {
+      store.dispatch(
+        setPasskeyCredentialProfile({
+          credentialId: params.metadata.credentialId,
+          credentialIdHash: params.metadata.credentialIdHash,
+          backupStatus: params.metadata.backupStatus,
+          passkeyName: params.metadata.passkeyName,
+          publicKey: params.metadata.publicKey,
+        })
+      );
+    }
 
     await this.saveWalletState('create-passkey-smart-account', true, true);
     setTimeout(() => {
@@ -2643,6 +2656,371 @@ class MainController {
         });
     }, 10);
     return newAccount;
+  }
+
+  public getPasskeyCredentialProfile(): IPasskeyCredentialProfile | null {
+    return store.getState().vault.passkeyCredentialProfile || null;
+  }
+
+  public async savePasskeyCredentialProfile(
+    profile: IPasskeyCredentialProfile
+  ): Promise<IPasskeyCredentialProfile> {
+    store.dispatch(setPasskeyCredentialProfile(profile));
+    await this.saveWalletState('save-passkey-credential-profile', true, true);
+    return profile;
+  }
+
+  public async recoverPasskeySmartAccounts(params: {
+    credentialId: string;
+    credentialIdHash: string;
+  }): Promise<{
+    accounts: Array<{ address: string; id: number; label: string }>;
+    recovered: number;
+    skipped: number;
+  }> {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    if (!isHexString(params.credentialIdHash, 32)) {
+      throw new Error('Invalid passkey credential hash');
+    }
+
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
+    const recoveryId = this.getPasskeyRecoveryId(
+      factoryAddress,
+      activeNetwork.chainId
+    );
+    const logs = await this.getPasskeyRecoveryLogs({
+      credentialIdHash: params.credentialIdHash,
+      factoryAddress,
+      provider,
+      recoveryId,
+    });
+    if (logs.length === 0) {
+      return { recovered: 0, skipped: 0, accounts: [] };
+    }
+
+    const { accounts } = store.getState().vault;
+    const existingAddresses = new Set<string>();
+    Object.values(accounts).forEach((accountsByType: Record<number, any>) => {
+      Object.values(accountsByType || {}).forEach((account: any) => {
+        if (account?.address) {
+          existingAddresses.add(account.address.toLowerCase());
+        }
+      });
+    });
+
+    let skipped = 0;
+    const recoveredAccounts: Array<{
+      address: string;
+      id: number;
+      label: string;
+    }> = [];
+    const existingPasskeyIds = Object.values(
+      accounts[PaliKeyringAccountType.PasskeySmartAccount] || {}
+    )
+      .map((account: any) => account.id)
+      .filter((id) => Number.isFinite(id));
+    let nextId = this.getNextPasskeySmartAccountId(existingPasskeyIds);
+
+    for (const logBatch of this.chunkArray(logs, 5)) {
+      const candidates = await Promise.all(
+        logBatch.map((log) =>
+          this.readRecoveredPasskeyAccount({
+            credentialId: params.credentialId,
+            credentialIdHash: params.credentialIdHash,
+            factoryAddress,
+            log,
+            provider,
+            recoveryId,
+          })
+        )
+      );
+
+      for (const candidate of candidates) {
+        if (
+          !candidate ||
+          existingAddresses.has(candidate.address.toLowerCase())
+        ) {
+          skipped += 1;
+          continue;
+        }
+
+        const label = `Recovered Passkey Account ${nextId + 1}`;
+        const newAccount = {
+          address: candidate.address,
+          balances: {
+            [INetworkType.Syscoin]: -1,
+            [INetworkType.Ethereum]: -1,
+          },
+          id: nextId,
+          isImported: false,
+          isLedgerWallet: false,
+          isPasskeySmartAccount: true,
+          isTrezorWallet: false,
+          label,
+          passkey: {
+            ...candidate.metadata,
+            passkeyName: label,
+          },
+          xprv: '',
+          xpub: candidate.address,
+        };
+
+        store.dispatch(
+          createAccount({
+            account: newAccount,
+            accountType: PaliKeyringAccountType.PasskeySmartAccount,
+          })
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: newAccount.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+          })
+        );
+        existingAddresses.add(candidate.address.toLowerCase());
+        recoveredAccounts.push({
+          address: newAccount.address,
+          id: newAccount.id,
+          label,
+        });
+        nextId += 1;
+      }
+    }
+
+    if (recoveredAccounts.length > 0) {
+      if (!store.getState().vault.passkeyCredentialProfile) {
+        const firstRecovered = store.getState().vault.accounts[
+          PaliKeyringAccountType.PasskeySmartAccount
+        ]?.[recoveredAccounts[0].id] as any;
+        if (firstRecovered?.passkey) {
+          store.dispatch(
+            setPasskeyCredentialProfile({
+              credentialId: firstRecovered.passkey.credentialId,
+              credentialIdHash: firstRecovered.passkey.credentialIdHash,
+              backupStatus: firstRecovered.passkey.backupStatus,
+              passkeyName: firstRecovered.passkey.passkeyName,
+              publicKey: firstRecovered.passkey.publicKey,
+            })
+          );
+        }
+      }
+      await this.saveWalletState('recover-passkey-smart-accounts', true, true);
+      setTimeout(() => {
+        this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
+          (error) => {
+            logError(
+              'Failed to refresh after recovering passkey accounts',
+              '',
+              error
+            );
+          }
+        );
+      }, 10);
+    }
+
+    return {
+      recovered: recoveredAccounts.length,
+      skipped,
+      accounts: recoveredAccounts,
+    };
+  }
+
+  private getNextPasskeySmartAccountId(existingIds: number[]) {
+    const sortedIds = [...existingIds].sort((a, b) => a - b);
+    let nextId = 0;
+    for (const id of sortedIds) {
+      if (id === nextId) {
+        nextId += 1;
+      } else if (id > nextId) {
+        break;
+      }
+    }
+    return nextId;
+  }
+
+  private chunkArray<T>(items: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
+  }
+
+  private async withPasskeyRpcBackoff<T>(operation: () => Promise<T>) {
+    const maxAttempts = 4;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt === maxAttempts - 1) {
+          throw error;
+        }
+        const delay = 750 * 2 ** attempt;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw new Error('Passkey RPC retry loop failed unexpectedly');
+  }
+
+  private async getPasskeyRecoveryLogs({
+    credentialIdHash,
+    factoryAddress,
+    provider,
+    recoveryId,
+  }: {
+    credentialIdHash: string;
+    factoryAddress: string;
+    provider: any;
+    recoveryId: string;
+  }) {
+    const latestBlock = await this.withPasskeyRpcBackoff<number>(() =>
+      provider.getBlockNumber()
+    );
+    const chunkSize = 50_000;
+    const eventTopic = passkeyFactoryInterface.getEventTopic('AccountCreated');
+    const logs: any[] = [];
+
+    for (let fromBlock = 0; fromBlock <= latestBlock; fromBlock += chunkSize) {
+      const toBlock = Math.min(fromBlock + chunkSize - 1, latestBlock);
+      const chunkLogs = await this.withPasskeyRpcBackoff<any[]>(() =>
+        provider.getLogs({
+          address: factoryAddress,
+          fromBlock,
+          toBlock,
+          topics: [eventTopic, null, recoveryId, credentialIdHash],
+        })
+      );
+      logs.push(...chunkLogs);
+    }
+
+    return logs;
+  }
+
+  private async readRecoveredPasskeyAccount({
+    credentialId,
+    credentialIdHash,
+    factoryAddress,
+    log,
+    provider,
+    recoveryId,
+  }: {
+    credentialId: string;
+    credentialIdHash: string;
+    factoryAddress: string;
+    log: any;
+    provider: any;
+    recoveryId: string;
+  }): Promise<{
+    address: string;
+    metadata: IPasskeySmartAccountMetadata;
+  } | null> {
+    const parsed = passkeyFactoryInterface.parseLog(log);
+    const address = getAddress(parsed.args.account);
+    const deploymentSalt = parsed.args.salt as string;
+    const code = await this.withPasskeyRpcBackoff(() =>
+      provider.getCode(address)
+    );
+    if (!code || code === '0x') {
+      return null;
+    }
+
+    const account = new Contract(
+      address,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const [
+      passkeyX,
+      passkeyY,
+      storedCredentialIdHash,
+      rpIdHash,
+      originHash,
+      originLength,
+      sponsorMode,
+      sponsorSigner,
+      sponsorUrlHash,
+    ] = await this.withPasskeyRpcBackoff(() =>
+      Promise.all([
+        account.passkeyX(),
+        account.passkeyY(),
+        account.credentialIdHash(),
+        account.rpIdHash(),
+        account.originHash(),
+        account.originLength(),
+        account.sponsorMode(),
+        account.sponsorSigner(),
+        account.sponsorUrlHash(),
+      ])
+    );
+
+    if (
+      storedCredentialIdHash.toLowerCase() !== credentialIdHash.toLowerCase()
+    ) {
+      return null;
+    }
+
+    const sponsor = this.recoverPasskeySponsorMetadata(
+      Number(sponsorMode),
+      sponsorSigner,
+      sponsorUrlHash
+    );
+
+    return {
+      address,
+      metadata: {
+        chainId: store.getState().vault.activeNetwork.chainId,
+        contractVersion: PASSKEY_SMART_ACCOUNT_VERSION,
+        backupStatus:
+          store.getState().vault.passkeyCredentialProfile?.backupStatus,
+        credentialId,
+        credentialIdHash,
+        deploymentSalt,
+        factoryAddress,
+        isDeployed: true,
+        passkeyName: 'Recovered Passkey Account',
+        recoveryId,
+        publicKey: {
+          originHash,
+          originLength: BigNumber.from(originLength).toNumber(),
+          rpIdHash,
+          x: passkeyX,
+          y: passkeyY,
+        },
+        sponsor,
+      },
+    };
+  }
+
+  private recoverPasskeySponsorMetadata(
+    sponsorMode: number,
+    sponsorSigner: string,
+    sponsorUrlHash: string
+  ): IPasskeySmartAccountMetadata['sponsor'] {
+    const mode =
+      sponsorMode === PasskeyContractSponsorMode.Required
+        ? PasskeySponsorMode.Required
+        : sponsorMode === PasskeyContractSponsorMode.GasOnly
+        ? PasskeySponsorMode.GasOnly
+        : PasskeySponsorMode.Disabled;
+
+    return {
+      mode,
+      ...(sponsorSigner && sponsorSigner !== AddressZero
+        ? { signer: getAddress(sponsorSigner) }
+        : {}),
+      ...(sponsorUrlHash && sponsorUrlHash !== HashZero
+        ? { urlHash: sponsorUrlHash }
+        : {}),
+    };
   }
 
   public async preparePasskeySmartAccount(params: {
@@ -2684,12 +3062,16 @@ class MainController {
 
     const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
     const factory = getPasskeyFactory(activeNetwork.chainId, provider);
+    const recoveryId = this.getPasskeyRecoveryId(
+      factoryAddress,
+      activeNetwork.chainId
+    );
     const sponsor = this.normalizePasskeySponsor(params.sponsor);
     const sponsorContractMode = this.getPasskeySponsorContractMode({
       sponsor,
     } as IPasskeySmartAccountMetadata);
     const address = await factory.getAccountAddress(
-      gasPayer.account.address,
+      recoveryId,
       params.publicKey.x,
       params.publicKey.y,
       params.credentialIdHash,
@@ -2719,6 +3101,7 @@ class MainController {
         factoryAddress,
         isDeployed: false,
         passkeyName: params.passkeyName,
+        recoveryId,
         publicKey: params.publicKey,
         sponsor,
       },
@@ -2783,6 +3166,26 @@ class MainController {
     }
     const balance = await provider.getBalance(address);
     return BigNumber.from(balance).gte(minimumBalanceWei);
+  }
+
+  private getPasskeyRecoveryId(factoryAddress: string, chainId: number) {
+    const { accounts } = store.getState().vault;
+    const firstHdAccount =
+      accounts[PaliKeyringAccountType.HDAccount]?.[0] || null;
+    if (!firstHdAccount?.address) {
+      throw new Error(
+        'Passkey recovery requires the first HD account in this wallet'
+      );
+    }
+
+    return hashText(
+      [
+        'PALI_PASSKEY_RECOVERY_V1',
+        chainId.toString(),
+        getAddress(factoryAddress),
+        getAddress(firstHdAccount.address),
+      ].join(':')
+    );
   }
 
   private async getDefaultPasskeyGasPayer(minimumBalanceWei: BigNumber) {
@@ -2963,7 +3366,14 @@ class MainController {
       metadata,
       BigNumber.from(maxFeePerGas).mul(gasLimit)
     );
+    if (!metadata.recoveryId || !isHexString(metadata.recoveryId, 32)) {
+      throw new Error(
+        'Passkey account is missing recovery metadata. Please recreate this passkey account before deployment.'
+      );
+    }
+
     const data = passkeyFactoryInterface.encodeFunctionData('createAccount', [
+      metadata.recoveryId,
       metadata.publicKey.x,
       metadata.publicKey.y,
       metadata.credentialIdHash,
@@ -4166,6 +4576,12 @@ class MainController {
 
     // Safety check: For HD accounts, don't allow removing if it's the only one
     if (accountType === KeyringAccountType.HDAccount) {
+      if (accountId === 0) {
+        throw new Error(
+          'Cannot remove the first HD account because it anchors passkey account recovery.'
+        );
+      }
+
       const hdAccountsCount = Object.keys(accounts.HDAccount).length;
       if (hdAccountsCount <= 1) {
         throw new Error(

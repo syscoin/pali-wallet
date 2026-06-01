@@ -1,6 +1,8 @@
 import { id as hashText } from '@ethersproject/hash';
 import { toUtf8Bytes } from '@ethersproject/strings';
 
+import { PasskeyBackupStatus } from 'types/network';
+
 import {
   base64UrlToBytes,
   bytesToBase64Url,
@@ -11,6 +13,7 @@ import { asCborBytes, asCborMap, decodeCbor } from './cbor';
 import { validatePasskeyClientDataJSON } from './validation';
 
 export type PasskeyPublicKey = {
+  backupStatus: PasskeyBackupStatus;
   credentialId: string;
   credentialIdHash: string;
   originHash: string;
@@ -28,6 +31,8 @@ export type PasskeyAssertionResult = {
   authenticatorData: string;
   challengeOffset: number;
   clientDataJSON: string;
+  credentialId: string;
+  credentialIdHash: string;
   digest: string;
   originOffset: number;
   r: string;
@@ -48,6 +53,8 @@ const ES256_ALGORITHM = -7;
 const P256_CRV = 1;
 const AUTH_DATA_FIXED_LENGTH = 37;
 const ATTESTED_CREDENTIAL_DATA_FLAG = 0x40;
+const BACKUP_ELIGIBLE_FLAG = 0x08;
+const BACKUP_STATE_FLAG = 0x10;
 const P256_N = BigInt(
   '0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'
 );
@@ -88,6 +95,26 @@ const normalizeP256S = (s: Uint8Array): Uint8Array => {
   }
 
   return s;
+};
+
+const getPasskeyBackupStatus = (
+  authenticatorData: Uint8Array
+): PasskeyBackupStatus => {
+  if (authenticatorData.length <= 32) {
+    return PasskeyBackupStatus.Unavailable;
+  }
+
+  const flags = authenticatorData[32];
+  const backupEligible = (flags & BACKUP_ELIGIBLE_FLAG) !== 0;
+  const backedUp = (flags & BACKUP_STATE_FLAG) !== 0;
+
+  if (backupEligible && backedUp) {
+    return PasskeyBackupStatus.Synced;
+  }
+  if (backupEligible) {
+    return PasskeyBackupStatus.BackupCapable;
+  }
+  return PasskeyBackupStatus.DeviceBound;
 };
 
 const parseDerSignature = (signature: Uint8Array) => {
@@ -160,6 +187,7 @@ const extractCredentialPublicKey = async (
   const rpIdHash = authData.slice(0, 32);
 
   return {
+    backupStatus: getPasskeyBackupStatus(authData),
     credentialId: bytesToBase64Url(credentialIdBytes),
     credentialIdHash: bytesToHex(credentialIdHash),
     originHash: hashText(expectedOrigin),
@@ -184,7 +212,8 @@ export const createPasskeyCredential = async ({
     publicKey: {
       attestation: 'none',
       authenticatorSelection: {
-        residentKey: 'preferred',
+        residentKey: 'required',
+        requireResidentKey: true,
         userVerification: 'required',
       },
       challenge: toArrayBuffer(challenge),
@@ -222,8 +251,8 @@ export const createPasskeyCredential = async ({
   };
 };
 
-export const getPasskeyAssertion = async (
-  credentialId: string,
+const getPasskeyAssertionForCredential = async (
+  credentialId: string | undefined,
   challengeHex: string,
   rpId?: string
 ): Promise<PasskeyAssertionResult> => {
@@ -231,13 +260,17 @@ export const getPasskeyAssertion = async (
   const challengeText = bytesToBase64Url(challenge);
   const credential = (await navigator.credentials.get({
     publicKey: {
-      allowCredentials: [
-        {
-          id: toArrayBuffer(base64UrlToBytes(credentialId)),
-          type: 'public-key',
-        },
-      ],
       challenge: toArrayBuffer(challenge),
+      ...(credentialId
+        ? {
+            allowCredentials: [
+              {
+                id: toArrayBuffer(base64UrlToBytes(credentialId)),
+                type: 'public-key' as const,
+              },
+            ],
+          }
+        : {}),
       ...(rpId ? { rpId } : {}),
       timeout: 120_000,
       userVerification: 'required',
@@ -248,6 +281,8 @@ export const getPasskeyAssertion = async (
   const response = credential.response as AuthenticatorAssertionResponse;
   const authenticatorData = toBytes(response.authenticatorData);
   const clientDataJSON = toBytes(response.clientDataJSON);
+  const credentialIdBytes = toBytes(credential.rawId);
+  const credentialIdHash = await sha256(credentialIdBytes);
   const signature = toBytes(response.signature);
   const expectedOrigin =
     typeof window !== 'undefined' && window.location?.origin
@@ -268,6 +303,8 @@ export const getPasskeyAssertion = async (
     authenticatorData: bytesToHex(authenticatorData),
     challengeOffset,
     clientDataJSON: bytesToHex(clientDataJSON),
+    credentialId: bytesToBase64Url(credentialIdBytes),
+    credentialIdHash: bytesToHex(credentialIdHash),
     digest: bytesToHex(digest),
     originOffset,
     r: bytesToHex(r),
@@ -275,3 +312,16 @@ export const getPasskeyAssertion = async (
     typeOffset,
   };
 };
+
+export const getPasskeyAssertion = async (
+  credentialId: string,
+  challengeHex: string,
+  rpId?: string
+): Promise<PasskeyAssertionResult> =>
+  getPasskeyAssertionForCredential(credentialId, challengeHex, rpId);
+
+export const getDiscoverablePasskeyAssertion = async (
+  challengeHex: string,
+  rpId?: string
+): Promise<PasskeyAssertionResult> =>
+  getPasskeyAssertionForCredential(undefined, challengeHex, rpId);

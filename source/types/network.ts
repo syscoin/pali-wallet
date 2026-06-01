@@ -41,7 +41,17 @@ export enum PasskeySponsorMode {
 }
 /* eslint-enable no-shadow */
 
+/* eslint-disable no-shadow */
+export enum PasskeyBackupStatus {
+  BackupCapable = 'backupCapable',
+  DeviceBound = 'deviceBound',
+  Synced = 'synced',
+  Unavailable = 'unavailable',
+}
+/* eslint-enable no-shadow */
+
 export interface IPasskeySmartAccountMetadata {
+  backupStatus?: PasskeyBackupStatus;
   chainId: number;
   contractVersion: string;
   credentialId: string;
@@ -62,6 +72,7 @@ export interface IPasskeySmartAccountMetadata {
     x: string;
     y: string;
   };
+  recoveryId?: string;
   sponsor?: {
     mode: PasskeySponsorMode;
     policyText?: string;
@@ -69,6 +80,14 @@ export interface IPasskeySmartAccountMetadata {
     url?: string;
     urlHash?: string;
   };
+}
+
+export interface IPasskeyCredentialProfile {
+  backupStatus?: PasskeyBackupStatus;
+  credentialId: string;
+  credentialIdHash: string;
+  passkeyName: string;
+  publicKey: IPasskeySmartAccountMetadata['publicKey'];
 }
 
 export type IKeyringBalances = {

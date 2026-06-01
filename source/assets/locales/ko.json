@@ -218,7 +218,44 @@
     "addressType": "주소 유형",
     "passkeyAccount": "패스키 계정",
     "createPasskeyAccount": "패스키 계정 만들기",
-    "createPasskeyAccountDescription": "Touch ID, Face ID, Windows Hello, Android 생체 인증 또는 보안 키를 사용해 zkSYS의 스마트 계정 트랜잭션을 승인하세요."
+    "createPasskeyAccountDescription": "Touch ID, Face ID, Windows Hello, Android 생체 인증 또는 보안 키를 사용해 zkSYS의 스마트 계정 트랜잭션을 승인하세요.",
+    "recoverPasskeyAccounts": "Passkey 계정 복구",
+    "passkeyAccountsRecovered": "Passkey 계정 {{count}}개를 복구했습니다",
+    "noPasskeyAccountsRecovered": "이 passkey로 복구할 수 있는 Passkey 계정을 찾지 못했습니다.",
+    "failedToRecoverPasskey": "Passkey 계정을 복구하지 못했습니다",
+    "useSeparatePasskey": "이 계정에 별도 passkey 사용",
+    "useSeparatePasskeyDescription": "고급: Pali가 새 자격 증명을 만듭니다. 복구 시 각 별도 passkey를 개별적으로 승인해야 할 수 있습니다.",
+    "sharedPasskeyReady": "공유 Pali passkey를 찾았습니다",
+    "sharedPasskeyWillBeCreated": "Pali가 공유 passkey 하나를 만듭니다",
+    "recoverPasskeyAccountsDescription": "복구는 승인된 passkey의 모든 계정을 복원합니다. 별도 passkey를 사용했다면 복구를 다시 실행하고 다음 passkey를 승인하세요.",
+    "customizeAccountPolicy": "계정 정책 사용자 지정",
+    "hideAccountPolicy": "정책 옵션 숨기기",
+    "passkeyPolicyLocked": "이 정책은 계정 생성 시 고정됩니다.",
+    "sponsorServiceUrl": "스폰서 서비스 URL",
+    "sponsorSignerAddress": "스폰서 서명자 주소",
+    "sponsorPolicyText": "정책 메모(선택 사항)",
+    "sponsorUrlRequired": "Sponsored Gas에는 스폰서 서비스 URL이 필요합니다.",
+    "sponsorSignerRequired": "Managed Account에는 스폰서 서명자 주소가 필요합니다.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "개인 계정",
+        "description": "스폰서가 필요하지 않습니다. 필요 시 Pali가 지갑 잔액으로 gas를 지불할 수 있습니다."
+      },
+      "gasOnly": {
+        "title": "스폰서 Gas",
+        "description": "스폰서가 트랜잭션 gas를 지불할 수 있지만, 계정 권한은 여전히 passkey에만 있습니다."
+      },
+      "required": {
+        "title": "관리 / 공동 서명 계정",
+        "description": "트랜잭션에는 스폰서 승인이 필요합니다. 기관 또는 정책 제어 계정에 사용하세요."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "백업 가능 passkey, 동기화됨으로 보고되지 않음",
+      "deviceBound": "기기 연결 passkey",
+      "synced": "동기화된 passkey",
+      "unavailable": "백업 상태를 사용할 수 없음"
+    }
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 12자)",

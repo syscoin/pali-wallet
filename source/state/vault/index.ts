@@ -9,6 +9,7 @@ import {
 import {
   KeyringAccountType,
   IKeyringAccountState,
+  IPasskeyCredentialProfile,
   INetwork,
   INetworkType,
   IKeyringBalances,
@@ -107,6 +108,12 @@ const VaultState = createSlice({
     ) {
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
+    },
+    setPasskeyCredentialProfile(
+      state: IVaultState,
+      action: PayloadAction<IPasskeyCredentialProfile>
+    ) {
+      state.passkeyCredentialProfile = action.payload;
     },
     setAccountLabel(
       state: IVaultState,
@@ -730,6 +737,7 @@ export const {
   setAccountAssets,
   setSingleTransactionToState,
   setAccountTransactions,
+  setPasskeyCredentialProfile,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setAccounts,

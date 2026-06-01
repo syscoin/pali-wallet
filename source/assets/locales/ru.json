@@ -218,7 +218,44 @@
     "addressType": "Тип адреса",
     "passkeyAccount": "Аккаунт Passkey",
     "createPasskeyAccount": "Создать аккаунт Passkey",
-    "createPasskeyAccountDescription": "Используйте Touch ID, Face ID, Windows Hello, биометрию Android или ключ безопасности для подтверждения транзакций смарт-аккаунта в zkSYS."
+    "createPasskeyAccountDescription": "Используйте Touch ID, Face ID, Windows Hello, биометрию Android или ключ безопасности для подтверждения транзакций смарт-аккаунта в zkSYS.",
+    "recoverPasskeyAccounts": "Восстановить Passkey-аккаунты",
+    "passkeyAccountsRecovered": "Восстановлено Passkey-аккаунтов: {{count}}",
+    "noPasskeyAccountsRecovered": "Для этого passkey не найдено восстанавливаемых Passkey-аккаунтов.",
+    "failedToRecoverPasskey": "Не удалось восстановить Passkey-аккаунты",
+    "useSeparatePasskey": "Использовать отдельный passkey для этого аккаунта",
+    "useSeparatePasskeyDescription": "Дополнительно: Pali создаст новые учетные данные. Для восстановления может потребоваться отдельно подтвердить каждый отдельный passkey.",
+    "sharedPasskeyReady": "Общий passkey Pali найден",
+    "sharedPasskeyWillBeCreated": "Pali создаст один общий passkey",
+    "recoverPasskeyAccountsDescription": "Восстановление возвращает все аккаунты для подтвержденного passkey. Если вы использовали отдельные passkey, запустите восстановление снова и подтвердите следующий.",
+    "customizeAccountPolicy": "Настроить политику аккаунта",
+    "hideAccountPolicy": "Скрыть параметры политики",
+    "passkeyPolicyLocked": "Эта политика фиксируется при создании аккаунта.",
+    "sponsorServiceUrl": "URL сервиса спонсора",
+    "sponsorSignerAddress": "Адрес подписанта спонсора",
+    "sponsorPolicyText": "Примечание к политике (необязательно)",
+    "sponsorUrlRequired": "Sponsored Gas требует URL сервиса спонсора.",
+    "sponsorSignerRequired": "Managed Account требует адрес подписанта спонсора.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "Личный аккаунт",
+        "description": "Спонсор не требуется. Pali может использовать баланс вашего wallet для оплаты gas при необходимости."
+      },
+      "gasOnly": {
+        "title": "Спонсируемый gas",
+        "description": "Спонсор может оплатить gas транзакции, но единственным органом управления аккаунтом остается ваш passkey."
+      },
+      "required": {
+        "title": "Управляемый / совместно подписываемый аккаунт",
+        "description": "Для транзакций требуется одобрение спонсора. Используйте для институциональных аккаунтов или аккаунтов с политиками."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "Passkey поддерживает резервное копирование, но не отмечен как синхронизированный",
+      "deviceBound": "Passkey привязан к устройству",
+      "synced": "Синхронизированный passkey",
+      "unavailable": "Статус резервного копирования недоступен"
+    }
   },
   "components": {
     "newPassword": "Новый пароль (мин. 12 символов)",

@@ -554,7 +554,44 @@
     "addressType": "Address type",
     "passkeyAccount": "Passkey Account",
     "createPasskeyAccount": "Create Passkey Account",
-    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, Android biometrics, or a security key to approve smart-account transactions on zkSYS."
+    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, Android biometrics, or a security key to approve smart-account transactions on zkSYS.",
+    "recoverPasskeyAccounts": "Recover Passkey Accounts",
+    "passkeyAccountsRecovered": "Recovered {{count}} passkey account(s)",
+    "noPasskeyAccountsRecovered": "No recoverable passkey accounts were found for this passkey.",
+    "failedToRecoverPasskey": "Failed to recover passkey accounts",
+    "useSeparatePasskey": "Use a separate passkey for this account",
+    "useSeparatePasskeyDescription": "Advanced: Pali will create a new credential. Recovery may require approving each separate passkey individually.",
+    "sharedPasskeyReady": "Shared Pali passkey found",
+    "sharedPasskeyWillBeCreated": "Pali will create one shared passkey",
+    "recoverPasskeyAccountsDescription": "Recovery restores all accounts for the approved passkey. If you used separate passkeys, run recovery again and approve the next one.",
+    "customizeAccountPolicy": "Customize account policy",
+    "hideAccountPolicy": "Hide policy options",
+    "passkeyPolicyLocked": "This policy is locked at account creation.",
+    "sponsorServiceUrl": "Sponsor service URL",
+    "sponsorSignerAddress": "Sponsor signer address",
+    "sponsorPolicyText": "Policy note (optional)",
+    "sponsorUrlRequired": "Sponsored Gas requires a sponsor service URL.",
+    "sponsorSignerRequired": "Managed Account requires a sponsor signer address.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "Personal Account",
+        "description": "No sponsor required. Pali can use your wallet balance to pay gas when needed."
+      },
+      "gasOnly": {
+        "title": "Sponsored Gas",
+        "description": "A sponsor may pay transaction gas, but your passkey remains the only account authority."
+      },
+      "required": {
+        "title": "Managed / Co-signed Account",
+        "description": "Sponsor approval is required for transactions. Use this for institutional or policy-controlled accounts."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "Backup-capable passkey, not reported as synced",
+      "deviceBound": "Device-bound passkey",
+      "synced": "Synced passkey",
+      "unavailable": "Backup status unavailable"
+    }
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

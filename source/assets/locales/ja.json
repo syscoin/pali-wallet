@@ -218,7 +218,44 @@
     "addressType": "アドレスタイプ",
     "passkeyAccount": "パスキーアカウント",
     "createPasskeyAccount": "パスキーアカウントを作成",
-    "createPasskeyAccountDescription": "Touch ID、Face ID、Windows Hello、Android 生体認証、またはセキュリティキーを使って、zkSYS 上のスマートアカウント取引を承認します。"
+    "createPasskeyAccountDescription": "Touch ID、Face ID、Windows Hello、Android 生体認証、またはセキュリティキーを使って、zkSYS 上のスマートアカウント取引を承認します。",
+    "recoverPasskeyAccounts": "Passkey アカウントを復元",
+    "passkeyAccountsRecovered": "{{count}} 件の Passkey アカウントを復元しました",
+    "noPasskeyAccountsRecovered": "この passkey で復元できる Passkey アカウントは見つかりませんでした。",
+    "failedToRecoverPasskey": "Passkey アカウントの復元に失敗しました",
+    "useSeparatePasskey": "このアカウントに別の passkey を使用",
+    "useSeparatePasskeyDescription": "詳細設定: Pali は新しい認証情報を作成します。復元時には、別々の passkey ごとに個別の承認が必要になる場合があります。",
+    "sharedPasskeyReady": "共有 Pali passkey が見つかりました",
+    "sharedPasskeyWillBeCreated": "Pali は共有 passkey を 1 つ作成します",
+    "recoverPasskeyAccountsDescription": "復元では、承認した passkey のすべてのアカウントを復元します。別々の passkey を使った場合は、復元をもう一度実行して次の passkey を承認してください。",
+    "customizeAccountPolicy": "アカウントポリシーをカスタマイズ",
+    "hideAccountPolicy": "ポリシーオプションを非表示",
+    "passkeyPolicyLocked": "このポリシーはアカウント作成時に固定されます。",
+    "sponsorServiceUrl": "スポンサーサービス URL",
+    "sponsorSignerAddress": "スポンサー署名者アドレス",
+    "sponsorPolicyText": "ポリシーメモ（任意）",
+    "sponsorUrlRequired": "Sponsored Gas にはスポンサーサービス URL が必要です。",
+    "sponsorSignerRequired": "Managed Account にはスポンサー署名者アドレスが必要です。",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "個人アカウント",
+        "description": "スポンサーは不要です。必要に応じて Pali がウォレット残高を使って gas を支払えます。"
+      },
+      "gasOnly": {
+        "title": "スポンサー付き Gas",
+        "description": "スポンサーがトランザクション gas を支払えますが、アカウント権限は引き続き passkey のみです。"
+      },
+      "required": {
+        "title": "管理 / 共同署名アカウント",
+        "description": "トランザクションにはスポンサー承認が必要です。機関向けまたはポリシー管理アカウントに使用します。"
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "バックアップ可能な passkey（同期済みとは報告されていません）",
+      "deviceBound": "デバイスに紐づいた passkey",
+      "synced": "同期済み passkey",
+      "unavailable": "バックアップ状態は利用できません"
+    }
   },
   "components": {
     "newPassword": "新しいパスワード（最低12文字）",
