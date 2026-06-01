@@ -2061,9 +2061,11 @@ class MainController {
         return;
       }
 
-      // Check if any HD accounts have missing xpub
+      // Check if any HD accounts have missing xpub or the recovery anchor.
       let hasCorruptedAccounts = false;
       if (accounts.HDAccount) {
+        hasCorruptedAccounts =
+          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
         for (const account of Object.values(accounts.HDAccount)) {
           if (!account.xpub || account.xpub === '') {
             hasCorruptedAccounts = true;
@@ -2199,9 +2201,11 @@ class MainController {
         return;
       }
 
-      // Check if any HD accounts have missing xpub
+      // Check if any HD accounts have missing xpub or the recovery anchor.
       let hasCorruptedAccounts = false;
       if (accounts.HDAccount) {
+        hasCorruptedAccounts =
+          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
         for (const account of Object.values(accounts.HDAccount)) {
           if (!account.xpub || account.xpub === '') {
             hasCorruptedAccounts = true;
