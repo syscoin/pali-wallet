@@ -55,8 +55,13 @@ const DAppController = (): IDAppController => {
     }
 
     try {
-      const { isBitcoinBased } = store.getState().vault;
       const { host } = new URL(sender.url);
+      if (!isConnected(host)) {
+        delete _dapps[host];
+        return;
+      }
+
+      const { isBitcoinBased } = store.getState().vault;
       const activeAccount = isBitcoinBased
         ? getAccount(host)?.xpub
         : getAccount(host)?.address;
@@ -222,17 +227,13 @@ const DAppController = (): IDAppController => {
     return response;
   };
 
-  const changeAccount = (
+  const changeAccount = async (
     host: string,
     accountId: number,
     accountType: KeyringAccountType
   ) => {
-    // Safety check: ensure the dapp session exists
     if (!_dapps[host]) {
-      console.warn(
-        `[DAppController] Cannot change account for ${host} - session not initialized`
-      );
-      return;
+      _dapps[host] = { activeAddress: '', hasWindow: false };
     }
 
     const date = Date.now();
@@ -249,6 +250,7 @@ const DAppController = (): IDAppController => {
     }
 
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+    await persistDappState('dapp account change');
     _dapps[host].activeAddress = isBitcoinBased
       ? account.xpub
       : account.address;
@@ -273,6 +275,27 @@ const DAppController = (): IDAppController => {
     );
   };
 
+  const syncAccountSession = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    const date = Date.now();
+    const { accounts, isBitcoinBased } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId];
+    if (!account) return;
+
+    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+
+    if (!_dapps[host]) {
+      _dapps[host] = { activeAddress: '', hasWindow: false };
+    }
+
+    _dapps[host].activeAddress = isBitcoinBased
+      ? account.xpub
+      : account.address;
+  };
+
   const disconnect = async (host: string) => {
     try {
       const previousConnectedDapps = getAll();
@@ -280,7 +303,7 @@ const DAppController = (): IDAppController => {
 
       switch (isInActiveSession) {
         case true:
-          _dapps[host].activeAddress = null;
+          delete _dapps[host];
           store.dispatch(removeDApp(host));
           await persistDappState('dapp disconnect');
 
@@ -612,6 +635,7 @@ const DAppController = (): IDAppController => {
     setup,
     connect,
     changeAccount,
+    syncAccountSession,
     disconnect,
     requestPermissions,
     hasWindow,

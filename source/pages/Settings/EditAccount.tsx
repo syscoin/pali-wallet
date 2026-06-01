@@ -27,7 +27,9 @@ const EditAccountView = () => {
   const [form] = useForm();
 
   const getWalletType = useMemo(() => {
-    if (state.isTrezorWallet) {
+    if (state.accountType === KeyringAccountType.PasskeySmartAccount) {
+      return 'Passkey';
+    } else if (state.isTrezorWallet) {
       return HardWallets.TREZOR;
     } else if (state.isLedgerWallet) {
       return HardWallets.LEDGER;
@@ -45,13 +47,17 @@ const EditAccountView = () => {
     setLoading(true);
 
     try {
-      const accountType = state.isImported
-        ? KeyringAccountType.Imported
-        : state.isTrezorWallet
-        ? KeyringAccountType.Trezor
-        : state.isLedgerWallet
-        ? KeyringAccountType.Ledger
-        : KeyringAccountType.HDAccount;
+      const accountType =
+        state.accountType ||
+        (state.isImported
+          ? KeyringAccountType.Imported
+          : state.isTrezorWallet
+          ? KeyringAccountType.Trezor
+          : state.isLedgerWallet
+          ? KeyringAccountType.Ledger
+          : state.isPasskeySmartAccount
+          ? KeyringAccountType.PasskeySmartAccount
+          : KeyringAccountType.HDAccount);
 
       const accountId = state.id;
 

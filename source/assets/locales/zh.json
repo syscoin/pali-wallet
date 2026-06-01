@@ -215,7 +215,10 @@
     "closeAndReopenPali": "关闭此窗口并重新打开 Pali 以进行身份验证并连接您的硬件钱包",
     "activeAccountNotFound": "错误：未找到活跃账户",
     "paliWalletBrowserExtension": "Pali钱包浏览器扩展",
-    "addressType": "地址类型"
+    "addressType": "地址类型",
+    "passkeyAccount": "通行密钥账户",
+    "createPasskeyAccount": "创建通行密钥账户",
+    "createPasskeyAccountDescription": "使用 Touch ID、Face ID、Windows Hello、Android 生物识别或安全密钥来批准 zkSYS 上的智能账户交易。"
   },
   "components": {
     "newPassword": "新密码（至少12个字符）",
@@ -304,7 +307,18 @@
     "selectAccountToConnect": "选择您想要与此网站连接的账户",
     "currentlyConnected": "当前已连接",
     "noAddress": "无地址",
-    "loadingAccounts": "正在加载账户..."
+    "loadingAccounts": "正在加载账户...",
+    "dappFallback": "此应用",
+    "passkeyDefaultLabel": "{{host}} 通行密钥",
+    "createPasskeyAccountTitle": "创建通行密钥账户",
+    "createPasskeyAccountDescription": "{{host}} 希望 Pali 创建一个由你设备通行密钥控制的 zkSYS 智能账户。Pali 只存储公开元数据；私钥保留在你的认证器中。",
+    "sponsorPolicy": "赞助策略：{{policy}}",
+    "sponsorGasOnly": "Gas 赞助可选",
+    "sponsorRequired": "需要赞助方批准",
+    "sponsorDisabled": "无赞助方",
+    "sponsorUrl": "赞助方 URL：{{url}}",
+    "sponsorSigner": "赞助方签名者：{{signer}}",
+    "sponsorRequiredWarning": "该账户需要赞助方共同授权后，Pali 才能从该账户执行交易。"
   },
   "start": {
     "paliDoesnt": "Pali不存储您的密码。恢复访问权限需要使用您的秘密恢复短语重置钱包。此操作会从您的设备中删除当前钱包、创建的账户、自定义代币和导入的账户，生成与重置短语绑定的新账户。",
@@ -753,7 +767,13 @@
     "invalidEthSignFormat": "无效的eth_sign消息格式。期望32字节十六进制字符串（64个字符），得到：\"{{message}}\"。要签署任意文本，dapp应使用personal_sign。",
     "unableToResolveEns": "无法解析 ENS 名称",
     "invalidDestination": "无效的目标",
-    "verifyEnsOrUseAddress": "请验证收件人的 ENS 或使用 0x 地址。"
+    "verifyEnsOrUseAddress": "请验证收件人的 ENS 或使用 0x 地址。",
+    "passkeyContractDeploymentUnsupported": "通行密钥账户暂不支持合约部署。",
+    "passkeyMulticallUnsupported": "通行密钥账户暂不支持多调用批处理。",
+    "passkeyActiveAccountRequired": "当前活动账户不是通行密钥账户",
+    "passkeyEthSignHashRequired": "Passkey eth_sign 需要 32 字节哈希，以便 EIP-1271 验证器可以复现",
+    "passkeyLegacyTypedDataUnsupported": "通行密钥账户暂不支持旧版 typed-data V1 签名",
+    "passkeyUnsupportedSigningRequest": "不支持的通行密钥签名请求"
   },
   "nftDetails": {
     "collectionInfo": "收藏信息",

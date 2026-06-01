@@ -136,7 +136,18 @@
     "selectAccountToConnect": "Seleccione la cuenta que desea conectar con este sitio",
     "currentlyConnected": "Actualmente conectado",
     "noAddress": "Sin dirección",
-    "loadingAccounts": "Cargando cuentas..."
+    "loadingAccounts": "Cargando cuentas...",
+    "dappFallback": "Esta aplicación",
+    "passkeyDefaultLabel": "Passkey de {{host}}",
+    "createPasskeyAccountTitle": "Crear cuenta Passkey",
+    "createPasskeyAccountDescription": "{{host}} quiere que Pali cree una cuenta inteligente de zkSYS controlada por el passkey de tu dispositivo. Pali solo almacena metadatos públicos; la clave privada permanece en tu autenticador.",
+    "sponsorPolicy": "Política de patrocinador: {{policy}}",
+    "sponsorGasOnly": "Patrocinador de gas opcional",
+    "sponsorRequired": "Aprobación del patrocinador requerida",
+    "sponsorDisabled": "Sin patrocinador",
+    "sponsorUrl": "URL del patrocinador: {{url}}",
+    "sponsorSigner": "Firmante del patrocinador: {{signer}}",
+    "sponsorRequiredWarning": "Esta cuenta requerirá coautorización del patrocinador antes de que Pali pueda ejecutar transacciones desde ella."
   },
   "home": {
     "importToken": "Importar Token",
@@ -387,7 +398,13 @@
     "invalidEthSignFormat": "Formato de mensaje eth_sign inválido. Se esperaba cadena hex de 32 bytes (64 caracteres), se obtuvo: \"{{message}}\". Para firmar texto arbitrario, la dapp debería usar personal_sign.",
     "unableToResolveEns": "No se puede resolver el nombre ENS",
     "invalidDestination": "Destino inválido",
-    "verifyEnsOrUseAddress": "Verifica el ENS del destinatario o usa una dirección 0x."
+    "verifyEnsOrUseAddress": "Verifica el ENS del destinatario o usa una dirección 0x.",
+    "passkeyContractDeploymentUnsupported": "Las cuentas Passkey aún no admiten despliegue de contratos.",
+    "passkeyMulticallUnsupported": "Las cuentas Passkey aún no admiten lotes de múltiples llamadas.",
+    "passkeyActiveAccountRequired": "La cuenta activa no es una cuenta Passkey",
+    "passkeyEthSignHashRequired": "Passkey eth_sign requiere un hash de 32 bytes para que los verificadores EIP-1271 puedan reproducirlo",
+    "passkeyLegacyTypedDataUnsupported": "Las cuentas Passkey aún no admiten la firma de typed-data V1 heredada",
+    "passkeyUnsupportedSigningRequest": "Solicitud de firma Passkey no compatible"
   },
   "settings": {
     "bgError": "Error de Fondo",
@@ -534,7 +551,10 @@
     "closeAndReopenPali": "Cierre esta ventana y reabra Pali para autenticarse y conectar su billetera de hardware",
     "activeAccountNotFound": "Error: Cuenta activa no encontrada",
     "paliWalletBrowserExtension": "Extensión del Navegador Pali Wallet",
-    "addressType": "Tipo de dirección"
+    "addressType": "Tipo de dirección",
+    "passkeyAccount": "Cuenta Passkey",
+    "createPasskeyAccount": "Crear cuenta Passkey",
+    "createPasskeyAccountDescription": "Usa Touch ID, Face ID, Windows Hello, biometría de Android o una llave de seguridad para aprobar transacciones de cuenta inteligente en zkSYS."
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

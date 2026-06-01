@@ -6,7 +6,11 @@ import { useSelector } from 'react-redux';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
-import { PaliWhiteSmallIconSvg, LoadingSvg } from 'components/Icon/Icon';
+import {
+  PaliWhiteSmallIconSvg,
+  LoadingSvg,
+  LockIconSvg,
+} from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { RootState } from 'state/store';
 import { selectActiveAccountRef } from 'state/vault';
@@ -36,6 +40,12 @@ const BADGE_INFO_MAP = {
     bgColor: 'bg-orange-500',
     hoverColor: 'group-hover:bg-orange-400',
     loadingColor: 'text-orange-500',
+  },
+  [KeyringAccountType.PasskeySmartAccount]: {
+    label: 'Passkey',
+    bgColor: 'bg-purple-500',
+    hoverColor: 'group-hover:bg-purple-400',
+    loadingColor: 'text-purple-500',
   },
   [KeyringAccountType.HDAccount]: {
     label: 'Pali',
@@ -86,6 +96,10 @@ const getAccountIcon = (accountType: KeyringAccountType, account: any) => {
       return (
         <PaliWhiteSmallIconSvg className="w-7 h-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
       );
+    case KeyringAccountType.PasskeySmartAccount:
+      return (
+        <LockIconSvg className="w-6 h-6 text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
+      );
     case KeyringAccountType.HDAccount:
     default:
       return (
@@ -103,6 +117,12 @@ const RenderAccountsListByBitcoinBased =
     } | null>(null);
 
     const accounts = useSelector((state: RootState) => state.vault.accounts);
+    const activeNetwork = useSelector(
+      (state: RootState) => state.vault.activeNetwork
+    );
+    const isBitcoinBased = useSelector(
+      (state: RootState) => state.vault.isBitcoinBased
+    );
     const activeAccount = useSelector(selectActiveAccountRef);
     // When the accounts list is scrollable, a first click can be swallowed by inertial scrolling
     // (common on trackpads) or by focus/blur interactions. Handle selection on mouse pointer-down
@@ -224,13 +244,25 @@ const RenderAccountsListByBitcoinBased =
     const accountsList = useMemo(
       () =>
         Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
-          Object.values(accountsOfType || {}).map((account, index) => ({
-            account,
-            accountType: accountType as KeyringAccountType,
-            index,
-          }))
+          Object.values(accountsOfType || {})
+            .filter((account: any) => {
+              if (accountType !== KeyringAccountType.PasskeySmartAccount) {
+                return true;
+              }
+
+              return (
+                !isBitcoinBased &&
+                Number(account?.passkey?.chainId) ===
+                  Number(activeNetwork.chainId)
+              );
+            })
+            .map((account, index) => ({
+              account,
+              accountType: accountType as KeyringAccountType,
+              index,
+            }))
         ),
-      [accounts]
+      [accounts, activeNetwork.chainId, isBitcoinBased]
     );
 
     const isAnySwitching = switchingAccount !== null;

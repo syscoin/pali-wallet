@@ -943,11 +943,17 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
     '[Pipeline] Blocking method requires switching to connected account...'
   );
 
-  // Need to switch to the connected account
-  const dappAccountType = account.isImported ? 'Imported' : 'HDAccount';
+  const dappConnection = dapp.get(originalRequest.host);
+  if (!dappConnection) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Connected account metadata is unavailable for this operation'
+      )
+    );
+  }
 
   try {
-    await promptAccountSwitch(context, account, dappAccountType);
+    await promptAccountSwitch(context, account, dappConnection.accountType);
   } catch (error) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(

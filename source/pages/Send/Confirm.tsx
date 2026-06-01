@@ -1,3 +1,4 @@
+import { Interface } from '@ethersproject/abi';
 import { BigNumber } from '@ethersproject/bignumber';
 import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
@@ -42,9 +43,11 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
+import { getPasskeyAssertion } from 'utils/passkey';
 import { safeToFixed } from 'utils/safeToFixed';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
+import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
 
@@ -343,6 +346,126 @@ export const SendConfirm = () => {
         basicTxValues.transactionType ||
         (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
 
+      const submitPasskeyExecution = async (
+        target: string,
+        value: string,
+        data: string
+      ) => {
+        const prepared = (await controllerEmitter(
+          ['wallet', 'preparePasskeyExecution'],
+          [
+            {
+              target,
+              value,
+              data,
+            },
+          ],
+          300000
+        )) as any;
+        const assertion = await getPasskeyAssertion(
+          activeAccount.passkey.credentialId,
+          prepared.actionHash
+        );
+
+        await controllerEmitter(
+          ['wallet', 'submitPasskeyExecution'],
+          [
+            {
+              execution: prepared.execution,
+              proof: {
+                authenticatorData: assertion.authenticatorData,
+                clientDataJSON: assertion.clientDataJSON,
+                challengeOffset: assertion.challengeOffset,
+                originOffset: assertion.originOffset,
+                r: assertion.r,
+                s: assertion.s,
+                typeOffset: assertion.typeOffset,
+              },
+            },
+          ],
+          300000
+        );
+      };
+
+      const assertPasskeyTokenRecipientAllowed = async () => {
+        const blacklistResult = (await controllerEmitter(
+          ['wallet', 'checkAddressBlacklist'],
+          [destinationTo]
+        )) as {
+          isBlacklisted: boolean;
+          reason?: string;
+          severity?: string;
+        };
+
+        if (
+          blacklistResult.isBlacklisted &&
+          (blacklistResult.severity === 'critical' ||
+            blacklistResult.severity === 'high')
+        ) {
+          throw new Error(
+            `Token transfer blocked: ${
+              blacklistResult.reason || 'The recipient address is blacklisted'
+            }. Severity: ${
+              blacklistResult.severity
+            }. Please verify the token recipient address before proceeding.`
+          );
+        }
+      };
+
+      const getValidatedTokenId = () => {
+        const tokenId = basicTxValues.token.tokenId;
+        if (tokenId === undefined || tokenId === null || tokenId === '') {
+          throw new Error(t('send.invalidTokenId'));
+        }
+
+        const numericTokenId = Number(tokenId);
+        if (isNaN(numericTokenId) || numericTokenId < 0) {
+          throw new Error(t('send.invalidTokenId'));
+        }
+
+        return BigNumber.from(tokenId);
+      };
+
+      const buildPasskeyTokenTransferData = async () => {
+        switch (transactionType) {
+          case TransactionType.ERC20: {
+            const erc20Interface = new Interface(await getErc20Abi());
+            const amount = parseUnits(
+              String(
+                removeScientificNotation(String(basicTxValues.amount || '0'))
+              ),
+              basicTxValues?.token?.decimals ?? 18
+            );
+            return erc20Interface.encodeFunctionData('transfer', [
+              destinationTo,
+              amount,
+            ]);
+          }
+          case TransactionType.ERC721: {
+            const erc721Interface = new Interface(await getErc721Abi());
+            return erc721Interface.encodeFunctionData(
+              'safeTransferFrom(address,address,uint256)',
+              [activeAccount.address, destinationTo, getValidatedTokenId()]
+            );
+          }
+          case TransactionType.ERC1155: {
+            const erc1155Interface = new Interface(await getErc1155Abi());
+            return erc1155Interface.encodeFunctionData(
+              'safeTransferFrom(address,address,uint256,uint256,bytes)',
+              [
+                activeAccount.address,
+                destinationTo,
+                getValidatedTokenId(),
+                BigNumber.from(String(basicTxValues.amount)),
+                '0x',
+              ]
+            );
+          }
+          default:
+            throw new Error(t('send.cantCompleteTxs'));
+        }
+      };
+
       switch (transactionType) {
         // SYSCOIN/UTXO TRANSACTIONS
         case TransactionType.UTXO:
@@ -394,6 +517,26 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case TransactionType.NATIVE_ETH:
+          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+            try {
+              const amount = parseUnits(
+                String(
+                  removeScientificNotation(String(basicTxValues.amount || '0'))
+                ),
+                18
+              ).toHexString();
+              await submitPasskeyExecution(destinationTo, amount, '0x');
+
+              setConfirmed(true);
+              setLoading(false);
+            } catch (error: any) {
+              logError('error', 'Transaction', error);
+              alert.error(error?.message || t('send.cantCompleteTxs'));
+              setLoading(false);
+            }
+            return;
+          }
+
           const restTx = omitTransactionObjectData(txObjectState, [
             'chainId',
             'maxFeePerGas',
@@ -588,6 +731,38 @@ export const SendConfirm = () => {
         case TransactionType.ERC721:
         // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
         case TransactionType.ERC1155:
+          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+            try {
+              await assertPasskeyTokenRecipientAllowed();
+              const data = await buildPasskeyTokenTransferData();
+              await submitPasskeyExecution(
+                basicTxValues.token.contractAddress,
+                '0x0',
+                data
+              );
+
+              setConfirmed(true);
+              setLoading(false);
+            } catch (error: any) {
+              const wasHandledSpecifically = handleTransactionError(
+                error,
+                alert,
+                t,
+                activeAccount,
+                activeNetwork,
+                basicTxValues
+              );
+
+              if (!wasHandledSpecifically) {
+                logError('error send passkey token', 'Transaction', error);
+                alert.error(error?.message || t('send.cantCompleteTxs'));
+              }
+
+              setLoading(false);
+            }
+            return;
+          }
+
           //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
           switch (transactionType) {
             //HANDLE ERC20 TRANSACTION

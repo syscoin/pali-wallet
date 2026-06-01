@@ -1,3 +1,6 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
+import { arrayify, isHexString } from '@ethersproject/bytes';
+import { hashMessage, _TypedDataEncoder } from '@ethersproject/hash';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -19,6 +22,7 @@ import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
 import { getNetworkChain } from 'utils/network';
+import { getPasskeyAssertion } from 'utils/passkey';
 
 interface ISign {
   send?: boolean;
@@ -95,6 +99,110 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
 
+  const isActiveAccountAddress = (value: unknown) =>
+    typeof value === 'string' && value.toLowerCase() === address.toLowerCase();
+
+  const getPersonalSignMessage = () => {
+    if (isActiveAccountAddress(data[0])) {
+      return data[1] || '';
+    }
+
+    if (isActiveAccountAddress(data[1])) {
+      return data[0] || '';
+    }
+
+    throw { message: t('send.signingForWrongAddress') };
+  };
+
+  const getEthSignPayload = () => {
+    if (isActiveAccountAddress(data[0])) {
+      return String(data[1] || '');
+    }
+
+    if (isActiveAccountAddress(data[1])) {
+      return String(data[0] || '');
+    }
+
+    throw { message: t('send.signingForWrongAddress') };
+  };
+
+  const getTypedDataPayload = () => {
+    let typedData;
+    if (isActiveAccountAddress(data[0])) {
+      typedData = data[1];
+    } else if (isActiveAccountAddress(data[1])) {
+      typedData = data[0];
+    } else {
+      throw { message: t('send.signingForWrongAddress') };
+    }
+
+    return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
+  };
+
+  const encodePasskey1271Signature = async (hash: string) => {
+    if (!activeAccount.passkey) {
+      throw { message: t('send.passkeyActiveAccountRequired') };
+    }
+
+    const assertion = await getPasskeyAssertion(
+      activeAccount.passkey.credentialId,
+      hash
+    );
+
+    return defaultAbiCoder.encode(
+      [
+        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+      ],
+      [
+        {
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          typeOffset: assertion.typeOffset,
+          challengeOffset: assertion.challengeOffset,
+          originOffset: assertion.originOffset,
+          r: assertion.r,
+          s: assertion.s,
+        },
+      ]
+    );
+  };
+
+  const getPasskeySignHash = (typedData?: any) => {
+    if (data.eventName === 'personal_sign') {
+      const msg = getPersonalSignMessage();
+      return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
+    }
+
+    if (data.eventName === 'eth_sign') {
+      const payload = getEthSignPayload();
+      if (!isHexString(payload, 32)) {
+        throw {
+          message: t('send.passkeyEthSignHashRequired'),
+        };
+      }
+      return payload;
+    }
+
+    if (typedData) {
+      if (data.eventName === 'eth_signTypedData') {
+        throw {
+          message: t('send.passkeyLegacyTypedDataUnsupported'),
+        };
+      }
+
+      const { domain, types, message: typedMessage } = typedData;
+      const sanitizedTypes = { ...types };
+      delete sanitizedTypes.EIP712Domain;
+      return _TypedDataEncoder.hash(
+        domain || {},
+        sanitizedTypes,
+        typedMessage || {}
+      );
+    }
+
+    throw { message: t('send.passkeyUnsupportedSigningRequest') };
+  };
+
   const onSubmit = async () => {
     setLoading(true);
 
@@ -111,7 +219,23 @@ const EthSign: React.FC<ISign> = () => {
     try {
       let response = '';
       const type = data.eventName;
-      if (data.eventName === 'eth_sign')
+      if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+        const typedData =
+          data.eventName === 'eth_signTypedData' ||
+          data.eventName === 'eth_signTypedData_v3' ||
+          data.eventName === 'eth_signTypedData_v4'
+            ? getTypedDataPayload()
+            : undefined;
+        const signHash = getPasskeySignHash(typedData);
+
+        await controllerEmitter(
+          ['wallet', 'ensurePasskeySmartAccountDeployed'],
+          [],
+          300000
+        );
+
+        response = await encodePasskey1271Signature(signHash);
+      } else if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
           [data],
@@ -237,32 +361,9 @@ const EthSign: React.FC<ISign> = () => {
     }
     if (data.eventName === 'personal_sign') {
       let msg = '';
-      let requestedAddress = '';
-
-      // Standard parameter order for personal_sign is [message, address]
-      // Some dapps may send [address, message] for compatibility
-      // Check if first param looks like an Ethereum address
-      const isFirstParamAddress =
-        data[0] &&
-        typeof data[0] === 'string' &&
-        data[0].startsWith('0x') &&
-        data[0].length === 42;
-
-      if (isFirstParamAddress) {
-        // Non-standard order: [address, message]
-        requestedAddress = data[0];
-        msg = data[1] || '';
-      } else {
-        // Standard order: [message, address]
-        msg = data[0] || '';
-        requestedAddress = data[1] || '';
-      }
-
-      // Validate that the requested address matches the active account
-      if (
-        requestedAddress &&
-        requestedAddress.toLowerCase() !== activeAccount.address.toLowerCase()
-      ) {
+      try {
+        msg = getPersonalSignMessage();
+      } catch {
         setErrorMsg(t('send.signingForWrongAddress'));
         return;
       }

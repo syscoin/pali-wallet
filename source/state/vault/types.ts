@@ -125,5 +125,5 @@ export enum TransactionsType {
 export type IOmmitedAccount = Omit<IKeyringAccountState, 'xprv'>;
 
 export type IOmittedVault = Omit<IVaultState, 'accounts'> & {
-  accounts: { [id: number]: IOmmitedAccount };
+  accounts: { [key in KeyringAccountType]: { [id: number]: IOmmitedAccount } };
 };

@@ -136,7 +136,18 @@
     "selectAccountToConnect": "Select the account you want to connect with this site",
     "currentlyConnected": "Currently connected",
     "noAddress": "No address",
-    "loadingAccounts": "Loading accounts..."
+    "loadingAccounts": "Loading accounts...",
+    "dappFallback": "This app",
+    "passkeyDefaultLabel": "{{host}} Passkey",
+    "createPasskeyAccountTitle": "Create Passkey Account",
+    "createPasskeyAccountDescription": "{{host}} wants Pali to create a zkSYS smart account controlled by your device passkey. Pali stores public metadata only; the private key stays with your authenticator.",
+    "sponsorPolicy": "Sponsor policy: {{policy}}",
+    "sponsorGasOnly": "Gas sponsor optional",
+    "sponsorRequired": "Sponsor approval required",
+    "sponsorDisabled": "No sponsor",
+    "sponsorUrl": "Sponsor URL: {{url}}",
+    "sponsorSigner": "Sponsor signer: {{signer}}",
+    "sponsorRequiredWarning": "This account will require sponsor co-authorization before Pali can execute transactions from it."
   },
   "home": {
     "importToken": "Import Token",
@@ -387,7 +398,13 @@
     "invalidEthSignFormat": "Invalid eth_sign message format. Expected 32-byte hex string (64 characters), got: \"{{message}}\". For signing arbitrary text, the dapp should use personal_sign instead.",
     "unableToResolveEns": "Unable to resolve ENS name",
     "invalidDestination": "Invalid destination",
-    "verifyEnsOrUseAddress": "Please verify the recipient ENS or use a 0x address."
+    "verifyEnsOrUseAddress": "Please verify the recipient ENS or use a 0x address.",
+    "passkeyContractDeploymentUnsupported": "Passkey accounts do not support contract deployment yet.",
+    "passkeyMulticallUnsupported": "Passkey accounts do not support multi-call batches yet.",
+    "passkeyActiveAccountRequired": "Active account is not a passkey account",
+    "passkeyEthSignHashRequired": "Passkey eth_sign requires a 32-byte hash so EIP-1271 verifiers can reproduce it",
+    "passkeyLegacyTypedDataUnsupported": "Passkey accounts do not support legacy typed-data V1 signing yet",
+    "passkeyUnsupportedSigningRequest": "Unsupported passkey signing request"
   },
   "settings": {
     "bgError": "Background Error",
@@ -534,7 +551,10 @@
     "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet",
     "activeAccountNotFound": "Error: Active account not found",
     "paliWalletBrowserExtension": "Pali Wallet Browser Extension",
-    "addressType": "Address type"
+    "addressType": "Address type",
+    "passkeyAccount": "Passkey Account",
+    "createPasskeyAccount": "Create Passkey Account",
+    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, Android biometrics, or a security key to approve smart-account transactions on zkSYS."
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

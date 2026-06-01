@@ -15,7 +15,7 @@ export interface IDAppController {
     host: string,
     accountId: number,
     accountType: KeyringAccountType
-  ) => void;
+  ) => Promise<void>;
   /**
    * Completes a connection with a DApp
    * @emits connect
@@ -75,11 +75,19 @@ export interface IDAppController {
    * Sets whether a DApp has an open popup
    */
   setHasWindow: (host: string, hasWindow: boolean) => void;
-
   /**
    * Setup communication
    */
   setup: (sender: chrome.runtime.MessageSender) => void;
+
+  /**
+   * Synchronizes persisted and in-memory dApp account state without emitting provider events.
+   */
+  syncAccountSession: (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
 }
 
 export interface IEventData {

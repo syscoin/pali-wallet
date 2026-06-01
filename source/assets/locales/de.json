@@ -215,7 +215,10 @@
     "closeAndReopenPali": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um sich zu authentifizieren und Ihre Hardware-Wallet zu verbinden",
     "activeAccountNotFound": "Fehler: Aktives Konto nicht gefunden",
     "paliWalletBrowserExtension": "Pali Wallet Browser-Erweiterung",
-    "addressType": "Adresstyp"
+    "addressType": "Adresstyp",
+    "passkeyAccount": "Passkey-Konto",
+    "createPasskeyAccount": "Passkey-Konto erstellen",
+    "createPasskeyAccountDescription": "Verwende Touch ID, Face ID, Windows Hello, Android-Biometrie oder einen Sicherheitsschlüssel, um Smart-Account-Transaktionen auf zkSYS zu genehmigen."
   },
   "components": {
     "newPassword": "Neues Passwort (min. 12 Zeichen)",
@@ -304,7 +307,18 @@
     "selectAccountToConnect": "Wählen Sie das Konto aus, das Sie mit dieser Seite verbinden möchten",
     "currentlyConnected": "Aktuell verbunden",
     "noAddress": "Keine Adresse",
-    "loadingAccounts": "Konten werden geladen..."
+    "loadingAccounts": "Konten werden geladen...",
+    "dappFallback": "Diese App",
+    "passkeyDefaultLabel": "{{host}} Passkey",
+    "createPasskeyAccountTitle": "Passkey-Konto erstellen",
+    "createPasskeyAccountDescription": "{{host}} möchte, dass Pali ein zkSYS-Smart-Konto erstellt, das durch den Passkey deines Geräts kontrolliert wird. Pali speichert nur öffentliche Metadaten; der private Schlüssel bleibt in deinem Authenticator.",
+    "sponsorPolicy": "Sponsor-Richtlinie: {{policy}}",
+    "sponsorGasOnly": "Gas-Sponsor optional",
+    "sponsorRequired": "Sponsor-Genehmigung erforderlich",
+    "sponsorDisabled": "Kein Sponsor",
+    "sponsorUrl": "Sponsor-URL: {{url}}",
+    "sponsorSigner": "Sponsor-Signierer: {{signer}}",
+    "sponsorRequiredWarning": "Dieses Konto erfordert eine Mitautorisierung des Sponsors, bevor Pali Transaktionen davon ausführen kann."
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",
@@ -534,7 +548,13 @@
     "invalidEthSignFormat": "Ungültiges eth_sign-Nachrichtenformat. 32-Byte-Hex-String (64 Zeichen) erwartet, erhalten: \"{{message}}\". Für die Signierung beliebigen Texts sollte die dApp personal_sign verwenden.",
     "unableToResolveEns": "ENS-Name kann nicht aufgelöst werden",
     "invalidDestination": "Ungültiges Ziel",
-    "verifyEnsOrUseAddress": "Bitte den ENS des Empfängers prüfen oder eine 0x-Adresse verwenden."
+    "verifyEnsOrUseAddress": "Bitte den ENS des Empfängers prüfen oder eine 0x-Adresse verwenden.",
+    "passkeyContractDeploymentUnsupported": "Passkey-Konten unterstützen noch keine Vertragsbereitstellung.",
+    "passkeyMulticallUnsupported": "Passkey-Konten unterstützen noch keine Multi-Call-Batches.",
+    "passkeyActiveAccountRequired": "Das aktive Konto ist kein Passkey-Konto",
+    "passkeyEthSignHashRequired": "Passkey eth_sign erfordert einen 32-Byte-Hash, damit EIP-1271-Prüfer ihn reproduzieren können",
+    "passkeyLegacyTypedDataUnsupported": "Passkey-Konten unterstützen noch keine Legacy-typed-data-V1-Signaturen",
+    "passkeyUnsupportedSigningRequest": "Nicht unterstützte Passkey-Signaturanfrage"
   },
   "start": {
     "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",
