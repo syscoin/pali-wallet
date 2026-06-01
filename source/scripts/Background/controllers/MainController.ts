@@ -2770,12 +2770,6 @@ class MainController {
             accountType: PaliKeyringAccountType.PasskeySmartAccount,
           })
         );
-        store.dispatch(
-          setActiveAccount({
-            id: newAccount.id,
-            type: PaliKeyringAccountType.PasskeySmartAccount,
-          })
-        );
         existingAddresses.add(candidate.address.toLowerCase());
         recoveredAccounts.push({
           address: newAccount.address,
@@ -2787,6 +2781,12 @@ class MainController {
     }
 
     if (recoveredAccounts.length > 0) {
+      store.dispatch(
+        setActiveAccount({
+          id: recoveredAccounts[0].id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+        })
+      );
       if (!store.getState().vault.passkeyCredentialProfile) {
         const firstRecovered = store.getState().vault.accounts[
           PaliKeyringAccountType.PasskeySmartAccount
