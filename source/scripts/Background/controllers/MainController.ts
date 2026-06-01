@@ -3694,7 +3694,7 @@ class MainController {
     return null;
   }
 
-  private ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+  private async ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
     const { accounts, activeAccount } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     let fallbackAccount = this.isAccountCompatibleWithNetwork(
@@ -3729,7 +3729,6 @@ class MainController {
           activeAccount,
         }
       );
-      return;
     }
 
     const { dapps } = store.getState().dapp;
@@ -3746,11 +3745,7 @@ class MainController {
         continue;
       }
 
-      controller.dapp.syncAccountSession(
-        host,
-        fallbackAccount.id,
-        fallbackAccount.type
-      );
+      await controller.dapp.disconnect(host);
     }
   }
 
@@ -5970,7 +5965,7 @@ class MainController {
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
-    this.ensureActiveAccountCompatibleWithNetwork(network);
+    await this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
