@@ -166,7 +166,10 @@ export const SendCalls = () => {
         );
 
       if (activeAccount.isPasskeySmartAccount && callsData.calls.length > 1) {
-        throw new Error(t('send.passkeyMulticallUnsupported'));
+        alert.error(t('send.passkeyMulticallUnsupported'));
+        clearNavigationState();
+        window.close();
+        return;
       }
 
       const receipts: any[] = [];
