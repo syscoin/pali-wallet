@@ -271,13 +271,25 @@ export const validatePasskeyClientDataJSON = (
     throw new Error('WebAuthn client data has an unexpected origin');
   }
 
+  const getByteOffset = (textOffset: number) =>
+    new TextEncoder().encode(clientDataText.slice(0, textOffset)).length;
+
+  const escapeRegExp = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   const findStringValueOffset = (fieldName: string, expectedValue: string) => {
-    const needle = `"${fieldName}":"${expectedValue}"`;
-    const fieldOffset = clientDataText.indexOf(needle);
-    if (fieldOffset < 0) {
+    const fieldPattern = new RegExp(
+      `${escapeRegExp(JSON.stringify(fieldName))}\\s*:\\s*${escapeRegExp(
+        JSON.stringify(expectedValue)
+      )}`
+    );
+    const match = fieldPattern.exec(clientDataText);
+    if (!match || match.index === undefined) {
       throw new Error(`WebAuthn client data is missing ${fieldName}`);
     }
-    return fieldOffset + fieldName.length + 4;
+
+    const valueOffset = match.index + match[0].lastIndexOf(expectedValue);
+    return getByteOffset(valueOffset);
   };
 
   const challengeOffset = findStringValueOffset('challenge', expectedChallenge);
@@ -286,11 +298,19 @@ export const validatePasskeyClientDataJSON = (
     ? findStringValueOffset('origin', expectedOrigin)
     : (() => {
         const encodedOrigin = JSON.stringify(clientData.origin);
-        const fieldOffset = clientDataText.indexOf(`"origin":${encodedOrigin}`);
-        if (fieldOffset < 0) {
+        const fieldPattern = new RegExp(
+          `${escapeRegExp(JSON.stringify('origin'))}\\s*:\\s*${escapeRegExp(
+            encodedOrigin
+          )}`
+        );
+        const match = fieldPattern.exec(clientDataText);
+        if (!match || match.index === undefined) {
           throw new Error('WebAuthn client data is missing origin');
         }
-        return fieldOffset + '"origin":'.length + 1;
+
+        const originValueOffset =
+          match.index + match[0].lastIndexOf(String(clientData.origin));
+        return getByteOffset(originValueOffset);
       })();
   if (challengeOffset < 0) {
     throw new Error(

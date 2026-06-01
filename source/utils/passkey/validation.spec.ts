@@ -377,6 +377,29 @@ describe('passkey validation utilities', () => {
     expect(offsets.challengeOffset).toBeGreaterThanOrEqual(0);
     expect(offsets.originOffset).toBeGreaterThanOrEqual(0);
     expect(offsets.typeOffset).toBeGreaterThanOrEqual(0);
+
+    const spacedClientData = new TextEncoder().encode(
+      `{
+        "challenge" : "${challenge}",
+        "origin" : "${origin}",
+        "type" : "webauthn.get"
+      }`
+    );
+    const spacedOffsets = validatePasskeyClientDataJSON(
+      spacedClientData,
+      challenge,
+      origin
+    );
+    expect(
+      spacedOffsets.clientDataText.slice(spacedOffsets.challengeOffset)
+    ).toContain(challenge);
+    expect(
+      spacedOffsets.clientDataText.slice(spacedOffsets.originOffset)
+    ).toContain(origin);
+    expect(
+      spacedOffsets.clientDataText.slice(spacedOffsets.typeOffset)
+    ).toContain('webauthn.get');
+
     expect(() =>
       validatePasskeyClientDataJSON(
         encodeClientData({ challenge: 'bad' }),
