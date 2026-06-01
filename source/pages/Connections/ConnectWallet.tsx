@@ -142,7 +142,7 @@ export const ConnectWallet = () => {
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { activeAccount: activeAccountData } = useSelector(
+  const { activeAccount: activeAccountData, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
   const { id, type } = activeAccountData;
@@ -197,6 +197,23 @@ export const ConnectWallet = () => {
     [accountAssets, isBitcoinBased]
   );
 
+  const isAccountValidForNetwork = useCallback(
+    (account: any, keyringAccountType?: KeyringAccountType | string) => {
+      if (!account) return false;
+      if (keyringAccountType === KeyringAccountType.PasskeySmartAccount) {
+        return (
+          !isBitcoinBased &&
+          Number(account?.passkey?.chainId) === Number(activeNetwork.chainId)
+        );
+      }
+
+      return isBitcoinBased
+        ? !isHexString(account.address)
+        : isHexString(account.address);
+    },
+    [activeNetwork.chainId, isBitcoinBased]
+  );
+
   const handleConnect = useCallback(async () => {
     // Safety check - ensure we have valid account selection
     if (accountId === null || accountType === null) {
@@ -208,6 +225,10 @@ export const ConnectWallet = () => {
     const selectedAccount = accounts[accountType]?.[accountId];
     if (!selectedAccount) {
       console.error('[ConnectWallet] Selected account not found');
+      return;
+    }
+    if (!isAccountValidForNetwork(selectedAccount, accountType)) {
+      console.error('[ConnectWallet] Selected account is invalid for network');
       return;
     }
 
@@ -231,7 +252,17 @@ export const ConnectWallet = () => {
       console.error('Failed to connect wallet:', error);
       setIsConnecting(false);
     }
-  }, [host, chain, chainId, accountId, accountType, date, accounts, eventName]);
+  }, [
+    host,
+    chain,
+    chainId,
+    accountId,
+    accountType,
+    date,
+    accounts,
+    eventName,
+    isAccountValidForNetwork,
+  ]);
 
   const onConfirm = () => {
     // Check if the host is in the trusted apps list
@@ -286,9 +317,7 @@ export const ConnectWallet = () => {
     return Object.entries(accounts)
       .map(([keyringAccountType, accountList]) => {
         const isValidAccount = (currentAccount: any) =>
-          isBitcoinBased
-            ? !isHexString(currentAccount.address)
-            : isHexString(currentAccount.address);
+          isAccountValidForNetwork(currentAccount, keyringAccountType);
 
         const validAccounts = Object.values(accountList).filter(isValidAccount);
 
@@ -300,7 +329,7 @@ export const ConnectWallet = () => {
       .filter(
         ({ accounts: keyringAccountsList }) => keyringAccountsList.length > 0
       );
-  }, [accounts, isBitcoinBased]);
+  }, [accounts, isAccountValidForNetwork]);
 
   return (
     <div className="flex flex-col w-full h-full">

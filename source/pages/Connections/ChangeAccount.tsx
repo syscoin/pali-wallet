@@ -173,9 +173,8 @@ TokenIconStack.displayName = 'TokenIconStack';
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();
   const dapp = useSelector((state: RootState) => state.dapp.dapps);
-  const { accounts, isBitcoinBased, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
   const accountAssets = useSelector(selectAccountAssets);
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
@@ -192,8 +191,17 @@ export const ChangeAccount = () => {
   }, [host]);
 
   // Helper to check if account is valid for current network type
-  const isAccountValidForNetwork = (account: any) => {
+  const isAccountValidForNetwork = (
+    account: any,
+    keyringAccountType?: KeyringAccountType
+  ) => {
     if (!account) return false;
+    if (keyringAccountType === KeyringAccountType.PasskeySmartAccount) {
+      return (
+        !isBitcoinBased &&
+        Number(account?.passkey?.chainId) === Number(activeNetwork.chainId)
+      );
+    }
     return isBitcoinBased
       ? !isHexString(account.address)
       : isHexString(account.address);
@@ -208,7 +216,10 @@ export const ChangeAccount = () => {
   if (currentAccountId === undefined && dapp[host]) {
     const dappAccount =
       accounts?.[dapp[host].accountType]?.[dapp[host].accountId];
-    if (dappAccount && isAccountValidForNetwork(dappAccount)) {
+    if (
+      dappAccount &&
+      isAccountValidForNetwork(dappAccount, dapp[host].accountType)
+    ) {
       currentAccountId = dapp[host].accountId;
       currentAccountType = dapp[host].accountType;
     }
@@ -259,10 +270,19 @@ export const ChangeAccount = () => {
 
     return Object.entries(accounts)
       .map(([keyringAccountType, accountList]) => {
-        const isValidAccount = (currentAccount: any) =>
-          isBitcoinBased
+        const isValidAccount = (currentAccount: any) => {
+          if (keyringAccountType === KeyringAccountType.PasskeySmartAccount) {
+            return (
+              !isBitcoinBased &&
+              Number(currentAccount?.passkey?.chainId) ===
+                Number(activeNetwork.chainId)
+            );
+          }
+
+          return isBitcoinBased
             ? !isHexString(currentAccount.address)
             : isHexString(currentAccount.address);
+        };
 
         const validAccounts = Object.values(accountList).filter(isValidAccount);
 
@@ -274,7 +294,7 @@ export const ChangeAccount = () => {
       .filter(
         ({ accounts: keyringAccountsList }) => keyringAccountsList.length > 0
       );
-  }, [accounts, isBitcoinBased]);
+  }, [accounts, activeNetwork.chainId, isBitcoinBased]);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
     setAccountId(id);

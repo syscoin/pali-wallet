@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
-import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
+import { LockIconSvg, PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import {
   IconButton,
   Icon,
@@ -81,6 +81,16 @@ const ACCOUNT_TYPE_CONFIG = {
       />
     ),
   },
+  [KeyringAccountType.PasskeySmartAccount]: {
+    label: 'Passkey',
+    bgColor: 'bg-purple-500',
+    icon: (props: any) => (
+      <LockIconSvg
+        className="mr-1 w-6 h-6 text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300"
+        {...props}
+      />
+    ),
+  },
 } as const;
 
 const ManageAccountsView = React.memo(() => {
@@ -122,7 +132,7 @@ const ManageAccountsView = React.memo(() => {
   const [isRemoving, setIsRemoving] = useState(false);
 
   const editAccount = useCallback(
-    (account: IKeyringAccountState) => {
+    (account: IKeyringAccountState, accountType: KeyringAccountType) => {
       // Create navigation context with scroll position from the ul element
       const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
 
@@ -134,7 +144,7 @@ const ManageAccountsView = React.memo(() => {
       navigateWithContext(
         navigate,
         '/settings/edit-account',
-        account,
+        { ...account, accountType },
         returnContext
       );
     },
@@ -243,7 +253,7 @@ const ManageAccountsView = React.memo(() => {
 
           <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
-              onClick={() => editAccount(account)}
+              onClick={() => editAccount(account, accountType)}
               type="primary"
               shape="circle"
             >

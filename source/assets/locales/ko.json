@@ -215,7 +215,10 @@
     "closeAndReopenPali": "이 창을 닫고 Pali를 다시 열어서 인증하고 하드웨어 지갑을 연결하세요",
     "activeAccountNotFound": "오류: 활성 계정을 찾을 수 없습니다",
     "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장",
-    "addressType": "주소 유형"
+    "addressType": "주소 유형",
+    "passkeyAccount": "패스키 계정",
+    "createPasskeyAccount": "패스키 계정 만들기",
+    "createPasskeyAccountDescription": "Touch ID, Face ID, Windows Hello, Android 생체 인증 또는 보안 키를 사용해 zkSYS의 스마트 계정 트랜잭션을 승인하세요."
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 12자)",
@@ -304,7 +307,18 @@
     "selectAccountToConnect": "이 사이트와 연결하고 싶은 계정을 선택하세요",
     "currentlyConnected": "현재 연결됨",
     "noAddress": "주소 없음",
-    "loadingAccounts": "계정 로딩 중..."
+    "loadingAccounts": "계정 로딩 중...",
+    "dappFallback": "이 앱",
+    "passkeyDefaultLabel": "{{host}} 패스키",
+    "createPasskeyAccountTitle": "패스키 계정 만들기",
+    "createPasskeyAccountDescription": "{{host}}에서 기기 패스키로 제어되는 zkSYS 스마트 계정을 Pali가 만들도록 요청합니다. Pali는 공개 메타데이터만 저장하며 개인 키는 인증 장치에 남아 있습니다.",
+    "sponsorPolicy": "스폰서 정책: {{policy}}",
+    "sponsorGasOnly": "가스 스폰서 선택 사항",
+    "sponsorRequired": "스폰서 승인 필요",
+    "sponsorDisabled": "스폰서 없음",
+    "sponsorUrl": "스폰서 URL: {{url}}",
+    "sponsorSigner": "스폰서 서명자: {{signer}}",
+    "sponsorRequiredWarning": "이 계정은 Pali가 트랜잭션을 실행하기 전에 스폰서의 공동 승인이 필요합니다."
   },
   "titles": {
     "assetDetails": "자산 상세정보",
@@ -534,7 +548,13 @@
     "invalidEthSignFormat": "유효하지 않은 eth_sign 메시지 형식입니다. 32바이트 hex 문자열(64자)이 예상되었지만 \"{{message}}\"를 받았습니다. 임의의 텍스트에 서명하려면 dapp에서 personal_sign을 사용해야 합니다.",
     "unableToResolveEns": "ENS 이름을 해석할 수 없습니다",
     "invalidDestination": "유효하지 않은 대상",
-    "verifyEnsOrUseAddress": "수신자의 ENS를 확인하거나 0x 주소를 사용하세요."
+    "verifyEnsOrUseAddress": "수신자의 ENS를 확인하거나 0x 주소를 사용하세요.",
+    "passkeyContractDeploymentUnsupported": "패스키 계정은 아직 계약 배포를 지원하지 않습니다.",
+    "passkeyMulticallUnsupported": "패스키 계정은 아직 다중 호출 배치를 지원하지 않습니다.",
+    "passkeyActiveAccountRequired": "활성 계정이 패스키 계정이 아닙니다",
+    "passkeyEthSignHashRequired": "EIP-1271 검증자가 재현할 수 있도록 Passkey eth_sign에는 32바이트 해시가 필요합니다",
+    "passkeyLegacyTypedDataUnsupported": "패스키 계정은 아직 레거시 typed-data V1 서명을 지원하지 않습니다",
+    "passkeyUnsupportedSigningRequest": "지원되지 않는 패스키 서명 요청입니다"
   },
   "start": {
     "paliDoesnt": "Pali는 비밀번호를 저장하지 않습니다. 액세스를 복구하려면 비밀 복구 구문으로 지갑을 재설정해야 합니다.",

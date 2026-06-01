@@ -19,6 +19,7 @@ import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
+import { getPasskeyAssertion } from 'utils/passkey';
 
 interface ISendCallsData {
   atomicRequired: boolean;
@@ -115,6 +116,14 @@ export const SendCalls = () => {
     [selectedCalls, transactionStatuses]
   );
 
+  const getPasskeySponsorProofForCall = (
+    call: ISendCallsData['calls'][number]
+  ) =>
+    call.capabilities?.passkeySponsorProof ||
+    call.capabilities?.sponsorProof ||
+    callsData.capabilities?.passkeySponsorProof ||
+    callsData.capabilities?.sponsorProof;
+
   // Watch for when all transactions are completed and dispatch response
   useEffect(() => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
@@ -155,6 +164,10 @@ export const SendCalls = () => {
             (!transactionStatuses?.[index] ||
               transactionStatuses[index].status !== 'success')
         );
+
+      if (activeAccount.isPasskeySmartAccount && selectedCallsData.length > 1) {
+        throw new Error(t('send.passkeyMulticallUnsupported'));
+      }
 
       const receipts: any[] = [];
       const from = callsData.from || activeAccount.address;
@@ -335,11 +348,54 @@ export const SendCalls = () => {
             return newStatuses;
           });
 
-          // Use the same method as SendTransaction
-          const response = (await controllerEmitter(
-            ['wallet', 'sendAndSaveEthTransaction'],
-            [tx, false] // false = not legacy transaction
-          )) as any;
+          let response: any;
+          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+            if (!toField) {
+              throw new Error(t('send.passkeyContractDeploymentUnsupported'));
+            }
+
+            const prepared = (await controllerEmitter(
+              ['wallet', 'preparePasskeyExecution'],
+              [
+                {
+                  target: toField,
+                  value: tx.value || '0x0',
+                  data: tx.data || '0x',
+                },
+              ],
+              300000
+            )) as any;
+            const assertion = await getPasskeyAssertion(
+              activeAccount.passkey.credentialId,
+              prepared.actionHash
+            );
+
+            response = await controllerEmitter(
+              ['wallet', 'submitPasskeyExecution'],
+              [
+                {
+                  execution: prepared.execution,
+                  proof: {
+                    authenticatorData: assertion.authenticatorData,
+                    clientDataJSON: assertion.clientDataJSON,
+                    challengeOffset: assertion.challengeOffset,
+                    originOffset: assertion.originOffset,
+                    r: assertion.r,
+                    s: assertion.s,
+                    typeOffset: assertion.typeOffset,
+                  },
+                  sponsorProof: getPasskeySponsorProofForCall(call),
+                },
+              ],
+              300000
+            );
+          } else {
+            // Use the same method as SendTransaction
+            response = (await controllerEmitter(
+              ['wallet', 'sendAndSaveEthTransaction'],
+              [tx, false] // false = not legacy transaction
+            )) as any;
+          }
 
           const txHash = response.hash || response;
 

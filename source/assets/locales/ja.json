@@ -215,7 +215,10 @@
     "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください",
     "activeAccountNotFound": "エラー：アクティブなアカウントが見つかりません",
     "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能",
-    "addressType": "アドレスタイプ"
+    "addressType": "アドレスタイプ",
+    "passkeyAccount": "パスキーアカウント",
+    "createPasskeyAccount": "パスキーアカウントを作成",
+    "createPasskeyAccountDescription": "Touch ID、Face ID、Windows Hello、Android 生体認証、またはセキュリティキーを使って、zkSYS 上のスマートアカウント取引を承認します。"
   },
   "components": {
     "newPassword": "新しいパスワード（最低12文字）",
@@ -304,7 +307,18 @@
     "selectAccountToConnect": "このサイトに接続したいアカウントを選択してください",
     "currentlyConnected": "現在接続中",
     "noAddress": "アドレスなし",
-    "loadingAccounts": "アカウントを読み込み中..."
+    "loadingAccounts": "アカウントを読み込み中...",
+    "dappFallback": "このアプリ",
+    "passkeyDefaultLabel": "{{host}} パスキー",
+    "createPasskeyAccountTitle": "パスキーアカウントを作成",
+    "createPasskeyAccountDescription": "{{host}} は、デバイスのパスキーで制御される zkSYS スマートアカウントを Pali に作成させようとしています。Pali が保存するのは公開メタデータのみで、秘密鍵は認証器に残ります。",
+    "sponsorPolicy": "スポンサー方針: {{policy}}",
+    "sponsorGasOnly": "ガススポンサーは任意",
+    "sponsorRequired": "スポンサー承認が必要",
+    "sponsorDisabled": "スポンサーなし",
+    "sponsorUrl": "スポンサー URL: {{url}}",
+    "sponsorSigner": "スポンサー署名者: {{signer}}",
+    "sponsorRequiredWarning": "このアカウントから Pali が取引を実行するには、スポンサーの共同承認が必要です。"
   },
   "titles": {
     "assetDetails": "資産詳細",
@@ -534,7 +548,13 @@
     "invalidEthSignFormat": "無効なeth_signメッセージ形式。32バイトのhex文字列（64文字）が期待されましたが、\"{{message}}\"を受け取りました。任意のテキストに署名する場合、dappはpersonal_signを使用する必要があります。",
     "unableToResolveEns": "ENS名を解決できません",
     "invalidDestination": "無効な宛先",
-    "verifyEnsOrUseAddress": "受信者のENSを確認するか、0xアドレスを使用してください。"
+    "verifyEnsOrUseAddress": "受信者のENSを確認するか、0xアドレスを使用してください。",
+    "passkeyContractDeploymentUnsupported": "パスキーアカウントはまだコントラクトデプロイに対応していません。",
+    "passkeyMulticallUnsupported": "パスキーアカウントはまだマルチコールバッチに対応していません。",
+    "passkeyActiveAccountRequired": "アクティブなアカウントはパスキーアカウントではありません",
+    "passkeyEthSignHashRequired": "EIP-1271 検証者が再現できるように、Passkey eth_sign には 32 バイトのハッシュが必要です",
+    "passkeyLegacyTypedDataUnsupported": "パスキーアカウントはまだレガシー typed-data V1 署名に対応していません",
+    "passkeyUnsupportedSigningRequest": "対応していないパスキー署名リクエストです"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",

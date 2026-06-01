@@ -20,6 +20,7 @@ export * from './storageAPI';
 export * from './strings';
 export * from './tokens';
 export * from './navigationState';
+export * from './passkey';
 
 /**
  * Safely extracts an error message from various error types

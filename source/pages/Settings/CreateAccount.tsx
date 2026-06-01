@@ -1,21 +1,32 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
+import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
+import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
+import { PASSKEY_FACTORY_ADDRESSES } from 'utils/passkey/contracts';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
+  const [passkeyLoading, setPasskeyLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
   const location = useLocation();
+  const activeNetwork = useSelector(
+    ({ vault }: RootState) => vault.activeNetwork
+  );
+  const isPasskeySupported = Boolean(
+    PASSKEY_FACTORY_ADDRESSES[activeNetwork.chainId]
+  );
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
@@ -38,6 +49,64 @@ const CreateAccount = () => {
         // didn't have explicit error handling UI for create account failures
         console.error('Error creating account:', error);
       }
+    }
+  };
+
+  const createPasskeyAccount = async () => {
+    setPasskeyLoading(true);
+
+    try {
+      const label = accountName || t('settings.passkeyAccount');
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const deploymentSalt = bytesToHex(
+        crypto.getRandomValues(new Uint8Array(32))
+      );
+      await controllerEmitter(['wallet', 'assertPasskeySmartAccountSupported']);
+      const credential = await createPasskeyCredential({
+        accountName: label,
+        challengeHex: bytesToHex(challenge),
+        userDisplayName: label,
+      });
+      const prepared = (await controllerEmitter(
+        ['wallet', 'preparePasskeySmartAccount'],
+        [
+          {
+            credentialId: credential.credentialId,
+            credentialIdHash: credential.credentialIdHash,
+            deploymentSalt,
+            label,
+            passkeyName: label,
+            publicKey: {
+              originHash: credential.originHash,
+              originLength: credential.originLength,
+              rpIdHash: credential.rpIdHash,
+              x: credential.x,
+              y: credential.y,
+            },
+          },
+        ]
+      )) as any;
+
+      const { address: newAddress } = (await controllerEmitter(
+        ['wallet', 'createPasskeySmartAccount'],
+        [
+          {
+            address: prepared.address,
+            label,
+            metadata: prepared.metadata,
+          },
+        ]
+      )) as any;
+
+      setAccountName(label);
+      setAddress(newAddress);
+    } catch (error) {
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        console.error('Error creating passkey account:', error);
+      }
+    } finally {
+      setPasskeyLoading(false);
     }
   };
 
@@ -96,6 +165,26 @@ const CreateAccount = () => {
             >
               {t('buttons.create')}
             </NeutralButton>
+
+            {isPasskeySupported && (
+              <div className="mt-4 rounded-lg border border-dashed border-brand-blue500/50 p-4 text-left">
+                <p className="mb-2 text-sm font-medium text-white">
+                  {t('settings.createPasskeyAccount')}
+                </p>
+                <p className="mb-4 text-xs text-brand-graylight">
+                  {t('settings.createPasskeyAccountDescription')}
+                </p>
+                <NeutralButton
+                  type="button"
+                  disabled={passkeyLoading || loading}
+                  loading={passkeyLoading}
+                  onClick={createPasskeyAccount}
+                  fullWidth
+                >
+                  {t('settings.createPasskeyAccount')}
+                </NeutralButton>
+              </div>
+            )}
           </div>
         </Form>
       )}

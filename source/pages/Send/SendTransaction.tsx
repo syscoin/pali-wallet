@@ -35,6 +35,7 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
+import { getPasskeyAssertion } from 'utils/passkey';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
@@ -89,6 +90,13 @@ export const SendTransaction = () => {
   const txMetadata = isExternal
     ? externalTx.txMetadata
     : state?.txMetadata || {};
+  const passkeySponsorProof =
+    txMetadata?.passkeySponsorProof ||
+    txMetadata?.sponsorProof ||
+    externalTx?.passkeySponsorProof ||
+    externalTx?.sponsorProof ||
+    (dataTx as any)?.passkeySponsorProof ||
+    (dataTx as any)?.sponsorProof;
 
   // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
   const explicitType = (dataTx as any)?.type;
@@ -317,7 +325,13 @@ export const SendTransaction = () => {
       console.error('Failed to refresh balance before sending:', error);
     }
 
-    if (activeAccount && balance > 0) {
+    const requestedValue = dataTx?.value
+      ? BigNumber.from(dataTx.value)
+      : BigNumber.from(0);
+    const canUsePasskeyGasPayer =
+      activeAccount?.isPasskeySmartAccount && requestedValue.isZero();
+
+    if (activeAccount && (balance > 0 || canUsePasskeyGasPayer)) {
       let txToSend = tx;
 
       // Handle approval-specific data encoding
@@ -368,8 +382,62 @@ export const SendTransaction = () => {
 
       try {
         let response;
+        const isPasskeyAccount = Boolean(
+          activeAccount.isPasskeySmartAccount && activeAccount.passkey
+        );
 
-        if (isLegacyTransaction) {
+        if (isPasskeyAccount) {
+          const candidateTo =
+            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
+          if (!candidateTo) {
+            alert.error(t('send.passkeyContractDeploymentUnsupported'));
+            setLoading(false);
+            return;
+          }
+
+          const passkeyTxValue = txToSend.value
+            ? safeBigNumber(
+                txToSend.value,
+                '0x0',
+                'transaction value'
+              ).toHexString()
+            : '0x0';
+          const prepared = (await controllerEmitter(
+            ['wallet', 'preparePasskeyExecution'],
+            [
+              {
+                target: candidateTo,
+                value: passkeyTxValue,
+                data: validateTransactionDataValue(txToSend.data),
+              },
+            ],
+            300000
+          )) as any;
+          const assertion = await getPasskeyAssertion(
+            activeAccount.passkey.credentialId,
+            prepared.actionHash
+          );
+
+          response = await controllerEmitter(
+            ['wallet', 'submitPasskeyExecution'],
+            [
+              {
+                execution: prepared.execution,
+                proof: {
+                  authenticatorData: assertion.authenticatorData,
+                  clientDataJSON: assertion.clientDataJSON,
+                  challengeOffset: assertion.challengeOffset,
+                  originOffset: assertion.originOffset,
+                  r: assertion.r,
+                  s: assertion.s,
+                  typeOffset: assertion.typeOffset,
+                },
+                sponsorProof: passkeySponsorProof,
+              },
+            ],
+            300000
+          );
+        } else if (isLegacyTransaction) {
           // Legacy transaction handling - MUST remove all EIP-1559 fields
           const txWithoutType = omitTransactionObjectData(txToSend, [
             'type',

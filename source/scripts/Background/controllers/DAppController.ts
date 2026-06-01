@@ -227,12 +227,8 @@ const DAppController = (): IDAppController => {
     accountId: number,
     accountType: KeyringAccountType
   ) => {
-    // Safety check: ensure the dapp session exists
     if (!_dapps[host]) {
-      console.warn(
-        `[DAppController] Cannot change account for ${host} - session not initialized`
-      );
-      return;
+      _dapps[host] = { activeAddress: '', hasWindow: false };
     }
 
     const date = Date.now();
@@ -271,6 +267,27 @@ const DAppController = (): IDAppController => {
       },
       PaliEvents.accountsChanged
     );
+  };
+
+  const syncAccountSession = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    const date = Date.now();
+    const { accounts, isBitcoinBased } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId];
+    if (!account) return;
+
+    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+
+    if (!_dapps[host]) {
+      _dapps[host] = { activeAddress: '', hasWindow: false };
+    }
+
+    _dapps[host].activeAddress = isBitcoinBased
+      ? account.xpub
+      : account.address;
   };
 
   const disconnect = async (host: string) => {
@@ -612,6 +629,7 @@ const DAppController = (): IDAppController => {
     setup,
     connect,
     changeAccount,
+    syncAccountSession,
     disconnect,
     requestPermissions,
     hasWindow,

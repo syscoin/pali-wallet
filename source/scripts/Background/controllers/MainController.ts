@@ -1,7 +1,11 @@
 // Removed unused import: ethErrors
 
+import { getAddress } from '@ethersproject/address';
+import { BigNumber } from '@ethersproject/bignumber';
+import { isHexString } from '@ethersproject/bytes';
+import { AddressZero, HashZero } from '@ethersproject/constants';
 import { Contract } from '@ethersproject/contracts';
-import { namehash } from '@ethersproject/hash';
+import { id as hashText, namehash } from '@ethersproject/hash';
 import { formatUnits } from '@ethersproject/units';
 import {
   KeyringManager,
@@ -83,7 +87,12 @@ import {
   setPostNetworkSwitchLoading,
   setEnsName,
 } from 'state/vaultGlobal';
-import { INetworkType } from 'types/network';
+import {
+  INetworkType,
+  IPasskeySmartAccountMetadata,
+  KeyringAccountType as PaliKeyringAccountType,
+  PasskeySponsorMode,
+} from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import {
   ITokenEthProps,
@@ -105,6 +114,22 @@ import {
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
+import {
+  getPasskeyFactory,
+  getPasskeyFactoryAddress,
+  PasskeyContractSponsorMode,
+  assertPasskeyRelayPayloadMatches,
+  normalizePasskeySponsorProof,
+  passkeyFactoryInterface,
+  passkeySmartAccountInterface,
+  PASSKEY_SMART_ACCOUNT_VERSION,
+  selectPasskeyDeploymentGasPayer,
+  selectPasskeyGasPayerCandidate,
+  selectFundedPasskeyGasPayerCandidate,
+  PasskeyRelayedTransactionNotFoundError,
+  verifyPasskeyRelayedSponsorProof,
+  verifyPasskeySponsorProof,
+} from 'utils/passkey';
 import { blacklistService } from 'utils/security/blacklistService';
 import { chromeStorage } from 'utils/storageAPI';
 import {
@@ -2538,6 +2563,986 @@ class MainController {
     return newAccount;
   }
 
+  public async createPasskeySmartAccount(params: {
+    address: string;
+    label?: string;
+    metadata: IPasskeySmartAccountMetadata;
+  }): Promise<any> {
+    const { accounts } = store.getState().vault;
+    const normalizedAddress = params.address.toLowerCase();
+    const accountAlreadyExists = Object.values(accounts).some(
+      (accountsByType: Record<number, any>) =>
+        Object.values(accountsByType || {}).some(
+          (account: any) =>
+            account?.address?.toLowerCase?.() === normalizedAddress
+        )
+    );
+
+    if (accountAlreadyExists) {
+      throw new Error('Account already exists on your Wallet.');
+    }
+
+    const passkeyAccounts =
+      accounts[PaliKeyringAccountType.PasskeySmartAccount] || {};
+    const existingIds = Object.values(passkeyAccounts)
+      .map((account: any) => account.id)
+      .filter((id) => Number.isFinite(id))
+      .sort((a, b) => a - b);
+
+    let nextId = 0;
+    for (const id of existingIds) {
+      if (id === nextId) {
+        nextId += 1;
+      } else if (id > nextId) {
+        break;
+      }
+    }
+
+    const newAccount = {
+      address: params.address,
+      balances: {
+        [INetworkType.Syscoin]: -1,
+        [INetworkType.Ethereum]: -1,
+      },
+      id: nextId,
+      isImported: false,
+      isLedgerWallet: false,
+      isPasskeySmartAccount: true,
+      isTrezorWallet: false,
+      label: params.label || `Passkey Account ${nextId + 1}`,
+      passkey: params.metadata,
+      xprv: '',
+      xpub: params.address,
+    };
+
+    store.dispatch(
+      createAccount({
+        account: newAccount,
+        accountType: PaliKeyringAccountType.PasskeySmartAccount,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: newAccount.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+      })
+    );
+
+    await this.saveWalletState('create-passkey-smart-account', true, true);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(true, true, false, true)
+        .catch((error) => {
+          console.error(
+            '[MainController] Failed to update passkey account after creation:',
+            error
+          );
+        })
+        .finally(() => {
+          store.dispatch(setIsPollingUpdate(false));
+          store.dispatch(setPostNetworkSwitchLoading(false));
+        });
+    }, 10);
+    return newAccount;
+  }
+
+  public async preparePasskeySmartAccount(params: {
+    credentialId: string;
+    credentialIdHash: string;
+    deploymentSalt: string;
+    label?: string;
+    passkeyName: string;
+    publicKey: {
+      originHash: string;
+      originLength: number;
+      rpIdHash: string;
+      x: string;
+      y: string;
+    };
+    sponsor?: {
+      mode?: string;
+      policyText?: string;
+      signer?: string;
+      url?: string;
+      urlHash?: string;
+    };
+  }): Promise<{
+    address: string;
+    factoryAddress: string;
+    metadata: IPasskeySmartAccountMetadata;
+  }> {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+
+    const gasPayer = this.getPasskeyGasPayerCandidate();
+
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
+    const factory = getPasskeyFactory(activeNetwork.chainId, provider);
+    const sponsor = this.normalizePasskeySponsor(params.sponsor);
+    const sponsorContractMode = this.getPasskeySponsorContractMode({
+      sponsor,
+    } as IPasskeySmartAccountMetadata);
+    const address = await factory.getAccountAddress(
+      gasPayer.account.address,
+      params.publicKey.x,
+      params.publicKey.y,
+      params.credentialIdHash,
+      params.publicKey.rpIdHash,
+      params.publicKey.originHash,
+      params.publicKey.originLength,
+      sponsorContractMode,
+      sponsor.signer || AddressZero,
+      sponsor.urlHash || HashZero,
+      params.deploymentSalt
+    );
+
+    return {
+      address,
+      factoryAddress,
+      metadata: {
+        chainId: activeNetwork.chainId,
+        contractVersion: PASSKEY_SMART_ACCOUNT_VERSION,
+        credentialId: params.credentialId,
+        credentialIdHash: params.credentialIdHash,
+        deploymentGasPayer: {
+          address: gasPayer.account.address,
+          id: gasPayer.account.id,
+          type: gasPayer.accountType,
+        },
+        deploymentSalt: params.deploymentSalt,
+        factoryAddress,
+        isDeployed: false,
+        passkeyName: params.passkeyName,
+        publicKey: params.publicKey,
+        sponsor,
+      },
+    };
+  }
+
+  private normalizePasskeySponsor(
+    sponsor?: {
+      mode?: string;
+      policyText?: string;
+      signer?: string;
+      url?: string;
+      urlHash?: string;
+    } | null
+  ): IPasskeySmartAccountMetadata['sponsor'] {
+    const requestedMode = sponsor?.mode || PasskeySponsorMode.Disabled;
+    if (
+      requestedMode !== PasskeySponsorMode.Disabled &&
+      requestedMode !== PasskeySponsorMode.GasOnly &&
+      requestedMode !== PasskeySponsorMode.Required
+    ) {
+      throw new Error(`Unsupported passkey sponsor mode: ${requestedMode}`);
+    }
+    const mode = requestedMode as PasskeySponsorMode;
+
+    let signer: string | undefined;
+    if (sponsor?.signer) {
+      signer = getAddress(sponsor.signer);
+    }
+
+    if (mode === PasskeySponsorMode.Required && !signer) {
+      throw new Error(
+        'Passkey sponsor mode "required" needs a valid sponsor signer'
+      );
+    }
+
+    const url = typeof sponsor?.url === 'string' ? sponsor.url.trim() : '';
+    const providedUrlHash =
+      typeof sponsor?.urlHash === 'string' ? sponsor.urlHash : '';
+    if (providedUrlHash && !/^0x[0-9a-fA-F]{64}$/.test(providedUrlHash)) {
+      throw new Error('Invalid passkey sponsor URL hash');
+    }
+
+    return {
+      mode,
+      ...(typeof sponsor?.policyText === 'string' && sponsor.policyText.trim()
+        ? { policyText: sponsor.policyText.trim() }
+        : {}),
+      ...(signer ? { signer } : {}),
+      ...(url ? { url, urlHash: hashText(url) } : {}),
+      ...(!url && providedUrlHash ? { urlHash: providedUrlHash } : {}),
+    };
+  }
+
+  private async passkeyGasPayerHasBalance(
+    address: string,
+    minimumBalanceWei: BigNumber
+  ) {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const balance = await provider.getBalance(address);
+    return BigNumber.from(balance).gte(minimumBalanceWei);
+  }
+
+  private async getDefaultPasskeyGasPayer(minimumBalanceWei: BigNumber) {
+    const { accounts, activeAccount } = store.getState().vault;
+    return selectFundedPasskeyGasPayerCandidate(
+      accounts,
+      activeAccount,
+      (address) => this.passkeyGasPayerHasBalance(address, minimumBalanceWei)
+    );
+  }
+
+  private getPasskeyGasPayerCandidate() {
+    const { accounts, activeAccount } = store.getState().vault;
+    return selectPasskeyGasPayerCandidate(accounts, activeAccount);
+  }
+
+  private async getPasskeyDeploymentGasPayer(
+    metadata: IPasskeySmartAccountMetadata,
+    minimumBalanceWei: BigNumber
+  ) {
+    const { accounts } = store.getState().vault;
+    if (!metadata.deploymentGasPayer) {
+      return this.getDefaultPasskeyGasPayer(minimumBalanceWei);
+    }
+    const gasPayer = selectPasskeyDeploymentGasPayer(accounts, metadata, () => {
+      throw new Error(
+        'Passkey deployment gas payer is no longer available in this wallet'
+      );
+    });
+    if (
+      !(await this.passkeyGasPayerHasBalance(
+        gasPayer.account.address,
+        minimumBalanceWei
+      ))
+    ) {
+      throw new Error(
+        'Passkey deployment gas payer does not have native gas on this network'
+      );
+    }
+    return gasPayer;
+  }
+
+  private async runWithGasPayer<T>(
+    gasPayer: { account: any; accountType: PaliKeyringAccountType },
+    callback: () => Promise<T>
+  ): Promise<T> {
+    const original = store.getState().vault.activeAccount;
+    store.dispatch(
+      setActiveAccount({
+        id: gasPayer.account.id,
+        type: gasPayer.accountType,
+      })
+    );
+
+    try {
+      return await callback();
+    } finally {
+      store.dispatch(setActiveAccount(original));
+      try {
+        await this.saveWalletState(
+          'restore-passkey-active-account',
+          false,
+          true
+        );
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to persist restored active account after passkey gas payer operation:',
+          error
+        );
+      }
+    }
+  }
+
+  private getPasskeySponsorContractMode(
+    metadata: IPasskeySmartAccountMetadata
+  ) {
+    switch (metadata.sponsor?.mode) {
+      case PasskeySponsorMode.GasOnly:
+        return PasskeyContractSponsorMode.GasOnly;
+      case PasskeySponsorMode.Required:
+        return PasskeyContractSponsorMode.Required;
+      case PasskeySponsorMode.Disabled:
+      default:
+        return PasskeyContractSponsorMode.None;
+    }
+  }
+
+  private assertPasskeyAccountNetwork(metadata: IPasskeySmartAccountMetadata) {
+    const { activeNetwork } = store.getState().vault;
+    if (
+      activeNetwork.kind !== INetworkType.Ethereum ||
+      metadata.chainId !== activeNetwork.chainId
+    ) {
+      throw new Error('Passkey account is not available on the active network');
+    }
+
+    return getPasskeyFactoryAddress(activeNetwork.chainId);
+  }
+
+  public assertPasskeySmartAccountSupported(): boolean {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+
+    getPasskeyFactoryAddress(activeNetwork.chainId);
+    return true;
+  }
+
+  private async assertPasskeyExecutionTargetAllowed(target: string) {
+    const blacklistResult = await blacklistService.checkAddress(
+      getAddress(target)
+    );
+    if (
+      blacklistResult.isBlacklisted &&
+      (blacklistResult.severity === 'critical' ||
+        blacklistResult.severity === 'high')
+    ) {
+      throw new Error(
+        `Passkey transaction blocked: ${
+          blacklistResult.reason || 'Execution target address is blacklisted'
+        }. Severity: ${blacklistResult.severity}`
+      );
+    }
+  }
+
+  private normalizePasskeyExecutionPayload(params: {
+    data?: string;
+    target: string;
+    value: string;
+  }) {
+    const target = getAddress(params.target);
+    const value = BigNumber.from(params.value);
+    if (value.lt(0)) {
+      throw new Error('Passkey execution value cannot be negative');
+    }
+
+    const data = params.data || '0x';
+    if (!isHexString(data)) {
+      throw new Error('Passkey execution data must be hex bytes');
+    }
+
+    return {
+      data,
+      target,
+      value: value.toString(),
+    };
+  }
+
+  public async ensurePasskeySmartAccountDeployed(): Promise<boolean> {
+    const { activeAccount, activeNetwork, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    const factoryAddress = this.assertPasskeyAccountNetwork(metadata);
+
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const code = await provider.getCode(account.address);
+    if (code && code !== '0x') {
+      return false;
+    }
+
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
+    const gasLimit = BigNumber.from(3_000_000);
+    const gasPayer = await this.getPasskeyDeploymentGasPayer(
+      metadata,
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
+    );
+    const data = passkeyFactoryInterface.encodeFunctionData('createAccount', [
+      metadata.publicKey.x,
+      metadata.publicKey.y,
+      metadata.credentialIdHash,
+      metadata.publicKey.rpIdHash,
+      metadata.publicKey.originHash,
+      metadata.publicKey.originLength,
+      this.getPasskeySponsorContractMode(metadata),
+      metadata.sponsor?.signer || AddressZero,
+      metadata.sponsor?.urlHash || HashZero,
+      metadata.deploymentSalt,
+    ]);
+
+    await this.runWithGasPayer(gasPayer, async () => {
+      const tx = await this.ethereumTransaction.sendFormattedTransaction(
+        {
+          chainId: activeNetwork.chainId,
+          data,
+          from: gasPayer.account.address,
+          gasLimit: gasLimit.toNumber(),
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          to: metadata.factoryAddress || factoryAddress,
+          value: 0,
+        },
+        false
+      );
+      await tx.wait?.();
+    });
+
+    const deployedCode = await provider.getCode(account.address);
+    if (!deployedCode || deployedCode === '0x') {
+      throw new Error('Passkey smart account deployment address mismatch');
+    }
+
+    const updatedMetadata = {
+      ...metadata,
+      isDeployed: true,
+    };
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id: account.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+        property: 'passkey',
+        value: updatedMetadata,
+      })
+    );
+    await this.saveWalletState('deploy-passkey-smart-account', true, true);
+    return true;
+  }
+
+  public async preparePasskeyExecution(params: {
+    data?: string;
+    target: string;
+    value: string;
+  }): Promise<{
+    actionHash: string;
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+  }> {
+    const normalizedParams = this.normalizePasskeyExecutionPayload(params);
+    await this.assertPasskeyExecutionTargetAllowed(normalizedParams.target);
+    await this.ensurePasskeySmartAccountDeployed();
+
+    const { activeAccount, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    const contract = new Contract(
+      account.address,
+      passkeySmartAccountInterface,
+      this.ethereumTransaction.web3Provider
+    );
+    const nonce = await contract.nonce();
+    const execution = {
+      target: normalizedParams.target,
+      value: normalizedParams.value,
+      data: normalizedParams.data,
+      nonce: nonce.toString(),
+      deadline: Math.floor(Date.now() / 1000) + 15 * 60,
+    };
+    const actionHash = await contract.getActionHash(execution);
+
+    return { actionHash, execution };
+  }
+
+  public async submitPasskeyExecution(params: {
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    proof: {
+      authenticatorData: string;
+      challengeOffset: number;
+      clientDataJSON: string;
+      originOffset: number;
+      r: string;
+      s: string;
+      typeOffset: number;
+    };
+    sponsorProof?:
+      | string
+      | {
+          r?: string;
+          s?: string;
+          signature?: string;
+          v?: number | string;
+        };
+    sponsorSignature?: string;
+  }) {
+    const { activeAccount, activeNetwork, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+
+    if (!account?.isPasskeySmartAccount) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    await this.assertPasskeyExecutionTargetAllowed(params.execution.target);
+
+    const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
+    let sponsorProof = emptySponsorProof;
+    const sponsorResult = await this.resolvePasskeySponsorResult(
+      account,
+      activeNetwork.chainId,
+      params
+    );
+    if (sponsorResult.type === 'relayed') {
+      try {
+        const txResponse = await this.verifyPasskeyRelayedTransaction(
+          sponsorResult.txHash,
+          account.address,
+          params.execution,
+          params.proof,
+          metadata
+        );
+        await this.sendAndSaveTransaction(
+          txResponse as IEvmTransactionResponse,
+          {
+            id: account.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+          }
+        );
+        return { hash: sponsorResult.txHash };
+      } catch (error) {
+        if (
+          metadata.sponsor?.mode !== PasskeySponsorMode.GasOnly ||
+          error instanceof PasskeyRelayedTransactionNotFoundError
+        ) {
+          throw error;
+        }
+      }
+    } else {
+      sponsorProof = sponsorResult.sponsorProof;
+    }
+
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
+    const gasLimit = BigNumber.from(1_000_000);
+    const gasPayer = await this.getDefaultPasskeyGasPayer(
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
+    );
+    const data = passkeySmartAccountInterface.encodeFunctionData('execute', [
+      params.execution,
+      params.proof,
+      sponsorProof,
+    ]);
+
+    return await this.runWithGasPayer(gasPayer, async () =>
+      this.sendAndSaveEthTransaction(
+        {
+          chainId: activeNetwork.chainId,
+          data,
+          from: gasPayer.account.address,
+          gasLimit: gasLimit.toNumber(),
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          to: account.address,
+          value: 0,
+        },
+        false,
+        {
+          id: account.id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+        }
+      )
+    );
+  }
+
+  private async resolvePasskeySponsorResult(
+    account: any,
+    chainId: number,
+    params: {
+      execution: {
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      };
+      proof: {
+        authenticatorData: string;
+        challengeOffset: number;
+        clientDataJSON: string;
+        originOffset: number;
+        r: string;
+        s: string;
+        typeOffset: number;
+      };
+      sponsorProof?:
+        | string
+        | {
+            r?: string;
+            s?: string;
+            signature?: string;
+            v?: number | string;
+          };
+      sponsorSignature?: string;
+    }
+  ): Promise<
+    | { sponsorProof: { r: string; s: string; v: number }; type: 'local' }
+    | { txHash: string; type: 'relayed' }
+  > {
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    const emptyProof = { v: 0, r: HashZero, s: HashZero };
+
+    const contract = new Contract(
+      account.address,
+      passkeySmartAccountInterface,
+      this.ethereumTransaction.web3Provider
+    );
+    const actionHash = await contract.getActionHash(params.execution);
+    const providedProof = this.normalizePasskeySponsorProof(
+      params.sponsorProof || params.sponsorSignature
+    );
+    if (providedProof) {
+      verifyPasskeySponsorProof(actionHash, providedProof, metadata);
+      return { sponsorProof: providedProof, type: 'local' };
+    }
+
+    if (
+      metadata.sponsor?.mode !== PasskeySponsorMode.Required &&
+      metadata.sponsor?.mode !== PasskeySponsorMode.GasOnly
+    ) {
+      return { sponsorProof: emptyProof, type: 'local' };
+    }
+
+    if (
+      !metadata.sponsor?.url &&
+      metadata.sponsor?.mode === PasskeySponsorMode.Required
+    ) {
+      throw new Error(
+        'This passkey account requires sponsor authorization, but no sponsor URL is configured'
+      );
+    }
+    if (!metadata.sponsor?.url) {
+      return { sponsorProof: emptyProof, type: 'local' };
+    }
+
+    let sponsorResult:
+      | {
+          sponsorProof: { r: string; s: string; v: number };
+          type: 'authorization';
+        }
+      | { txHash: string; type: 'relayed' };
+    try {
+      sponsorResult = await this.fetchPasskeySponsorResult(
+        metadata.sponsor.url,
+        {
+          account: account.address,
+          actionHash,
+          chainId,
+          execution: params.execution,
+          proof: params.proof,
+          sponsorSigner: metadata.sponsor.signer,
+          version: PASSKEY_SMART_ACCOUNT_VERSION,
+        }
+      );
+    } catch (error) {
+      if (metadata.sponsor.mode === PasskeySponsorMode.GasOnly) {
+        return { sponsorProof: emptyProof, type: 'local' };
+      }
+      throw error;
+    }
+
+    if (sponsorResult.type === 'relayed') {
+      return sponsorResult;
+    }
+    if (metadata.sponsor.mode === PasskeySponsorMode.GasOnly) {
+      return { sponsorProof: emptyProof, type: 'local' };
+    }
+    verifyPasskeySponsorProof(actionHash, sponsorResult.sponsorProof, metadata);
+    return { sponsorProof: sponsorResult.sponsorProof, type: 'local' };
+  }
+
+  private normalizePasskeySponsorProof(
+    proofOrSignature?:
+      | string
+      | {
+          r?: string;
+          s?: string;
+          signature?: string;
+          v?: number | string;
+        }
+      | null
+  ): { r: string; s: string; v: number } | null {
+    return normalizePasskeySponsorProof(proofOrSignature);
+  }
+
+  private async fetchPasskeySponsorResult(
+    sponsorUrl: string,
+    payload: {
+      account: string;
+      actionHash: string;
+      chainId: number;
+      execution: {
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      };
+      proof: {
+        authenticatorData: string;
+        challengeOffset: number;
+        clientDataJSON: string;
+        originOffset: number;
+        r: string;
+        s: string;
+        typeOffset: number;
+      };
+      sponsorSigner?: string;
+      version: string;
+    }
+  ): Promise<
+    | {
+        sponsorProof: { r: string; s: string; v: number };
+        type: 'authorization';
+      }
+    | { txHash: string; type: 'relayed' }
+  > {
+    const responseBody = await this.postPasskeySponsorRequest(sponsorUrl, {
+      ...payload,
+      idempotencyKey: payload.actionHash,
+      requestType: 'execute',
+    });
+    return this.resolvePasskeySponsorResponse(
+      sponsorUrl,
+      payload,
+      responseBody
+    );
+  }
+
+  private async postPasskeySponsorRequest(
+    sponsorUrl: string,
+    payload: Record<string, unknown>
+  ) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+
+    try {
+      const response = await fetch(sponsorUrl, {
+        body: JSON.stringify(payload),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sponsor authorization failed: ${response.status}`);
+      }
+
+      return response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async resolvePasskeySponsorResponse(
+    sponsorUrl: string,
+    payload: {
+      account: string;
+      actionHash: string;
+      chainId: number;
+      execution: {
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      };
+      proof: {
+        authenticatorData: string;
+        challengeOffset: number;
+        clientDataJSON: string;
+        originOffset: number;
+        r: string;
+        s: string;
+        typeOffset: number;
+      };
+      sponsorSigner?: string;
+      version: string;
+    },
+    body: any
+  ): Promise<
+    | {
+        sponsorProof: { r: string; s: string; v: number };
+        type: 'authorization';
+      }
+    | { txHash: string; type: 'relayed' }
+  > {
+    const immediate = this.parsePasskeySponsorResponse(body);
+    if (immediate.type !== 'pending') {
+      return immediate;
+    }
+
+    return this.pollPasskeySponsorRequest(
+      immediate.statusUrl || sponsorUrl,
+      payload,
+      immediate.requestId
+    );
+  }
+
+  private parsePasskeySponsorResponse(body: any):
+    | { requestId: string; statusUrl?: string; type: 'pending' }
+    | {
+        sponsorProof: { r: string; s: string; v: number };
+        type: 'authorization';
+      }
+    | { txHash: string; type: 'relayed' } {
+    const txHash = body?.txHash || body?.transactionHash || body?.hash;
+    if (typeof txHash === 'string' && /^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return { txHash, type: 'relayed' };
+    }
+
+    const sponsorProof = this.normalizePasskeySponsorProof(
+      body?.sponsorProof || body?.signature || body?.sponsorSignature
+    );
+    if (sponsorProof) {
+      return { sponsorProof, type: 'authorization' };
+    }
+
+    const requestId = body?.requestId || body?.id;
+    const status = String(body?.status || body?.type || '').toLowerCase();
+    if (requestId && (status === 'pending' || status === 'queued' || !status)) {
+      return {
+        requestId: String(requestId),
+        statusUrl:
+          typeof body?.statusUrl === 'string' ? body.statusUrl : undefined,
+        type: 'pending',
+      };
+    }
+
+    throw new Error(
+      'Sponsor response did not include txHash, signature, or pending request id'
+    );
+  }
+
+  private async pollPasskeySponsorRequest(
+    statusUrl: string,
+    payload: {
+      account: string;
+      actionHash: string;
+      chainId: number;
+      execution: {
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      };
+      proof: {
+        authenticatorData: string;
+        challengeOffset: number;
+        clientDataJSON: string;
+        originOffset: number;
+        r: string;
+        s: string;
+        typeOffset: number;
+      };
+      sponsorSigner?: string;
+      version: string;
+    },
+    requestId: string
+  ): Promise<
+    | {
+        sponsorProof: { r: string; s: string; v: number };
+        type: 'authorization';
+      }
+    | { txHash: string; type: 'relayed' }
+  > {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      const body = await this.postPasskeySponsorRequest(statusUrl, {
+        account: payload.account,
+        actionHash: payload.actionHash,
+        chainId: payload.chainId,
+        idempotencyKey: payload.actionHash,
+        requestId,
+        requestType: 'status',
+        version: payload.version,
+      });
+      const result = this.parsePasskeySponsorResponse(body);
+      if (result.type !== 'pending') {
+        return result;
+      }
+    }
+
+    throw new Error('Sponsor relay request is still pending');
+  }
+
+  private async verifyPasskeyRelayedTransaction(
+    txHash: string,
+    expectedAccount: string,
+    expectedExecution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    },
+    expectedProof: {
+      authenticatorData: string;
+      challengeOffset: number;
+      clientDataJSON: string;
+      originOffset: number;
+      r: string;
+      s: string;
+      typeOffset: number;
+    },
+    metadata: IPasskeySmartAccountMetadata
+  ) {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const tx = await provider.getTransaction(txHash);
+      if (tx) {
+        if (tx.to?.toLowerCase() !== expectedAccount.toLowerCase()) {
+          throw new Error('Sponsor relayed an unexpected passkey transaction');
+        }
+        const decoded = passkeySmartAccountInterface.decodeFunctionData(
+          'execute',
+          tx.data
+        );
+        assertPasskeyRelayPayloadMatches(
+          decoded[0],
+          decoded[1],
+          expectedExecution,
+          expectedProof
+        );
+        if (metadata.sponsor?.mode === PasskeySponsorMode.Required) {
+          const actionHash = await new Contract(
+            expectedAccount,
+            passkeySmartAccountInterface,
+            provider
+          ).getActionHash(expectedExecution);
+          verifyPasskeyRelayedSponsorProof(actionHash, decoded[2], metadata);
+        }
+        return tx;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    throw new PasskeyRelayedTransactionNotFoundError();
+  }
+
   public async setAccount(
     id: number,
     type: KeyringAccountType,
@@ -2547,6 +3552,24 @@ class MainController {
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
       try {
+        const { accounts, activeNetwork, isBitcoinBased } =
+          store.getState().vault;
+        if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+          const account = accounts[type]?.[id] as any;
+          if (isBitcoinBased) {
+            throw new Error(
+              'Passkey accounts are only available on EVM networks'
+            );
+          }
+          if (
+            Number(account?.passkey?.chainId) !== Number(activeNetwork.chainId)
+          ) {
+            throw new Error(
+              'Passkey account is not available on the active network'
+            );
+          }
+        }
+
         // Cancel any pending async operations before switching accounts
         if (this.cancellablePromises.transactionPromise) {
           this.cancellablePromises.transactionPromise.cancel();
@@ -2622,6 +3645,112 @@ class MainController {
     } finally {
       store.dispatch(setIsPollingUpdate(false));
       store.dispatch(setPostNetworkSwitchLoading(false));
+    }
+  }
+
+  private isAccountCompatibleWithNetwork(
+    account: any,
+    type: PaliKeyringAccountType,
+    network: INetwork
+  ): boolean {
+    if (!account) return false;
+
+    if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+      return (
+        network.kind === INetworkType.Ethereum &&
+        Number(account?.passkey?.chainId) === Number(network.chainId)
+      );
+    }
+
+    const address = account.address;
+    if (typeof address !== 'string') return false;
+
+    return network.kind === INetworkType.Syscoin
+      ? !isHexString(address)
+      : isHexString(address);
+  }
+
+  private getFirstCompatibleAccountForNetwork(network: INetwork) {
+    const { accounts } = store.getState().vault;
+
+    for (const [accountType, accountsOfType] of Object.entries(accounts)) {
+      for (const account of Object.values(accountsOfType || {}) as any[]) {
+        if (
+          this.isAccountCompatibleWithNetwork(
+            account,
+            accountType as PaliKeyringAccountType,
+            network
+          )
+        ) {
+          return {
+            account,
+            id: account.id,
+            type: accountType as PaliKeyringAccountType,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+    const { accounts, activeAccount } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    let fallbackAccount = this.isAccountCompatibleWithNetwork(
+      currentAccount,
+      activeAccount.type,
+      network
+    )
+      ? {
+          account: currentAccount,
+          id: activeAccount.id,
+          type: activeAccount.type,
+        }
+      : null;
+
+    if (!fallbackAccount) {
+      fallbackAccount = this.getFirstCompatibleAccountForNetwork(network);
+      if (fallbackAccount) {
+        store.dispatch(
+          setActiveAccount({
+            id: fallbackAccount.id,
+            type: fallbackAccount.type,
+          })
+        );
+      }
+    }
+
+    if (!fallbackAccount) {
+      console.warn(
+        '[MainController] No compatible account found after network switch',
+        {
+          network: network.chainId,
+          activeAccount,
+        }
+      );
+      return;
+    }
+
+    const { dapps } = store.getState().dapp;
+    const controller = getController();
+    for (const [host, dapp] of Object.entries(dapps)) {
+      const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
+      if (
+        this.isAccountCompatibleWithNetwork(
+          dappAccount,
+          dapp.accountType,
+          network
+        )
+      ) {
+        continue;
+      }
+
+      controller.dapp.syncAccountSession(
+        host,
+        fallbackAccount.id,
+        fallbackAccount.type
+      );
     }
   }
 
@@ -3553,7 +4682,8 @@ class MainController {
   }
 
   private async sendAndSaveTransaction(
-    tx: IEvmTransactionResponse | ISysTransaction | ITxid
+    tx: IEvmTransactionResponse | ISysTransaction | ITxid,
+    targetAccount?: { id: number; type: PaliKeyringAccountType }
   ) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
@@ -3577,6 +4707,8 @@ class MainController {
 
       store.dispatch(
         setSingleTransactionToState({
+          accountId: targetAccount?.id,
+          accountType: targetAccount?.type,
           chainId: activeNetwork.chainId,
           networkType: TransactionsType.Syscoin,
           transaction: minimalTx as ISysTransaction,
@@ -3585,7 +4717,8 @@ class MainController {
 
       // Notify about new pending transaction
       const { accounts, activeAccount } = store.getState().vault;
-      const account = accounts[activeAccount.type]?.[activeAccount.id];
+      const accountInfo = targetAccount ?? activeAccount;
+      const account = accounts[accountInfo.type]?.[accountInfo.id];
       if (account) {
         notificationManager.notifyTransaction({
           transaction: minimalTx,
@@ -3644,6 +4777,8 @@ class MainController {
 
     store.dispatch(
       setSingleTransactionToState({
+        accountId: targetAccount?.id,
+        accountType: targetAccount?.type,
         chainId: activeNetwork.chainId,
         networkType: isBitcoinBased
           ? TransactionsType.Syscoin
@@ -3654,7 +4789,8 @@ class MainController {
 
     // Notify about new pending transaction
     const { accounts, activeAccount } = store.getState().vault;
-    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    const accountInfo = targetAccount ?? activeAccount;
+    const account = accounts[accountInfo.type]?.[accountInfo.id];
     if (account) {
       notificationManager.notifyTransaction({
         transaction: txWithTimestamp,
@@ -3768,7 +4904,8 @@ class MainController {
    */
   public async sendAndSaveEthTransaction(
     params: any,
-    isLegacy?: boolean
+    isLegacy?: boolean,
+    targetAccount?: { id: number; type: PaliKeyringAccountType }
   ): Promise<IEvmTransactionResponse> {
     try {
       const controller = getController();
@@ -3797,7 +4934,7 @@ class MainController {
         );
 
       // Save the transaction (this will also clear navigation state)
-      await this.sendAndSaveTransaction(txResponse);
+      await this.sendAndSaveTransaction(txResponse, targetAccount);
 
       return txResponse;
     } catch (error) {
@@ -3919,7 +5056,7 @@ class MainController {
   }: {
     activeAccount: {
       id: number;
-      type: KeyringAccountType;
+      type: PaliKeyringAccountType;
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
@@ -4031,7 +5168,7 @@ class MainController {
   }: {
     activeAccount: {
       id: number;
-      type: KeyringAccountType;
+      type: PaliKeyringAccountType;
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
@@ -4833,6 +5970,7 @@ class MainController {
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
+    this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
