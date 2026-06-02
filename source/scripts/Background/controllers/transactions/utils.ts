@@ -232,11 +232,17 @@ export const treatAndSortTransactions = (
   const txMap = new Map<string, UnifiedTransaction>();
 
   for (const tx of transactions) {
-    // For EVM transactions with nonce, use nonce to detect replacements
-    // For UTXO or transactions without nonce, use hash/txid
+    // For EVM transactions, nonce is only unique per sender. Include `from`
+    // so inbound and outbound txs with the same nonce do not collapse together.
+    // For UTXO or transactions without a sender nonce, use hash/txid.
     let id: string;
-    if ('nonce' in tx && typeof tx.nonce === 'number') {
-      id = tx.nonce.toString();
+    if (
+      'nonce' in tx &&
+      typeof tx.nonce === 'number' &&
+      'from' in tx &&
+      tx.from
+    ) {
+      id = `${tx.from.toLowerCase()}:${tx.nonce}`;
     } else {
       id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
     }

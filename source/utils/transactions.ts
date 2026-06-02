@@ -36,6 +36,16 @@ export const getTransactionDisplayInfo = async (
   isNft: boolean;
   tokenId?: string; // Token ID for NFTs
 }> => {
+  const passkeyInnerTx = getPasskeyDisplayTransaction(tx);
+  if (passkeyInnerTx) {
+    return getTransactionDisplayInfo(
+      passkeyInnerTx,
+      currency,
+      skipUnknownTokenFetch,
+      controller
+    );
+  }
+
   const isTokenTx = isTokenTransfer(tx);
 
   if (isTokenTx) {
@@ -311,6 +321,90 @@ export const getTransactionDisplayInfo = async (
     actualRecipient: tx.to || '', // For native transfers, tx.to is the actual recipient
     isNft: false,
   };
+};
+
+const PASSKEY_EXECUTE_SELECTOR = id(
+  'execute((address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
+).slice(0, 10);
+const PASSKEY_CREATE_AND_EXECUTE_SELECTOR = id(
+  'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint256,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
+).slice(0, 10);
+const PASSKEY_SET_SPONSOR_SELECTOR = id(
+  'setSponsor(uint8,address,bytes32)'
+).slice(0, 10);
+
+export const getPasskeyDisplayTransaction = (tx: any): any | null => {
+  const input = String(tx?.input || tx?.data || '');
+  if (!input || input === '0x' || input.length < 10) {
+    return null;
+  }
+
+  try {
+    let executions: any[] | null = null;
+    let passkeyExecutionFrom = tx.passkeyExecutionFrom || tx.from;
+    if (input.startsWith(PASSKEY_EXECUTE_SELECTOR)) {
+      [executions] = defaultAbiCoder.decode(
+        [
+          'tuple(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[]',
+          'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+          'tuple(uint8 v,bytes32 r,bytes32 s)',
+        ],
+        `0x${input.slice(10)}`
+      ) as unknown as [any[], unknown, unknown];
+      passkeyExecutionFrom = tx.passkeyExecutionFrom || tx.to || tx.from;
+    } else if (input.startsWith(PASSKEY_CREATE_AND_EXECUTE_SELECTOR)) {
+      [, executions] = defaultAbiCoder.decode(
+        [
+          'tuple(bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt)',
+          'tuple(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[]',
+          'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+          'tuple(uint8 v,bytes32 r,bytes32 s)',
+        ],
+        `0x${input.slice(10)}`
+      ) as unknown as [unknown, any[], unknown, unknown];
+    }
+
+    if (!executions?.length) {
+      return null;
+    }
+
+    const outerTo = String(tx?.to || '').toLowerCase();
+    const passkeyAccount = String(passkeyExecutionFrom || '').toLowerCase();
+    const isPolicyExecution = (execution: any) => {
+      const target = String(execution.target || '').toLowerCase();
+      const data = String(execution.data || '0x');
+      const value =
+        execution.value?.toString?.() || String(execution.value || '0');
+
+      return (
+        executions.length > 1 &&
+        data.startsWith(PASSKEY_SET_SPONSOR_SELECTOR) &&
+        value === '0' &&
+        (!passkeyAccount || target === passkeyAccount)
+      );
+    };
+    const selected =
+      executions.find((execution) => !isPolicyExecution(execution)) ||
+      executions.find((execution) => {
+        const target = String(execution.target || '').toLowerCase();
+        const data = String(execution.data || '0x');
+        const value =
+          execution.value?.toString?.() || String(execution.value || '0');
+        return target !== outerTo || data !== '0x' || value !== '0';
+      }) ||
+      executions[executions.length - 1];
+
+    return {
+      ...tx,
+      from: passkeyExecutionFrom,
+      input: selected.data || '0x',
+      data: selected.data || '0x',
+      to: selected.target,
+      value: selected.value?.toString?.() || selected.value || '0',
+    };
+  } catch (error) {
+    return null;
+  }
 };
 
 export const getAssetBalance = (

@@ -21,6 +21,7 @@ import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
+import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { getPasskeyAssertion } from 'utils/passkey';
 
@@ -148,6 +149,13 @@ const EthSign: React.FC<ISign> = () => {
       activeAccount.passkey.credentialId,
       hash
     );
+    await controllerEmitter(
+      ['wallet', 'updatePasskeyBackupStatus'],
+      [activeAccount.id, assertion.backupStatus],
+      300000
+    ).catch((error) =>
+      logError('Failed to update passkey backup status', 'UI', error)
+    );
 
     return defaultAbiCoder.encode(
       [
@@ -228,11 +236,45 @@ const EthSign: React.FC<ISign> = () => {
             : undefined;
         const signHash = getPasskeySignHash(typedData);
 
-        await controllerEmitter(
-          ['wallet', 'ensurePasskeySmartAccountDeployed'],
+        const policyDeployment = (await controllerEmitter(
+          ['wallet', 'preparePasskeyDeploymentPolicyExecution'],
           [],
           300000
-        );
+        )) as any;
+        if (policyDeployment) {
+          const assertion = await getPasskeyAssertion(
+            activeAccount.passkey.credentialId,
+            policyDeployment.actionHash
+          );
+          await controllerEmitter(
+            ['wallet', 'submitPasskeyExecution'],
+            [
+              {
+                actionHash: policyDeployment.actionHash,
+                execution: policyDeployment.execution,
+                executions: policyDeployment.executions,
+                requiresDeployment: policyDeployment.requiresDeployment,
+                proof: {
+                  authenticatorData: assertion.authenticatorData,
+                  clientDataJSON: assertion.clientDataJSON,
+                  challengeOffset: assertion.challengeOffset,
+                  originOffset: assertion.originOffset,
+                  r: assertion.r,
+                  s: assertion.s,
+                  typeOffset: assertion.typeOffset,
+                },
+                waitForConfirmation: true,
+              },
+            ],
+            300000
+          );
+        } else {
+          await controllerEmitter(
+            ['wallet', 'ensurePasskeySmartAccountDeployed'],
+            [],
+            300000
+          );
+        }
 
         response = await encodePasskey1271Signature(signHash);
       } else if (data.eventName === 'eth_sign')

@@ -115,6 +115,9 @@ const ConnectHardwareWallet = lazy(() =>
 const CreateAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.CreateAccount }))
 );
+const CreatePasskeySettingsAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.CreatePasskeySettingsAccount }))
+);
 const CreatePass = lazy(() =>
   import('pages').then((m) => ({ default: m.CreatePass }))
 );
@@ -172,6 +175,12 @@ const CreatePasswordImport = lazy(() =>
 );
 const ManageAccounts = lazy(() =>
   import('pages').then((m) => ({ default: m.ManageAccounts }))
+);
+const RecoverPasskeyAccounts = lazy(() =>
+  import('pages').then((m) => ({ default: m.RecoverPasskeyAccounts }))
+);
+const PasskeyAccountPolicy = lazy(() =>
+  import('pages').then((m) => ({ default: m.PasskeyAccountPolicy }))
 );
 const EditAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.EditAccount }))
@@ -330,6 +339,18 @@ export const Router = () => {
 
             {/* Account sub-routes */}
             <Route path="/settings/account/new" element={<CreateAccount />} />
+            <Route
+              path="/settings/account/passkey-new"
+              element={<CreatePasskeySettingsAccount />}
+            />
+            <Route
+              path="/settings/account/passkey-recover"
+              element={<RecoverPasskeyAccounts />}
+            />
+            <Route
+              path="/settings/account/passkey-policy"
+              element={<PasskeyAccountPolicy />}
+            />
             <Route
               path="/settings/account/import"
               element={<ImportAccount />}

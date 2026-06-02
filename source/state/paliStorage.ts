@@ -20,6 +20,21 @@ export const saveSlip44State = async (slip44: number, vaultState: any) => {
   }
 };
 
+export const savePasskeySlip44State = async (
+  slip44: number,
+  passkeyState: any
+) => {
+  try {
+    await chromeStorage.setItem(`state-vault-${slip44}-passkeys`, passkeyState);
+  } catch (error) {
+    console.error(
+      `[PaliStorage] ❌ Failed to save passkey vault overlay ${slip44}:`,
+      error
+    );
+    throw error;
+  }
+};
+
 export const loadState = async () => {
   try {
     const serializedState = await chromeStorage.getItem('state');
@@ -47,6 +62,22 @@ export const loadSlip44State = async (slip44: number) => {
   } catch (error) {
     console.error(
       `[PaliStorage] ❌ Failed to load slip44 vault ${slip44}:`,
+      error
+    );
+    return null;
+  }
+};
+
+export const loadPasskeySlip44State = async (slip44: number) => {
+  try {
+    const serializedState = await chromeStorage.getItem(
+      `state-vault-${slip44}-passkeys`
+    );
+
+    return serializedState || null;
+  } catch (error) {
+    console.error(
+      `[PaliStorage] ❌ Failed to load passkey vault overlay ${slip44}:`,
       error
     );
     return null;

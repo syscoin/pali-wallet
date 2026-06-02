@@ -377,7 +377,10 @@ export const SendCalls = () => {
               ['wallet', 'submitPasskeyExecution'],
               [
                 {
+                  actionHash: prepared.actionHash,
                   execution: prepared.execution,
+                  executions: prepared.executions,
+                  requiresDeployment: prepared.requiresDeployment,
                   proof: {
                     authenticatorData: assertion.authenticatorData,
                     clientDataJSON: assertion.clientDataJSON,

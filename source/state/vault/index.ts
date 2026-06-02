@@ -9,6 +9,7 @@ import {
 import {
   KeyringAccountType,
   IKeyringAccountState,
+  IPasskeyCredentialProfile,
   INetwork,
   INetworkType,
   IKeyringBalances,
@@ -107,6 +108,16 @@ const VaultState = createSlice({
     ) {
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
+    },
+    setPasskeyCredentialProfile(
+      state: IVaultState,
+      action: PayloadAction<IPasskeyCredentialProfile | null>
+    ) {
+      if (action.payload) {
+        state.passkeyCredentialProfile = action.payload;
+      } else {
+        delete state.passkeyCredentialProfile;
+      }
     },
     setAccountLabel(
       state: IVaultState,
@@ -512,7 +523,36 @@ const VaultState = createSlice({
           if (existingTxIndex !== -1) {
             // Transaction already exists, update it if the new one has more confirmations
             const existingTx = currentUserTransactions[existingTxIndex];
-            if (transaction.confirmations > existingTx.confirmations) {
+            const transactionAny = transaction as any;
+            const existingTxAny = existingTx as any;
+            const transactionInBlock =
+              (transactionAny.blockNumber !== null &&
+                transactionAny.blockNumber !== undefined &&
+                transactionAny.blockNumber > 0) ||
+              (transactionAny.blockHeight !== null &&
+                transactionAny.blockHeight !== undefined &&
+                transactionAny.blockHeight > 0) ||
+              (transactionAny.height !== null &&
+                transactionAny.height !== undefined &&
+                transactionAny.height > 0);
+            const existingInBlock =
+              (existingTxAny.blockNumber !== null &&
+                existingTxAny.blockNumber !== undefined &&
+                existingTxAny.blockNumber > 0) ||
+              (existingTxAny.blockHeight !== null &&
+                existingTxAny.blockHeight !== undefined &&
+                existingTxAny.blockHeight > 0) ||
+              (existingTxAny.height !== null &&
+                existingTxAny.height !== undefined &&
+                existingTxAny.height > 0);
+            const hasMoreConfirmations =
+              (transaction.confirmations ?? 0) >
+              (existingTx.confirmations ?? 0);
+
+            if (
+              hasMoreConfirmations ||
+              (transactionInBlock && !existingInBlock)
+            ) {
               currentUserTransactions[existingTxIndex] = transaction as any;
             }
           } else {
@@ -572,13 +612,46 @@ const VaultState = createSlice({
       const currentAccountTransactions =
         state.accountTransactions[targetAccountType][targetAccountId];
 
-      // Simply set the transactions array - all processing is done before dispatch
+      const existingTransactions =
+        currentAccountTransactions[networkType]?.[chainId] || [];
+      const incomingTransactionIds = new Set(
+        transactions
+          .map((transaction: any) => transaction.hash || transaction.txid)
+          .filter(Boolean)
+          .map((transactionId: string) => transactionId.toLowerCase())
+      );
+      const preservedLocalPendingTransactions = (
+        existingTransactions as Array<IEvmTransaction | ISysTransaction>
+      ).filter((transaction: any) => {
+        const transactionId = transaction.hash || transaction.txid;
+        if (!transactionId) return false;
+        if (incomingTransactionIds.has(transactionId.toLowerCase())) {
+          return false;
+        }
+
+        const isConfirmed =
+          Number(transaction.confirmations || 0) > 0 ||
+          Number(transaction.blockNumber || 0) > 0 ||
+          Number(transaction.blockHeight || 0) > 0 ||
+          Number(transaction.height || 0) > 0 ||
+          Boolean(transaction.blockHash);
+
+        return !isConfirmed;
+      });
+      const mergedTransactions = [
+        ...preservedLocalPendingTransactions,
+        ...transactions,
+      ];
+
+      // Set refreshed transactions while preserving local pending txs that
+      // explorer APIs may not index immediately after broadcast.
       if (!currentAccountTransactions[networkType]) {
         currentAccountTransactions[networkType] = {
-          [chainId]: transactions as any,
+          [chainId]: mergedTransactions as any,
         };
       } else {
-        currentAccountTransactions[networkType][chainId] = transactions as any;
+        currentAccountTransactions[networkType][chainId] =
+          mergedTransactions as any;
       }
     },
 
@@ -730,6 +803,7 @@ export const {
   setAccountAssets,
   setSingleTransactionToState,
   setAccountTransactions,
+  setPasskeyCredentialProfile,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setAccounts,

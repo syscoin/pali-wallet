@@ -4,6 +4,7 @@ import type {
 } from 'scripts/Background/controllers/transactions/types';
 import {
   IKeyringAccountState,
+  IPasskeyCredentialProfile,
   KeyringAccountType,
   INetwork,
   INetworkType,
@@ -99,6 +100,7 @@ export interface ISlip44State {
   activeNetwork: INetwork;
   // Network-specific states
   isBitcoinBased: boolean;
+  passkeyCredentialProfile?: IPasskeyCredentialProfile;
 
   shouldShowFaucetModal: { [k: number]: boolean };
 }

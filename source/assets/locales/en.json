@@ -538,6 +538,7 @@
     "allYourSettings": "All settings on this device (custom tokens and imported accounts) will be removed. This does not move or delete on-chain funds, but the encrypted private keys for imported accounts will be erased from this device. If you do not have the Secret Recovery Phrase or those private keys, you may permanently lose access to those assets.",
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
+    "removeUndeployedPasskeyWarning": "This passkey account has not been deployed onchain yet, so deleting it may make it unrecoverable.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",
@@ -553,8 +554,62 @@
     "paliWalletBrowserExtension": "Pali Wallet Browser Extension",
     "addressType": "Address type",
     "passkeyAccount": "Passkey Account",
+    "passkeyAccountNameHint": "Use the previous screen to change this name, or edit it later from Manage Accounts.",
     "createPasskeyAccount": "Create Passkey Account",
-    "createPasskeyAccountDescription": "Use Touch ID, Face ID, Windows Hello, Android biometrics, or a security key to approve smart-account transactions on zkSYS."
+    "createPasskeyAccountDescription": "Use biometrics to approve onchain transactions.",
+    "recoverPasskeyAccounts": "Recover Passkey Accounts",
+    "passkeyAccountsRecovered": "Recovered {{count}} passkey account(s)",
+    "noPasskeyAccountsRecovered": "No recoverable passkey accounts were found for this passkey.",
+    "failedToRecoverPasskey": "Failed to recover passkey accounts",
+    "useSeparatePasskey": "Use a separate passkey for this account",
+    "useSeparatePasskeyDescription": "Advanced: Pali will create a new credential. Recovery may require approving each separate passkey individually.",
+    "sharedPasskeyReady": "Shared Pali passkey found",
+    "sharedPasskeyReadyDescription": "New accounts can reuse this passkey, so you will not need to create another browser credential.",
+    "sharedPasskeyWillBeCreated": "Pali will create one shared passkey",
+    "recoverPasskeyAccountsDescription": "Recovery restores all accounts for the approved passkey. If you used separate passkeys, run recovery again and approve the next one.",
+    "passkeyRecoverySponsorUrlOptional": "Optional sponsor service URL",
+    "passkeyRecoverySponsorUrlRequiredShort": "Required for managed / co-signed account",
+    "passkeyRecoverySponsorUrlRequired": "A managed / co-signed account was found, but Pali needs its sponsor service URL to restore it.",
+    "passkeyRecoverySponsorUrlMismatch": "URL does not match this account.",
+    "passkeyAccountPolicy": "Passkey Account Policy",
+    "passkeyAccountPolicySummary": "Set gas sponsorship or managed co-signing",
+    "passkeyAccountPolicyDescription": "Change how this passkey account handles gas sponsorship and sponsor co-signing. Updates require passkey approval.",
+    "passkeyPolicyRequiredWarning": "Managed / co-signed accounts require sponsor approval for future transactions.",
+    "passkeyPolicyUpdated": "Passkey account policy updated successfully.",
+    "passkeyPolicyOnchainNotice": "This account is active onchain. Saving policy changes will ask for passkey approval and submit a transaction.",
+    "passkeyStatusTitle": "Passkey Sync",
+    "passkeyStatusRefreshDescription": "Shows whether this passkey is device-bound or available through your device backup.",
+    "refreshPasskeyStatus": "Refresh",
+    "passkeyStatusUpdated": "Passkey status updated.",
+    "passkeyStatusRefreshFailed": "Could not refresh passkey status.",
+    "customizeAccountPolicy": "Customize account policy",
+    "passkeyPolicyLocked": "Pali will save this policy and apply it when the account is first used.",
+    "sponsorServiceUrl": "Sponsor service URL",
+    "sponsorSignerAddress": "Sponsor signer address",
+    "sponsorServiceUrlRequired": "Enter sponsor service URL.",
+    "invalidSponsorUrl": "Enter a valid sponsor service URL that starts with http:// or https://.",
+    "invalidSponsorSignerAddress": "Enter a valid sponsor signer address.",
+    "sponsorSignerRequired": "Managed Account requires a sponsor signer address.",
+    "passkeyPolicy": {
+      "disabled": {
+        "title": "Personal Account",
+        "description": "No sponsor requested. Pali uses wallet gas for transactions."
+      },
+      "gasOnly": {
+        "title": "Sponsored Gas",
+        "description": "Try sponsor-paid gas first. If unavailable, Pali falls back to wallet gas."
+      },
+      "required": {
+        "title": "Managed / Co-signed Account",
+        "description": "Sponsor approval is required for transactions. Use this for institutional or policy-controlled accounts."
+      }
+    },
+    "passkeyBackupStatus": {
+      "backupCapable": "Backup-capable passkey, not reported as synced",
+      "deviceBound": "Device-bound passkey",
+      "synced": "Synced passkey",
+      "unavailable": "Backup status unavailable"
+    }
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

@@ -17,6 +17,11 @@
   justify-content: center;
 }
 
+.custom-input-normal.passkey-input,
+.custom-input-normal.passkey-input .ant-input {
+  width: 100% !important;
+}
+
 .custom-input-normal .ant-input-suffix .anticon-close-circle {
   display: inline-block;
   position: absolute;

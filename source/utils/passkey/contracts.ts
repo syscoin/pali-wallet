@@ -13,25 +13,33 @@ export enum PasskeyContractSponsorMode {
 }
 /* eslint-enable no-shadow */
 
-export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
+export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V2';
 
 export const PASSKEY_FACTORY_ADDRESSES: Partial<Record<number, string>> = {
   [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]:
-    '0xBFF8d58E8fab137C7215f9Be20ab273cDBC6b87d',
+    '0xab188ceB49096A8B96E69E357FC99A8F90A57431',
 };
 
 export const PASSKEY_FACTORY_ABI = [
-  'function createAccount(bytes32 passkeyX, bytes32 passkeyY, bytes32 credentialIdHash, bytes32 rpIdHash, bytes32 originHash, uint256 originLength, uint8 sponsorMode, address sponsorSigner, bytes32 sponsorUrlHash, bytes32 salt) payable returns (address account)',
-  'function getAccountAddress(address creator, bytes32 passkeyX, bytes32 passkeyY, bytes32 credentialIdHash, bytes32 rpIdHash, bytes32 originHash, uint256 originLength, uint8 sponsorMode, address sponsorSigner, bytes32 sponsorUrlHash, bytes32 salt) view returns (address)',
+  'event AccountCreated(address indexed account, bytes32 indexed recoveryId, bytes32 indexed credentialIdHash, bytes32 salt)',
+  'function createAccount((bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params) payable returns (address account)',
+  'function createAccountAndExecute((bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params,(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (address account, bytes[] returndata)',
+  'function getAccountActionHash((bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params,(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions) view returns (bytes32)',
+  'function getAccountAddress((bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params) view returns (address)',
+  'function getAccountCountByCredential(bytes32 recoveryId, bytes32 credentialIdHash) view returns (uint256)',
+  'function getAccountCountByRecoveryId(bytes32 recoveryId) view returns (uint256)',
+  'function getAccountsByCredential(bytes32 recoveryId, bytes32 credentialIdHash, uint256 offset, uint256 limit) view returns (address[] accounts)',
+  'function getAccountsByRecoveryId(bytes32 recoveryId, uint256 offset, uint256 limit) view returns (address[] accounts)',
+  'function implementation() view returns (address)',
 ] as const;
 
 export const PASSKEY_SMART_ACCOUNT_ABI = [
-  'function execute((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline) execution,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (bytes returndata)',
-  'function getActionHash((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline) execution) view returns (bytes32)',
+  'function execute((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (bytes[] returndata)',
+  'function getActionHash((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions) view returns (bytes32)',
+  'function getRecoveryMetadata() view returns ((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,uint8 sponsorMode,address sponsorSigner,bytes32 sponsorUrlHash))',
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
   'function nonce() view returns (uint256)',
-  'function sponsorMode() view returns (uint8)',
-  'function sponsorSigner() view returns (address)',
+  'function setSponsor(uint8 mode, address signer, bytes32 urlHash)',
 ] as const;
 
 export const getPasskeyFactoryAddress = (chainId: number): string => {
