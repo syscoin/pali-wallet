@@ -3870,7 +3870,8 @@ class MainController {
               latestVault.activeAccount.id !== activeAccount.id ||
               latestVault.activeAccount.type !== activeAccount.type ||
               latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
-              latestVault.activeNetwork.kind !== activeNetwork.kind
+              latestVault.activeNetwork.kind !== activeNetwork.kind ||
+              latestVault.activeNetwork.url !== activeNetwork.url
             ) {
               console.log(
                 '[MainController] Skipping stale transaction update after account/network change'
