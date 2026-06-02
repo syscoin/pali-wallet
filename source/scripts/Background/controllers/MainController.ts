@@ -3802,8 +3802,15 @@ class MainController {
   private getEvmMinedTransactionNotificationType(
     transaction: any
   ): 'confirmed' | 'failed' {
-    return transaction?.txreceipt_status === '0' ||
-      transaction?.isError === '1' ||
+    const isErrorFlag = transaction?.isError;
+    const receiptStatus = transaction?.txreceipt_status;
+    const isExplicitExplorerSuccess =
+      isErrorFlag === '0' || isErrorFlag === 0 || isErrorFlag === false;
+
+    return isErrorFlag === '1' ||
+      isErrorFlag === 1 ||
+      isErrorFlag === true ||
+      (receiptStatus === '0' && !isExplicitExplorerSuccess) ||
       transaction?.status === 0 ||
       transaction?.status === '0x0'
       ? 'failed'
