@@ -13,7 +13,7 @@ export enum PasskeyContractSponsorMode {
 }
 /* eslint-enable no-shadow */
 
-export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
+export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V2';
 
 export const PASSKEY_FACTORY_ADDRESSES: Partial<Record<number, string>> = {
   [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]:

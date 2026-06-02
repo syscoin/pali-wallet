@@ -3559,6 +3559,12 @@ class MainController {
 
   private assertPasskeyAccountNetwork(metadata: IPasskeySmartAccountMetadata) {
     const { activeNetwork } = store.getState().vault;
+    if (metadata.contractVersion !== PASSKEY_SMART_ACCOUNT_VERSION) {
+      throw new Error(
+        'This Passkey Account was created with an unsupported contract version. Please recover or recreate it with the current Pali version.'
+      );
+    }
+
     if (
       activeNetwork.kind !== INetworkType.Ethereum ||
       metadata.chainId !== activeNetwork.chainId
