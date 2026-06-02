@@ -1851,6 +1851,19 @@ class MainController {
     });
   }
 
+  private hasPasskeyRecoveryAnchorState(
+    accounts = store.getState().vault.accounts,
+    passkeyCredentialProfile = store.getState().vault.passkeyCredentialProfile
+  ): boolean {
+    const passkeyAccounts =
+      accounts[PaliKeyringAccountType.PasskeySmartAccount] || {};
+
+    return (
+      Boolean(passkeyCredentialProfile) ||
+      Object.keys(passkeyAccounts).length > 0
+    );
+  }
+
   public async forgetWallet(pwd: string) {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
@@ -2086,7 +2099,7 @@ class MainController {
     keyring: KeyringManager
   ): Promise<void> {
     try {
-      const { accounts } = store.getState().vault;
+      const { accounts, passkeyCredentialProfile } = store.getState().vault;
 
       if (!keyring || !keyring.isUnlocked()) {
         console.log(
@@ -2099,7 +2112,12 @@ class MainController {
       let hasCorruptedAccounts = false;
       if (accounts.HDAccount) {
         hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
+          Object.keys(accounts.HDAccount).length > 0 &&
+          !accounts.HDAccount[0] &&
+          this.hasPasskeyRecoveryAnchorState(
+            accounts,
+            passkeyCredentialProfile
+          );
         for (const account of Object.values(accounts.HDAccount)) {
           if (!account.xpub || account.xpub === '') {
             hasCorruptedAccounts = true;
@@ -2225,7 +2243,8 @@ class MainController {
    */
   private async repairCorruptedAccounts(): Promise<void> {
     try {
-      const { accounts, activeNetwork } = store.getState().vault;
+      const { accounts, activeNetwork, passkeyCredentialProfile } =
+        store.getState().vault;
       const keyring = this.getActiveKeyring();
 
       if (!keyring || !keyring.isUnlocked()) {
@@ -2239,7 +2258,12 @@ class MainController {
       let hasCorruptedAccounts = false;
       if (accounts.HDAccount) {
         hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
+          Object.keys(accounts.HDAccount).length > 0 &&
+          !accounts.HDAccount[0] &&
+          this.hasPasskeyRecoveryAnchorState(
+            accounts,
+            passkeyCredentialProfile
+          );
         for (const account of Object.values(accounts.HDAccount)) {
           if (!account.xpub || account.xpub === '') {
             hasCorruptedAccounts = true;

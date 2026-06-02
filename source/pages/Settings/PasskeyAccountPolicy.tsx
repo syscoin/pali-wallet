@@ -202,12 +202,22 @@ const PasskeyAccountPolicy = () => {
               ...(normalizedSigner ? { signer: normalizedSigner } : {}),
               ...(trimmedSponsorUrl ? { url: trimmedSponsorUrl } : {}),
             };
+      const contractSponsorSigner =
+        policyMode === PasskeySponsorMode.Disabled
+          ? AddressZero
+          : normalizedSigner || AddressZero;
+      const contractSponsorUrlHash =
+        policyMode === PasskeySponsorMode.Disabled
+          ? HashZero
+          : trimmedSponsorUrl
+          ? hashText(trimmedSponsorUrl)
+          : HashZero;
       const data = passkeySmartAccountInterface.encodeFunctionData(
         'setSponsor',
         [
           contractModeByPolicy[policyMode],
-          normalizedSigner || AddressZero,
-          trimmedSponsorUrl ? hashText(trimmedSponsorUrl) : HashZero,
+          contractSponsorSigner,
+          contractSponsorUrlHash,
         ]
       );
 
