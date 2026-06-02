@@ -381,12 +381,13 @@ export class WalletMethodHandler implements IMethodHandler {
           // Passkey smart accounts execute wallet_sendCalls as a single smart
           // account batch, while regular EOAs are still submitted sequentially.
           const chainId = `0x${activeNetwork.chainId.toString(16)}`;
+          const passkeyAtomicSupported =
+            account?.isPasskeySmartAccount &&
+            account.passkey?.chainId === activeNetwork.chainId;
           const capabilities = {
             [chainId]: {
               atomic: {
-                status: account?.isPasskeySmartAccount
-                  ? 'supported'
-                  : 'unsupported',
+                status: passkeyAtomicSupported ? 'supported' : 'unsupported',
               },
             },
           };
