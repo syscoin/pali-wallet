@@ -271,6 +271,7 @@ const PasskeyAccountPolicy = () => {
               s: assertion.s,
               typeOffset: assertion.typeOffset,
             },
+            waitForConfirmation: true,
           },
         ],
         300000

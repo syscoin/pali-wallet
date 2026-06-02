@@ -3823,6 +3823,7 @@ class MainController {
           v?: number | string;
         };
     sponsorSignature?: string;
+    waitForConfirmation?: boolean;
   }) {
     const { activeAccount, activeNetwork, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
@@ -3873,6 +3874,11 @@ class MainController {
             type: PaliKeyringAccountType.PasskeySmartAccount,
           }
         );
+        if (params.waitForConfirmation) {
+          await this.waitForPasskeyTransactionConfirmation(
+            sponsorResult.txHash
+          );
+        }
         await this.recordPasskeyBackupStatusFromProof(account, params.proof);
         return { hash: sponsorResult.txHash };
       } catch (error) {
@@ -3946,6 +3952,9 @@ class MainController {
         ),
       { persistRestore: false }
     );
+    if (params.waitForConfirmation && (response as any)?.hash) {
+      await this.waitForPasskeyTransactionConfirmation((response as any).hash);
+    }
     await this.savePasskeyTransactionForLocalRecipients(
       response,
       executions,
@@ -3992,6 +4001,21 @@ class MainController {
     }
     await this.recordPasskeyBackupStatusFromProof(account, params.proof);
     return response;
+  }
+
+  private async waitForPasskeyTransactionConfirmation(txHash: string) {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const receipt = await provider.waitForTransaction(txHash, 1, 120_000);
+    if (!receipt) {
+      throw new Error('Passkey transaction was not confirmed in time');
+    }
+    if (receipt.status === 0) {
+      throw new Error('Passkey transaction reverted');
+    }
   }
 
   private async savePasskeyTransactionForLocalRecipients(
