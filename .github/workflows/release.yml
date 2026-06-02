@@ -16,29 +16,52 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Check package version changed
+        id: release_guard
+        run: |
+          CURRENT_VERSION="$(jq -r '.version' package.json)"
+          PREVIOUS_VERSION="$(git show HEAD^:package.json 2>/dev/null | jq -r '.version' || true)"
+
+          if [ "${CURRENT_VERSION}" = "${PREVIOUS_VERSION}" ]; then
+            echo "Package version unchanged (${CURRENT_VERSION}); skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Package version changed from ${PREVIOUS_VERSION:-<none>} to ${CURRENT_VERSION}; creating release."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Node.js
-        uses: actions/setup-node@v2
+        if: steps.release_guard.outputs.should_release == 'true'
+        uses: actions/setup-node@v6
         with:
           node-version: '23.11.1'
 
       - name: Install dependencies
+        if: steps.release_guard.outputs.should_release == 'true'
         run: yarn install
 
       - name: Set TARGET_BROWSER environment variable
+        if: steps.release_guard.outputs.should_release == 'true'
         run: echo "TARGET_BROWSER=chrome" >> $GITHUB_ENV
 
       - name: Build project for Chrome
+        if: steps.release_guard.outputs.should_release == 'true'
         run: yarn run build:chrome
 
       - name: Build project for Canary
+        if: steps.release_guard.outputs.should_release == 'true'
         run: yarn run build:canary
 
       - name: List files in build directory
+        if: steps.release_guard.outputs.should_release == 'true'
         run: ls -l ./build
 
       - name: Set asset name for Chrome
+        if: steps.release_guard.outputs.should_release == 'true'
         id: set_asset_name_chrome
         run: |
           ASSET_NAME_CHROME="$(find build -maxdepth 1 -type f -name 'pali-wallet-production-chrome-*.zip' -printf '%f\n')"
@@ -50,6 +73,7 @@ jobs:
           echo "ASSET_NAME_CHROME=${ASSET_NAME_CHROME}" >> "$GITHUB_ENV"
 
       - name: Set asset name for Canary
+        if: steps.release_guard.outputs.should_release == 'true'
         id: set_asset_name_canary
         run: |
           ASSET_NAME_CANARY="$(find build -maxdepth 1 -type f -name 'pali-wallet-canary-chrome-*.zip' -printf '%f\n')"
@@ -61,6 +85,7 @@ jobs:
           echo "ASSET_NAME_CANARY=${ASSET_NAME_CANARY}" >> "$GITHUB_ENV"
 
       - name: Get package version
+        if: steps.release_guard.outputs.should_release == 'true'
         id: get_version
         run: |
           PACKAGE_VERSION="$(jq -r '.version' package.json)"
@@ -75,6 +100,7 @@ jobs:
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
 
       - name: Ensure release tag is new
+        if: steps.release_guard.outputs.should_release == 'true'
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
             echo "::error::Release tag ${RELEASE_TAG} already exists. Bump package.json version or delete the existing draft/tag intentionally before releasing again."
@@ -82,6 +108,7 @@ jobs:
           fi
 
       - name: Create draft release from current commit
+        if: steps.release_guard.outputs.should_release == 'true'
         run: |
           gh release create "${RELEASE_TAG}" \
             "./build/${ASSET_NAME_CHROME}" \
