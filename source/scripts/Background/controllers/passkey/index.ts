@@ -1967,7 +1967,12 @@ class PasskeyController {
         maxFeePerGas: BigNumber;
         maxPriorityFeePerGas: BigNumber;
       };
-    const gasLimit = BigNumber.from(requiresDeployment ? 4_000_000 : 1_000_000);
+    const executionGasLimit = BigNumber.from(1_000_000).mul(
+      Math.max(executions.length, 1)
+    );
+    const gasLimit = requiresDeployment
+      ? BigNumber.from(3_000_000).add(executionGasLimit)
+      : executionGasLimit;
     const gasPayer = requiresDeployment
       ? await this.getPasskeyDeploymentGasPayer(
           metadata,
