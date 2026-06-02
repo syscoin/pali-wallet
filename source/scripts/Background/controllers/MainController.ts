@@ -3956,18 +3956,23 @@ class MainController {
       }
     );
     if (requiresDeployment) {
-      store.dispatch(
-        setAccountPropertyByIdAndType({
-          id: account.id,
-          type: PaliKeyringAccountType.PasskeySmartAccount,
-          property: 'passkey',
-          value: {
-            ...metadata,
-            isDeployed: true,
-          },
-        })
+      const deployedCode = await this.ethereumTransaction.web3Provider.getCode(
+        account.address
       );
-      await this.savePasskeyMetadataState('deploy-passkey-smart-account');
+      if (deployedCode && deployedCode !== '0x') {
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: account.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+            property: 'passkey',
+            value: {
+              ...metadata,
+              isDeployed: true,
+            },
+          })
+        );
+        await this.savePasskeyMetadataState('deploy-passkey-smart-account');
+      }
     }
     try {
       await this.saveWalletState('send-passkey-transaction', true, true);
