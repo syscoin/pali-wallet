@@ -373,7 +373,8 @@
     "sponsorDisabled": "Kein Sponsor",
     "sponsorUrl": "Sponsor-URL: {{url}}",
     "sponsorSigner": "Sponsor-Signierer: {{signer}}",
-    "sponsorRequiredWarning": "Dieses Konto erfordert eine Mitautorisierung des Sponsors, bevor Pali Transaktionen davon ausführen kann."
+    "sponsorRequiredWarning": "Dieses Konto erfordert eine Mitautorisierung des Sponsors, bevor Pali Transaktionen davon ausführen kann.",
+    "passkeyRecoveryMismatch": "Dieser Passkey passt zu keinem vorhandenen Konto für diesen Sponsor. Versuche erneut Erstellen und wähle einen anderen Passkey aus, oder aktiviere Erweitert, um einen separaten neuen Passkey zu erstellen."
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",

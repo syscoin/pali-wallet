@@ -147,7 +147,8 @@
     "sponsorDisabled": "Sem patrocinador",
     "sponsorUrl": "URL do patrocinador: {{url}}",
     "sponsorSigner": "Assinante do patrocinador: {{signer}}",
-    "sponsorRequiredWarning": "Esta conta exigirá coautorização do patrocinador antes que a Pali possa executar transações a partir dela."
+    "sponsorRequiredWarning": "Esta conta exigirá coautorização do patrocinador antes que a Pali possa executar transações a partir dela.",
+    "passkeyRecoveryMismatch": "Essa passkey não corresponde a uma conta existente para este patrocinador. Tente Criar novamente e selecione uma passkey diferente, ou ative Avançado para criar uma nova passkey separada."
   },
   "home": {
     "importToken": "Importar Token",

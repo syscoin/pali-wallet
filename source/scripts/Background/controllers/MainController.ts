@@ -2635,6 +2635,22 @@ class MainController {
     return this.passkey.recoverPasskeySmartAccounts(params);
   }
 
+  public async recoverPasskeySmartAccountForCreate(params: {
+    backupStatus?: PasskeyBackupStatus;
+    credentialId: string;
+    credentialIdHash: string;
+    label?: string;
+    sponsor?: {
+      mode?: string;
+      policyText?: string;
+      signer?: string;
+      url?: string;
+      urlHash?: string;
+    };
+  }): Promise<any | null> {
+    return this.passkey.recoverPasskeySmartAccountForCreate(params);
+  }
+
   public async preparePasskeySmartAccount(params: {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;

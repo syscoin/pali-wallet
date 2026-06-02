@@ -373,7 +373,8 @@
     "sponsorDisabled": "Aucun sponsor",
     "sponsorUrl": "URL du sponsor : {{url}}",
     "sponsorSigner": "Signataire du sponsor : {{signer}}",
-    "sponsorRequiredWarning": "Ce compte exigera une coautorisation du sponsor avant que Pali puisse exécuter des transactions depuis celui-ci."
+    "sponsorRequiredWarning": "Ce compte exigera une coautorisation du sponsor avant que Pali puisse exécuter des transactions depuis celui-ci.",
+    "passkeyRecoveryMismatch": "Cette passkey ne correspond à aucun compte existant pour ce sponsor. Réessayez Créer et sélectionnez une autre passkey, ou activez Avancé pour créer une nouvelle passkey séparée."
   },
   "import": {
     "importModalWordMissing": "Mot manquant !",

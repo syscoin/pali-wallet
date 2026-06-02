@@ -466,6 +466,118 @@ class PasskeyController {
     };
   }
 
+  public async recoverPasskeySmartAccountForCreate(params: {
+    backupStatus?: PasskeyBackupStatus;
+    credentialId: string;
+    credentialIdHash: string;
+    label?: string;
+    sponsor?: {
+      mode?: string;
+      policyText?: string;
+      signer?: string;
+      url?: string;
+      urlHash?: string;
+    };
+  }): Promise<any | null> {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    if (!isHexString(params.credentialIdHash, 32)) {
+      throw new Error('Invalid passkey credential hash');
+    }
+
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const requestedSponsor = normalizePasskeySponsor(params.sponsor);
+    const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
+    const recoveryId = this.getPasskeyRecoveryId(
+      factoryAddress,
+      activeNetwork.chainId
+    );
+    const sponsorUrls = requestedSponsor.url ? [requestedSponsor.url] : [];
+    let recoverySources: Array<{ address?: string; log?: any }> = (
+      await this.getPasskeyRecoveryRegistryAccounts({
+        chainId: activeNetwork.chainId,
+        credentialIdHash: params.credentialIdHash,
+        provider,
+        recoveryId,
+      })
+    ).map((address) => ({ address }));
+
+    if (recoverySources.length === 0) {
+      const logs = await this.getPasskeyRecoveryLogs({
+        credentialIdHash: params.credentialIdHash,
+        factoryAddress,
+        provider,
+        recoveryId,
+      });
+      recoverySources = logs.map((log) => ({ log }));
+    }
+    if (recoverySources.length === 0) {
+      return null;
+    }
+
+    const existingAddresses = this.getExistingAccountAddressSet();
+    for (const sourceBatch of this.chunkArray(recoverySources, 5)) {
+      const candidates = await Promise.all(
+        sourceBatch.map((source) =>
+          this.readRecoveredPasskeyAccount({
+            address: source.address,
+            credentialId: params.credentialId,
+            credentialIdHash: params.credentialIdHash,
+            factoryAddress,
+            log: source.log,
+            provider,
+            recoveryId,
+            backupStatus: params.backupStatus,
+            sponsorUrls,
+          })
+        )
+      );
+
+      for (const candidate of candidates) {
+        if (!candidate?.metadata) {
+          continue;
+        }
+        if (
+          !this.recoveredSponsorMatchesRequest(
+            candidate.metadata.sponsor,
+            requestedSponsor
+          )
+        ) {
+          if (
+            this.recoveredSponsorHasRequestedUrl(
+              candidate.metadata.sponsor,
+              requestedSponsor
+            )
+          ) {
+            throw new Error(
+              'Passkey sponsor signer does not match the existing account policy.'
+            );
+          }
+          continue;
+        }
+        if (existingAddresses.has(candidate.address.toLowerCase())) {
+          throw new Error('Account already exists on your Wallet.');
+        }
+
+        return this.addRecoveredPasskeyAccount({
+          address: candidate.address,
+          label: params.label,
+          metadata: candidate.metadata,
+          provider,
+          saveOperation: 'recover-passkey-smart-account-for-create',
+        });
+      }
+    }
+
+    return null;
+  }
+
   private getPasskeyRecoverySourceAddress(source: {
     address?: string;
     log?: any;
@@ -482,6 +594,125 @@ class PasskeyController {
       }
     }
     return null;
+  }
+
+  private getExistingAccountAddressSet() {
+    const { accounts } = store.getState().vault;
+    const existingAddresses = new Set<string>();
+    Object.values(accounts).forEach((accountsByType: Record<number, any>) => {
+      Object.values(accountsByType || {}).forEach((account: any) => {
+        if (account?.address) {
+          existingAddresses.add(account.address.toLowerCase());
+        }
+      });
+    });
+    return existingAddresses;
+  }
+
+  private recoveredSponsorMatchesRequest(
+    recoveredSponsor: IPasskeySmartAccountMetadata['sponsor'],
+    requestedSponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    const recoveredMode = recoveredSponsor?.mode || PasskeySponsorMode.Disabled;
+    const requestedMode = requestedSponsor?.mode || PasskeySponsorMode.Disabled;
+    if (recoveredMode !== requestedMode) {
+      return false;
+    }
+
+    const recoveredSigner = recoveredSponsor?.signer
+      ? getAddress(recoveredSponsor.signer).toLowerCase()
+      : '';
+    const requestedSigner = requestedSponsor?.signer
+      ? getAddress(requestedSponsor.signer).toLowerCase()
+      : '';
+    if (recoveredSigner !== requestedSigner) {
+      return false;
+    }
+
+    const recoveredUrlHash = (recoveredSponsor?.urlHash || '').toLowerCase();
+    const requestedUrlHash = (requestedSponsor?.urlHash || '').toLowerCase();
+    return recoveredUrlHash === requestedUrlHash;
+  }
+
+  private recoveredSponsorHasRequestedUrl(
+    recoveredSponsor: IPasskeySmartAccountMetadata['sponsor'],
+    requestedSponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    const requestedUrlHash = (requestedSponsor?.urlHash || '').toLowerCase();
+    if (!requestedUrlHash) {
+      return false;
+    }
+
+    return (recoveredSponsor?.urlHash || '').toLowerCase() === requestedUrlHash;
+  }
+
+  private async addRecoveredPasskeyAccount({
+    address,
+    label,
+    metadata,
+    provider,
+    saveOperation,
+  }: {
+    address: string;
+    label?: string;
+    metadata: IPasskeySmartAccountMetadata;
+    provider: any;
+    saveOperation: string;
+  }) {
+    const { accounts } = store.getState().vault;
+    const existingIds = Object.values(
+      accounts[PaliKeyringAccountType.PasskeySmartAccount] || {}
+    )
+      .map((account: any) => account.id)
+      .filter((id) => Number.isFinite(id));
+    const nextId = this.getNextPasskeySmartAccountId(existingIds);
+    const accountLabel = label || `Recovered Passkey Account ${nextId + 1}`;
+    const newAccount = {
+      address,
+      balances: {
+        [INetworkType.Syscoin]: -1,
+        [INetworkType.Ethereum]: -1,
+      },
+      id: nextId,
+      isImported: false,
+      isLedgerWallet: false,
+      isPasskeySmartAccount: true,
+      isTrezorWallet: false,
+      label: accountLabel,
+      passkey: {
+        ...metadata,
+        passkeyName: accountLabel,
+      },
+      xprv: '',
+      xpub: address,
+    };
+
+    store.dispatch(
+      createAccount({
+        account: newAccount,
+        accountType: PaliKeyringAccountType.PasskeySmartAccount,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: newAccount.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+      })
+    );
+    if (!store.getState().vault.passkeyCredentialProfile) {
+      store.dispatch(
+        setPasskeyCredentialProfile({
+          credentialId: newAccount.passkey.credentialId,
+          credentialIdHash: newAccount.passkey.credentialIdHash,
+          backupStatus: newAccount.passkey.backupStatus,
+          passkeyName: newAccount.passkey.passkeyName,
+          publicKey: newAccount.passkey.publicKey,
+        })
+      );
+    }
+    await this.refreshRecoveredPasskeyNativeBalances([newAccount], provider);
+    await this.saveWalletState(saveOperation, true, true);
+    return newAccount;
   }
 
   private async refreshRecoveredPasskeyNativeBalances(
