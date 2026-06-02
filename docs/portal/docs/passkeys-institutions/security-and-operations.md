@@ -42,7 +42,14 @@ Pali may surface WebAuthn credential backup status when the browser and authenti
 
 Backup status can indicate whether a credential appears device-bound, backup-eligible, or currently backed up/synced by the platform passkey provider. A synced passkey can improve convenience and device-loss recovery because the user may restore the credential through their Apple, Google, Microsoft, or other platform account. The tradeoff is that the effective security boundary now includes that platform account, its recovery process, and any devices where the passkey is synced.
 
-For higher-assurance institutional accounts, decide and document whether synced passkeys are acceptable. Some institutions may prefer platform-synced passkeys for user recovery and onboarding; others may prefer device-bound authenticators or hardware security keys for stronger isolation and a stricter recovery process.
+| Credential status | Institution policy implication | User experience | Risk boundary |
+| --- | --- | --- | --- |
+| Backed up or synced | Accept when account recovery and onboarding convenience matter more than strict device isolation. | Best device-replacement and multi-device experience. Often the platform default for consumer passkeys. | Trust extends to the platform account, platform recovery flow, and synced devices. |
+| Backup eligible | Decide whether eligibility alone is acceptable, because the credential may become synced later. | Flexible, but users may not understand whether sync is active. | Requires clear user guidance and periodic status review if the account value changes. |
+| Device-bound or not backed up | Prefer for high-value, treasury, admin, or cold-style accounts. | More friction and more support burden if the device is lost. | Stronger isolation to a specific authenticator or hardware key. |
+| Unknown or unavailable | Avoid for high-assurance policy decisions unless you have out-of-band authenticator controls. | User may proceed, but the institution cannot confidently classify the credential. | Ambiguous; do not treat as proof of cloud backup or proof of device-bound isolation. |
+
+For higher-assurance institutional accounts, decide and document whether synced passkeys are acceptable. Synced passkeys are still secure for common wallet and dapp use because Pali and the dapp never receive the passkey private key, WebAuthn remains origin-bound, and the platform authenticator still performs user verification. They are simply not the right default for cold storage, treasury controls, or large long-term balances unless the institution explicitly accepts the platform-account recovery boundary.
 
 ## User communication
 
