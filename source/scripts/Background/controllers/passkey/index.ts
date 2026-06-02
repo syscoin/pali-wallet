@@ -518,6 +518,20 @@ class PasskeyController {
       recoverySources = logs.map((log) => ({ log }));
     }
     if (recoverySources.length === 0) {
+      if (
+        this.shouldCheckSponsorAcrossCredentials(requestedSponsor) &&
+        (await this.hasRecoveredSponsorAccountForRequest({
+          chainId: activeNetwork.chainId,
+          provider,
+          recoveryId,
+          requestedSponsor,
+          sponsorUrls,
+        }))
+      ) {
+        throw new Error(
+          'Passkey sponsor signer does not match the existing account policy.'
+        );
+      }
       return null;
     }
 
@@ -583,6 +597,20 @@ class PasskeyController {
         'Passkey sponsor signer does not match the existing account policy.'
       );
     }
+    if (
+      this.shouldCheckSponsorAcrossCredentials(requestedSponsor) &&
+      (await this.hasRecoveredSponsorAccountForRequest({
+        chainId: activeNetwork.chainId,
+        provider,
+        recoveryId,
+        requestedSponsor,
+        sponsorUrls,
+      }))
+    ) {
+      throw new Error(
+        'Passkey sponsor signer does not match the existing account policy.'
+      );
+    }
 
     return null;
   }
@@ -616,6 +644,89 @@ class PasskeyController {
       });
     });
     return existingAddresses;
+  }
+
+  private shouldCheckSponsorAcrossCredentials(
+    requestedSponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    return Boolean(requestedSponsor?.signer || requestedSponsor?.urlHash);
+  }
+
+  private async hasRecoveredSponsorAccountForRequest({
+    chainId,
+    provider,
+    recoveryId,
+    requestedSponsor,
+    sponsorUrls,
+  }: {
+    chainId: number;
+    provider: any;
+    recoveryId: string;
+    requestedSponsor: IPasskeySmartAccountMetadata['sponsor'];
+    sponsorUrls?: string[];
+  }) {
+    const addresses = await this.getPasskeyRecoveryRegistryAccounts({
+      chainId,
+      provider,
+      recoveryId,
+    });
+
+    for (const addressBatch of this.chunkArray(addresses, 5)) {
+      const sponsors = await Promise.all(
+        addressBatch.map((address) =>
+          this.readRecoveredPasskeySponsor({
+            address,
+            provider,
+            sponsorUrls,
+          })
+        )
+      );
+      if (
+        sponsors.some((sponsor) =>
+          this.recoveredSponsorMatchesRequest(sponsor, requestedSponsor)
+        )
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async readRecoveredPasskeySponsor({
+    address,
+    provider,
+    sponsorUrls,
+  }: {
+    address: string;
+    provider: any;
+    sponsorUrls?: string[];
+  }): Promise<IPasskeySmartAccountMetadata['sponsor'] | null> {
+    const code = await this.withPasskeyRpcBackoff(() =>
+      provider.getCode(address)
+    );
+    if (!code || code === '0x') {
+      return null;
+    }
+
+    const account = new Contract(
+      address,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const metadata = (await this.withPasskeyRpcBackoff(() =>
+      account.getRecoveryMetadata()
+    )) as any;
+    const sponsorMode = metadata.sponsorMode ?? metadata[6];
+    const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
+    const sponsorUrlHash = metadata.sponsorUrlHash ?? metadata[8];
+
+    return this.recoverPasskeySponsorMetadata(
+      Number(sponsorMode),
+      sponsorSigner,
+      sponsorUrlHash,
+      sponsorUrls
+    );
   }
 
   private recoveredSponsorMatchesRequest(
@@ -852,29 +963,38 @@ class PasskeyController {
     recoveryId,
   }: {
     chainId: number;
-    credentialIdHash: string;
+    credentialIdHash?: string;
     provider: any;
     recoveryId: string;
   }): Promise<string[]> {
     try {
       const factory = getPasskeyFactory(chainId, provider);
       const count = BigNumber.from(
-        await this.withPasskeyRpcBackoff(() =>
-          factory.getAccountCountByCredential(recoveryId, credentialIdHash)
-        )
+        await this.withPasskeyRpcBackoff(() => {
+          if (credentialIdHash) {
+            return factory.getAccountCountByCredential(
+              recoveryId,
+              credentialIdHash
+            );
+          }
+          return factory.getAccountCountByRecoveryId(recoveryId);
+        })
       ).toNumber();
       const pageSize = 50;
       const accounts: string[] = [];
 
       for (let offset = 0; offset < count; offset += pageSize) {
-        const page = await this.withPasskeyRpcBackoff<string[]>(() =>
-          factory.getAccountsByCredential(
-            recoveryId,
-            credentialIdHash,
-            offset,
-            pageSize
-          )
-        );
+        const page = await this.withPasskeyRpcBackoff<string[]>(() => {
+          if (credentialIdHash) {
+            return factory.getAccountsByCredential(
+              recoveryId,
+              credentialIdHash,
+              offset,
+              pageSize
+            );
+          }
+          return factory.getAccountsByRecoveryId(recoveryId, offset, pageSize);
+        });
         accounts.push(...page.map((address) => getAddress(address)));
       }
 

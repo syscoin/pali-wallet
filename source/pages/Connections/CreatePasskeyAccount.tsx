@@ -128,6 +128,8 @@ export const CreatePasskeyAccount = () => {
             if (!isPasskeyRecoveryMismatchError(error)) {
               throw error;
             }
+            setRecoveryMessage(t('connections.passkeyRecoveryMismatch'));
+            return;
           }
 
           if (recoveredAccount) {
@@ -148,8 +150,7 @@ export const CreatePasskeyAccount = () => {
             return;
           }
 
-          setRecoveryMessage(t('connections.passkeyRecoveryMismatch'));
-          return;
+          credential = null;
         }
       }
 
