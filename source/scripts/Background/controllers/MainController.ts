@@ -3943,8 +3943,18 @@ class MainController {
           params.proof,
           metadata
         );
-        await this.sendAndSaveTransaction(
-          txResponse as IEvmTransactionResponse,
+        const passkeyTxResponse = {
+          ...(txResponse as IEvmTransactionResponse),
+          passkeyExecutionFrom: account.address,
+        } as IEvmTransactionResponse;
+        await this.sendAndSaveTransaction(passkeyTxResponse, {
+          id: account.id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+        });
+        await this.savePasskeyTransactionForLocalRecipients(
+          passkeyTxResponse,
+          executions,
+          account.address,
           {
             id: account.id,
             type: PaliKeyringAccountType.PasskeySmartAccount,
