@@ -66,6 +66,11 @@ export const CreatePasskeyAccount = () => {
     window.close();
   };
 
+  const isPasskeyRecoveryMismatchError = (error: any) => {
+    const errorMessage = error?.message || String(error);
+    return /Passkey sponsor signer does not match/i.test(errorMessage);
+  };
+
   const approve = async () => {
     setLoading(true);
     setRecoveryMessage('');
@@ -104,19 +109,26 @@ export const CreatePasskeyAccount = () => {
         }
 
         if (assertion) {
-          const recoveredAccount = (await controllerEmitter(
-            ['wallet', 'recoverPasskeySmartAccountForCreate'],
-            [
-              {
-                backupStatus: assertion.backupStatus,
-                credentialId: assertion.credentialId,
-                credentialIdHash: assertion.credentialIdHash,
-                label: requestedLabel,
-                sponsor: preparedSponsor,
-              },
-            ],
-            300000
-          )) as any;
+          let recoveredAccount: any = null;
+          try {
+            recoveredAccount = (await controllerEmitter(
+              ['wallet', 'recoverPasskeySmartAccountForCreate'],
+              [
+                {
+                  backupStatus: assertion.backupStatus,
+                  credentialId: assertion.credentialId,
+                  credentialIdHash: assertion.credentialIdHash,
+                  label: requestedLabel,
+                  sponsor: preparedSponsor,
+                },
+              ],
+              300000
+            )) as any;
+          } catch (error) {
+            if (!isPasskeyRecoveryMismatchError(error)) {
+              throw error;
+            }
+          }
 
           if (recoveredAccount) {
             await controllerEmitter(
