@@ -522,6 +522,7 @@ class PasskeyController {
     }
 
     const existingAddresses = this.getExistingAccountAddressSet();
+    let foundRequestedUrlWithDifferentPolicy = false;
     for (const sourceBatch of this.chunkArray(recoverySources, 5)) {
       const candidates = await Promise.all(
         sourceBatch.map((source) =>
@@ -555,9 +556,7 @@ class PasskeyController {
               requestedSponsor
             )
           ) {
-            throw new Error(
-              'Passkey sponsor signer does not match the existing account policy.'
-            );
+            foundRequestedUrlWithDifferentPolicy = true;
           }
           continue;
         }
@@ -573,6 +572,12 @@ class PasskeyController {
           saveOperation: 'recover-passkey-smart-account-for-create',
         });
       }
+    }
+
+    if (foundRequestedUrlWithDifferentPolicy) {
+      throw new Error(
+        'Passkey sponsor signer does not match the existing account policy.'
+      );
     }
 
     return null;
