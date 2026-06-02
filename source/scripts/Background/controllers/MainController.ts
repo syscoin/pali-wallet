@@ -4969,6 +4969,24 @@ class MainController {
 
         if (!isBitcoinBased) {
           const directTx = await this.getEvmTransactionFromProvider(txHash);
+          const {
+            activeAccount: postLookupActiveAccount,
+            activeNetwork: postLookupActiveNetwork,
+          } = store.getState().vault;
+
+          if (
+            postLookupActiveNetwork.chainId !== chainId ||
+            (!targetAccount &&
+              (postLookupActiveAccount.id !== activeAccount.id ||
+                postLookupActiveAccount.type !== activeAccount.type))
+          ) {
+            console.log(
+              '[RapidPoll] Account or network changed during direct lookup, stopping rapid poll'
+            );
+            this.activeRapidPolls.delete(pollKey);
+            return;
+          }
+
           if (directTx) {
             this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
 
