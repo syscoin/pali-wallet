@@ -5143,6 +5143,18 @@ class MainController {
         }
       );
     });
+
+    const latestVault = store.getState().vault;
+    if (latestVault.activeNetwork.chainId === chainId) {
+      const activeAccountTxs =
+        latestVault.accountTransactions[latestVault.activeAccount.type]?.[
+          latestVault.activeAccount.id
+        ]?.ethereum?.[chainId];
+
+      if (Array.isArray(activeAccountTxs)) {
+        notificationManager.updatePendingTransactionBadge(activeAccountTxs);
+      }
+    }
   }
 
   // Clean up all active polls (called when wallet locks)
