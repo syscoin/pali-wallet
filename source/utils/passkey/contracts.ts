@@ -13,7 +13,8 @@ export enum PasskeyContractSponsorMode {
 }
 /* eslint-enable no-shadow */
 
-export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
+export const PASSKEY_SMART_ACCOUNT_V1 = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
+export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V2';
 
 export const PASSKEY_FACTORY_ADDRESSES: Partial<Record<number, string>> = {
   [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]:
@@ -37,6 +38,14 @@ export const PASSKEY_SMART_ACCOUNT_ABI = [
   'function execute((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (bytes[] returndata)',
   'function getActionHash((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions) view returns (bytes32)',
   'function getRecoveryMetadata() view returns ((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,uint8 sponsorMode,address sponsorSigner,bytes32 sponsorUrlHash))',
+  'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
+  'function nonce() view returns (uint256)',
+  'function setSponsor(uint8 mode, address signer, bytes32 urlHash)',
+] as const;
+
+export const PASSKEY_SMART_ACCOUNT_V1_ABI = [
+  'function execute((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline) execution,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (bytes returndata)',
+  'function getActionHash((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline) execution) view returns (bytes32)',
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
   'function nonce() view returns (uint256)',
   'function setSponsor(uint8 mode, address signer, bytes32 urlHash)',
@@ -66,4 +75,7 @@ export const getPasskeyFactory = (
 export const passkeyFactoryInterface = new Interface(PASSKEY_FACTORY_ABI);
 export const passkeySmartAccountInterface = new Interface(
   PASSKEY_SMART_ACCOUNT_ABI
+);
+export const passkeySmartAccountV1Interface = new Interface(
+  PASSKEY_SMART_ACCOUNT_V1_ABI
 );
