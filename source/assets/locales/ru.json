@@ -218,6 +218,7 @@
     "paliWalletBrowserExtension": "Расширение для браузера Pali Wallet",
     "addressType": "Тип адреса",
     "passkeyAccount": "Аккаунт Passkey",
+    "paliWalletPasskey": "Passkey Pali Wallet",
     "passkeyAccountNameHint": "Измените это имя на предыдущем экране или позже в разделе управления аккаунтами.",
     "createPasskeyAccount": "Создать аккаунт Passkey",
     "createPasskeyAccountDescription": "Используйте биометрию для подтверждения onchain-транзакций.",

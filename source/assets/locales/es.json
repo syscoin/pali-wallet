@@ -555,6 +555,7 @@
     "paliWalletBrowserExtension": "Extensión del Navegador Pali Wallet",
     "addressType": "Tipo de dirección",
     "passkeyAccount": "Cuenta Passkey",
+    "paliWalletPasskey": "Passkey de Pali Wallet",
     "passkeyAccountNameHint": "Usa la pantalla anterior para cambiar este nombre, o edítalo más tarde desde Administrar cuentas.",
     "createPasskeyAccount": "Crear cuenta Passkey",
     "createPasskeyAccountDescription": "Usa biometría para aprobar transacciones onchain.",

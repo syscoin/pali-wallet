@@ -2,7 +2,7 @@ import { getAddress } from '@ethersproject/address';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { DropdownArrowSvg } from 'components/Icon/Icon';
+import { DropdownArrowSvg, Icon } from 'components/Icon/Icon';
 import { Card, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
@@ -15,6 +15,19 @@ import {
   getDiscoverablePasskeyAssertion,
 } from 'utils/passkey';
 import { isValidSponsorServiceUrl } from 'utils/passkey/sponsorUrl';
+
+const decodeDappText = (value?: unknown) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  if (typeof document === 'undefined') {
+    return value.trim();
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = value;
+  return textarea.value.trim();
+};
 
 export const CreatePasskeyAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -29,11 +42,22 @@ export const CreatePasskeyAccount = () => {
   const requestedLabel =
     label || t('connections.passkeyDefaultLabel', { host: displayHost });
   const sponsorMode = sponsor?.mode || 'disabled';
+  const hasSponsorPolicy = sponsorMode !== 'disabled';
   const isSponsorRequired = sponsorMode === 'required';
-  const trimmedSponsorUrl =
-    typeof sponsor?.url === 'string' ? sponsor.url.trim() : '';
-  const trimmedSponsorSigner =
-    typeof sponsor?.signer === 'string' ? sponsor.signer.trim() : '';
+  const trimmedSponsorUrl = hasSponsorPolicy
+    ? decodeDappText(sponsor?.url)
+    : '';
+  const trimmedSponsorSigner = hasSponsorPolicy
+    ? decodeDappText(sponsor?.signer)
+    : '';
+  const policyText = hasSponsorPolicy
+    ? decodeDappText(sponsor?.policyText)
+    : '';
+  const policyDescription =
+    policyText ||
+    t('connections.createPasskeyAccountDescription', {
+      host: displayHost,
+    });
   const isSponsorUrlValid =
     !trimmedSponsorUrl || isValidSponsorServiceUrl(trimmedSponsorUrl);
   const isSponsorSignerValid = (() => {
@@ -47,14 +71,22 @@ export const CreatePasskeyAccount = () => {
       return false;
     }
   })();
+  const sponsorSignerError =
+    isSponsorRequired && !trimmedSponsorSigner
+      ? t('settings.sponsorSignerRequired')
+      : trimmedSponsorSigner && !isSponsorSignerValid
+      ? t('settings.invalidSponsorSignerAddress')
+      : '';
+  const sponsorUrlError =
+    hasSponsorPolicy && !trimmedSponsorUrl
+      ? t('settings.sponsorServiceUrlRequired')
+      : trimmedSponsorUrl && !isSponsorUrlValid
+      ? t('settings.invalidSponsorUrl')
+      : '';
   const isCreateDisabled =
-    loading ||
-    !isSponsorUrlValid ||
-    (isSponsorRequired &&
-      (!trimmedSponsorUrl || !trimmedSponsorSigner || !isSponsorSignerValid));
-  const hasSponsorDetails = Boolean(
-    sponsor?.url || sponsor?.signer || sponsor?.policyText
-  );
+    loading || Boolean(sponsorUrlError || sponsorSignerError);
+  const hasSponsorDetails =
+    hasSponsorPolicy && Boolean(trimmedSponsorUrl || trimmedSponsorSigner);
   const sponsorLabel =
     sponsorMode === 'gasOnly'
       ? t('connections.sponsorGasOnly')
@@ -76,6 +108,9 @@ export const CreatePasskeyAccount = () => {
     setRecoveryMessage('');
 
     try {
+      if (hasSponsorPolicy && !trimmedSponsorUrl) {
+        throw new Error('Sponsor service URL is required');
+      }
       if (trimmedSponsorUrl && !isValidSponsorServiceUrl(trimmedSponsorUrl)) {
         throw new Error('Invalid sponsor service URL');
       }
@@ -85,6 +120,22 @@ export const CreatePasskeyAccount = () => {
           preparedSponsor.url = trimmedSponsorUrl;
         } else {
           delete preparedSponsor.url;
+        }
+        if (trimmedSponsorSigner) {
+          preparedSponsor.signer = trimmedSponsorSigner;
+        } else {
+          delete preparedSponsor.signer;
+        }
+        if (policyText) {
+          preparedSponsor.policyText = policyText;
+        } else {
+          delete preparedSponsor.policyText;
+        }
+        if (!hasSponsorPolicy) {
+          delete preparedSponsor.policyText;
+          delete preparedSponsor.signer;
+          delete preparedSponsor.url;
+          delete preparedSponsor.urlHash;
         }
       }
       const deploymentSalt = bytesToHex(
@@ -158,7 +209,7 @@ export const CreatePasskeyAccount = () => {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
         const passkeyName = useSeparatePasskey
           ? requestedLabel
-          : t('settings.passkeyAccount');
+          : t('settings.paliWalletPasskey');
         const newCredential = await createPasskeyCredential({
           accountName: passkeyName,
           challengeHex: bytesToHex(challenge),
@@ -240,20 +291,30 @@ export const CreatePasskeyAccount = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen px-6 py-8 text-white bg-bkg-3">
-      <div className="flex-1">
-        <h1 className="mb-3 text-xl font-semibold">
-          {t('connections.createPasskeyAccountTitle')}
-        </h1>
-        <p className="mb-6 text-sm text-brand-graylight">
-          {t('connections.createPasskeyAccountDescription', {
-            host: displayHost,
-          })}
-        </p>
+    <div className="flex flex-col w-full h-full">
+      <div className="flex-1 overflow-y-auto remove-scrollbar">
+        <div className="text-center px-6 py-6 border-b border-brand-gray300">
+          <h3 className="text-xs text-brand-graylight uppercase tracking-wider mb-2">
+            {t('connections.createPasskeyAccountTitle')}
+          </h3>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-deepPurple flex items-center justify-center">
+              <Icon name="link" className="text-white" size={16} />
+            </div>
+            <p className="text-lg font-medium text-brand-white">
+              {displayHost}
+            </p>
+          </div>
+          <p className="text-xs text-brand-graylight mt-3">
+            {policyDescription}
+          </p>
+        </div>
 
-        <div className="space-y-3 rounded-lg bg-brand-blue600 p-4">
+        <div className="px-6 py-6 space-y-3">
           <div>
-            <p className="text-sm font-medium">{requestedLabel}</p>
+            <p className="text-sm font-medium text-brand-white">
+              {requestedLabel}
+            </p>
             <p className="mt-2 text-xs text-brand-graylight">
               {t('connections.sponsorPolicy', { policy: sponsorLabel })}
             </p>
@@ -269,6 +330,14 @@ export const CreatePasskeyAccount = () => {
             <p className="text-xs text-brand-yellowInfo">
               {t('settings.passkeyPolicyLocked')}
             </p>
+          )}
+          {(sponsorUrlError || sponsorSignerError) && (
+            <Card type="error">
+              <div className="space-y-1 text-sm font-normal text-left">
+                {sponsorUrlError && <p>{sponsorUrlError}</p>}
+                {sponsorSignerError && <p>{sponsorSignerError}</p>}
+              </div>
+            </Card>
           )}
           {recoveryMessage && (
             <Card type="info">
@@ -296,18 +365,35 @@ export const CreatePasskeyAccount = () => {
               </button>
 
               {showDetails && (
-                <div className="space-y-2 rounded-md bg-alpha-whiteAlpha100 p-3 text-xs text-brand-graylight">
-                  {sponsor?.url && (
-                    <p>{t('connections.sponsorUrl', { url: sponsor.url })}</p>
+                <div className="space-y-3 rounded-md bg-bkg-2 border border-alpha-whiteAlpha300 p-3 text-xs">
+                  {trimmedSponsorUrl && (
+                    <div>
+                      <p className="uppercase tracking-wider text-[10px] text-brand-graylight">
+                        {t('settings.sponsorServiceUrl')}
+                      </p>
+                      <p className="mt-1 break-all text-brand-white">
+                        {trimmedSponsorUrl}
+                      </p>
+                    </div>
                   )}
-                  {sponsor?.signer && (
-                    <p className="break-all">
-                      {t('connections.sponsorSigner', {
-                        signer: sponsor.signer,
-                      })}
-                    </p>
+                  {trimmedSponsorSigner && (
+                    <div>
+                      <p className="uppercase tracking-wider text-[10px] text-brand-graylight">
+                        {t('settings.sponsorSignerAddress')}
+                      </p>
+                      <p
+                        className={`mt-1 break-all ${
+                          isSponsorSignerValid
+                            ? 'text-brand-white'
+                            : 'text-brand-red'
+                        }`}
+                      >
+                        {isSponsorSignerValid
+                          ? getAddress(trimmedSponsorSigner)
+                          : trimmedSponsorSigner}
+                      </p>
+                    </div>
                   )}
-                  {sponsor?.policyText && <p>{sponsor.policyText}</p>}
                 </div>
               )}
             </>
@@ -358,21 +444,24 @@ export const CreatePasskeyAccount = () => {
             </label>
           )}
         </div>
+
+        <div className="pb-20"></div>
       </div>
 
-      <div className="flex gap-3">
-        <SecondaryButton type="button" fullWidth onClick={reject}>
-          {t('buttons.cancel')}
-        </SecondaryButton>
-        <PrimaryButton
-          type="button"
-          fullWidth
-          disabled={isCreateDisabled}
-          loading={loading}
-          onClick={approve}
-        >
-          {t('buttons.create')}
-        </PrimaryButton>
+      <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        <div className="flex gap-3 justify-center">
+          <SecondaryButton type="button" onClick={reject} disabled={loading}>
+            {t('buttons.cancel')}
+          </SecondaryButton>
+          <PrimaryButton
+            type="button"
+            disabled={isCreateDisabled}
+            loading={loading}
+            onClick={approve}
+          >
+            {t('buttons.confirm')}
+          </PrimaryButton>
+        </div>
       </div>
     </div>
   );

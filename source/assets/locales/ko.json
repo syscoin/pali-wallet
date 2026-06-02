@@ -218,6 +218,7 @@
     "paliWalletBrowserExtension": "Pali Wallet 브라우저 확장",
     "addressType": "주소 유형",
     "passkeyAccount": "패스키 계정",
+    "paliWalletPasskey": "Pali Wallet 패스키",
     "passkeyAccountNameHint": "이 이름은 이전 화면에서 변경하거나 나중에 계정 관리에서 편집할 수 있습니다.",
     "createPasskeyAccount": "패스키 계정 만들기",
     "createPasskeyAccountDescription": "생체 인증으로 온체인 거래를 승인하세요.",

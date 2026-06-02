@@ -218,6 +218,7 @@
     "paliWalletBrowserExtension": "Pali Walletブラウザ拡張機能",
     "addressType": "アドレスタイプ",
     "passkeyAccount": "パスキーアカウント",
+    "paliWalletPasskey": "Pali Wallet パスキー",
     "passkeyAccountNameHint": "この名前は前の画面で変更できます。後でアカウント管理から編集することもできます。",
     "createPasskeyAccount": "パスキーアカウントを作成",
     "createPasskeyAccountDescription": "生体認証を使ってオンチェーン取引を承認します。",

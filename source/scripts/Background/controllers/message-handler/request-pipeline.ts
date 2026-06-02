@@ -693,6 +693,11 @@ const extractEvmAddressFromParams = (
     return params[0].from;
   }
 
+  // Handle EIP-5792 batch calls
+  if (method === 'wallet_sendCalls' && params?.[0]?.from) {
+    return params[0].from;
+  }
+
   // Handle signing methods
   if (
     (method === 'eth_sign' ||
