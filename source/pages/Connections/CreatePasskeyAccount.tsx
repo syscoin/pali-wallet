@@ -78,7 +78,9 @@ export const CreatePasskeyAccount = () => {
       ? t('settings.invalidSponsorSignerAddress')
       : '';
   const sponsorUrlError =
-    trimmedSponsorUrl && !isSponsorUrlValid
+    hasSponsorPolicy && !trimmedSponsorUrl
+      ? t('settings.sponsorServiceUrlRequired')
+      : trimmedSponsorUrl && !isSponsorUrlValid
       ? t('settings.invalidSponsorUrl')
       : '';
   const isCreateDisabled =
@@ -106,6 +108,9 @@ export const CreatePasskeyAccount = () => {
     setRecoveryMessage('');
 
     try {
+      if (hasSponsorPolicy && !trimmedSponsorUrl) {
+        throw new Error('Sponsor service URL is required');
+      }
       if (trimmedSponsorUrl && !isValidSponsorServiceUrl(trimmedSponsorUrl)) {
         throw new Error('Invalid sponsor service URL');
       }
