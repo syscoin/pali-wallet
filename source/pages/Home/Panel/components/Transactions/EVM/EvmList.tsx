@@ -96,8 +96,16 @@ const EvmTransactionItem = React.memo(
     const isSpeedUp = tx?.isSpeedUp === true;
     const displayTx = getPasskeyDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
+    const currentAddress = currentAccount?.address?.toLowerCase();
+    const txFrom = displayTx?.from?.toLowerCase?.();
+    const txTo = displayTx?.to?.toLowerCase?.();
+    const txDirection = (displayTx as any)?.direction;
     const isTxSent =
-      displayTx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
+      txDirection === 'sent' ||
+      (txDirection !== 'received' &&
+        (txFrom
+          ? txFrom === currentAddress
+          : Boolean(currentAddress && txTo && txTo !== currentAddress)));
     const isContractCall = isContractInteraction(displayTx);
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending

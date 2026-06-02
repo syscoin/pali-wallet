@@ -612,13 +612,46 @@ const VaultState = createSlice({
       const currentAccountTransactions =
         state.accountTransactions[targetAccountType][targetAccountId];
 
-      // Simply set the transactions array - all processing is done before dispatch
+      const existingTransactions =
+        currentAccountTransactions[networkType]?.[chainId] || [];
+      const incomingTransactionIds = new Set(
+        transactions
+          .map((transaction: any) => transaction.hash || transaction.txid)
+          .filter(Boolean)
+          .map((transactionId: string) => transactionId.toLowerCase())
+      );
+      const preservedLocalPendingTransactions = (
+        existingTransactions as Array<IEvmTransaction | ISysTransaction>
+      ).filter((transaction: any) => {
+        const transactionId = transaction.hash || transaction.txid;
+        if (!transactionId) return false;
+        if (incomingTransactionIds.has(transactionId.toLowerCase())) {
+          return false;
+        }
+
+        const isConfirmed =
+          Number(transaction.confirmations || 0) > 0 ||
+          Number(transaction.blockNumber || 0) > 0 ||
+          Number(transaction.blockHeight || 0) > 0 ||
+          Number(transaction.height || 0) > 0 ||
+          Boolean(transaction.blockHash);
+
+        return !isConfirmed;
+      });
+      const mergedTransactions = [
+        ...preservedLocalPendingTransactions,
+        ...transactions,
+      ];
+
+      // Set refreshed transactions while preserving local pending txs that
+      // explorer APIs may not index immediately after broadcast.
       if (!currentAccountTransactions[networkType]) {
         currentAccountTransactions[networkType] = {
-          [chainId]: transactions as any,
+          [chainId]: mergedTransactions as any,
         };
       } else {
-        currentAccountTransactions[networkType][chainId] = transactions as any;
+        currentAccountTransactions[networkType][chainId] =
+          mergedTransactions as any;
       }
     },
 
