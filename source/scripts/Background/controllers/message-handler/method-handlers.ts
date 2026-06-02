@@ -378,13 +378,15 @@ export class WalletMethodHandler implements IMethodHandler {
           throw cleanErrorStack(error);
 
         case 'getCapabilities':
-          // Return capabilities for the wallet
-          // For now, we don't support atomic batching
+          // Passkey smart accounts execute wallet_sendCalls as a single smart
+          // account batch, while regular EOAs are still submitted sequentially.
           const chainId = `0x${activeNetwork.chainId.toString(16)}`;
           const capabilities = {
             [chainId]: {
               atomic: {
-                status: 'unsupported',
+                status: account?.isPasskeySmartAccount
+                  ? 'supported'
+                  : 'unsupported',
               },
             },
           };
