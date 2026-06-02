@@ -4549,6 +4549,19 @@ class MainController {
                 activeNetwork.url
               );
 
+            const latestNetwork = store.getState().vault.activeNetwork;
+            if (
+              latestNetwork.chainId !== activeNetwork.chainId ||
+              latestNetwork.kind !== activeNetwork.kind ||
+              latestNetwork.url !== activeNetwork.url
+            ) {
+              console.log(
+                '[MainController] Skipping stale balance update after network change'
+              );
+              resolve();
+              return;
+            }
+
             // Calculate latency
             const latency = Date.now() - startTime;
 
@@ -4998,6 +5011,20 @@ class MainController {
             this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
 
             if (isTransactionInBlock(directTx)) {
+              try {
+                await this.updateUserNativeBalance({
+                  activeAccount: targetAccount ?? postLookupActiveAccount,
+                  activeNetwork: postLookupActiveNetwork,
+                  isBitcoinBased: false,
+                  isPolling: true,
+                });
+              } catch (error) {
+                console.warn(
+                  '[RapidPoll] Failed to refresh balance after direct EVM confirmation:',
+                  error
+                );
+              }
+
               const blockInfo = getTransactionBlockInfo(directTx);
               console.log(
                 `[RapidPoll] Transaction ${txHash} confirmed by direct lookup! In block: ${blockInfo}. Stopping rapid poll.`
