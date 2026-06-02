@@ -3799,6 +3799,17 @@ class MainController {
     }
   }
 
+  private getEvmMinedTransactionNotificationType(
+    transaction: any
+  ): 'confirmed' | 'failed' {
+    return transaction?.txreceipt_status === '0' ||
+      transaction?.isError === '1' ||
+      transaction?.status === 0 ||
+      transaction?.status === '0x0'
+      ? 'failed'
+      : 'confirmed';
+  }
+
   public updateUserTransactionsState({
     isBitcoinBased,
     activeNetwork,
@@ -3916,27 +3927,15 @@ class MainController {
                   if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
                     notificationManager.notifyTransaction({
                       transaction: tx,
-                      type: 'confirmed',
+                      type: isBitcoinBased
+                        ? 'confirmed'
+                        : this.getEvmMinedTransactionNotificationType(tx),
                       account: {
                         address: account.address,
                         label: account.label,
                       },
                       network: activeNetwork,
                       isEvm: !isBitcoinBased,
-                    });
-                  }
-
-                  // Failed transaction (EVM only)
-                  if (!isBitcoinBased && tx.status === 0 && !previousTx) {
-                    notificationManager.notifyTransaction({
-                      transaction: tx,
-                      type: 'failed',
-                      account: {
-                        address: account.address,
-                        label: account.label,
-                      },
-                      network: activeNetwork,
-                      isEvm: true,
                     });
                   }
                 });
@@ -5065,6 +5064,8 @@ class MainController {
     const { accountTransactions, accounts, activeNetwork } =
       store.getState().vault;
     const isConfirmedUpdate = isTransactionInBlock(txUpdate);
+    const notificationType =
+      this.getEvmMinedTransactionNotificationType(txUpdate);
     const notifiedAccounts = new Set<string>();
 
     Object.values(PaliKeyringAccountType).forEach((accountType) => {
@@ -5089,7 +5090,7 @@ class MainController {
             if (account && !notifiedAccounts.has(notificationKey)) {
               notificationManager.notifyTransaction({
                 transaction: txUpdate,
-                type: 'confirmed',
+                type: notificationType,
                 account: {
                   address: account.address,
                   label: account.label,
