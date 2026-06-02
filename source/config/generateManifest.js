@@ -3,6 +3,7 @@
 const dotenv = require('dotenv');
 const fs = require('fs');
 
+const packageJson = require('../../package.json');
 const { MV2_OPTIONS, MV3_OPTIONS } = require('./consts.js');
 
 dotenv.config();
@@ -10,6 +11,7 @@ dotenv.config();
 function generateManifest() {
   const manifestOptions =
     process.env.MANIFEST_TYPE === 'MV2' ? MV2_OPTIONS : MV3_OPTIONS;
+  manifestOptions.version = packageJson.version;
 
   // dev
   if (process.env.NODE_ENV === 'development') {
