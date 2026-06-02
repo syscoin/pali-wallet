@@ -1,0 +1,120 @@
+:root {
+  --ifm-color-primary: #2f6bff;
+  --ifm-color-primary-dark: #195cf5;
+  --ifm-color-primary-darker: #0f52e7;
+  --ifm-color-primary-darkest: #0b43be;
+  --ifm-color-primary-light: #5285ff;
+  --ifm-color-primary-lighter: #6b98ff;
+  --ifm-color-primary-lightest: #a6c0ff;
+  --ifm-code-font-size: 95%;
+  --ifm-font-family-base:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  --ifm-heading-font-weight: 800;
+}
+
+[data-theme='dark'] {
+  --ifm-background-color: #071226;
+  --ifm-background-surface-color: #0d1b31;
+  --ifm-color-primary: #7ea6ff;
+  --ifm-color-primary-dark: #5d8fff;
+  --ifm-color-primary-darker: #4d82ff;
+  --ifm-color-primary-darkest: #1e5cff;
+  --ifm-color-primary-light: #a0bdff;
+  --ifm-color-primary-lighter: #b5cbff;
+  --ifm-color-primary-lightest: #e4ecff;
+}
+
+.theme-doc-markdown h1 {
+  letter-spacing: -0.03em;
+}
+
+.theme-doc-markdown h2 {
+  margin-top: 2.4rem;
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
+}
+
+.theme-doc-markdown table th {
+  white-space: nowrap;
+}
+
+.pali-callout {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  background: var(--ifm-background-surface-color);
+}
+
+.theme-doc-markdown figure {
+  margin: 1.75rem 0;
+}
+
+.theme-doc-markdown figure img,
+.theme-doc-markdown video {
+  border: 1px solid rgba(126, 166, 255, 0.35);
+  border-radius: 18px;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.24);
+  display: block;
+  overflow: hidden;
+  width: 100%;
+}
+
+.theme-doc-markdown .pali-media-link {
+  display: block;
+  line-height: 0;
+}
+
+.theme-doc-markdown .pali-media-link img {
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.theme-doc-markdown .pali-media-link:hover img {
+  border-color: rgba(126, 166, 255, 0.72);
+  box-shadow: 0 24px 65px rgba(47, 107, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.theme-doc-markdown figcaption {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+  margin-top: 0.65rem;
+  text-align: center;
+}
+
+.theme-doc-markdown .pali-video-card {
+  background:
+    radial-gradient(circle at 88% 8%, rgba(47, 107, 255, 0.2), transparent 18rem),
+    var(--ifm-background-surface-color);
+  border: 1px solid rgba(126, 166, 255, 0.3);
+  border-radius: 24px;
+  padding: 1rem;
+  position: relative;
+}
+
+.theme-doc-markdown .pali-video-card::before {
+  background: rgba(7, 18, 38, 0.78);
+  border: 1px solid rgba(126, 166, 255, 0.38);
+  border-radius: 999px;
+  color: #fff;
+  content: 'MP4 preview - press play';
+  font-size: 0.78rem;
+  font-weight: 700;
+  left: 1.8rem;
+  letter-spacing: 0.01em;
+  padding: 0.38rem 0.68rem;
+  pointer-events: none;
+  position: absolute;
+  top: 1.8rem;
+  z-index: 1;
+}
+
+.theme-doc-markdown .pali-video-card video {
+  margin: 0;
+}

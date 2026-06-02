@@ -3,7 +3,7 @@
 Started with
 [web-extension-starter](https://github.com/abhijithvijayan/web-extension-starter)
 
-To learn how to develop Pali Wallet-compatible applications, visit our [documentation](https://pali-docs.vercel.app/).
+To learn how to develop Pali Wallet-compatible applications, visit our [documentation](https://docs.paliwallet.com/).
 
 ## Getting Started
 
