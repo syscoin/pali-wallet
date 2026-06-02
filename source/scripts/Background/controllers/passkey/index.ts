@@ -561,7 +561,11 @@ class PasskeyController {
           continue;
         }
         if (existingAddresses.has(candidate.address.toLowerCase())) {
-          throw new Error('Account already exists on your Wallet.');
+          return this.useExistingRecoveredPasskeyAccount({
+            address: candidate.address,
+            metadata: candidate.metadata,
+            saveOperation: 'recover-existing-passkey-smart-account-for-create',
+          });
         }
 
         return this.addRecoveredPasskeyAccount({
@@ -649,6 +653,50 @@ class PasskeyController {
     }
 
     return (recoveredSponsor?.urlHash || '').toLowerCase() === requestedUrlHash;
+  }
+
+  private async useExistingRecoveredPasskeyAccount({
+    address,
+    metadata,
+    saveOperation,
+  }: {
+    address: string;
+    metadata: IPasskeySmartAccountMetadata;
+    saveOperation: string;
+  }) {
+    const normalizedAddress = address.toLowerCase();
+    const passkeyAccounts =
+      store.getState().vault.accounts[
+        PaliKeyringAccountType.PasskeySmartAccount
+      ] || {};
+    const existingAccount = Object.values(passkeyAccounts).find(
+      (account: any) => account?.address?.toLowerCase?.() === normalizedAddress
+    ) as any;
+
+    if (!existingAccount) {
+      throw new Error('Account already exists on your Wallet.');
+    }
+
+    store.dispatch(
+      setActiveAccount({
+        id: existingAccount.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+      })
+    );
+    if (!store.getState().vault.passkeyCredentialProfile) {
+      store.dispatch(
+        setPasskeyCredentialProfile({
+          credentialId: metadata.credentialId,
+          credentialIdHash: metadata.credentialIdHash,
+          backupStatus: metadata.backupStatus,
+          passkeyName: existingAccount.label || metadata.passkeyName,
+          publicKey: metadata.publicKey,
+        })
+      );
+      await this.saveWalletState(saveOperation, true, true);
+    }
+
+    return existingAccount;
   }
 
   private async addRecoveredPasskeyAccount({
