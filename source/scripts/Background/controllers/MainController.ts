@@ -3692,6 +3692,70 @@ class MainController {
     return true;
   }
 
+  public async preparePasskeyDeploymentPolicyExecution(): Promise<{
+    actionHash: string;
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    requiresDeployment: boolean;
+  } | null> {
+    const { activeAccount, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const code = await provider.getCode(account.address);
+    if (code && code !== '0x') {
+      return null;
+    }
+
+    const deadline = Math.floor(Date.now() / 1000) + 15 * 60;
+    const policyExecution = getPasskeyPolicyExecution(
+      account.address,
+      metadata,
+      0,
+      deadline
+    );
+    if (!policyExecution) {
+      return null;
+    }
+
+    const executions = [policyExecution];
+    const actionHash = getPasskeyActionHash({
+      account: account.address,
+      chainId: metadata.chainId,
+      executions,
+      sponsorMode: PasskeyContractSponsorMode.None,
+      sponsorSigner: AddressZero,
+    });
+
+    return {
+      actionHash,
+      execution: policyExecution,
+      executions,
+      requiresDeployment: true,
+    };
+  }
+
   public async preparePasskeyExecution(params: {
     data?: string;
     target: string;
