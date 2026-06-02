@@ -329,6 +329,9 @@ const PASSKEY_EXECUTE_SELECTOR = id(
 const PASSKEY_CREATE_AND_EXECUTE_SELECTOR = id(
   'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint256,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
 ).slice(0, 10);
+const PASSKEY_SET_SPONSOR_SELECTOR = id(
+  'setSponsor(uint8,address,bytes32)'
+).slice(0, 10);
 
 export const getPasskeyDisplayTransaction = (tx: any): any | null => {
   const input = String(tx?.input || tx?.data || '');
@@ -366,14 +369,30 @@ export const getPasskeyDisplayTransaction = (tx: any): any | null => {
     }
 
     const outerTo = String(tx?.to || '').toLowerCase();
+    const passkeyAccount = String(passkeyExecutionFrom || '').toLowerCase();
+    const isPolicyExecution = (execution: any) => {
+      const target = String(execution.target || '').toLowerCase();
+      const data = String(execution.data || '0x');
+      const value =
+        execution.value?.toString?.() || String(execution.value || '0');
+
+      return (
+        executions.length > 1 &&
+        data.startsWith(PASSKEY_SET_SPONSOR_SELECTOR) &&
+        value === '0' &&
+        (!passkeyAccount || target === passkeyAccount)
+      );
+    };
     const selected =
+      executions.find((execution) => !isPolicyExecution(execution)) ||
       executions.find((execution) => {
         const target = String(execution.target || '').toLowerCase();
         const data = String(execution.data || '0x');
         const value =
           execution.value?.toString?.() || String(execution.value || '0');
         return target !== outerTo || data !== '0x' || value !== '0';
-      }) || executions[executions.length - 1];
+      }) ||
+      executions[executions.length - 1];
 
     return {
       ...tx,
