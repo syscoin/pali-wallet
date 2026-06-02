@@ -44,7 +44,8 @@ const TransactionsManager = (): ITransactionsManager => {
     activeNetworkUrl: string,
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
-    isRapidPolling?: boolean
+    isRapidPolling?: boolean,
+    forceRefresh?: boolean
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -66,7 +67,7 @@ const TransactionsManager = (): ITransactionsManager => {
 
     // Only use cache if there are no pending transactions
     // This ensures we always get fresh data when confirmations might have changed
-    if (!hasUnconfirmedTxs) {
+    if (!forceRefresh && !hasUnconfirmedTxs) {
       const cachedResult = transactionCache.get(cacheKey);
       if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_TTL) {
         return cachedResult.data;

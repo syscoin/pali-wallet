@@ -220,7 +220,8 @@ export interface ITransactionsManagerUtils {
     activeNetworkUrl: string,
     accountTransactions?: IAccountTransactions,
     isPolling?: boolean,
-    isRapidPolling?: boolean
+    isRapidPolling?: boolean,
+    forceRefresh?: boolean
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {
