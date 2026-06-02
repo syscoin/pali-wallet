@@ -4988,10 +4988,26 @@ class MainController {
           await checkForUpdates(true, true);
         }
 
-        const { accountTransactions, activeAccount: latestActiveAccount } =
-          store.getState().vault;
-        const accountInfo =
-          targetAccount ?? latestActiveAccount ?? activeAccount;
+        const {
+          accountTransactions,
+          activeAccount: latestActiveAccount,
+          activeNetwork: latestActiveNetwork,
+        } = store.getState().vault;
+
+        if (
+          latestActiveNetwork.chainId !== chainId ||
+          (!targetAccount &&
+            (latestActiveAccount.id !== activeAccount.id ||
+              latestActiveAccount.type !== activeAccount.type))
+        ) {
+          console.log(
+            '[RapidPoll] Account or network changed during poll, stopping rapid poll'
+          );
+          this.activeRapidPolls.delete(pollKey);
+          return;
+        }
+
+        const accountInfo = targetAccount ?? latestActiveAccount;
         const txs = accountTransactions[accountInfo.type]?.[accountInfo.id];
         const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
         const chainTxs = txs?.[networkType]?.[chainId];
