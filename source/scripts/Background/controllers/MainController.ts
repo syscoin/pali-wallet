@@ -3949,6 +3949,9 @@ class MainController {
             sponsorResult.txHash
           );
         }
+        if (requiresDeployment) {
+          await this.savePasskeyDeploymentStatusIfConfirmed(account, metadata);
+        }
         await this.recordPasskeyBackupStatusFromProof(account, params.proof);
         return { hash: sponsorResult.txHash };
       } catch (error) {
@@ -4035,23 +4038,7 @@ class MainController {
       }
     );
     if (requiresDeployment) {
-      const deployedCode = await this.ethereumTransaction.web3Provider.getCode(
-        account.address
-      );
-      if (deployedCode && deployedCode !== '0x') {
-        store.dispatch(
-          setAccountPropertyByIdAndType({
-            id: account.id,
-            type: PaliKeyringAccountType.PasskeySmartAccount,
-            property: 'passkey',
-            value: {
-              ...metadata,
-              isDeployed: true,
-            },
-          })
-        );
-        await this.savePasskeyMetadataState('deploy-passkey-smart-account');
-      }
+      await this.savePasskeyDeploymentStatusIfConfirmed(account, metadata);
     }
     try {
       await this.saveWalletState('send-passkey-transaction', true, true);
@@ -4086,6 +4073,32 @@ class MainController {
     if (receipt.status === 0) {
       throw new Error('Passkey transaction reverted');
     }
+  }
+
+  private async savePasskeyDeploymentStatusIfConfirmed(
+    account: any,
+    metadata: IPasskeySmartAccountMetadata
+  ) {
+    const deployedCode = await this.ethereumTransaction.web3Provider.getCode(
+      account.address
+    );
+    if (!deployedCode || deployedCode === '0x') {
+      return false;
+    }
+
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id: account.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+        property: 'passkey',
+        value: {
+          ...metadata,
+          isDeployed: true,
+        },
+      })
+    );
+    await this.savePasskeyMetadataState('deploy-passkey-smart-account');
+    return true;
   }
 
   private async savePasskeyTransactionForLocalRecipients(
