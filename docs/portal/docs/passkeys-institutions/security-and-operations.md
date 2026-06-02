@@ -36,6 +36,14 @@ Recovery is wallet-scoped and passkey-scoped. A user generally needs:
 
 Recovery is not a custodial backdoor. The chain provides discoverable public metadata and account lists, but the user still needs the wallet recovery context and the relevant WebAuthn credential to prove control.
 
+## Credential backup status
+
+Pali may surface WebAuthn credential backup status when the browser and authenticator expose it. Treat this as operational signal, not as an on-chain security rule.
+
+Backup status can indicate whether a credential appears device-bound, backup-eligible, or currently backed up/synced by the platform passkey provider. A synced passkey can improve convenience and device-loss recovery because the user may restore the credential through their Apple, Google, Microsoft, or other platform account. The tradeoff is that the effective security boundary now includes that platform account, its recovery process, and any devices where the passkey is synced.
+
+For higher-assurance institutional accounts, decide and document whether synced passkeys are acceptable. Some institutions may prefer platform-synced passkeys for user recovery and onboarding; others may prefer device-bound authenticators or hardware security keys for stronger isolation and a stricter recovery process.
+
 ## User communication
 
 Use clear policy text. A good policy explains:

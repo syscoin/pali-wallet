@@ -10,7 +10,11 @@ Write down your wallet seed phrase and keep it offline. Anyone with the seed phr
 
 ## Passkey backup status
 
-Passkeys can be device-bound or synced by the platform account provider. Pali surfaces backup-related status where available, but the exact behavior depends on the authenticator and operating system.
+Passkeys can be device-bound or synced by the platform account provider. Pali surfaces backup-related status where available, but the exact behavior depends on the authenticator, browser, and operating system.
+
+You may see status that suggests whether a passkey is device-bound, backup-eligible, or backed up/synced. A synced passkey is usually more convenient because it can follow you through a platform account such as Apple, Google, or Microsoft. A device-bound passkey or hardware security key can be stricter, but losing that device may make recovery harder.
+
+Backup status is a signal to help you choose between convenience and security. It does not replace your seed phrase backup, and it does not mean Pali or an institution can recover a passkey secret for you.
 
 ## Recovering passkey accounts
 
