@@ -265,24 +265,17 @@ export const SendCalls = () => {
       setLoading(true);
       setConfirmed(false); // Reset confirmed state for each attempt
 
-      // Filter calls based on selection AND exclude already successful transactions
-      const selectedCallsData = callsData.atomicRequired
-        ? callsData.calls
-        : callsData.calls.filter(
-            (_, index) =>
-              effectiveSelectedCalls[index] &&
-              (!transactionStatuses?.[index] ||
-                transactionStatuses[index].status !== 'success')
-          );
+      // Filter calls based on selection AND exclude already successful transactions.
+      // Even atomic batches may be executed sequentially for non-passkey accounts,
+      // so retry attempts must not resubmit calls that already succeeded.
+      const shouldSubmitCall = (_: unknown, index: number) =>
+        (callsData.atomicRequired || effectiveSelectedCalls[index]) &&
+        (!transactionStatuses?.[index] ||
+          transactionStatuses[index].status !== 'success');
+      const selectedCallsData = callsData.calls.filter(shouldSubmitCall);
       const selectedIndices = callsData.calls
         .map((_, index) => index)
-        .filter((index) =>
-          callsData.atomicRequired
-            ? true
-            : effectiveSelectedCalls[index] &&
-              (!transactionStatuses?.[index] ||
-                transactionStatuses[index].status !== 'success')
-        );
+        .filter((index) => shouldSubmitCall(callsData.calls[index], index));
 
       const receipts: any[] = [];
       const from = callsData.from || activeAccount.address;
