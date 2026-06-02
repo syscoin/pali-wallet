@@ -1,0 +1,22 @@
+{
+  "name": "@paliwallet/docs-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Documentation portal for Pali Wallet users, dapp developers, and institutional passkey integrators.",
+  "scripts": {
+    "start": "docusaurus start --host 0.0.0.0",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.10.1",
+    "@docusaurus/module-type-aliases": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.1",
+    "@easyops-cn/docusaurus-search-local": "^0.55.2",
+    "clsx": "^2.1.1",
+    "prop-types": "^15.8.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}
