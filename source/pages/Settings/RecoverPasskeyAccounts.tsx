@@ -102,6 +102,7 @@ const RecoverPasskeyAccounts = () => {
             ],
           },
         ]);
+        return;
       }
 
       if (result.recovered > 0) {
@@ -113,8 +114,6 @@ const RecoverPasskeyAccounts = () => {
             count: result.recovered,
           })
         );
-      } else if (result.missingSponsorUrl > 0) {
-        return;
       } else {
         alert.error(t('settings.noPasskeyAccountsRecovered'));
       }
