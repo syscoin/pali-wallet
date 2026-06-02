@@ -4428,6 +4428,19 @@ class MainController {
                 web3Provider,
                 currentAssets || { ethereum: [], syscoin: [] }
               );
+            const latestNetwork = store.getState().vault.activeNetwork;
+            if (
+              latestNetwork.chainId !== activeNetwork.chainId ||
+              latestNetwork.kind !== activeNetwork.kind ||
+              latestNetwork.url !== activeNetwork.url
+            ) {
+              console.log(
+                '[MainController] Skipping stale asset update after network change'
+              );
+              resolve();
+              return;
+            }
+
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length < currentAssets.ethereum.length ||
               updatedAssets.syscoin.length < currentAssets.syscoin.length;
@@ -5022,6 +5035,20 @@ class MainController {
               } catch (error) {
                 console.warn(
                   '[RapidPoll] Failed to refresh balance after direct EVM confirmation:',
+                  error
+                );
+              }
+
+              try {
+                await this.updateAssetsFromCurrentAccount({
+                  activeAccount: targetAccount ?? postLookupActiveAccount,
+                  activeNetwork: postLookupActiveNetwork,
+                  isBitcoinBased: false,
+                  isPolling: true,
+                });
+              } catch (error) {
+                console.warn(
+                  '[RapidPoll] Failed to refresh assets after direct EVM confirmation:',
                   error
                 );
               }
