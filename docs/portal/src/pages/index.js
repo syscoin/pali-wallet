@@ -1,5 +1,6 @@
 /* eslint-disable react/jsx-filename-extension */
 import Link from '@docusaurus/Link';
+import Translate, { translate } from '@docusaurus/Translate';
 import Layout from '@theme/Layout';
 import clsx from 'clsx';
 import PropTypes from 'prop-types';
@@ -9,21 +10,39 @@ import styles from './index.module.css';
 
 const featureCards = [
   {
-    title: 'MetaMask-compatible EVM dapps',
-    description:
-      'Use familiar EIP-1193, EIP-6963, permissions, signing, chain management, assets, and batch call flows through window.ethereum.',
+    title: translate({
+      id: 'homepage.feature.evm.title',
+      message: 'MetaMask-compatible EVM dapps',
+    }),
+    description: translate({
+      id: 'homepage.feature.evm.description',
+      message:
+        'Use familiar EIP-1193, EIP-6963, permissions, signing, chain management, assets, and batch call flows through window.ethereum.',
+    }),
     to: '/docs/evm-api/overview',
   },
   {
-    title: 'UTXO and Syscoin dapps',
-    description:
-      'Use window.pali for Syscoin UTXO accounts, PSBT signing, change addresses, xpub-aware state, SPT assets, and Bitcoin-style integrations.',
+    title: translate({
+      id: 'homepage.feature.utxo.title',
+      message: 'UTXO and Syscoin dapps',
+    }),
+    description: translate({
+      id: 'homepage.feature.utxo.description',
+      message:
+        'Use window.pali for Syscoin UTXO accounts, PSBT signing, change addresses, xpub-aware state, SPT assets, and Bitcoin-style integrations.',
+    }),
     to: '/docs/utxo-syscoin-api/overview',
   },
   {
-    title: 'Passkeys for institutions',
-    description:
-      'Create and recover passkey smart accounts, attach sponsor policy, and submit atomic batches with a single WebAuthn approval.',
+    title: translate({
+      id: 'homepage.feature.passkeys.title',
+      message: 'Passkeys for institutions',
+    }),
+    description: translate({
+      id: 'homepage.feature.passkeys.description',
+      message:
+        'Create and recover passkey smart accounts, attach sponsor policy, and submit atomic batches with a single WebAuthn approval.',
+    }),
     to: '/docs/passkeys-institutions/overview',
   },
 ];
@@ -32,27 +51,35 @@ function HomepageHeader() {
   return (
     <header className={styles.hero}>
       <div className="container">
-        <p className={styles.eyebrow}>Pali Wallet documentation</p>
+        <p className={styles.eyebrow}>
+          <Translate id="homepage.hero.eyebrow">
+            Pali Wallet documentation
+          </Translate>
+        </p>
         <h1 className={styles.heroTitle}>
-          One wallet surface for EVM, Syscoin UTXO, Bitcoin-style apps, and
-          passkey accounts.
+          <Translate id="homepage.hero.title">
+            One wallet surface for EVM, Syscoin UTXO, Bitcoin-style apps, and
+            passkey accounts.
+          </Translate>
         </h1>
         <p className={styles.heroSubtitle}>
-          Pali is a secure browser extension wallet for users, developers, and
-          institutions building across account-based and UTXO-based chains.
+          <Translate id="homepage.hero.subtitle">
+            Pali is a secure browser extension wallet for users, developers, and
+            institutions building across account-based and UTXO-based chains.
+          </Translate>
         </p>
         <div className={styles.buttons}>
           <Link
             className="button button--primary button--lg"
             to="/docs/developers/provider-discovery"
           >
-            Build with Pali
+            <Translate id="homepage.hero.primaryCta">Build with Pali</Translate>
           </Link>
           <Link
             className="button button--secondary button--lg"
             to="/docs/users/getting-started"
           >
-            User guides
+            <Translate id="homepage.hero.secondaryCta">User guides</Translate>
           </Link>
         </div>
       </div>
@@ -82,8 +109,15 @@ FeatureCard.propTypes = {
 export default function Home() {
   return (
     <Layout
-      title="Pali Wallet Docs"
-      description="Developer, user, and institutional documentation for Pali Wallet."
+      title={translate({
+        id: 'homepage.layout.title',
+        message: 'Pali Wallet Docs',
+      })}
+      description={translate({
+        id: 'homepage.layout.description',
+        message:
+          'Developer, user, and institutional documentation for Pali Wallet.',
+      })}
     >
       <HomepageHeader />
       <main>
@@ -100,31 +134,53 @@ export default function Home() {
         </section>
         <section className={styles.flowSection}>
           <div className="container">
-            <h2>Choose the right integration path</h2>
+            <h2>
+              <Translate id="homepage.flow.title">
+                Choose the right integration path
+              </Translate>
+            </h2>
             <div className={styles.flowGrid}>
               <div>
                 <span className={styles.step}>1</span>
-                <h3>Detect providers</h3>
+                <h3>
+                  <Translate id="homepage.flow.detect.title">
+                    Detect providers
+                  </Translate>
+                </h3>
                 <p>
-                  Prefer EIP-6963 for EVM dapps, then use window.ethereum.
-                  Syscoin UTXO and Bitcoin-like flows use window.pali.
+                  <Translate id="homepage.flow.detect.description">
+                    Prefer EIP-6963 for EVM dapps, then use window.ethereum.
+                    Syscoin UTXO and Bitcoin-like flows use window.pali.
+                  </Translate>
                 </p>
               </div>
               <div>
                 <span className={styles.step}>2</span>
-                <h3>Connect the account</h3>
+                <h3>
+                  <Translate id="homepage.flow.connect.title">
+                    Connect the account
+                  </Translate>
+                </h3>
                 <p>
-                  Request accounts with eth_requestAccounts or
-                  sys_requestAccounts. Pali keeps one active account per dapp
-                  origin.
+                  <Translate id="homepage.flow.connect.description">
+                    Request accounts with eth_requestAccounts or
+                    sys_requestAccounts. Pali keeps one active account per dapp
+                    origin.
+                  </Translate>
                 </p>
               </div>
               <div>
                 <span className={styles.step}>3</span>
-                <h3>Request work</h3>
+                <h3>
+                  <Translate id="homepage.flow.request.title">
+                    Request work
+                  </Translate>
+                </h3>
                 <p>
-                  Send EVM transactions, sign typed data, sign UTXO PSBTs, or
-                  create passkey smart accounts with sponsor policy.
+                  <Translate id="homepage.flow.request.description">
+                    Send EVM transactions, sign typed data, sign UTXO PSBTs, or
+                    create passkey smart accounts with sponsor policy.
+                  </Translate>
                 </p>
               </div>
             </div>

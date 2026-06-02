@@ -1,0 +1,34 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.Start Here": {
+    "message": "Commencer ici",
+    "description": "The label for category 'Start Here' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.For Users": {
+    "message": "Pour les utilisateurs",
+    "description": "The label for category 'For Users' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.For Dapp Developers": {
+    "message": "Pour les développeurs de dapps",
+    "description": "The label for category 'For Dapp Developers' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.EVM API": {
+    "message": "EVM API",
+    "description": "The label for category 'EVM API' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.UTXO and Syscoin API": {
+    "message": "UTXO and Syscoin API",
+    "description": "The label for category 'UTXO and Syscoin API' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Passkeys and Institutions": {
+    "message": "Passkeys et institutions",
+    "description": "The label for category 'Passkeys and Institutions' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Reference": {
+    "message": "Référence",
+    "description": "The label for category 'Reference' in sidebar 'tutorialSidebar'"
+  }
+}

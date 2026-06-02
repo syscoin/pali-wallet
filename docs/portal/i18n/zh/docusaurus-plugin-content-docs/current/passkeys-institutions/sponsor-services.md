@@ -1,0 +1,56 @@
+---
+title: Sponsor 服务
+---
+
+Sponsor service 是由机构控制的 endpoint，参与 Passkey 智能账户执行策略。
+
+## Sponsor 对象
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/sponsor-pending-success.png" alt="Pali sponsor relay pending 和 success 状态" />
+</a>
+  <figcaption>Sponsored execution 应向用户清楚显示待处理、成功和失败状态。</figcaption>
+</figure>
+
+```js
+{
+  mode: 'required',
+  url: 'https://institution.example/sponsor/user-123',
+  signer: '0xSponsorSignerAddress',
+  policyText: 'Institution co-authorization is required.'
+}
+```
+
+## 字段含义
+
+| 字段 | 用途 |
+| --- | --- |
+| `mode` | `disabled`、`gasOnly` 或 `required`。 |
+| `url` | Pali 为 sponsor execution support 联系的服务 endpoint。 |
+| `signer` | required policy proof 的预期 sponsor signer 地址。 |
+| `policyText` | 存储在钱包元数据中的面向用户说明。不是链上执行。 |
+
+## 链上策略
+
+智能账户策略存储 mode、signer 和 URL hash。完整 URL 和策略文本是用于显示和 sponsor service 调用的钱包元数据。
+
+## 幂等性
+
+Sponsor execution 请求使用从 Passkey action hash 派生的 idempotency key。Sponsor service 应将具有相同 key 的重复请求视为同一操作。
+
+## Required sponsor mode
+
+在 `required` mode 中，sponsor proof 必须 recover 到已配置的 signer。如果 Pali 无法获得或验证 sponsor proof，执行会失败。
+
+## Gas-only mode
+
+在 `gasOnly` mode 中，sponsor service 可以 relay 或帮助支付 gas。如果 sponsorship 不可用，在策略允许时 Pali 可以回退到 wallet-gas execution。
+
+## 机构指南
+
+- 使用稳定的每用户 sponsor URL。
+- 将 signer key 保存在机构基础设施中，而不是 dapp frontend 中。
+- 让策略文本简短、具体、易懂。
+- 对重复 idempotency key 返回一致状态。
+- 监控失败的 sponsor 请求和过期执行 deadline。
