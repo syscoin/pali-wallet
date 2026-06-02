@@ -5,8 +5,12 @@
   "description": "Documentation portal for Pali Wallet users, dapp developers, and institutional passkey integrators.",
   "scripts": {
     "start": "docusaurus start --host 0.0.0.0",
+    "start:locale": "docusaurus start --host 0.0.0.0 --locale",
     "build": "docusaurus build",
-    "serve": "docusaurus serve",
+    "build:en": "docusaurus build --locale en",
+    "serve": "docusaurus serve --host 0.0.0.0",
+    "preview": "yarn build && yarn serve",
+    "write-translations": "docusaurus write-translations",
     "clear": "docusaurus clear"
   },
   "dependencies": {

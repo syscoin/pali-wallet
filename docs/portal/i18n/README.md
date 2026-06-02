@@ -12,17 +12,23 @@ The docs portal is prepared to use the same locale set as Pali Wallet:
 - `ja` - Japanese
 - `ko` - Korean
 
-Only `en` is published by default. Enable another locale only after the translated technical content has been reviewed for API, security, and passkey accuracy.
+All locale routes are published so the language selector is available. Navbar, footer, sidebar category labels, homepage chrome, and technical markdown pages are translated for the configured locales.
 
-## Add a Locale
+Local search indexes the multilingual docs content for supported Lunr languages. Korean docs are published, but Korean-specific search tokenization is excluded because the current `lunr-languages` Korean trimmer breaks the combined search regex; Latin technical identifiers on Korean pages remain searchable.
 
-Generate translation files from `docs/portal`:
+## Update Translation Catalogs
+
+Regenerate translation files from `docs/portal` after adding new strings:
 
 ```bash
 yarn docusaurus write-translations --locale es
 ```
 
-Then translate docs into:
+Repeat for each non-English locale.
+
+## Translate Technical Docs
+
+Translate docs into:
 
 ```text
 i18n/es/docusaurus-plugin-content-docs/current/
@@ -34,7 +40,7 @@ Translate generated theme/navbar/footer strings under:
 i18n/es/code.json
 ```
 
-After review, add the locale code to `i18n.locales` in `docusaurus.config.js` and add a navbar locale dropdown if more than one locale is live.
+The locale code must remain in `i18n.locales` in `docusaurus.config.js` for the translated route to be built.
 
 ## Review Notes
 

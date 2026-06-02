@@ -1,0 +1,46 @@
+{
+  "link.title.Build": {
+    "message": "构建",
+    "description": "The title of the footer links column with title=Build in the footer"
+  },
+  "link.title.Passkeys": {
+    "message": "Passkeys",
+    "description": "The title of the footer links column with title=Passkeys in the footer"
+  },
+  "link.title.Community": {
+    "message": "社区",
+    "description": "The title of the footer links column with title=Community in the footer"
+  },
+  "link.item.label.Developer Quickstart": {
+    "message": "开发者快速开始",
+    "description": "The label of footer link with label=Developer Quickstart linking to /docs/developers/provider-discovery"
+  },
+  "link.item.label.EVM API": {
+    "message": "EVM API",
+    "description": "The label of footer link with label=EVM API linking to /docs/evm-api/overview"
+  },
+  "link.item.label.UTXO and Syscoin API": {
+    "message": "UTXO and Syscoin API",
+    "description": "The label of footer link with label=UTXO and Syscoin API linking to /docs/utxo-syscoin-api/overview"
+  },
+  "link.item.label.Institutional Accounts": {
+    "message": "机构账户",
+    "description": "The label of footer link with label=Institutional Accounts linking to /docs/passkeys-institutions/overview"
+  },
+  "link.item.label.Sponsor Services": {
+    "message": "赞助服务",
+    "description": "The label of footer link with label=Sponsor Services linking to /docs/passkeys-institutions/sponsor-services"
+  },
+  "link.item.label.Syscoin Discord": {
+    "message": "Syscoin Discord",
+    "description": "The label of footer link with label=Syscoin Discord linking to https://discord.com/invite/syscoin"
+  },
+  "link.item.label.Pali Wallet GitHub": {
+    "message": "Pali Wallet GitHub",
+    "description": "The label of footer link with label=Pali Wallet GitHub linking to https://github.com/syscoin/pali_wallet"
+  },
+  "copyright": {
+    "message": "Copyright © 2026 Syscoin. Built for Pali Wallet.",
+    "description": "The footer copyright"
+  }
+}

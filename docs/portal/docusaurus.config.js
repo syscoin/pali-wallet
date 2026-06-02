@@ -39,6 +39,9 @@ const docsLocaleConfigs = {
   },
 };
 
+const docsLocales = Object.keys(docsLocaleConfigs);
+const searchLanguages = docsLocales.filter((locale) => locale !== 'ko');
+
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Pali Wallet Docs',
@@ -61,9 +64,9 @@ const config = {
 
   i18n: {
     defaultLocale: 'en',
-    // Match Pali Wallet locales, but only publish reviewed translations.
-    // Add locale codes here after creating matching files under `i18n/`.
-    locales: ['en'],
+    // Match Pali Wallet locales. Non-English routes are enabled so the
+    // language selector, translated chrome, and localized docs are published.
+    locales: docsLocales,
     localeConfigs: docsLocaleConfigs,
   },
 
@@ -92,7 +95,12 @@ const config = {
       {
         hashed: true,
         indexBlog: false,
-        language: ['en'],
+        // `lunr-languages` currently breaks the combined search regex when
+        // `ko` is included because its wordCharacters value is already wrapped
+        // in a character class. Korean routes still build; Latin technical
+        // identifiers remain searchable, but Korean stemming/tokenization is
+        // intentionally excluded until the upstream issue is fixed.
+        language: searchLanguages,
       },
     ],
   ],
@@ -127,6 +135,10 @@ const config = {
           {
             href: 'https://github.com/syscoin/pali_wallet',
             label: 'GitHub',
+            position: 'right',
+          },
+          {
+            type: 'localeDropdown',
             position: 'right',
           },
         ],
