@@ -147,7 +147,8 @@
     "sponsorDisabled": "No sponsor",
     "sponsorUrl": "Sponsor URL: {{url}}",
     "sponsorSigner": "Sponsor signer: {{signer}}",
-    "sponsorRequiredWarning": "This account will require sponsor co-authorization before Pali can execute transactions from it."
+    "sponsorRequiredWarning": "This account will require sponsor co-authorization before Pali can execute transactions from it.",
+    "passkeyRecoveryMismatch": "That passkey does not match an existing account for this sponsor. Try Create again and select a different passkey, or enable Advanced to create a separate new passkey."
   },
   "home": {
     "importToken": "Import Token",

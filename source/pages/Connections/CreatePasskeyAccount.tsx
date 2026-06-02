@@ -9,7 +9,11 @@ import { useQueryData } from 'hooks/useQuery';
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { logError } from 'utils/logger';
-import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
+import {
+  bytesToHex,
+  createPasskeyCredential,
+  getDiscoverablePasskeyAssertion,
+} from 'utils/passkey';
 import { isValidSponsorServiceUrl } from 'utils/passkey/sponsorUrl';
 
 export const CreatePasskeyAccount = () => {
@@ -17,6 +21,7 @@ export const CreatePasskeyAccount = () => {
   const { eventName, host, label, sponsor } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [useSeparatePasskey, setUseSeparatePasskey] = useState(false);
@@ -61,8 +66,14 @@ export const CreatePasskeyAccount = () => {
     window.close();
   };
 
+  const isPasskeyRecoveryMismatchError = (error: any) => {
+    const errorMessage = error?.message || String(error);
+    return /Passkey sponsor signer does not match/i.test(errorMessage);
+  };
+
   const approve = async () => {
     setLoading(true);
+    setRecoveryMessage('');
 
     try {
       if (trimmedSponsorUrl && !isValidSponsorServiceUrl(trimmedSponsorUrl)) {
@@ -86,6 +97,63 @@ export const CreatePasskeyAccount = () => {
             'wallet',
             'getPasskeyCredentialProfile',
           ])) as any);
+      if (!credential && !useSeparatePasskey) {
+        let assertion: any = null;
+        try {
+          const challenge = crypto.getRandomValues(new Uint8Array(32));
+          assertion = await getDiscoverablePasskeyAssertion(
+            bytesToHex(challenge)
+          );
+        } catch {
+          assertion = null;
+        }
+
+        if (assertion) {
+          let recoveredAccount: any = null;
+          try {
+            recoveredAccount = (await controllerEmitter(
+              ['wallet', 'recoverPasskeySmartAccountForCreate'],
+              [
+                {
+                  backupStatus: assertion.backupStatus,
+                  credentialId: assertion.credentialId,
+                  credentialIdHash: assertion.credentialIdHash,
+                  label: requestedLabel,
+                  sponsor: preparedSponsor,
+                },
+              ],
+              300000
+            )) as any;
+          } catch (error) {
+            if (!isPasskeyRecoveryMismatchError(error)) {
+              throw error;
+            }
+            setRecoveryMessage(t('connections.passkeyRecoveryMismatch'));
+            return;
+          }
+
+          if (recoveredAccount) {
+            await controllerEmitter(
+              ['dapp', 'changeAccount'],
+              [
+                host,
+                recoveredAccount.id,
+                KeyringAccountType.PasskeySmartAccount,
+              ]
+            );
+
+            dispatchBackgroundEvent(`${eventName}.${host}`, {
+              address: recoveredAccount.address,
+              metadata: recoveredAccount.passkey,
+            });
+            window.close();
+            return;
+          }
+
+          credential = null;
+        }
+      }
+
       if (!credential) {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
         const passkeyName = useSeparatePasskey
@@ -201,6 +269,13 @@ export const CreatePasskeyAccount = () => {
             <p className="text-xs text-brand-yellowInfo">
               {t('settings.passkeyPolicyLocked')}
             </p>
+          )}
+          {recoveryMessage && (
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {recoveryMessage}
+              </p>
+            </Card>
           )}
 
           {hasSponsorDetails && (

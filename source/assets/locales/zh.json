@@ -373,7 +373,8 @@
     "sponsorDisabled": "无赞助方",
     "sponsorUrl": "赞助方 URL：{{url}}",
     "sponsorSigner": "赞助方签名者：{{signer}}",
-    "sponsorRequiredWarning": "该账户需要赞助方共同授权后，Pali 才能从该账户执行交易。"
+    "sponsorRequiredWarning": "该账户需要赞助方共同授权后，Pali 才能从该账户执行交易。",
+    "passkeyRecoveryMismatch": "该通行密钥与此赞助方的现有账户不匹配。请再次点击创建并选择其他通行密钥，或启用高级选项以创建单独的新通行密钥。"
   },
   "start": {
     "paliDoesnt": "Pali不存储您的密码。恢复访问权限需要使用您的秘密恢复短语重置钱包。此操作会从您的设备中删除当前钱包、创建的账户、自定义代币和导入的账户，生成与重置短语绑定的新账户。",

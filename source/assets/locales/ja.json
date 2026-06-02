@@ -373,7 +373,8 @@
     "sponsorDisabled": "スポンサーなし",
     "sponsorUrl": "スポンサー URL: {{url}}",
     "sponsorSigner": "スポンサー署名者: {{signer}}",
-    "sponsorRequiredWarning": "このアカウントから Pali が取引を実行するには、スポンサーの共同承認が必要です。"
+    "sponsorRequiredWarning": "このアカウントから Pali が取引を実行するには、スポンサーの共同承認が必要です。",
+    "passkeyRecoveryMismatch": "そのパスキーは、このスポンサーの既存アカウントと一致しません。もう一度 作成 を押して別のパスキーを選択するか、詳細設定を有効にして別の新しいパスキーを作成してください。"
   },
   "titles": {
     "assetDetails": "資産詳細",
