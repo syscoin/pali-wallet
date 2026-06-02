@@ -5,13 +5,14 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
+import { LockIconSvg } from 'components/Icon/Icon';
 import { Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/format';
-import { navigateBack } from 'utils/navigationState';
+import { navigateBack, navigateWithContext } from 'utils/navigationState';
 
 const EditAccountView = () => {
   const location = useLocation();
@@ -26,8 +27,12 @@ const EditAccountView = () => {
 
   const [form] = useForm();
 
+  const isPasskeyAccount =
+    state.accountType === KeyringAccountType.PasskeySmartAccount ||
+    state.isPasskeySmartAccount;
+
   const getWalletType = useMemo(() => {
-    if (state.accountType === KeyringAccountType.PasskeySmartAccount) {
+    if (isPasskeyAccount) {
       return 'Passkey';
     } else if (state.isTrezorWallet) {
       return HardWallets.TREZOR;
@@ -37,7 +42,11 @@ const EditAccountView = () => {
       return 'Imported';
     }
     return 'Pali';
-  }, [state]);
+  }, [isPasskeyAccount, state]);
+
+  const walletTypeBadgeClassName = isPasskeyAccount
+    ? 'bg-purple-500 text-white'
+    : 'bg-brand-blue500 text-brand-blue100';
 
   const initialValues = {
     label: state && state.label ? state.label : '',
@@ -79,6 +88,14 @@ const EditAccountView = () => {
     copyText(state.address);
   };
 
+  const openPasskeyPolicy = () => {
+    navigateWithContext(navigate, '/settings/account/passkey-policy', state, {
+      returnRoute: '/settings/edit-account',
+      returnContext: state.returnContext,
+      state,
+    });
+  };
+
   return (
     <>
       <Form
@@ -91,7 +108,7 @@ const EditAccountView = () => {
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center text-center"
+        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0"
       >
         <QRCodeSVG
           value={state.address}
@@ -107,7 +124,9 @@ const EditAccountView = () => {
         />
         <div className="flex w-full items-center mb-3 mt-2 justify-between">
           <div className="flex items-center gap-2">
-            <div className="text-xs ml-2 px-2 py-0.5 text-brand-blue100 bg-brand-blue500 rounded-full">
+            <div
+              className={`text-xs ml-2 px-2 py-0.5 rounded-full ${walletTypeBadgeClassName}`}
+            >
               {getWalletType}
             </div>
             <p className="text-xs">({ellipsis(state.address, 12, 14)})</p>
@@ -165,7 +184,32 @@ const EditAccountView = () => {
           />
         </Form.Item>
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        {isPasskeyAccount && (
+          <button
+            type="button"
+            className="mb-4 flex w-full cursor-pointer items-center justify-between rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left text-sm hover:bg-brand-blue500 hover:bg-opacity-20"
+            onClick={openPasskeyPolicy}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <LockIconSvg className="shrink-0 w-6 h-6 text-white opacity-90" />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-white">
+                  {t('settings.passkeyAccountPolicy')}
+                </span>
+                <span className="mt-1 block text-xs text-brand-graylight">
+                  {t('settings.passkeyAccountPolicySummary')}
+                </span>
+              </span>
+            </span>
+            <Icon name="arrowright" isSvg size={24} className="shrink-0" />
+          </button>
+        )}
+
+        <div
+          className={`w-full px-4 ${
+            isPasskeyAccount ? 'static' : 'absolute bottom-12 md:static'
+          }`}
+        >
           <NeutralButton type="submit" fullWidth loading={loading}>
             {t('buttons.save')}
           </NeutralButton>

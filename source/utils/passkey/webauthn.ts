@@ -29,6 +29,7 @@ export type PasskeyRegistrationResult = PasskeyPublicKey & {
 
 export type PasskeyAssertionResult = {
   authenticatorData: string;
+  backupStatus: PasskeyBackupStatus;
   challengeOffset: number;
   clientDataJSON: string;
   credentialId: string;
@@ -97,7 +98,7 @@ const normalizeP256S = (s: Uint8Array): Uint8Array => {
   return s;
 };
 
-const getPasskeyBackupStatus = (
+export const getPasskeyBackupStatus = (
   authenticatorData: Uint8Array
 ): PasskeyBackupStatus => {
   if (authenticatorData.length <= 32) {
@@ -301,6 +302,7 @@ const getPasskeyAssertionForCredential = async (
 
   return {
     authenticatorData: bytesToHex(authenticatorData),
+    backupStatus: getPasskeyBackupStatus(authenticatorData),
     challengeOffset,
     clientDataJSON: bytesToHex(clientDataJSON),
     credentialId: bytesToBase64Url(credentialIdBytes),

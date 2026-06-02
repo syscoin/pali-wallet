@@ -21,6 +21,7 @@ import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
+import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { getPasskeyAssertion } from 'utils/passkey';
 
@@ -147,6 +148,13 @@ const EthSign: React.FC<ISign> = () => {
     const assertion = await getPasskeyAssertion(
       activeAccount.passkey.credentialId,
       hash
+    );
+    await controllerEmitter(
+      ['wallet', 'updatePasskeyBackupStatus'],
+      [activeAccount.id, assertion.backupStatus],
+      300000
+    ).catch((error) =>
+      logError('Failed to update passkey backup status', 'UI', error)
     );
 
     return defaultAbiCoder.encode(

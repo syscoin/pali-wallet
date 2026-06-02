@@ -111,9 +111,13 @@ const VaultState = createSlice({
     },
     setPasskeyCredentialProfile(
       state: IVaultState,
-      action: PayloadAction<IPasskeyCredentialProfile>
+      action: PayloadAction<IPasskeyCredentialProfile | null>
     ) {
-      state.passkeyCredentialProfile = action.payload;
+      if (action.payload) {
+        state.passkeyCredentialProfile = action.payload;
+      } else {
+        delete state.passkeyCredentialProfile;
+      }
     },
     setAccountLabel(
       state: IVaultState,
@@ -519,7 +523,36 @@ const VaultState = createSlice({
           if (existingTxIndex !== -1) {
             // Transaction already exists, update it if the new one has more confirmations
             const existingTx = currentUserTransactions[existingTxIndex];
-            if (transaction.confirmations > existingTx.confirmations) {
+            const transactionAny = transaction as any;
+            const existingTxAny = existingTx as any;
+            const transactionInBlock =
+              (transactionAny.blockNumber !== null &&
+                transactionAny.blockNumber !== undefined &&
+                transactionAny.blockNumber > 0) ||
+              (transactionAny.blockHeight !== null &&
+                transactionAny.blockHeight !== undefined &&
+                transactionAny.blockHeight > 0) ||
+              (transactionAny.height !== null &&
+                transactionAny.height !== undefined &&
+                transactionAny.height > 0);
+            const existingInBlock =
+              (existingTxAny.blockNumber !== null &&
+                existingTxAny.blockNumber !== undefined &&
+                existingTxAny.blockNumber > 0) ||
+              (existingTxAny.blockHeight !== null &&
+                existingTxAny.blockHeight !== undefined &&
+                existingTxAny.blockHeight > 0) ||
+              (existingTxAny.height !== null &&
+                existingTxAny.height !== undefined &&
+                existingTxAny.height > 0);
+            const hasMoreConfirmations =
+              (transaction.confirmations ?? 0) >
+              (existingTx.confirmations ?? 0);
+
+            if (
+              hasMoreConfirmations ||
+              (transactionInBlock && !existingInBlock)
+            ) {
               currentUserTransactions[existingTxIndex] = transaction as any;
             }
           } else {

@@ -25,6 +25,7 @@ import { RootState } from 'state/store';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
+import { PASSKEY_FACTORY_ADDRESSES } from 'utils/passkey/contracts';
 
 // Static account type configuration to prevent recreation
 const ACCOUNT_TYPE_CONFIG = {
@@ -98,6 +99,9 @@ const ManageAccountsView = React.memo(() => {
   const activeAccountRef = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const { navigate, alert } = useUtils();
   const { controllerEmitter } = useController();
@@ -170,6 +174,9 @@ const ManageAccountsView = React.memo(() => {
       ),
     [accounts]
   );
+  const canRecoverPasskeyAccounts = Boolean(
+    PASSKEY_FACTORY_ADDRESSES[activeNetwork.chainId]
+  );
 
   // Check if account can be removed
   const canRemoveAccount = useCallback(
@@ -222,6 +229,22 @@ const ManageAccountsView = React.memo(() => {
   const handleCancelRemove = useCallback(() => {
     setAccountToRemove(null);
   }, []);
+
+  const removeAccountDescription = useMemo(() => {
+    if (!accountToRemove) return '';
+
+    const baseDescription = t('settings.removeAccountConfirmation', {
+      accountName: accountToRemove.account.label,
+      accountType: ACCOUNT_TYPE_CONFIG[accountToRemove.accountType].label,
+    });
+    const isUndeployedPasskeyAccount =
+      accountToRemove.accountType === KeyringAccountType.PasskeySmartAccount &&
+      !accountToRemove.account.passkey?.isDeployed;
+
+    return isUndeployedPasskeyAccount
+      ? t('settings.removeUndeployedPasskeyWarning')
+      : baseDescription;
+  }, [accountToRemove, t]);
 
   // Memoized unified account rendering
   const renderAccount = useCallback(
@@ -310,6 +333,17 @@ const ManageAccountsView = React.memo(() => {
         )}
       </ul>
       <div className="w-full px-4 absolute bottom-12 md:static">
+        {canRecoverPasskeyAccounts && (
+          <div className="mb-3">
+            <NeutralButton
+              type="button"
+              fullWidth
+              onClick={() => navigate('/settings/account/passkey-recover')}
+            >
+              {t('settings.recoverPasskeyAccounts')}
+            </NeutralButton>
+          </div>
+        )}
         <NeutralButton type="button" fullWidth onClick={handleClose}>
           {t('buttons.close')}
         </NeutralButton>
@@ -322,10 +356,7 @@ const ManageAccountsView = React.memo(() => {
           onClose={handleCancelRemove}
           onClick={handleConfirmRemove}
           title={t('settings.removeAccount')}
-          description={t('settings.removeAccountConfirmation', {
-            accountName: accountToRemove.account.label,
-            accountType: ACCOUNT_TYPE_CONFIG[accountToRemove.accountType].label,
-          })}
+          description={removeAccountDescription}
           buttonText={t('buttons.remove')}
           isButtonLoading={isRemoving}
         />

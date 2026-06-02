@@ -1,5 +1,13 @@
-import { arrayify, isHexString, splitSignature } from '@ethersproject/bytes';
-import { hashMessage } from '@ethersproject/hash';
+import { defaultAbiCoder } from '@ethersproject/abi';
+import {
+  arrayify,
+  hexConcat,
+  isHexString,
+  splitSignature,
+} from '@ethersproject/bytes';
+import { AddressZero } from '@ethersproject/constants';
+import { hashMessage, id as hashText } from '@ethersproject/hash';
+import { keccak256 } from '@ethersproject/keccak256';
 import { recoverAddress } from '@ethersproject/transactions';
 
 import {
@@ -26,6 +34,53 @@ export type PasskeyWebAuthnProof = {
   r: string;
   s: string;
   typeOffset: number;
+};
+
+const PASSKEY_EXECUTE_TYPEHASH = hashText(
+  'PALI_PASSKEY_SMART_ACCOUNT_EXECUTE_V1'
+);
+
+export const getPasskeyActionHash = ({
+  account,
+  chainId,
+  executions,
+  sponsorMode,
+  sponsorSigner = AddressZero,
+}: {
+  account: string;
+  chainId: number;
+  executions: PasskeyExecution[];
+  sponsorMode: number;
+  sponsorSigner?: string;
+}) => {
+  const executionHashes = executions.map((execution) =>
+    keccak256(
+      defaultAbiCoder.encode(
+        ['address', 'uint256', 'bytes32', 'uint256', 'uint256'],
+        [
+          execution.target,
+          execution.value,
+          keccak256(execution.data),
+          execution.nonce,
+          execution.deadline,
+        ]
+      )
+    )
+  );
+
+  return keccak256(
+    defaultAbiCoder.encode(
+      ['bytes32', 'uint256', 'address', 'bytes32', 'uint8', 'address'],
+      [
+        PASSKEY_EXECUTE_TYPEHASH,
+        chainId,
+        account,
+        keccak256(hexConcat(executionHashes)),
+        sponsorMode,
+        sponsorSigner || AddressZero,
+      ]
+    )
+  );
 };
 
 export class PasskeyRelayedTransactionNotFoundError extends Error {

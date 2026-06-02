@@ -39,6 +39,7 @@ import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
+import { savePasskeySlip44State } from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
@@ -93,6 +94,7 @@ import {
   IPasskeySmartAccountMetadata,
   IPasskeyCredentialProfile,
   KeyringAccountType as PaliKeyringAccountType,
+  PasskeyBackupStatus,
   PasskeySponsorMode,
 } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
@@ -119,8 +121,16 @@ import { getNetworkChain } from 'utils/network';
 import {
   getPasskeyFactory,
   getPasskeyFactoryAddress,
+  getPasskeyBackupStatus,
+  hexToBytes,
   PasskeyContractSponsorMode,
   assertPasskeyRelayPayloadMatches,
+  getPasskeyActionHash,
+  getPasskeyFactoryAccountParams,
+  getPasskeyMetadataFactoryAccountParams,
+  getPasskeyPolicyExecution,
+  getPasskeySponsorContractMode,
+  normalizePasskeySponsor,
   normalizePasskeySponsorProof,
   passkeyFactoryInterface,
   passkeySmartAccountInterface,
@@ -1817,6 +1827,30 @@ class MainController {
     }
   }
 
+  private async savePasskeyMetadataState(operation: string): Promise<void> {
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    if (activeSlip44 === null) {
+      console.warn(
+        `[MainController] No active slip44 to save passkey metadata for operation: ${operation}`
+      );
+      return;
+    }
+
+    const vaultState = store.getState().vault;
+    const passkeyAccounts =
+      vaultState.accounts[PaliKeyringAccountType.PasskeySmartAccount] || {};
+    const accounts = Object.fromEntries(
+      Object.entries(passkeyAccounts)
+        .filter(([, account]: [string, any]) => account?.passkey)
+        .map(([id, account]: [string, any]) => [id, account.passkey])
+    );
+
+    await savePasskeySlip44State(activeSlip44, {
+      accounts,
+      passkeyCredentialProfile: vaultState.passkeyCredentialProfile || null,
+    });
+  }
+
   public async forgetWallet(pwd: string) {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
@@ -2652,23 +2686,38 @@ class MainController {
   }
 
   public getPasskeyCredentialProfile(): IPasskeyCredentialProfile | null {
-    return store.getState().vault.passkeyCredentialProfile || null;
+    const { accounts, passkeyCredentialProfile } = store.getState().vault;
+    const passkeyAccounts =
+      accounts[PaliKeyringAccountType.PasskeySmartAccount] || {};
+    if (passkeyCredentialProfile && Object.keys(passkeyAccounts).length === 0) {
+      store.dispatch(setPasskeyCredentialProfile(null));
+      this.savePasskeyMetadataState(
+        'clear-stale-passkey-credential-profile'
+      ).catch((error) =>
+        logError('Failed to clear stale passkey profile', 'UI', error)
+      );
+      return null;
+    }
+
+    return passkeyCredentialProfile || null;
   }
 
   public async savePasskeyCredentialProfile(
     profile: IPasskeyCredentialProfile
   ): Promise<IPasskeyCredentialProfile> {
     store.dispatch(setPasskeyCredentialProfile(profile));
-    await this.saveWalletState('save-passkey-credential-profile', true, true);
+    await this.savePasskeyMetadataState('save-passkey-credential-profile');
     return profile;
   }
 
   public async recoverPasskeySmartAccounts(params: {
+    backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
     sponsorUrls?: string[];
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
+    missingSponsorUrl: number;
     recovered: number;
     skipped: number;
   }> {
@@ -2690,14 +2739,25 @@ class MainController {
       factoryAddress,
       activeNetwork.chainId
     );
-    const logs = await this.getPasskeyRecoveryLogs({
-      credentialIdHash: params.credentialIdHash,
-      factoryAddress,
-      provider,
-      recoveryId,
-    });
-    if (logs.length === 0) {
-      return { recovered: 0, skipped: 0, accounts: [] };
+    let recoverySources: Array<{ address?: string; log?: any }> = (
+      await this.getPasskeyRecoveryRegistryAccounts({
+        chainId: activeNetwork.chainId,
+        credentialIdHash: params.credentialIdHash,
+        provider,
+        recoveryId,
+      })
+    ).map((address) => ({ address }));
+    if (recoverySources.length === 0) {
+      const logs = await this.getPasskeyRecoveryLogs({
+        credentialIdHash: params.credentialIdHash,
+        factoryAddress,
+        provider,
+        recoveryId,
+      });
+      recoverySources = logs.map((log) => ({ log }));
+    }
+    if (recoverySources.length === 0) {
+      return { recovered: 0, skipped: 0, missingSponsorUrl: 0, accounts: [] };
     }
 
     const { accounts } = store.getState().vault;
@@ -2709,8 +2769,16 @@ class MainController {
         }
       });
     });
+    recoverySources = recoverySources.filter((source) => {
+      const address = this.getPasskeyRecoverySourceAddress(source);
+      return !address || !existingAddresses.has(address.toLowerCase());
+    });
+    if (recoverySources.length === 0) {
+      return { recovered: 0, skipped: 0, missingSponsorUrl: 0, accounts: [] };
+    }
 
     let skipped = 0;
+    let missingSponsorUrl = 0;
     const recoveredAccounts: Array<{
       address: string;
       id: number;
@@ -2723,24 +2791,32 @@ class MainController {
       .filter((id) => Number.isFinite(id));
     let nextId = this.getNextPasskeySmartAccountId(existingPasskeyIds);
 
-    for (const logBatch of this.chunkArray(logs, 5)) {
+    for (const sourceBatch of this.chunkArray(recoverySources, 5)) {
       const candidates = await Promise.all(
-        logBatch.map((log) =>
+        sourceBatch.map((source) =>
           this.readRecoveredPasskeyAccount({
+            address: source.address,
             credentialId: params.credentialId,
             credentialIdHash: params.credentialIdHash,
             factoryAddress,
-            log,
+            log: source.log,
             provider,
             recoveryId,
+            backupStatus: params.backupStatus,
             sponsorUrls: params.sponsorUrls,
           })
         )
       );
 
       for (const candidate of candidates) {
+        if (candidate?.missingSponsorUrl) {
+          missingSponsorUrl += 1;
+          skipped += 1;
+          continue;
+        }
         if (
           !candidate ||
+          !candidate.metadata ||
           existingAddresses.has(candidate.address.toLowerCase())
         ) {
           skipped += 1;
@@ -2807,25 +2883,76 @@ class MainController {
           );
         }
       }
+      await this.refreshRecoveredPasskeyNativeBalances(
+        recoveredAccounts,
+        provider
+      );
       await this.saveWalletState('recover-passkey-smart-accounts', true, true);
-      setTimeout(() => {
-        this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
-          (error) => {
-            logError(
-              'Failed to refresh after recovering passkey accounts',
-              '',
-              error
-            );
-          }
-        );
-      }, 10);
     }
 
     return {
       recovered: recoveredAccounts.length,
       skipped,
+      missingSponsorUrl,
       accounts: recoveredAccounts,
     };
+  }
+
+  private getPasskeyRecoverySourceAddress(source: {
+    address?: string;
+    log?: any;
+  }) {
+    if (source.address) {
+      return getAddress(source.address);
+    }
+    if (source.log) {
+      try {
+        const parsed = passkeyFactoryInterface.parseLog(source.log);
+        return getAddress(parsed.args.account);
+      } catch (error) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  private async refreshRecoveredPasskeyNativeBalances(
+    recoveredAccounts: Array<{ address: string; id: number }>,
+    provider: any
+  ) {
+    const balanceResults = await Promise.allSettled(
+      recoveredAccounts.map(async (account) => ({
+        ...account,
+        balance: Number(
+          formatUnits(await provider.getBalance(account.address), 18)
+        ),
+      }))
+    );
+
+    balanceResults.forEach((result) => {
+      if (result.status !== 'fulfilled') {
+        return;
+      }
+
+      const account = store.getState().vault.accounts[
+        PaliKeyringAccountType.PasskeySmartAccount
+      ]?.[result.value.id] as any;
+      if (!account) {
+        return;
+      }
+
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: result.value.id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+          property: 'balances',
+          value: {
+            ...account.balances,
+            [INetworkType.Ethereum]: result.value.balance,
+          },
+        })
+      );
+    });
   }
 
   private getNextPasskeySmartAccountId(existingIds: number[]) {
@@ -2866,6 +2993,46 @@ class MainController {
     throw new Error('Passkey RPC retry loop failed unexpectedly');
   }
 
+  private async getPasskeyRecoveryRegistryAccounts({
+    chainId,
+    credentialIdHash,
+    provider,
+    recoveryId,
+  }: {
+    chainId: number;
+    credentialIdHash: string;
+    provider: any;
+    recoveryId: string;
+  }): Promise<string[]> {
+    try {
+      const factory = getPasskeyFactory(chainId, provider);
+      const count = BigNumber.from(
+        await this.withPasskeyRpcBackoff(() =>
+          factory.getAccountCountByCredential(recoveryId, credentialIdHash)
+        )
+      ).toNumber();
+      const pageSize = 50;
+      const accounts: string[] = [];
+
+      for (let offset = 0; offset < count; offset += pageSize) {
+        const page = await this.withPasskeyRpcBackoff<string[]>(() =>
+          factory.getAccountsByCredential(
+            recoveryId,
+            credentialIdHash,
+            offset,
+            pageSize
+          )
+        );
+        accounts.push(...page.map((address) => getAddress(address)));
+      }
+
+      return accounts;
+    } catch (error) {
+      logError('Passkey registry recovery lookup failed', 'UI', error);
+      return [];
+    }
+  }
+
   private async getPasskeyRecoveryLogs({
     credentialIdHash,
     factoryAddress,
@@ -2901,6 +3068,8 @@ class MainController {
   }
 
   private async readRecoveredPasskeyAccount({
+    address: discoveredAddress,
+    backupStatus,
     credentialId,
     credentialIdHash,
     factoryAddress,
@@ -2909,20 +3078,31 @@ class MainController {
     recoveryId,
     sponsorUrls,
   }: {
+    address?: string;
+    backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
     factoryAddress: string;
-    log: any;
+    log?: any;
     provider: any;
     recoveryId: string;
     sponsorUrls?: string[];
   }): Promise<{
     address: string;
-    metadata: IPasskeySmartAccountMetadata;
+    metadata?: IPasskeySmartAccountMetadata;
+    missingSponsorUrl?: boolean;
   } | null> {
-    const parsed = passkeyFactoryInterface.parseLog(log);
-    const address = getAddress(parsed.args.account);
-    const deploymentSalt = parsed.args.salt as string;
+    let address = discoveredAddress ? getAddress(discoveredAddress) : '';
+    let deploymentSalt = HashZero;
+    if (log) {
+      const parsed = passkeyFactoryInterface.parseLog(log);
+      address = getAddress(parsed.args.account);
+      deploymentSalt = parsed.args.salt as string;
+    }
+    if (!address) {
+      return null;
+    }
+
     const code = await this.withPasskeyRpcBackoff(() =>
       provider.getCode(address)
     );
@@ -2935,29 +3115,18 @@ class MainController {
       passkeySmartAccountInterface,
       provider
     );
-    const [
-      passkeyX,
-      passkeyY,
-      storedCredentialIdHash,
-      rpIdHash,
-      originHash,
-      originLength,
-      sponsorMode,
-      sponsorSigner,
-      sponsorUrlHash,
-    ] = await this.withPasskeyRpcBackoff(() =>
-      Promise.all([
-        account.passkeyX(),
-        account.passkeyY(),
-        account.credentialIdHash(),
-        account.rpIdHash(),
-        account.originHash(),
-        account.originLength(),
-        account.sponsorMode(),
-        account.sponsorSigner(),
-        account.sponsorUrlHash(),
-      ])
-    );
+    const metadata = (await this.withPasskeyRpcBackoff(() =>
+      account.getRecoveryMetadata()
+    )) as any;
+    const passkeyX = metadata.passkeyX ?? metadata[0];
+    const passkeyY = metadata.passkeyY ?? metadata[1];
+    const storedCredentialIdHash = metadata.credentialIdHash ?? metadata[2];
+    const rpIdHash = metadata.rpIdHash ?? metadata[3];
+    const originHash = metadata.originHash ?? metadata[4];
+    const originLength = metadata.originLength ?? metadata[5];
+    const sponsorMode = metadata.sponsorMode ?? metadata[6];
+    const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
+    const sponsorUrlHash = metadata.sponsorUrlHash ?? metadata[8];
 
     if (
       storedCredentialIdHash.toLowerCase() !== credentialIdHash.toLowerCase()
@@ -2965,14 +3134,18 @@ class MainController {
       return null;
     }
 
+    const sponsorModeNumber = Number(sponsorMode);
     const sponsor = this.recoverPasskeySponsorMetadata(
-      Number(sponsorMode),
+      sponsorModeNumber,
       sponsorSigner,
       sponsorUrlHash,
       sponsorUrls
     );
     if (!sponsor) {
-      return null;
+      return {
+        address,
+        missingSponsorUrl: true,
+      };
     }
 
     return {
@@ -2980,10 +3153,9 @@ class MainController {
       metadata: {
         chainId: store.getState().vault.activeNetwork.chainId,
         contractVersion: PASSKEY_SMART_ACCOUNT_VERSION,
-        backupStatus:
-          store.getState().vault.passkeyCredentialProfile?.backupStatus,
+        backupStatus,
         credentialId,
-        credentialIdHash,
+        credentialIdHash: storedCredentialIdHash,
         deploymentSalt,
         factoryAddress,
         isDeployed: true,
@@ -3042,6 +3214,7 @@ class MainController {
   }
 
   public async preparePasskeySmartAccount(params: {
+    backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
     deploymentSalt: string;
@@ -3084,28 +3257,20 @@ class MainController {
       factoryAddress,
       activeNetwork.chainId
     );
-    const sponsor = this.normalizePasskeySponsor(params.sponsor);
-    const sponsorContractMode = this.getPasskeySponsorContractMode({
-      sponsor,
-    } as IPasskeySmartAccountMetadata);
-    const address = await factory.getAccountAddress(
+    const sponsor = normalizePasskeySponsor(params.sponsor);
+    const accountParams = getPasskeyFactoryAccountParams({
+      credentialIdHash: params.credentialIdHash,
+      deploymentSalt: params.deploymentSalt,
+      publicKey: params.publicKey,
       recoveryId,
-      params.publicKey.x,
-      params.publicKey.y,
-      params.credentialIdHash,
-      params.publicKey.rpIdHash,
-      params.publicKey.originHash,
-      params.publicKey.originLength,
-      sponsorContractMode,
-      sponsor.signer || AddressZero,
-      sponsor.urlHash || HashZero,
-      params.deploymentSalt
-    );
+    });
+    const address = await factory.getAccountAddress(accountParams);
 
     return {
       address,
       factoryAddress,
       metadata: {
+        backupStatus: params.backupStatus,
         chainId: activeNetwork.chainId,
         contractVersion: PASSKEY_SMART_ACCOUNT_VERSION,
         credentialId: params.credentialId,
@@ -3126,7 +3291,8 @@ class MainController {
     };
   }
 
-  private normalizePasskeySponsor(
+  public async updatePasskeySponsorMetadata(
+    accountId: number,
     sponsor?: {
       mode?: string;
       policyText?: string;
@@ -3134,44 +3300,124 @@ class MainController {
       url?: string;
       urlHash?: string;
     } | null
-  ): IPasskeySmartAccountMetadata['sponsor'] {
-    const requestedMode = sponsor?.mode || PasskeySponsorMode.Disabled;
+  ): Promise<IPasskeySmartAccountMetadata['sponsor']> {
+    const account = store.getState().vault.accounts[
+      PaliKeyringAccountType.PasskeySmartAccount
+    ]?.[accountId] as any;
+    if (!account?.passkey) {
+      throw new Error('Passkey account not found');
+    }
+
+    const normalizedSponsor = normalizePasskeySponsor(sponsor);
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id: accountId,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+        property: 'passkey',
+        value: {
+          ...account.passkey,
+          sponsor: normalizedSponsor,
+        },
+      })
+    );
+    await this.savePasskeyMetadataState('update-passkey-sponsor-metadata');
+    return normalizedSponsor;
+  }
+
+  public async updatePasskeyBackupStatus(
+    accountId: number,
+    backupStatus: PasskeyBackupStatus
+  ): Promise<PasskeyBackupStatus> {
+    const account = store.getState().vault.accounts[
+      PaliKeyringAccountType.PasskeySmartAccount
+    ]?.[accountId] as any;
+    if (!account?.passkey) {
+      throw new Error('Passkey account not found');
+    }
+
+    const profile = store.getState().vault.passkeyCredentialProfile;
+    const updatesProfile =
+      profile?.credentialIdHash &&
+      profile.credentialIdHash.toLowerCase() ===
+        account.passkey.credentialIdHash?.toLowerCase();
     if (
-      requestedMode !== PasskeySponsorMode.Disabled &&
-      requestedMode !== PasskeySponsorMode.GasOnly &&
-      requestedMode !== PasskeySponsorMode.Required
+      account.passkey.backupStatus === backupStatus &&
+      (!updatesProfile || profile.backupStatus === backupStatus)
     ) {
-      throw new Error(`Unsupported passkey sponsor mode: ${requestedMode}`);
-    }
-    const mode = requestedMode as PasskeySponsorMode;
-
-    let signer: string | undefined;
-    if (sponsor?.signer) {
-      signer = getAddress(sponsor.signer);
+      return backupStatus;
     }
 
-    if (mode === PasskeySponsorMode.Required && !signer) {
-      throw new Error(
-        'Passkey sponsor mode "required" needs a valid sponsor signer'
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id: accountId,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+        property: 'passkey',
+        value: {
+          ...account.passkey,
+          backupStatus,
+        },
+      })
+    );
+
+    if (updatesProfile) {
+      store.dispatch(
+        setPasskeyCredentialProfile({
+          ...profile,
+          backupStatus,
+        })
       );
     }
 
-    const url = typeof sponsor?.url === 'string' ? sponsor.url.trim() : '';
-    const providedUrlHash =
-      typeof sponsor?.urlHash === 'string' ? sponsor.urlHash : '';
-    if (providedUrlHash && !/^0x[0-9a-fA-F]{64}$/.test(providedUrlHash)) {
-      throw new Error('Invalid passkey sponsor URL hash');
+    await this.savePasskeyMetadataState('update-passkey-backup-status');
+    return backupStatus;
+  }
+
+  public async getPasskeyDeploymentStatus(accountId: number): Promise<boolean> {
+    const account = store.getState().vault.accounts[
+      PaliKeyringAccountType.PasskeySmartAccount
+    ]?.[accountId] as any;
+    if (!account?.passkey) {
+      throw new Error('Passkey account not found');
     }
 
-    return {
-      mode,
-      ...(typeof sponsor?.policyText === 'string' && sponsor.policyText.trim()
-        ? { policyText: sponsor.policyText.trim() }
-        : {}),
-      ...(signer ? { signer } : {}),
-      ...(url ? { url, urlHash: hashText(url) } : {}),
-      ...(!url && providedUrlHash ? { urlHash: providedUrlHash } : {}),
-    };
+    this.assertPasskeyAccountNetwork(account.passkey);
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const code = await provider.getCode(account.address);
+    const isDeployed = Boolean(code && code !== '0x');
+    if (Boolean(account.passkey.isDeployed) !== isDeployed) {
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: accountId,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+          property: 'passkey',
+          value: {
+            ...account.passkey,
+            isDeployed,
+          },
+        })
+      );
+      await this.savePasskeyMetadataState('update-passkey-deployment-status');
+    }
+
+    return isDeployed;
+  }
+
+  private async recordPasskeyBackupStatusFromProof(
+    account: any,
+    proof: { authenticatorData: string }
+  ) {
+    try {
+      const backupStatus = getPasskeyBackupStatus(
+        hexToBytes(proof.authenticatorData)
+      );
+      await this.updatePasskeyBackupStatus(account.id, backupStatus);
+    } catch (error) {
+      logError('Failed to update passkey backup status', 'UI', error);
+    }
   }
 
   private async passkeyGasPayerHasBalance(
@@ -3248,8 +3494,10 @@ class MainController {
 
   private async runWithGasPayer<T>(
     gasPayer: { account: any; accountType: PaliKeyringAccountType },
-    callback: () => Promise<T>
+    callback: () => Promise<T>,
+    options: { persistRestore?: boolean } = {}
   ): Promise<T> {
+    const { persistRestore = true } = options;
     const original = store.getState().vault.activeAccount;
     store.dispatch(
       setActiveAccount({
@@ -3262,32 +3510,20 @@ class MainController {
       return await callback();
     } finally {
       store.dispatch(setActiveAccount(original));
-      try {
-        await this.saveWalletState(
-          'restore-passkey-active-account',
-          false,
-          true
-        );
-      } catch (error) {
-        console.error(
-          '[MainController] Failed to persist restored active account after passkey gas payer operation:',
-          error
-        );
+      if (persistRestore) {
+        try {
+          await this.saveWalletState(
+            'restore-passkey-active-account',
+            false,
+            true
+          );
+        } catch (error) {
+          console.error(
+            '[MainController] Failed to persist restored active account after passkey gas payer operation:',
+            error
+          );
+        }
       }
-    }
-  }
-
-  private getPasskeySponsorContractMode(
-    metadata: IPasskeySmartAccountMetadata
-  ) {
-    switch (metadata.sponsor?.mode) {
-      case PasskeySponsorMode.GasOnly:
-        return PasskeyContractSponsorMode.GasOnly;
-      case PasskeySponsorMode.Required:
-        return PasskeyContractSponsorMode.Required;
-      case PasskeySponsorMode.Disabled:
-      default:
-        return PasskeyContractSponsorMode.None;
     }
   }
 
@@ -3384,24 +3620,8 @@ class MainController {
       metadata,
       BigNumber.from(maxFeePerGas).mul(gasLimit)
     );
-    if (!metadata.recoveryId || !isHexString(metadata.recoveryId, 32)) {
-      throw new Error(
-        'Passkey account is missing recovery metadata. Please recreate this passkey account before deployment.'
-      );
-    }
-
     const data = passkeyFactoryInterface.encodeFunctionData('createAccount', [
-      metadata.recoveryId,
-      metadata.publicKey.x,
-      metadata.publicKey.y,
-      metadata.credentialIdHash,
-      metadata.publicKey.rpIdHash,
-      metadata.publicKey.originHash,
-      metadata.publicKey.originLength,
-      this.getPasskeySponsorContractMode(metadata),
-      metadata.sponsor?.signer || AddressZero,
-      metadata.sponsor?.urlHash || HashZero,
-      metadata.deploymentSalt,
+      getPasskeyMetadataFactoryAccountParams(metadata),
     ]);
 
     await this.runWithGasPayer(gasPayer, async () => {
@@ -3438,7 +3658,7 @@ class MainController {
         value: updatedMetadata,
       })
     );
-    await this.saveWalletState('deploy-passkey-smart-account', true, true);
+    await this.savePasskeyMetadataState('deploy-passkey-smart-account');
     return true;
   }
 
@@ -3455,32 +3675,97 @@ class MainController {
       target: string;
       value: string;
     };
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    requiresDeployment: boolean;
   }> {
     const normalizedParams = this.normalizePasskeyExecutionPayload(params);
     await this.assertPasskeyExecutionTargetAllowed(normalizedParams.target);
-    await this.ensurePasskeySmartAccountDeployed();
 
     const { activeAccount, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    let requiresDeployment = !metadata.isDeployed;
+    if (requiresDeployment) {
+      const code = await provider.getCode(account.address);
+      requiresDeployment = !code || code === '0x';
+      if (!requiresDeployment) {
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: account.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+            property: 'passkey',
+            value: {
+              ...metadata,
+              isDeployed: true,
+            },
+          })
+        );
+        await this.savePasskeyMetadataState('update-passkey-deployment-status');
+      }
+    }
     const contract = new Contract(
       account.address,
       passkeySmartAccountInterface,
-      this.ethereumTransaction.web3Provider
+      provider
     );
-    const nonce = await contract.nonce();
+    const nonce = requiresDeployment
+      ? BigNumber.from(0)
+      : await contract.nonce();
+    const deadline = Math.floor(Date.now() / 1000) + 15 * 60;
+    const executions = [];
+    const pendingPolicy = requiresDeployment
+      ? getPasskeyPolicyExecution(
+          account.address,
+          metadata,
+          nonce.toNumber(),
+          deadline
+        )
+      : null;
+    if (pendingPolicy) {
+      executions.push(pendingPolicy);
+    }
     const execution = {
       target: normalizedParams.target,
       value: normalizedParams.value,
       data: normalizedParams.data,
-      nonce: nonce.toString(),
-      deadline: Math.floor(Date.now() / 1000) + 15 * 60,
+      nonce: nonce.add(executions.length).toString(),
+      deadline,
     };
-    const actionHash = await contract.getActionHash(execution);
+    executions.push(execution);
 
-    return { actionHash, execution };
+    const actionHash = getPasskeyActionHash({
+      account: account.address,
+      chainId: metadata.chainId,
+      executions,
+      sponsorMode: requiresDeployment
+        ? PasskeyContractSponsorMode.None
+        : getPasskeySponsorContractMode(metadata),
+      sponsorSigner: requiresDeployment
+        ? AddressZero
+        : metadata.sponsor?.signer || AddressZero,
+    });
+
+    return { actionHash, execution, executions, requiresDeployment };
   }
 
   public async submitPasskeyExecution(params: {
+    actionHash?: string;
     execution: {
       data: string;
       deadline: number;
@@ -3488,6 +3773,13 @@ class MainController {
       target: string;
       value: string;
     };
+    executions?: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
     proof: {
       authenticatorData: string;
       challengeOffset: number;
@@ -3497,6 +3789,7 @@ class MainController {
       s: string;
       typeOffset: number;
     };
+    requiresDeployment?: boolean;
     sponsorProof?:
       | string
       | {
@@ -3516,21 +3809,36 @@ class MainController {
 
     const metadata = account.passkey as IPasskeySmartAccountMetadata;
     this.assertPasskeyAccountNetwork(metadata);
-    await this.assertPasskeyExecutionTargetAllowed(params.execution.target);
+    const executions = params.executions || [params.execution];
+    for (const execution of executions) {
+      if (getAddress(execution.target) !== getAddress(account.address)) {
+        await this.assertPasskeyExecutionTargetAllowed(execution.target);
+      }
+    }
+
+    const requiresDeployment =
+      params.requiresDeployment === undefined
+        ? !metadata.isDeployed
+        : params.requiresDeployment;
 
     const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
     let sponsorProof = emptySponsorProof;
     const sponsorResult = await this.resolvePasskeySponsorResult(
       account,
       activeNetwork.chainId,
-      params
+      {
+        ...params,
+        actionHash: params.actionHash,
+        executions,
+      }
     );
     if (sponsorResult.type === 'relayed') {
       try {
         const txResponse = await this.verifyPasskeyRelayedTransaction(
           sponsorResult.txHash,
+          requiresDeployment,
           account.address,
-          params.execution,
+          executions,
           params.proof,
           metadata
         );
@@ -3541,6 +3849,7 @@ class MainController {
             type: PaliKeyringAccountType.PasskeySmartAccount,
           }
         );
+        await this.recordPasskeyBackupStatusFromProof(account, params.proof);
         return { hash: sponsorResult.txHash };
       } catch (error) {
         if (
@@ -3559,41 +3868,167 @@ class MainController {
         maxFeePerGas: BigNumber;
         maxPriorityFeePerGas: BigNumber;
       };
-    const gasLimit = BigNumber.from(1_000_000);
-    const gasPayer = await this.getDefaultPasskeyGasPayer(
-      BigNumber.from(maxFeePerGas).mul(gasLimit)
-    );
-    const data = passkeySmartAccountInterface.encodeFunctionData('execute', [
-      params.execution,
-      params.proof,
-      sponsorProof,
-    ]);
+    const gasLimit = BigNumber.from(requiresDeployment ? 4_000_000 : 1_000_000);
+    const gasPayer = requiresDeployment
+      ? await this.getPasskeyDeploymentGasPayer(
+          metadata,
+          BigNumber.from(maxFeePerGas).mul(gasLimit)
+        )
+      : await this.getDefaultPasskeyGasPayer(
+          BigNumber.from(maxFeePerGas).mul(gasLimit)
+        );
+    const data = requiresDeployment
+      ? passkeyFactoryInterface.encodeFunctionData('createAccountAndExecute', [
+          getPasskeyMetadataFactoryAccountParams(metadata),
+          executions,
+          params.proof,
+          sponsorProof,
+        ])
+      : passkeySmartAccountInterface.encodeFunctionData('execute', [
+          executions,
+          params.proof,
+          sponsorProof,
+        ]);
 
-    return await this.runWithGasPayer(gasPayer, async () =>
-      this.sendAndSaveEthTransaction(
-        {
-          chainId: activeNetwork.chainId,
-          data,
-          from: gasPayer.account.address,
-          gasLimit: gasLimit.toNumber(),
-          maxFeePerGas,
-          maxPriorityFeePerGas,
-          to: account.address,
-          value: 0,
-        },
-        false,
-        {
+    const response = await this.runWithGasPayer(
+      gasPayer,
+      async () =>
+        this.sendAndSaveEthTransaction(
+          {
+            chainId: activeNetwork.chainId,
+            data,
+            from: gasPayer.account.address,
+            gasLimit: gasLimit.toNumber(),
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            to: requiresDeployment
+              ? metadata.factoryAddress ||
+                getPasskeyFactoryAddress(activeNetwork.chainId)
+              : account.address,
+            value: 0,
+          },
+          false,
+          {
+            id: account.id,
+            type: PaliKeyringAccountType.PasskeySmartAccount,
+          },
+          {
+            passkeyExecutionFrom: account.address,
+          },
+          {
+            clearNavigation: false,
+            persist: false,
+          }
+        ),
+      { persistRestore: false }
+    );
+    await this.savePasskeyTransactionForLocalRecipients(
+      response,
+      executions,
+      account.address,
+      {
+        id: account.id,
+        type: PaliKeyringAccountType.PasskeySmartAccount,
+      }
+    );
+    if (requiresDeployment) {
+      store.dispatch(
+        setAccountPropertyByIdAndType({
           id: account.id,
           type: PaliKeyringAccountType.PasskeySmartAccount,
-        }
-      )
+          property: 'passkey',
+          value: {
+            ...metadata,
+            isDeployed: true,
+          },
+        })
+      );
+      await this.savePasskeyMetadataState('deploy-passkey-smart-account');
+    }
+    try {
+      await this.saveWalletState('send-passkey-transaction', true, true);
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to persist passkey transaction:',
+        error
+      );
+    }
+    try {
+      await clearNavigationState();
+      console.log(
+        '[MainController] Navigation state cleared after transaction'
+      );
+    } catch (e) {
+      console.error('[MainController] Failed to clear navigation state:', e);
+    }
+    await this.recordPasskeyBackupStatusFromProof(account, params.proof);
+    return response;
+  }
+
+  private async savePasskeyTransactionForLocalRecipients(
+    tx: IEvmTransactionResponse,
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>,
+    passkeyFrom: string,
+    sourceAccount: { id: number; type: PaliKeyringAccountType }
+  ) {
+    const { accounts, activeNetwork } = store.getState().vault;
+    const sourceAddress = passkeyFrom.toLowerCase();
+    const nativeRecipients = new Set(
+      executions
+        .filter((execution) => {
+          const data = execution.data || '0x';
+          return data === '0x' && BigNumber.from(execution.value || 0).gt(0);
+        })
+        .map((execution) => getAddress(execution.target).toLowerCase())
     );
+
+    if (nativeRecipients.size === 0) {
+      return;
+    }
+
+    Object.values(PaliKeyringAccountType).forEach((accountType) => {
+      Object.values(accounts[accountType] || {}).forEach((candidate: any) => {
+        if (!candidate?.address) {
+          return;
+        }
+
+        const candidateAddress = candidate.address.toLowerCase();
+        if (
+          candidateAddress === sourceAddress ||
+          !nativeRecipients.has(candidateAddress) ||
+          (candidate.id === sourceAccount.id &&
+            accountType === sourceAccount.type)
+        ) {
+          return;
+        }
+
+        store.dispatch(
+          setSingleTransactionToState({
+            accountId: candidate.id,
+            accountType,
+            chainId: activeNetwork.chainId,
+            networkType: TransactionsType.Ethereum,
+            transaction: {
+              ...tx,
+              passkeyExecutionFrom: passkeyFrom,
+            } as IEvmTransactionResponse,
+          })
+        );
+      });
+    });
   }
 
   private async resolvePasskeySponsorResult(
     account: any,
     chainId: number,
     params: {
+      actionHash?: string;
       execution: {
         data: string;
         deadline: number;
@@ -3601,6 +4036,13 @@ class MainController {
         target: string;
         value: string;
       };
+      executions?: Array<{
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      }>;
       proof: {
         authenticatorData: string;
         challengeOffset: number;
@@ -3627,12 +4069,16 @@ class MainController {
     const metadata = account.passkey as IPasskeySmartAccountMetadata;
     const emptyProof = { v: 0, r: HashZero, s: HashZero };
 
-    const contract = new Contract(
-      account.address,
-      passkeySmartAccountInterface,
-      this.ethereumTransaction.web3Provider
-    );
-    const actionHash = await contract.getActionHash(params.execution);
+    const executions = params.executions || [params.execution];
+    const actionHash =
+      params.actionHash ||
+      getPasskeyActionHash({
+        account: account.address,
+        chainId,
+        executions,
+        sponsorMode: getPasskeySponsorContractMode(metadata),
+        sponsorSigner: metadata.sponsor?.signer || AddressZero,
+      });
     const providedProof = this.normalizePasskeySponsorProof(
       params.sponsorProof || params.sponsorSignature
     );
@@ -3674,6 +4120,7 @@ class MainController {
           actionHash,
           chainId,
           execution: params.execution,
+          executions,
           proof: params.proof,
           sponsorSigner: metadata.sponsor.signer,
           version: PASSKEY_SMART_ACCOUNT_VERSION,
@@ -3723,6 +4170,13 @@ class MainController {
         target: string;
         value: string;
       };
+      executions: Array<{
+        data: string;
+        deadline: number;
+        nonce: string;
+        target: string;
+        value: string;
+      }>;
       proof: {
         authenticatorData: string;
         challengeOffset: number;
@@ -3916,14 +4370,15 @@ class MainController {
 
   private async verifyPasskeyRelayedTransaction(
     txHash: string,
+    requiresDeployment: boolean,
     expectedAccount: string,
-    expectedExecution: {
+    expectedExecutions: Array<{
       data: string;
       deadline: number;
       nonce: string;
       target: string;
       value: string;
-    },
+    }>,
     expectedProof: {
       authenticatorData: string;
       challengeOffset: number;
@@ -3943,26 +4398,75 @@ class MainController {
     for (let attempt = 0; attempt < 3; attempt++) {
       const tx = await provider.getTransaction(txHash);
       if (tx) {
-        if (tx.to?.toLowerCase() !== expectedAccount.toLowerCase()) {
+        const expectedTo = requiresDeployment
+          ? metadata.factoryAddress ||
+            getPasskeyFactoryAddress(metadata.chainId)
+          : expectedAccount;
+        if (tx.to?.toLowerCase() !== expectedTo.toLowerCase()) {
           throw new Error('Sponsor relayed an unexpected passkey transaction');
         }
-        const decoded = passkeySmartAccountInterface.decodeFunctionData(
-          'execute',
-          tx.data
-        );
-        assertPasskeyRelayPayloadMatches(
-          decoded[0],
-          decoded[1],
-          expectedExecution,
-          expectedProof
-        );
+        const decoded = requiresDeployment
+          ? passkeyFactoryInterface.decodeFunctionData(
+              'createAccountAndExecute',
+              tx.data
+            )
+          : passkeySmartAccountInterface.decodeFunctionData('execute', tx.data);
+        const decodedExecutions = requiresDeployment ? decoded[1] : decoded[0];
+        const decodedProof = requiresDeployment ? decoded[2] : decoded[1];
+        const decodedSponsorProof = requiresDeployment
+          ? decoded[3]
+          : decoded[2];
+
+        if (requiresDeployment) {
+          const expectedParams =
+            getPasskeyMetadataFactoryAccountParams(metadata);
+          const decodedParams = decoded[0];
+          if (
+            decodedParams.recoveryId !== expectedParams.recoveryId ||
+            decodedParams.passkeyX !== expectedParams.passkeyX ||
+            decodedParams.passkeyY !== expectedParams.passkeyY ||
+            decodedParams.credentialIdHash !==
+              expectedParams.credentialIdHash ||
+            decodedParams.rpIdHash !== expectedParams.rpIdHash ||
+            decodedParams.originHash !== expectedParams.originHash ||
+            decodedParams.originLength.toString() !==
+              expectedParams.originLength.toString() ||
+            decodedParams.salt !== expectedParams.salt
+          ) {
+            throw new Error(
+              'Sponsor relayed an unexpected passkey transaction'
+            );
+          }
+        }
+
+        if (decodedExecutions?.length !== expectedExecutions.length) {
+          throw new Error('Sponsor relayed an unexpected passkey transaction');
+        }
+        expectedExecutions.forEach((expectedExecution, index) => {
+          assertPasskeyRelayPayloadMatches(
+            decodedExecutions?.[index],
+            decodedProof,
+            expectedExecution,
+            expectedProof
+          );
+        });
         if (metadata.sponsor?.mode === PasskeySponsorMode.Required) {
-          const actionHash = await new Contract(
-            expectedAccount,
-            passkeySmartAccountInterface,
-            provider
-          ).getActionHash(expectedExecution);
-          verifyPasskeyRelayedSponsorProof(actionHash, decoded[2], metadata);
+          const actionHash = getPasskeyActionHash({
+            account: expectedAccount,
+            chainId: metadata.chainId,
+            executions: expectedExecutions,
+            sponsorMode: requiresDeployment
+              ? PasskeyContractSponsorMode.None
+              : getPasskeySponsorContractMode(metadata),
+            sponsorSigner: requiresDeployment
+              ? AddressZero
+              : metadata.sponsor?.signer || AddressZero,
+          });
+          verifyPasskeyRelayedSponsorProof(
+            actionHash,
+            decodedSponsorProof,
+            metadata
+          );
         }
         return tx;
       }
@@ -4610,6 +5114,14 @@ class MainController {
 
     // Remove from store
     store.dispatch(removeAccount({ id: accountId, type: accountType }));
+    if (accountType === KeyringAccountType.PasskeySmartAccount) {
+      const remainingPasskeyAccounts =
+        store.getState().vault.accounts[KeyringAccountType.PasskeySmartAccount];
+      if (Object.keys(remainingPasskeyAccounts || {}).length === 0) {
+        store.dispatch(setPasskeyCredentialProfile(null));
+      }
+      await this.savePasskeyMetadataState('remove-passkey-account');
+    }
 
     // Notify connected DApps if needed
     const controller = getController();
@@ -5112,8 +5624,10 @@ class MainController {
 
   private async sendAndSaveTransaction(
     tx: IEvmTransactionResponse | ISysTransaction | ITxid,
-    targetAccount?: { id: number; type: PaliKeyringAccountType }
+    targetAccount?: { id: number; type: PaliKeyringAccountType },
+    options: { clearNavigation?: boolean; persist?: boolean } = {}
   ) {
+    const { clearNavigation = true, persist = true } = options;
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     // Handle ITxid type for UTXO transactions (returned by sendTransaction)
@@ -5166,7 +5680,12 @@ class MainController {
         console.log(
           `[MainController] Starting rapid polling for transaction ${tx.txid}`
         );
-        this.startRapidTransactionPolling(tx.txid, activeNetwork.chainId, true);
+        this.startRapidTransactionPolling(
+          tx.txid,
+          activeNetwork.chainId,
+          true,
+          targetAccount
+        );
       } catch (error) {
         console.error(
           '[MainController] Failed to start rapid transaction polling:',
@@ -5174,23 +5693,30 @@ class MainController {
         );
       }
 
-      try {
-        await this.saveWalletState('send-and-save-transaction', true, true);
-      } catch (error) {
-        console.error(
-          '[MainController] Failed to persist sent transaction:',
-          error
-        );
+      if (persist) {
+        try {
+          await this.saveWalletState('send-and-save-transaction', true, true);
+        } catch (error) {
+          console.error(
+            '[MainController] Failed to persist sent transaction:',
+            error
+          );
+        }
       }
 
       // Always clear navigation state after successfully saving transaction
-      try {
-        await clearNavigationState();
-        console.log(
-          '[MainController] Navigation state cleared after transaction'
-        );
-      } catch (e) {
-        console.error('[MainController] Failed to clear navigation state:', e);
+      if (clearNavigation) {
+        try {
+          await clearNavigationState();
+          console.log(
+            '[MainController] Navigation state cleared after transaction'
+          );
+        } catch (e) {
+          console.error(
+            '[MainController] Failed to clear navigation state:',
+            e
+          );
+        }
       }
 
       return;
@@ -5247,7 +5773,8 @@ class MainController {
       this.startRapidTransactionPolling(
         txHash,
         activeNetwork.chainId,
-        isBitcoinBased
+        isBitcoinBased,
+        targetAccount
       );
     } catch (error) {
       console.error(
@@ -5256,23 +5783,27 @@ class MainController {
       );
     }
 
-    try {
-      await this.saveWalletState('send-and-save-transaction', true, true);
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to persist sent transaction:',
-        error
-      );
+    if (persist) {
+      try {
+        await this.saveWalletState('send-and-save-transaction', true, true);
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to persist sent transaction:',
+          error
+        );
+      }
     }
 
     // Always clear navigation state after successfully saving transaction
-    try {
-      await clearNavigationState();
-      console.log(
-        '[MainController] Navigation state cleared after transaction'
-      );
-    } catch (e) {
-      console.error('[MainController] Failed to clear navigation state:', e);
+    if (clearNavigation) {
+      try {
+        await clearNavigationState();
+        console.log(
+          '[MainController] Navigation state cleared after transaction'
+        );
+      } catch (e) {
+        console.error('[MainController] Failed to clear navigation state:', e);
+      }
     }
   }
 
@@ -5334,7 +5865,9 @@ class MainController {
   public async sendAndSaveEthTransaction(
     params: any,
     isLegacy?: boolean,
-    targetAccount?: { id: number; type: PaliKeyringAccountType }
+    targetAccount?: { id: number; type: PaliKeyringAccountType },
+    transactionMetadata?: Record<string, unknown>,
+    saveOptions?: { clearNavigation?: boolean; persist?: boolean }
   ): Promise<IEvmTransactionResponse> {
     try {
       const controller = getController();
@@ -5363,9 +5896,12 @@ class MainController {
         );
 
       // Save the transaction (this will also clear navigation state)
-      await this.sendAndSaveTransaction(txResponse, targetAccount);
+      const txToSave = transactionMetadata
+        ? ({ ...txResponse, ...transactionMetadata } as IEvmTransactionResponse)
+        : txResponse;
+      await this.sendAndSaveTransaction(txToSave, targetAccount, saveOptions);
 
-      return txResponse;
+      return txToSave;
     } catch (error) {
       // Clear navigation state on error as well
       try {
@@ -6044,7 +6580,8 @@ class MainController {
   private startRapidTransactionPolling(
     txHash: string,
     chainId: number,
-    isBitcoinBased: boolean
+    isBitcoinBased: boolean,
+    targetAccount?: { id: number; type: PaliKeyringAccountType }
   ) {
     const pollKey = `${txHash}_${chainId}`;
     const maxPolls = 4;
@@ -6084,9 +6621,27 @@ class MainController {
           return;
         }
 
-        const txs = accountTransactions[activeAccount.type]?.[activeAccount.id];
+        const accountInfo = targetAccount ?? activeAccount;
+        const txs = accountTransactions[accountInfo.type]?.[accountInfo.id];
         const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
         const chainTxs = txs?.[networkType]?.[chainId];
+
+        if (!isBitcoinBased && targetAccount) {
+          const directTx = await this.getEvmTransactionFromProvider(txHash);
+          if (directTx) {
+            this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
+
+            if (isTransactionInBlock(directTx)) {
+              const blockInfo = getTransactionBlockInfo(directTx);
+              console.log(
+                `[RapidPoll] Transaction ${txHash} confirmed by direct lookup! In block: ${blockInfo}. Stopping rapid poll.`
+              );
+              this.activeRapidPolls.delete(pollKey);
+
+              return;
+            }
+          }
+        }
 
         // Check if we have transactions array
         if (Array.isArray(chainTxs)) {
@@ -6131,6 +6686,47 @@ class MainController {
     // Start the first poll after a delay
     const timeoutId = setTimeout(poll, pollInterval);
     this.activeRapidPolls.set(pollKey, timeoutId);
+  }
+
+  private updateTrackedEvmTransactionCopies(
+    txHash: string,
+    chainId: number,
+    txUpdate: IEvmTransactionResponse | any
+  ) {
+    const { accountTransactions } = store.getState().vault;
+
+    Object.values(PaliKeyringAccountType).forEach((accountType) => {
+      Object.entries(accountTransactions[accountType] || {}).forEach(
+        ([accountId, transactionsByNetwork]: [string, any]) => {
+          const chainTxs = transactionsByNetwork?.ethereum?.[chainId];
+          if (!Array.isArray(chainTxs)) {
+            return;
+          }
+
+          const existingTx = chainTxs.find(
+            (candidate: IEvmTransactionResponse) =>
+              candidate.hash?.toLowerCase() === txHash.toLowerCase()
+          );
+          if (!existingTx) {
+            return;
+          }
+
+          store.dispatch(
+            setSingleTransactionToState({
+              accountId: Number(accountId),
+              accountType,
+              chainId,
+              networkType: TransactionsType.Ethereum,
+              transaction: {
+                ...txUpdate,
+                passkeyExecutionFrom: (existingTx as any).passkeyExecutionFrom,
+                timestamp: (existingTx as any).timestamp,
+              } as IEvmTransactionResponse,
+            })
+          );
+        }
+      );
+    });
   }
 
   // Clean up all active polls (called when wallet locks)
@@ -6797,7 +7393,7 @@ class MainController {
         ? this.convertHexValue(receipt.blockNumber, 'number')
         : null;
       const confirmations = blockNumber
-        ? Math.max(0, latestBlock - blockNumber)
+        ? Math.max(1, latestBlock - blockNumber + 1)
         : 0;
 
       // Get block timestamp for accurate timestamp (better than Date.now())
@@ -6831,6 +7427,7 @@ class MainController {
         timestamp: timestamp,
         confirmations,
         chainId: this.convertHexValue(tx.chainId, 'number'),
+        data: tx.data,
         input: tx.data,
         gasPrice: this.convertHexValue(tx.gasPrice),
         gas: this.convertHexValue(tx.gasLimit),

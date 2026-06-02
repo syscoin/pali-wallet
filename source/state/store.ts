@@ -8,12 +8,12 @@ import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
-import { INetwork } from 'types/network';
+import { INetwork, KeyringAccountType } from 'types/network';
 import { ISpamFilterState } from 'types/security';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
-import { loadState, saveState } from './paliStorage';
+import { loadPasskeySlip44State, loadState, saveState } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
 import spamFilter from './spamFilter';
@@ -115,6 +115,51 @@ export async function saveMainState() {
   }
 }
 
+function mergePasskeyOverlay(
+  vaultState: IVaultState,
+  passkeyOverlay: any
+): IVaultState {
+  if (!passkeyOverlay || typeof passkeyOverlay !== 'object') {
+    return vaultState;
+  }
+
+  const accounts = {
+    ...vaultState.accounts,
+    [KeyringAccountType.PasskeySmartAccount]: {
+      ...(vaultState.accounts?.[KeyringAccountType.PasskeySmartAccount] || {}),
+    },
+  };
+  const passkeyAccounts = accounts[KeyringAccountType.PasskeySmartAccount];
+
+  Object.entries(passkeyOverlay.accounts || {}).forEach(
+    ([accountId, passkey]) => {
+      const id = Number(accountId);
+      if (!Number.isFinite(id) || !passkeyAccounts[id]) {
+        return;
+      }
+
+      passkeyAccounts[id] = {
+        ...passkeyAccounts[id],
+        passkey: passkey as any,
+      };
+    }
+  );
+
+  return {
+    ...vaultState,
+    accounts,
+    ...(Object.prototype.hasOwnProperty.call(
+      passkeyOverlay,
+      'passkeyCredentialProfile'
+    )
+      ? {
+          passkeyCredentialProfile:
+            passkeyOverlay.passkeyCredentialProfile || undefined,
+        }
+      : {}),
+  };
+}
+
 // New centralized function to load and activate a slip44 vault
 export async function loadAndActivateSlip44Vault(
   slip44: number,
@@ -140,8 +185,14 @@ export async function loadAndActivateSlip44Vault(
     if (slip44VaultState) {
       console.log(`[Store] Loading existing vault state for slip44: ${slip44}`);
 
+      const passkeyOverlay = await loadPasskeySlip44State(slip44);
+      const mergedVaultState = mergePasskeyOverlay(
+        slip44VaultState,
+        passkeyOverlay
+      );
+
       // Load vault state into Redux
-      store.dispatch(vaultRehydrate(slip44VaultState));
+      store.dispatch(vaultRehydrate(mergedVaultState));
 
       console.log(`[Store] Successfully loaded slip44 vault: ${slip44}`);
       return true;

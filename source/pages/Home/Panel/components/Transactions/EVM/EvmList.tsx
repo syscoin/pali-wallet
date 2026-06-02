@@ -31,6 +31,7 @@ import {
 } from 'utils/commonMethodSignatures';
 import { getTokenLogo } from 'utils/index';
 import {
+  getPasskeyDisplayTransaction,
   getTransactionDisplayInfo,
   handleUpdateTransaction,
 } from 'utils/transactions';
@@ -93,10 +94,11 @@ const EvmTransactionItem = React.memo(
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
+    const displayTx = getPasskeyDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const isTxSent =
-      tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
-    const isContractCall = isContractInteraction(tx);
+      displayTx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
+    const isContractCall = isContractInteraction(displayTx);
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
     const isFailed = tx.txreceipt_status === '0' || tx.isError === '1';
@@ -340,7 +342,7 @@ const EvmTransactionItem = React.memo(
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
                 {getTransactionTypeDisplayLabel(
-                  getTransactionTypeLabel(tx, isTxSent),
+                  getTransactionTypeLabel(displayTx, isTxSent),
                   t,
                   currency
                 )}
@@ -376,7 +378,7 @@ const EvmTransactionItem = React.memo(
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
                 {getTransactionTypeDisplayLabel(
-                  getTransactionTypeLabel(tx, isTxSent),
+                  getTransactionTypeLabel(displayTx, isTxSent),
                   t,
                   currency
                 )}
@@ -414,7 +416,7 @@ const EvmTransactionItem = React.memo(
               <div className="flex items-center gap-2">
                 <span className="text-white text-xs font-normal">
                   {getTransactionTypeDisplayLabel(
-                    getTransactionTypeLabel(tx, isTxSent),
+                    getTransactionTypeLabel(displayTx, isTxSent),
                     t,
                     currency
                   )}
