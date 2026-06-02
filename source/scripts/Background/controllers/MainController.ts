@@ -1842,7 +1842,13 @@ class MainController {
     const accounts = Object.fromEntries(
       Object.entries(passkeyAccounts)
         .filter(([, account]: [string, any]) => account?.passkey)
-        .map(([id, account]: [string, any]) => [id, account.passkey])
+        .map(([id, account]: [string, any]) => [
+          id,
+          {
+            ...account.passkey,
+            address: account.address,
+          },
+        ])
     );
 
     await savePasskeySlip44State(activeSlip44, {
@@ -5237,7 +5243,9 @@ class MainController {
     try {
       // Clear the vault state from storage
       const storageKey = `state-vault-${slip44}`;
+      const passkeyStorageKey = `state-vault-${slip44}-passkeys`;
       await chromeStorage.removeItem(storageKey);
+      await chromeStorage.removeItem(passkeyStorageKey);
 
       // Clear from vault cache as well
       vaultCache.clearSlip44FromCache(slip44);

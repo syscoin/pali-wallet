@@ -130,6 +130,7 @@ function mergePasskeyOverlay(
     },
   };
   const passkeyAccounts = accounts[KeyringAccountType.PasskeySmartAccount];
+  let appliedPasskeyOverlay = false;
 
   Object.entries(passkeyOverlay.accounts || {}).forEach(
     ([accountId, passkey]) => {
@@ -138,17 +139,45 @@ function mergePasskeyOverlay(
         return;
       }
 
+      const overlay = passkey as any;
+      const account = passkeyAccounts[id] as any;
+      const overlayAddress = overlay?.address;
+      const accountAddress = account?.address;
+      if (overlayAddress) {
+        if (
+          !accountAddress ||
+          String(accountAddress).toLowerCase() !==
+            String(overlayAddress).toLowerCase()
+        ) {
+          return;
+        }
+      } else {
+        const currentPasskey = account?.passkey;
+        if (
+          !currentPasskey ||
+          currentPasskey.credentialIdHash?.toLowerCase?.() !==
+            overlay?.credentialIdHash?.toLowerCase?.() ||
+          currentPasskey.deploymentSalt !== overlay?.deploymentSalt
+        ) {
+          return;
+        }
+      }
+
+      const passkeyMetadata = { ...overlay };
+      delete passkeyMetadata.address;
       passkeyAccounts[id] = {
-        ...passkeyAccounts[id],
-        passkey: passkey as any,
+        ...account,
+        passkey: passkeyMetadata as any,
       };
+      appliedPasskeyOverlay = true;
     }
   );
 
   return {
     ...vaultState,
     accounts,
-    ...(Object.prototype.hasOwnProperty.call(
+    ...(appliedPasskeyOverlay &&
+    Object.prototype.hasOwnProperty.call(
       passkeyOverlay,
       'passkeyCredentialProfile'
     )
