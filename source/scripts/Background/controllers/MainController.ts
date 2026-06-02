@@ -126,7 +126,6 @@ import {
   PasskeyContractSponsorMode,
   assertPasskeyRelayPayloadMatches,
   getPasskeyActionHash,
-  getPasskeyV1ActionHash,
   getPasskeyFactoryAccountParams,
   getPasskeyMetadataFactoryAccountParams,
   getPasskeyPolicyExecution,
@@ -135,8 +134,6 @@ import {
   normalizePasskeySponsorProof,
   passkeyFactoryInterface,
   passkeySmartAccountInterface,
-  passkeySmartAccountV1Interface,
-  PASSKEY_SMART_ACCOUNT_V1,
   PASSKEY_SMART_ACCOUNT_VERSION,
   selectPasskeyDeploymentGasPayer,
   selectPasskeyGasPayerCandidate,
@@ -1865,58 +1862,6 @@ class MainController {
       Boolean(passkeyCredentialProfile) ||
       Object.keys(passkeyAccounts).length > 0
     );
-  }
-
-  private isLegacyPasskeySmartAccount(
-    metadata: IPasskeySmartAccountMetadata
-  ): boolean {
-    return metadata.contractVersion === PASSKEY_SMART_ACCOUNT_V1;
-  }
-
-  private getPasskeyExecutionActionHash({
-    account,
-    chainId,
-    executions,
-    metadata,
-    requiresDeployment,
-  }: {
-    account: string;
-    chainId: number;
-    executions: Array<{
-      data: string;
-      deadline: number;
-      nonce: string;
-      target: string;
-      value: string;
-    }>;
-    metadata: IPasskeySmartAccountMetadata;
-    requiresDeployment: boolean;
-  }) {
-    if (this.isLegacyPasskeySmartAccount(metadata) && !requiresDeployment) {
-      if (executions.length !== 1) {
-        throw new Error('Legacy passkey accounts only support one execution');
-      }
-
-      return getPasskeyV1ActionHash({
-        account,
-        chainId,
-        execution: executions[0],
-        sponsorMode: getPasskeySponsorContractMode(metadata),
-        sponsorSigner: metadata.sponsor?.signer || AddressZero,
-      });
-    }
-
-    return getPasskeyActionHash({
-      account,
-      chainId,
-      executions,
-      sponsorMode: requiresDeployment
-        ? PasskeyContractSponsorMode.None
-        : getPasskeySponsorContractMode(metadata),
-      sponsorSigner: requiresDeployment
-        ? AddressZero
-        : metadata.sponsor?.signer || AddressZero,
-    });
   }
 
   public async forgetWallet(pwd: string) {
@@ -3828,12 +3773,16 @@ class MainController {
     };
     executions.push(execution);
 
-    const actionHash = this.getPasskeyExecutionActionHash({
+    const actionHash = getPasskeyActionHash({
       account: account.address,
       chainId: metadata.chainId,
       executions,
-      metadata,
-      requiresDeployment,
+      sponsorMode: requiresDeployment
+        ? PasskeyContractSponsorMode.None
+        : getPasskeySponsorContractMode(metadata),
+      sponsorSigner: requiresDeployment
+        ? AddressZero
+        : metadata.sponsor?.signer || AddressZero,
     });
 
     return { actionHash, execution, executions, requiresDeployment };
@@ -3895,11 +3844,6 @@ class MainController {
       params.requiresDeployment === undefined
         ? !metadata.isDeployed
         : params.requiresDeployment;
-    const isLegacyExecution =
-      this.isLegacyPasskeySmartAccount(metadata) && !requiresDeployment;
-    if (isLegacyExecution && executions.length !== 1) {
-      throw new Error('Legacy passkey accounts only support one execution');
-    }
 
     const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
     let sponsorProof = emptySponsorProof;
@@ -3961,12 +3905,6 @@ class MainController {
       ? passkeyFactoryInterface.encodeFunctionData('createAccountAndExecute', [
           getPasskeyMetadataFactoryAccountParams(metadata),
           executions,
-          params.proof,
-          sponsorProof,
-        ])
-      : isLegacyExecution
-      ? passkeySmartAccountV1Interface.encodeFunctionData('execute', [
-          executions[0],
           params.proof,
           sponsorProof,
         ])
@@ -4158,12 +4096,12 @@ class MainController {
     const executions = params.executions || [params.execution];
     const actionHash =
       params.actionHash ||
-      this.getPasskeyExecutionActionHash({
+      getPasskeyActionHash({
         account: account.address,
         chainId,
         executions,
-        metadata,
-        requiresDeployment: false,
+        sponsorMode: getPasskeySponsorContractMode(metadata),
+        sponsorSigner: metadata.sponsor?.signer || AddressZero,
       });
     const providedProof = this.normalizePasskeySponsorProof(
       params.sponsorProof || params.sponsorSignature
@@ -4209,7 +4147,7 @@ class MainController {
           executions,
           proof: params.proof,
           sponsorSigner: metadata.sponsor.signer,
-          version: metadata.contractVersion || PASSKEY_SMART_ACCOUNT_VERSION,
+          version: PASSKEY_SMART_ACCOUNT_VERSION,
         }
       );
     } catch (error) {
@@ -4491,24 +4429,13 @@ class MainController {
         if (tx.to?.toLowerCase() !== expectedTo.toLowerCase()) {
           throw new Error('Sponsor relayed an unexpected passkey transaction');
         }
-        const isLegacyExecution =
-          this.isLegacyPasskeySmartAccount(metadata) && !requiresDeployment;
         const decoded = requiresDeployment
           ? passkeyFactoryInterface.decodeFunctionData(
               'createAccountAndExecute',
               tx.data
             )
-          : isLegacyExecution
-          ? passkeySmartAccountV1Interface.decodeFunctionData(
-              'execute',
-              tx.data
-            )
           : passkeySmartAccountInterface.decodeFunctionData('execute', tx.data);
-        const decodedExecutions = requiresDeployment
-          ? decoded[1]
-          : isLegacyExecution
-          ? [decoded[0]]
-          : decoded[0];
+        const decodedExecutions = requiresDeployment ? decoded[1] : decoded[0];
         const decodedProof = requiresDeployment ? decoded[2] : decoded[1];
         const decodedSponsorProof = requiresDeployment
           ? decoded[3]
@@ -4548,12 +4475,16 @@ class MainController {
           );
         });
         if (metadata.sponsor?.mode === PasskeySponsorMode.Required) {
-          const actionHash = this.getPasskeyExecutionActionHash({
+          const actionHash = getPasskeyActionHash({
             account: expectedAccount,
             chainId: metadata.chainId,
             executions: expectedExecutions,
-            metadata,
-            requiresDeployment,
+            sponsorMode: requiresDeployment
+              ? PasskeyContractSponsorMode.None
+              : getPasskeySponsorContractMode(metadata),
+            sponsorSigner: requiresDeployment
+              ? AddressZero
+              : metadata.sponsor?.signer || AddressZero,
           });
           verifyPasskeyRelayedSponsorProof(
             actionHash,
@@ -6719,7 +6650,7 @@ class MainController {
         const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
         const chainTxs = txs?.[networkType]?.[chainId];
 
-        if (!isBitcoinBased) {
+        if (!isBitcoinBased && targetAccount) {
           const directTx = await this.getEvmTransactionFromProvider(txHash);
           if (directTx) {
             this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);

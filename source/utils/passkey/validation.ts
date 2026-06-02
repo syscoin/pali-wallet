@@ -83,48 +83,6 @@ export const getPasskeyActionHash = ({
   );
 };
 
-export const getPasskeyV1ActionHash = ({
-  account,
-  chainId,
-  execution,
-  sponsorMode,
-  sponsorSigner = AddressZero,
-}: {
-  account: string;
-  chainId: number;
-  execution: PasskeyExecution;
-  sponsorMode: number;
-  sponsorSigner?: string;
-}) =>
-  keccak256(
-    defaultAbiCoder.encode(
-      [
-        'bytes32',
-        'uint256',
-        'address',
-        'address',
-        'uint256',
-        'bytes32',
-        'uint256',
-        'uint256',
-        'uint8',
-        'address',
-      ],
-      [
-        PASSKEY_EXECUTE_TYPEHASH,
-        chainId,
-        account,
-        execution.target,
-        execution.value,
-        keccak256(execution.data),
-        execution.nonce,
-        execution.deadline,
-        sponsorMode,
-        sponsorSigner || AddressZero,
-      ]
-    )
-  );
-
 export class PasskeyRelayedTransactionNotFoundError extends Error {
   constructor() {
     super('Sponsor relayed transaction was not found on-chain');
