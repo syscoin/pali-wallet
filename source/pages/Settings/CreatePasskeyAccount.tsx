@@ -89,7 +89,7 @@ const CreatePasskeyAccount = () => {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
         const passkeyName = useSeparatePasskey
           ? label
-          : t('settings.passkeyAccount');
+          : t('settings.paliWalletPasskey');
         const newCredential = await createPasskeyCredential({
           accountName: passkeyName,
           challengeHex: bytesToHex(challenge),

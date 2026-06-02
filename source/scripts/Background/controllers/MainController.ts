@@ -2758,6 +2758,33 @@ class MainController {
     return this.passkey.preparePasskeyExecution(params);
   }
 
+  public async preparePasskeyExecutions(
+    params: Array<{
+      data?: string;
+      target: string;
+      value: string;
+    }>
+  ): Promise<{
+    actionHash: string;
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    requiresDeployment: boolean;
+  }> {
+    return this.passkey.preparePasskeyExecutions(params);
+  }
+
   public async submitPasskeyExecution(params: {
     actionHash?: string;
     execution: {

@@ -218,6 +218,7 @@
     "paliWalletBrowserExtension": "Pali Wallet Browser-Erweiterung",
     "addressType": "Adresstyp",
     "passkeyAccount": "Passkey-Konto",
+    "paliWalletPasskey": "Pali Wallet Passkey",
     "passkeyAccountNameHint": "Ändere diesen Namen auf dem vorherigen Bildschirm oder später unter Konten verwalten.",
     "createPasskeyAccount": "Passkey-Konto erstellen",
     "createPasskeyAccountDescription": "Verwende Biometrie, um Onchain-Transaktionen zu genehmigen.",

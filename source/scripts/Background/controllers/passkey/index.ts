@@ -1726,9 +1726,42 @@ class PasskeyController {
     }>;
     requiresDeployment: boolean;
   }> {
-    const normalizedParams = this.normalizePasskeyExecutionPayload(params);
-    await this.assertPasskeyExecutionTargetAllowed(normalizedParams.target);
+    return this.preparePasskeyExecutions([params]);
+  }
 
+  public async preparePasskeyExecutions(
+    params: Array<{
+      data?: string;
+      target: string;
+      value: string;
+    }>
+  ): Promise<{
+    actionHash: string;
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    requiresDeployment: boolean;
+  }> {
+    if (params.length === 0) {
+      throw new Error('Passkey execution batch is empty');
+    }
+    const normalizedParams = params.map((param) =>
+      this.normalizePasskeyExecutionPayload(param)
+    );
+    for (const normalizedParam of normalizedParams) {
+      await this.assertPasskeyExecutionTargetAllowed(normalizedParam.target);
+    }
     const { activeAccount, accounts } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
     if (!account?.isPasskeySmartAccount || !account.passkey) {
@@ -1782,14 +1815,14 @@ class PasskeyController {
     if (pendingPolicy) {
       executions.push(pendingPolicy);
     }
-    const execution = {
-      target: normalizedParams.target,
-      value: normalizedParams.value,
-      data: normalizedParams.data,
-      nonce: nonce.add(executions.length).toString(),
+    const userExecutions = normalizedParams.map((normalizedParam, index) => ({
+      target: normalizedParam.target,
+      value: normalizedParam.value,
+      data: normalizedParam.data,
+      nonce: nonce.add(executions.length + index).toString(),
       deadline,
-    };
-    executions.push(execution);
+    }));
+    executions.push(...userExecutions);
 
     const actionHash = getPasskeyActionHash({
       account: account.address,
@@ -1803,7 +1836,12 @@ class PasskeyController {
         : metadata.sponsor?.signer || AddressZero,
     });
 
-    return { actionHash, execution, executions, requiresDeployment };
+    return {
+      actionHash,
+      execution: userExecutions[0],
+      executions,
+      requiresDeployment,
+    };
   }
 
   public async submitPasskeyExecution(params: {

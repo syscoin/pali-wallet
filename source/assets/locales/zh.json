@@ -218,6 +218,7 @@
     "paliWalletBrowserExtension": "Pali钱包浏览器扩展",
     "addressType": "地址类型",
     "passkeyAccount": "通行密钥账户",
+    "paliWalletPasskey": "Pali Wallet 通行密钥",
     "passkeyAccountNameHint": "可在上一个页面更改此名称，或稍后在管理账户中编辑。",
     "createPasskeyAccount": "创建通行密钥账户",
     "createPasskeyAccountDescription": "使用生物识别批准链上交易。",

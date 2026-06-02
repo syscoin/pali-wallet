@@ -1,3 +1,4 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
 import { BigNumber } from '@ethersproject/bignumber';
 import { formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -17,6 +18,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { getMethodName } from 'utils/commonMethodSignatures';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
 import { getPasskeyAssertion } from 'utils/passkey';
@@ -34,6 +36,110 @@ interface ISendCallsData {
   from?: string;
   version: string;
 }
+
+const formatDecodedCallValue = (value: any): string => {
+  if (BigNumber.isBigNumber(value)) {
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(formatDecodedCallValue).join(', ')}]`;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  return String(value);
+};
+
+const decodeCommonCallData = (data?: string) => {
+  if (!data || data === '0x' || data.length < 10) {
+    return null;
+  }
+
+  const selector = data.slice(0, 10).toLowerCase();
+  const calldata = `0x${data.slice(10)}`;
+  const fallbackName = getMethodName(selector);
+
+  try {
+    switch (selector) {
+      case '0x095ea7b3': {
+        const [spender, amount] = defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          calldata
+        );
+        return { name: 'approve', params: { spender, amount } };
+      }
+      case '0xa9059cbb': {
+        const [to, amount] = defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          calldata
+        );
+        return { name: 'transfer', params: { to, amount } };
+      }
+      case '0x23b872dd': {
+        const [from, to, amountOrTokenId] = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256'],
+          calldata
+        );
+        return { name: 'transferFrom', params: { from, to, amountOrTokenId } };
+      }
+      case '0x39509351': {
+        const [spender, addedValue] = defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          calldata
+        );
+        return { name: 'increaseAllowance', params: { spender, addedValue } };
+      }
+      case '0xa457c2d7': {
+        const [spender, subtractedValue] = defaultAbiCoder.decode(
+          ['address', 'uint256'],
+          calldata
+        );
+        return {
+          name: 'decreaseAllowance',
+          params: { spender, subtractedValue },
+        };
+      }
+      case '0xa22cb465': {
+        const [operator, approved] = defaultAbiCoder.decode(
+          ['address', 'bool'],
+          calldata
+        );
+        return { name: 'setApprovalForAll', params: { operator, approved } };
+      }
+      case '0x42842e0e':
+      case '0xb88d4fde': {
+        const [from, to, tokenId] = defaultAbiCoder.decode(
+          selector === '0x42842e0e'
+            ? ['address', 'address', 'uint256']
+            : ['address', 'address', 'uint256', 'bytes'],
+          calldata
+        );
+        return { name: 'safeTransferFrom', params: { from, to, tokenId } };
+      }
+      case '0xf242432a': {
+        const [from, to, id, amount] = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256', 'uint256', 'bytes'],
+          calldata
+        );
+        return { name: 'safeTransferFrom', params: { from, to, id, amount } };
+      }
+      case '0x2eb2c2d6': {
+        const [from, to, ids, amounts] = defaultAbiCoder.decode(
+          ['address', 'address', 'uint256[]', 'uint256[]', 'bytes'],
+          calldata
+        );
+        return {
+          name: 'safeBatchTransferFrom',
+          params: { from, to, ids, amounts },
+        };
+      }
+      default:
+        return fallbackName ? { name: fallbackName, params: null } : null;
+    }
+  } catch {
+    return fallbackName ? { name: fallbackName, params: null } : null;
+  }
+};
 
 export const SendCalls = () => {
   const { t } = useTranslation();
@@ -69,6 +175,13 @@ export const SendCalls = () => {
 
   // Reverse ENS cache: name -> address (lowercased)
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
+  const effectiveSelectedCalls = useMemo(
+    () =>
+      callsData.atomicRequired && callsData.calls
+        ? new Array(callsData.calls.length).fill(true)
+        : selectedCalls,
+    [callsData.atomicRequired, callsData.calls, selectedCalls]
+  );
 
   // Initialize selected calls
   useEffect(() => {
@@ -84,7 +197,7 @@ export const SendCalls = () => {
 
     return callsData.calls
       .reduce((sum, call, index) => {
-        if (!selectedCalls[index] || !call.value) return sum;
+        if (!effectiveSelectedCalls[index] || !call.value) return sum;
         try {
           return sum.add(BigNumber.from(call.value));
         } catch {
@@ -92,7 +205,7 @@ export const SendCalls = () => {
         }
       }, BigNumber.from(0))
       .toString();
-  }, [callsData.calls, selectedCalls]);
+  }, [callsData.calls, effectiveSelectedCalls]);
 
   const allTransactionsSuccessful = useMemo(() => {
     if (!transactionStatuses || !callsData.calls) return false;
@@ -107,13 +220,13 @@ export const SendCalls = () => {
   // Check if there are any selected transactions that haven't succeeded yet
   const hasUnsuccessfulSelected = useMemo(
     () =>
-      selectedCalls.some(
+      effectiveSelectedCalls.some(
         (selected, index) =>
           selected &&
           (!transactionStatuses?.[index] ||
             transactionStatuses[index].status !== 'success')
       ),
-    [selectedCalls, transactionStatuses]
+    [effectiveSelectedCalls, transactionStatuses]
   );
 
   const getPasskeySponsorProofForCall = (
@@ -121,6 +234,9 @@ export const SendCalls = () => {
   ) =>
     call.capabilities?.passkeySponsorProof ||
     call.capabilities?.sponsorProof ||
+    callsData.capabilities?.passkeySponsorProof ||
+    callsData.capabilities?.sponsorProof;
+  const getPasskeySponsorProofForBatch = () =>
     callsData.capabilities?.passkeySponsorProof ||
     callsData.capabilities?.sponsorProof;
 
@@ -150,27 +266,23 @@ export const SendCalls = () => {
       setConfirmed(false); // Reset confirmed state for each attempt
 
       // Filter calls based on selection AND exclude already successful transactions
-      const selectedCallsData = callsData.calls.filter(
-        (_, index) =>
-          selectedCalls[index] &&
-          (!transactionStatuses?.[index] ||
-            transactionStatuses[index].status !== 'success')
-      );
+      const selectedCallsData = callsData.atomicRequired
+        ? callsData.calls
+        : callsData.calls.filter(
+            (_, index) =>
+              effectiveSelectedCalls[index] &&
+              (!transactionStatuses?.[index] ||
+                transactionStatuses[index].status !== 'success')
+          );
       const selectedIndices = callsData.calls
         .map((_, index) => index)
-        .filter(
-          (index) =>
-            selectedCalls[index] &&
-            (!transactionStatuses?.[index] ||
-              transactionStatuses[index].status !== 'success')
+        .filter((index) =>
+          callsData.atomicRequired
+            ? true
+            : effectiveSelectedCalls[index] &&
+              (!transactionStatuses?.[index] ||
+                transactionStatuses[index].status !== 'success')
         );
-
-      if (activeAccount.isPasskeySmartAccount && callsData.calls.length > 1) {
-        alert.error(t('send.passkeyMulticallUnsupported'));
-        clearNavigationState();
-        window.close();
-        return;
-      }
 
       const receipts: any[] = [];
       const from = callsData.from || activeAccount.address;
@@ -215,6 +327,137 @@ export const SendCalls = () => {
         });
         return newStatuses;
       });
+
+      if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+        try {
+          const passkeyCalls = [];
+          for (let i = 0; i < selectedCallsData.length; i++) {
+            const call = selectedCallsData[i];
+            const originalIndex = selectedIndices[i];
+            setProcessingIndex(originalIndex);
+            setTransactionStatuses((prev) => {
+              const newStatuses = [...prev];
+              newStatuses[originalIndex] = { status: 'signing' };
+              return newStatuses;
+            });
+
+            let toResolved: string | undefined = call.to;
+            const toRaw = String(call.to || '');
+            if (toRaw) {
+              const lower = toRaw.toLowerCase();
+              const isHex = lower.startsWith('0x');
+              const isEns = lower.endsWith('.eth');
+              if (!isHex) {
+                if (isEns) {
+                  const cached = ensNameToAddress[lower];
+                  let resolved: string | null =
+                    (batchEnsMap && lower in batchEnsMap
+                      ? batchEnsMap[lower]
+                      : undefined) ??
+                    cached ??
+                    null;
+                  if (!resolved) {
+                    resolved = (await controllerEmitter(
+                      ['wallet', 'resolveEns'],
+                      [toRaw]
+                    )) as string | null;
+                  }
+                  if (!resolved) {
+                    throw new Error(t('send.unableToResolveEns'));
+                  }
+                  toResolved = resolved;
+                } else {
+                  throw new Error(t('send.invalidDestination'));
+                }
+              }
+            }
+
+            const target =
+              toResolved && toResolved.startsWith('0x') ? toResolved : '';
+            if (!target) {
+              throw new Error(t('send.passkeyContractDeploymentUnsupported'));
+            }
+            passkeyCalls.push({
+              target,
+              value: call.value || '0x0',
+              data: call.data || '0x',
+            });
+          }
+
+          const prepared = (await controllerEmitter(
+            ['wallet', 'preparePasskeyExecutions'],
+            [passkeyCalls],
+            300000
+          )) as any;
+          const assertion = await getPasskeyAssertion(
+            activeAccount.passkey.credentialId,
+            prepared.actionHash
+          );
+
+          selectedIndices.forEach((index) => {
+            setTransactionStatuses((prev) => {
+              const newStatuses = [...prev];
+              newStatuses[index] = { status: 'sending' };
+              return newStatuses;
+            });
+          });
+
+          const response = (await controllerEmitter(
+            ['wallet', 'submitPasskeyExecution'],
+            [
+              {
+                actionHash: prepared.actionHash,
+                execution: prepared.execution,
+                executions: prepared.executions,
+                requiresDeployment: prepared.requiresDeployment,
+                proof: {
+                  authenticatorData: assertion.authenticatorData,
+                  clientDataJSON: assertion.clientDataJSON,
+                  challengeOffset: assertion.challengeOffset,
+                  originOffset: assertion.originOffset,
+                  r: assertion.r,
+                  s: assertion.s,
+                  typeOffset: assertion.typeOffset,
+                },
+                sponsorProof:
+                  selectedCallsData.length === 1
+                    ? getPasskeySponsorProofForCall(selectedCallsData[0])
+                    : getPasskeySponsorProofForBatch(),
+              },
+            ],
+            300000
+          )) as any;
+          const txHash = response.hash || response;
+
+          selectedIndices.forEach((index) => {
+            setTransactionStatuses((prev) => {
+              const newStatuses = [...prev];
+              newStatuses[index] = { status: 'success', txHash };
+              return newStatuses;
+            });
+          });
+          setProcessingIndex(-1);
+          setLoading(false);
+          alert.success(t('send.txSuccessfull'));
+          return;
+        } catch (error) {
+          console.error('Failed to process passkey batch calls', error);
+          selectedIndices.forEach((index) => {
+            setTransactionStatuses((prev) => {
+              const newStatuses = [...prev];
+              newStatuses[index] = {
+                status: 'error',
+                error: error.message,
+              };
+              return newStatuses;
+            });
+          });
+          setLoading(false);
+          setProcessingIndex(-1);
+          alert.error(error.message || t('send.sendError'));
+          return;
+        }
+      }
 
       // Sign and send each transaction with incremented nonces
       for (let i = 0; i < selectedCallsData.length; i++) {
@@ -526,7 +769,7 @@ export const SendCalls = () => {
       </div>
 
       {/* Warning for atomic requirement */}
-      {callsData.atomicRequired && (
+      {callsData.atomicRequired && !activeAccount.isPasskeySmartAccount && (
         <div className="bg-brand-yellowBg p-3 mx-4 mt-4 rounded-lg border border-brand-yellow">
           <div className="flex items-start gap-2">
             <Icon
@@ -564,14 +807,18 @@ export const SendCalls = () => {
                     <input
                       type="checkbox"
                       id={`call-${index}`}
-                      checked={selectedCalls[index]}
+                      checked={effectiveSelectedCalls[index]}
                       onChange={(e) => {
+                        if (callsData.atomicRequired) {
+                          return;
+                        }
                         const newSelection = [...selectedCalls];
                         newSelection[index] = e.target.checked;
                         setSelectedCalls(newSelection);
                       }}
                       className="w-4 h-4 text-brand-blue600 rounded"
                       disabled={
+                        callsData.atomicRequired ||
                         loading ||
                         (transactionStatuses &&
                           transactionStatuses[index]?.status === 'success')
@@ -674,9 +921,44 @@ export const SendCalls = () => {
                       <p className="text-xs text-brand-gray200">
                         {t('send.data')}:
                       </p>
-                      <p className="text-sm text-brand-white font-mono">
-                        {ellipsis(call.data, 20, 4)}
-                      </p>
+                      {(() => {
+                        const decodedCallData = decodeCommonCallData(call.data);
+                        if (!decodedCallData) {
+                          return (
+                            <p className="text-sm text-brand-white font-mono">
+                              {ellipsis(call.data, 20, 4)}
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <div>
+                            <p className="text-sm text-brand-white">
+                              {decodedCallData.name}
+                            </p>
+                            {decodedCallData.params && (
+                              <div className="mt-1 space-y-1">
+                                {Object.entries(decodedCallData.params).map(
+                                  ([key, value]) => (
+                                    <p
+                                      className="text-xs text-brand-gray200 font-mono break-all"
+                                      key={key}
+                                    >
+                                      {key}:{' '}
+                                      {formatDecodedCallValue(value as any)}
+                                    </p>
+                                  )
+                                )}
+                              </div>
+                            )}
+                            <Tooltip content={call.data}>
+                              <p className="text-xs text-brand-gray200 font-mono mt-1">
+                                {ellipsis(call.data, 20, 4)}
+                              </p>
+                            </Tooltip>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -732,7 +1014,7 @@ export const SendCalls = () => {
                     (s) => s && (s.status === 'success' || s.status === 'error')
                   ).length
                 }{' '}
-                / {selectedCalls.filter((s) => s).length}
+                / {effectiveSelectedCalls.filter((s) => s).length}
               </span>
             </div>
             <div className="w-full bg-bkg-2 rounded-full h-2">
@@ -744,7 +1026,7 @@ export const SendCalls = () => {
                       (s) =>
                         s && (s.status === 'success' || s.status === 'error')
                     ).length /
-                      selectedCalls.filter((s) => s).length) *
+                      effectiveSelectedCalls.filter((s) => s).length) *
                     100
                   }%`,
                 }}
