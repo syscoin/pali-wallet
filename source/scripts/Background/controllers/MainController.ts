@@ -5062,7 +5062,10 @@ class MainController {
     chainId: number,
     txUpdate: IEvmTransactionResponse | any
   ) {
-    const { accountTransactions } = store.getState().vault;
+    const { accountTransactions, accounts, activeNetwork } =
+      store.getState().vault;
+    const isConfirmedUpdate = isTransactionInBlock(txUpdate);
+    const notifiedAccounts = new Set<string>();
 
     Object.values(PaliKeyringAccountType).forEach((accountType) => {
       Object.entries(accountTransactions[accountType] || {}).forEach(
@@ -5078,6 +5081,24 @@ class MainController {
           );
           if (!existingTx) {
             return;
+          }
+
+          if (isConfirmedUpdate && !isTransactionInBlock(existingTx)) {
+            const notificationKey = `${accountType}:${accountId}`;
+            const account = accounts[accountType]?.[Number(accountId)];
+            if (account && !notifiedAccounts.has(notificationKey)) {
+              notificationManager.notifyTransaction({
+                transaction: txUpdate,
+                type: 'confirmed',
+                account: {
+                  address: account.address,
+                  label: account.label,
+                },
+                network: activeNetwork,
+                isEvm: true,
+              });
+              notifiedAccounts.add(notificationKey);
+            }
           }
 
           store.dispatch(
