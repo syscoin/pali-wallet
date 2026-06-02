@@ -2596,19 +2596,9 @@ class MainController {
     }
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(true, true, false, true)
-        .catch((error) => {
-          console.error(
-            '[MainController] Failed to update account after creation:',
-            error
-          );
-          // This is non-critical - account was created successfully
-          // The balance/transaction update will happen on next poll
-        })
-        .finally(() => {
-          store.dispatch(setIsPollingUpdate(false));
-          store.dispatch(setPostNetworkSwitchLoading(false));
-        });
+      this.refreshActiveAccountLightweight('account creation');
+      store.dispatch(setIsPollingUpdate(false));
+      store.dispatch(setPostNetworkSwitchLoading(false));
     }, 10);
     return newAccount;
   }
@@ -2819,6 +2809,9 @@ class MainController {
           }
         }
 
+        // Account context changed; rapid polling should not continue against the old active account.
+        this.stopAllRapidPolling();
+
         // Cancel any pending async operations before switching accounts
         if (this.cancellablePromises.transactionPromise) {
           this.cancellablePromises.transactionPromise.cancel();
@@ -2876,9 +2869,32 @@ class MainController {
     });
   }
 
+  private refreshActiveAccountLightweight(context: string) {
+    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+    void this.updateUserTransactionsState({
+      isBitcoinBased,
+      activeNetwork,
+      isPolling: true,
+      isRapidPolling: false,
+      forceRefresh: true,
+    }).catch((error) =>
+      console.error(
+        `[MainController] Failed to refresh transactions after ${context}:`,
+        error
+      )
+    );
+    void this.getLatestUpdateForCurrentAccount(true, true, false, true).catch(
+      (error) =>
+        console.error(
+          `[MainController] Failed to refresh balance after ${context}:`,
+          error
+        )
+    );
+  }
+
   private async performPostAccountSwitchOperations() {
     try {
-      await this.getLatestUpdateForCurrentAccount(true, true, false, true);
+      this.refreshActiveAccountLightweight('account switch');
       // IMPORTANT: We do NOT automatically update dapp connections when switching accounts.
       // Each dapp maintains its own connection to a specific account. When a dapp needs
       // to interact with its connected account while a different account is active,
@@ -3788,8 +3804,10 @@ class MainController {
     activeNetwork,
     isPolling = false,
     isRapidPolling = false,
+    forceRefresh = false,
   }: {
     activeNetwork: INetwork;
+    forceRefresh?: boolean;
     isBitcoinBased: boolean;
     isPolling?: boolean;
     isRapidPolling?: boolean;
@@ -3825,8 +3843,23 @@ class MainController {
                 activeNetwork.url,
                 currentAccountTxs,
                 isPolling,
-                isRapidPolling
+                isRapidPolling,
+                forceRefresh
               );
+
+            const latestVault = store.getState().vault;
+            if (
+              latestVault.activeAccount.id !== activeAccount.id ||
+              latestVault.activeAccount.type !== activeAccount.type ||
+              latestVault.activeNetwork.chainId !== activeNetwork.chainId ||
+              latestVault.activeNetwork.kind !== activeNetwork.kind
+            ) {
+              console.log(
+                '[MainController] Skipping stale transaction update after account/network change'
+              );
+              resolve();
+              return;
+            }
 
             // Dispatch transactions for both UTXO and EVM
             if (txs && !isEmpty(txs)) {
@@ -4925,12 +4958,7 @@ class MainController {
       );
 
       try {
-        // Pass true for isPolling to handle errors silently
-        // Pass true for isRapidPolling to skip expensive RPC scanning
-        await checkForUpdates(true, true);
-        // Check current transaction state before polling
-        const { accountTransactions, activeAccount, activeNetwork } =
-          store.getState().vault;
+        const { activeAccount, activeNetwork } = store.getState().vault;
 
         if (!activeAccount || activeNetwork.chainId !== chainId) {
           console.log(
@@ -4940,12 +4968,7 @@ class MainController {
           return;
         }
 
-        const accountInfo = targetAccount ?? activeAccount;
-        const txs = accountTransactions[accountInfo.type]?.[accountInfo.id];
-        const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
-        const chainTxs = txs?.[networkType]?.[chainId];
-
-        if (!isBitcoinBased && targetAccount) {
+        if (!isBitcoinBased) {
           const directTx = await this.getEvmTransactionFromProvider(txHash);
           if (directTx) {
             this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
@@ -4960,7 +4983,18 @@ class MainController {
               return;
             }
           }
+        } else {
+          // UTXO confirmation status comes from Blockbook account state.
+          await checkForUpdates(true, true);
         }
+
+        const { accountTransactions, activeAccount: latestActiveAccount } =
+          store.getState().vault;
+        const accountInfo =
+          targetAccount ?? latestActiveAccount ?? activeAccount;
+        const txs = accountTransactions[accountInfo.type]?.[accountInfo.id];
+        const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
+        const chainTxs = txs?.[networkType]?.[chainId];
 
         // Check if we have transactions array
         if (Array.isArray(chainTxs)) {
