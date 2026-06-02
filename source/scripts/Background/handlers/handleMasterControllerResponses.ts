@@ -4,6 +4,8 @@ import { extractErrorMessage } from 'utils/index';
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
+  const extensionOrigin = new URL(chrome.runtime.getURL('')).origin;
+
   chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
     const { type, data } = message;
 
@@ -15,7 +17,8 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
-      if (sender.tab) {
+      const senderOrigin = sender.url ? new URL(sender.url).origin : '';
+      if (sender.tab && senderOrigin !== extensionOrigin) {
         throw new Error(
           'Controller actions are not available from connected sites'
         );

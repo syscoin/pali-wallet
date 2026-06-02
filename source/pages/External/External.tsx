@@ -46,7 +46,7 @@ const External: FC = () => {
     // will signal when they have content ready
 
     <BrowserRouter>
-      <div className="w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden">
+      <div className="mx-auto w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden">
         <Router />
       </div>
     </BrowserRouter>
