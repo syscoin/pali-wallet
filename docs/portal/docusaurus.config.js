@@ -76,7 +76,7 @@ const config = {
           routeBasePath: 'docs',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl:
-            'https://github.com/syscoin/pali_wallet/tree/main/docs/portal/',
+            'https://github.com/syscoin/pali_wallet/tree/master/docs/portal/',
         },
         blog: false,
         theme: {
