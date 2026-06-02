@@ -5191,7 +5191,7 @@ class MainController {
 
     // Safety check: For HD accounts, don't allow removing if it's the only one
     if (accountType === KeyringAccountType.HDAccount) {
-      if (accountId === 0) {
+      if (accountId === 0 && this.hasPasskeyRecoveryAnchorState(accounts)) {
         throw new Error(
           'Cannot remove the first HD account because it anchors passkey account recovery.'
         );
