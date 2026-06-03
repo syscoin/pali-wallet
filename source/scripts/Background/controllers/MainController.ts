@@ -4319,19 +4319,97 @@ class MainController {
     }
   }
 
+  public async getRecommendedEvmNonce(address: string): Promise<number> {
+    try {
+      const provider = this.ethereumTransaction?.web3Provider;
+      if (!provider) {
+        throw new Error('Web3 provider not available');
+      }
+
+      const [latestNonce, pendingNonce] = await Promise.all([
+        provider.getTransactionCount(address, 'latest'),
+        provider.getTransactionCount(address, 'pending'),
+      ]);
+
+      if (pendingNonce <= latestNonce) {
+        return latestNonce;
+      }
+
+      const normalizedAddress = address.toLowerCase();
+      const { accounts, accountTransactions, activeNetwork } =
+        store.getState().vault;
+      let accountType: keyof typeof accounts | undefined;
+      let accountId: number | undefined;
+
+      for (const type of Object.keys(accounts) as Array<
+        keyof typeof accounts
+      >) {
+        const accountsById = accounts[type];
+        for (const [id, account] of Object.entries(accountsById)) {
+          if (
+            account?.address &&
+            account.address.toLowerCase() === normalizedAddress
+          ) {
+            accountType = type;
+            accountId = Number(id);
+            break;
+          }
+        }
+        if (accountType !== undefined) {
+          break;
+        }
+      }
+
+      const localPendingNonces = new Set<number>();
+      const localTransactions =
+        accountType !== undefined && accountId !== undefined
+          ? accountTransactions?.[accountType]?.[accountId]?.ethereum?.[
+              activeNetwork.chainId
+            ] || []
+          : [];
+
+      // If the provider advertises a pending range that Pali cannot account for
+      // locally, fill the first uncovered nonce instead of trusting txpool state.
+      for (const tx of localTransactions as any[]) {
+        if (isTransactionInBlock(tx)) {
+          continue;
+        }
+        if (tx.from && tx.from.toLowerCase() !== normalizedAddress) {
+          continue;
+        }
+        if (tx.nonce === undefined || tx.nonce === null) {
+          continue;
+        }
+
+        const nonce =
+          typeof tx.nonce === 'string'
+            ? tx.nonce.startsWith('0x')
+              ? parseInt(tx.nonce, 16)
+              : Number(tx.nonce)
+            : Number(tx.nonce);
+        if (Number.isFinite(nonce)) {
+          localPendingNonces.add(nonce);
+        }
+      }
+
+      for (let nonce = latestNonce; nonce < pendingNonce; nonce += 1) {
+        if (!localPendingNonces.has(nonce)) {
+          return nonce;
+        }
+      }
+
+      return pendingNonce;
+    } catch (error) {
+      return await this.ethereumTransaction.getRecommendedNonce(address);
+    }
+  }
+
   /**
    * Get recommended nonce for batch transactions
    * Safely calls the ethereum transaction method to get the next nonce
    */
   public async getRecommendedNonceForBatch(address: string): Promise<number> {
-    try {
-      const controller = getController();
-      return await controller.wallet.ethereumTransaction.getRecommendedNonce(
-        address
-      );
-    } catch (error) {
-      throw error;
-    }
+    return this.getRecommendedEvmNonce(address);
   }
 
   /**
