@@ -1,6 +1,6 @@
 import { getAddress } from '@ethersproject/address';
 import { isHexString } from '@ethersproject/bytes';
-import { AddressZero, HashZero } from '@ethersproject/constants';
+import { AddressZero } from '@ethersproject/constants';
 import { id as hashText } from '@ethersproject/hash';
 
 import {
@@ -85,7 +85,7 @@ export const getPasskeyPolicyExecution = (
     data: passkeySmartAccountInterface.encodeFunctionData('setSponsor', [
       getPasskeySponsorContractMode(metadata),
       metadata.sponsor.signer || AddressZero,
-      metadata.sponsor.urlHash || HashZero,
+      metadata.sponsor.url || '',
     ]),
     nonce: nonce.toString(),
     deadline,
@@ -123,12 +123,6 @@ export const normalizePasskeySponsor = (
   }
 
   const url = typeof sponsor?.url === 'string' ? sponsor.url.trim() : '';
-  const providedUrlHash =
-    typeof sponsor?.urlHash === 'string' ? sponsor.urlHash : '';
-  if (providedUrlHash && !/^0x[0-9a-fA-F]{64}$/.test(providedUrlHash)) {
-    throw new Error('Invalid passkey sponsor URL hash');
-  }
-
   return {
     mode,
     ...(typeof sponsor?.policyText === 'string' && sponsor.policyText.trim()
@@ -136,6 +130,5 @@ export const normalizePasskeySponsor = (
       : {}),
     ...(signer ? { signer } : {}),
     ...(url ? { url, urlHash: hashText(url) } : {}),
-    ...(!url && providedUrlHash ? { urlHash: providedUrlHash } : {}),
   };
 };

@@ -33,7 +33,7 @@ title: スポンサーサービス
 
 ## オンチェーンpolicy
 
-スマートアカウントpolicyはmode、signer、URL hashを保存します。完全なURLとpolicy textは、表示とスポンサーサービス呼び出しに使用されるウォレットメタデータです。
+スマートアカウントpolicyはmode、signer、公開sponsor URLを保存します。policy textは表示に使用されるウォレットメタデータです。
 
 ## 冪等性
 

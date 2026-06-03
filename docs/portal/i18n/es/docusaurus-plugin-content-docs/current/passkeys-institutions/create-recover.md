@@ -75,12 +75,12 @@ Cuando una dapp solicita una cuenta passkey:
 2. Pali comprueba si la passkey puede recuperar una cuenta on-chain que coincida con la política de sponsor solicitada.
 3. Si la cuenta coincidente existe localmente, Pali la reutiliza.
 4. Si la cuenta coincidente existe on-chain pero no localmente, Pali la importa.
-5. Si existe una cuenta para el mismo hash de URL de sponsor pero el modo o firmante difiere, Pali rechaza con una incompatibilidad de recuperación.
+5. Si existe una cuenta para la misma URL de sponsor pero el modo o firmante difiere, Pali rechaza con una incompatibilidad de recuperación.
 6. Si no existe una cuenta coincidente, Pali procede con la creación de una nueva cuenta.
 
 ## ¿Qué determina la dirección?
 
-La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID, recovery ID y salt de despliegue. El texto de URL de sponsor no es por sí mismo la semilla de la dirección, pero la política de sponsor se usa por la lógica de coincidencia de recuperación para onboarding limitado a instituciones.
+La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID, recovery ID y salt de despliegue. La política de sponsor se usa por la lógica de coincidencia de recuperación para onboarding limitado a instituciones.
 
 ## Si el usuario pierde datos locales de Pali
 
@@ -100,7 +100,7 @@ Si se pierden el perfil del navegador, el almacenamiento de la extensión o los 
 5. Pali omite cuentas ya presentes localmente.
 6. Pali importa cuentas coincidentes de vuelta al estado local de la billetera.
 
-Para crear/recuperar impulsado por dapp, Pali también compara el modo de sponsor, firmante y hash de URL de sponsor de la cuenta recuperada con la política de sponsor solicitada por la dapp. Esto impide que una institución vincule silenciosamente al usuario a una política de sponsor diferente de la solicitada por la dapp.
+Para crear/recuperar impulsado por dapp, Pali también compara el modo de sponsor, firmante y URL de sponsor de la cuenta recuperada con la política de sponsor solicitada por la dapp. Esto impide que una institución vincule silenciosamente al usuario a una política de sponsor diferente de la solicitada por la dapp.
 
 ## RP ID y nombre de credencial
 

@@ -25,7 +25,7 @@ Passkey Smart Accounts verwenden WebAuthn-Credentials. Pali speichert öffentlic
 
 Institutionelle Sponsor-Policy ist aufgeteilt in:
 
-- **On-chain-Policy:** Modus, Sponsor-Signer und URL-Hash.
-- **Wallet-Metadaten:** Sponsor-URL und angezeigter Policy-Text.
+- **On-chain-Policy:** Modus, Sponsor-Signer und Sponsor-URL.
+- **Wallet-Metadaten:** angezeigter Policy-Text und weiterer lokaler Wallet-Kontext.
 
 Das Feld `policyText` wird Benutzern als Kontext angezeigt. Es ist kein on-chain Enforcement-Primitiv.

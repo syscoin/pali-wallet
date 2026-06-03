@@ -33,7 +33,7 @@ Sponsor service — это endpoint, контролируемый институ
 
 ## On-chain policy
 
-Smart account policy хранит mode, signer и URL hash. Полный URL и policy text — это wallet metadata, используемые для отображения и вызовов sponsor service.
+Smart account policy хранит mode, signer и публичный sponsor URL. Policy text — это wallet metadata, используемые для отображения.
 
 ## Идемпотентность
 

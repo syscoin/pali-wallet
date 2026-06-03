@@ -75,12 +75,12 @@ When a dapp requests a passkey account:
 2. Pali checks whether the passkey can recover an on-chain account matching the requested sponsor policy.
 3. If the matching account exists locally, Pali reuses it.
 4. If the matching account exists on-chain but not locally, Pali imports it.
-5. If an account exists for the same sponsor URL hash but mode or signer differs, Pali rejects with a recovery mismatch.
+5. If an account exists for the same sponsor URL but mode or signer differs, Pali rejects with a recovery mismatch.
 6. If no matching account exists, Pali proceeds with new account creation.
 
 ## What determines the address?
 
-The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Sponsor URL text is not itself the address seed, but sponsor policy is used by the recovery matching logic for institution-scoped onboarding.
+The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Sponsor policy is stored in the account and used by recovery matching logic for institution-scoped onboarding.
 
 ## If the user loses local Pali data
 
@@ -100,7 +100,7 @@ If the browser profile, extension storage, or local passkey account metadata is 
 5. Pali skips accounts already present locally.
 6. Pali imports matching accounts back into local wallet state.
 
-For dapp-driven create/recover, Pali also compares the recovered account's sponsor mode, signer, and URL hash to the dapp's requested sponsor policy. This prevents an institution from silently binding the user to a different sponsor policy than the one the dapp requested.
+For dapp-driven create/recover, Pali also compares the recovered account's sponsor mode, signer, and URL to the dapp's requested sponsor policy.
 
 ## RP ID and credential name
 

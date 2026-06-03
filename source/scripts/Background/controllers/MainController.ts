@@ -2625,10 +2625,8 @@ class MainController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
-    sponsorUrls?: string[];
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
-    missingSponsorUrl: number;
     recovered: number;
     skipped: number;
   }> {

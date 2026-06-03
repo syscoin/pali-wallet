@@ -33,7 +33,7 @@ Um serviço de sponsor é um endpoint controlado por instituição que participa
 
 ## Política on-chain
 
-A política da smart account armazena modo, signer e hash da URL. A URL completa e o texto de política são metadados da carteira usados para exibição e chamadas ao serviço de sponsor.
+A política da smart account armazena modo, signer e uma URL pública do sponsor. O texto de política é metadado da carteira usado para exibição.
 
 ## Idempotência
 

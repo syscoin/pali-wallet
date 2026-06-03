@@ -330,7 +330,7 @@ const PASSKEY_CREATE_AND_EXECUTE_SELECTOR = id(
   'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint256,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
 ).slice(0, 10);
 const PASSKEY_SET_SPONSOR_SELECTOR = id(
-  'setSponsor(uint8,address,bytes32)'
+  'setSponsor(uint8,address,string)'
 ).slice(0, 10);
 
 export const getPasskeyDisplayTransaction = (tx: any): any | null => {

@@ -32,8 +32,8 @@ Pali passkey recovery uses wallet-scoped recovery metadata and on-chain account 
 1. Requests a discoverable WebAuthn assertion.
 2. Looks up matching smart accounts from the factory registry and creation logs.
 3. Skips accounts already in the wallet.
-4. Adds recoverable accounts when sponsor metadata can be resolved.
-5. Warns if sponsor URL metadata is needed for a required sponsor policy.
+4. Reads account recovery metadata for each candidate account.
+5. Adds recoverable accounts to the wallet.
 
 ## Dapp create/recover idempotence
 

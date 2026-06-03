@@ -75,12 +75,12 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali проверяет, может ли passkey восстановить on-chain account, matching запрошенной sponsor policy.
 3. Если matching account существует локально, Pali повторно использует его.
 4. Если matching account существует on-chain, но не локально, Pali импортирует его.
-5. Если account существует для того же sponsor URL hash, но mode или signer отличаются, Pali отклоняет с recovery mismatch.
+5. Если account существует для того же sponsor URL, но mode или signer отличаются, Pali отклоняет с recovery mismatch.
 6. Если matching account не существует, Pali продолжает создание нового аккаунта.
 
 ## Что определяет адрес?
 
-Адрес smart account derived из factory inputs, включая passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID и deployment salt. Текст sponsor URL сам по себе не является address seed, но sponsor policy используется recovery matching logic для institution-scoped onboarding.
+Адрес smart account derived из factory inputs, включая passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID и deployment salt. Sponsor policy используется recovery matching logic для institution-scoped onboarding.
 
 ## Если пользователь теряет локальные данные Pali
 
@@ -100,7 +100,7 @@ const passkeyAccount = await window.ethereum.request({
 5. Pali пропускает аккаунты, уже присутствующие локально.
 6. Pali импортирует matching accounts обратно в локальное состояние кошелька.
 
-Для dapp-driven create/recover Pali также сравнивает sponsor mode, signer и URL hash восстановленного аккаунта с sponsor policy, запрошенной dapp. Это предотвращает ситуацию, когда институция незаметно привязывает пользователя к другой sponsor policy, чем та, которую запросил dapp.
+Для dapp-driven create/recover Pali также сравнивает sponsor mode, signer и URL восстановленного аккаунта с sponsor policy, запрошенной dapp. Это предотвращает ситуацию, когда институция незаметно привязывает пользователя к другой sponsor policy, чем та, которую запросил dapp.
 
 ## RP ID и имя credential
 

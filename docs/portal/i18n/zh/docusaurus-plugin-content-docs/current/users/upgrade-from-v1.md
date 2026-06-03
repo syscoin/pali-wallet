@@ -18,4 +18,4 @@ title: 从旧版 Pali 升级
 
 ## 迁移后的 Passkey 账户
 
-Passkey 智能账户比旧文档更新。如果你使用过 Passkey 账户且本地元数据缺失，请使用设置中的 Passkey 恢复流程。恢复可能需要相同的 authenticator 凭证，并且对于某些 required sponsor policy，还需要 sponsor service URL。
+Passkey 智能账户比旧文档更新。如果你使用过 Passkey 账户且本地元数据缺失，请使用设置中的 Passkey 恢复流程。恢复可能需要相同的 authenticator 凭证。

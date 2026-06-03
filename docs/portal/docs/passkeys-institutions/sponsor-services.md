@@ -33,7 +33,7 @@ A sponsor service is an institution-controlled endpoint that participates in pas
 
 ## On-chain policy
 
-The smart account policy stores mode, signer, and URL hash. The full URL and policy text are wallet metadata used for display and sponsor service calls.
+The smart account policy stores mode, signer, and a bounded public sponsor URL. Policy text remains wallet metadata used for display and is not enforced on-chain.
 
 ## Idempotency
 
@@ -49,7 +49,7 @@ In `gasOnly` mode, the sponsor service may relay or help pay gas. If sponsorship
 
 ## Institution guidance
 
-- Use stable per-user sponsor URLs.
+- Use stable public sponsor URLs and keep user-specific or secret data in POST bodies or signed sponsor payloads.
 - Keep signer keys in institutional infrastructure, not in the dapp frontend.
 - Make policy text short, specific, and understandable.
 - Return consistent status for repeated idempotency keys.

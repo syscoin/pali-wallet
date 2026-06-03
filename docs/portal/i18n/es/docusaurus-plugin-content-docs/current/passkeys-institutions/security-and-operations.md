@@ -32,7 +32,6 @@ La recuperación está limitada a la billetera y a la passkey. Un usuario genera
 - el contexto restaurado de Pali Wallet
 - la credencial WebAuthn relevante
 - soporte de cadena para la fábrica passkey
-- metadatos de URL de sponsor si la cuenta recuperada usa sponsorship requerido y Pali no puede inferir la URL
 
 La recuperación no es una puerta trasera custodial. La cadena proporciona metadatos públicos descubribles y listas de cuentas, pero el usuario aún necesita el contexto de recuperación de la billetera y la credencial WebAuthn relevante para probar control.
 

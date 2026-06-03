@@ -33,7 +33,7 @@ Ein Sponsor-Service ist ein institutionskontrollierter Endpoint, der an der Ausf
 
 ## On-chain-Policy
 
-Die Smart-Account-Policy speichert Modus, Signer und URL-Hash. Die vollständige URL und der Policy-Text sind Wallet-Metadaten, die für Anzeige und Sponsor-Service-Aufrufe verwendet werden.
+Die Smart-Account-Policy speichert Modus, Signer und eine öffentliche Sponsor-URL. Der Policy-Text ist Wallet-Metadaten, die für die Anzeige verwendet werden.
 
 ## Idempotenz
 

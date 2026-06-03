@@ -32,7 +32,6 @@ Factory 可以在部署前计算账户地址。这对引导流程很有用，因
 - 已恢复的 Pali 钱包上下文
 - 相关 WebAuthn 凭证
 - 链支持 Passkey factory
-- 如果恢复的账户使用 required sponsorship 且 Pali 无法推断 URL，则需要 sponsor URL 元数据
 
 恢复不是托管后门。链提供可发现的公开元数据和账户列表，但用户仍需要钱包恢复上下文和相关 WebAuthn 凭证来证明控制权。
 
