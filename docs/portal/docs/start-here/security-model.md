@@ -25,7 +25,7 @@ Passkey smart accounts use WebAuthn credentials. Pali stores public metadata and
 
 Institutional sponsor policy is split into:
 
-- **On-chain policy:** mode, sponsor signer, and URL hash.
-- **Wallet metadata:** sponsor URL and display policy text.
+- **On-chain policy:** mode, sponsor signer, and sponsor URL.
+- **Wallet metadata:** display policy text and other wallet-local context.
 
 The `policyText` field is shown to users as context. It is not an on-chain enforcement primitive.

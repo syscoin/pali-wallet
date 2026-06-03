@@ -25,7 +25,7 @@ PasskeyスマートアカウントはWebAuthn credentialsを使用します。Pa
 
 機関向けスポンサーpolicyは次の2つに分かれます。
 
-- **オンチェーンpolicy:** mode、スポンサーsigner、URL hash。
-- **ウォレットメタデータ:** sponsor URLと表示用policy text。
+- **オンチェーンpolicy:** mode、スポンサーsigner、sponsor URL。
+- **ウォレットメタデータ:** 表示用policy textとその他のローカルウォレットコンテキスト。
 
 `policyText`フィールドは文脈としてユーザーに表示されます。これはオンチェーンの強制プリミティブではありません。

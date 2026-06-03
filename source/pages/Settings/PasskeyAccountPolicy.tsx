@@ -1,6 +1,5 @@
 import { getAddress } from '@ethersproject/address';
-import { AddressZero, HashZero } from '@ethersproject/constants';
-import { id as hashText } from '@ethersproject/hash';
+import { AddressZero } from '@ethersproject/constants';
 import { Form, Input } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -104,7 +103,6 @@ const PasskeyAccountPolicy = () => {
       mode: PasskeySponsorMode;
       signer?: string;
       url?: string;
-      urlHash?: string;
     } | null
   ) => {
     const updatedState = {
@@ -206,18 +204,14 @@ const PasskeyAccountPolicy = () => {
         policyMode === PasskeySponsorMode.Disabled
           ? AddressZero
           : normalizedSigner || AddressZero;
-      const contractSponsorUrlHash =
-        policyMode === PasskeySponsorMode.Disabled
-          ? HashZero
-          : trimmedSponsorUrl
-          ? hashText(trimmedSponsorUrl)
-          : HashZero;
+      const contractSponsorUrl =
+        policyMode === PasskeySponsorMode.Disabled ? '' : trimmedSponsorUrl;
       const data = passkeySmartAccountInterface.encodeFunctionData(
         'setSponsor',
         [
           contractModeByPolicy[policyMode],
           contractSponsorSigner,
-          contractSponsorUrlHash,
+          contractSponsorUrl,
         ]
       );
 

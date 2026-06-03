@@ -25,7 +25,7 @@ Passkey smart account는 WebAuthn credential을 사용합니다. Pali는 public 
 
 기관 sponsor policy는 다음으로 나뉩니다.
 
-- **On-chain policy:** mode, sponsor signer, URL hash.
-- **Wallet metadata:** sponsor URL 및 표시용 policy text.
+- **On-chain policy:** mode, sponsor signer, sponsor URL.
+- **Wallet metadata:** 표시용 policy text 및 기타 local wallet context.
 
 `policyText` field는 사용자에게 맥락으로 표시됩니다. 이는 on-chain enforcement primitive가 아닙니다.

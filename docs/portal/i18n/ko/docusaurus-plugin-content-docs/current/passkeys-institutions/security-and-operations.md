@@ -32,7 +32,6 @@ Recovery는 wallet-scoped 및 passkey-scoped입니다. 사용자는 일반적으
 - restored Pali wallet context
 - 관련 WebAuthn credential
 - passkey factory에 대한 chain support
-- recovered account가 required sponsorship을 사용하고 Pali가 URL을 infer할 수 없는 경우 sponsor URL metadata
 
 Recovery는 custodial backdoor가 아닙니다. chain은 discoverable public metadata와 account list를 제공하지만, 사용자는 control을 증명하기 위해 여전히 wallet recovery context와 관련 WebAuthn credential이 필요합니다.
 

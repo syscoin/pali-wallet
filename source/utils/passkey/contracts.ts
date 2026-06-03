@@ -17,7 +17,7 @@ export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
 
 export const PASSKEY_FACTORY_ADDRESSES: Partial<Record<number, string>> = {
   [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]:
-    '0xab188ceB49096A8B96E69E357FC99A8F90A57431',
+    '0x71361b752122C8A8d5b3fb9Eef3Eb71642e32099',
 };
 
 export const PASSKEY_FACTORY_ABI = [
@@ -36,10 +36,10 @@ export const PASSKEY_FACTORY_ABI = [
 export const PASSKEY_SMART_ACCOUNT_ABI = [
   'function execute((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (bytes[] returndata)',
   'function getActionHash((address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions) view returns (bytes32)',
-  'function getRecoveryMetadata() view returns ((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,uint8 sponsorMode,address sponsorSigner,bytes32 sponsorUrlHash))',
+  'function getRecoveryMetadata() view returns ((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,uint8 sponsorMode,address sponsorSigner,string sponsorUrl))',
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
   'function nonce() view returns (uint256)',
-  'function setSponsor(uint8 mode, address signer, bytes32 urlHash)',
+  'function setSponsor(uint8 mode, address signer, string url)',
 ] as const;
 
 export const getPasskeyFactoryAddress = (chainId: number): string => {

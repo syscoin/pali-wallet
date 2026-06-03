@@ -33,7 +33,7 @@ Sponsor service는 passkey smart account execution policy에 참여하는 instit
 
 ## On-chain policy
 
-Smart account policy는 mode, signer, URL hash를 저장합니다. 전체 URL과 policy text는 display 및 sponsor service call에 사용되는 wallet metadata입니다.
+Smart account policy는 mode, signer, 공개 sponsor URL을 저장합니다. policy text는 display에 사용되는 wallet metadata입니다.
 
 ## Idempotency
 

@@ -25,7 +25,7 @@ Passkey 智能账户使用 WebAuthn 凭证。Pali 存储公开元数据和凭证
 
 机构 sponsor 策略分为：
 
-- **链上策略：** mode、sponsor signer 和 URL hash。
-- **钱包元数据：** sponsor URL 和显示用策略文本。
+- **链上策略：** mode、sponsor signer 和 sponsor URL。
+- **钱包元数据：** 显示用策略文本和其他本地钱包上下文。
 
 `policyText` 字段会作为上下文展示给用户。它不是链上执行原语。

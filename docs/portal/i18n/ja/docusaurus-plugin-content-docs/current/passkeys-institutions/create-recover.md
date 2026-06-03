@@ -75,12 +75,12 @@ dappがpasskeyアカウントをリクエストすると:
 2. Paliは、passkeyが要求されたスポンサーpolicyに一致するオンチェーンアカウントを復元できるか確認します。
 3. 一致するアカウントがローカルに存在する場合、Paliはそれを再利用します。
 4. 一致するアカウントがオンチェーンに存在するがローカルにない場合、Paliはそれをインポートします。
-5. 同じsponsor URL hashのアカウントが存在するがmodeまたはsignerが異なる場合、Paliは復元不一致として拒否します。
+5. 同じsponsor URLのアカウントが存在するがmodeまたはsignerが異なる場合、Paliは復元不一致として拒否します。
 6. 一致するアカウントが存在しない場合、Paliは新しいアカウント作成を進めます。
 
 ## 何がアドレスを決定するのか
 
-スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、recovery ID、deployment saltを含むファクトリー入力から派生します。Sponsor URL text自体はアドレスseedではありませんが、スポンサーpolicyは機関スコープのオンボーディングにおける復元マッチングロジックで使用されます。
+スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、recovery ID、deployment saltを含むファクトリー入力から派生します。スポンサーpolicyは機関スコープのオンボーディングにおける復元マッチングロジックで使用されます。
 
 ## ユーザーがローカルPaliデータを失った場合
 
@@ -100,7 +100,7 @@ dappがpasskeyアカウントをリクエストすると:
 5. Paliはローカルにすでに存在するアカウントをスキップします。
 6. Paliは一致するアカウントをローカルウォレット状態へインポートします。
 
-dapp主導の作成/復元では、Paliは復元されたアカウントのスポンサーmode、signer、URL hashも、dappが要求したスポンサーpolicyと比較します。これにより、機関がdappの要求と異なるスポンサーpolicyへユーザーを静かに紐づけることを防ぎます。
+dapp主導の作成/復元では、Paliは復元されたアカウントのスポンサーmode、signer、URLも、dappが要求したスポンサーpolicyと比較します。これにより、機関がdappの要求と異なるスポンサーpolicyへユーザーを静かに紐づけることを防ぎます。
 
 ## RP IDとcredential名
 

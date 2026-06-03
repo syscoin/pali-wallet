@@ -32,7 +32,6 @@ A recuperação é escopada à carteira e à passkey. Um usuário geralmente pre
 - o contexto restaurado da Pali Wallet
 - a credencial WebAuthn relevante
 - suporte da chain à fábrica de passkey
-- metadados de URL do sponsor se a conta recuperada usa sponsorship obrigatório e a Pali não consegue inferir a URL
 
 A recuperação não é uma backdoor custodial. A chain fornece metadados públicos descobríveis e listas de contas, mas o usuário ainda precisa do contexto de recuperação da carteira e da credencial WebAuthn relevante para provar controle.
 

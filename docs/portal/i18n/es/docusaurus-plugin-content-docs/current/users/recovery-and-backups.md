@@ -33,7 +33,7 @@ La recuperación passkey de Pali usa metadatos de recuperación limitados a la b
 2. Busca cuentas inteligentes coincidentes desde el registro de fábrica y logs de creación.
 3. Omite cuentas que ya están en la billetera.
 4. Agrega cuentas recuperables cuando se pueden resolver metadatos de sponsor.
-5. Advierte si se necesitan metadatos de URL de sponsor para una política de sponsor requerida.
+5. Añade cuentas recuperables a la billetera.
 
 ## Idempotencia de crear/recuperar desde dapp
 

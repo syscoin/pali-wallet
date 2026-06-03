@@ -33,7 +33,7 @@ Un servicio sponsor es un endpoint controlado por una institución que participa
 
 ## Política on-chain
 
-La política de la cuenta inteligente almacena modo, firmante y hash de URL. La URL completa y el texto de política son metadatos de billetera usados para visualización y llamadas al servicio sponsor.
+La política de la cuenta inteligente almacena modo, firmante y una URL pública de sponsor. El texto de política es metadato de billetera usado para visualización.
 
 ## Idempotencia
 

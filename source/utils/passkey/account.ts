@@ -1,7 +1,6 @@
 import { getAddress } from '@ethersproject/address';
 import { isHexString } from '@ethersproject/bytes';
-import { AddressZero, HashZero } from '@ethersproject/constants';
-import { id as hashText } from '@ethersproject/hash';
+import { AddressZero } from '@ethersproject/constants';
 
 import {
   IPasskeySmartAccountMetadata,
@@ -85,7 +84,7 @@ export const getPasskeyPolicyExecution = (
     data: passkeySmartAccountInterface.encodeFunctionData('setSponsor', [
       getPasskeySponsorContractMode(metadata),
       metadata.sponsor.signer || AddressZero,
-      metadata.sponsor.urlHash || HashZero,
+      metadata.sponsor.url || '',
     ]),
     nonce: nonce.toString(),
     deadline,
@@ -98,7 +97,6 @@ export const normalizePasskeySponsor = (
     policyText?: string;
     signer?: string;
     url?: string;
-    urlHash?: string;
   } | null
 ): IPasskeySmartAccountMetadata['sponsor'] => {
   const requestedMode = sponsor?.mode || PasskeySponsorMode.Disabled;
@@ -123,19 +121,12 @@ export const normalizePasskeySponsor = (
   }
 
   const url = typeof sponsor?.url === 'string' ? sponsor.url.trim() : '';
-  const providedUrlHash =
-    typeof sponsor?.urlHash === 'string' ? sponsor.urlHash : '';
-  if (providedUrlHash && !/^0x[0-9a-fA-F]{64}$/.test(providedUrlHash)) {
-    throw new Error('Invalid passkey sponsor URL hash');
-  }
-
   return {
     mode,
     ...(typeof sponsor?.policyText === 'string' && sponsor.policyText.trim()
       ? { policyText: sponsor.policyText.trim() }
       : {}),
     ...(signer ? { signer } : {}),
-    ...(url ? { url, urlHash: hashText(url) } : {}),
-    ...(!url && providedUrlHash ? { urlHash: providedUrlHash } : {}),
+    ...(url ? { url } : {}),
   };
 };

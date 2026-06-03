@@ -33,7 +33,7 @@ Pali passkey recovery는 wallet-scoped recovery metadata와 on-chain account dis
 2. factory registry와 creation log에서 일치하는 smart account를 조회합니다.
 3. 이미 wallet에 있는 account는 건너뜁니다.
 4. sponsor metadata를 해석할 수 있으면 recoverable account를 추가합니다.
-5. required sponsor policy에 sponsor URL metadata가 필요하면 경고합니다.
+5. recoverable account를 wallet에 추가합니다.
 
 ## Dapp create/recover idempotence
 

@@ -25,7 +25,7 @@ Smart accounts com passkey usam credenciais WebAuthn. A Pali armazena metadados 
 
 A política de sponsor institucional é dividida em:
 
-- **Política on-chain:** modo, signer do sponsor e hash da URL.
-- **Metadados da carteira:** URL do sponsor e texto de política exibido.
+- **Política on-chain:** modo, signer do sponsor e URL do sponsor.
+- **Metadados da carteira:** texto de política exibido e outro contexto local da carteira.
 
 O campo `policyText` é mostrado aos usuários como contexto. Ele não é um primitivo de enforcement on-chain.

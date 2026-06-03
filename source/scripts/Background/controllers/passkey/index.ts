@@ -282,10 +282,8 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
-    sponsorUrls?: string[];
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
-    missingSponsorUrl: number;
     recovered: number;
     skipped: number;
   }> {
@@ -325,7 +323,7 @@ class PasskeyController {
       recoverySources = logs.map((log) => ({ log }));
     }
     if (recoverySources.length === 0) {
-      return { recovered: 0, skipped: 0, missingSponsorUrl: 0, accounts: [] };
+      return { recovered: 0, skipped: 0, accounts: [] };
     }
 
     const { accounts } = store.getState().vault;
@@ -342,11 +340,10 @@ class PasskeyController {
       return !address || !existingAddresses.has(address.toLowerCase());
     });
     if (recoverySources.length === 0) {
-      return { recovered: 0, skipped: 0, missingSponsorUrl: 0, accounts: [] };
+      return { recovered: 0, skipped: 0, accounts: [] };
     }
 
     let skipped = 0;
-    let missingSponsorUrl = 0;
     const recoveredAccounts: Array<{
       address: string;
       id: number;
@@ -371,17 +368,11 @@ class PasskeyController {
             provider,
             recoveryId,
             backupStatus: params.backupStatus,
-            sponsorUrls: params.sponsorUrls,
           })
         )
       );
 
       for (const candidate of candidates) {
-        if (candidate?.missingSponsorUrl) {
-          missingSponsorUrl += 1;
-          skipped += 1;
-          continue;
-        }
         if (
           !candidate ||
           !candidate.metadata ||
@@ -461,7 +452,6 @@ class PasskeyController {
     return {
       recovered: recoveredAccounts.length,
       skipped,
-      missingSponsorUrl,
       accounts: recoveredAccounts,
     };
   }
@@ -476,7 +466,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<any | null> {
     const { activeNetwork } = store.getState().vault;
@@ -498,7 +487,6 @@ class PasskeyController {
       factoryAddress,
       activeNetwork.chainId
     );
-    const sponsorUrls = requestedSponsor.url ? [requestedSponsor.url] : [];
     let recoverySources: Array<{ address?: string; log?: any }> = (
       await this.getPasskeyRecoveryRegistryAccounts({
         chainId: activeNetwork.chainId,
@@ -525,7 +513,6 @@ class PasskeyController {
           provider,
           recoveryId,
           requestedSponsor,
-          sponsorUrls,
         }))
       ) {
         throw new Error(
@@ -549,7 +536,6 @@ class PasskeyController {
             provider,
             recoveryId,
             backupStatus: params.backupStatus,
-            sponsorUrls,
           })
         )
       );
@@ -604,7 +590,6 @@ class PasskeyController {
         provider,
         recoveryId,
         requestedSponsor,
-        sponsorUrls,
       }))
     ) {
       throw new Error(
@@ -649,7 +634,7 @@ class PasskeyController {
   private shouldCheckSponsorAcrossCredentials(
     requestedSponsor: IPasskeySmartAccountMetadata['sponsor']
   ) {
-    return Boolean(requestedSponsor?.signer || requestedSponsor?.urlHash);
+    return Boolean(requestedSponsor?.signer || requestedSponsor?.url);
   }
 
   private async hasRecoveredSponsorAccountForRequest({
@@ -657,13 +642,11 @@ class PasskeyController {
     provider,
     recoveryId,
     requestedSponsor,
-    sponsorUrls,
   }: {
     chainId: number;
     provider: any;
     recoveryId: string;
     requestedSponsor: IPasskeySmartAccountMetadata['sponsor'];
-    sponsorUrls?: string[];
   }) {
     const addresses = await this.getPasskeyRecoveryRegistryAccounts({
       chainId,
@@ -677,7 +660,6 @@ class PasskeyController {
           this.readRecoveredPasskeySponsor({
             address,
             provider,
-            sponsorUrls,
           })
         )
       );
@@ -696,11 +678,9 @@ class PasskeyController {
   private async readRecoveredPasskeySponsor({
     address,
     provider,
-    sponsorUrls,
   }: {
     address: string;
     provider: any;
-    sponsorUrls?: string[];
   }): Promise<IPasskeySmartAccountMetadata['sponsor'] | null> {
     const code = await this.withPasskeyRpcBackoff(() =>
       provider.getCode(address)
@@ -719,13 +699,12 @@ class PasskeyController {
     )) as any;
     const sponsorMode = metadata.sponsorMode ?? metadata[6];
     const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
-    const sponsorUrlHash = metadata.sponsorUrlHash ?? metadata[8];
+    const sponsorUrl = metadata.sponsorUrl ?? metadata[8];
 
     return this.recoverPasskeySponsorMetadata(
       Number(sponsorMode),
       sponsorSigner,
-      sponsorUrlHash,
-      sponsorUrls
+      sponsorUrl
     );
   }
 
@@ -749,21 +728,25 @@ class PasskeyController {
       return false;
     }
 
-    const recoveredUrlHash = (recoveredSponsor?.urlHash || '').toLowerCase();
-    const requestedUrlHash = (requestedSponsor?.urlHash || '').toLowerCase();
-    return recoveredUrlHash === requestedUrlHash;
+    const recoveredUrl = this.normalizeSponsorUrl(recoveredSponsor?.url);
+    const requestedUrl = this.normalizeSponsorUrl(requestedSponsor?.url);
+    return recoveredUrl === requestedUrl;
   }
 
   private recoveredSponsorHasRequestedUrl(
     recoveredSponsor: IPasskeySmartAccountMetadata['sponsor'],
     requestedSponsor: IPasskeySmartAccountMetadata['sponsor']
   ) {
-    const requestedUrlHash = (requestedSponsor?.urlHash || '').toLowerCase();
-    if (!requestedUrlHash) {
+    const requestedUrl = this.normalizeSponsorUrl(requestedSponsor?.url);
+    if (!requestedUrl) {
       return false;
     }
 
-    return (recoveredSponsor?.urlHash || '').toLowerCase() === requestedUrlHash;
+    return this.normalizeSponsorUrl(recoveredSponsor?.url) === requestedUrl;
+  }
+
+  private normalizeSponsorUrl(url?: string) {
+    return typeof url === 'string' ? url.trim() : '';
   }
 
   private async useExistingRecoveredPasskeyAccount({
@@ -1048,7 +1031,6 @@ class PasskeyController {
     log,
     provider,
     recoveryId,
-    sponsorUrls,
   }: {
     address?: string;
     backupStatus?: PasskeyBackupStatus;
@@ -1058,11 +1040,9 @@ class PasskeyController {
     log?: any;
     provider: any;
     recoveryId: string;
-    sponsorUrls?: string[];
   }): Promise<{
     address: string;
     metadata?: IPasskeySmartAccountMetadata;
-    missingSponsorUrl?: boolean;
   } | null> {
     let address = discoveredAddress ? getAddress(discoveredAddress) : '';
     let deploymentSalt = HashZero;
@@ -1098,7 +1078,7 @@ class PasskeyController {
     const originLength = metadata.originLength ?? metadata[5];
     const sponsorMode = metadata.sponsorMode ?? metadata[6];
     const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
-    const sponsorUrlHash = metadata.sponsorUrlHash ?? metadata[8];
+    const sponsorUrl = metadata.sponsorUrl ?? metadata[8];
 
     if (
       storedCredentialIdHash.toLowerCase() !== credentialIdHash.toLowerCase()
@@ -1110,16 +1090,8 @@ class PasskeyController {
     const sponsor = this.recoverPasskeySponsorMetadata(
       sponsorModeNumber,
       sponsorSigner,
-      sponsorUrlHash,
-      sponsorUrls
+      sponsorUrl
     );
-    if (!sponsor) {
-      return {
-        address,
-        missingSponsorUrl: true,
-      };
-    }
-
     return {
       address,
       metadata: {
@@ -1148,8 +1120,7 @@ class PasskeyController {
   private recoverPasskeySponsorMetadata(
     sponsorMode: number,
     sponsorSigner: string,
-    sponsorUrlHash: string,
-    sponsorUrls?: string[]
+    sponsorUrl: string
   ): IPasskeySmartAccountMetadata['sponsor'] | null {
     const mode =
       sponsorMode === PasskeyContractSponsorMode.Required
@@ -1158,30 +1129,14 @@ class PasskeyController {
         ? PasskeySponsorMode.GasOnly
         : PasskeySponsorMode.Disabled;
 
-    const normalizedSponsorUrlHash =
-      sponsorUrlHash && sponsorUrlHash !== HashZero
-        ? sponsorUrlHash.toLowerCase()
-        : '';
-    const sponsorUrl = (sponsorUrls || [])
-      .map((url) => (typeof url === 'string' ? url.trim() : ''))
-      .filter(Boolean)
-      .find((url) => hashText(url).toLowerCase() === normalizedSponsorUrlHash);
-
-    if (
-      mode === PasskeySponsorMode.Required &&
-      normalizedSponsorUrlHash &&
-      !sponsorUrl
-    ) {
-      return null;
-    }
+    const normalizedSponsorUrl = this.normalizeSponsorUrl(sponsorUrl);
 
     return {
       mode,
       ...(sponsorSigner && sponsorSigner !== AddressZero
         ? { signer: getAddress(sponsorSigner) }
         : {}),
-      ...(sponsorUrl ? { url: sponsorUrl } : {}),
-      ...(normalizedSponsorUrlHash ? { urlHash: sponsorUrlHash } : {}),
+      ...(normalizedSponsorUrl ? { url: normalizedSponsorUrl } : {}),
     };
   }
 
@@ -1204,7 +1159,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<{
     address: string;
@@ -1270,7 +1224,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     } | null
   ): Promise<IPasskeySmartAccountMetadata['sponsor']> {
     const account = store.getState().vault.accounts[

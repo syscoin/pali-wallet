@@ -78,7 +78,6 @@ export interface IPasskeySmartAccountMetadata {
     policyText?: string;
     signer?: string;
     url?: string;
-    urlHash?: string;
   };
 }
 

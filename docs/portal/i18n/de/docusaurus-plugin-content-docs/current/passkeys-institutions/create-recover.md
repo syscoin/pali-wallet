@@ -75,7 +75,7 @@ Wenn eine dapp einen Passkey-Account anfordert:
 2. Pali prüft, ob der Passkey einen on-chain Account wiederherstellen kann, der zur angeforderten Sponsor-Policy passt.
 3. Wenn der passende Account lokal existiert, verwendet Pali ihn wieder.
 4. Wenn der passende Account on-chain existiert, aber nicht lokal, importiert Pali ihn.
-5. Wenn ein Account für denselben Sponsor-URL-Hash existiert, aber Modus oder Signer abweicht, lehnt Pali mit einer Wiederherstellungsabweichung ab.
+5. Wenn ein Account für dieselbe Sponsor-URL existiert, aber Modus oder Signer abweicht, lehnt Pali mit einer Wiederherstellungsabweichung ab.
 6. Wenn kein passender Account existiert, fährt Pali mit der Erstellung eines neuen Accounts fort.
 
 ## Was bestimmt die Adresse?
@@ -100,7 +100,7 @@ Wenn Browserprofil, Erweiterungsspeicher oder lokale Passkey-Account-Metadaten v
 5. Pali überspringt Accounts, die bereits lokal vorhanden sind.
 6. Pali importiert passende Accounts zurück in den lokalen Wallet-Zustand.
 
-Für dapp-gesteuertes Erstellen/Wiederherstellen vergleicht Pali außerdem Sponsor-Modus, Signer und URL-Hash des wiederhergestellten Accounts mit der von der dapp angeforderten Sponsor-Policy. Dies verhindert, dass eine Institution den Benutzer stillschweigend an eine andere Sponsor-Policy bindet als die, die die dapp angefordert hat.
+Für dapp-gesteuertes Erstellen/Wiederherstellen vergleicht Pali außerdem Sponsor-Modus, Signer und URL des wiederhergestellten Accounts mit der von der dapp angeforderten Sponsor-Policy. Dies verhindert, dass eine Institution den Benutzer stillschweigend an eine andere Sponsor-Policy bindet als die, die die dapp angefordert hat.
 
 ## RP ID und Credential-Name
 

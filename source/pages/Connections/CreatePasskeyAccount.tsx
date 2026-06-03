@@ -135,7 +135,6 @@ export const CreatePasskeyAccount = () => {
           delete preparedSponsor.policyText;
           delete preparedSponsor.signer;
           delete preparedSponsor.url;
-          delete preparedSponsor.urlHash;
         }
       }
       const deploymentSalt = bytesToHex(

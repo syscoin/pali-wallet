@@ -75,12 +75,12 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali 检查该 Passkey 是否能恢复与请求的 sponsor 策略匹配的链上账户。
 3. 如果匹配账户已在本地存在，Pali 会复用它。
 4. 如果匹配账户存在于链上但不在本地，Pali 会导入它。
-5. 如果存在相同 sponsor URL hash 但 mode 或 signer 不同的账户，Pali 会因恢复不匹配而拒绝。
+5. 如果存在相同 sponsor URL 但 mode 或 signer 不同的账户，Pali 会因恢复不匹配而拒绝。
 6. 如果不存在匹配账户，Pali 会继续创建新账户。
 
 ## 地址由什么决定？
 
-智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、recovery ID 和 deployment salt。Sponsor URL 文本本身不是地址 seed，但 sponsor 策略会被恢复匹配逻辑用于机构范围的引导流程。
+智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、recovery ID 和 deployment salt。Sponsor 策略会被恢复匹配逻辑用于机构范围的引导流程。
 
 ## 如果用户丢失本地 Pali 数据
 
@@ -100,7 +100,7 @@ const passkeyAccount = await window.ethereum.request({
 5. Pali 跳过本地已存在的账户。
 6. Pali 将匹配账户导回本地钱包状态。
 
-对于 dapp 驱动的创建/恢复，Pali 还会将已恢复账户的 sponsor mode、signer 和 URL hash 与 dapp 请求的 sponsor 策略进行比较。这可以防止机构在用户不知情的情况下将用户绑定到与 dapp 请求不同的 sponsor 策略。
+对于 dapp 驱动的创建/恢复，Pali 还会将已恢复账户的 sponsor mode、signer 和 URL 与 dapp 请求的 sponsor 策略进行比较。这可以防止机构在用户不知情的情况下将用户绑定到与 dapp 请求不同的 sponsor 策略。
 
 ## RP ID 和凭证名称
 
