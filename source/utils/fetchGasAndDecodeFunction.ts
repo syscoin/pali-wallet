@@ -75,7 +75,7 @@ export const fetchGasAndDecodeFunction = async (
       ); // 1 Gwei fallback
 
   const nonce = (await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'getRecommendedNonce'],
+    ['wallet', 'getRecommendedEvmNonce'],
     [dataTx.from]
   )) as number; // This also need possibility for customization //todo: adjust to get from new keyringmanager
 

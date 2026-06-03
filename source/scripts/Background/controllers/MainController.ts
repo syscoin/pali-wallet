@@ -4319,19 +4319,94 @@ class MainController {
     }
   }
 
+  public async getRecommendedEvmNonce(address: string): Promise<number> {
+    try {
+      const provider = this.ethereumTransaction?.web3Provider;
+      if (!provider) {
+        throw new Error('Web3 provider not available');
+      }
+
+      const latestNonce = await provider.getTransactionCount(address, 'latest');
+
+      const normalizedAddress = address.toLowerCase();
+      const { accounts, accountTransactions, activeNetwork } =
+        store.getState().vault;
+      let accountType: keyof typeof accounts | undefined;
+      let accountId: number | undefined;
+
+      for (const type of Object.keys(accounts) as Array<
+        keyof typeof accounts
+      >) {
+        const accountsById = accounts[type];
+        for (const [id, account] of Object.entries(accountsById)) {
+          if (
+            account?.address &&
+            account.address.toLowerCase() === normalizedAddress
+          ) {
+            accountType = type;
+            accountId = Number(id);
+            break;
+          }
+        }
+        if (accountType !== undefined) {
+          break;
+        }
+      }
+
+      let localConfirmedNextNonce = 0;
+      const localPendingNonces = new Set<number>();
+      const localTransactions =
+        accountType !== undefined && accountId !== undefined
+          ? accountTransactions?.[accountType]?.[accountId]?.ethereum?.[
+              activeNetwork.chainId
+            ] || []
+          : [];
+
+      // Match MetaMask's nonce model: start from canonical/latest chain state
+      // plus local confirmed history, then skip nonces Pali has locally pending.
+      for (const tx of localTransactions as any[]) {
+        if (tx.from && tx.from.toLowerCase() !== normalizedAddress) {
+          continue;
+        }
+        if (tx.nonce === undefined || tx.nonce === null) {
+          continue;
+        }
+
+        const nonce =
+          typeof tx.nonce === 'string'
+            ? tx.nonce.startsWith('0x')
+              ? parseInt(tx.nonce, 16)
+              : Number(tx.nonce)
+            : Number(tx.nonce);
+        if (Number.isFinite(nonce)) {
+          if (isTransactionInBlock(tx)) {
+            localConfirmedNextNonce = Math.max(
+              localConfirmedNextNonce,
+              nonce + 1
+            );
+          } else {
+            localPendingNonces.add(nonce);
+          }
+        }
+      }
+
+      let nextNonce = Math.max(latestNonce, localConfirmedNextNonce);
+      while (localPendingNonces.has(nextNonce)) {
+        nextNonce += 1;
+      }
+
+      return nextNonce;
+    } catch (error) {
+      return await this.ethereumTransaction.getRecommendedNonce(address);
+    }
+  }
+
   /**
    * Get recommended nonce for batch transactions
    * Safely calls the ethereum transaction method to get the next nonce
    */
   public async getRecommendedNonceForBatch(address: string): Promise<number> {
-    try {
-      const controller = getController();
-      return await controller.wallet.ethereumTransaction.getRecommendedNonce(
-        address
-      );
-    } catch (error) {
-      throw error;
-    }
+    return this.getRecommendedEvmNonce(address);
   }
 
   /**
