@@ -103,7 +103,6 @@ const PasskeyAccountPolicy = () => {
       mode: PasskeySponsorMode;
       signer?: string;
       url?: string;
-      urlHash?: string;
     } | null
   ) => {
     const updatedState = {

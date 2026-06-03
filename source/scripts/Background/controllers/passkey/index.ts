@@ -466,7 +466,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<any | null> {
     const { activeNetwork } = store.getState().vault;
@@ -1137,9 +1136,7 @@ class PasskeyController {
       ...(sponsorSigner && sponsorSigner !== AddressZero
         ? { signer: getAddress(sponsorSigner) }
         : {}),
-      ...(normalizedSponsorUrl
-        ? { url: normalizedSponsorUrl, urlHash: hashText(normalizedSponsorUrl) }
-        : {}),
+      ...(normalizedSponsorUrl ? { url: normalizedSponsorUrl } : {}),
     };
   }
 
@@ -1162,7 +1159,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<{
     address: string;
@@ -1228,7 +1224,6 @@ class PasskeyController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     } | null
   ): Promise<IPasskeySmartAccountMetadata['sponsor']> {
     const account = store.getState().vault.accounts[

@@ -2643,7 +2643,6 @@ class MainController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<any | null> {
     return this.passkey.recoverPasskeySmartAccountForCreate(params);
@@ -2668,7 +2667,6 @@ class MainController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     };
   }): Promise<{
     address: string;
@@ -2685,7 +2683,6 @@ class MainController {
       policyText?: string;
       signer?: string;
       url?: string;
-      urlHash?: string;
     } | null
   ): Promise<IPasskeySmartAccountMetadata['sponsor']> {
     return this.passkey.updatePasskeySponsorMetadata(accountId, sponsor);

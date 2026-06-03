@@ -1,7 +1,6 @@
 import { getAddress } from '@ethersproject/address';
 import { isHexString } from '@ethersproject/bytes';
 import { AddressZero } from '@ethersproject/constants';
-import { id as hashText } from '@ethersproject/hash';
 
 import {
   IPasskeySmartAccountMetadata,
@@ -98,7 +97,6 @@ export const normalizePasskeySponsor = (
     policyText?: string;
     signer?: string;
     url?: string;
-    urlHash?: string;
   } | null
 ): IPasskeySmartAccountMetadata['sponsor'] => {
   const requestedMode = sponsor?.mode || PasskeySponsorMode.Disabled;
@@ -129,6 +127,6 @@ export const normalizePasskeySponsor = (
       ? { policyText: sponsor.policyText.trim() }
       : {}),
     ...(signer ? { signer } : {}),
-    ...(url ? { url, urlHash: hashText(url) } : {}),
+    ...(url ? { url } : {}),
   };
 };
