@@ -4326,14 +4326,7 @@ class MainController {
         throw new Error('Web3 provider not available');
       }
 
-      const [latestNonce, pendingNonce] = await Promise.all([
-        provider.getTransactionCount(address, 'latest'),
-        provider.getTransactionCount(address, 'pending'),
-      ]);
-
-      if (pendingNonce <= latestNonce) {
-        return latestNonce;
-      }
+      const latestNonce = await provider.getTransactionCount(address, 'latest');
 
       const normalizedAddress = address.toLowerCase();
       const { accounts, accountTransactions, activeNetwork } =
@@ -4360,6 +4353,7 @@ class MainController {
         }
       }
 
+      let localConfirmedNextNonce = 0;
       const localPendingNonces = new Set<number>();
       const localTransactions =
         accountType !== undefined && accountId !== undefined
@@ -4368,12 +4362,9 @@ class MainController {
             ] || []
           : [];
 
-      // If the provider advertises a pending range that Pali cannot account for
-      // locally, fill the first uncovered nonce instead of trusting txpool state.
+      // Match MetaMask's nonce model: start from canonical/latest chain state
+      // plus local confirmed history, then skip nonces Pali has locally pending.
       for (const tx of localTransactions as any[]) {
-        if (isTransactionInBlock(tx)) {
-          continue;
-        }
         if (tx.from && tx.from.toLowerCase() !== normalizedAddress) {
           continue;
         }
@@ -4388,17 +4379,23 @@ class MainController {
               : Number(tx.nonce)
             : Number(tx.nonce);
         if (Number.isFinite(nonce)) {
-          localPendingNonces.add(nonce);
+          if (isTransactionInBlock(tx)) {
+            localConfirmedNextNonce = Math.max(
+              localConfirmedNextNonce,
+              nonce + 1
+            );
+          } else {
+            localPendingNonces.add(nonce);
+          }
         }
       }
 
-      for (let nonce = latestNonce; nonce < pendingNonce; nonce += 1) {
-        if (!localPendingNonces.has(nonce)) {
-          return nonce;
-        }
+      let nextNonce = Math.max(latestNonce, localConfirmedNextNonce);
+      while (localPendingNonces.has(nextNonce)) {
+        nextNonce += 1;
       }
 
-      return pendingNonce;
+      return nextNonce;
     } catch (error) {
       return await this.ethereumTransaction.getRecommendedNonce(address);
     }
