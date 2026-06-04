@@ -3410,8 +3410,13 @@ class MainController {
       throw new Error('Cannot remove the last remaining account.');
     }
 
-    // Safety check: For HD accounts, don't allow removing if it's the only one
+    // Safety check: For HD accounts, keep index 0 as the default account anchor
+    // used by repair and network-switch display paths.
     if (accountType === KeyringAccountType.HDAccount) {
+      if (accountId === 0) {
+        throw new Error('Cannot remove the first HD account.');
+      }
+
       const hdAccountsCount = Object.keys(accounts.HDAccount).length;
       if (hdAccountsCount <= 1) {
         throw new Error(

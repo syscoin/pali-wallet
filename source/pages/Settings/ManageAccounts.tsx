@@ -186,8 +186,10 @@ const ManageAccountsView = React.memo(() => {
       // Check if this is the last account overall
       if (totalAccounts <= 1) return false;
 
-      // For HD accounts, must keep at least one
+      // HD index 0 is the default anchor used by account repair/display paths.
       if (accountType === KeyringAccountType.HDAccount) {
+        if (account.id === 0) return false;
+
         const hdAccountsCount = Object.keys(accounts.HDAccount).length;
         if (hdAccountsCount <= 1) return false;
       }
