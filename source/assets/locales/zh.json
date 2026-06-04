@@ -593,7 +593,11 @@
       "delegateBySig": "通过签名委托",
       "bridge": "桥接",
       "bridgeAsset": "桥接资产",
-      "swapAndBridge": "交换并桥接"
+      "swapAndBridge": "交换并桥接",
+      "execute": "使用通行密钥执行",
+      "createAccount": "创建通行密钥账户",
+      "createAccountAndExecute": "创建通行密钥账户并执行",
+      "setSponsor": "设置通行密钥赞助方"
     }
   },
   "forgetWalletPage": {

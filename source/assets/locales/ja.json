@@ -796,7 +796,11 @@
       "delegateBySig": "署名による委任",
       "bridge": "ブリッジ",
       "bridgeAsset": "アセットブリッジ",
-      "swapAndBridge": "交換とブリッジ"
+      "swapAndBridge": "交換とブリッジ",
+      "execute": "パスキーで実行",
+      "createAccount": "パスキーアカウントを作成",
+      "createAccountAndExecute": "パスキーアカウントを作成して実行",
+      "setSponsor": "パスキースポンサーを設定"
     }
   },
   "switchNetworkPage": {

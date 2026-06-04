@@ -1,10 +1,15 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import InputDataDecoder from 'ethereum-input-data-decoder';
 
-import { ITransactionParams } from 'types/transactions';
+import { IDecodedTx, ITransactionParams } from 'types/transactions';
+import {
+  passkeyFactoryInterface,
+  passkeySmartAccountInterface,
+} from 'utils/passkey/contracts';
 import { retryableFetch } from 'utils/retryableFetch';
 import { getErc20Abi, getContractType } from 'utils/validations';
 
+import { getMethodName } from './commonMethodSignatures';
 import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
@@ -133,6 +138,100 @@ export const fetchFunctionSignature = async (
   return null;
 };
 
+const normalizeBytesValue = (value: unknown): string =>
+  typeof value === 'string' && value.length > 0 ? value : '0x';
+
+const getPasskeyExecutionValue = (execution: any, key: string, index: number) =>
+  execution?.[key] ?? execution?.[index];
+
+const decodePasskeyExecutions = (method: string, executionsArg: any) => {
+  const executions = Array.from(executionsArg || []);
+
+  if (executions.length === 1) {
+    const execution = executions[0];
+
+    return {
+      method,
+      types: ['address', 'uint256', 'bytes', 'uint256', 'uint256'],
+      inputs: [
+        getPasskeyExecutionValue(execution, 'target', 0),
+        getPasskeyExecutionValue(execution, 'value', 1),
+        normalizeBytesValue(getPasskeyExecutionValue(execution, 'data', 2)),
+        getPasskeyExecutionValue(execution, 'nonce', 3),
+        getPasskeyExecutionValue(execution, 'deadline', 4),
+      ],
+      names: ['target', 'value', 'data', 'nonce', 'deadline'],
+    };
+  }
+
+  return executions.reduce<IDecodedTx>(
+    (decoded, execution: any, index) => {
+      decoded.types.push('address', 'uint256', 'bytes', 'uint256', 'uint256');
+      decoded.inputs.push(
+        getPasskeyExecutionValue(execution, 'target', 0),
+        getPasskeyExecutionValue(execution, 'value', 1),
+        normalizeBytesValue(getPasskeyExecutionValue(execution, 'data', 2)),
+        getPasskeyExecutionValue(execution, 'nonce', 3),
+        getPasskeyExecutionValue(execution, 'deadline', 4)
+      );
+      decoded.names.push(
+        `execution${index + 1}Target`,
+        `execution${index + 1}Value`,
+        `execution${index + 1}Data`,
+        `execution${index + 1}Nonce`,
+        `execution${index + 1}Deadline`
+      );
+
+      return decoded;
+    },
+    {
+      method,
+      inputs: [executions.length],
+      names: ['executionCount'],
+      types: ['uint256'],
+    }
+  );
+};
+
+const decodePasskeyTransactionData = (data: string) => {
+  for (const passkeyInterface of [
+    passkeySmartAccountInterface,
+    passkeyFactoryInterface,
+  ]) {
+    try {
+      const parsed = passkeyInterface.parseTransaction({ data });
+
+      if (parsed.name === 'execute') {
+        return decodePasskeyExecutions(parsed.name, parsed.args.executions);
+      }
+
+      if (parsed.name === 'createAccountAndExecute') {
+        return decodePasskeyExecutions(parsed.name, parsed.args.executions);
+      }
+
+      if (parsed.name === 'setSponsor') {
+        return {
+          method: parsed.name,
+          types: ['uint8', 'address', 'string'],
+          inputs: [parsed.args.mode, parsed.args.signer, parsed.args.url],
+          names: ['mode', 'signer', 'url'],
+        };
+      }
+
+      return {
+        method: parsed.name,
+        types: [],
+        inputs: [],
+        names: [],
+      };
+    } catch {
+      // Try the next passkey ABI before falling through to generic decoding.
+    }
+  }
+
+  return null;
+};
+
 export const decodeTransactionData = async (
   params: ITransactionParams,
   web3Provider?: any,
@@ -142,7 +241,13 @@ export const decodeTransactionData = async (
   const zeroAddress = '0x0000000000000000000000000000000000000000';
   try {
     const { data } = params;
-    const dataValidation = Boolean(data && String(data).length > 0);
+    const normalizedData = typeof data === 'string' ? data.toLowerCase() : data;
+    const dataValidation = Boolean(
+      data &&
+        String(data).length > 0 &&
+        normalizedData !== '0x' &&
+        normalizedData !== '0x0'
+    );
 
     // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
     // so we need to transform it on Bytes32.
@@ -199,9 +304,18 @@ export const decodeTransactionData = async (
       if (decoderValue.method !== null) return decoderValue;
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
       decoderValue = decoderInstance.decodeData(validatedData);
+      if (decoderValue.method !== null) return decoderValue;
+      const passkeyDecoderValue = decodePasskeyTransactionData(validatedData);
+      if (passkeyDecoderValue) return passkeyDecoderValue;
       if (decoderValue.method === null) {
-        // Try to fetch function signature from 4byte.directory
         const methodId = data.slice(0, 10); // Get first 4 bytes (0x + 8 chars)
+        const knownMethodName = getMethodName(methodId);
+        if (knownMethodName) {
+          decoderValue.method = knownMethodName;
+          return decoderValue;
+        }
+
+        // Try to fetch function signature from 4byte.directory
         const signature = await fetchFunctionSignature(methodId);
         if (signature) {
           decoderValue.method = signature;
@@ -212,10 +326,10 @@ export const decodeTransactionData = async (
       return decoderValue;
     }
 
-    //Return Contract Interaction if address is contract but don't have Data
-    if (!dataValidation) {
+    // Return Send Method when there is a destination and no calldata.
+    if (!dataValidation && params?.to && params?.to !== zeroAddress) {
       const emptyDecoderObject = {
-        method: 'Contract Interaction',
+        method: 'Send',
         types: [],
         inputs: [],
         names: [],
@@ -223,10 +337,11 @@ export const decodeTransactionData = async (
       return emptyDecoderObject;
     }
 
-    // Return Send Method if address is a wallet
-    if (params?.to && params?.to !== zeroAddress) {
+    // Return Contract Interaction when calldata is absent and the tx is not a
+    // normal transfer shape.
+    if (!dataValidation) {
       const emptyDecoderObject = {
-        method: 'Send',
+        method: 'Contract Interaction',
         types: [],
         inputs: [],
         names: [],

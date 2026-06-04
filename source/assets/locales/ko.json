@@ -796,7 +796,11 @@
       "delegateBySig": "서명으로 위임",
       "bridge": "브리지",
       "bridgeAsset": "브리지 자산",
-      "swapAndBridge": "교환 및 브리지"
+      "swapAndBridge": "교환 및 브리지",
+      "execute": "패스키로 실행",
+      "createAccount": "패스키 계정 생성",
+      "createAccountAndExecute": "패스키 계정 생성 및 실행",
+      "setSponsor": "패스키 스폰서 설정"
     }
   },
   "switchNetworkPage": {

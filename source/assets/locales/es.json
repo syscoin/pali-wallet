@@ -796,7 +796,11 @@
       "delegateBySig": "Delegar Por Firma",
       "bridge": "Puente",
       "bridgeAsset": "Activo de Puente",
-      "swapAndBridge": "Intercambiar y Puente"
+      "swapAndBridge": "Intercambiar y Puente",
+      "execute": "Ejecutar con Passkey",
+      "createAccount": "Crear Cuenta Passkey",
+      "createAccountAndExecute": "Crear Cuenta Passkey y Ejecutar",
+      "setSponsor": "Configurar Patrocinador Passkey"
     }
   },
   "switchNetworkPage": {
