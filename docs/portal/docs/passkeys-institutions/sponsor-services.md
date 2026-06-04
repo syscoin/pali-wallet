@@ -27,8 +27,8 @@ A sponsor service is an institution-controlled endpoint that participates in pas
 | Field | Purpose |
 | --- | --- |
 | `mode` | `disabled`, `gasOnly`, or `required`. |
-| `url` | Service endpoint Pali contacts for sponsor execution support. |
-| `signer` | Expected sponsor signer address for required policy proofs. |
+| `url` | Optional service endpoint Pali contacts for sponsor execution support. Pali requires it for `gasOnly` sponsorship because there is no remote gas sponsor without a service URL. |
+| `signer` | Expected sponsor signer address for required policy proofs. Required for `required` mode. |
 | `policyText` | User-facing explanation stored in wallet metadata. Not on-chain enforcement. |
 
 ## On-chain policy
@@ -41,11 +41,13 @@ Sponsor execution requests use an idempotency key derived from the passkey actio
 
 ## Required sponsor mode
 
-In `required` mode, the sponsor proof must recover to the configured signer. If Pali cannot obtain or validate the sponsor proof, execution fails.
+In `required` mode, the sponsor proof must recover to the configured signer. The sponsor URL is optional: Pali can obtain proof from the sponsor service when a URL is configured, or sign locally when the configured signer is an available account in the wallet. If Pali cannot obtain or validate the sponsor proof, execution fails.
+
+Gas payment is separate from sponsor authorization. After a valid sponsor proof is available, Pali can still pay gas from any funded software account selected for passkey execution.
 
 ## Gas-only mode
 
-In `gasOnly` mode, the sponsor service may relay or help pay gas. If sponsorship is unavailable, Pali can fall back to wallet-gas execution where policy allows it.
+In `gasOnly` mode, the sponsor service may relay or help pay gas. Pali requires a sponsor URL for this mode because the URL is what identifies the gas sponsorship service. If sponsorship is unavailable, Pali can fall back to wallet-gas execution where policy allows it.
 
 ## Institution guidance
 

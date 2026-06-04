@@ -65,8 +65,8 @@ The result includes the smart account `address` and public passkey metadata. Pal
 | Mode | Meaning |
 | --- | --- |
 | `disabled` | No sponsor policy. The wallet/user pays gas. |
-| `gasOnly` | Sponsor service may pay gas. If sponsorship fails, wallet-gas fallback can be allowed. |
-| `required` | Sponsor co-authorization is required by policy. |
+| `gasOnly` | Sponsor service may pay gas. Pali requires a sponsor URL for this mode; if sponsorship fails, wallet-gas fallback can be allowed. |
+| `required` | Sponsor co-authorization is required by policy. A signer is required; the sponsor URL is optional when Pali can obtain the signer proof from a local account in the wallet. |
 
 ## User control
 

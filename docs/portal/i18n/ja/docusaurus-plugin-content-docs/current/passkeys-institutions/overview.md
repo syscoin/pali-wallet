@@ -65,8 +65,8 @@ const account = await window.ethereum.request({
 | Mode | 意味 |
 | --- | --- |
 | `disabled` | スポンサーpolicyはありません。ウォレット/ユーザーがgasを支払います。 |
-| `gasOnly` | スポンサーサービスがgasを支払う場合があります。スポンサーシップが失敗した場合、wallet-gas fallbackを許可できます。 |
-| `required` | policyによりスポンサーの共同承認が必須です。 |
+| `gasOnly` | スポンサーサービスがgasを支払う場合があります。PaliはこのmodeにスポンサーURLを要求します。スポンサーシップが失敗した場合、wallet-gas fallbackを許可できます。 |
+| `required` | policyによりスポンサーの共同承認が必須です。signerが必要です。Paliがwallet内のlocal accountからsigner proofを取得できる場合、スポンサーURLはoptionalです。 |
 
 ## ユーザー制御
 

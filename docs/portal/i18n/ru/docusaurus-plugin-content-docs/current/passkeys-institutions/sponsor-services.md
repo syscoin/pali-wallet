@@ -27,8 +27,8 @@ Sponsor service — это endpoint, контролируемый институ
 | Поле | Назначение |
 | --- | --- |
 | `mode` | `disabled`, `gasOnly` или `required`. |
-| `url` | Service endpoint, с которым Pali связывается для sponsor execution support. |
-| `signer` | Ожидаемый sponsor signer address для required policy proofs. |
+| `url` | Опциональный service endpoint, с которым Pali связывается для sponsor execution support. Pali требует его для `gasOnly` sponsorship, потому что без service URL нет remote gas sponsor. |
+| `signer` | Ожидаемый sponsor signer address для required policy proofs. Обязателен для режима `required`. |
 | `policyText` | User-facing explanation, сохраненное в wallet metadata. Не on-chain enforcement. |
 
 ## On-chain policy
@@ -41,11 +41,13 @@ Sponsor execution requests используют idempotency key, derived из pa
 
 ## Режим required sponsor
 
-В режиме `required` sponsor proof должен recover к настроенному signer. Если Pali не может получить или валидировать sponsor proof, execution fails.
+В режиме `required` sponsor proof должен recover к настроенному signer. Sponsor URL опционален: Pali может получить proof от sponsor service, когда URL настроен, или подписать локально, когда настроенный signer является доступным аккаунтом в wallet. Если Pali не может получить или валидировать sponsor proof, execution fails.
+
+Оплата gas отделена от sponsor authorization. После получения валидного sponsor proof Pali всё ещё может оплатить gas с любого funded software account, выбранного для passkey execution.
 
 ## Режим gas-only
 
-В режиме `gasOnly` sponsor service может relay или помочь оплатить gas. Если sponsorship недоступен, Pali может fallback к wallet-gas execution там, где policy это разрешает.
+В режиме `gasOnly` sponsor service может relay или помочь оплатить gas. Pali требует sponsor URL для этого режима, потому что URL идентифицирует gas sponsorship service. Если sponsorship недоступен, Pali может fallback к wallet-gas execution там, где policy это разрешает.
 
 ## Рекомендации для институций
 

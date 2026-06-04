@@ -14,7 +14,7 @@ Hoje, a implantação de teste configurada da Pali é `zkTanenbaum` (`57057`). T
 
 - Decida se cada usuário recebe uma conta com passkey compartilhada da Pali ou uma credencial separada.
 - Decida se sponsorship é desabilitado, somente gas ou obrigatório.
-- Mantenha uptime do serviço de sponsor se usar modo `required`.
+- Mantenha uptime do serviço de sponsor quando o modo `required` depender de uma URL de sponsor remota, e documente qualquer política de fallback com signer local.
 - Monitore falhas de relayer, deadlines expirados e chaves de idempotência repetidas.
 - Forneça um caminho de suporte ao usuário para dispositivos perdidos e recuperação com falha.
 - Documente se a instituição pode coautorizar execução.

@@ -14,7 +14,7 @@ Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS
 
 - Decide whether each user receives a shared Pali passkey account or a separate credential.
 - Decide whether sponsorship is disabled, gas-only, or required.
-- Maintain sponsor service uptime if using `required` mode.
+- Maintain sponsor service uptime when `required` mode depends on a remote sponsor URL, and document any local signer fallback policy.
 - Monitor relayer failures, expired deadlines, and repeated idempotency keys.
 - Provide a user support path for lost devices and failed recovery.
 - Document whether the institution can co-authorize execution.

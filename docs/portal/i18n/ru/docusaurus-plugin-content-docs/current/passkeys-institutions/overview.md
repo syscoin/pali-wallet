@@ -65,8 +65,8 @@ const account = await window.ethereum.request({
 | Режим | Значение |
 | --- | --- |
 | `disabled` | Нет sponsor policy. Кошелек/пользователь платит gas. |
-| `gasOnly` | Sponsor service может платить gas. Если sponsorship fails, может быть разрешен wallet-gas fallback. |
-| `required` | Sponsor co-authorization требуется policy. |
+| `gasOnly` | Sponsor service может платить gas. Pali требует sponsor URL для этого режима; если sponsorship fails, может быть разрешен wallet-gas fallback. |
+| `required` | Sponsor co-authorization требуется policy. Signer обязателен; sponsor URL опционален, когда Pali может получить signer proof от локального аккаунта в wallet. |
 
 ## Контроль пользователя
 

@@ -27,8 +27,8 @@ Ein Sponsor-Service ist ein institutionskontrollierter Endpoint, der an der Ausf
 | Feld | Zweck |
 | --- | --- |
 | `mode` | `disabled`, `gasOnly` oder `required`. |
-| `url` | Service-Endpoint, den Pali für Unterstützung bei Sponsor-Ausführung kontaktiert. |
-| `signer` | Erwartete Sponsor-Signer-Adresse für erforderliche Policy-Proofs. |
+| `url` | Optionaler Service-Endpoint, den Pali für Unterstützung bei Sponsor-Ausführung kontaktiert. Pali benötigt ihn für `gasOnly`-Sponsoring, weil es ohne Service-URL keinen entfernten Gas-Sponsor gibt. |
+| `signer` | Erwartete Sponsor-Signer-Adresse für erforderliche Policy-Proofs. Erforderlich für den Modus `required`. |
 | `policyText` | Benutzerseitige Erklärung, die in Wallet-Metadaten gespeichert wird. Kein on-chain Enforcement. |
 
 ## On-chain-Policy
@@ -41,11 +41,13 @@ Sponsor-Ausführungs-Requests verwenden einen Idempotency Key, der aus dem Passk
 
 ## Erforderlicher Sponsor-Modus
 
-Im Modus `required` muss der Sponsor-Proof zum konfigurierten Signer recovern. Wenn Pali den Sponsor-Proof nicht erhalten oder validieren kann, schlägt die Ausführung fehl.
+Im Modus `required` muss der Sponsor-Proof zum konfigurierten Signer recovern. Die Sponsor-URL ist optional: Pali kann den Proof vom Sponsor-Service erhalten, wenn eine URL konfiguriert ist, oder lokal signieren, wenn der konfigurierte Signer ein verfügbares Konto in der Wallet ist. Wenn Pali den Sponsor-Proof nicht erhalten oder validieren kann, schlägt die Ausführung fehl.
+
+Die Gas-Zahlung ist von der Sponsor-Autorisierung getrennt. Nachdem ein gültiger Sponsor-Proof verfügbar ist, kann Pali weiterhin Gas von jedem finanzierten Softwarekonto zahlen, das für die Passkey-Ausführung ausgewählt ist.
 
 ## Gas-only-Modus
 
-Im Modus `gasOnly` kann der Sponsor-Service relayen oder helfen, Gas zu zahlen. Wenn Sponsoring nicht verfügbar ist, kann Pali auf Wallet-Gas-Ausführung zurückfallen, sofern die Policy dies erlaubt.
+Im Modus `gasOnly` kann der Sponsor-Service relayen oder helfen, Gas zu zahlen. Pali benötigt für diesen Modus eine Sponsor-URL, weil die URL den Gas-Sponsoring-Service identifiziert. Wenn Sponsoring nicht verfügbar ist, kann Pali auf Wallet-Gas-Ausführung zurückfallen, sofern die Policy dies erlaubt.
 
 ## Empfehlungen für Institutionen
 

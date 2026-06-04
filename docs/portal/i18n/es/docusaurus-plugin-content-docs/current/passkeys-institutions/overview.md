@@ -65,8 +65,8 @@ El resultado incluye la `address` de la cuenta inteligente y metadatos públicos
 | Modo | Significado |
 | --- | --- |
 | `disabled` | Sin política de sponsor. La billetera/usuario paga gas. |
-| `gasOnly` | El servicio sponsor puede pagar gas. Si sponsorship falla, puede permitirse fallback a gas de la billetera. |
-| `required` | La coautorización del sponsor es requerida por política. |
+| `gasOnly` | El servicio sponsor puede pagar gas. Pali requiere una URL de sponsor para este modo; si sponsorship falla, puede permitirse fallback a gas de la billetera. |
+| `required` | La coautorización del sponsor es requerida por política. Se requiere un signer; la URL de sponsor es opcional cuando Pali puede obtener la prueba del signer desde una cuenta local en la billetera. |
 
 ## Control del usuario
 

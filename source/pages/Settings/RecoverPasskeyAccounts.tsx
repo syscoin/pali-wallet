@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Card, NeutralButton } from 'components/index';
+import { DropdownArrowSvg } from 'components/Icon/Icon';
+import { Card, Icon, NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
@@ -12,6 +13,9 @@ import { bytesToHex, getDiscoverablePasskeyAssertion } from 'utils/passkey';
 
 const scrollAreaClassName =
   'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-260px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
+
+const detailLabel = (labelWithValue: string) =>
+  labelWithValue.replace(/\s*[:：]\s*$/, '').trim();
 
 type RecoveryCandidate = {
   address: string;
@@ -33,10 +37,11 @@ type RecoveryCredential = {
 
 const RecoverPasskeyAccounts = () => {
   const { t } = useTranslation();
-  const { alert } = useUtils();
+  const { alert, useCopyClipboard } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
   const location = useLocation();
+  const [copied, copy] = useCopyClipboard();
 
   const [address, setAddress] = useState<string | undefined>();
   const [accountName, setAccountName] = useState<string>('');
@@ -70,6 +75,12 @@ const RecoverPasskeyAccounts = () => {
     }
     return t('settings.recoverPasskeyAccountsDescription');
   }, [candidates.length, discovering, importing, t]);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.info(t('components.copied'));
+  }, [copied, alert, t]);
 
   const discoverPasskeyAccounts = async () => {
     setDiscovering(true);
@@ -210,6 +221,47 @@ const RecoverPasskeyAccounts = () => {
     });
   };
 
+  const copyValue = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    value?: string
+  ) => {
+    event.stopPropagation();
+    if (value) copy(value);
+  };
+
+  const renderCopyableValue = ({
+    displayValue,
+    label,
+    value,
+  }: {
+    displayValue?: string;
+    label: string;
+    value?: string;
+  }) => {
+    if (!value) return null;
+
+    return (
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-white">{label}:</span>
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left text-brand-graylight hover:text-white"
+          onClick={(event) => copyValue(event, value)}
+        >
+          {displayValue || value}
+        </button>
+        <button
+          type="button"
+          className="shrink-0 text-brand-graylight hover:text-white"
+          aria-label={t('buttons.copy')}
+          onClick={(event) => copyValue(event, value)}
+        >
+          <Icon name="copy" />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <>
       {address ? (
@@ -263,6 +315,16 @@ const RecoverPasskeyAccounts = () => {
                     const hasSponsorDetails = Boolean(
                       candidate.sponsor?.signer || candidate.sponsor?.url
                     );
+                    const sponsorSignerLabel = detailLabel(
+                      t('settings.passkeyRecoverySponsorSigner', {
+                        signer: '',
+                      })
+                    );
+                    const sponsorUrlLabel = detailLabel(
+                      t('settings.passkeyRecoverySponsorUrl', {
+                        url: '',
+                      })
+                    );
                     return (
                       <li
                         key={candidate.address}
@@ -277,14 +339,26 @@ const RecoverPasskeyAccounts = () => {
                             onChange={() => toggleCandidate(candidate)}
                           />
                           <div className="min-w-0 flex-1 text-xs text-brand-graylight">
-                            <button
-                              type="button"
-                              className="block max-w-full truncate text-left font-medium text-white"
-                              disabled={loading}
-                              onClick={() => toggleCandidate(candidate)}
-                            >
-                              {ellipsis(candidate.address, 8, 6)}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className="min-w-0 flex-1 truncate text-left font-medium text-white"
+                                disabled={loading}
+                                onClick={() => toggleCandidate(candidate)}
+                              >
+                                {ellipsis(candidate.address, 8, 6)}
+                              </button>
+                              <button
+                                type="button"
+                                className="shrink-0 text-brand-graylight hover:text-white"
+                                aria-label={t('buttons.copy')}
+                                onClick={(event) =>
+                                  copyValue(event, candidate.address)
+                                }
+                              >
+                                <Icon name="copy" />
+                              </button>
+                            </div>
                             <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
                               <span>
                                 {t('settings.passkeyRecoveryBalance', {
@@ -304,6 +378,7 @@ const RecoverPasskeyAccounts = () => {
                               </span>
                               <span className="col-span-2">
                                 {t('settings.passkeyRecoveryPolicy', {
+                                  interpolation: { escapeValue: false },
                                   policy: getPolicyLabel(candidate),
                                 })}
                               </span>
@@ -311,38 +386,32 @@ const RecoverPasskeyAccounts = () => {
                             {hasSponsorDetails && (
                               <button
                                 type="button"
-                                className="mt-2 text-brand-blue500 font-medium disabled:opacity-60"
+                                className="mt-3 flex items-center gap-1 text-white font-medium disabled:opacity-60"
                                 disabled={loading}
                                 onClick={() => toggleDetails(candidate)}
                               >
                                 {isExpanded
                                   ? t('settings.hideDetails')
                                   : t('settings.showDetails')}
+                                <DropdownArrowSvg
+                                  isOpen={isExpanded}
+                                  className="text-white"
+                                />
                               </button>
                             )}
                             {isExpanded && hasSponsorDetails && (
-                              <div className="mt-2 rounded-md bg-alpha-whiteAlpha100 p-2 break-all">
-                                {candidate.sponsor?.signer && (
-                                  <p>
-                                    {t(
-                                      'settings.passkeyRecoverySponsorSigner',
-                                      {
-                                        signer: ellipsis(
-                                          candidate.sponsor.signer,
-                                          8,
-                                          6
-                                        ),
-                                      }
-                                    )}
-                                  </p>
-                                )}
-                                {candidate.sponsor?.url && (
-                                  <p className="mt-1">
-                                    {t('settings.passkeyRecoverySponsorUrl', {
-                                      url: candidate.sponsor.url,
-                                    })}
-                                  </p>
-                                )}
+                              <div className="mt-2 space-y-2 rounded-md bg-alpha-whiteAlpha100 p-3">
+                                {renderCopyableValue({
+                                  displayValue: candidate.sponsor?.signer
+                                    ? ellipsis(candidate.sponsor.signer, 8, 6)
+                                    : undefined,
+                                  label: sponsorSignerLabel,
+                                  value: candidate.sponsor?.signer,
+                                })}
+                                {renderCopyableValue({
+                                  label: sponsorUrlLabel,
+                                  value: candidate.sponsor?.url,
+                                })}
                               </div>
                             )}
                           </div>

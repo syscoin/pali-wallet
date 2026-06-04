@@ -14,7 +14,7 @@ Aujourd'hui, le déploiement de test configuré dans Pali est `zkTanenbaum` (`57
 
 - Décidez si chaque utilisateur reçoit un compte passkey Pali partagé ou un credential séparé.
 - Décidez si le sponsoring est désactivé, gas-only ou requis.
-- Maintenez la disponibilité du service de sponsor si vous utilisez le mode `required`.
+- Maintenez la disponibilité du service de sponsor lorsque le mode `required` dépend d'une URL de sponsor distante, et documentez toute politique de repli avec signataire local.
 - Surveillez les échecs de relayer, les deadlines expirées et les clés d'idempotence répétées.
 - Fournissez un chemin de support utilisateur pour les appareils perdus et les récupérations échouées.
 - Documentez si l'institution peut coautoriser l'exécution.
