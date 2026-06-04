@@ -241,7 +241,13 @@ export const decodeTransactionData = async (
   const zeroAddress = '0x0000000000000000000000000000000000000000';
   try {
     const { data } = params;
-    const dataValidation = Boolean(data && String(data).length > 0);
+    const normalizedData = typeof data === 'string' ? data.toLowerCase() : data;
+    const dataValidation = Boolean(
+      data &&
+        String(data).length > 0 &&
+        normalizedData !== '0x' &&
+        normalizedData !== '0x0'
+    );
 
     // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
     // so we need to transform it on Bytes32.
@@ -320,10 +326,10 @@ export const decodeTransactionData = async (
       return decoderValue;
     }
 
-    //Return Contract Interaction if address is contract but don't have Data
-    if (!dataValidation) {
+    // Return Send Method when there is a destination and no calldata.
+    if (!dataValidation && params?.to && params?.to !== zeroAddress) {
       const emptyDecoderObject = {
-        method: 'Contract Interaction',
+        method: 'Send',
         types: [],
         inputs: [],
         names: [],
@@ -331,10 +337,11 @@ export const decodeTransactionData = async (
       return emptyDecoderObject;
     }
 
-    // Return Send Method if address is a wallet
-    if (params?.to && params?.to !== zeroAddress) {
+    // Return Contract Interaction when calldata is absent and the tx is not a
+    // normal transfer shape.
+    if (!dataValidation) {
       const emptyDecoderObject = {
-        method: 'Send',
+        method: 'Contract Interaction',
         types: [],
         inputs: [],
         names: [],
