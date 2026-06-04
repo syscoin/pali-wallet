@@ -1,13 +1,15 @@
 import { getAddress } from '@ethersproject/address';
 import { AddressZero } from '@ethersproject/constants';
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Card, Icon, NeutralButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
+import { RootState } from 'state/store';
 import {
   KeyringAccountType,
   PasskeyBackupStatus,
@@ -47,6 +49,10 @@ const PasskeyAccountPolicy = () => {
   const { alert, navigate } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const [form] = Form.useForm();
+  const passkeyAccounts = useSelector(
+    (rootState: RootState) =>
+      rootState.vault.accounts[KeyringAccountType.PasskeySmartAccount] || {}
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [policyMode, setPolicyMode] = useState<PasskeySponsorMode>(
     state?.passkey?.sponsor?.mode || PasskeySponsorMode.Disabled
@@ -65,8 +71,12 @@ const PasskeyAccountPolicy = () => {
 
   const isValidSponsorSigner = (value: string) => {
     try {
-      getAddress(value.trim());
-      return true;
+      const normalizedValue = getAddress(value.trim()).toLowerCase();
+      return !Object.values(passkeyAccounts).some(
+        (account: any) =>
+          account?.address &&
+          getAddress(account.address).toLowerCase() === normalizedValue
+      );
     } catch {
       return false;
     }
@@ -93,11 +103,14 @@ const PasskeyAccountPolicy = () => {
     (policyMode === PasskeySponsorMode.GasOnly &&
       (!trimmedSponsorUrl || !isSponsorUrlValid)) ||
     (policyMode === PasskeySponsorMode.Required &&
-      (!trimmedSponsorUrl ||
-        !isValidSponsorServiceUrl(trimmedSponsorUrl) ||
-        !trimmedSponsorSigner ||
-        !isSponsorSignerValid));
+      (!trimmedSponsorSigner || !isSponsorSignerValid || !isSponsorUrlValid));
   const hasKnownBackupStatus = Boolean(backupStatus);
+
+  useEffect(() => {
+    if (policyMode === PasskeySponsorMode.Required && !trimmedSponsorUrl) {
+      form.setFields([{ name: 'sponsorUrl', errors: [] }]);
+    }
+  }, [form, policyMode, trimmedSponsorUrl]);
 
   const navigateBackWithUpdatedSponsor = (
     sponsor: {
@@ -365,16 +378,21 @@ const PasskeyAccountPolicy = () => {
               <Form.Item
                 name="sponsorUrl"
                 className="md:w-full mb-0 px-1"
-                hasFeedback
+                hasFeedback={
+                  policyMode === PasskeySponsorMode.GasOnly ||
+                  Boolean(trimmedSponsorUrl)
+                }
                 rules={[
                   () => ({
                     validator(_, value) {
                       const trimmedValue =
                         typeof value === 'string' ? value.trim() : '';
                       if (!trimmedValue) {
-                        return Promise.reject(
-                          new Error(t('settings.sponsorServiceUrlRequired'))
-                        );
+                        return policyMode === PasskeySponsorMode.GasOnly
+                          ? Promise.reject(
+                              new Error(t('settings.sponsorServiceUrlRequired'))
+                            )
+                          : Promise.resolve();
                       }
                       if (isValidSponsorServiceUrl(trimmedValue)) {
                         return Promise.resolve();
@@ -431,7 +449,7 @@ const PasskeyAccountPolicy = () => {
             </div>
           )}
 
-          {policyMode === PasskeySponsorMode.Required && (
+          {policyMode === PasskeySponsorMode.Required && !loading && (
             <div className="px-1">
               <Card type="info">
                 <p className="text-brand-yellowInfo text-sm font-normal text-left">

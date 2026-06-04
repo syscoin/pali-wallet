@@ -1,11 +1,13 @@
 import { getAddress } from '@ethersproject/address';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
 import { DropdownArrowSvg, Icon } from 'components/Icon/Icon';
 import { Card, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
+import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { logError } from 'utils/logger';
@@ -42,6 +44,10 @@ export const CreatePasskeyAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { eventName, host, label, sponsor } = useQueryData();
   const { t } = useTranslation();
+  const passkeyAccounts = useSelector(
+    (rootState: RootState) =>
+      rootState.vault.accounts[KeyringAccountType.PasskeySmartAccount] || {}
+  );
   const [loading, setLoading] = useState(false);
   const [creationStep, setCreationStep] = useState<CreationStep>('idle');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -74,8 +80,12 @@ export const CreatePasskeyAccount = () => {
       return false;
     }
     try {
-      getAddress(trimmedSponsorSigner);
-      return true;
+      const normalizedSigner = getAddress(trimmedSponsorSigner).toLowerCase();
+      return !Object.values(passkeyAccounts).some(
+        (account: any) =>
+          account?.address &&
+          getAddress(account.address).toLowerCase() === normalizedSigner
+      );
     } catch {
       return false;
     }
@@ -87,7 +97,7 @@ export const CreatePasskeyAccount = () => {
       ? t('settings.invalidSponsorSignerAddress')
       : '';
   const sponsorUrlError =
-    hasSponsorPolicy && !trimmedSponsorUrl
+    sponsorMode === 'gasOnly' && !trimmedSponsorUrl
       ? t('settings.sponsorServiceUrlRequired')
       : trimmedSponsorUrl && !isSponsorUrlValid
       ? t('settings.invalidSponsorUrl')
@@ -112,7 +122,7 @@ export const CreatePasskeyAccount = () => {
     setCreationStep('credential');
 
     try {
-      if (hasSponsorPolicy && !trimmedSponsorUrl) {
+      if (sponsorMode === 'gasOnly' && !trimmedSponsorUrl) {
         throw new Error('Sponsor service URL is required');
       }
       if (trimmedSponsorUrl && !isValidSponsorServiceUrl(trimmedSponsorUrl)) {
