@@ -73,16 +73,10 @@ const MV2_OPTIONS = {
   },
 };
 
-// Public key used only to keep the unpacked MV3 extension ID stable in dev.
-// Do not replace it unless intentionally rotating the dev WebAuthn relying party.
-const STABLE_DEV_EXTENSION_KEY =
-  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArYLCXWBGnwp1giU5pIbXuqrbzJDzkGgPXXefSLdhpOrZc5rdTcpq8hcJJqRSJBESoLpuCrqvd/HPwtwo6h0hjWvB+pOPIJmPwWlYs+zKAKOUZIZcSqJmJCkv9FztuCcbQqlOWJ/2PvEyDvPKcc54aH6IAYlhnth9tWuiYVmzHQqornSKNWBQeukzWvxTuYhqz2RDFeUdiCh1Y9Bf8/3BrOJjI7FESTRd5iHDqd6LrIs91a6hUuWgCF5//57lG9Zr2KRLkl+3ibEQBGQMTWYRfBbdnZYXPDdspoaEaUi179R/7iFd3laA9EhMcGhnwH3x/FQxNMH6z+FS+ojAEkCLyQIDAQAB';
-
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
   version: '4.0.20',
-  key: STABLE_DEV_EXTENSION_KEY,
   icons: {
     16: 'assets/all_assets/favicon-16.png',
     32: 'assets/all_assets/favicon-32.png',
