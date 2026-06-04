@@ -243,17 +243,10 @@ const ManageAccountsView = React.memo(() => {
   const removeAccountDescription = useMemo(() => {
     if (!accountToRemove) return '';
 
-    const baseDescription = t('settings.removeAccountConfirmation', {
+    return t('settings.removeAccountConfirmation', {
       accountName: accountToRemove.account.label,
       accountType: ACCOUNT_TYPE_CONFIG[accountToRemove.accountType].label,
     });
-    const isUndeployedPasskeyAccount =
-      accountToRemove.accountType === KeyringAccountType.PasskeySmartAccount &&
-      !accountToRemove.account.passkey?.isDeployed;
-
-    return isUndeployedPasskeyAccount
-      ? t('settings.removeUndeployedPasskeyWarning')
-      : baseDescription;
   }, [accountToRemove, t]);
 
   // Memoized unified account rendering

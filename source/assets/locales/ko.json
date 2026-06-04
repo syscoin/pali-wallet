@@ -203,7 +203,6 @@
     "removeAccount": "계정 제거",
     "removeAccountConfirmation": "{{accountType}} 계정 \"{{accountName}}\"을(를) 제거하시겠습니까? 필요하면 언제든지 계정을 다시 만들 수 있습니다.",
     "accountRemovedSuccessfully": "계정이 성공적으로 제거되었습니다",
-    "removeUndeployedPasskeyWarning": "이 passkey 계정은 아직 온체인에 배포되지 않았으므로 삭제하면 복구할 수 없게 될 수 있습니다.",
     "failedToRemoveAccount": "계정 제거에 실패했습니다",
     "hardwareWalletSuccess": "하드웨어 지갑이 성공적으로 연결되었습니다!",
     "hardwareWalletInstructions": "이 창을 닫고 Pali를 다시 열어서 거래에 하드웨어 지갑을 사용하세요. 귀하의 계정이 저장되고 지속됩니다.",
@@ -238,13 +237,29 @@
     "passkeyPolicyRequiredWarning": "관리형 / 공동 서명 계정은 향후 거래에 스폰서 승인이 필요합니다.",
     "passkeyPolicyUpdated": "passkey 계정 정책이 성공적으로 업데이트되었습니다.",
     "passkeyPolicyOnchainNotice": "이 계정은 onchain에서 활성화되어 있습니다. 정책 변경을 저장하면 passkey 승인을 요청하고 거래를 전송합니다.",
+    "passkeyPolicyStep": {
+      "preparing": "onchain 정책 업데이트를 준비하는 중...",
+      "approval": "passkey 승인을 기다리는 중...",
+      "confirming": "onchain 정책 트랜잭션을 전송하고 확인하는 중...",
+      "saving": "확인된 정책을 로컬에 저장하는 중...",
+      "idle": "정책을 업데이트할 준비가 되었습니다."
+    },
     "passkeyStatusTitle": "passkey 동기화",
     "passkeyStatusRefreshDescription": "이 passkey가 기기에 묶여 있는지, 기기 백업을 통해 사용할 수 있는지 표시합니다.",
     "refreshPasskeyStatus": "새로 고침",
     "passkeyStatusUpdated": "passkey 상태가 업데이트되었습니다.",
     "passkeyStatusRefreshFailed": "passkey 상태를 새로 고칠 수 없습니다.",
     "customizeAccountPolicy": "계정 정책 사용자 지정",
-    "passkeyPolicyLocked": "Pali는 이 정책을 저장하고 계정을 처음 사용할 때 적용합니다.",
+    "passkeyPolicyLocked": "Pali는 연결하기 전에 이 계정과 정책을 온체인에서 생성합니다.",
+    "passkeyAccountNotOnchain": "이 로컬 패스키 계정은 온체인에서 확인되지 않았습니다. 사용하기 전에 복구하거나 다시 만드세요.",
+    "passkeyCreationStep": {
+      "credential": "패스키를 확인하는 중...",
+      "recovering": "기존 온체인 계정을 확인하는 중...",
+      "deploying": "온체인 계정 생성을 준비하는 중...",
+      "confirming": "온체인 트랜잭션을 제출하고 확인하는 중...",
+      "saving": "확인된 계정을 Pali에 저장하는 중...",
+      "idle": "준비됨"
+    },
     "sponsorServiceUrl": "스폰서 서비스 URL",
     "sponsorSignerAddress": "스폰서 서명자 주소",
     "sponsorServiceUrlRequired": "스폰서 서비스 URL을 입력하세요.",
@@ -370,8 +385,7 @@
     "sponsorDisabled": "스폰서 없음",
     "sponsorUrl": "스폰서 URL: {{url}}",
     "sponsorSigner": "스폰서 서명자: {{signer}}",
-    "sponsorRequiredWarning": "이 계정은 Pali가 트랜잭션을 실행하기 전에 스폰서의 공동 승인이 필요합니다.",
-    "passkeyRecoveryMismatch": "이 패스키는 이 스폰서의 기존 계정과 일치하지 않습니다. 다시 만들기를 눌러 다른 패스키를 선택하거나, 고급을 켜서 별도의 새 패스키를 만드세요."
+    "sponsorRequiredWarning": "이 계정은 Pali가 트랜잭션을 실행하기 전에 스폰서의 공동 승인이 필요합니다."
   },
   "titles": {
     "assetDetails": "자산 상세정보",

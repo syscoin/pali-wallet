@@ -35,7 +35,7 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
-import { getPasskeyAssertion } from 'utils/passkey';
+import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
@@ -402,44 +402,18 @@ export const SendTransaction = () => {
                 'transaction value'
               ).toHexString()
             : '0x0';
-          const prepared = (await controllerEmitter(
-            ['wallet', 'preparePasskeyExecution'],
-            [
+          response = await signAndSubmitPasskeyExecutions({
+            controllerEmitter,
+            credentialId: activeAccount.passkey.credentialId,
+            executions: [
               {
                 target: candidateTo,
                 value: passkeyTxValue,
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
-            300000
-          )) as any;
-          const assertion = await getPasskeyAssertion(
-            activeAccount.passkey.credentialId,
-            prepared.actionHash
-          );
-
-          response = await controllerEmitter(
-            ['wallet', 'submitPasskeyExecution'],
-            [
-              {
-                actionHash: prepared.actionHash,
-                execution: prepared.execution,
-                executions: prepared.executions,
-                requiresDeployment: prepared.requiresDeployment,
-                proof: {
-                  authenticatorData: assertion.authenticatorData,
-                  clientDataJSON: assertion.clientDataJSON,
-                  challengeOffset: assertion.challengeOffset,
-                  originOffset: assertion.originOffset,
-                  r: assertion.r,
-                  s: assertion.s,
-                  typeOffset: assertion.typeOffset,
-                },
-                sponsorProof: passkeySponsorProof,
-              },
-            ],
-            300000
-          );
+            sponsorProof: passkeySponsorProof,
+          });
         } else if (isLegacyTransaction) {
           // Legacy transaction handling - MUST remove all EIP-1559 fields
           const txWithoutType = omitTransactionObjectData(txToSend, [

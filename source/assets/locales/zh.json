@@ -203,7 +203,6 @@
     "removeAccount": "移除账户",
     "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
     "accountRemovedSuccessfully": "账户删除成功",
-    "removeUndeployedPasskeyWarning": "此 passkey 账户尚未部署到链上，删除后可能无法恢复。",
     "failedToRemoveAccount": "删除账户失败",
     "hardwareWalletSuccess": "硬件钱包连接成功！",
     "hardwareWalletInstructions": "关闭此窗口并重新打开Pali以使用您的硬件钱包进行交易。您的账户现已保存并持久化。",
@@ -238,13 +237,29 @@
     "passkeyPolicyRequiredWarning": "托管 / 联合签名账户未来交易需要赞助方批准。",
     "passkeyPolicyUpdated": "passkey 账户策略已成功更新。",
     "passkeyPolicyOnchainNotice": "此账户已在 onchain 激活。保存策略更改会请求 passkey 批准并提交交易。",
+    "passkeyPolicyStep": {
+      "preparing": "正在准备 onchain 策略更新...",
+      "approval": "正在等待 passkey 批准...",
+      "confirming": "正在提交并确认 onchain 策略交易...",
+      "saving": "正在本地保存已确认的策略...",
+      "idle": "可以更新策略。"
+    },
     "passkeyStatusTitle": "passkey 同步",
     "passkeyStatusRefreshDescription": "显示此 passkey 是绑定到此设备，还是可通过设备备份使用。",
     "refreshPasskeyStatus": "刷新",
     "passkeyStatusUpdated": "passkey 状态已更新。",
     "passkeyStatusRefreshFailed": "无法刷新 passkey 状态。",
     "customizeAccountPolicy": "自定义账户策略",
-    "passkeyPolicyLocked": "Pali 会保存此策略，并在账户首次使用时应用。",
+    "passkeyPolicyLocked": "Pali 会先在链上创建此账户和策略，然后再连接。",
+    "passkeyAccountNotOnchain": "此本地通行密钥账户尚未在链上确认。使用前请恢复或重新创建。",
+    "passkeyCreationStep": {
+      "credential": "正在检查你的通行密钥...",
+      "recovering": "正在检查现有链上账户...",
+      "deploying": "正在准备链上账户创建...",
+      "confirming": "正在提交并确认链上交易...",
+      "saving": "正在将已确认账户保存到 Pali...",
+      "idle": "就绪"
+    },
     "sponsorServiceUrl": "赞助方服务 URL",
     "sponsorSignerAddress": "赞助方签名地址",
     "sponsorServiceUrlRequired": "请输入赞助方服务 URL。",
@@ -370,8 +385,7 @@
     "sponsorDisabled": "无赞助方",
     "sponsorUrl": "赞助方 URL：{{url}}",
     "sponsorSigner": "赞助方签名者：{{signer}}",
-    "sponsorRequiredWarning": "该账户需要赞助方共同授权后，Pali 才能从该账户执行交易。",
-    "passkeyRecoveryMismatch": "该通行密钥与此赞助方的现有账户不匹配。请再次点击创建并选择其他通行密钥，或启用高级选项以创建单独的新通行密钥。"
+    "sponsorRequiredWarning": "该账户需要赞助方共同授权后，Pali 才能从该账户执行交易。"
   },
   "start": {
     "paliDoesnt": "Pali不存储您的密码。恢复访问权限需要使用您的秘密恢复短语重置钱包。此操作会从您的设备中删除当前钱包、创建的账户、自定义代币和导入的账户，生成与重置短语绑定的新账户。",

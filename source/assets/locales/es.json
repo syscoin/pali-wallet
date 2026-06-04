@@ -147,8 +147,7 @@
     "sponsorDisabled": "Sin patrocinador",
     "sponsorUrl": "URL del patrocinador: {{url}}",
     "sponsorSigner": "Firmante del patrocinador: {{signer}}",
-    "sponsorRequiredWarning": "Esta cuenta requerirá coautorización del patrocinador antes de que Pali pueda ejecutar transacciones desde ella.",
-    "passkeyRecoveryMismatch": "Ese passkey no coincide con una cuenta existente para este patrocinador. Intenta Crear de nuevo y selecciona otro passkey, o activa Avanzado para crear un passkey nuevo por separado."
+    "sponsorRequiredWarning": "Esta cuenta requerirá coautorización del patrocinador antes de que Pali pueda ejecutar transacciones desde ella."
   },
   "home": {
     "importToken": "Importar Token",
@@ -539,7 +538,6 @@
     "allYourSettings": "Todos los ajustes en este dispositivo (tokens personalizados y cuentas importadas) serán eliminados. Esto no mueve ni elimina fondos en la cadena, pero las claves privadas cifradas de las cuentas importadas se borrarán de este dispositivo. Si no tienes la Frase de Recuperación Secreta o esas claves privadas, podrías perder el acceso a esos activos de forma permanente.",
     "removeAccount": "Eliminar cuenta",
     "removeAccountConfirmation": "¿Estás seguro de que deseas eliminar la cuenta {{accountType}} \"{{accountName}}\"? Siempre puedes recrear la cuenta más tarde si es necesario.",
-    "removeUndeployedPasskeyWarning": "Esta cuenta passkey aún no se ha desplegado onchain, por lo que eliminarla puede hacer que no se pueda recuperar.",
     "accountRemovedSuccessfully": "Cuenta eliminada exitosamente",
     "failedToRemoveAccount": "Error al eliminar la cuenta",
     "hardwareWalletSuccess": "¡Monedero hardware conectado exitosamente!",
@@ -575,13 +573,29 @@
     "passkeyPolicyRequiredWarning": "Las cuentas administradas / cofirmadas requieren aprobación del patrocinador para futuras transacciones.",
     "passkeyPolicyUpdated": "Política de cuenta passkey actualizada correctamente.",
     "passkeyPolicyOnchainNotice": "Esta cuenta está activa onchain. Guardar cambios de política pedirá aprobación con passkey y enviará una transacción.",
+    "passkeyPolicyStep": {
+      "preparing": "Preparando la actualización de política onchain...",
+      "approval": "Esperando aprobación con passkey...",
+      "confirming": "Enviando y confirmando la transacción de política onchain...",
+      "saving": "Guardando localmente la política confirmada...",
+      "idle": "Listo para actualizar la política."
+    },
     "passkeyStatusTitle": "Sincronización de passkey",
     "passkeyStatusRefreshDescription": "Muestra si esta passkey está vinculada a este dispositivo o disponible mediante la copia de seguridad del dispositivo.",
     "refreshPasskeyStatus": "Actualizar",
     "passkeyStatusUpdated": "Estado de la passkey actualizado.",
     "passkeyStatusRefreshFailed": "No se pudo actualizar el estado de la passkey.",
     "customizeAccountPolicy": "Personalizar política de cuenta",
-    "passkeyPolicyLocked": "Pali guardará esta política y la aplicará cuando la cuenta se use por primera vez.",
+    "passkeyPolicyLocked": "Pali creará esta cuenta y su política on-chain antes de conectarla.",
+    "passkeyAccountNotOnchain": "Esta cuenta passkey local no fue confirmada on-chain. Recupérala o recréala antes de usarla.",
+    "passkeyCreationStep": {
+      "credential": "Comprobando tu passkey...",
+      "recovering": "Comprobando si existe una cuenta on-chain...",
+      "deploying": "Preparando la creación on-chain de la cuenta...",
+      "confirming": "Enviando y confirmando la transacción on-chain...",
+      "saving": "Guardando la cuenta confirmada en Pali...",
+      "idle": "Listo"
+    },
     "sponsorServiceUrl": "URL del servicio patrocinador",
     "sponsorSignerAddress": "Dirección del firmante patrocinador",
     "sponsorServiceUrlRequired": "Introduce la URL del servicio patrocinador.",

@@ -2,7 +2,9 @@
 title: Create and recover passkey accounts
 ---
 
-`wallet_createPasskeyAccount` is intentionally idempotent for dapp onboarding. Pali checks recoverable on-chain accounts before creating a new credential/account path.
+`wallet_createPasskeyAccount` creates a new passkey smart account for dapp onboarding. Pali creates or selects a WebAuthn credential, deploys the smart account on-chain, confirms the deployed recovery metadata, and writes the account into local wallet state after confirmation.
+
+The local wallet state represents deployed passkey accounts. Recovery is available from Pali settings for accounts that already exist on-chain.
 
 ## Smart account and factory structure
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## Recovery-before-create behavior
+## Creation and deployment behavior
 
 When a dapp requests a passkey account:
 
 1. Pali verifies the active chain supports passkey smart accounts.
-2. Pali checks whether the passkey can recover an on-chain account matching the requested sponsor policy.
-3. If the matching account exists locally, Pali reuses it.
-4. If the matching account exists on-chain but not locally, Pali imports it.
-5. If an account exists for the same sponsor URL but mode or signer differs, Pali rejects with a recovery mismatch.
-6. If no matching account exists, Pali proceeds with new account creation.
+2. Pali creates a fresh deployment salt for the new account path.
+3. Pali obtains or creates the WebAuthn credential profile.
+4. Pali computes the counterfactual address and deployment metadata.
+5. If the requested sponsor policy requires an initial `setSponsor` action, Pali asks the user for a passkey assertion over the deployment action hash.
+6. Pali submits `createAccount` or `createAccountAndExecute` through the configured deployment gas payer.
+7. Pali waits for confirmation, reads the smart account recovery metadata from-chain, and verifies it matches the prepared credential and origin data.
+8. After confirmation, Pali creates the local passkey account and connects it to the requesting dapp.
+
+If the resulting address is already present locally as a deployed passkey account, Pali can reuse that local account.
 
 ## What determines the address?
 
-The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Sponsor policy is stored in the account and used by recovery matching logic for institution-scoped onboarding.
+The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Each new account path uses a fresh deployment salt, so one credential can control multiple smart accounts.
 
 ## If the user loses local Pali data
 
@@ -100,7 +106,7 @@ If the browser profile, extension storage, or local passkey account metadata is 
 5. Pali skips accounts already present locally.
 6. Pali imports matching accounts back into local wallet state.
 
-For dapp-driven create/recover, Pali also compares the recovered account's sponsor mode, signer, and URL to the dapp's requested sponsor policy.
+Settings recovery discovers deployed accounts and imports every matching account the registry exposes for the credential.
 
 ## RP ID and credential name
 

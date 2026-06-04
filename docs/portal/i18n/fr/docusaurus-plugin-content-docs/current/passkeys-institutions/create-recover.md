@@ -2,7 +2,9 @@
 title: Créer et récupérer des comptes passkey
 ---
 
-`wallet_createPasskeyAccount` est intentionnellement idempotent pour l'intégration par dapp. Pali vérifie les comptes on-chain récupérables avant de créer un nouveau chemin credential/compte.
+`wallet_createPasskeyAccount` crée un nouveau compte intelligent passkey pour l'intégration par dapp. Pali crée ou sélectionne un credential WebAuthn, déploie le compte intelligent on-chain, confirme les métadonnées de récupération déployées et écrit le compte dans l'état local du portefeuille après confirmation.
+
+L'état local du portefeuille représente des comptes passkey déployés. La récupération est disponible dans les paramètres de Pali pour les comptes qui existent déjà on-chain.
 
 ## Structure du compte intelligent et de la factory
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## Comportement recovery-before-create
+## Comportement de création et de déploiement
 
 Lorsqu'une dapp demande un compte passkey :
 
 1. Pali vérifie que la chaîne active prend en charge les comptes intelligents passkey.
-2. Pali vérifie si la passkey peut récupérer un compte on-chain correspondant à la politique de sponsor demandée.
-3. Si le compte correspondant existe localement, Pali le réutilise.
-4. Si le compte correspondant existe on-chain mais pas localement, Pali l'importe.
-5. Si un compte existe pour le même hachage d'URL de sponsor mais que le mode ou le signataire diffère, Pali rejette avec une incompatibilité de récupération.
-6. Si aucun compte correspondant n'existe, Pali poursuit la création d'un nouveau compte.
+2. Pali crée un sel de déploiement frais pour le nouveau chemin de compte.
+3. Pali obtient ou crée le profil de credential WebAuthn.
+4. Pali calcule l'adresse contrefactuelle et les métadonnées de déploiement.
+5. Si la politique de sponsor demandée exige une action initiale `setSponsor`, Pali demande à l'utilisateur une assertion passkey sur le hash d'action de déploiement.
+6. Pali soumet `createAccount` ou `createAccountAndExecute` via le payeur de gas de déploiement configuré.
+7. Pali attend la confirmation, lit les métadonnées de récupération du compte intelligent depuis la chaîne et vérifie qu'elles correspondent au credential préparé et aux données d'origine.
+8. Après confirmation, Pali crée le compte passkey local et le connecte à la dapp demandeuse.
+
+Si l'adresse résultante est déjà présente localement comme compte passkey déployé, Pali peut réutiliser ce compte local.
 
 ## Qu'est-ce qui détermine l'adresse ?
 
-L'adresse du compte intelligent est dérivée des entrées de factory, notamment les coordonnées publiques passkey, le hachage du credential, les données d'origine, le hachage RP ID, le recovery ID et le sel de déploiement. Le texte de l'URL du sponsor n'est pas lui-même la graine d'adresse, mais la politique de sponsor est utilisée par la logique de correspondance de récupération pour l'intégration limitée à l'institution.
+L'adresse du compte intelligent est dérivée des entrées de factory, notamment les coordonnées publiques passkey, le hachage du credential, les données d'origine, le hachage RP ID, le recovery ID et le sel de déploiement. Chaque nouveau chemin de compte utilise un sel de déploiement frais, ce qui permet à un credential de contrôler plusieurs comptes intelligents.
 
 ## Si l'utilisateur perd les données locales de Pali
 
@@ -100,7 +106,7 @@ Si le profil de navigateur, le stockage de l'extension ou les métadonnées loca
 5. Pali ignore les comptes déjà présents localement.
 6. Pali réimporte les comptes correspondants dans l'état local du portefeuille.
 
-Pour create/recover piloté par dapp, Pali compare aussi le mode sponsor, le signataire et le hachage d'URL du compte récupéré avec la politique de sponsor demandée par la dapp. Cela empêche une institution de lier silencieusement l'utilisateur à une politique de sponsor différente de celle demandée par la dapp.
+La récupération depuis les paramètres découvre les comptes déployés et importe chaque compte correspondant exposé par le registre pour le credential.
 
 ## RP ID et nom du credential
 

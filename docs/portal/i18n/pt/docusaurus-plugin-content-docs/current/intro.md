@@ -7,7 +7,7 @@ A Pali Wallet é uma carteira em extensão de navegador para pessoas e aplicaç�
 
 Para dapps EVM, a Pali expõe um provider `window.ethereum` compatível com MetaMask, com solicitações EIP-1193, descoberta EIP-6963, permissões de conta, troca de chain, assinatura, transações e chamadas em lote. Para aplicações Syscoin UTXO e no estilo Bitcoin, a Pali expõe `window.pali` com métodos de conta, xpub, endereço de troco, assinatura PSBT, transação e ativos.
 
-A Pali também oferece suporte a smart accounts com passkey para instituições e dapps avançadas. Uma dapp pode pedir à Pali para criar ou recuperar uma smart account apoiada por WebAuthn, anexar uma política de sponsor e depois executar lotes atômicos por meio de `wallet_sendCalls`.
+A Pali também oferece suporte a smart accounts com passkey para instituições e dapps avançadas. Uma dapp pode pedir à Pali para criar e implantar uma smart account apoiada por WebAuthn, anexar uma política de sponsor durante a criação e depois executar lotes atômicos por meio de `wallet_sendCalls`. A recuperação de contas com passkey existentes é gerenciada na Pali.
 
 ## Escolha seu caminho
 

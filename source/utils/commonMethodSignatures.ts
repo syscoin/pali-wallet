@@ -104,6 +104,14 @@ export const BRIDGE_METHOD_SIGNATURES = {
   '0x3ccfd60b': 'withdraw',
 } as const;
 
+// Pali passkey smart-account method signatures
+export const PASSKEY_METHOD_SIGNATURES = {
+  '0x12e16987': 'createAccount',
+  '0xe0dc5666': 'createAccountAndExecute',
+  '0x1b18c84b': 'execute',
+  '0xc81b6d20': 'setSponsor',
+} as const;
+
 // Combine all method signatures
 export const ALL_METHOD_SIGNATURES = {
   ...ERC20_METHOD_SIGNATURES,
@@ -112,6 +120,7 @@ export const ALL_METHOD_SIGNATURES = {
   ...DEFI_METHOD_SIGNATURES,
   ...GOVERNANCE_METHOD_SIGNATURES,
   ...BRIDGE_METHOD_SIGNATURES,
+  ...PASSKEY_METHOD_SIGNATURES,
 } as const;
 
 /**

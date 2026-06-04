@@ -39,7 +39,7 @@ yarn dev:chrome
 ## Passkey 测试清单
 
 1. 通过默认 provider 选择器连接 Pali。
-2. 在禁用 sponsorship 的情况下创建或恢复 Passkey 账户。
+2. 在禁用 sponsorship 的情况下创建 Passkey 账户，并等待 Pali 确认部署完成。
 3. 如果测试需要，为 Passkey 账户充值或部署它。
 4. 构建 ERC-20 approve 加 `transferFrom` 批量操作。
 5. 使用 `wallet_sendCalls` 发送批量操作。

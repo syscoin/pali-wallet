@@ -2,7 +2,9 @@
 title: Passkey-Accounts erstellen und wiederherstellen
 ---
 
-`wallet_createPasskeyAccount` ist für dapp-Onboarding bewusst idempotent. Pali prüft wiederherstellbare on-chain Accounts, bevor ein neuer Credential/Account-Pfad erstellt wird.
+`wallet_createPasskeyAccount` erstellt einen neuen Passkey Smart Account für dapp-Onboarding. Pali erstellt oder wählt ein WebAuthn-Credential aus, deployed den Smart Account on-chain, bestätigt die deployten Wiederherstellungsmetadaten und schreibt den Account nach der Bestätigung in den lokalen Wallet-Zustand.
+
+Der lokale Wallet-Zustand repräsentiert deployte Passkey-Accounts. Wiederherstellung ist in den Pali-Einstellungen für Accounts verfügbar, die bereits on-chain existieren.
 
 ## Smart-Account- und Factory-Struktur
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## Recovery-before-create-Verhalten
+## Erstellungs- und Deployment-Verhalten
 
 Wenn eine dapp einen Passkey-Account anfordert:
 
 1. Pali verifiziert, dass die aktive Chain Passkey Smart Accounts unterstützt.
-2. Pali prüft, ob der Passkey einen on-chain Account wiederherstellen kann, der zur angeforderten Sponsor-Policy passt.
-3. Wenn der passende Account lokal existiert, verwendet Pali ihn wieder.
-4. Wenn der passende Account on-chain existiert, aber nicht lokal, importiert Pali ihn.
-5. Wenn ein Account für dieselbe Sponsor-URL existiert, aber Modus oder Signer abweicht, lehnt Pali mit einer Wiederherstellungsabweichung ab.
-6. Wenn kein passender Account existiert, fährt Pali mit der Erstellung eines neuen Accounts fort.
+2. Pali erstellt einen frischen Deployment-Salt für den neuen Account-Pfad.
+3. Pali erhält oder erstellt das WebAuthn-Credential-Profil.
+4. Pali berechnet die counterfactual Adresse und Deployment-Metadaten.
+5. Wenn die angeforderte Sponsor-Policy eine initiale `setSponsor`-Aktion erfordert, fordert Pali vom Benutzer eine Passkey-Assertion über den Deployment-Action-Hash an.
+6. Pali sendet `createAccount` oder `createAccountAndExecute` über den konfigurierten Deployment-Gas-Payer.
+7. Pali wartet auf Bestätigung, liest die Wiederherstellungsmetadaten des Smart Accounts von der Chain und verifiziert, dass sie zum vorbereiteten Credential und den Origin-Daten passen.
+8. Nach der Bestätigung erstellt Pali den lokalen Passkey-Account und verbindet ihn mit der anfragenden dapp.
+
+Wenn die resultierende Adresse bereits lokal als deployter Passkey-Account vorhanden ist, kann Pali diesen lokalen Account wiederverwenden.
 
 ## Was bestimmt die Adresse?
 
-Die Smart-Account-Adresse wird aus Factory-Inputs abgeleitet, einschließlich Passkey-Public-Koordinaten, Credential-Hash, Origin-Daten, RP ID-Hash, Recovery ID und Deployment-Salt. Sponsor-URL-Text ist selbst nicht der Adress-Seed, aber Sponsor-Policy wird von der Wiederherstellungs-Matching-Logik für institutionsbezogenes Onboarding verwendet.
+Die Smart-Account-Adresse wird aus Factory-Inputs abgeleitet, einschließlich Passkey-Public-Koordinaten, Credential-Hash, Origin-Daten, RP ID-Hash, Recovery ID und Deployment-Salt. Jeder neue Account-Pfad verwendet einen frischen Deployment-Salt, sodass ein Credential mehrere Smart Accounts kontrollieren kann.
 
 ## Wenn der Benutzer lokale Pali-Daten verliert
 
@@ -100,7 +106,7 @@ Wenn Browserprofil, Erweiterungsspeicher oder lokale Passkey-Account-Metadaten v
 5. Pali überspringt Accounts, die bereits lokal vorhanden sind.
 6. Pali importiert passende Accounts zurück in den lokalen Wallet-Zustand.
 
-Für dapp-gesteuertes Erstellen/Wiederherstellen vergleicht Pali außerdem Sponsor-Modus, Signer und URL des wiederhergestellten Accounts mit der von der dapp angeforderten Sponsor-Policy. Dies verhindert, dass eine Institution den Benutzer stillschweigend an eine andere Sponsor-Policy bindet als die, die die dapp angefordert hat.
+Die Wiederherstellung in den Einstellungen entdeckt deployte Accounts und importiert jeden passenden Account, den die Registry für das Credential bereitstellt.
 
 ## RP ID und Credential-Name
 

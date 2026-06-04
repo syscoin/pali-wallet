@@ -2,7 +2,9 @@
 title: 创建和恢复 Passkey 账户
 ---
 
-`wallet_createPasskeyAccount` 在设计上对 dapp 引导流程是幂等的。Pali 会在创建新的凭证/账户路径之前检查可恢复的链上账户。
+`wallet_createPasskeyAccount` 会为 dapp 引导流程创建新的 Passkey 智能账户。Pali 创建或选择 WebAuthn 凭证，在链上部署智能账户，确认已部署的恢复元数据，并在确认后将账户写入本地钱包状态。
+
+本地钱包状态表示已部署的 Passkey 账户。对于已经存在于链上的账户，可以在 Pali 设置中恢复。
 
 ## 智能账户和 factory 结构
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## 先恢复后创建的行为
+## 创建和部署行为
 
 当 dapp 请求 Passkey 账户时：
 
 1. Pali 验证活跃链支持 Passkey 智能账户。
-2. Pali 检查该 Passkey 是否能恢复与请求的 sponsor 策略匹配的链上账户。
-3. 如果匹配账户已在本地存在，Pali 会复用它。
-4. 如果匹配账户存在于链上但不在本地，Pali 会导入它。
-5. 如果存在相同 sponsor URL 但 mode 或 signer 不同的账户，Pali 会因恢复不匹配而拒绝。
-6. 如果不存在匹配账户，Pali 会继续创建新账户。
+2. Pali 为新的账户路径创建新的 deployment salt。
+3. Pali 获取或创建 WebAuthn credential profile。
+4. Pali 计算 counterfactual 地址和部署元数据。
+5. 如果请求的 sponsor 策略需要初始 `setSponsor` 操作，Pali 会要求用户对部署 action hash 进行 Passkey assertion。
+6. Pali 通过配置的部署 gas payer 提交 `createAccount` 或 `createAccountAndExecute`。
+7. Pali 等待确认，从链上读取智能账户恢复元数据，并验证其与准备好的凭证和 origin data 匹配。
+8. 确认后，Pali 创建本地 Passkey 账户并连接到请求的 dapp。
+
+如果生成的地址已作为已部署 Passkey 账户存在于本地，Pali 可以复用该本地账户。
 
 ## 地址由什么决定？
 
-智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、recovery ID 和 deployment salt。Sponsor 策略会被恢复匹配逻辑用于机构范围的引导流程。
+智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、recovery ID 和 deployment salt。每条新的账户路径都会使用新的 deployment salt，因此一个凭证可以控制多个智能账户。
 
 ## 如果用户丢失本地 Pali 数据
 
@@ -100,7 +106,7 @@ const passkeyAccount = await window.ethereum.request({
 5. Pali 跳过本地已存在的账户。
 6. Pali 将匹配账户导回本地钱包状态。
 
-对于 dapp 驱动的创建/恢复，Pali 还会将已恢复账户的 sponsor mode、signer 和 URL 与 dapp 请求的 sponsor 策略进行比较。这可以防止机构在用户不知情的情况下将用户绑定到与 dapp 请求不同的 sponsor 策略。
+设置中的恢复会发现已部署账户，并导入 registry 针对该凭证公开的每个匹配账户。
 
 ## RP ID 和凭证名称
 

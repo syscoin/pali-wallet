@@ -28,6 +28,18 @@ import { getPasskeyAssertion } from 'utils/passkey';
 interface ISign {
   send?: boolean;
 }
+
+type PasskeyTypedDataRequest = {
+  actionHash: string;
+  credentialId?: string;
+};
+
+const passkeyTypedDataPrimaryTypes = new Set([
+  'PaliPasskeyAccountCreation',
+  'PaliPasskeyExecution',
+  'PaliPasskeyPolicyUpdate',
+]);
+
 const EthSign: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
@@ -140,6 +152,41 @@ const EthSign: React.FC<ISign> = () => {
     return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
   };
 
+  const getPasskeyTypedDataRequest = (
+    typedData?: any
+  ): PasskeyTypedDataRequest | null => {
+    if (!typedData?.message || !typedData?.primaryType) {
+      return null;
+    }
+
+    const { message: typedMessage, primaryType } = typedData;
+    const requestType =
+      typedMessage.requestType ||
+      typedMessage.passkeyType ||
+      typedMessage.type ||
+      primaryType;
+    const isPasskeyRequest =
+      passkeyTypedDataPrimaryTypes.has(primaryType) ||
+      (typeof requestType === 'string' &&
+        requestType.toLowerCase().startsWith('passkey.'));
+    if (!isPasskeyRequest) {
+      return null;
+    }
+
+    const actionHash =
+      typedMessage.actionHash ||
+      typedMessage.accountActionHash ||
+      typedMessage.challenge;
+    if (!isHexString(actionHash, 32)) {
+      throw { message: t('send.invalidParameters') };
+    }
+
+    return {
+      actionHash,
+      credentialId: typedMessage.credentialId,
+    };
+  };
+
   const encodePasskey1271Signature = async (hash: string) => {
     if (!activeAccount.passkey) {
       throw { message: t('send.passkeyActiveAccountRequired') };
@@ -149,13 +196,56 @@ const EthSign: React.FC<ISign> = () => {
       activeAccount.passkey.credentialId,
       hash
     );
-    await controllerEmitter(
-      ['wallet', 'updatePasskeyBackupStatus'],
-      [activeAccount.id, assertion.backupStatus],
-      300000
-    ).catch((error) =>
-      logError('Failed to update passkey backup status', 'UI', error)
+    if (activeAccount.isPasskeySmartAccount) {
+      await controllerEmitter(
+        ['wallet', 'updatePasskeyBackupStatus'],
+        [activeAccount.id, assertion.backupStatus],
+        300000
+      ).catch((error) =>
+        logError('Failed to update passkey backup status', 'UI', error)
+      );
+    }
+
+    return defaultAbiCoder.encode(
+      [
+        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+      ],
+      [
+        {
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          typeOffset: assertion.typeOffset,
+          challengeOffset: assertion.challengeOffset,
+          originOffset: assertion.originOffset,
+          r: assertion.r,
+          s: assertion.s,
+        },
+      ]
     );
+  };
+
+  const encodePasskeyTypedDataProof = async (
+    request: PasskeyTypedDataRequest
+  ) => {
+    const credentialId =
+      request.credentialId || activeAccount.passkey?.credentialId;
+    if (!credentialId) {
+      throw { message: t('send.passkeyActiveAccountRequired') };
+    }
+
+    const assertion = await getPasskeyAssertion(
+      credentialId,
+      request.actionHash
+    );
+    if (activeAccount.isPasskeySmartAccount) {
+      await controllerEmitter(
+        ['wallet', 'updatePasskeyBackupStatus'],
+        [activeAccount.id, assertion.backupStatus],
+        300000
+      ).catch((error) =>
+        logError('Failed to update passkey backup status', 'UI', error)
+      );
+    }
 
     return defaultAbiCoder.encode(
       [
@@ -235,48 +325,26 @@ const EthSign: React.FC<ISign> = () => {
             ? getTypedDataPayload()
             : undefined;
         const signHash = getPasskeySignHash(typedData);
-
-        const policyDeployment = (await controllerEmitter(
-          ['wallet', 'preparePasskeyDeploymentPolicyExecution'],
-          [],
-          300000
-        )) as any;
-        if (policyDeployment) {
-          const assertion = await getPasskeyAssertion(
-            activeAccount.passkey.credentialId,
-            policyDeployment.actionHash
-          );
-          await controllerEmitter(
-            ['wallet', 'submitPasskeyExecution'],
-            [
-              {
-                actionHash: policyDeployment.actionHash,
-                execution: policyDeployment.execution,
-                executions: policyDeployment.executions,
-                requiresDeployment: policyDeployment.requiresDeployment,
-                proof: {
-                  authenticatorData: assertion.authenticatorData,
-                  clientDataJSON: assertion.clientDataJSON,
-                  challengeOffset: assertion.challengeOffset,
-                  originOffset: assertion.originOffset,
-                  r: assertion.r,
-                  s: assertion.s,
-                  typeOffset: assertion.typeOffset,
-                },
-                waitForConfirmation: true,
-              },
-            ],
-            300000
-          );
-        } else {
-          await controllerEmitter(
-            ['wallet', 'ensurePasskeySmartAccountDeployed'],
-            [],
-            300000
-          );
-        }
-
         response = await encodePasskey1271Signature(signHash);
+      } else if (
+        data.eventName === 'eth_signTypedData_v3' ||
+        data.eventName === 'eth_signTypedData_v4'
+      ) {
+        const typedData = getTypedDataPayload();
+        const passkeyRequest = getPasskeyTypedDataRequest(typedData);
+        if (passkeyRequest) {
+          response = await encodePasskeyTypedDataProof(passkeyRequest);
+        } else {
+          const version =
+            data.eventName === 'eth_signTypedData_v3' ? 'V3' : 'V4';
+          response = (await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'signTypedData'],
+            [address, typedData, version],
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000
+              : 10000
+          )) as string;
+        }
       } else if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
@@ -963,6 +1031,11 @@ const EthSign: React.FC<ISign> = () => {
     const parameters = Object.keys(data)
       .filter((key) => !isNaN(Number(key)))
       .map((key) => data[key]);
+    const typedData =
+      data.eventName === 'eth_signTypedData_v3' ||
+      data.eventName === 'eth_signTypedData_v4'
+        ? getTypedDataPayload()
+        : null;
 
     return (
       <div className="w-full space-y-4">
@@ -998,7 +1071,7 @@ const EthSign: React.FC<ISign> = () => {
             </div>
             <div className="max-h-80 overflow-auto">
               <pre className="text-xs text-gray-300 whitespace-pre-wrap">
-                {JSON.stringify(JSON.parse(data[1]), null, 2)}
+                {JSON.stringify(typedData, null, 2)}
               </pre>
             </div>
           </div>

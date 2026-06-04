@@ -2,14 +2,14 @@
 title: Passkeys and institutions
 ---
 
-Pali passkey smart accounts let a dapp request account creation or recovery from the wallet while the user controls execution through WebAuthn.
+Pali passkey smart accounts let a dapp request on-chain account creation from the wallet while the user controls execution through WebAuthn.
 
 This is useful for:
 
 - institutional onboarding
 - sponsor-backed gas flows
 - co-authorized policies
-- account recovery after wallet reinstall
+- wallet-managed account recovery after wallet reinstall
 - atomic multi-call workflows
 - dapps that want passkey UX without building a wallet
 
@@ -21,7 +21,7 @@ Pali's passkey accounts are zkSYS smart accounts designed around on-chain P-256 
 
 The practical result is a wallet UX that feels like biometric login, but authorizes a chain action:
 
-1. The dapp requests a passkey smart account or batch execution.
+1. The dapp requests a passkey smart account creation or batch execution.
 2. Pali prepares an action hash for the exact chain, account, calls, nonce, deadline, and sponsor policy.
 3. The browser/OS asks the user for passkey approval.
 4. The zkSYS smart account verifies the P-256 WebAuthn proof on-chain before executing.
@@ -58,7 +58,7 @@ const account = await window.ethereum.request({
 });
 ```
 
-The result includes the smart account `address` and public passkey metadata.
+The result includes the smart account `address` and public passkey metadata. Pali returns it only after the creation transaction is confirmed and the deployed account metadata has been verified on-chain.
 
 ## Sponsor modes
 
@@ -77,7 +77,7 @@ The result includes the smart account `address` and public passkey metadata.
   <figcaption>After wallet review, the browser or operating system handles WebAuthn passkey creation.</figcaption>
 </figure>
 
-The user sees the requesting site, label, sponsor mode, signer, URL, and policy text before approving. The browser or OS then shows the WebAuthn passkey prompt.
+The user sees the requesting site, label, sponsor mode, signer, URL, and policy text before approving. The browser or OS then shows the WebAuthn passkey prompt when a credential or policy assertion is required. Pali shows deployment and confirmation progress before the account is connected to the dapp.
 
 <figure className="pali-video-card">
   <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp onboarding flow"></video>

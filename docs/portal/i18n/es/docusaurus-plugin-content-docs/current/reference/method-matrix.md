@@ -28,7 +28,7 @@ Esta referencia resume los métodos públicos orientados a dapps documentados de
 | `wallet_watchAsset` | EVM | Solicitar observación de activo. | Sí |
 | `wallet_addEthereumChain` | EVM | Agregar una cadena EVM. | Sí |
 | `wallet_switchEthereumChain` | EVM | Cambiar cadena EVM. | Sí |
-| `wallet_createPasskeyAccount` | EVM | Crear o recuperar una cuenta inteligente passkey. | Sí |
+| `wallet_createPasskeyAccount` | EVM | Crear y desplegar una cuenta inteligente passkey. | Sí |
 | `wallet_sendCalls` | EVM | Enviar una solicitud por lotes EIP-5792. | Sí |
 | `wallet_getCapabilities` | EVM | Leer capacidades de cuenta. | No |
 | `wallet_getCallsStatus` | EVM | Stub de compatibilidad; ids desconocidos dan error. | No |

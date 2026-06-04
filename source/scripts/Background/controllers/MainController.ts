@@ -54,7 +54,6 @@ import {
   setSingleTransactionToState,
   setAccountAssets,
   setAccountTransactions,
-  setPasskeyCredentialProfile,
 } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import vaultCache, {
@@ -113,6 +112,7 @@ import {
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
+import type { PasskeyWebAuthnProof } from 'utils/passkey';
 import { blacklistService } from 'utils/security/blacklistService';
 import { chromeStorage } from 'utils/storageAPI';
 import {
@@ -1846,10 +1846,6 @@ class MainController {
     );
   }
 
-  private async savePasskeyMetadataState(operation: string): Promise<void> {
-    return this.passkey.savePasskeyMetadataState(operation);
-  }
-
   public async forgetWallet(pwd: string) {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
@@ -2605,6 +2601,15 @@ class MainController {
 
   public async createPasskeySmartAccount(params: {
     address: string;
+    deploymentActionHash?: string;
+    deploymentExecutions?: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    deploymentProof?: PasskeyWebAuthnProof;
     label?: string;
     metadata: IPasskeySmartAccountMetadata;
   }): Promise<any> {
@@ -2616,8 +2621,8 @@ class MainController {
   }
 
   public async savePasskeyCredentialProfile(
-    profile: IPasskeyCredentialProfile
-  ): Promise<IPasskeyCredentialProfile> {
+    profile: IPasskeyCredentialProfile | null
+  ): Promise<IPasskeyCredentialProfile | null> {
     return this.passkey.savePasskeyCredentialProfile(profile);
   }
 
@@ -2631,21 +2636,6 @@ class MainController {
     skipped: number;
   }> {
     return this.passkey.recoverPasskeySmartAccounts(params);
-  }
-
-  public async recoverPasskeySmartAccountForCreate(params: {
-    backupStatus?: PasskeyBackupStatus;
-    credentialId: string;
-    credentialIdHash: string;
-    label?: string;
-    sponsor?: {
-      mode?: string;
-      policyText?: string;
-      signer?: string;
-      url?: string;
-    };
-  }): Promise<any | null> {
-    return this.passkey.recoverPasskeySmartAccountForCreate(params);
   }
 
   public async preparePasskeySmartAccount(params: {
@@ -2670,22 +2660,25 @@ class MainController {
     };
   }): Promise<{
     address: string;
+    deploymentActionHash?: string;
+    deploymentExecution?: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    deploymentExecutions?: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
     factoryAddress: string;
     metadata: IPasskeySmartAccountMetadata;
   }> {
     return this.passkey.preparePasskeySmartAccount(params);
-  }
-
-  public async updatePasskeySponsorMetadata(
-    accountId: number,
-    sponsor?: {
-      mode?: string;
-      policyText?: string;
-      signer?: string;
-      url?: string;
-    } | null
-  ): Promise<IPasskeySmartAccountMetadata['sponsor']> {
-    return this.passkey.updatePasskeySponsorMetadata(accountId, sponsor);
   }
 
   public async updatePasskeyBackupStatus(
@@ -2695,37 +2688,8 @@ class MainController {
     return this.passkey.updatePasskeyBackupStatus(accountId, backupStatus);
   }
 
-  public async getPasskeyDeploymentStatus(accountId: number): Promise<boolean> {
-    return this.passkey.getPasskeyDeploymentStatus(accountId);
-  }
-
   public assertPasskeySmartAccountSupported(): boolean {
     return this.passkey.assertPasskeySmartAccountSupported();
-  }
-
-  public async ensurePasskeySmartAccountDeployed(): Promise<boolean> {
-    return this.passkey.ensurePasskeySmartAccountDeployed();
-  }
-
-  public async preparePasskeyDeploymentPolicyExecution(): Promise<{
-    actionHash: string;
-    execution: {
-      data: string;
-      deadline: number;
-      nonce: string;
-      target: string;
-      value: string;
-    };
-    executions: Array<{
-      data: string;
-      deadline: number;
-      nonce: string;
-      target: string;
-      value: string;
-    }>;
-    requiresDeployment: boolean;
-  } | null> {
-    return this.passkey.preparePasskeyDeploymentPolicyExecution();
   }
 
   public async preparePasskeyExecution(params: {
@@ -2748,7 +2712,6 @@ class MainController {
       target: string;
       value: string;
     }>;
-    requiresDeployment: boolean;
   }> {
     return this.passkey.preparePasskeyExecution(params);
   }
@@ -2775,13 +2738,18 @@ class MainController {
       target: string;
       value: string;
     }>;
-    requiresDeployment: boolean;
   }> {
     return this.passkey.preparePasskeyExecutions(params);
   }
 
   public async submitPasskeyExecution(params: {
     actionHash?: string;
+    confirmedSponsor?: {
+      mode?: string;
+      policyText?: string;
+      signer?: string;
+      url?: string;
+    } | null;
     execution: {
       data: string;
       deadline: number;
@@ -2805,7 +2773,6 @@ class MainController {
       s: string;
       typeOffset: number;
     };
-    requiresDeployment?: boolean;
     sponsorProof?:
       | string
       | {
@@ -3489,9 +3456,8 @@ class MainController {
       const remainingPasskeyAccounts =
         store.getState().vault.accounts[KeyringAccountType.PasskeySmartAccount];
       if (Object.keys(remainingPasskeyAccounts || {}).length === 0) {
-        store.dispatch(setPasskeyCredentialProfile(null));
+        await this.passkey.savePasskeyCredentialProfile(null);
       }
-      await this.savePasskeyMetadataState('remove-passkey-account');
     }
 
     // Notify connected DApps if needed
@@ -3555,9 +3521,9 @@ class MainController {
     try {
       // Clear the vault state from storage
       const storageKey = `state-vault-${slip44}`;
-      const passkeyStorageKey = `state-vault-${slip44}-passkeys`;
+      const passkeyProfileStorageKey = `state-vault-${slip44}-passkey-profile`;
       await chromeStorage.removeItem(storageKey);
-      await chromeStorage.removeItem(passkeyStorageKey);
+      await chromeStorage.removeItem(passkeyProfileStorageKey);
 
       // Clear from vault cache as well
       vaultCache.clearSlip44FromCache(slip44);

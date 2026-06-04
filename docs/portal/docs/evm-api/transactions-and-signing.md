@@ -61,3 +61,7 @@ Pali validates typed data structure before showing the signing popup. Dapps shou
 ## Passkey accounts and signing
 
 Passkey smart accounts can approve transactions and signing flows through WebAuthn-backed smart account logic. The user still approves in Pali and through the platform passkey prompt.
+
+For normal transactions and `wallet_sendCalls`, Pali prepares the smart account execution, obtains a WebAuthn assertion over the action hash, and submits the smart account transaction. Local passkey accounts represent confirmed on-chain deployments.
+
+For passkey-specific `eth_signTypedData_v4` requests, Pali can return an ABI-encoded WebAuthn proof for the requested action hash instead of an ECDSA EOA signature. Dapps should use explicit passkey typed-data fields such as `actionHash` and a passkey-specific primary type, then submit or fund the resulting on-chain transaction themselves.
