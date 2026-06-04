@@ -102,9 +102,10 @@ Si se pierden el perfil del navegador, el almacenamiento de la extensión o los 
 2. Pali consulta el registro de fábrica por hash de credencial.
 3. Pali lee los metadatos de recuperación de cada cuenta candidata.
 4. Pali omite cuentas ya presentes localmente.
-5. Pali importa cuentas coincidentes de vuelta al estado local de la billetera.
+5. Pali muestra las cuentas coincidentes con saldo e indicadores opcionales de actividad.
+6. Pali importa las cuentas seleccionadas de vuelta al estado local de la billetera.
 
-La recuperación desde Ajustes descubre cuentas desplegadas e importa cada cuenta coincidente que el registro expone para la credencial.
+La recuperación desde Ajustes descubre cuentas desplegadas, omite cuentas ya presentes localmente y permite elegir qué cuentas coincidentes importar.
 
 ## RP ID y nombre de credencial
 

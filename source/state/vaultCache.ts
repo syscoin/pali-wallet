@@ -55,6 +55,12 @@ function validateVaultSlip44(
   return true;
 }
 
+function omitPasskeyCredentialProfile(slip44State: ISlip44State): ISlip44State {
+  const vaultState = { ...slip44State };
+  delete vaultState.passkeyCredentialProfile;
+  return vaultState as ISlip44State;
+}
+
 /**
  * Simplified vault cache system for lazy loading slip44-specific vault states
  */
@@ -93,11 +99,13 @@ class VaultCache {
         `VaultCache.setSlip44Vault: Slip44 validation failed! Cannot save vault with slip44=${slip44}`
       );
     }
+    const vaultState = omitPasskeyCredentialProfile(slip44State);
+
     // Update cache
-    this.slip44Cache.set(slip44, slip44State);
+    this.slip44Cache.set(slip44, vaultState);
 
     // Save to storage immediately
-    await saveSlip44State(slip44, slip44State);
+    await saveSlip44State(slip44, vaultState);
   }
 
   // activeSlip44 tracking removed - now handled by Redux global state
@@ -174,8 +182,10 @@ class VaultCache {
               // Check if we have a cached state for the activeSlip44
               const cachedState = this.slip44Cache.get(activeSlip44);
               if (cachedState) {
+                const vaultState = omitPasskeyCredentialProfile(cachedState);
                 // Save the cached state which should be consistent
-                await saveSlip44State(activeSlip44, cachedState);
+                this.slip44Cache.set(activeSlip44, vaultState);
+                await saveSlip44State(activeSlip44, vaultState);
                 console.log(
                   `[VaultCache] ✅ Emergency save completed using cached state for slip44: ${activeSlip44}`
                 );
@@ -192,8 +202,9 @@ class VaultCache {
           }
 
           // Normal case - save to the target slip44
-          this.slip44Cache.set(targetSlip44, liveVaultState);
-          await saveSlip44State(targetSlip44, liveVaultState);
+          const vaultState = omitPasskeyCredentialProfile(liveVaultState);
+          this.slip44Cache.set(targetSlip44, vaultState);
+          await saveSlip44State(targetSlip44, vaultState);
 
           console.log(
             `[VaultCache] ✅ Emergency save completed for slip44: ${targetSlip44}`

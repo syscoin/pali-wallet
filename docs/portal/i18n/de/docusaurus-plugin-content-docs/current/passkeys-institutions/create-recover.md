@@ -102,9 +102,10 @@ Wenn Browserprofil, Erweiterungsspeicher oder lokale Passkey-Account-Metadaten v
 2. Pali fragt die Factory-Registry nach Credential-Hash ab.
 3. Pali liest die Wiederherstellungsmetadaten jedes Kandidaten-Accounts.
 4. Pali überspringt Accounts, die bereits lokal vorhanden sind.
-5. Pali importiert passende Accounts zurück in den lokalen Wallet-Zustand.
+5. Pali zeigt passende Accounts mit Guthaben und optionalen Aktivitätshinweisen an.
+6. Pali importiert die ausgewählten Accounts zurück in den lokalen Wallet-Zustand.
 
-Die Wiederherstellung in den Einstellungen entdeckt deployte Accounts und importiert jeden passenden Account, den die Registry für das Credential bereitstellt.
+Die Wiederherstellung in den Einstellungen entdeckt deployte Accounts, überspringt lokal bereits vorhandene Accounts und lässt den Benutzer auswählen, welche passenden Accounts importiert werden.
 
 ## RP ID und Credential-Name
 

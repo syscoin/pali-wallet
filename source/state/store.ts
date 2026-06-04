@@ -147,13 +147,15 @@ export async function loadAndActivateSlip44Vault(
       const passkeyProfileState = await loadPasskeyCredentialProfileState(
         slip44
       );
+      const vaultStateWithoutPasskeyProfile = { ...slip44VaultState };
+      delete vaultStateWithoutPasskeyProfile.passkeyCredentialProfile;
       const vaultStateWithPasskeyProfile = passkeyProfileState
         ? {
-            ...slip44VaultState,
+            ...vaultStateWithoutPasskeyProfile,
             passkeyCredentialProfile:
               passkeyProfileState.passkeyCredentialProfile || undefined,
           }
-        : slip44VaultState;
+        : vaultStateWithoutPasskeyProfile;
 
       // Load vault state into Redux
       store.dispatch(vaultRehydrate(vaultStateWithPasskeyProfile));

@@ -102,9 +102,10 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali запрашивает factory registry по credential hash.
 3. Pali читает recovery metadata каждого candidate account.
 4. Pali пропускает аккаунты, уже присутствующие локально.
-5. Pali импортирует matching accounts обратно в локальное состояние кошелька.
+5. Pali показывает matching accounts с балансом и необязательными индикаторами активности.
+6. Pali импортирует выбранные accounts обратно в локальное состояние кошелька.
 
-Восстановление в настройках обнаруживает deployed accounts и импортирует каждый matching account, который registry раскрывает для credential.
+Восстановление в настройках обнаруживает deployed accounts, пропускает аккаунты, уже присутствующие локально, и позволяет выбрать, какие matching accounts импортировать.
 
 ## RP ID и имя credential
 

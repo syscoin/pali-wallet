@@ -4,6 +4,7 @@ import { isHexString } from '@ethersproject/bytes';
 import { AddressZero, HashZero } from '@ethersproject/constants';
 import { Contract } from '@ethersproject/contracts';
 import { formatUnits } from '@ethersproject/units';
+import { retryableFetch } from '@sidhujag/sysweb3-network';
 import { ITxid } from '@sidhujag/sysweb3-utils';
 
 import {
@@ -85,6 +86,16 @@ export interface IPasskeyControllerDependencies {
   ) => Promise<void>;
 }
 
+type PasskeyRecoverySource = { address?: string; log?: any };
+
+type PasskeyRecoveryCandidate = {
+  address: string;
+  balance: string;
+  currency: string;
+  sponsor?: IPasskeySmartAccountMetadata['sponsor'];
+  txCount?: number;
+};
+
 class PasskeyController {
   constructor(private readonly deps: IPasskeyControllerDependencies) {}
 
@@ -154,6 +165,7 @@ class PasskeyController {
 
   public async createPasskeySmartAccount(params: {
     address: string;
+    credentialProfile?: IPasskeyCredentialProfile;
     deploymentActionHash?: string;
     deploymentExecutions?: Array<{
       data: string;
@@ -255,6 +267,13 @@ class PasskeyController {
         type: PaliKeyringAccountType.PasskeySmartAccount,
       })
     );
+    if (
+      params.credentialProfile &&
+      !store.getState().vault.passkeyCredentialProfile
+    ) {
+      store.dispatch(setPasskeyCredentialProfile(params.credentialProfile));
+      await this.savePasskeyCredentialProfileState(params.credentialProfile);
+    }
 
     await this.saveWalletState('create-passkey-smart-account', true, true);
     setTimeout(() => {
@@ -282,7 +301,102 @@ class PasskeyController {
     return profile;
   }
 
-  public async recoverPasskeySmartAccounts(params: {
+  public async previewPasskeySmartAccountRecovery(params: {
+    backupStatus?: PasskeyBackupStatus;
+    credentialId: string;
+    credentialIdHash: string;
+  }): Promise<{
+    candidates: PasskeyRecoveryCandidate[];
+    existing: number;
+    skipped: number;
+  }> {
+    const { activeNetwork, provider, factoryAddress } =
+      this.getPasskeyRecoveryContext(params.credentialIdHash);
+    const recoverySources = await this.getPasskeyRecoverySources({
+      activeNetwork,
+      credentialIdHash: params.credentialIdHash,
+      factoryAddress,
+      provider,
+    });
+    if (recoverySources.length === 0) {
+      return { candidates: [], existing: 0, skipped: 0 };
+    }
+
+    const existingAddresses = this.getExistingAccountAddressSet();
+    let existing = 0;
+    const missingSources = recoverySources.filter((source) => {
+      const address = this.getPasskeyRecoverySourceAddress(source);
+      if (address && existingAddresses.has(address.toLowerCase())) {
+        existing += 1;
+        return false;
+      }
+      return true;
+    });
+    if (missingSources.length === 0) {
+      return { candidates: [], existing, skipped: 0 };
+    }
+
+    let skipped = 0;
+    const recoveryCandidates: PasskeyRecoveryCandidate[] = [];
+    for (const sourceBatch of this.chunkArray(missingSources, 5)) {
+      const recoveredCandidates = await Promise.all(
+        sourceBatch.map((source) =>
+          this.readRecoveredPasskeyAccount({
+            address: source.address,
+            credentialId: params.credentialId,
+            credentialIdHash: params.credentialIdHash,
+            factoryAddress,
+            log: source.log,
+            provider,
+            backupStatus: params.backupStatus,
+          })
+        )
+      );
+
+      const enrichedCandidates = await Promise.all(
+        recoveredCandidates.map(async (candidate) => {
+          if (
+            !candidate ||
+            !candidate.metadata ||
+            existingAddresses.has(candidate.address.toLowerCase())
+          ) {
+            return null;
+          }
+
+          const hints = await this.getPasskeyRecoveryActivityHints(
+            candidate.address,
+            activeNetwork,
+            provider
+          );
+          return {
+            address: candidate.address,
+            balance: hints.balance,
+            currency: hints.currency,
+            sponsor: candidate.metadata.sponsor,
+            ...(hints.txCount !== undefined ? { txCount: hints.txCount } : {}),
+          };
+        })
+      );
+
+      for (const candidate of enrichedCandidates) {
+        if (
+          !candidate ||
+          existingAddresses.has(candidate.address.toLowerCase())
+        ) {
+          skipped += 1;
+          continue;
+        }
+
+        existingAddresses.add(candidate.address.toLowerCase());
+        recoveryCandidates.push(candidate);
+      }
+    }
+
+    return { candidates: recoveryCandidates, existing, skipped };
+  }
+
+  public async importPasskeySmartAccounts(params: {
+    addresses: string[];
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
@@ -291,56 +405,27 @@ class PasskeyController {
     recovered: number;
     skipped: number;
   }> {
-    const { activeNetwork } = store.getState().vault;
-    if (activeNetwork.kind !== INetworkType.Ethereum) {
-      throw new Error('Passkey accounts are only supported on EVM networks');
-    }
-    if (!isHexString(params.credentialIdHash, 32)) {
-      throw new Error('Invalid passkey credential hash');
-    }
-
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error('Web3 provider not available');
+    const selectedAddresses = new Set(
+      params.addresses.map((address) => getAddress(address).toLowerCase())
+    );
+    if (selectedAddresses.size === 0) {
+      return { recovered: 0, skipped: 0, accounts: [] };
     }
 
-    const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
-    let recoverySources: Array<{ address?: string; log?: any }> = (
-      await this.getPasskeyRecoveryRegistryAccounts({
-        chainId: activeNetwork.chainId,
-        credentialIdHash: params.credentialIdHash,
-        provider,
-      })
-    ).map((address) => ({ address }));
-    if (recoverySources.length === 0) {
-      const logs = await this.getPasskeyRecoveryLogs({
-        credentialIdHash: params.credentialIdHash,
-        factoryAddress,
-        provider,
-      });
-      recoverySources = logs.map((log) => ({ log }));
-    }
+    const { activeNetwork, provider, factoryAddress } =
+      this.getPasskeyRecoveryContext(params.credentialIdHash);
+    const recoverySources = await this.getPasskeyRecoverySources({
+      activeNetwork,
+      credentialIdHash: params.credentialIdHash,
+      factoryAddress,
+      provider,
+    });
     if (recoverySources.length === 0) {
       return { recovered: 0, skipped: 0, accounts: [] };
     }
 
     const { accounts } = store.getState().vault;
-    const existingAddresses = new Set<string>();
-    Object.values(accounts).forEach((accountsByType: Record<number, any>) => {
-      Object.values(accountsByType || {}).forEach((account: any) => {
-        if (account?.address) {
-          existingAddresses.add(account.address.toLowerCase());
-        }
-      });
-    });
-    recoverySources = recoverySources.filter((source) => {
-      const address = this.getPasskeyRecoverySourceAddress(source);
-      return !address || !existingAddresses.has(address.toLowerCase());
-    });
-    if (recoverySources.length === 0) {
-      return { recovered: 0, skipped: 0, accounts: [] };
-    }
-
+    const existingAddresses = this.getExistingAccountAddressSet();
     let skipped = 0;
     const recoveredAccounts: Array<{
       address: string;
@@ -370,35 +455,27 @@ class PasskeyController {
       );
 
       for (const candidate of candidates) {
+        const normalizedAddress = candidate?.address?.toLowerCase();
         if (
           !candidate ||
           !candidate.metadata ||
-          existingAddresses.has(candidate.address.toLowerCase())
+          !normalizedAddress ||
+          !selectedAddresses.has(normalizedAddress) ||
+          existingAddresses.has(normalizedAddress)
         ) {
-          skipped += 1;
+          if (normalizedAddress && selectedAddresses.has(normalizedAddress)) {
+            skipped += 1;
+          }
           continue;
         }
 
         const label = `Recovered Passkey Account ${nextId + 1}`;
-        const newAccount = {
+        const newAccount = this.createRecoveredPasskeyAccountState({
           address: candidate.address,
-          balances: {
-            [INetworkType.Syscoin]: -1,
-            [INetworkType.Ethereum]: -1,
-          },
           id: nextId,
-          isImported: false,
-          isLedgerWallet: false,
-          isPasskeySmartAccount: true,
-          isTrezorWallet: false,
           label,
-          passkey: {
-            ...candidate.metadata,
-            passkeyName: label,
-          },
-          xprv: '',
-          xpub: candidate.address,
-        };
+          metadata: candidate.metadata,
+        });
 
         store.dispatch(
           createAccount({
@@ -406,7 +483,7 @@ class PasskeyController {
             accountType: PaliKeyringAccountType.PasskeySmartAccount,
           })
         );
-        existingAddresses.add(candidate.address.toLowerCase());
+        existingAddresses.add(normalizedAddress);
         recoveredAccounts.push({
           address: newAccount.address,
           id: newAccount.id,
@@ -469,6 +546,149 @@ class PasskeyController {
       }
     }
     return null;
+  }
+
+  private getPasskeyRecoveryContext(credentialIdHash: string) {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    if (!isHexString(credentialIdHash, 32)) {
+      throw new Error('Invalid passkey credential hash');
+    }
+
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    return {
+      activeNetwork,
+      factoryAddress: getPasskeyFactoryAddress(activeNetwork.chainId),
+      provider,
+    };
+  }
+
+  private async getPasskeyRecoverySources({
+    activeNetwork,
+    credentialIdHash,
+    factoryAddress,
+    provider,
+  }: {
+    activeNetwork: { chainId: number };
+    credentialIdHash: string;
+    factoryAddress: string;
+    provider: any;
+  }): Promise<PasskeyRecoverySource[]> {
+    let recoverySources: PasskeyRecoverySource[] = (
+      await this.getPasskeyRecoveryRegistryAccounts({
+        chainId: activeNetwork.chainId,
+        credentialIdHash,
+        provider,
+      })
+    ).map((address) => ({ address }));
+    if (recoverySources.length === 0) {
+      const logs = await this.getPasskeyRecoveryLogs({
+        credentialIdHash,
+        factoryAddress,
+        provider,
+      });
+      recoverySources = logs.map((log) => ({ log }));
+    }
+    return recoverySources;
+  }
+
+  private createRecoveredPasskeyAccountState({
+    address,
+    id,
+    label,
+    metadata,
+  }: {
+    address: string;
+    id: number;
+    label: string;
+    metadata: IPasskeySmartAccountMetadata;
+  }) {
+    return {
+      address,
+      balances: {
+        [INetworkType.Syscoin]: -1,
+        [INetworkType.Ethereum]: -1,
+      },
+      id,
+      isImported: false,
+      isLedgerWallet: false,
+      isPasskeySmartAccount: true,
+      isTrezorWallet: false,
+      label,
+      passkey: {
+        ...metadata,
+        passkeyName: label,
+      },
+      xprv: '',
+      xpub: address,
+    };
+  }
+
+  private async getPasskeyRecoveryActivityHints(
+    address: string,
+    activeNetwork: any,
+    provider: any
+  ) {
+    let balance = '0';
+    try {
+      balance = formatUnits(await provider.getBalance(address), 18);
+    } catch (error) {
+      logError('Failed to fetch passkey recovery balance', 'UI', error);
+    }
+
+    const txCount = await this.getPasskeyRecoveryTxCount(
+      address,
+      activeNetwork
+    );
+
+    return {
+      balance,
+      currency: activeNetwork.currency || 'eth',
+      ...(txCount !== undefined ? { txCount } : {}),
+    };
+  }
+
+  private getBlockscoutV2Base(activeNetwork: any): string | null {
+    const sourceUrl = activeNetwork.apiUrl || activeNetwork.explorer;
+    if (!sourceUrl) return null;
+
+    try {
+      const url = new URL(sourceUrl);
+      const path = url.pathname.replace(/\/$/, '');
+      url.search = '';
+      url.hash = '';
+      url.pathname = path.endsWith('/api') ? `${path}/v2` : `${path}/api/v2`;
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      return null;
+    }
+  }
+
+  private async getPasskeyRecoveryTxCount(
+    address: string,
+    activeNetwork: any
+  ): Promise<number | undefined> {
+    const blockscoutBase = this.getBlockscoutV2Base(activeNetwork);
+    if (!blockscoutBase) return undefined;
+
+    try {
+      const response = await retryableFetch(
+        `${blockscoutBase}/addresses/${address}/counters`
+      );
+      if (!response.ok) return undefined;
+
+      const data = await response.json();
+      const txCount = Number(data?.transactions_count);
+      return Number.isFinite(txCount) ? txCount : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private getExistingAccountAddressSet() {

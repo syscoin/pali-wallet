@@ -44,6 +44,6 @@ Passkey accounts require zkSYS passkey smart account contracts and P-256 verific
   <figcaption>The passkey policy screen shows sponsor mode, signer, URL, and backup status where available.</figcaption>
 </figure>
 
-If local wallet state is deleted or Pali is installed on a new device, Pali can recover passkey smart accounts from the on-chain factory registry and event logs. Any Pali install with access to the same passkey credential can import the matching deployed accounts after a WebAuthn assertion.
+If local wallet state is deleted or Pali is installed on a new device, Pali can recover passkey smart accounts from the on-chain factory registry and event logs. Any Pali install with access to the same passkey credential can discover matching deployed accounts after a WebAuthn assertion, skip accounts already present locally, and import the selected accounts.
 
 One passkey credential can control multiple smart accounts. Because new accounts use fresh deployment salts, Pali recovers them from the on-chain registry rather than by locally guessing indexes.

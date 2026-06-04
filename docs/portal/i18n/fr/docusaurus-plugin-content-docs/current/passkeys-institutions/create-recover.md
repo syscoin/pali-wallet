@@ -102,9 +102,10 @@ Si le profil de navigateur, le stockage de l'extension ou les métadonnées loca
 2. Pali interroge le registre de factory par hachage de credential.
 3. Pali lit les métadonnées de récupération de chaque compte candidat.
 4. Pali ignore les comptes déjà présents localement.
-5. Pali réimporte les comptes correspondants dans l'état local du portefeuille.
+5. Pali affiche les comptes correspondants avec le solde et des indices d'activité optionnels.
+6. Pali réimporte les comptes sélectionnés dans l'état local du portefeuille.
 
-La récupération depuis les paramètres découvre les comptes déployés et importe chaque compte correspondant exposé par le registre pour le credential.
+La récupération depuis les paramètres découvre les comptes déployés, ignore les comptes déjà présents localement et permet de choisir les comptes correspondants à importer.
 
 ## RP ID et nom du credential
 

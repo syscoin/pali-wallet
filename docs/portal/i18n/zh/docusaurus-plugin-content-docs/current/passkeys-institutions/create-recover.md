@@ -102,9 +102,10 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali 按 credential hash 查询 factory registry。
 3. Pali 读取每个候选账户的恢复元数据。
 4. Pali 跳过本地已存在的账户。
-5. Pali 将匹配账户导回本地钱包状态。
+5. Pali 显示匹配账户及其余额和可选活动提示。
+6. Pali 将所选账户导回本地钱包状态。
 
-设置中的恢复会发现已部署账户，并导入 registry 针对该凭证公开的每个匹配账户。
+设置中的恢复会发现已部署账户，跳过本地已存在的账户，并让用户选择要导入的匹配账户。
 
 ## RP ID 和凭证名称
 

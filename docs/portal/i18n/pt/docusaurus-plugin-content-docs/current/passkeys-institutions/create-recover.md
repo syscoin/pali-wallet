@@ -102,9 +102,10 @@ Se o perfil do navegador, o storage da extensão ou metadados locais da conta co
 2. A Pali consulta o registro da fábrica por hash da credencial.
 3. A Pali lê os metadados de recuperação de cada conta candidata.
 4. A Pali ignora contas já presentes localmente.
-5. A Pali importa contas correspondentes de volta para o estado local da carteira.
+5. A Pali mostra contas correspondentes com saldo e indicadores opcionais de atividade.
+6. A Pali importa as contas selecionadas de volta para o estado local da carteira.
 
-A recuperação nas Configurações descobre contas implantadas e importa cada conta correspondente exposta pelo registro para a credencial.
+A recuperação nas Configurações descobre contas implantadas, ignora contas já presentes localmente e permite escolher quais contas correspondentes importar.
 
 ## RP ID e nome da credencial
 
