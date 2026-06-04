@@ -246,7 +246,7 @@ const RecoverPasskeyAccounts = () => {
               <>
                 <button
                   type="button"
-                  className="self-start text-brand-blue500 text-sm font-medium disabled:opacity-60"
+                  className="self-start rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-1 text-white text-sm font-medium transition-colors hover:bg-brand-blue500 hover:bg-opacity-20 disabled:opacity-60"
                   disabled={loading}
                   onClick={toggleSelectAll}
                 >
