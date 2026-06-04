@@ -17,7 +17,6 @@ factory account parameter에는 다음이 포함됩니다.
 
 | Parameter | 의미 |
 | --- | --- |
-| `recoveryId` | Pali wallet context, chain id, factory address에서 파생된 wallet-scoped recovery anchor. |
 | `passkeyX`, `passkeyY` | WebAuthn credential에서 추출된 P-256 public key coordinate. |
 | `credentialIdHash` | WebAuthn credential id의 hash. |
 | `rpIdHash` | authenticator data의 WebAuthn RP ID hash. |
@@ -86,7 +85,7 @@ dapp이 passkey account를 요청하면:
 
 ## Address를 결정하는 요소
 
-smart account address는 passkey public coordinate, credential hash, origin data, RP ID hash, recovery ID, deployment salt를 포함한 factory input에서 파생됩니다. 각 새 account path는 fresh deployment salt를 사용하므로 하나의 credential이 여러 smart account를 제어할 수 있습니다.
+smart account address는 passkey public coordinate, credential hash, origin data, RP ID hash, deployment salt를 포함한 factory input에서 파생됩니다. 각 새 account path는 fresh deployment salt를 사용하므로 하나의 credential이 여러 smart account를 제어할 수 있습니다.
 
 ## 사용자가 local Pali data를 잃은 경우
 
@@ -94,17 +93,16 @@ smart account address는 passkey public coordinate, credential hash, origin data
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="passkey smart account 복구를 위한 Pali settings 화면" />
 </a>
-  <figcaption>Recovery 화면은 restored wallet 및 authenticator와 일치하는 on-chain passkey account를 discover합니다.</figcaption>
+  <figcaption>Recovery 화면은 선택된 authenticator credential과 일치하는 on-chain passkey account를 discover합니다.</figcaption>
 </figure>
 
 browser profile, extension storage 또는 local passkey account metadata를 잃어도 chain에는 account 복구에 충분한 public metadata가 남아 있을 수 있습니다.
 
-1. 사용자가 recovery ID의 anchor가 되는 wallet context로 Pali를 복원하거나 엽니다.
-2. Pali가 사용자의 authenticator에서 discoverable WebAuthn assertion을 요청합니다.
-3. Pali가 recovery ID와 credential hash로 factory registry를 query합니다.
-4. Pali가 각 candidate account의 recovery metadata를 읽습니다.
-5. Pali가 이미 local에 있는 account를 건너뜁니다.
-6. Pali가 일치하는 account를 local wallet state로 다시 import합니다.
+1. Pali가 사용자의 authenticator에서 discoverable WebAuthn assertion을 요청합니다.
+2. Pali가 credential hash로 factory registry를 query합니다.
+3. Pali가 각 candidate account의 recovery metadata를 읽습니다.
+4. Pali가 이미 local에 있는 account를 건너뜁니다.
+5. Pali가 일치하는 account를 local wallet state로 다시 import합니다.
 
 Settings recovery는 deploy된 account를 discover하고 registry가 해당 credential에 대해 노출하는 모든 matching account를 import합니다.
 

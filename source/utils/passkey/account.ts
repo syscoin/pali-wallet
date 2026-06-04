@@ -1,5 +1,4 @@
 import { getAddress } from '@ethersproject/address';
-import { isHexString } from '@ethersproject/bytes';
 import { AddressZero } from '@ethersproject/constants';
 
 import {
@@ -22,9 +21,7 @@ export const getPasskeyFactoryAccountParams = (metadata: {
     x: string;
     y: string;
   };
-  recoveryId: string;
 }) => ({
-  recoveryId: metadata.recoveryId,
   passkeyX: metadata.publicKey.x,
   passkeyY: metadata.publicKey.y,
   credentialIdHash: metadata.credentialIdHash,
@@ -36,20 +33,12 @@ export const getPasskeyFactoryAccountParams = (metadata: {
 
 export const getPasskeyMetadataFactoryAccountParams = (
   metadata: IPasskeySmartAccountMetadata
-) => {
-  if (!metadata.recoveryId || !isHexString(metadata.recoveryId, 32)) {
-    throw new Error(
-      'Passkey account is missing recovery metadata. Please recreate this passkey account before deployment.'
-    );
-  }
-
-  return getPasskeyFactoryAccountParams({
+) =>
+  getPasskeyFactoryAccountParams({
     credentialIdHash: metadata.credentialIdHash,
     deploymentSalt: metadata.deploymentSalt,
     publicKey: metadata.publicKey,
-    recoveryId: metadata.recoveryId,
   });
-};
 
 export const getPasskeySponsorContractMode = (
   metadata: IPasskeySmartAccountMetadata

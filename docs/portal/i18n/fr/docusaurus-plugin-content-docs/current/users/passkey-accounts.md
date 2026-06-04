@@ -44,4 +44,4 @@ Les comptes passkey exigent des contrats de compte intelligent passkey zkSYS et 
   <figcaption>L'écran de politique passkey affiche le mode sponsor, le signataire, l'URL et l'état de sauvegarde lorsqu'ils sont disponibles.</figcaption>
 </figure>
 
-Si l'état local du portefeuille est supprimé ou si le portefeuille est restauré, Pali peut récupérer les comptes intelligents passkey depuis le registre de factory on-chain et les journaux d'événements. La récupération nécessite toujours une assertion WebAuthn de la passkey concernée.
+Si l'état local du portefeuille est supprimé ou si Pali est installé sur un nouvel appareil, Pali peut récupérer les comptes intelligents passkey depuis le registre de factory on-chain et les journaux d'événements. Toute installation de Pali ayant accès au même credential passkey peut importer les comptes déployés correspondants après une assertion WebAuthn.

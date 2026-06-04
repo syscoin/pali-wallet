@@ -27,13 +27,12 @@ factory는 deployment 전에 account address를 계산할 수 있습니다. dapp
 
 ## Recovery assumption
 
-Recovery는 wallet-scoped 및 passkey-scoped입니다. 사용자는 일반적으로 다음이 필요합니다.
+Recovery는 passkey-scoped입니다. 사용자는 일반적으로 다음이 필요합니다.
 
-- restored Pali wallet context
 - 관련 WebAuthn credential
 - passkey factory에 대한 chain support
 
-Recovery는 custodial backdoor가 아닙니다. chain은 discoverable public metadata와 account list를 제공하지만, 사용자는 control을 증명하기 위해 여전히 wallet recovery context와 관련 WebAuthn credential이 필요합니다.
+Recovery는 custodial backdoor가 아닙니다. chain은 discoverable public metadata와 account list를 제공하지만, 사용자는 control을 증명하기 위해 여전히 관련 WebAuthn credential이 필요합니다.
 
 ## Credential backup status
 

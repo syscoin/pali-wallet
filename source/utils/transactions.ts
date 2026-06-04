@@ -327,7 +327,7 @@ const PASSKEY_EXECUTE_SELECTOR = id(
   'execute((address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
 ).slice(0, 10);
 const PASSKEY_CREATE_AND_EXECUTE_SELECTOR = id(
-  'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,bytes32,uint256,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
+  'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,uint256,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
 ).slice(0, 10);
 const PASSKEY_SET_SPONSOR_SELECTOR = id(
   'setSponsor(uint8,address,string)'
@@ -355,7 +355,7 @@ export const getPasskeyDisplayTransaction = (tx: any): any | null => {
     } else if (input.startsWith(PASSKEY_CREATE_AND_EXECUTE_SELECTOR)) {
       [, executions] = defaultAbiCoder.decode(
         [
-          'tuple(bytes32 recoveryId,bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt)',
+          'tuple(bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt)',
           'tuple(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[]',
           'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
           'tuple(uint8 v,bytes32 r,bytes32 s)',

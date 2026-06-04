@@ -44,4 +44,4 @@ Contas com passkey exigem contratos de smart account com passkey da zkSYS e supo
   <figcaption>A tela de política de passkey mostra modo de sponsor, signer, URL e status de backup quando disponíveis.</figcaption>
 </figure>
 
-Se o estado local da carteira for excluído ou a carteira for restaurada, a Pali pode recuperar smart accounts com passkey a partir do registro da fábrica on-chain e logs de eventos. A recuperação ainda precisa de uma asserção WebAuthn da passkey relevante.
+Se o estado local da carteira for excluído ou a Pali for instalada em um novo dispositivo, a Pali pode recuperar smart accounts com passkey a partir do registro da fábrica on-chain e logs de eventos. Qualquer instalação da Pali com acesso à mesma credencial passkey pode importar as contas implantadas correspondentes após uma asserção WebAuthn.

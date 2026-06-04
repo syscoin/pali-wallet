@@ -3,7 +3,6 @@ import { BigNumber } from '@ethersproject/bignumber';
 import { isHexString } from '@ethersproject/bytes';
 import { AddressZero, HashZero } from '@ethersproject/constants';
 import { Contract } from '@ethersproject/contracts';
-import { id as hashText } from '@ethersproject/hash';
 import { formatUnits } from '@ethersproject/units';
 import { ITxid } from '@sidhujag/sysweb3-utils';
 
@@ -305,16 +304,11 @@ class PasskeyController {
     }
 
     const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
-    const recoveryId = this.getPasskeyRecoveryId(
-      factoryAddress,
-      activeNetwork.chainId
-    );
     let recoverySources: Array<{ address?: string; log?: any }> = (
       await this.getPasskeyRecoveryRegistryAccounts({
         chainId: activeNetwork.chainId,
         credentialIdHash: params.credentialIdHash,
         provider,
-        recoveryId,
       })
     ).map((address) => ({ address }));
     if (recoverySources.length === 0) {
@@ -322,7 +316,6 @@ class PasskeyController {
         credentialIdHash: params.credentialIdHash,
         factoryAddress,
         provider,
-        recoveryId,
       });
       recoverySources = logs.map((log) => ({ log }));
     }
@@ -370,7 +363,6 @@ class PasskeyController {
             factoryAddress,
             log: source.log,
             provider,
-            recoveryId,
             backupStatus: params.backupStatus,
           })
         )
@@ -730,41 +722,25 @@ class PasskeyController {
     chainId,
     credentialIdHash,
     provider,
-    recoveryId,
   }: {
     chainId: number;
-    credentialIdHash?: string;
+    credentialIdHash: string;
     provider: any;
-    recoveryId: string;
   }): Promise<string[]> {
     try {
       const factory = getPasskeyFactory(chainId, provider);
       const count = BigNumber.from(
-        await this.withPasskeyRpcBackoff(() => {
-          if (credentialIdHash) {
-            return factory.getAccountCountByCredential(
-              recoveryId,
-              credentialIdHash
-            );
-          }
-          return factory.getAccountCountByRecoveryId(recoveryId);
-        })
+        await this.withPasskeyRpcBackoff(() =>
+          factory.getAccountCountByCredential(credentialIdHash)
+        )
       ).toNumber();
       const pageSize = 50;
       const accounts: string[] = [];
 
       for (let offset = 0; offset < count; offset += pageSize) {
-        const page = await this.withPasskeyRpcBackoff<string[]>(() => {
-          if (credentialIdHash) {
-            return factory.getAccountsByCredential(
-              recoveryId,
-              credentialIdHash,
-              offset,
-              pageSize
-            );
-          }
-          return factory.getAccountsByRecoveryId(recoveryId, offset, pageSize);
-        });
+        const page = await this.withPasskeyRpcBackoff<string[]>(() =>
+          factory.getAccountsByCredential(credentialIdHash, offset, pageSize)
+        );
         accounts.push(...page.map((address) => getAddress(address)));
       }
 
@@ -779,12 +755,10 @@ class PasskeyController {
     credentialIdHash,
     factoryAddress,
     provider,
-    recoveryId,
   }: {
     credentialIdHash: string;
     factoryAddress: string;
     provider: any;
-    recoveryId: string;
   }) {
     const latestBlock = await this.withPasskeyRpcBackoff<number>(() =>
       provider.getBlockNumber()
@@ -800,7 +774,7 @@ class PasskeyController {
           address: factoryAddress,
           fromBlock,
           toBlock,
-          topics: [eventTopic, null, recoveryId, credentialIdHash],
+          topics: [eventTopic, null, credentialIdHash],
         })
       );
       logs.push(...chunkLogs);
@@ -817,7 +791,6 @@ class PasskeyController {
     factoryAddress,
     log,
     provider,
-    recoveryId,
   }: {
     address?: string;
     backupStatus?: PasskeyBackupStatus;
@@ -826,7 +799,6 @@ class PasskeyController {
     factoryAddress: string;
     log?: any;
     provider: any;
-    recoveryId: string;
   }): Promise<{
     address: string;
     metadata?: IPasskeySmartAccountMetadata;
@@ -891,7 +863,6 @@ class PasskeyController {
         factoryAddress,
         isDeployed: true,
         passkeyName: 'Recovered Passkey Account',
-        recoveryId,
         publicKey: {
           originHash,
           originLength: BigNumber.from(originLength).toNumber(),
@@ -1149,16 +1120,11 @@ class PasskeyController {
 
     const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
     const factory = getPasskeyFactory(activeNetwork.chainId, provider);
-    const recoveryId = this.getPasskeyRecoveryId(
-      factoryAddress,
-      activeNetwork.chainId
-    );
     const sponsor = normalizePasskeySponsor(params.sponsor);
     const accountParams = getPasskeyFactoryAccountParams({
       credentialIdHash: params.credentialIdHash,
       deploymentSalt: params.deploymentSalt,
       publicKey: params.publicKey,
-      recoveryId,
     });
     const address = await factory.getAccountAddress(accountParams);
     const metadata = {
@@ -1176,7 +1142,6 @@ class PasskeyController {
       factoryAddress,
       isDeployed: false,
       passkeyName: params.passkeyName,
-      recoveryId,
       publicKey: params.publicKey,
       sponsor,
     };
@@ -1358,26 +1323,6 @@ class PasskeyController {
     }
     const balance = await provider.getBalance(address);
     return BigNumber.from(balance).gte(minimumBalanceWei);
-  }
-
-  private getPasskeyRecoveryId(factoryAddress: string, chainId: number) {
-    const { accounts } = store.getState().vault;
-    const firstHdAccount =
-      accounts[PaliKeyringAccountType.HDAccount]?.[0] || null;
-    if (!firstHdAccount?.address) {
-      throw new Error(
-        'Passkey recovery requires the first HD account in this wallet'
-      );
-    }
-
-    return hashText(
-      [
-        'PALI_PASSKEY_RECOVERY_V1',
-        chainId.toString(),
-        getAddress(factoryAddress),
-        getAddress(firstHdAccount.address),
-      ].join(':')
-    );
   }
 
   private async getDefaultPasskeyGasPayer(minimumBalanceWei: BigNumber) {

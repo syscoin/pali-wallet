@@ -17,7 +17,6 @@ Factory 账户参数包括：
 
 | 参数 | 含义 |
 | --- | --- |
-| `recoveryId` | 从 Pali 钱包上下文、chain id 和 factory 地址派生的钱包范围恢复锚点。 |
 | `passkeyX`, `passkeyY` | 从 WebAuthn 凭证中提取的 P-256 公钥坐标。 |
 | `credentialIdHash` | WebAuthn credential id 的哈希。 |
 | `rpIdHash` | 来自 authenticator data 的 WebAuthn RP ID hash。 |
@@ -86,7 +85,7 @@ const passkeyAccount = await window.ethereum.request({
 
 ## 地址由什么决定？
 
-智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、recovery ID 和 deployment salt。每条新的账户路径都会使用新的 deployment salt，因此一个凭证可以控制多个智能账户。
+智能账户地址由 factory 输入派生，包括 Passkey 公钥坐标、credential hash、origin data、RP ID hash、deployment salt。每条新的账户路径都会使用新的 deployment salt，因此一个凭证可以控制多个智能账户。
 
 ## 如果用户丢失本地 Pali 数据
 
@@ -99,12 +98,11 @@ const passkeyAccount = await window.ethereum.request({
 
 如果浏览器配置文件、扩展存储或本地 Passkey 账户元数据丢失，链上仍可能包含足够的公开元数据来恢复账户：
 
-1. 用户使用锚定 recovery ID 的钱包上下文恢复或打开 Pali。
-2. Pali 从用户的 authenticator 请求一个可发现的 WebAuthn assertion。
-3. Pali 按 recovery ID 和 credential hash 查询 factory registry。
-4. Pali 读取每个候选账户的恢复元数据。
-5. Pali 跳过本地已存在的账户。
-6. Pali 将匹配账户导回本地钱包状态。
+1. Pali 从用户的 authenticator 请求一个可发现的 WebAuthn assertion。
+2. Pali 按 credential hash 查询 factory registry。
+3. Pali 读取每个候选账户的恢复元数据。
+4. Pali 跳过本地已存在的账户。
+5. Pali 将匹配账户导回本地钱包状态。
 
 设置中的恢复会发现已部署账户，并导入 registry 针对该凭证公开的每个匹配账户。
 

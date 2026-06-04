@@ -44,4 +44,4 @@ Passkey-Accounts erfordern zkSYS-Passkey-Smart-Account-Contracts und P-256-Verif
   <figcaption>Der Passkey-Policy-Bildschirm zeigt Sponsor-Modus, Signer, URL und, sofern verfügbar, Backup-Status.</figcaption>
 </figure>
 
-Wenn lokaler Wallet-Zustand gelöscht oder die Wallet wiederhergestellt wird, kann Pali Passkey Smart Accounts aus der on-chain Factory-Registry und Event-Logs wiederherstellen. Die Wiederherstellung benötigt weiterhin eine WebAuthn-Assertion des relevanten Passkeys.
+Wenn lokaler Wallet-Zustand gelöscht wird oder Pali auf einem neuen Gerät installiert ist, kann Pali Passkey Smart Accounts aus der on-chain Factory-Registry und Event-Logs wiederherstellen. Jede Pali-Installation mit Zugriff auf dasselbe Passkey-Credential kann die passenden deployten Accounts nach einer WebAuthn-Assertion importieren.

@@ -17,7 +17,6 @@ Die Factory-Account-Parameter umfassen:
 
 | Parameter | Bedeutung |
 | --- | --- |
-| `recoveryId` | Wallet-bezogener Wiederherstellungsanker, abgeleitet aus Pali-Wallet-Kontext, Chain id und Factory-Adresse. |
 | `passkeyX`, `passkeyY` | P-256-Public-Key-Koordinaten, extrahiert aus dem WebAuthn-Credential. |
 | `credentialIdHash` | Hash der WebAuthn-Credential-ID. |
 | `rpIdHash` | WebAuthn RP ID-Hash aus Authenticator-Daten. |
@@ -86,7 +85,7 @@ Wenn die resultierende Adresse bereits lokal als deployter Passkey-Account vorha
 
 ## Was bestimmt die Adresse?
 
-Die Smart-Account-Adresse wird aus Factory-Inputs abgeleitet, einschließlich Passkey-Public-Koordinaten, Credential-Hash, Origin-Daten, RP ID-Hash, Recovery ID und Deployment-Salt. Jeder neue Account-Pfad verwendet einen frischen Deployment-Salt, sodass ein Credential mehrere Smart Accounts kontrollieren kann.
+Die Smart-Account-Adresse wird aus Factory-Inputs abgeleitet, einschließlich Passkey-Public-Koordinaten, Credential-Hash, Origin-Daten, RP ID-Hash und Deployment-Salt. Jeder neue Account-Pfad verwendet einen frischen Deployment-Salt, sodass ein Credential mehrere Smart Accounts kontrollieren kann.
 
 ## Wenn der Benutzer lokale Pali-Daten verliert
 
@@ -94,17 +93,16 @@ Die Smart-Account-Adresse wird aus Factory-Inputs abgeleitet, einschließlich Pa
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="Pali-Einstellungsbildschirm zur Wiederherstellung von Passkey Smart Accounts" />
 </a>
-  <figcaption>Der Wiederherstellungsbildschirm entdeckt on-chain Passkey-Accounts, die zur wiederhergestellten Wallet und zum Authenticator passen.</figcaption>
+  <figcaption>Der Wiederherstellungsbildschirm entdeckt on-chain Passkey-Accounts, die zum ausgewählten Authenticator-Credential passen.</figcaption>
 </figure>
 
 Wenn Browserprofil, Erweiterungsspeicher oder lokale Passkey-Account-Metadaten verloren gehen, kann die Chain weiterhin genügend öffentliche Metadaten enthalten, um den Account wiederherzustellen:
 
-1. Der Benutzer stellt Pali mit dem Wallet-Kontext wieder her oder öffnet Pali damit, der die Recovery ID verankert.
-2. Pali fordert eine discoverable WebAuthn-Assertion vom Authenticator des Benutzers an.
-3. Pali fragt die Factory-Registry nach Recovery ID und Credential-Hash ab.
-4. Pali liest die Wiederherstellungsmetadaten jedes Kandidaten-Accounts.
-5. Pali überspringt Accounts, die bereits lokal vorhanden sind.
-6. Pali importiert passende Accounts zurück in den lokalen Wallet-Zustand.
+1. Pali fordert eine discoverable WebAuthn-Assertion vom Authenticator des Benutzers an.
+2. Pali fragt die Factory-Registry nach Credential-Hash ab.
+3. Pali liest die Wiederherstellungsmetadaten jedes Kandidaten-Accounts.
+4. Pali überspringt Accounts, die bereits lokal vorhanden sind.
+5. Pali importiert passende Accounts zurück in den lokalen Wallet-Zustand.
 
 Die Wiederherstellung in den Einstellungen entdeckt deployte Accounts und importiert jeden passenden Account, den die Registry für das Credential bereitstellt.
 

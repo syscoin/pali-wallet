@@ -29,15 +29,14 @@ The factory can compute the account address before deployment. This is useful fo
 
 ## Recovery assumptions
 
-Recovery is wallet-scoped and passkey-scoped. A user generally needs:
+Recovery is passkey-scoped. A user generally needs:
 
-- the restored Pali wallet context
 - the relevant WebAuthn credential
 - chain support for the passkey factory
 
-Recovery is not a custodial backdoor. The chain provides discoverable account lists and public recovery metadata for deployed accounts, but the user still needs the wallet recovery context and the relevant WebAuthn credential to prove control.
+Recovery is not a custodial backdoor. The chain provides discoverable account lists and public recovery metadata for deployed accounts, but the user still needs the relevant WebAuthn credential to prove control.
 
-Creation uses fresh deployment salts. Recovery queries the factory registry and event history for the credential and recovery ID, then imports the matching deployed accounts.
+Creation uses fresh deployment salts. Recovery queries the factory registry and event history for the credential hash, then imports the matching deployed accounts.
 
 ## Credential backup status
 
@@ -72,6 +71,6 @@ Use clear policy text. A good policy explains:
 Pali stores two different passkey concepts:
 
 - The passkey credential profile is lightweight local state for the shared WebAuthn credential: credential id, credential hash, public key, backup status, and display name.
-- Passkey account metadata belongs to each deployed smart account: address, chain id, factory, deployment salt, recovery id, public key, sponsor policy, and deployment status.
+- Passkey account metadata belongs to each deployed smart account: address, chain id, factory, deployment salt, public key, sponsor policy, and deployment status.
 
 The credential profile can exist before an account is created. A local passkey account represents a confirmed on-chain deployment.

@@ -17,7 +17,6 @@ Los parámetros de cuenta de fábrica incluyen:
 
 | Parámetro | Significado |
 | --- | --- |
-| `recoveryId` | Ancla de recuperación limitada a la billetera derivada del contexto de Pali Wallet, chain id y dirección de fábrica. |
 | `passkeyX`, `passkeyY` | Coordenadas de clave pública P-256 extraídas de la credencial WebAuthn. |
 | `credentialIdHash` | Hash del id de credencial WebAuthn. |
 | `rpIdHash` | Hash de RP ID WebAuthn desde datos del autenticador. |
@@ -86,7 +85,7 @@ Si la dirección resultante ya está presente localmente como una cuenta passkey
 
 ## ¿Qué determina la dirección?
 
-La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID, recovery ID y salt de despliegue. Cada nueva ruta de cuenta usa un salt de despliegue fresco, por lo que una credencial puede controlar varias cuentas inteligentes.
+La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID y salt de despliegue. Cada nueva ruta de cuenta usa un salt de despliegue fresco, por lo que una credencial puede controlar varias cuentas inteligentes.
 
 ## Si el usuario pierde datos locales de Pali
 
@@ -94,17 +93,16 @@ La dirección de la cuenta inteligente se deriva de entradas de fábrica que inc
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="Pantalla de ajustes de Pali para recuperar cuentas inteligentes passkey" />
 </a>
-  <figcaption>La pantalla de recuperación descubre cuentas passkey on-chain que coinciden con la billetera restaurada y el autenticador.</figcaption>
+  <figcaption>La pantalla de recuperación descubre cuentas passkey on-chain que coinciden con la credencial del autenticador seleccionada.</figcaption>
 </figure>
 
 Si se pierden el perfil del navegador, el almacenamiento de la extensión o los metadatos locales de cuenta passkey, la cadena aún puede contener suficientes metadatos públicos para recuperar la cuenta:
 
-1. El usuario restaura o abre Pali con el contexto de billetera que ancla el recovery ID.
-2. Pali solicita una assertion WebAuthn descubrible desde el autenticador del usuario.
-3. Pali consulta el registro de fábrica por recovery ID y hash de credencial.
-4. Pali lee los metadatos de recuperación de cada cuenta candidata.
-5. Pali omite cuentas ya presentes localmente.
-6. Pali importa cuentas coincidentes de vuelta al estado local de la billetera.
+1. Pali solicita una assertion WebAuthn descubrible desde el autenticador del usuario.
+2. Pali consulta el registro de fábrica por hash de credencial.
+3. Pali lee los metadatos de recuperación de cada cuenta candidata.
+4. Pali omite cuentas ya presentes localmente.
+5. Pali importa cuentas coincidentes de vuelta al estado local de la billetera.
 
 La recuperación desde Ajustes descubre cuentas desplegadas e importa cada cuenta coincidente que el registro expone para la credencial.
 

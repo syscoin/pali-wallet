@@ -72,7 +72,6 @@ export interface IPasskeySmartAccountMetadata {
     x: string;
     y: string;
   };
-  recoveryId?: string;
   sponsor?: {
     mode: PasskeySponsorMode;
     policyText?: string;

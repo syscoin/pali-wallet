@@ -17,7 +17,6 @@ The factory account parameters include:
 
 | Parameter | Meaning |
 | --- | --- |
-| `recoveryId` | Wallet-scoped recovery anchor derived from Pali wallet context, chain id, and factory address. |
 | `passkeyX`, `passkeyY` | P-256 public key coordinates extracted from the WebAuthn credential. |
 | `credentialIdHash` | Hash of the WebAuthn credential id. |
 | `rpIdHash` | WebAuthn RP ID hash from authenticator data. |
@@ -86,7 +85,7 @@ If the resulting address is already present locally as a deployed passkey accoun
 
 ## What determines the address?
 
-The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Each new account path uses a fresh deployment salt, so one credential can control multiple smart accounts.
+The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, and deployment salt. Each new account path uses a fresh deployment salt, so one credential can control multiple smart accounts.
 
 ## If the user loses local Pali data
 
@@ -94,17 +93,16 @@ The smart account address is derived from factory inputs including passkey publi
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="Pali settings screen for recovering passkey smart accounts" />
 </a>
-  <figcaption>The recovery screen discovers on-chain passkey accounts that match the restored wallet and authenticator.</figcaption>
+  <figcaption>The recovery screen discovers on-chain passkey accounts that match the selected authenticator credential.</figcaption>
 </figure>
 
 If the browser profile, extension storage, or local passkey account metadata is lost, the chain can still contain enough public metadata to recover the account:
 
-1. The user restores or opens Pali with the wallet context that anchors the recovery ID.
-2. Pali requests a discoverable WebAuthn assertion from the user's authenticator.
-3. Pali queries the factory registry by recovery ID and credential hash.
-4. Pali reads each candidate account's recovery metadata.
-5. Pali skips accounts already present locally.
-6. Pali imports matching accounts back into local wallet state.
+1. Pali requests a discoverable WebAuthn assertion from the user's authenticator.
+2. Pali queries the factory registry by credential hash.
+3. Pali reads each candidate account's recovery metadata.
+4. Pali skips accounts already present locally.
+5. Pali imports matching accounts back into local wallet state.
 
 Settings recovery discovers deployed accounts and imports every matching account the registry exposes for the credential.
 

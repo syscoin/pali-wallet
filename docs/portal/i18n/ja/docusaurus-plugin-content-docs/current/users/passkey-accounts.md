@@ -44,4 +44,4 @@ Passkeyアカウントには、zkSYS passkeyスマートアカウントコント
   <figcaption>passkey policy画面には、利用可能な場合にスポンサーmode、signer、URL、バックアップ状態が表示されます。</figcaption>
 </figure>
 
-ローカルウォレット状態が削除された場合やウォレットを復元した場合、Paliはオンチェーンのファクトリーレジストリとイベントログからpasskeyスマートアカウントを復元できます。復元には、関連するpasskeyからのWebAuthn assertionが引き続き必要です。
+ローカルウォレット状態が削除された場合や新しいデバイスにPaliをインストールした場合、Paliはオンチェーンのファクトリーレジストリとイベントログからpasskeyスマートアカウントを復元できます。同じpasskey credentialにアクセスできるPaliインストールであれば、WebAuthn assertion後に一致するデプロイ済みアカウントをインポートできます。

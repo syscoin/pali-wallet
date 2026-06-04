@@ -44,4 +44,4 @@ Passkey 계정에는 zkSYS passkey smart account contract와 P-256 verification 
   <figcaption>passkey policy 화면은 가능한 경우 sponsor mode, signer, URL, backup status를 보여줍니다.</figcaption>
 </figure>
 
-local wallet state가 삭제되었거나 wallet이 복원된 경우 Pali는 on-chain factory registry와 event log에서 passkey smart account를 복구할 수 있습니다. 복구에는 여전히 관련 passkey의 WebAuthn assertion이 필요합니다.
+local wallet state가 삭제되었거나 새 기기에 Pali를 설치한 경우 Pali는 on-chain factory registry와 event log에서 passkey smart account를 복구할 수 있습니다. 같은 passkey credential에 접근할 수 있는 모든 Pali 설치는 WebAuthn assertion 후 일치하는 deployed account를 import할 수 있습니다.

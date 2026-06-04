@@ -102,9 +102,6 @@ const ManageAccountsView = React.memo(() => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const passkeyCredentialProfile = useSelector(
-    (state: RootState) => state.vault.passkeyCredentialProfile
-  );
 
   const { navigate, alert } = useUtils();
   const { controllerEmitter } = useController();
@@ -180,14 +177,6 @@ const ManageAccountsView = React.memo(() => {
   const canRecoverPasskeyAccounts = Boolean(
     PASSKEY_FACTORY_ADDRESSES[activeNetwork.chainId]
   );
-  const hasPasskeyRecoveryAnchorState = useMemo(
-    () =>
-      Boolean(passkeyCredentialProfile) ||
-      Object.keys(accounts[KeyringAccountType.PasskeySmartAccount] || {})
-        .length > 0,
-    [accounts, passkeyCredentialProfile]
-  );
-
   // Check if account can be removed
   const canRemoveAccount = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
@@ -199,15 +188,13 @@ const ManageAccountsView = React.memo(() => {
 
       // For HD accounts, must keep at least one
       if (accountType === KeyringAccountType.HDAccount) {
-        if (account.id === 0 && hasPasskeyRecoveryAnchorState) return false;
-
         const hdAccountsCount = Object.keys(accounts.HDAccount).length;
         if (hdAccountsCount <= 1) return false;
       }
 
       return true;
     },
-    [accounts, hasPasskeyRecoveryAnchorState, isActiveAccount, totalAccounts]
+    [accounts, isActiveAccount, totalAccounts]
   );
 
   const handleRemoveClick = useCallback(
