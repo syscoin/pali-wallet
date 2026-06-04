@@ -76,8 +76,8 @@ When a dapp requests a passkey account:
 2. Pali creates a fresh deployment salt for the new account path.
 3. Pali obtains or creates the WebAuthn credential profile.
 4. Pali computes the counterfactual address and deployment metadata.
-5. If the requested sponsor policy requires an initial `setSponsor` action, Pali asks the user for a passkey assertion over the deployment action hash.
-6. Pali submits `createAccount` or `createAccountAndExecute` through the configured deployment gas payer.
+5. Pali asks the user for a passkey assertion over the deployment approval hash.
+6. Pali submits `createAccount`, or `createAccountAndExecute` when an initial sponsor policy action is needed, through the configured deployment gas payer.
 7. Pali waits for confirmation, reads the smart account recovery metadata from-chain, and verifies it matches the prepared credential and origin data.
 8. After confirmation, Pali creates the local passkey account and connects it to the requesting dapp.
 

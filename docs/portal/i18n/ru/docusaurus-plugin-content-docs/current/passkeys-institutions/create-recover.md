@@ -76,8 +76,8 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali создает fresh deployment salt для нового account path.
 3. Pali получает или создает WebAuthn credential profile.
 4. Pali вычисляет counterfactual address и deployment metadata.
-5. Если запрошенная sponsor policy требует начального действия `setSponsor`, Pali запрашивает у пользователя passkey assertion для deployment action hash.
-6. Pali отправляет `createAccount` или `createAccountAndExecute` через настроенный deployment gas payer.
+5. Pali запрашивает у пользователя passkey assertion для deployment approval hash.
+6. Pali отправляет `createAccount`, или `createAccountAndExecute`, когда требуется начальное действие sponsor policy, через настроенный deployment gas payer.
 7. Pali ждет confirmation, читает recovery metadata smart account из chain и проверяет соответствие подготовленному credential и origin data.
 8. После confirmation Pali создает локальный passkey account и подключает его к запрашивающей dapp.
 

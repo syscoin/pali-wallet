@@ -76,8 +76,8 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali 为新的账户路径创建新的 deployment salt。
 3. Pali 获取或创建 WebAuthn credential profile。
 4. Pali 计算 counterfactual 地址和部署元数据。
-5. 如果请求的 sponsor 策略需要初始 `setSponsor` 操作，Pali 会要求用户对部署 action hash 进行 Passkey assertion。
-6. Pali 通过配置的部署 gas payer 提交 `createAccount` 或 `createAccountAndExecute`。
+5. Pali 会要求用户对部署 approval hash 进行 Passkey assertion。
+6. Pali 通过配置的部署 gas payer 提交 `createAccount`；如果需要初始 sponsor policy 操作，则提交 `createAccountAndExecute`。
 7. Pali 等待确认，从链上读取智能账户恢复元数据，并验证其与准备好的凭证和 origin data 匹配。
 8. 确认后，Pali 创建本地 Passkey 账户并连接到请求的 dapp。
 

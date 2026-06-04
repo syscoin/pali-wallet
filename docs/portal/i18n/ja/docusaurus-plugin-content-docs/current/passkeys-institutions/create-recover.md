@@ -76,8 +76,8 @@ dappがpasskeyアカウントをリクエストすると:
 2. Paliは新しいアカウント経路のために新しいデプロイsaltを作成します。
 3. PaliはWebAuthn credential profileを取得または作成します。
 4. Paliはcounterfactualアドレスとデプロイメタデータを計算します。
-5. 要求されたスポンサーpolicyが初期`setSponsor`アクションを必要とする場合、Paliはデプロイaction hashに対するpasskey assertionをユーザーに求めます。
-6. Paliは設定されたデプロイgas payerを通じて`createAccount`または`createAccountAndExecute`を送信します。
+5. Paliはデプロイ承認hashに対するpasskey assertionをユーザーに求めます。
+6. Paliは設定されたデプロイgas payerを通じて`createAccount`を送信します。初期スポンサーpolicyアクションが必要な場合は`createAccountAndExecute`を送信します。
 7. Paliは確認を待ち、スマートアカウントの復元メタデータをチェーンから読み取り、準備済みcredentialとorigin dataに一致することを検証します。
 8. 確認後、Paliはローカルpasskeyアカウントを作成し、要求元dappへ接続します。
 

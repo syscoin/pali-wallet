@@ -587,6 +587,7 @@
       "credential": "Verificando sua passkey...",
       "recovering": "Verificando se já existe uma conta on-chain...",
       "deploying": "Preparando a criação on-chain da conta...",
+      "approving": "Aguardando aprovação com passkey para criar esta conta on-chain...",
       "confirming": "Enviando e confirmando a transação on-chain...",
       "saving": "Salvando a conta confirmada na Pali...",
       "idle": "Pronto"

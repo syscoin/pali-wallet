@@ -76,8 +76,8 @@ Lorsqu'une dapp demande un compte passkey :
 2. Pali crée un sel de déploiement frais pour le nouveau chemin de compte.
 3. Pali obtient ou crée le profil de credential WebAuthn.
 4. Pali calcule l'adresse contrefactuelle et les métadonnées de déploiement.
-5. Si la politique de sponsor demandée exige une action initiale `setSponsor`, Pali demande à l'utilisateur une assertion passkey sur le hash d'action de déploiement.
-6. Pali soumet `createAccount` ou `createAccountAndExecute` via le payeur de gas de déploiement configuré.
+5. Pali demande à l'utilisateur une assertion passkey sur le hash d'approbation de déploiement.
+6. Pali soumet `createAccount`, ou `createAccountAndExecute` lorsqu'une action initiale de politique sponsor est nécessaire, via le payeur de gas de déploiement configuré.
 7. Pali attend la confirmation, lit les métadonnées de récupération du compte intelligent depuis la chaîne et vérifie qu'elles correspondent au credential préparé et aux données d'origine.
 8. Après confirmation, Pali crée le compte passkey local et le connecte à la dapp demandeuse.
 

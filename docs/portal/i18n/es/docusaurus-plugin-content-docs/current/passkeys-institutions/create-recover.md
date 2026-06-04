@@ -76,8 +76,8 @@ Cuando una dapp solicita una cuenta passkey:
 2. Pali crea un salt de despliegue fresco para la nueva ruta de cuenta.
 3. Pali obtiene o crea el perfil de credencial WebAuthn.
 4. Pali calcula la dirección contrafactual y los metadatos de despliegue.
-5. Si la política de sponsor solicitada requiere una acción inicial `setSponsor`, Pali solicita al usuario una assertion passkey sobre el hash de acción de despliegue.
-6. Pali envía `createAccount` o `createAccountAndExecute` mediante el pagador de gas de despliegue configurado.
+5. Pali solicita al usuario una assertion passkey sobre el hash de aprobación de despliegue.
+6. Pali envía `createAccount`, o `createAccountAndExecute` cuando se necesita una acción inicial de política de sponsor, mediante el pagador de gas de despliegue configurado.
 7. Pali espera la confirmación, lee los metadatos de recuperación de la cuenta inteligente desde la cadena y verifica que coincidan con la credencial preparada y los datos de origen.
 8. Después de la confirmación, Pali crea la cuenta passkey local y la conecta a la dapp solicitante.
 

@@ -38,6 +38,7 @@ import {
   PasskeyContractSponsorMode,
   assertPasskeyRelayPayloadMatches,
   getPasskeyActionHash,
+  getPasskeyCreateHash,
   getPasskeyFactoryAccountParams,
   getPasskeyMetadataFactoryAccountParams,
   getPasskeyPolicyExecution,
@@ -926,23 +927,30 @@ class PasskeyController {
       };
     const executions = deploymentExecutions || [];
     const requiresPolicy = executions.length > 0;
-    if (requiresPolicy && !deploymentProof) {
-      throw new Error('Passkey approval is required to create this policy');
+    if (!deploymentProof) {
+      throw new Error('Passkey approval is required to create this account');
     }
-    if (requiresPolicy) {
-      const expectedActionHash = getPasskeyActionHash({
-        account: address,
-        chainId: metadata.chainId,
-        executions,
-        sponsorMode: PasskeyContractSponsorMode.None,
-        sponsorSigner: AddressZero,
-      });
-      if (
-        deploymentActionHash &&
-        deploymentActionHash.toLowerCase() !== expectedActionHash.toLowerCase()
-      ) {
-        throw new Error('Passkey deployment approval does not match account');
-      }
+    const expectedDeploymentHash = requiresPolicy
+      ? getPasskeyActionHash({
+          account: address,
+          chainId: metadata.chainId,
+          executions,
+          sponsorMode: PasskeyContractSponsorMode.None,
+          sponsorSigner: AddressZero,
+        })
+      : getPasskeyCreateHash({
+          account: address,
+          chainId: metadata.chainId,
+          credentialIdHash: metadata.credentialIdHash,
+          deploymentSalt: metadata.deploymentSalt,
+          publicKey: metadata.publicKey,
+        });
+    if (
+      deploymentActionHash &&
+      deploymentActionHash.toLowerCase() !==
+        expectedDeploymentHash.toLowerCase()
+    ) {
+      throw new Error('Passkey deployment approval does not match account');
     }
 
     const deploymentGasLimit = BigNumber.from(3_000_000);
@@ -963,6 +971,7 @@ class PasskeyController {
         ])
       : passkeyFactoryInterface.encodeFunctionData('createAccount', [
           getPasskeyMetadataFactoryAccountParams(metadata),
+          deploymentProof,
         ]);
 
     await this.runWithGasPayer(
@@ -1163,17 +1172,19 @@ class PasskeyController {
           sponsorMode: PasskeyContractSponsorMode.None,
           sponsorSigner: AddressZero,
         })
-      : undefined;
+      : getPasskeyCreateHash({
+          account: address,
+          chainId: activeNetwork.chainId,
+          credentialIdHash: params.credentialIdHash,
+          deploymentSalt: params.deploymentSalt,
+          publicKey: params.publicKey,
+        });
 
     return {
       address,
-      ...(deploymentActionHash
-        ? {
-            deploymentActionHash,
-            deploymentExecution,
-            deploymentExecutions,
-          }
-        : {}),
+      deploymentActionHash,
+      deploymentExecution,
+      deploymentExecutions,
       factoryAddress,
       metadata,
     };

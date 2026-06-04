@@ -76,8 +76,8 @@ Quando uma dapp solicita uma conta com passkey:
 2. A Pali cria um salt de implantação novo para o novo caminho de conta.
 3. A Pali obtém ou cria o perfil de credencial WebAuthn.
 4. A Pali calcula o endereço contrafactual e os metadados de implantação.
-5. Se a política de sponsor solicitada exigir uma ação inicial `setSponsor`, a Pali solicita ao usuário uma asserção passkey sobre o hash de ação de implantação.
-6. A Pali envia `createAccount` ou `createAccountAndExecute` pelo pagador de gas de implantação configurado.
+5. A Pali solicita ao usuário uma asserção passkey sobre o hash de aprovação de implantação.
+6. A Pali envia `createAccount`, ou `createAccountAndExecute` quando uma ação inicial de política de sponsor é necessária, pelo pagador de gas de implantação configurado.
 7. A Pali espera a confirmação, lê os metadados de recuperação da smart account na chain e verifica se correspondem à credencial preparada e aos dados de origem.
 8. Após a confirmação, a Pali cria a conta com passkey local e a conecta à dapp solicitante.
 
