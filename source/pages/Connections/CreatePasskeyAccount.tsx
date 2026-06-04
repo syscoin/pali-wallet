@@ -74,41 +74,42 @@ export const CreatePasskeyAccount = () => {
     });
   const isSponsorUrlValid =
     !trimmedSponsorUrl || isValidSponsorServiceUrl(trimmedSponsorUrl);
-  const isSponsorSignerPasskeyAccount = (() => {
+  const normalizedSponsorSigner = (() => {
     try {
-      const normalizedSigner = getAddress(trimmedSponsorSigner).toLowerCase();
-      return Object.values(
-        accounts[KeyringAccountType.PasskeySmartAccount] || {}
-      ).some(
-        (account: any) =>
-          account?.address &&
-          getAddress(account.address).toLowerCase() === normalizedSigner
-      );
+      return trimmedSponsorSigner
+        ? getAddress(trimmedSponsorSigner).toLowerCase()
+        : '';
     } catch {
-      return false;
+      return '';
     }
+  })();
+  const isSponsorSignerPasskeyAccount = (() => {
+    if (!normalizedSponsorSigner) return false;
+    return Object.values(
+      accounts[KeyringAccountType.PasskeySmartAccount] || {}
+    ).some(
+      (account: any) =>
+        account?.address &&
+        getAddress(account.address).toLowerCase() === normalizedSponsorSigner
+    );
   })();
   const isLocalSponsorSigner = (() => {
-    try {
-      const normalizedSigner = getAddress(trimmedSponsorSigner).toLowerCase();
-      return [
-        KeyringAccountType.HDAccount,
-        KeyringAccountType.Imported,
-        KeyringAccountType.Ledger,
-        KeyringAccountType.Trezor,
-      ].some((accountType) =>
-        Object.values(accounts[accountType] || {}).some(
-          (account: any) =>
-            account?.address &&
-            getAddress(account.address).toLowerCase() === normalizedSigner
-        )
-      );
-    } catch {
-      return false;
-    }
+    if (!normalizedSponsorSigner) return false;
+    return [
+      KeyringAccountType.HDAccount,
+      KeyringAccountType.Imported,
+      KeyringAccountType.Ledger,
+      KeyringAccountType.Trezor,
+    ].some((accountType) =>
+      Object.values(accounts[accountType] || {}).some(
+        (account: any) =>
+          account?.address &&
+          getAddress(account.address).toLowerCase() === normalizedSponsorSigner
+      )
+    );
   })();
   const isSponsorSignerValid =
-    Boolean(trimmedSponsorSigner) &&
+    Boolean(normalizedSponsorSigner) &&
     !isSponsorSignerPasskeyAccount &&
     (!isSponsorRequired || Boolean(trimmedSponsorUrl) || isLocalSponsorSigner);
   const sponsorSignerError =

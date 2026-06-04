@@ -68,39 +68,43 @@ const PasskeyAccountPolicy = () => {
   const [policyStep, setPolicyStep] = useState<PolicyStep>('idle');
   const [refreshingStatus, setRefreshingStatus] = useState<boolean>(false);
 
-  const isSponsorSignerPasskeyAccount = (value: string) => {
+  const normalizeSponsorSignerInput = (value: string) => {
     try {
-      const normalizedValue = getAddress(value.trim()).toLowerCase();
-      return Object.values(
-        accounts[KeyringAccountType.PasskeySmartAccount] || {}
-      ).some(
-        (account: any) =>
-          account?.address &&
-          getAddress(account.address).toLowerCase() === normalizedValue
-      );
+      return value.trim() ? getAddress(value.trim()).toLowerCase() : '';
     } catch {
-      return false;
+      return '';
     }
   };
 
+  const isSponsorSignerPasskeyAccount = (value: string) => {
+    const normalizedValue = normalizeSponsorSignerInput(value);
+    if (!normalizedValue) return false;
+
+    return Object.values(
+      accounts[KeyringAccountType.PasskeySmartAccount] || {}
+    ).some(
+      (account: any) =>
+        account?.address &&
+        getAddress(account.address).toLowerCase() === normalizedValue
+    );
+  };
+
   const isLocalSponsorSigner = (value: string) => {
-    try {
-      const normalizedValue = getAddress(value.trim()).toLowerCase();
-      return [
-        KeyringAccountType.HDAccount,
-        KeyringAccountType.Imported,
-        KeyringAccountType.Ledger,
-        KeyringAccountType.Trezor,
-      ].some((accountType) =>
-        Object.values(accounts[accountType] || {}).some(
-          (account: any) =>
-            account?.address &&
-            getAddress(account.address).toLowerCase() === normalizedValue
-        )
-      );
-    } catch {
-      return false;
-    }
+    const normalizedValue = normalizeSponsorSignerInput(value);
+    if (!normalizedValue) return false;
+
+    return [
+      KeyringAccountType.HDAccount,
+      KeyringAccountType.Imported,
+      KeyringAccountType.Ledger,
+      KeyringAccountType.Trezor,
+    ].some((accountType) =>
+      Object.values(accounts[accountType] || {}).some(
+        (account: any) =>
+          account?.address &&
+          getAddress(account.address).toLowerCase() === normalizedValue
+      )
+    );
   };
 
   const trimmedSponsorUrl = sponsorUrl.trim();
@@ -116,8 +120,11 @@ const PasskeyAccountPolicy = () => {
         trimmedSponsorSigner !== initialSponsorSigner));
   const isSponsorUrlValid =
     !trimmedSponsorUrl || isValidSponsorServiceUrl(trimmedSponsorUrl);
+  const normalizedSponsorSigner =
+    normalizeSponsorSignerInput(trimmedSponsorSigner);
   const isSponsorSignerValid = Boolean(trimmedSponsorSigner)
-    ? !isSponsorSignerPasskeyAccount(trimmedSponsorSigner) &&
+    ? Boolean(normalizedSponsorSigner) &&
+      !isSponsorSignerPasskeyAccount(trimmedSponsorSigner) &&
       (policyMode !== PasskeySponsorMode.Required ||
         Boolean(trimmedSponsorUrl) ||
         isLocalSponsorSigner(trimmedSponsorSigner))
@@ -453,6 +460,7 @@ const PasskeyAccountPolicy = () => {
                           );
                         }
                         if (
+                          normalizeSponsorSignerInput(trimmedValue) &&
                           !isSponsorSignerPasskeyAccount(trimmedValue) &&
                           (policyMode !== PasskeySponsorMode.Required ||
                             Boolean(trimmedSponsorUrl) ||
