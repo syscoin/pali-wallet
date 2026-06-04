@@ -17,7 +17,6 @@ Factory account parameters включают:
 
 | Параметр | Значение |
 | --- | --- |
-| `recoveryId` | Wallet-scoped recovery anchor, derived из Pali wallet context, chain id и factory address. |
 | `passkeyX`, `passkeyY` | Координаты P-256 public key, извлеченные из WebAuthn credential. |
 | `credentialIdHash` | Hash WebAuthn credential id. |
 | `rpIdHash` | WebAuthn RP ID hash из authenticator data. |
@@ -77,8 +76,8 @@ const passkeyAccount = await window.ethereum.request({
 2. Pali создает fresh deployment salt для нового account path.
 3. Pali получает или создает WebAuthn credential profile.
 4. Pali вычисляет counterfactual address и deployment metadata.
-5. Если запрошенная sponsor policy требует начального действия `setSponsor`, Pali запрашивает у пользователя passkey assertion для deployment action hash.
-6. Pali отправляет `createAccount` или `createAccountAndExecute` через настроенный deployment gas payer.
+5. Pali запрашивает у пользователя passkey assertion для deployment approval hash.
+6. Pali отправляет `createAccount`, или `createAccountAndExecute`, когда требуется начальное действие sponsor policy, через настроенный deployment gas payer.
 7. Pali ждет confirmation, читает recovery metadata smart account из chain и проверяет соответствие подготовленному credential и origin data.
 8. После confirmation Pali создает локальный passkey account и подключает его к запрашивающей dapp.
 
@@ -86,7 +85,7 @@ const passkeyAccount = await window.ethereum.request({
 
 ## Что определяет адрес?
 
-Адрес smart account derived из factory inputs, включая passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID и deployment salt. Каждый новый account path использует fresh deployment salt, поэтому один credential может контролировать несколько smart accounts.
+Адрес smart account derived из factory inputs, включая passkey public coordinates, credential hash, origin data, RP ID hash, deployment salt. Каждый новый account path использует fresh deployment salt, поэтому один credential может контролировать несколько smart accounts.
 
 ## Если пользователь теряет локальные данные Pali
 
@@ -99,12 +98,11 @@ const passkeyAccount = await window.ethereum.request({
 
 Если browser profile, extension storage или локальные metadata passkey account потеряны, chain все еще может содержать достаточно публичных metadata для восстановления аккаунта:
 
-1. Пользователь восстанавливает или открывает Pali с wallet context, который привязывает recovery ID.
-2. Pali запрашивает discoverable WebAuthn assertion у authenticator пользователя.
-3. Pali запрашивает factory registry по recovery ID и credential hash.
-4. Pali читает recovery metadata каждого candidate account.
-5. Pali пропускает аккаунты, уже присутствующие локально.
-6. Pali импортирует matching accounts обратно в локальное состояние кошелька.
+1. Pali запрашивает discoverable WebAuthn assertion у authenticator пользователя.
+2. Pali запрашивает factory registry по credential hash.
+3. Pali читает recovery metadata каждого candidate account.
+4. Pali пропускает аккаунты, уже присутствующие локально.
+5. Pali импортирует matching accounts обратно в локальное состояние кошелька.
 
 Восстановление в настройках обнаруживает deployed accounts и импортирует каждый matching account, который registry раскрывает для credential.
 

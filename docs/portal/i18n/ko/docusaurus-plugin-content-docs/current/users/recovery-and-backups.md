@@ -27,7 +27,7 @@ Backup status는 편의성과 보안 사이에서 선택하는 데 도움이 되
 
 ## Passkey 계정 복구
 
-Pali passkey recovery는 wallet-scoped recovery metadata와 on-chain account discovery를 사용합니다. recovery flow는 다음과 같습니다.
+Pali passkey recovery는 credential-scoped이며 on-chain account discovery를 사용합니다. 같은 passkey credential에서 WebAuthn assertion을 받을 수 있는 모든 Pali 설치는 일치하는 deployed passkey account를 import할 수 있습니다. recovery flow는 다음과 같습니다.
 
 1. discoverable WebAuthn assertion을 요청합니다.
 2. factory registry와 creation log에서 일치하는 smart account를 조회합니다.

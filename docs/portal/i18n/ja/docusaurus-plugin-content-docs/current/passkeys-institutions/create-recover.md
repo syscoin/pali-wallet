@@ -17,7 +17,6 @@ passkeyシステムには2つのオンチェーン要素があります。
 
 | パラメーター | 意味 |
 | --- | --- |
-| `recoveryId` | Paliウォレットコンテキスト、chain id、factory addressから派生するウォレットスコープの復元アンカー。 |
 | `passkeyX`, `passkeyY` | WebAuthn credentialから抽出されるP-256公開鍵座標。 |
 | `credentialIdHash` | WebAuthn credential idのハッシュ。 |
 | `rpIdHash` | authenticator dataからのWebAuthn RP ID hash。 |
@@ -77,8 +76,8 @@ dappがpasskeyアカウントをリクエストすると:
 2. Paliは新しいアカウント経路のために新しいデプロイsaltを作成します。
 3. PaliはWebAuthn credential profileを取得または作成します。
 4. Paliはcounterfactualアドレスとデプロイメタデータを計算します。
-5. 要求されたスポンサーpolicyが初期`setSponsor`アクションを必要とする場合、Paliはデプロイaction hashに対するpasskey assertionをユーザーに求めます。
-6. Paliは設定されたデプロイgas payerを通じて`createAccount`または`createAccountAndExecute`を送信します。
+5. Paliはデプロイ承認hashに対するpasskey assertionをユーザーに求めます。
+6. Paliは設定されたデプロイgas payerを通じて`createAccount`を送信します。初期スポンサーpolicyアクションが必要な場合は`createAccountAndExecute`を送信します。
 7. Paliは確認を待ち、スマートアカウントの復元メタデータをチェーンから読み取り、準備済みcredentialとorigin dataに一致することを検証します。
 8. 確認後、Paliはローカルpasskeyアカウントを作成し、要求元dappへ接続します。
 
@@ -86,7 +85,7 @@ dappがpasskeyアカウントをリクエストすると:
 
 ## 何がアドレスを決定するのか
 
-スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、recovery ID、deployment saltを含むファクトリー入力から派生します。新しいアカウント経路ごとに新しいdeployment saltを使用するため、1つのcredentialで複数のスマートアカウントを制御できます。
+スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、deployment saltを含むファクトリー入力から派生します。新しいアカウント経路ごとに新しいdeployment saltを使用するため、1つのcredentialで複数のスマートアカウントを制御できます。
 
 ## ユーザーがローカルPaliデータを失った場合
 
@@ -99,12 +98,11 @@ dappがpasskeyアカウントをリクエストすると:
 
 ブラウザプロファイル、拡張機能ストレージ、またはローカルpasskeyアカウントメタデータが失われても、チェーンにはアカウント復元に十分な公開メタデータが残っている場合があります。
 
-1. ユーザーはrecovery IDをアンカーするウォレットコンテキストでPaliを復元または開きます。
-2. Paliはユーザーの認証器からdiscoverable WebAuthn assertionをリクエストします。
-3. Paliはrecovery IDとcredential hashでファクトリーレジストリを照会します。
-4. Paliは各候補アカウントの復元メタデータを読み取ります。
-5. Paliはローカルにすでに存在するアカウントをスキップします。
-6. Paliは一致するアカウントをローカルウォレット状態へインポートします。
+1. Paliはユーザーの認証器からdiscoverable WebAuthn assertionをリクエストします。
+2. Paliはcredential hashでファクトリーレジストリを照会します。
+3. Paliは各候補アカウントの復元メタデータを読み取ります。
+4. Paliはローカルにすでに存在するアカウントをスキップします。
+5. Paliは一致するアカウントをローカルウォレット状態へインポートします。
 
 設定からの復元はデプロイ済みアカウントを検出し、registryがcredentialに対して公開する一致アカウントをすべてインポートします。
 

@@ -31,6 +31,7 @@ const decodeDappText = (value?: unknown) => {
 };
 
 type CreationStep =
+  | 'approving'
   | 'credential'
   | 'deploying'
   | 'idle'
@@ -206,6 +207,7 @@ export const CreatePasskeyAccount = () => {
       )) as any;
       let deploymentProof;
       if (prepared.deploymentActionHash) {
+        setCreationStep('approving');
         const assertion = await getPasskeyAssertion(
           credential.credentialId,
           prepared.deploymentActionHash

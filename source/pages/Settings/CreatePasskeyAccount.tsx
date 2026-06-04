@@ -21,6 +21,7 @@ type LocationState = {
 
 type CreationStep =
   | 'idle'
+  | 'approving'
   | 'credential'
   | 'deploying'
   | 'confirming'
@@ -157,6 +158,7 @@ const CreatePasskeyAccount = () => {
       )) as any;
       let deploymentProof;
       if (prepared.deploymentActionHash) {
+        setCreationStep('approving');
         const assertion = await getPasskeyAssertion(
           credential.credentialId,
           prepared.deploymentActionHash

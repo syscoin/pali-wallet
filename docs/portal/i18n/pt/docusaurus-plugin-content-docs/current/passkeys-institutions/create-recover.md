@@ -17,7 +17,6 @@ Os parâmetros da conta da fábrica incluem:
 
 | Parâmetro | Significado |
 | --- | --- |
-| `recoveryId` | Âncora de recuperação escopada à carteira derivada do contexto da Pali Wallet, chain id e endereço da fábrica. |
 | `passkeyX`, `passkeyY` | Coordenadas da chave pública P-256 extraídas da credencial WebAuthn. |
 | `credentialIdHash` | Hash do id da credencial WebAuthn. |
 | `rpIdHash` | Hash do RP ID WebAuthn a partir dos dados do authenticator. |
@@ -77,8 +76,8 @@ Quando uma dapp solicita uma conta com passkey:
 2. A Pali cria um salt de implantação novo para o novo caminho de conta.
 3. A Pali obtém ou cria o perfil de credencial WebAuthn.
 4. A Pali calcula o endereço contrafactual e os metadados de implantação.
-5. Se a política de sponsor solicitada exigir uma ação inicial `setSponsor`, a Pali solicita ao usuário uma asserção passkey sobre o hash de ação de implantação.
-6. A Pali envia `createAccount` ou `createAccountAndExecute` pelo pagador de gas de implantação configurado.
+5. A Pali solicita ao usuário uma asserção passkey sobre o hash de aprovação de implantação.
+6. A Pali envia `createAccount`, ou `createAccountAndExecute` quando uma ação inicial de política de sponsor é necessária, pelo pagador de gas de implantação configurado.
 7. A Pali espera a confirmação, lê os metadados de recuperação da smart account na chain e verifica se correspondem à credencial preparada e aos dados de origem.
 8. Após a confirmação, a Pali cria a conta com passkey local e a conecta à dapp solicitante.
 
@@ -86,7 +85,7 @@ Se o endereço resultante já estiver presente localmente como uma conta com pas
 
 ## O que determina o endereço?
 
-O endereço da smart account é derivado de entradas da fábrica, incluindo coordenadas públicas da passkey, hash da credencial, dados de origem, hash do RP ID, ID de recuperação e salt de implantação. Cada novo caminho de conta usa um salt de implantação novo, então uma credencial pode controlar várias smart accounts.
+O endereço da smart account é derivado de entradas da fábrica, incluindo coordenadas públicas da passkey, hash da credencial, dados de origem, hash do RP ID, salt de implantação. Cada novo caminho de conta usa um salt de implantação novo, então uma credencial pode controlar várias smart accounts.
 
 ## Se o usuário perde dados locais da Pali
 
@@ -94,17 +93,16 @@ O endereço da smart account é derivado de entradas da fábrica, incluindo coor
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="Tela de configurações da Pali para recuperar smart accounts com passkey" />
 </a>
-  <figcaption>A tela de recuperação descobre contas com passkey on-chain que correspondem à carteira restaurada e ao authenticator.</figcaption>
+  <figcaption>A tela de recuperação descobre contas com passkey on-chain que correspondem à credencial selecionada do authenticator.</figcaption>
 </figure>
 
 Se o perfil do navegador, o storage da extensão ou metadados locais da conta com passkey forem perdidos, a chain ainda pode conter metadados públicos suficientes para recuperar a conta:
 
-1. O usuário restaura ou abre a Pali com o contexto da carteira que ancora o ID de recuperação.
-2. A Pali solicita uma asserção WebAuthn descobrível do authenticator do usuário.
-3. A Pali consulta o registro da fábrica por ID de recuperação e hash da credencial.
-4. A Pali lê os metadados de recuperação de cada conta candidata.
-5. A Pali ignora contas já presentes localmente.
-6. A Pali importa contas correspondentes de volta para o estado local da carteira.
+1. A Pali solicita uma asserção WebAuthn descobrível do authenticator do usuário.
+2. A Pali consulta o registro da fábrica por hash da credencial.
+3. A Pali lê os metadados de recuperação de cada conta candidata.
+4. A Pali ignora contas já presentes localmente.
+5. A Pali importa contas correspondentes de volta para o estado local da carteira.
 
 A recuperação nas Configurações descobre contas implantadas e importa cada conta correspondente exposta pelo registro para a credencial.
 

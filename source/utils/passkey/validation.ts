@@ -39,6 +39,51 @@ export type PasskeyWebAuthnProof = {
 const PASSKEY_EXECUTE_TYPEHASH = hashText(
   'PALI_PASSKEY_SMART_ACCOUNT_EXECUTE_V1'
 );
+const PASSKEY_CREATE_TYPEHASH = hashText(
+  'PALI_PASSKEY_SMART_ACCOUNT_CREATE_V1'
+);
+
+export const getPasskeyCreateHash = ({
+  account,
+  chainId,
+  credentialIdHash,
+  deploymentSalt,
+  publicKey,
+}: {
+  account: string;
+  chainId: number;
+  credentialIdHash: string;
+  deploymentSalt: string;
+  publicKey: IPasskeySmartAccountMetadata['publicKey'];
+}) =>
+  keccak256(
+    defaultAbiCoder.encode(
+      [
+        'bytes32',
+        'uint256',
+        'address',
+        'bytes32',
+        'bytes32',
+        'bytes32',
+        'bytes32',
+        'bytes32',
+        'uint256',
+        'bytes32',
+      ],
+      [
+        PASSKEY_CREATE_TYPEHASH,
+        chainId,
+        account,
+        credentialIdHash,
+        publicKey.x,
+        publicKey.y,
+        publicKey.rpIdHash,
+        publicKey.originHash,
+        publicKey.originLength,
+        deploymentSalt,
+      ]
+    )
+  );
 
 export const getPasskeyActionHash = ({
   account,

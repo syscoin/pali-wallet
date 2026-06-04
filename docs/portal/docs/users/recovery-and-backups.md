@@ -27,7 +27,7 @@ Backup status is a signal to help you choose between convenience and security. I
 
 ## Recovering passkey accounts
 
-Pali passkey recovery uses wallet-scoped recovery metadata and on-chain account discovery. The recovery flow:
+Pali passkey recovery is credential-scoped and uses on-chain account discovery. Any Pali install that can obtain a WebAuthn assertion from the same passkey credential can import the matching deployed passkey accounts. The recovery flow:
 
 1. Requests a discoverable WebAuthn assertion.
 2. Looks up matching smart accounts from the factory registry and creation logs.

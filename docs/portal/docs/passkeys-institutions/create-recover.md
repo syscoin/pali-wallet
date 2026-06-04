@@ -17,7 +17,6 @@ The factory account parameters include:
 
 | Parameter | Meaning |
 | --- | --- |
-| `recoveryId` | Wallet-scoped recovery anchor derived from Pali wallet context, chain id, and factory address. |
 | `passkeyX`, `passkeyY` | P-256 public key coordinates extracted from the WebAuthn credential. |
 | `credentialIdHash` | Hash of the WebAuthn credential id. |
 | `rpIdHash` | WebAuthn RP ID hash from authenticator data. |
@@ -77,8 +76,8 @@ When a dapp requests a passkey account:
 2. Pali creates a fresh deployment salt for the new account path.
 3. Pali obtains or creates the WebAuthn credential profile.
 4. Pali computes the counterfactual address and deployment metadata.
-5. If the requested sponsor policy requires an initial `setSponsor` action, Pali asks the user for a passkey assertion over the deployment action hash.
-6. Pali submits `createAccount` or `createAccountAndExecute` through the configured deployment gas payer.
+5. Pali asks the user for a passkey assertion over the deployment approval hash.
+6. Pali submits `createAccount`, or `createAccountAndExecute` when an initial sponsor policy action is needed, through the configured deployment gas payer.
 7. Pali waits for confirmation, reads the smart account recovery metadata from-chain, and verifies it matches the prepared credential and origin data.
 8. After confirmation, Pali creates the local passkey account and connects it to the requesting dapp.
 
@@ -86,7 +85,7 @@ If the resulting address is already present locally as a deployed passkey accoun
 
 ## What determines the address?
 
-The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, recovery ID, and deployment salt. Each new account path uses a fresh deployment salt, so one credential can control multiple smart accounts.
+The smart account address is derived from factory inputs including passkey public coordinates, credential hash, origin data, RP ID hash, and deployment salt. Each new account path uses a fresh deployment salt, so one credential can control multiple smart accounts.
 
 ## If the user loses local Pali data
 
@@ -94,17 +93,16 @@ The smart account address is derived from factory inputs including passkey publi
   <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
   <img src="/img/screens/settings-passkey-recover.png" alt="Pali settings screen for recovering passkey smart accounts" />
 </a>
-  <figcaption>The recovery screen discovers on-chain passkey accounts that match the restored wallet and authenticator.</figcaption>
+  <figcaption>The recovery screen discovers on-chain passkey accounts that match the selected authenticator credential.</figcaption>
 </figure>
 
 If the browser profile, extension storage, or local passkey account metadata is lost, the chain can still contain enough public metadata to recover the account:
 
-1. The user restores or opens Pali with the wallet context that anchors the recovery ID.
-2. Pali requests a discoverable WebAuthn assertion from the user's authenticator.
-3. Pali queries the factory registry by recovery ID and credential hash.
-4. Pali reads each candidate account's recovery metadata.
-5. Pali skips accounts already present locally.
-6. Pali imports matching accounts back into local wallet state.
+1. Pali requests a discoverable WebAuthn assertion from the user's authenticator.
+2. Pali queries the factory registry by credential hash.
+3. Pali reads each candidate account's recovery metadata.
+4. Pali skips accounts already present locally.
+5. Pali imports matching accounts back into local wallet state.
 
 Settings recovery discovers deployed accounts and imports every matching account the registry exposes for the credential.
 

@@ -106,8 +106,8 @@ export const BRIDGE_METHOD_SIGNATURES = {
 
 // Pali passkey smart-account method signatures
 export const PASSKEY_METHOD_SIGNATURES = {
-  '0x12e16987': 'createAccount',
-  '0xe0dc5666': 'createAccountAndExecute',
+  '0xe33aed36': 'createAccount',
+  '0xed29ef67': 'createAccountAndExecute',
   '0x1b18c84b': 'execute',
   '0xc81b6d20': 'setSponsor',
 } as const;

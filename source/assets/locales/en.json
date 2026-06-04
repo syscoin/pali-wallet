@@ -592,6 +592,7 @@
       "credential": "Checking your passkey...",
       "recovering": "Checking for an existing on-chain account...",
       "deploying": "Preparing on-chain account creation...",
+      "approving": "Waiting for passkey approval to create this account on-chain...",
       "confirming": "Submitting and confirming the on-chain transaction...",
       "saving": "Saving the confirmed account in Pali...",
       "idle": "Ready"

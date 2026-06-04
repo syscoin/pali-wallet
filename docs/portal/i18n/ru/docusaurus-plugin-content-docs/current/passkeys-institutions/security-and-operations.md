@@ -27,13 +27,12 @@ Factory может вычислить account address до deployment. Это п
 
 ## Предположения восстановления
 
-Recovery является wallet-scoped и passkey-scoped. Пользователю обычно нужны:
+Recovery является passkey-scoped. Пользователю обычно нужны:
 
-- восстановленный Pali wallet context
 - соответствующий WebAuthn credential
 - поддержка chain для passkey factory
 
-Recovery не является custodial backdoor. Chain предоставляет discoverable public metadata и списки аккаунтов, но пользователю все равно нужны wallet recovery context и соответствующий WebAuthn credential, чтобы доказать контроль.
+Recovery не является custodial backdoor. Chain предоставляет discoverable public metadata и списки аккаунтов, но пользователю все равно нужен соответствующий WebAuthn credential, чтобы доказать контроль.
 
 ## Backup status credential
 
