@@ -30,6 +30,7 @@ import {
 } from 'types/transactions';
 import { convertBigNumberToString } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { formatMethodName } from 'utils/commonMethodSignatures';
 import { handleTransactionError } from 'utils/errorHandling';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
@@ -1056,7 +1057,13 @@ export const SendTransaction = () => {
                 </div>
                 <div className="py-2 text-white text-xs flex w-full justify-between">
                   <p>{t('send.method')}</p>
-                  <p>{decodedTxData?.method}</p>
+                  <p>
+                    {formatMethodName(
+                      decodedTxData?.method || 'Contract Interaction',
+                      activeNetwork.currency,
+                      t
+                    )}
+                  </p>
                 </div>
 
                 {hasTxDataError && (
