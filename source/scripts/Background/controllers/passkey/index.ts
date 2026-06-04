@@ -203,7 +203,7 @@ class PasskeyController {
       isDeployed: true,
     };
     this.assertPasskeyAccountNetwork(metadata);
-    this.assertSponsorSignerIsExternallySignable(metadata.sponsor);
+    this.assertSponsorHasUsableAuthorizationPath(metadata.sponsor);
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
@@ -1146,6 +1146,27 @@ class PasskeyController {
     }
   }
 
+  private assertSponsorHasUsableAuthorizationPath(
+    sponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    this.assertSponsorSignerIsExternallySignable(sponsor);
+    if (!sponsor || sponsor.mode === PasskeySponsorMode.Disabled) {
+      return;
+    }
+    if (sponsor.mode === PasskeySponsorMode.GasOnly && !sponsor.url) {
+      throw new Error('Passkey gas sponsorship requires a sponsor URL');
+    }
+    if (
+      sponsor.mode === PasskeySponsorMode.Required &&
+      !sponsor.url &&
+      !this.getLocalSponsorSignerAccount(sponsor.signer)
+    ) {
+      throw new Error(
+        'Passkey sponsor signer must be available in this wallet when no sponsor URL is configured'
+      );
+    }
+  }
+
   private async deployPreparedPasskeySmartAccount({
     activeNetwork,
     address,
@@ -1377,7 +1398,7 @@ class PasskeyController {
     const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
     const factory = getPasskeyFactory(activeNetwork.chainId, provider);
     const sponsor = normalizePasskeySponsor(params.sponsor);
-    this.assertSponsorSignerIsExternallySignable(sponsor);
+    this.assertSponsorHasUsableAuthorizationPath(sponsor);
     const accountParams = getPasskeyFactoryAccountParams({
       credentialIdHash: params.credentialIdHash,
       deploymentSalt: params.deploymentSalt,
@@ -1518,7 +1539,7 @@ class PasskeyController {
     } | null;
   }) {
     const normalizedSponsor = normalizePasskeySponsor(sponsor);
-    this.assertSponsorSignerIsExternallySignable(normalizedSponsor);
+    this.assertSponsorHasUsableAuthorizationPath(normalizedSponsor);
     if (executions.length !== 1) {
       throw new Error('Passkey policy update must contain one execution');
     }

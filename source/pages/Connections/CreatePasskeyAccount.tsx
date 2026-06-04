@@ -44,9 +44,8 @@ export const CreatePasskeyAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { eventName, host, label, sponsor } = useQueryData();
   const { t } = useTranslation();
-  const passkeyAccounts = useSelector(
-    (rootState: RootState) =>
-      rootState.vault.accounts[KeyringAccountType.PasskeySmartAccount] || {}
+  const accounts = useSelector(
+    (rootState: RootState) => rootState.vault.accounts
   );
   const [loading, setLoading] = useState(false);
   const [creationStep, setCreationStep] = useState<CreationStep>('idle');
@@ -75,13 +74,12 @@ export const CreatePasskeyAccount = () => {
     });
   const isSponsorUrlValid =
     !trimmedSponsorUrl || isValidSponsorServiceUrl(trimmedSponsorUrl);
-  const isSponsorSignerValid = (() => {
-    if (!trimmedSponsorSigner) {
-      return false;
-    }
+  const isSponsorSignerPasskeyAccount = (() => {
     try {
       const normalizedSigner = getAddress(trimmedSponsorSigner).toLowerCase();
-      return !Object.values(passkeyAccounts).some(
+      return Object.values(
+        accounts[KeyringAccountType.PasskeySmartAccount] || {}
+      ).some(
         (account: any) =>
           account?.address &&
           getAddress(account.address).toLowerCase() === normalizedSigner
@@ -90,6 +88,29 @@ export const CreatePasskeyAccount = () => {
       return false;
     }
   })();
+  const isLocalSponsorSigner = (() => {
+    try {
+      const normalizedSigner = getAddress(trimmedSponsorSigner).toLowerCase();
+      return [
+        KeyringAccountType.HDAccount,
+        KeyringAccountType.Imported,
+        KeyringAccountType.Ledger,
+        KeyringAccountType.Trezor,
+      ].some((accountType) =>
+        Object.values(accounts[accountType] || {}).some(
+          (account: any) =>
+            account?.address &&
+            getAddress(account.address).toLowerCase() === normalizedSigner
+        )
+      );
+    } catch {
+      return false;
+    }
+  })();
+  const isSponsorSignerValid =
+    Boolean(trimmedSponsorSigner) &&
+    !isSponsorSignerPasskeyAccount &&
+    (!isSponsorRequired || Boolean(trimmedSponsorUrl) || isLocalSponsorSigner);
   const sponsorSignerError =
     isSponsorRequired && !trimmedSponsorSigner
       ? t('settings.sponsorSignerRequired')

@@ -49,9 +49,8 @@ const PasskeyAccountPolicy = () => {
   const { alert, navigate } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const [form] = Form.useForm();
-  const passkeyAccounts = useSelector(
-    (rootState: RootState) =>
-      rootState.vault.accounts[KeyringAccountType.PasskeySmartAccount] || {}
+  const accounts = useSelector(
+    (rootState: RootState) => rootState.vault.accounts
   );
   const [loading, setLoading] = useState<boolean>(false);
   const [policyMode, setPolicyMode] = useState<PasskeySponsorMode>(
@@ -69,13 +68,35 @@ const PasskeyAccountPolicy = () => {
   const [policyStep, setPolicyStep] = useState<PolicyStep>('idle');
   const [refreshingStatus, setRefreshingStatus] = useState<boolean>(false);
 
-  const isValidSponsorSigner = (value: string) => {
+  const isSponsorSignerPasskeyAccount = (value: string) => {
     try {
       const normalizedValue = getAddress(value.trim()).toLowerCase();
-      return !Object.values(passkeyAccounts).some(
+      return Object.values(
+        accounts[KeyringAccountType.PasskeySmartAccount] || {}
+      ).some(
         (account: any) =>
           account?.address &&
           getAddress(account.address).toLowerCase() === normalizedValue
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const isLocalSponsorSigner = (value: string) => {
+    try {
+      const normalizedValue = getAddress(value.trim()).toLowerCase();
+      return [
+        KeyringAccountType.HDAccount,
+        KeyringAccountType.Imported,
+        KeyringAccountType.Ledger,
+        KeyringAccountType.Trezor,
+      ].some((accountType) =>
+        Object.values(accounts[accountType] || {}).some(
+          (account: any) =>
+            account?.address &&
+            getAddress(account.address).toLowerCase() === normalizedValue
+        )
       );
     } catch {
       return false;
@@ -95,8 +116,12 @@ const PasskeyAccountPolicy = () => {
         trimmedSponsorSigner !== initialSponsorSigner));
   const isSponsorUrlValid =
     !trimmedSponsorUrl || isValidSponsorServiceUrl(trimmedSponsorUrl);
-  const isSponsorSignerValid =
-    !trimmedSponsorSigner || isValidSponsorSigner(trimmedSponsorSigner);
+  const isSponsorSignerValid = Boolean(trimmedSponsorSigner)
+    ? !isSponsorSignerPasskeyAccount(trimmedSponsorSigner) &&
+      (policyMode !== PasskeySponsorMode.Required ||
+        Boolean(trimmedSponsorUrl) ||
+        isLocalSponsorSigner(trimmedSponsorSigner))
+    : false;
   const isPolicySubmitDisabled =
     loading ||
     !policyHasChanges ||
@@ -427,7 +452,12 @@ const PasskeyAccountPolicy = () => {
                             new Error(t('settings.sponsorSignerRequired'))
                           );
                         }
-                        if (isValidSponsorSigner(trimmedValue)) {
+                        if (
+                          !isSponsorSignerPasskeyAccount(trimmedValue) &&
+                          (policyMode !== PasskeySponsorMode.Required ||
+                            Boolean(trimmedSponsorUrl) ||
+                            isLocalSponsorSigner(trimmedValue))
+                        ) {
                           return Promise.resolve();
                         }
                         return Promise.reject(
