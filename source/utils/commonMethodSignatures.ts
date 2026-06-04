@@ -154,7 +154,7 @@ export const formatMethodName = (
     return t('transactions.contractDeploy');
   }
   if (methodName === 'Send') {
-    return t('send.sent');
+    return t('buttons.send');
   }
 
   // Normalize method name: decoded data may return full signature like
