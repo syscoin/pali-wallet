@@ -65,8 +65,8 @@ O resultado inclui o `address` da smart account e metadados públicos da passkey
 | Modo | Significado |
 | --- | --- |
 | `disabled` | Sem política de sponsor. A carteira/usuário paga gas. |
-| `gasOnly` | Serviço de sponsor pode pagar gas. Se sponsorship falhar, fallback para gas da carteira pode ser permitido. |
-| `required` | Coautorização do sponsor é exigida pela política. |
+| `gasOnly` | Serviço de sponsor pode pagar gas. A Pali exige uma URL de sponsor para este modo; se sponsorship falhar, fallback para gas da carteira pode ser permitido. |
+| `required` | Coautorização do sponsor é exigida pela política. Um signer é obrigatório; a URL de sponsor é opcional quando a Pali pode obter a prova do signer de uma conta local na carteira. |
 
 ## Controle do usuário
 

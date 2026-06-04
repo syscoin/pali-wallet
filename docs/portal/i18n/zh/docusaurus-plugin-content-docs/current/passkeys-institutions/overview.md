@@ -65,8 +65,8 @@ const account = await window.ethereum.request({
 | 模式 | 含义 |
 | --- | --- |
 | `disabled` | 无 sponsor 策略。钱包/用户支付 gas。 |
-| `gasOnly` | Sponsor service 可以支付 gas。如果 sponsorship 失败，可以允许 wallet-gas 回退。 |
-| `required` | 策略要求 sponsor 共同授权。 |
+| `gasOnly` | Sponsor service 可以支付 gas。Pali 对此模式要求 sponsor URL；如果 sponsorship 失败，可以允许 wallet-gas 回退。 |
+| `required` | 策略要求 sponsor 共同授权。必须提供 signer；当 Pali 可以从钱包中的本地账户获得 signer proof 时，sponsor URL 是可选的。 |
 
 ## 用户控制
 

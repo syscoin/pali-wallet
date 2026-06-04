@@ -14,7 +14,7 @@ Heute ist Palis konfigurierte Testbereitstellung `zkTanenbaum` (`57057`). Behand
 
 - Entscheiden Sie, ob jeder Benutzer einen gemeinsamen Pali-Passkey-Account oder ein separates Credential erhält.
 - Entscheiden Sie, ob Sponsoring deaktiviert, gas-only oder erforderlich ist.
-- Halten Sie Sponsor-Service-Uptime aufrecht, wenn Sie den Modus `required` verwenden.
+- Halten Sie Sponsor-Service-Uptime aufrecht, wenn der Modus `required` von einer entfernten Sponsor-URL abhängt, und dokumentieren Sie jede lokale Signer-Fallback-Policy.
 - Überwachen Sie Relayer-Fehler, abgelaufene Deadlines und wiederholte Idempotency Keys.
 - Stellen Sie einen Benutzersupport-Pfad für verlorene Geräte und fehlgeschlagene Wiederherstellung bereit.
 - Dokumentieren Sie, ob die Institution Ausführung co-autorisieren kann.

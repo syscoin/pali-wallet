@@ -203,6 +203,7 @@ class PasskeyController {
       isDeployed: true,
     };
     this.assertPasskeyAccountNetwork(metadata);
+    this.assertSponsorHasUsableAuthorizationPath(metadata.sponsor);
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
@@ -1119,6 +1120,53 @@ class PasskeyController {
     };
   }
 
+  private isPasskeySmartAccountAddress(address?: string) {
+    if (!isHexString(address, 20)) {
+      return false;
+    }
+
+    const normalizedAddress = getAddress(address).toLowerCase();
+    const passkeyAccounts =
+      store.getState().vault.accounts[
+        PaliKeyringAccountType.PasskeySmartAccount
+      ] || {};
+
+    return Object.values(passkeyAccounts).some(
+      (account: any) =>
+        isHexString(account?.address, 20) &&
+        getAddress(account.address).toLowerCase() === normalizedAddress
+    );
+  }
+
+  private assertSponsorSignerIsExternallySignable(
+    sponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    if (this.isPasskeySmartAccountAddress(sponsor?.signer)) {
+      throw new Error('Passkey sponsor signer cannot be a passkey account');
+    }
+  }
+
+  private assertSponsorHasUsableAuthorizationPath(
+    sponsor: IPasskeySmartAccountMetadata['sponsor']
+  ) {
+    this.assertSponsorSignerIsExternallySignable(sponsor);
+    if (!sponsor || sponsor.mode === PasskeySponsorMode.Disabled) {
+      return;
+    }
+    if (sponsor.mode === PasskeySponsorMode.GasOnly && !sponsor.url) {
+      throw new Error('Passkey gas sponsorship requires a sponsor URL');
+    }
+    if (
+      sponsor.mode === PasskeySponsorMode.Required &&
+      !sponsor.url &&
+      !this.getLocalSponsorSignerAccount(sponsor.signer)
+    ) {
+      throw new Error(
+        'Passkey sponsor signer must be available in this wallet when no sponsor URL is configured'
+      );
+    }
+  }
+
   private async deployPreparedPasskeySmartAccount({
     activeNetwork,
     address,
@@ -1350,6 +1398,7 @@ class PasskeyController {
     const factoryAddress = getPasskeyFactoryAddress(activeNetwork.chainId);
     const factory = getPasskeyFactory(activeNetwork.chainId, provider);
     const sponsor = normalizePasskeySponsor(params.sponsor);
+    this.assertSponsorHasUsableAuthorizationPath(sponsor);
     const accountParams = getPasskeyFactoryAccountParams({
       credentialIdHash: params.credentialIdHash,
       deploymentSalt: params.deploymentSalt,
@@ -1490,6 +1539,7 @@ class PasskeyController {
     } | null;
   }) {
     const normalizedSponsor = normalizePasskeySponsor(sponsor);
+    this.assertSponsorHasUsableAuthorizationPath(normalizedSponsor);
     if (executions.length !== 1) {
       throw new Error('Passkey policy update must contain one execution');
     }
@@ -1542,6 +1592,63 @@ class PasskeyController {
         },
       })
     );
+  }
+
+  private getLocalSponsorSignerAccount(sponsorSigner?: string) {
+    if (!sponsorSigner) {
+      return null;
+    }
+
+    const normalizedSponsorSigner = getAddress(sponsorSigner).toLowerCase();
+    const { accounts } = store.getState().vault;
+    const localSignerAccountTypes = [
+      PaliKeyringAccountType.HDAccount,
+      PaliKeyringAccountType.Imported,
+      PaliKeyringAccountType.Ledger,
+      PaliKeyringAccountType.Trezor,
+    ];
+
+    for (const accountType of localSignerAccountTypes) {
+      for (const account of Object.values(
+        accounts[accountType] || {}
+      ) as any[]) {
+        if (
+          isHexString(account?.address, 20) &&
+          getAddress(account.address).toLowerCase() === normalizedSponsorSigner
+        ) {
+          return { account, accountType };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private async getLocalSponsorProof(
+    actionHash: string,
+    sponsorSigner?: string
+  ) {
+    const sponsorSignerAccount =
+      this.getLocalSponsorSignerAccount(sponsorSigner);
+    if (!sponsorSignerAccount) {
+      return null;
+    }
+
+    const signature = await this.runWithGasPayer(
+      sponsorSignerAccount,
+      () =>
+        this.ethereumTransaction.signPersonalMessage([
+          actionHash,
+          sponsorSignerAccount.account.address,
+        ]),
+      { persistRestore: false }
+    );
+    const sponsorProof = this.normalizePasskeySponsorProof(signature);
+    if (!sponsorProof) {
+      throw new Error('Local sponsor signer did not return a valid signature');
+    }
+
+    return sponsorProof;
   }
 
   private async passkeyGasPayerHasBalance(
@@ -1883,6 +1990,7 @@ class PasskeyController {
       {
         ...params,
         actionHash: params.actionHash,
+        confirmedSponsor,
         executions,
       }
     );
@@ -2107,6 +2215,7 @@ class PasskeyController {
     chainId: number,
     params: {
       actionHash?: string;
+      confirmedSponsor?: IPasskeySmartAccountMetadata['sponsor'];
       execution: {
         data: string;
         deadline: number;
@@ -2145,6 +2254,13 @@ class PasskeyController {
     | { txHash: string; type: 'relayed' }
   > {
     const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    const currentSponsor = metadata.sponsor;
+    const sponsorMetadata =
+      currentSponsor?.mode === PasskeySponsorMode.Required &&
+      currentSponsor.signer
+        ? currentSponsor
+        : params.confirmedSponsor || currentSponsor;
+    const proofMetadata = { ...metadata, sponsor: sponsorMetadata };
     const emptyProof = { v: 0, r: HashZero, s: HashZero };
 
     const executions = params.executions || [params.execution];
@@ -2155,32 +2271,41 @@ class PasskeyController {
         chainId,
         executions,
         sponsorMode: getPasskeySponsorContractMode(metadata),
-        sponsorSigner: metadata.sponsor?.signer || AddressZero,
+        sponsorSigner: currentSponsor?.signer || AddressZero,
       });
     const providedProof = this.normalizePasskeySponsorProof(
       params.sponsorProof || params.sponsorSignature
     );
     if (providedProof) {
-      verifyPasskeySponsorProof(actionHash, providedProof, metadata);
+      verifyPasskeySponsorProof(actionHash, providedProof, proofMetadata);
       return { sponsorProof: providedProof, type: 'local' };
     }
 
     if (
-      metadata.sponsor?.mode !== PasskeySponsorMode.Required &&
-      metadata.sponsor?.mode !== PasskeySponsorMode.GasOnly
+      sponsorMetadata?.mode !== PasskeySponsorMode.Required &&
+      sponsorMetadata?.mode !== PasskeySponsorMode.GasOnly
     ) {
       return { sponsorProof: emptyProof, type: 'local' };
     }
 
-    if (
-      !metadata.sponsor?.url &&
-      metadata.sponsor?.mode === PasskeySponsorMode.Required
-    ) {
-      throw new Error(
-        'This passkey account requires sponsor authorization, but no sponsor URL is configured'
-      );
-    }
-    if (!metadata.sponsor?.url) {
+    if (!sponsorMetadata?.url) {
+      if (sponsorMetadata?.mode === PasskeySponsorMode.Required) {
+        const localSponsorProof = await this.getLocalSponsorProof(
+          actionHash,
+          sponsorMetadata.signer
+        );
+        if (localSponsorProof) {
+          verifyPasskeySponsorProof(
+            actionHash,
+            localSponsorProof,
+            proofMetadata
+          );
+          return { sponsorProof: localSponsorProof, type: 'local' };
+        }
+        throw new Error(
+          'This passkey account requires sponsor authorization, but the sponsor signer is not available in this wallet and no sponsor URL is configured'
+        );
+      }
       return { sponsorProof: emptyProof, type: 'local' };
     }
 
@@ -2192,7 +2317,7 @@ class PasskeyController {
       | { txHash: string; type: 'relayed' };
     try {
       sponsorResult = await this.fetchPasskeySponsorResult(
-        metadata.sponsor.url,
+        sponsorMetadata.url,
         {
           account: account.address,
           actionHash,
@@ -2200,13 +2325,21 @@ class PasskeyController {
           execution: params.execution,
           executions,
           proof: params.proof,
-          sponsorSigner: metadata.sponsor.signer,
+          sponsorSigner: sponsorMetadata.signer,
           version: PASSKEY_SMART_ACCOUNT_VERSION,
         }
       );
     } catch (error) {
-      if (metadata.sponsor.mode === PasskeySponsorMode.GasOnly) {
+      if (sponsorMetadata.mode === PasskeySponsorMode.GasOnly) {
         return { sponsorProof: emptyProof, type: 'local' };
+      }
+      const localSponsorProof = await this.getLocalSponsorProof(
+        actionHash,
+        sponsorMetadata.signer
+      );
+      if (localSponsorProof) {
+        verifyPasskeySponsorProof(actionHash, localSponsorProof, proofMetadata);
+        return { sponsorProof: localSponsorProof, type: 'local' };
       }
       throw error;
     }
@@ -2214,10 +2347,14 @@ class PasskeyController {
     if (sponsorResult.type === 'relayed') {
       return sponsorResult;
     }
-    if (metadata.sponsor.mode === PasskeySponsorMode.GasOnly) {
+    if (sponsorMetadata.mode === PasskeySponsorMode.GasOnly) {
       return { sponsorProof: emptyProof, type: 'local' };
     }
-    verifyPasskeySponsorProof(actionHash, sponsorResult.sponsorProof, metadata);
+    verifyPasskeySponsorProof(
+      actionHash,
+      sponsorResult.sponsorProof,
+      proofMetadata
+    );
     return { sponsorProof: sponsorResult.sponsorProof, type: 'local' };
   }
 

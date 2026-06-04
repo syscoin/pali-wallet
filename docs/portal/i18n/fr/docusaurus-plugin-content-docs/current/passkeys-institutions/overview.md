@@ -65,8 +65,8 @@ Le résultat inclut l'`address` du compte intelligent et les métadonnées passk
 | Mode | Signification |
 | --- | --- |
 | `disabled` | Aucune politique de sponsor. Le portefeuille/l'utilisateur paie le gaz. |
-| `gasOnly` | Le service de sponsor peut payer le gaz. Si le sponsoring échoue, un repli vers le gaz du portefeuille peut être autorisé. |
-| `required` | Une coautorisation du sponsor est requise par la politique. |
+| `gasOnly` | Le service de sponsor peut payer le gaz. Pali exige une URL de sponsor pour ce mode ; si le sponsoring échoue, un repli vers le gaz du portefeuille peut être autorisé. |
+| `required` | Une coautorisation du sponsor est requise par la politique. Un signataire est requis ; l'URL de sponsor est facultative lorsque Pali peut obtenir la preuve du signataire depuis un compte local dans le portefeuille. |
 
 ## Contrôle utilisateur
 

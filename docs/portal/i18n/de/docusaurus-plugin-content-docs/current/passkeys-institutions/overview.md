@@ -65,8 +65,8 @@ Das Ergebnis enthält die Smart-Account-`address` und öffentliche Passkey-Metad
 | Modus | Bedeutung |
 | --- | --- |
 | `disabled` | Keine Sponsor-Policy. Die Wallet/der Benutzer zahlt Gas. |
-| `gasOnly` | Sponsor-Service kann Gas zahlen. Wenn Sponsoring fehlschlägt, kann Wallet-Gas-Fallback erlaubt sein. |
-| `required` | Sponsor-Co-Autorisierung ist durch Policy erforderlich. |
+| `gasOnly` | Sponsor-Service kann Gas zahlen. Pali benötigt für diesen Modus eine Sponsor-URL; wenn Sponsoring fehlschlägt, kann Wallet-Gas-Fallback erlaubt sein. |
+| `required` | Sponsor-Co-Autorisierung ist durch Policy erforderlich. Ein Signer ist erforderlich; die Sponsor-URL ist optional, wenn Pali den Signer-Proof von einem lokalen Konto in der Wallet erhalten kann. |
 
 ## Benutzerkontrolle
 

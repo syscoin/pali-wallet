@@ -14,7 +14,7 @@ Passkeyアカウントは、P-256 WebAuthn署名を検証するzkSYSサポート
 
 - 各ユーザーが共有Pali passkeyアカウントを受け取るのか、個別credentialを受け取るのかを決めてください。
 - スポンサーシップを無効、gas-only、必須のどれにするかを決めてください。
-- `required` modeを使用する場合、スポンサーサービスの稼働状態を維持してください。
+- `required` modeがremote sponsor URLに依存する場合はスポンサーサービスの稼働状態を維持し、local signer fallback policyがある場合は文書化してください。
 - relayer失敗、期限切れdeadlines、繰り返されるidempotency keysを監視してください。
 - デバイス紛失と復元失敗に対するユーザーサポート経路を用意してください。
 - 機関が実行を共同承認できるかどうかを文書化してください。

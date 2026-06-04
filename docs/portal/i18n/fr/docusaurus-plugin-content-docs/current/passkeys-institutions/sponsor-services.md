@@ -27,13 +27,13 @@ Un service de sponsor est un endpoint contrôlé par une institution qui partici
 | Champ | Objectif |
 | --- | --- |
 | `mode` | `disabled`, `gasOnly` ou `required`. |
-| `url` | Endpoint de service que Pali contacte pour la prise en charge d'exécution par sponsor. |
-| `signer` | Adresse de signataire sponsor attendue pour les preuves de politique requise. |
+| `url` | Endpoint de service facultatif que Pali contacte pour la prise en charge d'exécution par sponsor. Pali l'exige pour le sponsoring `gasOnly`, car il n'y a pas de sponsor de gaz distant sans URL de service. |
+| `signer` | Adresse de signataire sponsor attendue pour les preuves de politique requise. Requise pour le mode `required`. |
 | `policyText` | Explication destinée à l'utilisateur, stockée dans les métadonnées du portefeuille. Pas une application on-chain. |
 
 ## Politique on-chain
 
-La politique du compte intelligent stocke le mode, le signataire et le hachage d'URL. L'URL complète et le texte de politique sont des métadonnées du portefeuille utilisées pour l'affichage et les appels au service de sponsor.
+La politique du compte intelligent stocke le mode, le signataire et une URL de sponsor publique. Le texte de politique est une métadonnée du portefeuille utilisée pour l'affichage.
 
 ## Idempotence
 
@@ -41,11 +41,13 @@ Les requêtes d'exécution sponsorisée utilisent une clé d'idempotence dériv�
 
 ## Mode sponsor requis
 
-En mode `required`, la preuve de sponsor doit récupérer vers le signataire configuré. Si Pali ne peut pas obtenir ou valider la preuve de sponsor, l'exécution échoue.
+En mode `required`, la preuve de sponsor doit récupérer vers le signataire configuré. L'URL de sponsor est facultative : Pali peut obtenir la preuve depuis le service de sponsor lorsqu'une URL est configurée, ou signer localement lorsque le signataire configuré est un compte disponible dans le portefeuille. Si Pali ne peut pas obtenir ou valider la preuve de sponsor, l'exécution échoue.
+
+Le paiement du gaz est séparé de l'autorisation du sponsor. Une fois une preuve de sponsor valide disponible, Pali peut toujours payer le gaz depuis n'importe quel compte logiciel financé sélectionné pour l'exécution passkey.
 
 ## Mode gas-only
 
-En mode `gasOnly`, le service de sponsor peut relayer ou aider à payer le gaz. Si le sponsoring est indisponible, Pali peut se rabattre sur une exécution avec le gaz du portefeuille lorsque la politique l'autorise.
+En mode `gasOnly`, le service de sponsor peut relayer ou aider à payer le gaz. Pali exige une URL de sponsor pour ce mode, car l'URL identifie le service de sponsoring du gaz. Si le sponsoring est indisponible, Pali peut se rabattre sur une exécution avec le gaz du portefeuille lorsque la politique l'autorise.
 
 ## Conseils pour les institutions
 

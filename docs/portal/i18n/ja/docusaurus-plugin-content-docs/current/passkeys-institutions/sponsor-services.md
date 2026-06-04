@@ -27,8 +27,8 @@ title: スポンサーサービス
 | フィールド | 目的 |
 | --- | --- |
 | `mode` | `disabled`、`gasOnly`、または`required`。 |
-| `url` | Paliがスポンサー実行サポートのために接続するサービスエンドポイント。 |
-| `signer` | 必須policy proofsで期待されるスポンサーsignerアドレス。 |
+| `url` | Paliがスポンサー実行サポートのために接続するoptionalなサービスエンドポイント。service URLがなければremote gas sponsorがないため、Paliは`gasOnly` sponsorshipでこれを要求します。 |
+| `signer` | 必須policy proofsで期待されるスポンサーsignerアドレス。`required` modeで必要です。 |
 | `policyText` | ウォレットメタデータに保存されるユーザー向け説明。オンチェーン強制ではありません。 |
 
 ## オンチェーンpolicy
@@ -41,11 +41,13 @@ title: スポンサーサービス
 
 ## 必須スポンサーmode
 
-`required` modeでは、スポンサーproofは設定済みsignerへ復元できる必要があります。Paliがスポンサーproofを取得または検証できない場合、実行は失敗します。
+`required` modeでは、スポンサーproofは設定済みsignerへ復元できる必要があります。スポンサーURLはoptionalです。URLが設定されている場合、Paliはスポンサーサービスからproofを取得できます。また、設定済みsignerがwallet内のavailable accountである場合はlocal signingを使用できます。Paliがスポンサーproofを取得または検証できない場合、実行は失敗します。
+
+Gas paymentはスポンサーauthorizationとは別です。有効なスポンサーproofが利用可能になった後も、Paliはpasskey execution用に選択されたfunded software accountからgasを支払えます。
 
 ## Gas-only mode
 
-`gasOnly` modeでは、スポンサーサービスがリレーまたはgas支払いを支援する場合があります。スポンサーシップが利用できない場合、policyが許す範囲でPaliはwallet-gas実行へフォールバックできます。
+`gasOnly` modeでは、スポンサーサービスがリレーまたはgas支払いを支援する場合があります。PaliはこのmodeにスポンサーURLを要求します。URLがgas sponsorship serviceを識別するためです。スポンサーシップが利用できない場合、policyが許す範囲でPaliはwallet-gas実行へフォールバックできます。
 
 ## 機関向けガイダンス
 

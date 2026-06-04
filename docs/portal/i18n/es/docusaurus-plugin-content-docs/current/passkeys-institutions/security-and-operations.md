@@ -14,7 +14,7 @@ Hoy, el despliegue de prueba configurado de Pali es `zkTanenbaum` (`57057`). Tra
 
 - Decide si cada usuario recibe una cuenta passkey compartida de Pali o una credencial separada.
 - Decide si sponsorship está deshabilitado, es solo gas o requerido.
-- Mantén disponibilidad del servicio sponsor si usas modo `required`.
+- Mantén disponibilidad del servicio sponsor cuando el modo `required` dependa de una URL de sponsor remota, y documenta cualquier política de fallback con signer local.
 - Monitorea fallos de relayer, deadlines expirados y claves de idempotencia repetidas.
 - Proporciona una ruta de soporte para usuarios con dispositivos perdidos y recuperación fallida.
 - Documenta si la institución puede coautorizar ejecución.

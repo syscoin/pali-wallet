@@ -27,8 +27,8 @@ Um serviço de sponsor é um endpoint controlado por instituição que participa
 | Campo | Propósito |
 | --- | --- |
 | `mode` | `disabled`, `gasOnly` ou `required`. |
-| `url` | Endpoint de serviço que a Pali contata para suporte à execução por sponsor. |
-| `signer` | Endereço esperado do signer do sponsor para provas de política obrigatória. |
+| `url` | Endpoint de serviço opcional que a Pali contata para suporte à execução por sponsor. A Pali exige isso para sponsorship `gasOnly`, porque não há sponsor remoto de gas sem uma URL de serviço. |
+| `signer` | Endereço esperado do signer do sponsor para provas de política obrigatória. Obrigatório para modo `required`. |
 | `policyText` | Explicação voltada ao usuário armazenada nos metadados da carteira. Não é enforcement on-chain. |
 
 ## Política on-chain
@@ -41,11 +41,13 @@ Solicitações de execução de sponsor usam uma chave de idempotência derivada
 
 ## Modo de sponsor obrigatório
 
-No modo `required`, a prova do sponsor deve recuperar para o signer configurado. Se a Pali não conseguir obter ou validar a prova do sponsor, a execução falha.
+No modo `required`, a prova do sponsor deve recuperar para o signer configurado. A URL de sponsor é opcional: a Pali pode obter a prova do serviço de sponsor quando uma URL está configurada, ou assinar localmente quando o signer configurado é uma conta disponível na carteira. Se a Pali não conseguir obter ou validar a prova do sponsor, a execução falha.
+
+O pagamento de gas é separado da autorização do sponsor. Depois que uma prova de sponsor válida estiver disponível, a Pali ainda pode pagar gas a partir de qualquer conta de software financiada selecionada para execução passkey.
 
 ## Modo somente gas
 
-No modo `gasOnly`, o serviço de sponsor pode fazer relay ou ajudar a pagar gas. Se sponsorship estiver indisponível, a Pali pode fazer fallback para execução com gas da carteira quando a política permite.
+No modo `gasOnly`, o serviço de sponsor pode fazer relay ou ajudar a pagar gas. A Pali exige uma URL de sponsor para este modo porque a URL identifica o serviço de sponsorship de gas. Se sponsorship estiver indisponível, a Pali pode fazer fallback para execução com gas da carteira quando a política permite.
 
 ## Orientação institucional
 
