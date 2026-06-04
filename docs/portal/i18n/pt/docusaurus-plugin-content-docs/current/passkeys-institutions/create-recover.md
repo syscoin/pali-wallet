@@ -2,7 +2,9 @@
 title: Criar e recuperar contas com passkey
 ---
 
-`wallet_createPasskeyAccount` é intencionalmente idempotente para onboarding de dapp. A Pali verifica contas on-chain recuperáveis antes de criar um novo caminho de credencial/conta.
+`wallet_createPasskeyAccount` cria uma nova smart account com passkey para onboarding de dapp. A Pali cria ou seleciona uma credencial WebAuthn, implanta a smart account on-chain, confirma os metadados de recuperação implantados e grava a conta no estado local da carteira após a confirmação.
+
+O estado local da carteira representa contas com passkey implantadas. A recuperação está disponível nas configurações da Pali para contas que já existem on-chain.
 
 ## Estrutura de smart account e fábrica
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## Comportamento de recuperação antes da criação
+## Comportamento de criação e implantação
 
 Quando uma dapp solicita uma conta com passkey:
 
 1. A Pali verifica se a chain ativa oferece suporte a smart accounts com passkey.
-2. A Pali verifica se a passkey pode recuperar uma conta on-chain que corresponde à política de sponsor solicitada.
-3. Se a conta correspondente existe localmente, a Pali a reutiliza.
-4. Se a conta correspondente existe on-chain, mas não localmente, a Pali a importa.
-5. Se uma conta existe para a mesma URL de sponsor, mas modo ou signer difere, a Pali rejeita com uma incompatibilidade de recuperação.
-6. Se nenhuma conta correspondente existe, a Pali prossegue com a criação de uma nova conta.
+2. A Pali cria um salt de implantação novo para o novo caminho de conta.
+3. A Pali obtém ou cria o perfil de credencial WebAuthn.
+4. A Pali calcula o endereço contrafactual e os metadados de implantação.
+5. Se a política de sponsor solicitada exigir uma ação inicial `setSponsor`, a Pali solicita ao usuário uma asserção passkey sobre o hash de ação de implantação.
+6. A Pali envia `createAccount` ou `createAccountAndExecute` pelo pagador de gas de implantação configurado.
+7. A Pali espera a confirmação, lê os metadados de recuperação da smart account na chain e verifica se correspondem à credencial preparada e aos dados de origem.
+8. Após a confirmação, a Pali cria a conta com passkey local e a conecta à dapp solicitante.
+
+Se o endereço resultante já estiver presente localmente como uma conta com passkey implantada, a Pali pode reutilizar essa conta local.
 
 ## O que determina o endereço?
 
-O endereço da smart account é derivado de entradas da fábrica, incluindo coordenadas públicas da passkey, hash da credencial, dados de origem, hash do RP ID, ID de recuperação e salt de implantação. A política de sponsor é usada pela lógica de correspondência de recuperação para onboarding escopado à instituição.
+O endereço da smart account é derivado de entradas da fábrica, incluindo coordenadas públicas da passkey, hash da credencial, dados de origem, hash do RP ID, ID de recuperação e salt de implantação. Cada novo caminho de conta usa um salt de implantação novo, então uma credencial pode controlar várias smart accounts.
 
 ## Se o usuário perde dados locais da Pali
 
@@ -100,7 +106,7 @@ Se o perfil do navegador, o storage da extensão ou metadados locais da conta co
 5. A Pali ignora contas já presentes localmente.
 6. A Pali importa contas correspondentes de volta para o estado local da carteira.
 
-Para criação/recuperação orientada por dapp, a Pali também compara modo de sponsor, signer e URL da conta recuperada com a política de sponsor solicitada pela dapp. Isso impede uma instituição de vincular silenciosamente o usuário a uma política de sponsor diferente da solicitada pela dapp.
+A recuperação nas Configurações descobre contas implantadas e importa cada conta correspondente exposta pelo registro para a credencial.
 
 ## RP ID e nome da credencial
 

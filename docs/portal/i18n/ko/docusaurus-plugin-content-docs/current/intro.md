@@ -7,7 +7,7 @@ Pali Wallet은 하나의 보안 계층에서 account-based 및 UTXO-based 블록
 
 EVM dapp의 경우 Pali는 EIP-1193 요청, EIP-6963 discovery, 계정 권한, 체인 전환, 서명, 트랜잭션, batch call을 지원하는 MetaMask-compatible `window.ethereum` provider를 노출합니다. Syscoin UTXO 및 Bitcoin-style 애플리케이션의 경우 Pali는 account, xpub, change address, PSBT signing, transaction, asset method를 제공하는 `window.pali`를 노출합니다.
 
-Pali는 기관 및 고급 dapp을 위한 passkey smart account도 지원합니다. dapp은 Pali에 WebAuthn-backed smart account를 생성하거나 복구하고, sponsor policy를 연결한 뒤, 나중에 `wallet_sendCalls`를 통해 atomic batch를 실행하도록 요청할 수 있습니다.
+Pali는 기관 및 고급 dapp을 위한 passkey smart account도 지원합니다. dapp은 Pali에 WebAuthn-backed smart account 생성 및 deployment, 생성 중 sponsor policy 연결, 이후 `wallet_sendCalls`를 통한 atomic batch 실행을 요청할 수 있습니다. 기존 passkey account recovery는 Pali에서 처리됩니다.
 
 ## 경로 선택
 

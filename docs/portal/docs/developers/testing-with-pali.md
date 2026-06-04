@@ -39,8 +39,8 @@ Then load `build/chrome` through the browser extension developer page.
 ## Passkey testing checklist
 
 1. Connect Pali through the default provider selector.
-2. Create or recover a passkey account with sponsorship disabled.
-3. Fund or deploy the passkey account if required by your test.
+2. Create a passkey account with sponsorship disabled and wait for Pali to confirm deployment.
+3. Fund the passkey account or gas payer if required by your test.
 4. Build an ERC-20 approve plus `transferFrom` batch.
 5. Send the batch with `wallet_sendCalls`.
 6. Confirm the wallet shows decoded calldata and a single WebAuthn approval for the passkey batch.

@@ -43,7 +43,7 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
-import { getPasskeyAssertion } from 'utils/passkey';
+import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
 import { safeToFixed } from 'utils/safeToFixed';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -351,43 +351,11 @@ export const SendConfirm = () => {
         value: string,
         data: string
       ) => {
-        const prepared = (await controllerEmitter(
-          ['wallet', 'preparePasskeyExecution'],
-          [
-            {
-              target,
-              value,
-              data,
-            },
-          ],
-          300000
-        )) as any;
-        const assertion = await getPasskeyAssertion(
-          activeAccount.passkey.credentialId,
-          prepared.actionHash
-        );
-
-        await controllerEmitter(
-          ['wallet', 'submitPasskeyExecution'],
-          [
-            {
-              actionHash: prepared.actionHash,
-              execution: prepared.execution,
-              executions: prepared.executions,
-              requiresDeployment: prepared.requiresDeployment,
-              proof: {
-                authenticatorData: assertion.authenticatorData,
-                clientDataJSON: assertion.clientDataJSON,
-                challengeOffset: assertion.challengeOffset,
-                originOffset: assertion.originOffset,
-                r: assertion.r,
-                s: assertion.s,
-                typeOffset: assertion.typeOffset,
-              },
-            },
-          ],
-          300000
-        );
+        await signAndSubmitPasskeyExecutions({
+          controllerEmitter,
+          credentialId: activeAccount.passkey.credentialId,
+          executions: [{ target, value, data }],
+        });
       };
 
       const assertPasskeyTokenRecipientAllowed = async () => {

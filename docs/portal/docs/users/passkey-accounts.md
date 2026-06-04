@@ -27,9 +27,9 @@ Pali can use a shared wallet passkey profile or create a separate passkey creden
 
 ## Deployment
 
-A passkey smart account may exist as a counterfactual address before it is deployed on-chain. The first execution can deploy the account and perform the requested action in one flow if the network and funding path support it.
+A passkey smart account may exist as a counterfactual address while Pali prepares creation, but Pali only saves the account locally after the deployment transaction is confirmed and the on-chain recovery metadata matches the credential.
 
-If the account is not deployed yet, make sure the passkey account or deployment gas payer has enough native token, or use an institution sponsor path that supports the deployment flow.
+If a sponsor policy is selected during creation, Pali can deploy the account and apply the initial policy in the same on-chain transaction. Later policy changes are separate on-chain transactions and require another passkey approval.
 
 ## Network support
 
@@ -45,3 +45,5 @@ Passkey accounts require zkSYS passkey smart account contracts and P-256 verific
 </figure>
 
 If local wallet state is deleted or the wallet is restored, Pali can recover passkey smart accounts from the on-chain factory registry and event logs. Recovery still needs a WebAuthn assertion from the relevant passkey.
+
+One passkey credential can control multiple smart accounts. Because new accounts use fresh deployment salts, Pali recovers them from the on-chain registry rather than by locally guessing indexes.

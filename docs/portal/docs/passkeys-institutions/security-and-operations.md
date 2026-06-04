@@ -19,11 +19,13 @@ Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS
 - Provide a user support path for lost devices and failed recovery.
 - Document whether the institution can co-authorize execution.
 
-## Funding and deployment
+## Creation, funding, and deployment
 
-Passkey smart accounts can be counterfactual before first use. The first execution may need a deployment gas payer or sponsor path. Your onboarding flow should explain whether users need to fund the account before using it.
+Passkey smart accounts are counterfactual while Pali prepares creation. Pali stores the local account after the deployment transaction is confirmed. Account creation needs a deployment gas payer with enough native token for `createAccount` or `createAccountAndExecute`.
 
-The factory can compute the account address before deployment. This is useful for onboarding because a dapp or institution can display or fund the address before the first on-chain transaction.
+If a sponsor policy is configured during creation, Pali includes the initial policy update in the deployment transaction and verifies the deployed metadata afterwards. Updating policy later is also an on-chain smart account execution.
+
+The factory can compute the account address before deployment. This is useful for display and funding UX. Production integrations should treat the account as usable after Pali returns success from `wallet_createPasskeyAccount`.
 
 ## Recovery assumptions
 
@@ -34,6 +36,8 @@ Recovery is wallet-scoped and passkey-scoped. A user generally needs:
 - chain support for the passkey factory
 
 Recovery is not a custodial backdoor. The chain provides discoverable account lists and public recovery metadata for deployed accounts, but the user still needs the wallet recovery context and the relevant WebAuthn credential to prove control.
+
+Creation uses fresh deployment salts. Recovery queries the factory registry and event history for the credential and recovery ID, then imports the matching deployed accounts.
 
 ## Credential backup status
 
@@ -62,3 +66,12 @@ Use clear policy text. A good policy explains:
 ## Do not rely on policy text for enforcement
 
 `policyText` is a disclosure and wallet metadata field. Enforcement is through on-chain policy and sponsor proof validation.
+
+## Local storage model
+
+Pali stores two different passkey concepts:
+
+- The passkey credential profile is lightweight local state for the shared WebAuthn credential: credential id, credential hash, public key, backup status, and display name.
+- Passkey account metadata belongs to each deployed smart account: address, chain id, factory, deployment salt, recovery id, public key, sponsor policy, and deployment status.
+
+The credential profile can exist before an account is created. A local passkey account represents a confirmed on-chain deployment.

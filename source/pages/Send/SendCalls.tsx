@@ -21,7 +21,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { getMethodName } from 'utils/commonMethodSignatures';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
-import { getPasskeyAssertion } from 'utils/passkey';
+import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
 
 interface ISendCallsData {
   atomicRequired: boolean;
@@ -377,49 +377,24 @@ export const SendCalls = () => {
             });
           }
 
-          const prepared = (await controllerEmitter(
-            ['wallet', 'preparePasskeyExecutions'],
-            [passkeyCalls],
-            300000
-          )) as any;
-          const assertion = await getPasskeyAssertion(
-            activeAccount.passkey.credentialId,
-            prepared.actionHash
-          );
-
-          selectedIndices.forEach((index) => {
-            setTransactionStatuses((prev) => {
-              const newStatuses = [...prev];
-              newStatuses[index] = { status: 'sending' };
-              return newStatuses;
-            });
-          });
-
-          const response = (await controllerEmitter(
-            ['wallet', 'submitPasskeyExecution'],
-            [
-              {
-                actionHash: prepared.actionHash,
-                execution: prepared.execution,
-                executions: prepared.executions,
-                requiresDeployment: prepared.requiresDeployment,
-                proof: {
-                  authenticatorData: assertion.authenticatorData,
-                  clientDataJSON: assertion.clientDataJSON,
-                  challengeOffset: assertion.challengeOffset,
-                  originOffset: assertion.originOffset,
-                  r: assertion.r,
-                  s: assertion.s,
-                  typeOffset: assertion.typeOffset,
-                },
-                sponsorProof:
-                  selectedCallsData.length === 1
-                    ? getPasskeySponsorProofForCall(selectedCallsData[0])
-                    : getPasskeySponsorProofForBatch(),
-              },
-            ],
-            300000
-          )) as any;
+          const response = (await signAndSubmitPasskeyExecutions({
+            controllerEmitter,
+            credentialId: activeAccount.passkey.credentialId,
+            executions: passkeyCalls,
+            onAssertionResolved: () => {
+              selectedIndices.forEach((index) => {
+                setTransactionStatuses((prev) => {
+                  const newStatuses = [...prev];
+                  newStatuses[index] = { status: 'sending' };
+                  return newStatuses;
+                });
+              });
+            },
+            sponsorProof:
+              selectedCallsData.length === 1
+                ? getPasskeySponsorProofForCall(selectedCallsData[0])
+                : getPasskeySponsorProofForBatch(),
+          })) as any;
           const txHash = response.hash || response;
 
           selectedIndices.forEach((index) => {
@@ -587,57 +562,11 @@ export const SendCalls = () => {
             return newStatuses;
           });
 
-          let response: any;
-          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
-            if (!toField) {
-              throw new Error(t('send.passkeyContractDeploymentUnsupported'));
-            }
-
-            const prepared = (await controllerEmitter(
-              ['wallet', 'preparePasskeyExecution'],
-              [
-                {
-                  target: toField,
-                  value: tx.value || '0x0',
-                  data: tx.data || '0x',
-                },
-              ],
-              300000
-            )) as any;
-            const assertion = await getPasskeyAssertion(
-              activeAccount.passkey.credentialId,
-              prepared.actionHash
-            );
-
-            response = await controllerEmitter(
-              ['wallet', 'submitPasskeyExecution'],
-              [
-                {
-                  actionHash: prepared.actionHash,
-                  execution: prepared.execution,
-                  executions: prepared.executions,
-                  requiresDeployment: prepared.requiresDeployment,
-                  proof: {
-                    authenticatorData: assertion.authenticatorData,
-                    clientDataJSON: assertion.clientDataJSON,
-                    challengeOffset: assertion.challengeOffset,
-                    originOffset: assertion.originOffset,
-                    r: assertion.r,
-                    s: assertion.s,
-                    typeOffset: assertion.typeOffset,
-                  },
-                  sponsorProof: getPasskeySponsorProofForCall(call),
-                },
-              ],
-              300000
-            );
-          } else {
-            // Use the same method as SendTransaction
-            response = (await controllerEmitter(
-              ['wallet', 'sendAndSaveEthTransaction'],
-              [tx, false] // false = not legacy transaction
-            )) as any;
-          }
+          // Use the same method as SendTransaction
+          const response = (await controllerEmitter(
+            ['wallet', 'sendAndSaveEthTransaction'],
+            [tx, false] // false = not legacy transaction
+          )) as any;
 
           const txHash = response.hash || response;
 

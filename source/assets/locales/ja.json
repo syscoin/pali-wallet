@@ -203,7 +203,6 @@
     "removeAccount": "アカウントを削除",
     "removeAccountConfirmation": "{{accountType}}アカウント \"{{accountName}}\" を削除してもよろしいですか？必要に応じて、いつでもアカウントを再作成できます。",
     "accountRemovedSuccessfully": "アカウントが正常に削除されました",
-    "removeUndeployedPasskeyWarning": "この passkey アカウントはまだオンチェーンにデプロイされていないため、削除すると復元できなくなる可能性があります。",
     "failedToRemoveAccount": "アカウントの削除に失敗しました",
     "hardwareWalletSuccess": "ハードウェアウォレットが正常に接続されました！",
     "hardwareWalletInstructions": "このウィンドウを閉じてPaliを再度開き、取引でハードウェアウォレットを使用してください。あなたのアカウントは保存され、永続化されました。",
@@ -238,13 +237,29 @@
     "passkeyPolicyRequiredWarning": "管理対象 / 共同署名アカウントでは、今後のトランザクションにスポンサー承認が必要です。",
     "passkeyPolicyUpdated": "passkey アカウントポリシーを更新しました。",
     "passkeyPolicyOnchainNotice": "このアカウントは onchain で有効です。ポリシー変更を保存すると passkey 承認を求め、トランザクションを送信します。",
+    "passkeyPolicyStep": {
+      "preparing": "onchain ポリシー更新を準備しています...",
+      "approval": "passkey 承認を待っています...",
+      "confirming": "onchain ポリシートランザクションを送信して確認しています...",
+      "saving": "確認済みポリシーをローカルに保存しています...",
+      "idle": "ポリシーを更新できます。"
+    },
     "passkeyStatusTitle": "passkey 同期",
     "passkeyStatusRefreshDescription": "この passkey がデバイスに限定されているか、デバイスのバックアップから利用できるかを表示します。",
     "refreshPasskeyStatus": "更新",
     "passkeyStatusUpdated": "passkey ステータスを更新しました。",
     "passkeyStatusRefreshFailed": "passkey ステータスを更新できませんでした。",
     "customizeAccountPolicy": "アカウントポリシーをカスタマイズ",
-    "passkeyPolicyLocked": "Pali はこのポリシーを保存し、アカウントの初回使用時に適用します。",
+    "passkeyPolicyLocked": "Pali は接続する前に、このアカウントとポリシーをオンチェーンで作成します。",
+    "passkeyAccountNotOnchain": "このローカルのパスキーアカウントはオンチェーンで確認されていません。使用する前に復元するか、作成し直してください。",
+    "passkeyCreationStep": {
+      "credential": "パスキーを確認しています...",
+      "recovering": "既存のオンチェーンアカウントを確認しています...",
+      "deploying": "オンチェーンのアカウント作成を準備しています...",
+      "confirming": "オンチェーントランザクションを送信して確認しています...",
+      "saving": "確認済みアカウントを Pali に保存しています...",
+      "idle": "準備完了"
+    },
     "sponsorServiceUrl": "スポンサーサービス URL",
     "sponsorSignerAddress": "スポンサー署名者アドレス",
     "sponsorServiceUrlRequired": "スポンサーサービス URL を入力してください。",
@@ -370,8 +385,7 @@
     "sponsorDisabled": "スポンサーなし",
     "sponsorUrl": "スポンサー URL: {{url}}",
     "sponsorSigner": "スポンサー署名者: {{signer}}",
-    "sponsorRequiredWarning": "このアカウントから Pali が取引を実行するには、スポンサーの共同承認が必要です。",
-    "passkeyRecoveryMismatch": "そのパスキーは、このスポンサーの既存アカウントと一致しません。もう一度 作成 を押して別のパスキーを選択するか、詳細設定を有効にして別の新しいパスキーを作成してください。"
+    "sponsorRequiredWarning": "このアカウントから Pali が取引を実行するには、スポンサーの共同承認が必要です。"
   },
   "titles": {
     "assetDetails": "資産詳細",

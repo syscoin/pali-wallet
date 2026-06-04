@@ -12,7 +12,8 @@ import { logError } from 'utils/logger';
 import {
   bytesToHex,
   createPasskeyCredential,
-  getDiscoverablePasskeyAssertion,
+  getPasskeyAssertion,
+  passkeyAssertionToProof,
 } from 'utils/passkey';
 import { isValidSponsorServiceUrl } from 'utils/passkey/sponsorUrl';
 
@@ -29,12 +30,19 @@ const decodeDappText = (value?: unknown) => {
   return textarea.value.trim();
 };
 
+type CreationStep =
+  | 'credential'
+  | 'deploying'
+  | 'idle'
+  | 'saving'
+  | 'confirming';
+
 export const CreatePasskeyAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { eventName, host, label, sponsor } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [creationStep, setCreationStep] = useState<CreationStep>('idle');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [useSeparatePasskey, setUseSeparatePasskey] = useState(false);
@@ -98,14 +106,9 @@ export const CreatePasskeyAccount = () => {
     window.close();
   };
 
-  const isPasskeyRecoveryMismatchError = (error: any) => {
-    const errorMessage = error?.message || String(error);
-    return /Passkey sponsor signer does not match/i.test(errorMessage);
-  };
-
   const approve = async () => {
     setLoading(true);
-    setRecoveryMessage('');
+    setCreationStep('credential');
 
     try {
       if (hasSponsorPolicy && !trimmedSponsorUrl) {
@@ -147,63 +150,6 @@ export const CreatePasskeyAccount = () => {
             'wallet',
             'getPasskeyCredentialProfile',
           ])) as any);
-      if (!credential && !useSeparatePasskey) {
-        let assertion: any = null;
-        try {
-          const challenge = crypto.getRandomValues(new Uint8Array(32));
-          assertion = await getDiscoverablePasskeyAssertion(
-            bytesToHex(challenge)
-          );
-        } catch {
-          assertion = null;
-        }
-
-        if (assertion) {
-          let recoveredAccount: any = null;
-          try {
-            recoveredAccount = (await controllerEmitter(
-              ['wallet', 'recoverPasskeySmartAccountForCreate'],
-              [
-                {
-                  backupStatus: assertion.backupStatus,
-                  credentialId: assertion.credentialId,
-                  credentialIdHash: assertion.credentialIdHash,
-                  label: requestedLabel,
-                  sponsor: preparedSponsor,
-                },
-              ],
-              300000
-            )) as any;
-          } catch (error) {
-            if (!isPasskeyRecoveryMismatchError(error)) {
-              throw error;
-            }
-            setRecoveryMessage(t('connections.passkeyRecoveryMismatch'));
-            return;
-          }
-
-          if (recoveredAccount) {
-            await controllerEmitter(
-              ['dapp', 'changeAccount'],
-              [
-                host,
-                recoveredAccount.id,
-                KeyringAccountType.PasskeySmartAccount,
-              ]
-            );
-
-            dispatchBackgroundEvent(`${eventName}.${host}`, {
-              address: recoveredAccount.address,
-              metadata: recoveredAccount.passkey,
-            });
-            window.close();
-            return;
-          }
-
-          credential = null;
-        }
-      }
-
       if (!credential) {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
         const passkeyName = useSeparatePasskey
@@ -235,6 +181,7 @@ export const CreatePasskeyAccount = () => {
             );
       }
       const credentialPublicKey = credential.publicKey || credential;
+      setCreationStep('deploying');
       const prepared = (await controllerEmitter(
         ['wallet', 'preparePasskeySmartAccount'],
         [
@@ -257,17 +204,31 @@ export const CreatePasskeyAccount = () => {
         ],
         300000
       )) as any;
+      let deploymentProof;
+      if (prepared.deploymentActionHash) {
+        const assertion = await getPasskeyAssertion(
+          credential.credentialId,
+          prepared.deploymentActionHash
+        );
+        deploymentProof = passkeyAssertionToProof(assertion);
+      }
+
+      setCreationStep('confirming');
       const account = (await controllerEmitter(
         ['wallet', 'createPasskeySmartAccount'],
         [
           {
             address: prepared.address,
+            deploymentActionHash: prepared.deploymentActionHash,
+            deploymentExecutions: prepared.deploymentExecutions,
+            deploymentProof,
             label: requestedLabel,
             metadata: prepared.metadata,
           },
         ]
       )) as any;
 
+      setCreationStep('saving');
       await controllerEmitter(
         ['dapp', 'changeAccount'],
         [host, account.id, KeyringAccountType.PasskeySmartAccount]
@@ -286,6 +247,7 @@ export const CreatePasskeyAccount = () => {
       }
     } finally {
       setLoading(false);
+      setCreationStep('idle');
     }
   };
 
@@ -338,14 +300,6 @@ export const CreatePasskeyAccount = () => {
               </div>
             </Card>
           )}
-          {recoveryMessage && (
-            <Card type="info">
-              <p className="text-brand-yellowInfo text-sm font-normal text-left">
-                {recoveryMessage}
-              </p>
-            </Card>
-          )}
-
           {hasSponsorDetails && (
             <>
               <button
@@ -444,10 +398,19 @@ export const CreatePasskeyAccount = () => {
           )}
         </div>
 
-        <div className="pb-20"></div>
+        <div className="pb-32"></div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        {creationStep !== 'idle' && (
+          <div className="mb-3">
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {t(`settings.passkeyCreationStep.${creationStep}`)}
+              </p>
+            </Card>
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <SecondaryButton type="button" onClick={reject} disabled={loading}>
             {t('buttons.cancel')}

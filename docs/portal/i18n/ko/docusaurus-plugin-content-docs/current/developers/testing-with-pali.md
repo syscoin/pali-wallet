@@ -39,7 +39,7 @@ yarn dev:chrome
 ## Passkey testing checklist
 
 1. 기본 provider selector를 통해 Pali에 연결합니다.
-2. sponsorship disabled 상태로 passkey account를 생성하거나 복구합니다.
+2. sponsorship disabled 상태로 passkey account를 생성하고 Pali가 deployment confirmation을 완료할 때까지 기다립니다.
 3. test에서 필요하다면 passkey account에 fund를 넣거나 deploy합니다.
 4. ERC-20 approve와 `transferFrom` batch를 만듭니다.
 5. `wallet_sendCalls`로 batch를 전송합니다.

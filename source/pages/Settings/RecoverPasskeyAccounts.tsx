@@ -23,6 +23,7 @@ const RecoverPasskeyAccounts = () => {
 
   const [address, setAddress] = useState<string | undefined>();
   const [accountName, setAccountName] = useState<string>('');
+  const [recoveredCount, setRecoveredCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const isRecoverySubmitDisabled = loading;
 
@@ -57,6 +58,7 @@ const RecoverPasskeyAccounts = () => {
         const firstAccount = result.accounts?.[0];
         setAccountName(firstAccount?.label || t('settings.passkeyAccount'));
         setAddress(firstAccount?.address || '');
+        setRecoveredCount(result.recovered);
         alert.success(
           t('settings.passkeyAccountsRecovered', {
             count: result.recovered,
@@ -82,9 +84,12 @@ const RecoverPasskeyAccounts = () => {
           show={address !== ''}
           onClose={() => {
             setAddress('');
+            setRecoveredCount(0);
             navigateBack(navigate, location);
           }}
-          title={t('settings.passkeyAccountsRecovered', { count: 1 })}
+          title={t('settings.passkeyAccountsRecovered', {
+            count: recoveredCount,
+          })}
           phraseOne={`${accountName}`}
           phraseTwo={`${address}`}
         />

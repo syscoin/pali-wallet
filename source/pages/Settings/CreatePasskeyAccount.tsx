@@ -9,14 +9,25 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { PasskeyBackupStatus } from 'types/network';
 import { navigateBack } from 'utils/navigationState';
-import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
+import {
+  bytesToHex,
+  createPasskeyCredential,
+  getPasskeyAssertion,
+} from 'utils/passkey';
 
 type LocationState = {
   initialLabel?: string;
 };
 
+type CreationStep =
+  | 'idle'
+  | 'credential'
+  | 'deploying'
+  | 'confirming'
+  | 'saving';
+
 const scrollAreaClassName =
-  'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-260px)] flex-col gap-4 overflow-y-auto pb-8 text-left';
+  'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-260px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
 
 const disclosureButtonClassName =
   'flex w-full cursor-pointer items-center justify-between rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60';
@@ -45,6 +56,7 @@ const CreatePasskeyAccount = () => {
   const [sharedPasskeyBackupStatus, setSharedPasskeyBackupStatus] = useState<
     PasskeyBackupStatus | undefined
   >();
+  const [creationStep, setCreationStep] = useState<CreationStep>('idle');
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [useSeparatePasskey, setUseSeparatePasskey] = useState<boolean>(false);
 
@@ -71,6 +83,7 @@ const CreatePasskeyAccount = () => {
 
   const createPasskeyAccount = async () => {
     setLoading(true);
+    setCreationStep('credential');
 
     try {
       const label = accountName;
@@ -121,6 +134,7 @@ const CreatePasskeyAccount = () => {
       }
 
       const credentialPublicKey = credential.publicKey || credential;
+      setCreationStep('deploying');
       const prepared = (await controllerEmitter(
         ['wallet', 'preparePasskeySmartAccount'],
         [
@@ -141,18 +155,39 @@ const CreatePasskeyAccount = () => {
           },
         ]
       )) as any;
+      let deploymentProof;
+      if (prepared.deploymentActionHash) {
+        const assertion = await getPasskeyAssertion(
+          credential.credentialId,
+          prepared.deploymentActionHash
+        );
+        deploymentProof = {
+          authenticatorData: assertion.authenticatorData,
+          clientDataJSON: assertion.clientDataJSON,
+          challengeOffset: assertion.challengeOffset,
+          originOffset: assertion.originOffset,
+          r: assertion.r,
+          s: assertion.s,
+          typeOffset: assertion.typeOffset,
+        };
+      }
 
+      setCreationStep('confirming');
       const { address: newAddress } = (await controllerEmitter(
         ['wallet', 'createPasskeySmartAccount'],
         [
           {
             address: prepared.address,
+            deploymentActionHash: prepared.deploymentActionHash,
+            deploymentExecutions: prepared.deploymentExecutions,
+            deploymentProof,
             label,
             metadata: prepared.metadata,
           },
         ]
       )) as any;
 
+      setCreationStep('saving');
       setAddress(newAddress);
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
@@ -161,6 +196,7 @@ const CreatePasskeyAccount = () => {
       }
     } finally {
       setLoading(false);
+      setCreationStep('idle');
     }
   };
 
@@ -268,7 +304,14 @@ const CreatePasskeyAccount = () => {
             </div>
           </div>
 
-          <div className="w-full px-4 absolute bottom-12 md:static">
+          <div className="w-full px-4 absolute bottom-12 md:static space-y-3">
+            {loading && (
+              <Card type="info">
+                <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                  {t(`settings.passkeyCreationStep.${creationStep}`)}
+                </p>
+              </Card>
+            )}
             <NeutralButton
               type="button"
               disabled={loading}

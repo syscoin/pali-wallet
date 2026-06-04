@@ -1,7 +1,7 @@
 import { getAddress } from '@ethersproject/address';
 import { AddressZero } from '@ethersproject/constants';
 import { Form, Input } from 'antd';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
@@ -19,6 +19,7 @@ import {
   getPasskeyAssertion,
   PasskeyContractSponsorMode,
   passkeySmartAccountInterface,
+  signAndSubmitPasskeyExecutions,
 } from 'utils/passkey';
 import { isValidSponsorServiceUrl } from 'utils/passkey/sponsorUrl';
 
@@ -35,7 +36,9 @@ const contractModeByPolicy = {
 };
 
 const scrollAreaClassName =
-  'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-240px)] flex-col gap-4 overflow-y-auto pb-28 text-left';
+  'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-240px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
+
+type PolicyStep = 'idle' | 'preparing' | 'approval' | 'confirming' | 'saving';
 
 const PasskeyAccountPolicy = () => {
   const location = useLocation();
@@ -57,9 +60,7 @@ const PasskeyAccountPolicy = () => {
   const [backupStatus, setBackupStatus] = useState<
     PasskeyBackupStatus | undefined
   >(state?.passkey?.backupStatus);
-  const [isDeployed, setIsDeployed] = useState<boolean>(
-    Boolean(state?.passkey?.isDeployed)
-  );
+  const [policyStep, setPolicyStep] = useState<PolicyStep>('idle');
   const [refreshingStatus, setRefreshingStatus] = useState<boolean>(false);
 
   const isValidSponsorSigner = (value: string) => {
@@ -127,34 +128,6 @@ const PasskeyAccountPolicy = () => {
     });
   };
 
-  useEffect(() => {
-    let cancelled = false;
-
-    if (state?.id === null || state?.id === undefined || !state?.passkey) {
-      return undefined;
-    }
-
-    controllerEmitter(
-      ['wallet', 'getPasskeyDeploymentStatus'],
-      [state.id],
-      300000
-    )
-      .then((deployed) => {
-        if (!cancelled) {
-          setIsDeployed(Boolean(deployed));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsDeployed(Boolean(state?.passkey?.isDeployed));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [controllerEmitter, state?.id, state?.passkey]);
-
   const policyCopy = {
     [PasskeySponsorMode.Disabled]: {
       title: t('settings.passkeyPolicy.disabled.title'),
@@ -179,17 +152,18 @@ const PasskeyAccountPolicy = () => {
     }
 
     setLoading(true);
+    setPolicyStep('preparing');
 
     try {
       if (!state?.address || !state?.passkey) {
         throw new Error('Passkey account metadata is unavailable');
       }
 
-      const trimmedSponsorUrl = (formValues.sponsorUrl || '').trim();
-      const trimmedSponsorSigner = (formValues.sponsorSigner || '').trim();
+      const submittedSponsorUrl = (formValues.sponsorUrl || '').trim();
+      const submittedSponsorSigner = (formValues.sponsorSigner || '').trim();
       let normalizedSigner = '';
-      if (trimmedSponsorSigner) {
-        normalizedSigner = getAddress(trimmedSponsorSigner);
+      if (submittedSponsorSigner) {
+        normalizedSigner = getAddress(submittedSponsorSigner);
       }
 
       const sponsor =
@@ -198,14 +172,14 @@ const PasskeyAccountPolicy = () => {
           : {
               mode: policyMode,
               ...(normalizedSigner ? { signer: normalizedSigner } : {}),
-              ...(trimmedSponsorUrl ? { url: trimmedSponsorUrl } : {}),
+              ...(submittedSponsorUrl ? { url: submittedSponsorUrl } : {}),
             };
       const contractSponsorSigner =
         policyMode === PasskeySponsorMode.Disabled
           ? AddressZero
           : normalizedSigner || AddressZero;
       const contractSponsorUrl =
-        policyMode === PasskeySponsorMode.Disabled ? '' : trimmedSponsorUrl;
+        policyMode === PasskeySponsorMode.Disabled ? '' : submittedSponsorUrl;
       const data = passkeySmartAccountInterface.encodeFunctionData(
         'setSponsor',
         [
@@ -215,16 +189,8 @@ const PasskeyAccountPolicy = () => {
         ]
       );
 
-      if (!isDeployed) {
-        const updatedSponsor = (await controllerEmitter(
-          ['wallet', 'updatePasskeySponsorMetadata'],
-          [state.id, sponsor],
-          300000
-        )) as any;
-
-        alert.success(t('settings.passkeyPolicyUpdated'));
-        navigateBackWithUpdatedSponsor(updatedSponsor);
-        return;
+      if (!state.passkey.isDeployed) {
+        throw new Error(t('settings.passkeyAccountNotOnchain'));
       }
 
       await controllerEmitter(
@@ -232,52 +198,24 @@ const PasskeyAccountPolicy = () => {
         [state.id, KeyringAccountType.PasskeySmartAccount],
         300000
       );
-      const prepared = (await controllerEmitter(
-        ['wallet', 'preparePasskeyExecution'],
-        [
-          {
-            target: state.address,
-            value: '0x0',
-            data,
-          },
-        ],
-        300000
-      )) as any;
-      const assertion = await getPasskeyAssertion(
-        state.passkey.credentialId,
-        prepared.actionHash
-      );
+      const execution = {
+        target: state.address,
+        value: '0x0',
+        data,
+      };
+      await signAndSubmitPasskeyExecutions({
+        confirmedSponsor: sponsor,
+        controllerEmitter,
+        credentialId: state.passkey.credentialId,
+        executions: [execution],
+        onAssertionResolved: () => setPolicyStep('confirming'),
+        onPrepared: () => setPolicyStep('approval'),
+        waitForConfirmation: true,
+      });
 
-      await controllerEmitter(
-        ['wallet', 'submitPasskeyExecution'],
-        [
-          {
-            actionHash: prepared.actionHash,
-            execution: prepared.execution,
-            executions: prepared.executions,
-            requiresDeployment: prepared.requiresDeployment,
-            proof: {
-              authenticatorData: assertion.authenticatorData,
-              clientDataJSON: assertion.clientDataJSON,
-              challengeOffset: assertion.challengeOffset,
-              originOffset: assertion.originOffset,
-              r: assertion.r,
-              s: assertion.s,
-              typeOffset: assertion.typeOffset,
-            },
-            waitForConfirmation: true,
-          },
-        ],
-        300000
-      );
-      const updatedSponsor = (await controllerEmitter(
-        ['wallet', 'updatePasskeySponsorMetadata'],
-        [state.id, sponsor],
-        300000
-      )) as any;
-
+      setPolicyStep('saving');
       alert.success(t('settings.passkeyPolicyUpdated'));
-      navigateBackWithUpdatedSponsor(updatedSponsor);
+      navigateBackWithUpdatedSponsor(sponsor);
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
@@ -285,6 +223,7 @@ const PasskeyAccountPolicy = () => {
       }
     } finally {
       setLoading(false);
+      setPolicyStep('idle');
     }
   };
 
@@ -335,15 +274,13 @@ const PasskeyAccountPolicy = () => {
             {t('settings.passkeyAccountPolicyDescription')}
           </p>
 
-          {isDeployed && (
-            <div className="px-1">
-              <Card type="info">
-                <p className="text-brand-yellowInfo text-sm font-normal text-left">
-                  {t('settings.passkeyPolicyOnchainNotice')}
-                </p>
-              </Card>
-            </div>
-          )}
+          <div className="px-1">
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {t('settings.passkeyPolicyOnchainNotice')}
+              </p>
+            </Card>
+          </div>
 
           <div
             className={`rounded-lg border bg-alpha-whiteAlpha100 p-4 text-xs text-brand-graylight ${
@@ -505,7 +442,14 @@ const PasskeyAccountPolicy = () => {
           )}
         </div>
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <div className="w-full px-4 absolute bottom-12 md:static space-y-3">
+          {loading && (
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {t(`settings.passkeyPolicyStep.${policyStep}`)}
+              </p>
+            </Card>
+          )}
           <NeutralButton
             type="button"
             fullWidth

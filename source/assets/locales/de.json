@@ -203,7 +203,6 @@
     "removeAccount": "Konto entfernen",
     "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
-    "removeUndeployedPasskeyWarning": "Dieses Passkey-Konto wurde noch nicht onchain bereitgestellt; das Entfernen kann es unwiederherstellbar machen.",
     "failedToRemoveAccount": "Fehler beim Entfernen des Kontos",
     "hardwareWalletSuccess": "Hardware-Wallet erfolgreich verbunden!",
     "hardwareWalletInstructions": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um Ihre Hardware-Wallet für Transaktionen zu verwenden. Ihr Konto ist jetzt gespeichert und persistent.",
@@ -238,13 +237,29 @@
     "passkeyPolicyRequiredWarning": "Verwaltete / mitunterzeichnete Konten benötigen Sponsor-Freigabe für zukünftige Transaktionen.",
     "passkeyPolicyUpdated": "Passkey-Kontorichtlinie erfolgreich aktualisiert.",
     "passkeyPolicyOnchainNotice": "Dieses Konto ist onchain aktiv. Beim Speichern von Richtlinienänderungen wird Passkey-Freigabe angefordert und eine Transaktion gesendet.",
+    "passkeyPolicyStep": {
+      "preparing": "Onchain-Richtlinienaktualisierung wird vorbereitet...",
+      "approval": "Warte auf Passkey-Freigabe...",
+      "confirming": "Onchain-Richtlinientransaktion wird gesendet und bestätigt...",
+      "saving": "Bestätigte Richtlinie wird lokal gespeichert...",
+      "idle": "Bereit zum Aktualisieren der Richtlinie."
+    },
     "passkeyStatusTitle": "Passkey-Sync",
     "passkeyStatusRefreshDescription": "Zeigt, ob diese Passkey an dieses Gerät gebunden oder über dein Geräte-Backup verfügbar ist.",
     "refreshPasskeyStatus": "Aktualisieren",
     "passkeyStatusUpdated": "Passkey-Status aktualisiert.",
     "passkeyStatusRefreshFailed": "Passkey-Status konnte nicht aktualisiert werden.",
     "customizeAccountPolicy": "Kontorichtlinie anpassen",
-    "passkeyPolicyLocked": "Pali speichert diese Richtlinie und wendet sie an, wenn das Konto erstmals verwendet wird.",
+    "passkeyPolicyLocked": "Pali erstellt dieses Konto und die Richtlinie on-chain, bevor es verbunden wird.",
+    "passkeyAccountNotOnchain": "Dieses lokale Passkey-Konto wurde nicht on-chain bestätigt. Stelle es wieder her oder erstelle es neu, bevor du es verwendest.",
+    "passkeyCreationStep": {
+      "credential": "Passkey wird geprüft...",
+      "recovering": "Vorhandenes On-chain-Konto wird geprüft...",
+      "deploying": "On-chain-Kontoerstellung wird vorbereitet...",
+      "confirming": "On-chain-Transaktion wird gesendet und bestätigt...",
+      "saving": "Bestätigtes Konto wird in Pali gespeichert...",
+      "idle": "Bereit"
+    },
     "sponsorServiceUrl": "Sponsor-Service-URL",
     "sponsorSignerAddress": "Sponsor-Signer-Adresse",
     "sponsorServiceUrlRequired": "Gib die Sponsor-Service-URL ein.",
@@ -370,8 +385,7 @@
     "sponsorDisabled": "Kein Sponsor",
     "sponsorUrl": "Sponsor-URL: {{url}}",
     "sponsorSigner": "Sponsor-Signierer: {{signer}}",
-    "sponsorRequiredWarning": "Dieses Konto erfordert eine Mitautorisierung des Sponsors, bevor Pali Transaktionen davon ausführen kann.",
-    "passkeyRecoveryMismatch": "Dieser Passkey passt zu keinem vorhandenen Konto für diesen Sponsor. Versuche erneut Erstellen und wähle einen anderen Passkey aus, oder aktiviere Erweitert, um einen separaten neuen Passkey zu erstellen."
+    "sponsorRequiredWarning": "Dieses Konto erfordert eine Mitautorisierung des Sponsors, bevor Pali Transaktionen davon ausführen kann."
   },
   "titles": {
     "assetDetails": "ASSET-DETAILS",

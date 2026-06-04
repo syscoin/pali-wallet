@@ -2,7 +2,9 @@
 title: passkeyアカウントの作成と復元
 ---
 
-`wallet_createPasskeyAccount`は、dappオンボーディングのために意図的に冪等です。Paliは新しいcredential/account経路を作成する前に、復元可能なオンチェーンアカウントを確認します。
+`wallet_createPasskeyAccount`は、dappオンボーディング用の新しいpasskeyスマートアカウントを作成します。PaliはWebAuthn credentialを作成または選択し、スマートアカウントをオンチェーンでデプロイし、デプロイ済みの復元メタデータを確認してから、確認後にアカウントをローカルウォレット状態へ書き込みます。
+
+ローカルウォレット状態は、デプロイ済みのpasskeyアカウントを表します。すでにオンチェーンに存在するアカウントは、Pali設定から復元できます。
 
 ## スマートアカウントとファクトリー構造
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## 作成前に復元する動作
+## 作成とデプロイの動作
 
 dappがpasskeyアカウントをリクエストすると:
 
 1. Paliはアクティブチェーンがpasskeyスマートアカウントをサポートすることを検証します。
-2. Paliは、passkeyが要求されたスポンサーpolicyに一致するオンチェーンアカウントを復元できるか確認します。
-3. 一致するアカウントがローカルに存在する場合、Paliはそれを再利用します。
-4. 一致するアカウントがオンチェーンに存在するがローカルにない場合、Paliはそれをインポートします。
-5. 同じsponsor URLのアカウントが存在するがmodeまたはsignerが異なる場合、Paliは復元不一致として拒否します。
-6. 一致するアカウントが存在しない場合、Paliは新しいアカウント作成を進めます。
+2. Paliは新しいアカウント経路のために新しいデプロイsaltを作成します。
+3. PaliはWebAuthn credential profileを取得または作成します。
+4. Paliはcounterfactualアドレスとデプロイメタデータを計算します。
+5. 要求されたスポンサーpolicyが初期`setSponsor`アクションを必要とする場合、Paliはデプロイaction hashに対するpasskey assertionをユーザーに求めます。
+6. Paliは設定されたデプロイgas payerを通じて`createAccount`または`createAccountAndExecute`を送信します。
+7. Paliは確認を待ち、スマートアカウントの復元メタデータをチェーンから読み取り、準備済みcredentialとorigin dataに一致することを検証します。
+8. 確認後、Paliはローカルpasskeyアカウントを作成し、要求元dappへ接続します。
+
+結果のアドレスがデプロイ済みpasskeyアカウントとしてローカルに存在する場合、Paliはそのローカルアカウントを再利用できます。
 
 ## 何がアドレスを決定するのか
 
-スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、recovery ID、deployment saltを含むファクトリー入力から派生します。スポンサーpolicyは機関スコープのオンボーディングにおける復元マッチングロジックで使用されます。
+スマートアカウントアドレスは、passkey公開座標、credential hash、origin data、RP ID hash、recovery ID、deployment saltを含むファクトリー入力から派生します。新しいアカウント経路ごとに新しいdeployment saltを使用するため、1つのcredentialで複数のスマートアカウントを制御できます。
 
 ## ユーザーがローカルPaliデータを失った場合
 
@@ -100,7 +106,7 @@ dappがpasskeyアカウントをリクエストすると:
 5. Paliはローカルにすでに存在するアカウントをスキップします。
 6. Paliは一致するアカウントをローカルウォレット状態へインポートします。
 
-dapp主導の作成/復元では、Paliは復元されたアカウントのスポンサーmode、signer、URLも、dappが要求したスポンサーpolicyと比較します。これにより、機関がdappの要求と異なるスポンサーpolicyへユーザーを静かに紐づけることを防ぎます。
+設定からの復元はデプロイ済みアカウントを検出し、registryがcredentialに対して公開する一致アカウントをすべてインポートします。
 
 ## RP IDとcredential名
 

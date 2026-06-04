@@ -45,7 +45,7 @@ const result = await window.ethereum.request({
 
 ## Passkey behavior
 
-For passkey smart accounts, Pali prepares all selected calls as one smart account execution batch, requests one passkey assertion, and submits one transaction. If the account is undeployed, the deployment and optional initial policy execution can be part of the first transaction path.
+For passkey smart accounts, Pali prepares all selected calls as one smart account execution batch, requests one passkey assertion, and submits one transaction. The passkey account must already be deployed; Pali's create flow confirms deployment before the account can be used locally.
 
 ## EOA behavior
 

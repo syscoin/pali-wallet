@@ -147,8 +147,7 @@
     "sponsorDisabled": "No sponsor",
     "sponsorUrl": "Sponsor URL: {{url}}",
     "sponsorSigner": "Sponsor signer: {{signer}}",
-    "sponsorRequiredWarning": "This account will require sponsor co-authorization before Pali can execute transactions from it.",
-    "passkeyRecoveryMismatch": "That passkey does not match an existing account for this sponsor. Try Create again and select a different passkey, or enable Advanced to create a separate new passkey."
+    "sponsorRequiredWarning": "This account will require sponsor co-authorization before Pali can execute transactions from it."
   },
   "home": {
     "importToken": "Import Token",
@@ -539,7 +538,6 @@
     "allYourSettings": "All settings on this device (custom tokens and imported accounts) will be removed. This does not move or delete on-chain funds, but the encrypted private keys for imported accounts will be erased from this device. If you do not have the Secret Recovery Phrase or those private keys, you may permanently lose access to those assets.",
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
-    "removeUndeployedPasskeyWarning": "This passkey account has not been deployed onchain yet, so deleting it may make it unrecoverable.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",
@@ -575,13 +573,29 @@
     "passkeyPolicyRequiredWarning": "Managed / co-signed accounts require sponsor approval for future transactions.",
     "passkeyPolicyUpdated": "Passkey account policy updated successfully.",
     "passkeyPolicyOnchainNotice": "This account is active onchain. Saving policy changes will ask for passkey approval and submit a transaction.",
+    "passkeyPolicyStep": {
+      "preparing": "Preparing the on-chain policy update...",
+      "approval": "Waiting for passkey approval...",
+      "confirming": "Submitting and confirming the on-chain policy transaction...",
+      "saving": "Saving confirmed policy locally...",
+      "idle": "Ready to update policy."
+    },
     "passkeyStatusTitle": "Passkey Sync",
     "passkeyStatusRefreshDescription": "Shows whether this passkey is device-bound or available through your device backup.",
     "refreshPasskeyStatus": "Refresh",
     "passkeyStatusUpdated": "Passkey status updated.",
     "passkeyStatusRefreshFailed": "Could not refresh passkey status.",
     "customizeAccountPolicy": "Customize account policy",
-    "passkeyPolicyLocked": "Pali will save this policy and apply it when the account is first used.",
+    "passkeyPolicyLocked": "Pali will create this account and policy on-chain before connecting it.",
+    "passkeyAccountNotOnchain": "This local passkey account was not confirmed on-chain. Recover or recreate it before using it.",
+    "passkeyCreationStep": {
+      "credential": "Checking your passkey...",
+      "recovering": "Checking for an existing on-chain account...",
+      "deploying": "Preparing on-chain account creation...",
+      "confirming": "Submitting and confirming the on-chain transaction...",
+      "saving": "Saving the confirmed account in Pali...",
+      "idle": "Ready"
+    },
     "sponsorServiceUrl": "Sponsor service URL",
     "sponsorSignerAddress": "Sponsor signer address",
     "sponsorServiceUrlRequired": "Enter sponsor service URL.",

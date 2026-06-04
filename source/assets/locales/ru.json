@@ -203,7 +203,6 @@
     "removeAccount": "Удалить аккаунт",
     "removeAccountConfirmation": "Вы уверены, что хотите удалить {{accountType}} аккаунт \"{{accountName}}\"? Вы всегда можете пересоздать аккаунт позже при необходимости.",
     "accountRemovedSuccessfully": "Аккаунт успешно удален",
-    "removeUndeployedPasskeyWarning": "Этот passkey-аккаунт еще не развернут onchain, поэтому удаление может сделать его невосстановимым.",
     "failedToRemoveAccount": "Не удалось удалить аккаунт",
     "hardwareWalletSuccess": "Аппаратный кошелек успешно подключен!",
     "hardwareWalletInstructions": "Закройте это окно и перезапустите Pali, чтобы использовать аппаратный кошелек для транзакций. Ваш аккаунт теперь сохранен и постоянен.",
@@ -238,13 +237,29 @@
     "passkeyPolicyRequiredWarning": "Управляемые / совместно подписываемые аккаунты требуют одобрения спонсора для будущих транзакций.",
     "passkeyPolicyUpdated": "Политика passkey-аккаунта успешно обновлена.",
     "passkeyPolicyOnchainNotice": "Этот аккаунт активен onchain. Сохранение изменений политики запросит подтверждение passkey и отправит транзакцию.",
+    "passkeyPolicyStep": {
+      "preparing": "Подготовка обновления политики onchain...",
+      "approval": "Ожидание подтверждения passkey...",
+      "confirming": "Отправка и подтверждение onchain-транзакции политики...",
+      "saving": "Сохранение подтвержденной политики локально...",
+      "idle": "Готово к обновлению политики."
+    },
     "passkeyStatusTitle": "Синхронизация passkey",
     "passkeyStatusRefreshDescription": "Показывает, привязана ли эта passkey к устройству или доступна через резервную копию устройства.",
     "refreshPasskeyStatus": "Обновить",
     "passkeyStatusUpdated": "Статус passkey обновлен.",
     "passkeyStatusRefreshFailed": "Не удалось обновить статус passkey.",
     "customizeAccountPolicy": "Настроить политику аккаунта",
-    "passkeyPolicyLocked": "Pali сохранит эту политику и применит ее при первом использовании аккаунта.",
+    "passkeyPolicyLocked": "Pali создаст этот аккаунт и политику on-chain перед подключением.",
+    "passkeyAccountNotOnchain": "Этот локальный passkey-аккаунт не был подтвержден on-chain. Восстановите или создайте его заново перед использованием.",
+    "passkeyCreationStep": {
+      "credential": "Проверка passkey...",
+      "recovering": "Проверка существующего аккаунта on-chain...",
+      "deploying": "Подготовка создания аккаунта on-chain...",
+      "confirming": "Отправка и подтверждение транзакции on-chain...",
+      "saving": "Сохранение подтвержденного аккаунта в Pali...",
+      "idle": "Готово"
+    },
     "sponsorServiceUrl": "URL сервиса спонсора",
     "sponsorSignerAddress": "Адрес подписанта спонсора",
     "sponsorServiceUrlRequired": "Введите URL сервиса спонсора.",
@@ -370,8 +385,7 @@
     "sponsorDisabled": "Без спонсора",
     "sponsorUrl": "URL спонсора: {{url}}",
     "sponsorSigner": "Подписант спонсора: {{signer}}",
-    "sponsorRequiredWarning": "Этот аккаунт потребует соавторизации спонсора, прежде чем Pali сможет выполнять транзакции от его имени.",
-    "passkeyRecoveryMismatch": "Этот passkey не соответствует существующему аккаунту для этого спонсора. Нажмите Создать еще раз и выберите другой passkey либо включите Дополнительно, чтобы создать отдельный новый passkey."
+    "sponsorRequiredWarning": "Этот аккаунт потребует соавторизации спонсора, прежде чем Pali сможет выполнять транзакции от его имени."
   },
   "titles": {
     "assetDetails": "ДЕТАЛИ АКТИВА",

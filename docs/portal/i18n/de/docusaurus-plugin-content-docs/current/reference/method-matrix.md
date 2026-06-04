@@ -28,7 +28,7 @@ Diese Referenz fasst die öffentlichen dapp-seitigen Methoden zusammen, die aus 
 | `wallet_watchAsset` | EVM | Asset-Watch anfordern. | Ja |
 | `wallet_addEthereumChain` | EVM | Eine EVM-Chain hinzufügen. | Ja |
 | `wallet_switchEthereumChain` | EVM | EVM-Chain wechseln. | Ja |
-| `wallet_createPasskeyAccount` | EVM | Einen Passkey Smart Account erstellen oder wiederherstellen. | Ja |
+| `wallet_createPasskeyAccount` | EVM | Einen Passkey Smart Account erstellen und deployen. | Ja |
 | `wallet_sendCalls` | EVM | Einen EIP-5792-Batch-Request senden. | Ja |
 | `wallet_getCapabilities` | EVM | Account-Capabilities lesen. | Nein |
 | `wallet_getCallsStatus` | EVM | Kompatibilitäts-Stub; unbekannte IDs erzeugen Fehler. | Nein |

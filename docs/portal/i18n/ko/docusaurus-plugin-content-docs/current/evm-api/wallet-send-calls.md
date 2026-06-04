@@ -45,7 +45,7 @@ const result = await window.ethereum.request({
 
 ## Passkey 동작
 
-Passkey smart account의 경우 Pali는 선택된 모든 call을 하나의 smart account execution batch로 준비하고, 하나의 passkey assertion을 요청한 뒤, 하나의 transaction을 제출합니다. account가 undeployed 상태라면 deployment와 선택적 initial policy execution이 첫 transaction path의 일부가 될 수 있습니다.
+Passkey smart account의 경우 Pali는 선택된 모든 call을 하나의 smart account execution batch로 준비하고, 하나의 passkey assertion을 요청한 뒤, 하나의 transaction을 제출합니다. Local passkey account는 confirmed on-chain deployment를 나타냅니다.
 
 ## EOA 동작
 

@@ -7,7 +7,7 @@ Pali Wallet — это браузерное расширение-кошелек 
 
 Для EVM dapps Pali предоставляет MetaMask-совместимый провайдер `window.ethereum` с EIP-1193 запросами, EIP-6963 обнаружением, разрешениями аккаунтов, переключением сетей, подписанием, транзакциями и batch calls. Для Syscoin UTXO и Bitcoin-style приложений Pali предоставляет `window.pali` с методами аккаунтов, xpub, change address, подписания PSBT, транзакций и активов.
 
-Pali также поддерживает passkey smart accounts для институций и продвинутых dapps. Dapp может попросить Pali создать или восстановить smart account, поддерживаемый WebAuthn, привязать sponsor policy, а позже выполнять атомарные batches через `wallet_sendCalls`.
+Pali также поддерживает passkey smart accounts для институций и продвинутых dapps. Dapp может попросить Pali создать и deploy smart account, поддерживаемый WebAuthn, привязать sponsor policy во время создания, а позже выполнять атомарные batches через `wallet_sendCalls`. Восстановление существующих passkey accounts выполняется в Pali.
 
 ## Выберите свой путь
 

@@ -2,7 +2,7 @@
 title: Passkey 与机构
 ---
 
-Pali Passkey 智能账户让 dapp 可以从钱包请求账户创建或恢复，同时用户通过 WebAuthn 控制执行。
+Pali Passkey 智能账户让 dapp 可以从钱包请求链上账户创建，同时用户通过 WebAuthn 控制执行。
 
 这适用于：
 

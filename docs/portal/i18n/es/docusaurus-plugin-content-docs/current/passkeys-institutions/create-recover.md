@@ -2,7 +2,9 @@
 title: Crear y recuperar cuentas passkey
 ---
 
-`wallet_createPasskeyAccount` es intencionalmente idempotente para onboarding desde dapp. Pali comprueba cuentas on-chain recuperables antes de crear una nueva ruta de credencial/cuenta.
+`wallet_createPasskeyAccount` crea una nueva cuenta inteligente passkey para onboarding desde dapp. Pali crea o selecciona una credencial WebAuthn, despliega la cuenta inteligente on-chain, confirma los metadatos de recuperación desplegados y escribe la cuenta en el estado local de la billetera después de la confirmación.
+
+El estado local de la billetera representa cuentas passkey desplegadas. La recuperación está disponible desde los ajustes de Pali para cuentas que ya existen on-chain.
 
 ## Estructura de cuenta inteligente y fábrica
 
@@ -67,20 +69,24 @@ const passkeyAccount = await window.ethereum.request({
 });
 ```
 
-## Comportamiento de recuperar antes de crear
+## Comportamiento de creación y despliegue
 
 Cuando una dapp solicita una cuenta passkey:
 
 1. Pali verifica que la cadena activa admita cuentas inteligentes passkey.
-2. Pali comprueba si la passkey puede recuperar una cuenta on-chain que coincida con la política de sponsor solicitada.
-3. Si la cuenta coincidente existe localmente, Pali la reutiliza.
-4. Si la cuenta coincidente existe on-chain pero no localmente, Pali la importa.
-5. Si existe una cuenta para la misma URL de sponsor pero el modo o firmante difiere, Pali rechaza con una incompatibilidad de recuperación.
-6. Si no existe una cuenta coincidente, Pali procede con la creación de una nueva cuenta.
+2. Pali crea un salt de despliegue fresco para la nueva ruta de cuenta.
+3. Pali obtiene o crea el perfil de credencial WebAuthn.
+4. Pali calcula la dirección contrafactual y los metadatos de despliegue.
+5. Si la política de sponsor solicitada requiere una acción inicial `setSponsor`, Pali solicita al usuario una assertion passkey sobre el hash de acción de despliegue.
+6. Pali envía `createAccount` o `createAccountAndExecute` mediante el pagador de gas de despliegue configurado.
+7. Pali espera la confirmación, lee los metadatos de recuperación de la cuenta inteligente desde la cadena y verifica que coincidan con la credencial preparada y los datos de origen.
+8. Después de la confirmación, Pali crea la cuenta passkey local y la conecta a la dapp solicitante.
+
+Si la dirección resultante ya está presente localmente como una cuenta passkey desplegada, Pali puede reutilizar esa cuenta local.
 
 ## ¿Qué determina la dirección?
 
-La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID, recovery ID y salt de despliegue. La política de sponsor se usa por la lógica de coincidencia de recuperación para onboarding limitado a instituciones.
+La dirección de la cuenta inteligente se deriva de entradas de fábrica que incluyen coordenadas públicas passkey, hash de credencial, datos de origen, hash de RP ID, recovery ID y salt de despliegue. Cada nueva ruta de cuenta usa un salt de despliegue fresco, por lo que una credencial puede controlar varias cuentas inteligentes.
 
 ## Si el usuario pierde datos locales de Pali
 
@@ -100,7 +106,7 @@ Si se pierden el perfil del navegador, el almacenamiento de la extensión o los 
 5. Pali omite cuentas ya presentes localmente.
 6. Pali importa cuentas coincidentes de vuelta al estado local de la billetera.
 
-Para crear/recuperar impulsado por dapp, Pali también compara el modo de sponsor, firmante y URL de sponsor de la cuenta recuperada con la política de sponsor solicitada por la dapp. Esto impide que una institución vincule silenciosamente al usuario a una política de sponsor diferente de la solicitada por la dapp.
+La recuperación desde Ajustes descubre cuentas desplegadas e importa cada cuenta coincidente que el registro expone para la credencial.
 
 ## RP ID y nombre de credencial
 
