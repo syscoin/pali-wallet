@@ -109,9 +109,10 @@ export const CreatePasskeyAccount = () => {
     );
   })();
   const isSponsorSignerValid =
-    Boolean(normalizedSponsorSigner) &&
-    !isSponsorSignerPasskeyAccount &&
-    (!isSponsorRequired || Boolean(trimmedSponsorUrl) || isLocalSponsorSigner);
+    Boolean(normalizedSponsorSigner) && !isSponsorSignerPasskeyAccount;
+  const sponsorUrlRequired =
+    sponsorMode === 'gasOnly' ||
+    (isSponsorRequired && isSponsorSignerValid && !isLocalSponsorSigner);
   const sponsorSignerError =
     isSponsorRequired && !trimmedSponsorSigner
       ? t('settings.sponsorSignerRequired')
@@ -119,7 +120,7 @@ export const CreatePasskeyAccount = () => {
       ? t('settings.invalidSponsorSignerAddress')
       : '';
   const sponsorUrlError =
-    sponsorMode === 'gasOnly' && !trimmedSponsorUrl
+    sponsorUrlRequired && !trimmedSponsorUrl
       ? t('settings.sponsorServiceUrlRequired')
       : trimmedSponsorUrl && !isSponsorUrlValid
       ? t('settings.invalidSponsorUrl')

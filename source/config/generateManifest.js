@@ -4,7 +4,11 @@ const dotenv = require('dotenv');
 const fs = require('fs');
 
 const packageJson = require('../../package.json');
-const { MV2_OPTIONS, MV3_OPTIONS } = require('./consts.js');
+const {
+  CANARY_EXTENSION_KEY,
+  MV2_OPTIONS,
+  MV3_OPTIONS,
+} = require('./consts.js');
 
 dotenv.config();
 
@@ -39,6 +43,9 @@ function generateManifest() {
       'Pali Wallet',
       'Pali Wallet Canary'
     );
+    if (manifestOptions.manifest_version === 3) {
+      manifestOptions.key = CANARY_EXTENSION_KEY;
+    }
     if (manifestOptions.permissions) {
       manifestOptions.permissions = filterWebRequest(
         manifestOptions.permissions
