@@ -300,14 +300,6 @@ export const CreatePasskeyAccount = () => {
               </div>
             </Card>
           )}
-          {creationStep !== 'idle' && (
-            <Card type="info">
-              <p className="text-brand-yellowInfo text-sm font-normal text-left">
-                {t(`settings.passkeyCreationStep.${creationStep}`)}
-              </p>
-            </Card>
-          )}
-
           {hasSponsorDetails && (
             <>
               <button
@@ -406,10 +398,19 @@ export const CreatePasskeyAccount = () => {
           )}
         </div>
 
-        <div className="pb-20"></div>
+        <div className="pb-32"></div>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        {creationStep !== 'idle' && (
+          <div className="mb-3">
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {t(`settings.passkeyCreationStep.${creationStep}`)}
+              </p>
+            </Card>
+          </div>
+        )}
         <div className="flex gap-3 justify-center">
           <SecondaryButton type="button" onClick={reject} disabled={loading}>
             {t('buttons.cancel')}
