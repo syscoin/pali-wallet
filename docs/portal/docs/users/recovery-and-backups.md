@@ -33,10 +33,11 @@ Pali passkey recovery is credential-scoped and uses on-chain account discovery. 
 2. Looks up matching smart accounts from the factory registry and creation logs.
 3. Skips accounts already in the wallet.
 4. Reads account recovery metadata for each candidate account.
-5. Adds recoverable accounts to the wallet.
+5. Shows recoverable accounts with balance and activity hints.
+6. Imports the accounts selected by the user.
 
 ## Dapp creation and wallet recovery
 
 When a dapp calls `wallet_createPasskeyAccount`, Pali creates a passkey account and saves it locally after the deployment transaction confirms and the on-chain metadata matches the prepared passkey credential.
 
-If a passkey account exists on-chain and is missing locally, use Pali's wallet recovery flow. Recovery can import multiple deployed accounts for the same credential because account discovery comes from the factory registry and creation logs.
+If a passkey account exists on-chain and is missing locally, use Pali's wallet recovery flow. Recovery can discover multiple deployed accounts for the same credential because account discovery comes from the factory registry and creation logs. Pali skips accounts already present locally and lets the user choose which remaining accounts to import.

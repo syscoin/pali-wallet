@@ -102,9 +102,10 @@ If the browser profile, extension storage, or local passkey account metadata is 
 2. Pali queries the factory registry by credential hash.
 3. Pali reads each candidate account's recovery metadata.
 4. Pali skips accounts already present locally.
-5. Pali imports matching accounts back into local wallet state.
+5. Pali shows matching accounts with balance and optional activity hints.
+6. Pali imports the accounts selected by the user back into local wallet state.
 
-Settings recovery discovers deployed accounts and imports every matching account the registry exposes for the credential.
+Settings recovery discovers deployed accounts, skips accounts already present locally, and lets the user choose which matching accounts to import.
 
 ## RP ID and credential name
 

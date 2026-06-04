@@ -44,4 +44,4 @@ Las cuentas passkey requieren contratos de cuenta inteligente passkey zkSYS y so
   <figcaption>La pantalla de política passkey muestra modo de sponsor, firmante, URL y estado de respaldo donde esté disponible.</figcaption>
 </figure>
 
-Si se elimina el estado local de la billetera o Pali se instala en un dispositivo nuevo, Pali puede recuperar cuentas inteligentes passkey desde el registro de fábrica on-chain y los logs de eventos. Cualquier instalación de Pali con acceso a la misma credencial passkey puede importar las cuentas desplegadas coincidentes después de una assertion WebAuthn.
+Si se elimina el estado local de la billetera o Pali se instala en un dispositivo nuevo, Pali puede recuperar cuentas inteligentes passkey desde el registro de fábrica on-chain y los logs de eventos. Cualquier instalación de Pali con acceso a la misma credencial passkey puede descubrir las cuentas desplegadas coincidentes después de una assertion WebAuthn, omitir las cuentas que ya existen localmente e importar las cuentas seleccionadas.

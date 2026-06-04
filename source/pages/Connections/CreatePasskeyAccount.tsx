@@ -151,6 +151,7 @@ export const CreatePasskeyAccount = () => {
             'wallet',
             'getPasskeyCredentialProfile',
           ])) as any);
+      let pendingCredentialProfile;
       if (!credential) {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
         const passkeyName = useSeparatePasskey
@@ -174,12 +175,10 @@ export const CreatePasskeyAccount = () => {
             y: newCredential.y,
           },
         };
-        credential = useSeparatePasskey
-          ? profile
-          : await controllerEmitter(
-              ['wallet', 'savePasskeyCredentialProfile'],
-              [profile]
-            );
+        credential = profile;
+        if (!useSeparatePasskey) {
+          pendingCredentialProfile = profile;
+        }
       }
       const credentialPublicKey = credential.publicKey || credential;
       setCreationStep('deploying');
@@ -221,6 +220,7 @@ export const CreatePasskeyAccount = () => {
         [
           {
             address: prepared.address,
+            credentialProfile: pendingCredentialProfile,
             deploymentActionHash: prepared.deploymentActionHash,
             deploymentExecutions: prepared.deploymentExecutions,
             deploymentProof,

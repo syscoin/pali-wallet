@@ -2577,6 +2577,7 @@ class MainController {
 
   public async createPasskeySmartAccount(params: {
     address: string;
+    credentialProfile?: IPasskeyCredentialProfile;
     deploymentActionHash?: string;
     deploymentExecutions?: Array<{
       data: string;
@@ -2602,16 +2603,21 @@ class MainController {
     return this.passkey.savePasskeyCredentialProfile(profile);
   }
 
-  public async recoverPasskeySmartAccounts(params: {
+  public async previewPasskeySmartAccountRecovery(params: {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
-  }): Promise<{
-    accounts: Array<{ address: string; id: number; label: string }>;
-    recovered: number;
-    skipped: number;
-  }> {
-    return this.passkey.recoverPasskeySmartAccounts(params);
+  }) {
+    return this.passkey.previewPasskeySmartAccountRecovery(params);
+  }
+
+  public async importPasskeySmartAccounts(params: {
+    addresses: string[];
+    backupStatus?: PasskeyBackupStatus;
+    credentialId: string;
+    credentialIdHash: string;
+  }) {
+    return this.passkey.importPasskeySmartAccounts(params);
   }
 
   public async preparePasskeySmartAccount(params: {

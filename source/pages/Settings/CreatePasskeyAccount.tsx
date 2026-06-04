@@ -98,6 +98,7 @@ const CreatePasskeyAccount = () => {
             'wallet',
             'getPasskeyCredentialProfile',
           ])) as any);
+      let pendingCredentialProfile;
 
       if (!credential) {
         const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -122,15 +123,9 @@ const CreatePasskeyAccount = () => {
             y: newCredential.y,
           },
         };
-        credential = useSeparatePasskey
-          ? profile
-          : await controllerEmitter(
-              ['wallet', 'savePasskeyCredentialProfile'],
-              [profile]
-            );
+        credential = profile;
         if (!useSeparatePasskey) {
-          setSharedPasskeyExists(true);
-          setSharedPasskeyBackupStatus(profile.backupStatus);
+          pendingCredentialProfile = profile;
         }
       }
 
@@ -180,6 +175,7 @@ const CreatePasskeyAccount = () => {
         [
           {
             address: prepared.address,
+            credentialProfile: pendingCredentialProfile,
             deploymentActionHash: prepared.deploymentActionHash,
             deploymentExecutions: prepared.deploymentExecutions,
             deploymentProof,
@@ -190,6 +186,10 @@ const CreatePasskeyAccount = () => {
       )) as any;
 
       setCreationStep('saving');
+      if (pendingCredentialProfile) {
+        setSharedPasskeyExists(true);
+        setSharedPasskeyBackupStatus(pendingCredentialProfile.backupStatus);
+      }
       setAddress(newAddress);
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);

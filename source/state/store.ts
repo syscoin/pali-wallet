@@ -17,6 +17,7 @@ import {
   loadPasskeyCredentialProfileState,
   loadState,
   saveState,
+  savePasskeyCredentialProfileState,
 } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
@@ -147,13 +148,33 @@ export async function loadAndActivateSlip44Vault(
       const passkeyProfileState = await loadPasskeyCredentialProfileState(
         slip44
       );
-      const vaultStateWithPasskeyProfile = passkeyProfileState
+      const embeddedPasskeyCredentialProfile =
+        slip44VaultState.passkeyCredentialProfile;
+      const vaultStateWithoutPasskeyProfile = { ...slip44VaultState };
+      delete vaultStateWithoutPasskeyProfile.passkeyCredentialProfile;
+
+      if (embeddedPasskeyCredentialProfile) {
+        if (!passkeyProfileState?.passkeyCredentialProfile) {
+          await savePasskeyCredentialProfileState(
+            slip44,
+            embeddedPasskeyCredentialProfile
+          );
+        }
+        await vaultCache.setSlip44Vault(
+          slip44,
+          vaultStateWithoutPasskeyProfile
+        );
+      }
+
+      const passkeyCredentialProfile =
+        passkeyProfileState?.passkeyCredentialProfile ||
+        embeddedPasskeyCredentialProfile;
+      const vaultStateWithPasskeyProfile = passkeyCredentialProfile
         ? {
-            ...slip44VaultState,
-            passkeyCredentialProfile:
-              passkeyProfileState.passkeyCredentialProfile || undefined,
+            ...vaultStateWithoutPasskeyProfile,
+            passkeyCredentialProfile,
           }
-        : slip44VaultState;
+        : vaultStateWithoutPasskeyProfile;
 
       // Load vault state into Redux
       store.dispatch(vaultRehydrate(vaultStateWithPasskeyProfile));
