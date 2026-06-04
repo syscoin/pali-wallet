@@ -17,6 +17,7 @@ import {
   loadPasskeyCredentialProfileState,
   loadState,
   saveState,
+  savePasskeyCredentialProfileState,
 } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
@@ -147,13 +148,31 @@ export async function loadAndActivateSlip44Vault(
       const passkeyProfileState = await loadPasskeyCredentialProfileState(
         slip44
       );
+      const embeddedPasskeyCredentialProfile =
+        slip44VaultState.passkeyCredentialProfile;
       const vaultStateWithoutPasskeyProfile = { ...slip44VaultState };
       delete vaultStateWithoutPasskeyProfile.passkeyCredentialProfile;
-      const vaultStateWithPasskeyProfile = passkeyProfileState
+
+      if (embeddedPasskeyCredentialProfile) {
+        if (!passkeyProfileState?.passkeyCredentialProfile) {
+          await savePasskeyCredentialProfileState(
+            slip44,
+            embeddedPasskeyCredentialProfile
+          );
+        }
+        await vaultCache.setSlip44Vault(
+          slip44,
+          vaultStateWithoutPasskeyProfile
+        );
+      }
+
+      const passkeyCredentialProfile =
+        passkeyProfileState?.passkeyCredentialProfile ||
+        embeddedPasskeyCredentialProfile;
+      const vaultStateWithPasskeyProfile = passkeyCredentialProfile
         ? {
             ...vaultStateWithoutPasskeyProfile,
-            passkeyCredentialProfile:
-              passkeyProfileState.passkeyCredentialProfile || undefined,
+            passkeyCredentialProfile,
           }
         : vaultStateWithoutPasskeyProfile;
 
