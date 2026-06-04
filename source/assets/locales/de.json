@@ -796,7 +796,11 @@
       "delegateBySig": "Durch Signatur delegieren",
       "bridge": "Brücke",
       "bridgeAsset": "Asset-Brücke",
-      "swapAndBridge": "Tauschen und überbrücken"
+      "swapAndBridge": "Tauschen und überbrücken",
+      "execute": "Mit Passkey ausführen",
+      "createAccount": "Passkey-Konto erstellen",
+      "createAccountAndExecute": "Passkey-Konto erstellen und ausführen",
+      "setSponsor": "Passkey-Sponsor festlegen"
     }
   },
   "switchNetworkPage": {

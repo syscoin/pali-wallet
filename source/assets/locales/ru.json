@@ -796,7 +796,11 @@
       "delegateBySig": "Делегировать по подписи",
       "bridge": "Мост",
       "bridgeAsset": "Мост активов",
-      "swapAndBridge": "Обменять и перебросить"
+      "swapAndBridge": "Обменять и перебросить",
+      "execute": "Выполнить с Passkey",
+      "createAccount": "Создать аккаунт Passkey",
+      "createAccountAndExecute": "Создать аккаунт Passkey и выполнить",
+      "setSponsor": "Настроить спонсора Passkey"
     }
   },
   "switchNetworkPage": {
