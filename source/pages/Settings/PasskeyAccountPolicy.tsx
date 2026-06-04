@@ -124,16 +124,17 @@ const PasskeyAccountPolicy = () => {
     normalizeSponsorSignerInput(trimmedSponsorSigner);
   const isSponsorSignerValid = Boolean(trimmedSponsorSigner)
     ? Boolean(normalizedSponsorSigner) &&
-      !isSponsorSignerPasskeyAccount(trimmedSponsorSigner) &&
-      (policyMode !== PasskeySponsorMode.Required ||
-        Boolean(trimmedSponsorUrl) ||
-        isLocalSponsorSigner(trimmedSponsorSigner))
+      !isSponsorSignerPasskeyAccount(trimmedSponsorSigner)
     : false;
+  const sponsorUrlRequired =
+    policyMode === PasskeySponsorMode.GasOnly ||
+    (policyMode === PasskeySponsorMode.Required &&
+      isSponsorSignerValid &&
+      !isLocalSponsorSigner(trimmedSponsorSigner));
   const isPolicySubmitDisabled =
     loading ||
     !policyHasChanges ||
-    (policyMode === PasskeySponsorMode.GasOnly &&
-      (!trimmedSponsorUrl || !isSponsorUrlValid)) ||
+    (sponsorUrlRequired && !trimmedSponsorUrl) ||
     (policyMode === PasskeySponsorMode.Required &&
       (!trimmedSponsorSigner || !isSponsorSignerValid || !isSponsorUrlValid));
   const hasKnownBackupStatus = Boolean(backupStatus);
@@ -410,17 +411,14 @@ const PasskeyAccountPolicy = () => {
               <Form.Item
                 name="sponsorUrl"
                 className="md:w-full mb-0 px-1"
-                hasFeedback={
-                  policyMode === PasskeySponsorMode.GasOnly ||
-                  Boolean(trimmedSponsorUrl)
-                }
+                hasFeedback
                 rules={[
                   () => ({
                     validator(_, value) {
                       const trimmedValue =
                         typeof value === 'string' ? value.trim() : '';
                       if (!trimmedValue) {
-                        return policyMode === PasskeySponsorMode.GasOnly
+                        return sponsorUrlRequired
                           ? Promise.reject(
                               new Error(t('settings.sponsorServiceUrlRequired'))
                             )
@@ -461,10 +459,7 @@ const PasskeyAccountPolicy = () => {
                         }
                         if (
                           normalizeSponsorSignerInput(trimmedValue) &&
-                          !isSponsorSignerPasskeyAccount(trimmedValue) &&
-                          (policyMode !== PasskeySponsorMode.Required ||
-                            Boolean(trimmedSponsorUrl) ||
-                            isLocalSponsorSigner(trimmedValue))
+                          !isSponsorSignerPasskeyAccount(trimmedValue)
                         ) {
                           return Promise.resolve();
                         }

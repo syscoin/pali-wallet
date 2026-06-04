@@ -73,10 +73,14 @@ const MV2_OPTIONS = {
   },
 };
 
+// Non-production public key used to keep canary extension IDs stable.
+const CANARY_EXTENSION_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArYLCXWBGnwp1giU5pIbXuqrbzJDzkGgPXXefSLdhpOrZc5rdTcpq8hcJJqRSJBESoLpuCrqvd/HPwtwo6h0hjWvB+pOPIJmPwWlYs+zKAKOUZIZcSqJmJCkv9FztuCcbQqlOWJ/2PvEyDvPKcc54aH6IAYlhnth9tWuiYVmzHQqornSKNWBQeukzWvxTuYhqz2RDFeUdiCh1Y9Bf8/3BrOJjI7FESTRd5iHDqd6LrIs91a6hUuWgCF5//57lG9Zr2KRLkl+3ibEQBGQMTWYRfBbdnZYXPDdspoaEaUi179R/7iFd3laA9EhMcGhnwH3x/FQxNMH6z+FS+ojAEkCLyQIDAQAB';
+
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '4.0.20',
+  version: '4.0.21',
   icons: {
     16: 'assets/all_assets/favicon-16.png',
     32: 'assets/all_assets/favicon-32.png',
@@ -154,6 +158,7 @@ const MV3_OPTIONS = {
 };
 
 module.exports = {
+  CANARY_EXTENSION_KEY,
   MV2_OPTIONS,
   MV3_OPTIONS,
 };

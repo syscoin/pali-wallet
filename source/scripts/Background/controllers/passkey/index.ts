@@ -1161,9 +1161,7 @@ class PasskeyController {
       !sponsor.url &&
       !this.getLocalSponsorSignerAccount(sponsor.signer)
     ) {
-      throw new Error(
-        'Passkey sponsor signer must be available in this wallet when no sponsor URL is configured'
-      );
+      throw new Error('Use a local signer or sponsor URL.');
     }
   }
 
@@ -2302,9 +2300,7 @@ class PasskeyController {
           );
           return { sponsorProof: localSponsorProof, type: 'local' };
         }
-        throw new Error(
-          'This passkey account requires sponsor authorization, but the sponsor signer is not available in this wallet and no sponsor URL is configured'
-        );
+        throw new Error('Sponsor signer is not in this wallet.');
       }
       return { sponsorProof: emptyProof, type: 'local' };
     }
