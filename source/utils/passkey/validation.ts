@@ -375,21 +375,16 @@ export const validatePasskeyClientDataJSON = (
   const getByteOffset = (textOffset: number) =>
     new TextEncoder().encode(clientDataText.slice(0, textOffset)).length;
 
-  const escapeRegExp = (value: string) =>
-    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
   const findStringValueOffset = (fieldName: string, expectedValue: string) => {
-    const fieldPattern = new RegExp(
-      `${escapeRegExp(JSON.stringify(fieldName))}\\s*:\\s*${escapeRegExp(
-        JSON.stringify(expectedValue)
-      )}`
-    );
-    const match = fieldPattern.exec(clientDataText);
-    if (!match || match.index === undefined) {
+    const fieldText = `${JSON.stringify(fieldName)}:${JSON.stringify(
+      expectedValue
+    )}`;
+    const matchIndex = clientDataText.indexOf(fieldText);
+    if (matchIndex < 0) {
       throw new Error(`WebAuthn client data is missing ${fieldName}`);
     }
 
-    const valueOffset = match.index + match[0].lastIndexOf(expectedValue);
+    const valueOffset = matchIndex + fieldText.lastIndexOf(expectedValue);
     return getByteOffset(valueOffset);
   };
 
@@ -399,18 +394,14 @@ export const validatePasskeyClientDataJSON = (
     ? findStringValueOffset('origin', expectedOrigin)
     : (() => {
         const encodedOrigin = JSON.stringify(clientData.origin);
-        const fieldPattern = new RegExp(
-          `${escapeRegExp(JSON.stringify('origin'))}\\s*:\\s*${escapeRegExp(
-            encodedOrigin
-          )}`
-        );
-        const match = fieldPattern.exec(clientDataText);
-        if (!match || match.index === undefined) {
+        const fieldText = `${JSON.stringify('origin')}:${encodedOrigin}`;
+        const matchIndex = clientDataText.indexOf(fieldText);
+        if (matchIndex < 0) {
           throw new Error('WebAuthn client data is missing origin');
         }
 
         const originValueOffset =
-          match.index + match[0].lastIndexOf(String(clientData.origin));
+          matchIndex + fieldText.lastIndexOf(String(clientData.origin));
         return getByteOffset(originValueOffset);
       })();
   if (challengeOffset < 0) {

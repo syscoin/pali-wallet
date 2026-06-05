@@ -58,6 +58,10 @@ import {
   verifyPasskeySponsorProof,
   PasskeyWebAuthnProof,
 } from 'utils/passkey';
+import {
+  isValidSponsorServiceUrl,
+  MAX_SPONSOR_URL_LENGTH,
+} from 'utils/passkey/sponsorUrl';
 import { blacklistService } from 'utils/security/blacklistService';
 
 const EIP1271_MAGIC_VALUE = '0x1626ba7e';
@@ -761,6 +765,15 @@ class PasskeyController {
     return typeof url === 'string' ? url.trim() : '';
   }
 
+  private assertSponsorUrlIsUsable(url?: string) {
+    if (!url) {
+      return;
+    }
+    if (url.length > MAX_SPONSOR_URL_LENGTH || !isValidSponsorServiceUrl(url)) {
+      throw new Error('Invalid passkey sponsor URL');
+    }
+  }
+
   private async useExistingRecoveredPasskeyAccount({
     address,
     metadata,
@@ -1196,6 +1209,7 @@ class PasskeyController {
     if (!sponsor || sponsor.mode === PasskeySponsorMode.Disabled) {
       return;
     }
+    this.assertSponsorUrlIsUsable(sponsor.url);
     if (sponsor.mode === PasskeySponsorMode.GasOnly && !sponsor.url) {
       throw new Error('Passkey gas sponsorship requires a sponsor URL');
     }

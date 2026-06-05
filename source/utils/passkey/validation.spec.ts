@@ -416,20 +416,9 @@ describe('passkey validation utilities', () => {
         "type" : "webauthn.get"
       }`
     );
-    const spacedOffsets = validatePasskeyClientDataJSON(
-      spacedClientData,
-      challenge,
-      origin
-    );
-    expect(
-      spacedOffsets.clientDataText.slice(spacedOffsets.challengeOffset)
-    ).toContain(challenge);
-    expect(
-      spacedOffsets.clientDataText.slice(spacedOffsets.originOffset)
-    ).toContain(origin);
-    expect(
-      spacedOffsets.clientDataText.slice(spacedOffsets.typeOffset)
-    ).toContain('webauthn.get');
+    expect(() =>
+      validatePasskeyClientDataJSON(spacedClientData, challenge, origin)
+    ).toThrow('missing challenge');
 
     expect(() =>
       validatePasskeyClientDataJSON(

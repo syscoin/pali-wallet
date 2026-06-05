@@ -32,7 +32,7 @@ Les comptes passkey ne sont pas activés sur toutes les chaînes EVM. Ils exigen
 
 | Réseau | Chain id | État dans cette version de Pali |
 | --- | --- | --- |
-| `zkTanenbaum` | `57057` | Configuré. Factory : `0xab188ceB49096A8B96E69E357FC99A8F90A57431`. |
+| `zkTanenbaum` | `57057` | Configuré. Factory : `0x04a52bc8B5fadBfeBBAF927832d545a270cA0cAb`. |
 | `zkSYS` | TBD in wallet config | Cible de production prévue pour la même architecture passkey une fois que l'adresse de factory est configurée dans Pali. |
 
 Si une dapp appelle `wallet_createPasskeyAccount` sur un réseau sans factory configurée, Pali rejette la requête au lieu de créer des métadonnées non prises en charge.
