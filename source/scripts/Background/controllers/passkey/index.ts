@@ -313,8 +313,8 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
-    verificationHash?: string;
-    verificationProof?: PasskeyWebAuthnProof;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
   }): Promise<{
     candidates: PasskeyRecoveryCandidate[];
     existing: number;
@@ -412,8 +412,8 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
-    verificationHash?: string;
-    verificationProof?: PasskeyWebAuthnProof;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
     recovered: number;
@@ -1047,8 +1047,8 @@ class PasskeyController {
     factoryAddress: string;
     log?: any;
     provider: any;
-    verificationHash?: string;
-    verificationProof?: PasskeyWebAuthnProof;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
   }): Promise<{
     address: string;
     metadata?: IPasskeySmartAccountMetadata;
@@ -1095,8 +1095,6 @@ class PasskeyController {
       return null;
     }
     if (
-      verificationHash &&
-      verificationProof &&
       !(await this.isRecoveredPasskeyProofValid(
         account,
         verificationHash,
