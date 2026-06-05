@@ -7,9 +7,20 @@ UTXO 应用应仔细构造交易，通过 Pali 请求签名，并且只在用户
 ## 签名 PSBT
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/psbt-sign-review.png" alt="Pali PSBT 签名审核界面" />
-</a>
+  <div className="pali-capture-card">
+    <div className="pali-capture-card__copy">
+      <div className="pali-capture-card__brand">
+        <span className="pali-capture-card__icon">P</span>
+        <span>Pali Wallet</span>
+      </div>
+      <p className="pali-capture-card__title">PSBT 签名审核</p>
+      <p className="pali-capture-card__subtitle">包含高级交易详情的 UTXO 签名确认。</p>
+      <p className="pali-capture-card__hint">在预览区域内滚动，以查看 outputs、inputs、大小、weight 和 lock time。</p>
+    </div>
+    <a className="pali-capture-card__scroll" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
+      <img src="/img/screens/psbt-sign-review.png" alt="Pali PSBT 签名审核界面" />
+    </a>
+  </div>
   <figcaption>Pali 会在签名 UTXO PSBT 之前提示用户。</figcaption>
 </figure>
 
@@ -55,7 +66,3 @@ const valid = await window.pali.request({
 
 Pali 会签署用户批准的内容。你的应用负责在请求签名前构造合理的 PSBT inputs、outputs、fees、change 和 asset metadata。
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="Pali 中的 UTXO PSBT 流程"></video>
-  <figcaption>UTXO 流程：品牌介绍、PSBT 构造、Pali 签名审核和广播结果。</figcaption>
-</figure>

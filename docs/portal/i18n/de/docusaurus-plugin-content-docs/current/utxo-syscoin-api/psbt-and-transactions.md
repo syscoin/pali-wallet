@@ -7,9 +7,20 @@ UTXO-Anwendungen sollten Transaktionen sorgfältig konstruieren, eine Signatur �
 ## Eine PSBT signieren
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/psbt-sign-review.png" alt="Pali-Prüfbildschirm für PSBT-Signatur" />
-</a>
+  <div className="pali-capture-card">
+    <div className="pali-capture-card__copy">
+      <div className="pali-capture-card__brand">
+        <span className="pali-capture-card__icon">P</span>
+        <span>Pali Wallet</span>
+      </div>
+      <p className="pali-capture-card__title">PSBT-Signaturprüfung</p>
+      <p className="pali-capture-card__subtitle">UTXO-Signaturbestätigung mit erweiterten Transaktionsdetails.</p>
+      <p className="pali-capture-card__hint">Im Vorschaubereich scrollen, um Outputs, Inputs, Größe, Gewicht und Lock Time zu prüfen.</p>
+    </div>
+    <a className="pali-capture-card__scroll" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
+      <img src="/img/screens/psbt-sign-review.png" alt="Pali-Prüfbildschirm für PSBT-Signatur" />
+    </a>
+  </div>
   <figcaption>Pali fragt den Benutzer, bevor UTXO-PSBTs signiert werden.</figcaption>
 </figure>
 
@@ -55,7 +66,3 @@ const valid = await window.pali.request({
 
 Pali signiert, was der Benutzer freigibt. Ihre Anwendung ist dafür verantwortlich, sinnvolle PSBT-Inputs, Outputs, Fees, Wechselgeld und Asset-Metadaten zu konstruieren, bevor sie eine Signatur anfordert.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="UTXO-PSBT-Flow in Pali"></video>
-  <figcaption>UTXO-Flow: gebrandetes Intro, PSBT-Konstruktion, Pali-Signaturprüfung und Broadcast-Ergebnis.</figcaption>
-</figure>

@@ -6,12 +6,6 @@ title: スポンサーサービス
 
 ## スポンサーオブジェクト
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Pali sponsor relay pending and success states" />
-</a>
-  <figcaption>スポンサー付き実行では、保留、成功、失敗の状態をユーザーに明確に示すべきです。</figcaption>
-</figure>
 
 ```js
 {
