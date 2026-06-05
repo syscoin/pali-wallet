@@ -1,5 +1,7 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
 import { AddressZero } from '@ethersproject/constants';
+import { keccak256 } from '@ethersproject/keccak256';
 
 import {
   IPasskeySmartAccountMetadata,
@@ -39,6 +41,30 @@ export const getPasskeyMetadataFactoryAccountParams = (
     deploymentSalt: metadata.deploymentSalt,
     publicKey: metadata.publicKey,
   });
+
+export const getPasskeyAccountLookupKey = (metadata: {
+  credentialIdHash: string;
+  publicKey: {
+    originHash: string;
+    originLength: number;
+    rpIdHash: string;
+    x: string;
+    y: string;
+  };
+}) =>
+  keccak256(
+    defaultAbiCoder.encode(
+      ['bytes32', 'bytes32', 'bytes32', 'bytes32', 'bytes32', 'uint256'],
+      [
+        metadata.credentialIdHash,
+        metadata.publicKey.x,
+        metadata.publicKey.y,
+        metadata.publicKey.rpIdHash,
+        metadata.publicKey.originHash,
+        metadata.publicKey.originLength,
+      ]
+    )
+  );
 
 export const getPasskeySponsorContractMode = (
   metadata: IPasskeySmartAccountMetadata

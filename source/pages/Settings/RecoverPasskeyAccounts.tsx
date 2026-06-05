@@ -14,6 +14,7 @@ import {
   getDiscoverablePasskeyAssertion,
   passkeyAssertionToProof,
 } from 'utils/passkey';
+import type { PasskeyAssertionResult } from 'utils/passkey';
 
 const scrollAreaClassName =
   'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-260px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
@@ -37,6 +38,7 @@ type RecoveryCredential = {
   backupStatus?: string;
   credentialId: string;
   credentialIdHash: string;
+  publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
   verificationHash: string;
   verificationProof: ReturnType<typeof passkeyAssertionToProof>;
 };
@@ -106,6 +108,7 @@ const RecoverPasskeyAccounts = () => {
         backupStatus: assertion.backupStatus,
         credentialId: assertion.credentialId,
         credentialIdHash: assertion.credentialIdHash,
+        publicKeyCandidates: assertion.publicKeyCandidates,
         verificationHash,
         verificationProof: passkeyAssertionToProof(assertion),
       };

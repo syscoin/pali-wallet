@@ -36,6 +36,13 @@ export type PasskeyAssertionResult = {
   credentialIdHash: string;
   digest: string;
   originOffset: number;
+  publicKeyCandidates: Array<{
+    originHash: string;
+    originLength: number;
+    rpIdHash: string;
+    x: string;
+    y: string;
+  }>;
   r: string;
   s: string;
   typeOffset: number;
@@ -59,9 +66,23 @@ const BACKUP_STATE_FLAG = 0x10;
 const P256_N = BigInt(
   '0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'
 );
+const P256_P = BigInt(
+  '0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff'
+);
+const P256_B = BigInt(
+  '0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b'
+);
+const P256_GX = BigInt(
+  '0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296'
+);
+const P256_GY = BigInt(
+  '0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5'
+);
 const P256_HALF_N = BigInt(
   '0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8'
 );
+
+type P256Point = { x: bigint; y: bigint };
 
 const sha256 = async (data: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(await crypto.subtle.digest('SHA-256', toArrayBuffer(data)));
@@ -89,6 +110,94 @@ const bigIntToBytes32 = (value: bigint): Uint8Array => {
   return hexToBytes(`0x${hex}`);
 };
 
+const mod = (value: bigint, modulus: bigint): bigint => {
+  const result = value % modulus;
+  return result >= BigInt(0) ? result : result + modulus;
+};
+
+const modPow = (base: bigint, exponent: bigint, modulus: bigint): bigint => {
+  let result = BigInt(1);
+  let current = mod(base, modulus);
+  let remaining = exponent;
+
+  while (remaining > BigInt(0)) {
+    if (remaining & BigInt(1)) {
+      result = mod(result * current, modulus);
+    }
+    current = mod(current * current, modulus);
+    remaining >>= BigInt(1);
+  }
+
+  return result;
+};
+
+const modInverse = (value: bigint, modulus: bigint): bigint =>
+  modPow(value, modulus - BigInt(2), modulus);
+
+const p256PointFromX = (x: bigint, oddY: boolean): P256Point | null => {
+  if (x >= P256_P) {
+    return null;
+  }
+
+  const ySquared = mod(x * x * x - BigInt(3) * x + P256_B, P256_P);
+  let y = modPow(ySquared, (P256_P + BigInt(1)) / BigInt(4), P256_P);
+  if (mod(y * y, P256_P) !== ySquared) {
+    return null;
+  }
+  if (Boolean(y & BigInt(1)) !== oddY) {
+    y = mod(-y, P256_P);
+  }
+
+  return { x, y };
+};
+
+const p256PointAdd = (
+  left: P256Point | null,
+  right: P256Point | null
+): P256Point | null => {
+  if (!left) return right;
+  if (!right) return left;
+
+  if (left.x === right.x) {
+    if (mod(left.y + right.y, P256_P) === BigInt(0)) {
+      return null;
+    }
+    const slope = mod(
+      (BigInt(3) * left.x * left.x - BigInt(3)) *
+        modInverse(BigInt(2) * left.y, P256_P),
+      P256_P
+    );
+    const x = mod(slope * slope - BigInt(2) * left.x, P256_P);
+    return { x, y: mod(slope * (left.x - x) - left.y, P256_P) };
+  }
+
+  const slope = mod(
+    (right.y - left.y) * modInverse(right.x - left.x, P256_P),
+    P256_P
+  );
+  const x = mod(slope * slope - left.x - right.x, P256_P);
+  return { x, y: mod(slope * (left.x - x) - left.y, P256_P) };
+};
+
+const p256PointMultiply = (
+  scalar: bigint,
+  point: P256Point | null
+): P256Point | null => {
+  let result: P256Point | null = null;
+  let addend = point;
+  let remaining = mod(scalar, P256_N);
+
+  while (remaining > BigInt(0)) {
+    if (remaining & BigInt(1)) {
+      result = p256PointAdd(result, addend);
+    }
+    addend = p256PointAdd(addend, addend);
+    remaining >>= BigInt(1);
+  }
+
+  return result;
+};
+
 const normalizeP256S = (s: Uint8Array): Uint8Array => {
   const value = bytesToBigInt(s);
   if (value > P256_HALF_N) {
@@ -96,6 +205,77 @@ const normalizeP256S = (s: Uint8Array): Uint8Array => {
   }
 
   return s;
+};
+
+const recoverP256PublicKeyCandidates = ({
+  digest,
+  originHash,
+  originLength,
+  r,
+  rpIdHash,
+  s,
+}: {
+  digest: Uint8Array;
+  originHash: string;
+  originLength: number;
+  r: Uint8Array;
+  rpIdHash: string;
+  s: Uint8Array;
+}): PasskeyAssertionResult['publicKeyCandidates'] => {
+  const candidates = new Map<
+    string,
+    PasskeyAssertionResult['publicKeyCandidates'][number]
+  >();
+  const rValue = bytesToBigInt(r);
+  const sValue = bytesToBigInt(s);
+  const digestValue = mod(bytesToBigInt(digest), P256_N);
+  const rInverse = modInverse(rValue, P256_N);
+  const generator = { x: P256_GX, y: P256_GY };
+
+  for (let recoveryBit = 0; recoveryBit < 4; recoveryBit += 1) {
+    const x = rValue + BigInt(recoveryBit >> 1) * P256_N;
+    const rPoint = p256PointFromX(x, Boolean(recoveryBit & 1));
+    if (!rPoint) {
+      continue;
+    }
+
+    const sR = p256PointMultiply(sValue, rPoint);
+    const eG = p256PointMultiply(digestValue, generator);
+    const recovered = p256PointMultiply(
+      rInverse,
+      p256PointAdd(sR, eG ? { x: eG.x, y: mod(-eG.y, P256_P) } : null)
+    );
+    if (!recovered) {
+      continue;
+    }
+
+    const passkeyX = bytesToHex(bigIntToBytes32(recovered.x));
+    const passkeyY = bytesToHex(bigIntToBytes32(recovered.y));
+    candidates.set(`${passkeyX}:${passkeyY}`, {
+      originHash,
+      originLength,
+      rpIdHash,
+      x: passkeyX,
+      y: passkeyY,
+    });
+  }
+
+  return Array.from(candidates.values());
+};
+
+const getClientDataOrigin = (
+  clientDataJSON: Uint8Array,
+  originOffset: number
+): string => {
+  let end = originOffset;
+  while (end < clientDataJSON.length && clientDataJSON[end] !== 0x22) {
+    end += 1;
+  }
+  if (end >= clientDataJSON.length) {
+    throw new Error('WebAuthn origin is missing a closing quote');
+  }
+
+  return new TextDecoder().decode(clientDataJSON.slice(originOffset, end));
 };
 
 export const getPasskeyBackupStatus = (
@@ -299,6 +479,10 @@ const getPasskeyAssertionForCredential = async (
   const clientDataHash = await sha256(clientDataJSON);
   const digest = await sha256(concatBytes(authenticatorData, clientDataHash));
   const { r, s } = parseDerSignature(signature);
+  const origin = getClientDataOrigin(clientDataJSON, originOffset);
+  const rpIdHash = bytesToHex(authenticatorData.slice(0, 32));
+  const originLength = toUtf8Bytes(origin).length;
+  const originHash = hashText(origin);
 
   return {
     authenticatorData: bytesToHex(authenticatorData),
@@ -309,6 +493,14 @@ const getPasskeyAssertionForCredential = async (
     credentialIdHash: bytesToHex(credentialIdHash),
     digest: bytesToHex(digest),
     originOffset,
+    publicKeyCandidates: recoverP256PublicKeyCandidates({
+      digest,
+      originHash,
+      originLength,
+      r,
+      rpIdHash,
+      s,
+    }),
     r: bytesToHex(r),
     s: bytesToHex(s),
     typeOffset,

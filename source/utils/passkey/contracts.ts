@@ -17,17 +17,17 @@ export const PASSKEY_SMART_ACCOUNT_VERSION = 'PALI_PASSKEY_SMART_ACCOUNT_V1';
 
 export const PASSKEY_FACTORY_ADDRESSES: Partial<Record<number, string>> = {
   [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]:
-    '0x2753d01E741D1E9E54956203766f5F501819cad3',
+    '0x4DB71a59725aB275fc2127da02F9DBA4946227F0',
 };
 
 export const PASSKEY_FACTORY_ABI = [
-  'event AccountCreated(address indexed account, bytes32 indexed credentialIdHash, bytes32 salt)',
+  'event AccountCreated(address indexed account, bytes32 indexed lookupKey, bytes32 salt)',
   'function createAccount((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof) payable returns (address account)',
   'function createAccountAndExecute((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params,(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[] executions,(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s) proof,(uint8 v,bytes32 r,bytes32 s) sponsorProof) payable returns (address account, bytes[] returndata)',
   'function getAccountAddress((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params) view returns (address)',
   'function getAccountCreateHash((bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,bytes32 salt) params) view returns (bytes32)',
-  'function getAccountCountByCredential(bytes32 credentialIdHash) view returns (uint256)',
-  'function getAccountsByCredential(bytes32 credentialIdHash, uint256 offset, uint256 limit) view returns (address[] accounts)',
+  'function getAccountCountByPasskeyLookup(bytes32 lookupKey) view returns (uint256)',
+  'function getAccountsByPasskeyLookup(bytes32 lookupKey, uint256 offset, uint256 limit) view returns (address[] accounts)',
   'function implementation() view returns (address)',
 ] as const;
 

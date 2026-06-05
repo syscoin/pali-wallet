@@ -32,7 +32,7 @@ Passkey-Accounts sind nicht auf jeder EVM-Chain aktiviert. Sie erfordern eine ko
 
 | Netzwerk | Chain id | Status in diesem Pali-Build |
 | --- | --- | --- |
-| `zkTanenbaum` | `57057` | Konfiguriert. Factory: `0x2753d01E741D1E9E54956203766f5F501819cad3`. |
+| `zkTanenbaum` | `57057` | Konfiguriert. Factory: `0x4DB71a59725aB275fc2127da02F9DBA4946227F0`. |
 | `zkSYS` | TBD in wallet config | Vorgesehenes Produktionsziel für dieselbe Passkey-Architektur, sobald die Factory-Adresse in Pali konfiguriert ist. |
 
 Wenn eine dapp `wallet_createPasskeyAccount` auf einem Netzwerk ohne konfigurierte Factory aufruft, lehnt Pali den Request ab, statt nicht unterstützte Metadaten zu erstellen.

@@ -40,6 +40,7 @@ import {
   PasskeyContractSponsorMode,
   assertPasskeyRelayPayloadMatches,
   getPasskeyActionHash,
+  getPasskeyAccountLookupKey,
   getPasskeyCreateHash,
   getPasskeyFactoryAccountParams,
   getPasskeyMetadataFactoryAccountParams,
@@ -54,6 +55,7 @@ import {
   selectPasskeyGasPayerCandidate,
   selectFundedPasskeyGasPayerCandidate,
   PasskeyRelayedTransactionNotFoundError,
+  PasskeyAssertionResult,
   verifyPasskeyRelayedSponsorProof,
   verifyPasskeySponsorProof,
   PasskeyWebAuthnProof,
@@ -313,6 +315,7 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
     verificationHash: string;
     verificationProof: PasskeyWebAuthnProof;
   }): Promise<{
@@ -327,6 +330,7 @@ class PasskeyController {
       credentialIdHash: params.credentialIdHash,
       factoryAddress,
       provider,
+      publicKeyCandidates: params.publicKeyCandidates,
     });
     if (recoverySources.length === 0) {
       return { candidates: [], existing: 0, skipped: 0 };
@@ -412,6 +416,7 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
     verificationHash: string;
     verificationProof: PasskeyWebAuthnProof;
   }): Promise<{
@@ -433,6 +438,7 @@ class PasskeyController {
       credentialIdHash: params.credentialIdHash,
       factoryAddress,
       provider,
+      publicKeyCandidates: params.publicKeyCandidates,
     });
     if (recoverySources.length === 0) {
       return { recovered: 0, skipped: 0, accounts: [] };
@@ -590,23 +596,30 @@ class PasskeyController {
     credentialIdHash,
     factoryAddress,
     provider,
+    publicKeyCandidates,
   }: {
     activeNetwork: { chainId: number };
     credentialIdHash: string;
     factoryAddress: string;
     provider: any;
+    publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
   }): Promise<PasskeyRecoverySource[]> {
     let recoverySources: PasskeyRecoverySource[] = (
       await this.getPasskeyRecoveryRegistryAccounts({
         chainId: activeNetwork.chainId,
         credentialIdHash,
         provider,
+        publicKeyCandidates,
       })
     ).map((address) => ({ address }));
     if (recoverySources.length === 0) {
-      const logs = await this.getPasskeyRecoveryLogs({
+      const lookupKeys = this.getPasskeyRecoveryLookupKeys({
         credentialIdHash,
+        publicKeyCandidates,
+      });
+      const logs = await this.getPasskeyRecoveryLogs({
         factoryAddress,
+        lookupKeys,
         provider,
       });
       recoverySources = logs.map((log) => ({ log }));
@@ -968,26 +981,42 @@ class PasskeyController {
     chainId,
     credentialIdHash,
     provider,
+    publicKeyCandidates,
   }: {
     chainId: number;
     credentialIdHash: string;
     provider: any;
+    publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
   }): Promise<string[]> {
     try {
       const factory = getPasskeyFactory(chainId, provider);
-      const count = BigNumber.from(
-        await this.withPasskeyRpcBackoff(() =>
-          factory.getAccountCountByCredential(credentialIdHash)
-        )
-      ).toNumber();
       const pageSize = 50;
       const accounts: string[] = [];
+      const seenAddresses = new Set<string>();
 
-      for (let offset = 0; offset < count; offset += pageSize) {
-        const page = await this.withPasskeyRpcBackoff<string[]>(() =>
-          factory.getAccountsByCredential(credentialIdHash, offset, pageSize)
-        );
-        accounts.push(...page.map((address) => getAddress(address)));
+      for (const lookupKey of this.getPasskeyRecoveryLookupKeys({
+        credentialIdHash,
+        publicKeyCandidates,
+      })) {
+        const count = BigNumber.from(
+          await this.withPasskeyRpcBackoff(() =>
+            factory.getAccountCountByPasskeyLookup(lookupKey)
+          )
+        ).toNumber();
+
+        for (let offset = 0; offset < count; offset += pageSize) {
+          const page = await this.withPasskeyRpcBackoff<string[]>(() =>
+            factory.getAccountsByPasskeyLookup(lookupKey, offset, pageSize)
+          );
+          for (const address of page) {
+            const normalizedAddress = getAddress(address);
+            const addressKey = normalizedAddress.toLowerCase();
+            if (!seenAddresses.has(addressKey)) {
+              seenAddresses.add(addressKey);
+              accounts.push(normalizedAddress);
+            }
+          }
+        }
       }
 
       return accounts;
@@ -997,13 +1026,32 @@ class PasskeyController {
     }
   }
 
-  private async getPasskeyRecoveryLogs({
+  private getPasskeyRecoveryLookupKeys({
     credentialIdHash,
-    factoryAddress,
-    provider,
+    publicKeyCandidates,
   }: {
     credentialIdHash: string;
+    publicKeyCandidates: PasskeyAssertionResult['publicKeyCandidates'];
+  }): string[] {
+    return Array.from(
+      new Set(
+        publicKeyCandidates.map((publicKey) =>
+          getPasskeyAccountLookupKey({
+            credentialIdHash,
+            publicKey,
+          }).toLowerCase()
+        )
+      )
+    );
+  }
+
+  private async getPasskeyRecoveryLogs({
+    factoryAddress,
+    lookupKeys,
+    provider,
+  }: {
     factoryAddress: string;
+    lookupKeys: string[];
     provider: any;
   }) {
     const latestBlock = await this.withPasskeyRpcBackoff<number>(() =>
@@ -1013,6 +1061,10 @@ class PasskeyController {
     const eventTopic = passkeyFactoryInterface.getEventTopic('AccountCreated');
     const logs: any[] = [];
 
+    if (lookupKeys.length === 0) {
+      return logs;
+    }
+
     for (let fromBlock = 0; fromBlock <= latestBlock; fromBlock += chunkSize) {
       const toBlock = Math.min(fromBlock + chunkSize - 1, latestBlock);
       const chunkLogs = await this.withPasskeyRpcBackoff<any[]>(() =>
@@ -1020,7 +1072,7 @@ class PasskeyController {
           address: factoryAddress,
           fromBlock,
           toBlock,
-          topics: [eventTopic, null, credentialIdHash],
+          topics: [eventTopic, null, lookupKeys],
         })
       );
       logs.push(...chunkLogs);
