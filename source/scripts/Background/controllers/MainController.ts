@@ -2607,6 +2607,13 @@ class MainController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    publicKeyCandidates: Array<{
+      originHash: string;
+      originLength: number;
+      rpIdHash: string;
+      x: string;
+      y: string;
+    }>;
     verificationHash: string;
     verificationProof: PasskeyWebAuthnProof;
   }) {
@@ -2618,6 +2625,13 @@ class MainController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    publicKeyCandidates: Array<{
+      originHash: string;
+      originLength: number;
+      rpIdHash: string;
+      x: string;
+      y: string;
+    }>;
     verificationHash: string;
     verificationProof: PasskeyWebAuthnProof;
   }) {
