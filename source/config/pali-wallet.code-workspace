@@ -17,9 +17,6 @@
 		},
 		{
 			"path": "../../../syscoin-bridge"
-		},
-		{
-			"path": "../../../metamask-test-dapp-pali"
 		}
 	],
 	"settings": {}
