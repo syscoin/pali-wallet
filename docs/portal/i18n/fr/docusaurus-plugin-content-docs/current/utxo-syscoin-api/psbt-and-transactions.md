@@ -10,16 +10,16 @@ Les applications UTXO doivent construire les transactions soigneusement, demande
   <div className="pali-capture-card">
     <div className="pali-capture-card__copy">
       <div className="pali-capture-card__brand">
-        <span className="pali-capture-card__icon">P</span>
+        <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
         <span>Pali Wallet</span>
       </div>
       <p className="pali-capture-card__title">Vérification de signature PSBT</p>
       <p className="pali-capture-card__subtitle">Confirmation de signature UTXO avec détails avancés de transaction.</p>
       <p className="pali-capture-card__hint">Faites défiler l’aperçu pour inspecter les sorties, entrées, taille, poids et lock time.</p>
     </div>
-    <a className="pali-capture-card__scroll" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
+    <div className="pali-capture-card__scroll">
       <img src="/img/screens/psbt-sign-review.png" alt="Écran de vérification de signature PSBT de Pali" />
-    </a>
+    </div>
   </div>
   <figcaption>Pali demande confirmation à l'utilisateur avant de signer les PSBTs UTXO.</figcaption>
 </figure>

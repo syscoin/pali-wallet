@@ -10,16 +10,16 @@ UTXO application은 transaction을 신중하게 구성하고, Pali를 통해 sig
   <div className="pali-capture-card">
     <div className="pali-capture-card__copy">
       <div className="pali-capture-card__brand">
-        <span className="pali-capture-card__icon">P</span>
+        <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
         <span>Pali Wallet</span>
       </div>
       <p className="pali-capture-card__title">PSBT 서명 검토</p>
       <p className="pali-capture-card__subtitle">고급 트랜잭션 세부 정보가 포함된 UTXO 서명 확인입니다.</p>
       <p className="pali-capture-card__hint">미리보기 안에서 스크롤하여 outputs, inputs, size, weight, lock time을 확인하세요.</p>
     </div>
-    <a className="pali-capture-card__scroll" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
+    <div className="pali-capture-card__scroll">
       <img src="/img/screens/psbt-sign-review.png" alt="Pali PSBT signing review 화면" />
-    </a>
+    </div>
   </div>
   <figcaption>Pali는 UTXO PSBT에 서명하기 전에 사용자에게 prompt합니다.</figcaption>
 </figure>

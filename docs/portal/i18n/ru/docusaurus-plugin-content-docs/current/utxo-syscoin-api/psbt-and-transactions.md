@@ -10,16 +10,16 @@ UTXO applications должны аккуратно конструировать �
   <div className="pali-capture-card">
     <div className="pali-capture-card__copy">
       <div className="pali-capture-card__brand">
-        <span className="pali-capture-card__icon">P</span>
+        <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
         <span>Pali Wallet</span>
       </div>
       <p className="pali-capture-card__title">Проверка подписи PSBT</p>
       <p className="pali-capture-card__subtitle">Подтверждение UTXO-подписи с расширенными деталями транзакции.</p>
       <p className="pali-capture-card__hint">Прокрутите предпросмотр, чтобы проверить outputs, inputs, размер, вес и lock time.</p>
     </div>
-    <a className="pali-capture-card__scroll" href="/img/screens/psbt-sign-review.png" target="_blank" rel="noreferrer">
+    <div className="pali-capture-card__scroll">
       <img src="/img/screens/psbt-sign-review.png" alt="Экран проверки подписания PSBT в Pali" />
-    </a>
+    </div>
   </div>
   <figcaption>Pali запрашивает подтверждение пользователя перед подписанием UTXO PSBTs.</figcaption>
 </figure>

@@ -110,14 +110,15 @@
 }
 
 .theme-doc-markdown .pali-capture-card__icon {
-  align-items: center;
-  background: #2f6bff;
+  background: transparent;
+  border: 0;
   border-radius: 24px;
-  color: #fff;
-  display: inline-flex;
-  font-weight: 800;
+  box-shadow: none;
+  display: block;
+  flex: 0 0 auto;
   height: 5.5rem;
-  justify-content: center;
+  margin: 0;
+  object-fit: contain;
   width: 5.5rem;
 }
 
