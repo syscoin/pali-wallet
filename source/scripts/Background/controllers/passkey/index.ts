@@ -1,3 +1,4 @@
+import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
 import { BigNumber } from '@ethersproject/bignumber';
 import { isHexString } from '@ethersproject/bytes';
@@ -58,6 +59,8 @@ import {
   PasskeyWebAuthnProof,
 } from 'utils/passkey';
 import { blacklistService } from 'utils/security/blacklistService';
+
+const EIP1271_MAGIC_VALUE = '0x1626ba7e';
 
 export interface IPasskeyControllerDependencies {
   getEthereumTransaction: () => any;
@@ -306,6 +309,8 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    verificationHash?: string;
+    verificationProof?: PasskeyWebAuthnProof;
   }): Promise<{
     candidates: PasskeyRecoveryCandidate[];
     existing: number;
@@ -350,6 +355,8 @@ class PasskeyController {
             log: source.log,
             provider,
             backupStatus: params.backupStatus,
+            verificationHash: params.verificationHash,
+            verificationProof: params.verificationProof,
           })
         )
       );
@@ -401,6 +408,8 @@ class PasskeyController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    verificationHash?: string;
+    verificationProof?: PasskeyWebAuthnProof;
   }): Promise<{
     accounts: Array<{ address: string; id: number; label: string }>;
     recovered: number;
@@ -451,6 +460,8 @@ class PasskeyController {
             log: source.log,
             provider,
             backupStatus: params.backupStatus,
+            verificationHash: params.verificationHash,
+            verificationProof: params.verificationProof,
           })
         )
       );
@@ -1013,6 +1024,8 @@ class PasskeyController {
     factoryAddress,
     log,
     provider,
+    verificationHash,
+    verificationProof,
   }: {
     address?: string;
     backupStatus?: PasskeyBackupStatus;
@@ -1021,6 +1034,8 @@ class PasskeyController {
     factoryAddress: string;
     log?: any;
     provider: any;
+    verificationHash?: string;
+    verificationProof?: PasskeyWebAuthnProof;
   }): Promise<{
     address: string;
     metadata?: IPasskeySmartAccountMetadata;
@@ -1066,6 +1081,17 @@ class PasskeyController {
     ) {
       return null;
     }
+    if (
+      verificationHash &&
+      verificationProof &&
+      !(await this.isRecoveredPasskeyProofValid(
+        account,
+        verificationHash,
+        verificationProof
+      ))
+    ) {
+      return null;
+    }
 
     const sponsorModeNumber = Number(sponsorMode);
     const sponsor = this.recoverPasskeySponsorMetadata(
@@ -1095,6 +1121,23 @@ class PasskeyController {
         sponsor,
       },
     };
+  }
+
+  private async isRecoveredPasskeyProofValid(
+    account: Contract,
+    verificationHash: string,
+    verificationProof: PasskeyWebAuthnProof
+  ) {
+    const encodedProof = defaultAbiCoder.encode(
+      [
+        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
+      ],
+      [verificationProof]
+    );
+    const magic = await this.withPasskeyRpcBackoff<string>(() =>
+      account.isValidSignature(verificationHash, encodedProof)
+    );
+    return magic.toLowerCase() === EIP1271_MAGIC_VALUE;
   }
 
   private recoverPasskeySponsorMetadata(
@@ -1218,6 +1261,14 @@ class PasskeyController {
     ) {
       throw new Error('Passkey deployment approval does not match account');
     }
+    const sponsorProof = await this.getPasskeyDeploymentSponsorProof({
+      accountAddress: address,
+      actionHash: expectedDeploymentHash,
+      chainId: metadata.chainId,
+      executions,
+      metadata,
+      proof: deploymentProof,
+    });
 
     const deploymentGasLimit = BigNumber.from(3_000_000);
     const executionGasLimit = requiresPolicy
@@ -1233,7 +1284,7 @@ class PasskeyController {
           getPasskeyMetadataFactoryAccountParams(metadata),
           executions,
           deploymentProof,
-          { v: 0, r: HashZero, s: HashZero },
+          sponsorProof,
         ])
       : passkeyFactoryInterface.encodeFunctionData('createAccount', [
           getPasskeyMetadataFactoryAccountParams(metadata),
@@ -1265,6 +1316,71 @@ class PasskeyController {
       },
       { persistRestore: false }
     );
+  }
+
+  private async getPasskeyDeploymentSponsorProof({
+    accountAddress,
+    actionHash,
+    chainId,
+    executions,
+    metadata,
+    proof,
+  }: {
+    accountAddress: string;
+    actionHash: string;
+    chainId: number;
+    executions: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    metadata: IPasskeySmartAccountMetadata;
+    proof: PasskeyWebAuthnProof;
+  }): Promise<{ r: string; s: string; v: number }> {
+    const emptyProof = { v: 0, r: HashZero, s: HashZero };
+    if (
+      executions.length === 0 ||
+      metadata.sponsor?.mode !== PasskeySponsorMode.Required
+    ) {
+      return emptyProof;
+    }
+    if (!metadata.sponsor.signer) {
+      throw new Error('Passkey sponsor signer is not configured');
+    }
+
+    let sponsorProof = await this.getLocalSponsorProof(
+      actionHash,
+      metadata.sponsor.signer
+    );
+    if (!sponsorProof && metadata.sponsor.url) {
+      const sponsorResult = await this.fetchPasskeySponsorResult(
+        metadata.sponsor.url,
+        {
+          account: accountAddress,
+          actionHash,
+          chainId,
+          execution: executions[0],
+          executions,
+          proof,
+          sponsorSigner: metadata.sponsor.signer,
+          version: PASSKEY_SMART_ACCOUNT_VERSION,
+        }
+      );
+      if (sponsorResult.type === 'relayed') {
+        throw new Error(
+          'Passkey deployment sponsor must return an authorization signature'
+        );
+      }
+      sponsorProof = sponsorResult.sponsorProof;
+    }
+    if (!sponsorProof) {
+      throw new Error('Sponsor signer is not available for deployment');
+    }
+
+    verifyPasskeySponsorProof(actionHash, sponsorProof, metadata);
+    return sponsorProof;
   }
 
   private async readConfirmedPasskeyMetadata({
