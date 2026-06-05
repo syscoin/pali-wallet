@@ -207,7 +207,7 @@ const normalizeP256S = (s: Uint8Array): Uint8Array => {
   return s;
 };
 
-const recoverP256PublicKeyCandidates = ({
+export const recoverP256PublicKeyCandidates = ({
   digest,
   originHash,
   originLength,
@@ -227,7 +227,15 @@ const recoverP256PublicKeyCandidates = ({
     PasskeyAssertionResult['publicKeyCandidates'][number]
   >();
   const rValue = bytesToBigInt(r);
-  const sValue = bytesToBigInt(s);
+  const sValue = bytesToBigInt(normalizeP256S(s));
+  if (
+    rValue <= BigInt(0) ||
+    rValue >= P256_N ||
+    sValue <= BigInt(0) ||
+    sValue > P256_HALF_N
+  ) {
+    return [];
+  }
   const digestValue = mod(bytesToBigInt(digest), P256_N);
   const rInverse = modInverse(rValue, P256_N);
   const generator = { x: P256_GX, y: P256_GY };
