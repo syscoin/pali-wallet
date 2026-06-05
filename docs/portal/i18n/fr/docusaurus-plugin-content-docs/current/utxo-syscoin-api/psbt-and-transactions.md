@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 Pali signe ce que l'utilisateur approuve. Votre application est responsable de construire des entrées, sorties, frais, rendu de monnaie et métadonnées d'actifs PSBT cohérents avant de demander une signature.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="Flux PSBT UTXO dans Pali"></video>
-  <figcaption>Flux UTXO : introduction de marque, construction PSBT, vérification de signature Pali et résultat de diffusion.</figcaption>
-</figure>

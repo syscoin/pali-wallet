@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 Pali signiert, was der Benutzer freigibt. Ihre Anwendung ist dafür verantwortlich, sinnvolle PSBT-Inputs, Outputs, Fees, Wechselgeld und Asset-Metadaten zu konstruieren, bevor sie eine Signatur anfordert.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="UTXO-PSBT-Flow in Pali"></video>
-  <figcaption>UTXO-Flow: gebrandetes Intro, PSBT-Konstruktion, Pali-Signaturprüfung und Broadcast-Ergebnis.</figcaption>
-</figure>

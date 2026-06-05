@@ -6,12 +6,6 @@ Sponsor service는 passkey smart account execution policy에 참여하는 instit
 
 ## Sponsor object
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Pali sponsor relay pending 및 success state" />
-</a>
-  <figcaption>Sponsored execution은 pending, success, failure state를 사용자에게 명확히 보여줘야 합니다.</figcaption>
-</figure>
 
 ```js
 {

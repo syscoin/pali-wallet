@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 Pali подписывает то, что подтверждает пользователь. Ваше приложение отвечает за построение корректных PSBT inputs, outputs, fees, change и asset metadata перед запросом подписи.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="UTXO PSBT flow в Pali"></video>
-  <figcaption>UTXO flow: branded intro, построение PSBT, review подписи Pali и результат broadcast.</figcaption>
-</figure>

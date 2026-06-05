@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 A Pali assina o que o usuário aprova. Sua aplicação é responsável por construir entradas, saídas, taxas, troco e metadados de ativos de PSBT sensatos antes de solicitar uma assinatura.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="Fluxo PSBT UTXO na Pali"></video>
-  <figcaption>Fluxo UTXO: introdução com marca, construção de PSBT, revisão de assinatura da Pali e resultado de broadcast.</figcaption>
-</figure>

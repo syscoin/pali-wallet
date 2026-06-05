@@ -6,12 +6,6 @@ Sponsor service — это endpoint, контролируемый институ
 
 ## Объект sponsor
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Состояния pending и success sponsor relay в Pali" />
-</a>
-  <figcaption>Sponsored execution должен ясно показывать пользователям pending, success и failure states.</figcaption>
-</figure>
 
 ```js
 {

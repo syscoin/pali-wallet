@@ -6,12 +6,6 @@ Sponsor service 是由机构控制的 endpoint，参与 Passkey 智能账户执�
 
 ## Sponsor 对象
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Pali sponsor relay pending 和 success 状态" />
-</a>
-  <figcaption>Sponsored execution 应向用户清楚显示待处理、成功和失败状态。</figcaption>
-</figure>
 
 ```js
 {

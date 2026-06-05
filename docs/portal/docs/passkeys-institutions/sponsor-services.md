@@ -6,12 +6,6 @@ A sponsor service is an institution-controlled endpoint that participates in pas
 
 ## Sponsor object
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Pali sponsor relay pending and success states" />
-</a>
-  <figcaption>Sponsored execution should make pending, success, and failure states clear to users.</figcaption>
-</figure>
 
 ```js
 {

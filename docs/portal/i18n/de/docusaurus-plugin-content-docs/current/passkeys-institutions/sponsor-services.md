@@ -6,12 +6,6 @@ Ein Sponsor-Service ist ein institutionskontrollierter Endpoint, der an der Ausf
 
 ## Sponsor-Objekt
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Ausstehende und erfolgreiche Pali-Sponsor-Relay-Zustände" />
-</a>
-  <figcaption>Gesponserte Ausführung sollte ausstehende, erfolgreiche und fehlgeschlagene Zustände für Benutzer klar machen.</figcaption>
-</figure>
 
 ```js
 {

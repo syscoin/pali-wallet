@@ -6,12 +6,6 @@ Um serviço de sponsor é um endpoint controlado por instituição que participa
 
 ## Objeto sponsor
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/sponsor-pending-success.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/sponsor-pending-success.png" alt="Estados pendente e sucesso de relay de sponsor na Pali" />
-</a>
-  <figcaption>Execução patrocinada deve deixar claros para os usuários os estados pendente, sucesso e falha.</figcaption>
-</figure>
 
 ```js
 {

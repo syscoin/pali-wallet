@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 Pali 会签署用户批准的内容。你的应用负责在请求签名前构造合理的 PSBT inputs、outputs、fees、change 和 asset metadata。
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="Pali 中的 UTXO PSBT 流程"></video>
-  <figcaption>UTXO 流程：品牌介绍、PSBT 构造、Pali 签名审核和广播结果。</figcaption>
-</figure>

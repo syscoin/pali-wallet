@@ -55,7 +55,3 @@ const valid = await window.pali.request({
 
 Pali는 사용자가 승인한 것에 서명합니다. 애플리케이션은 signature를 요청하기 전에 sane PSBT input, output, fee, change, asset metadata를 구성할 책임이 있습니다.
 
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/utxo-psbt-flow-video.png" src="/video/utxo-psbt-flow.mp4" title="Pali의 UTXO PSBT flow"></video>
-  <figcaption>UTXO flow: branded intro, PSBT construction, Pali signing review, broadcast result.</figcaption>
-</figure>
