@@ -172,6 +172,16 @@ export const SendCalls = () => {
       txHash?: string;
     }>
   >();
+  const [requestPasskeyAccount] = useState(() => ({
+    credentialId: activeAccount?.isPasskeySmartAccount
+      ? activeAccount.passkey?.credentialId
+      : undefined,
+    supportsAtomicBatch: Boolean(
+      activeAccount?.isPasskeySmartAccount &&
+        activeAccount.passkey?.credentialId &&
+        activeAccount.passkey?.chainId === activeNetwork.chainId
+    ),
+  }));
 
   // Reverse ENS cache: name -> address (lowercased)
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
@@ -321,7 +331,7 @@ export const SendCalls = () => {
         return newStatuses;
       });
 
-      if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+      if (requestPasskeyAccount.credentialId) {
         try {
           const passkeyCalls = [];
           for (let i = 0; i < selectedCallsData.length; i++) {
@@ -379,7 +389,7 @@ export const SendCalls = () => {
 
           const response = (await signAndSubmitPasskeyExecutions({
             controllerEmitter,
-            credentialId: activeAccount.passkey.credentialId,
+            credentialId: requestPasskeyAccount.credentialId,
             executions: passkeyCalls,
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
@@ -691,25 +701,27 @@ export const SendCalls = () => {
       </div>
 
       {/* Warning for atomic requirement */}
-      {callsData.atomicRequired && !activeAccount.isPasskeySmartAccount && (
-        <div className="bg-brand-yellowBg p-3 mx-4 mt-4 rounded-lg border border-brand-yellow">
-          <div className="flex items-start gap-2">
-            <Icon
-              name="warning"
-              className="text-brand-yellow mt-0.5"
-              size={20}
-            />
-            <div>
-              <p className="text-sm text-brand-white font-medium">
-                {t('send.atomicNotSupported')}
-              </p>
-              <p className="text-xs text-brand-gray200 mt-1">
-                {t('send.atomicNotSupportedDescription')}
-              </p>
+      {callsData.atomicRequired &&
+        !requestPasskeyAccount.supportsAtomicBatch &&
+        !loading && (
+          <div className="bg-brand-yellowBg p-3 mx-4 mt-4 rounded-lg border border-brand-yellow">
+            <div className="flex items-start gap-2">
+              <Icon
+                name="warning"
+                className="text-brand-yellow mt-0.5"
+                size={20}
+              />
+              <div>
+                <p className="text-sm text-brand-white font-medium">
+                  {t('send.atomicNotSupported')}
+                </p>
+                <p className="text-xs text-brand-gray200 mt-1">
+                  {t('send.atomicNotSupportedDescription')}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Calls list */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-40 remove-scrollbar">
