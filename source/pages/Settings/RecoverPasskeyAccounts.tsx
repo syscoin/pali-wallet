@@ -9,7 +9,11 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { formatFullPrecisionBalance, ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
-import { bytesToHex, getDiscoverablePasskeyAssertion } from 'utils/passkey';
+import {
+  bytesToHex,
+  getDiscoverablePasskeyAssertion,
+  passkeyAssertionToProof,
+} from 'utils/passkey';
 
 const scrollAreaClassName =
   'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-260px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
@@ -33,6 +37,8 @@ type RecoveryCredential = {
   backupStatus?: string;
   credentialId: string;
   credentialIdHash: string;
+  verificationHash: string;
+  verificationProof: ReturnType<typeof passkeyAssertionToProof>;
 };
 
 const RecoverPasskeyAccounts = () => {
@@ -94,13 +100,14 @@ const RecoverPasskeyAccounts = () => {
     try {
       await controllerEmitter(['wallet', 'assertPasskeySmartAccountSupported']);
       const challenge = crypto.getRandomValues(new Uint8Array(32));
-      const assertion = await getDiscoverablePasskeyAssertion(
-        bytesToHex(challenge)
-      );
+      const verificationHash = bytesToHex(challenge);
+      const assertion = await getDiscoverablePasskeyAssertion(verificationHash);
       const credentialParams = {
         backupStatus: assertion.backupStatus,
         credentialId: assertion.credentialId,
         credentialIdHash: assertion.credentialIdHash,
+        verificationHash,
+        verificationProof: passkeyAssertionToProof(assertion),
       };
       const result = (await controllerEmitter(
         ['wallet', 'previewPasskeySmartAccountRecovery'],

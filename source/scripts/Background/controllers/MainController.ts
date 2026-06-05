@@ -2607,6 +2607,8 @@ class MainController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
   }) {
     return this.passkey.previewPasskeySmartAccountRecovery(params);
   }
@@ -2616,6 +2618,8 @@ class MainController {
     backupStatus?: PasskeyBackupStatus;
     credentialId: string;
     credentialIdHash: string;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
   }) {
     return this.passkey.importPasskeySmartAccounts(params);
   }

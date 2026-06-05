@@ -1,7 +1,9 @@
+export const MAX_SPONSOR_URL_LENGTH = 128;
+
 export const isValidSponsorServiceUrl = (value: string) => {
   const trimmedValue = value.trim();
 
-  if (!trimmedValue) {
+  if (!trimmedValue || trimmedValue.length > MAX_SPONSOR_URL_LENGTH) {
     return false;
   }
 
