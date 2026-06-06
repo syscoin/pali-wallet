@@ -2323,6 +2323,7 @@ class PasskeyController {
           account.address,
           executions,
           params.proof,
+          expectedActionHash,
           metadata
         );
         const passkeyTxResponse = {
@@ -2562,15 +2563,21 @@ class PasskeyController {
     const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
       metadata.chainId
     );
+    let threshold: number | string = params.threshold ?? '';
+    if (!threshold) {
+      const status = await this.getPasskeyGuardianRecoveryStatus({
+        account: account.address,
+      });
+      if (!status?.exists) {
+        throw new Error('Guardian recovery is not configured for this account');
+      }
+      threshold = status.threshold;
+    }
 
     return this.preparePasskeyExecution({
       data: passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
         'updateRecoveryPolicy',
-        [
-          account.address,
-          params.recoveryDelay,
-          params.threshold || PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
-        ]
+        [account.address, params.recoveryDelay, threshold]
       ),
       target: recoveryValidator,
       value: '0',
@@ -3343,6 +3350,7 @@ class PasskeyController {
       s: string;
       typeOffset: number;
     },
+    expectedActionHash: string,
     metadata: IPasskeySmartAccountMetadata
   ) {
     const provider = this.ethereumTransaction?.web3Provider;
@@ -3376,15 +3384,8 @@ class PasskeyController {
           );
         });
         if (metadata.sponsor?.mode === PasskeySponsorMode.Required) {
-          const actionHash = getPasskeyActionHash({
-            account: expectedAccount,
-            chainId: metadata.chainId,
-            executions: expectedExecutions,
-            sponsorMode: getPasskeySponsorContractMode(metadata),
-            sponsorSigner: metadata.sponsor?.signer || AddressZero,
-          });
           verifyPasskeyRelayedSponsorProof(
-            actionHash,
+            expectedActionHash,
             decodedSponsorProof,
             metadata
           );
