@@ -42,18 +42,27 @@ const contractModeByPolicy = {
 const scrollAreaClassName =
   'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-240px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
 
+const configuredShortRecoveryDelaySeconds = Number(
+  process.env.PASSKEY_GUARDIAN_SHORT_RECOVERY_DELAY_SECONDS || 0
+);
+const firstRecoveryDelayOptionSeconds =
+  Number.isFinite(configuredShortRecoveryDelaySeconds) &&
+  configuredShortRecoveryDelaySeconds > 0
+    ? Math.floor(configuredShortRecoveryDelaySeconds)
+    : PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS;
+
 const recoveryDelayOptions = [
   {
     labelKey: 'settings.passkeyGuardianRecoveryDelayOneDay',
-    seconds: 24 * 60 * 60,
+    seconds: firstRecoveryDelayOptionSeconds,
   },
   {
     labelKey: 'settings.passkeyGuardianRecoveryDelayThreeDays',
-    seconds: 3 * 24 * 60 * 60,
+    seconds: PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS * 3,
   },
   {
     labelKey: 'settings.passkeyGuardianRecoveryDelaySevenDays',
-    seconds: 7 * 24 * 60 * 60,
+    seconds: PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS * 7,
   },
 ];
 
@@ -100,8 +109,11 @@ const PasskeyAccountPolicy = () => {
   const [guardianStatus, setGuardianStatus] =
     useState<GuardianRecoveryStatus>(null);
   const [recoveryDelay, setRecoveryDelay] = useState<number>(
-    PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+    recoveryDelayOptions[0].seconds
   );
+  const [confirmedRecoveryDelay, setConfirmedRecoveryDelay] = useState<
+    number | null
+  >(null);
   const [guardianAddress, setGuardianAddress] = useState<string>('');
   const [refreshingStatus, setRefreshingStatus] = useState<boolean>(false);
 
@@ -113,18 +125,31 @@ const PasskeyAccountPolicy = () => {
     }
   };
 
-  const isSponsorSignerPasskeyAccount = (value: string) => {
+  const getWalletAccountByAddress = (value: string) => {
     const normalizedValue = normalizeSponsorSignerInput(value);
-    if (!normalizedValue) return false;
+    if (!normalizedValue) return null;
 
-    return Object.values(
-      accounts[KeyringAccountType.PasskeySmartAccount] || {}
-    ).some(
-      (account: any) =>
-        account?.address &&
-        getAddress(account.address).toLowerCase() === normalizedValue
-    );
+    for (const [accountType, accountsByType] of Object.entries(accounts)) {
+      for (const account of Object.values(accountsByType || {}) as any[]) {
+        try {
+          if (
+            account?.address &&
+            getAddress(account.address).toLowerCase() === normalizedValue
+          ) {
+            return { account, accountType: accountType as KeyringAccountType };
+          }
+        } catch {
+          // Ignore malformed stored addresses when validating the typed input.
+        }
+      }
+    }
+
+    return null;
   };
+
+  const isSponsorSignerPasskeyAccount = (value: string) =>
+    getWalletAccountByAddress(value)?.accountType ===
+    KeyringAccountType.PasskeySmartAccount;
 
   const isLocalSponsorSigner = (value: string) => {
     const normalizedValue = normalizeSponsorSignerInput(value);
@@ -179,6 +204,24 @@ const PasskeyAccountPolicy = () => {
   const isBusy = loading || guardianLoading || refreshingStatus;
   const guardianConnected = Boolean(guardianStatus?.exists);
   const guardianPending = Boolean(guardianStatus?.pending);
+  const hasRecoveryDelayChanges =
+    confirmedRecoveryDelay === null || recoveryDelay !== confirmedRecoveryDelay;
+  const normalizedGuardianAddress =
+    normalizeSponsorSignerInput(guardianAddress);
+  const guardianAddressError = (() => {
+    if (!guardianAddress.trim()) return '';
+    if (!normalizedGuardianAddress) {
+      return t('settings.invalidPasskeyGuardianAddress');
+    }
+    return '';
+  })();
+  const isGuardianAddressValid =
+    Boolean(normalizedGuardianAddress) && !guardianAddressError;
+  const guardianAddressValidateStatus = guardianAddress.trim()
+    ? guardianAddressError
+      ? 'error'
+      : 'success'
+    : undefined;
 
   useEffect(() => {
     if (policyMode === PasskeySponsorMode.Required && !trimmedSponsorUrl) {
@@ -190,6 +233,7 @@ const PasskeyAccountPolicy = () => {
     let cancelled = false;
     if (!state?.address || !state?.passkey?.isDeployed) {
       setGuardianStatus(null);
+      setConfirmedRecoveryDelay(null);
       return () => {
         cancelled = true;
       };
@@ -202,16 +246,21 @@ const PasskeyAccountPolicy = () => {
     )
       .then((status) => {
         if (!cancelled) {
-          const guardianStatus = status as GuardianRecoveryStatus;
-          setGuardianStatus(guardianStatus);
-          if (guardianStatus?.delay) {
-            setRecoveryDelay(Number(guardianStatus.delay));
+          const nextGuardianStatus = status as GuardianRecoveryStatus;
+          setGuardianStatus(nextGuardianStatus);
+          if (nextGuardianStatus?.delay) {
+            const nextRecoveryDelay = Number(nextGuardianStatus.delay);
+            setRecoveryDelay(nextRecoveryDelay);
+            setConfirmedRecoveryDelay(nextRecoveryDelay);
+          } else {
+            setConfirmedRecoveryDelay(null);
           }
         }
       })
       .catch(() => {
         if (!cancelled) {
           setGuardianStatus(null);
+          setConfirmedRecoveryDelay(null);
         }
       });
 
@@ -313,6 +362,9 @@ const PasskeyAccountPolicy = () => {
       if (!state.passkey.isDeployed) {
         throw new Error(t('settings.passkeyAccountNotOnchain'));
       }
+      if (!hasRecoveryDelayChanges) {
+        return;
+      }
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
@@ -395,7 +447,12 @@ const PasskeyAccountPolicy = () => {
       if (!state.passkey.isDeployed) {
         throw new Error(t('settings.passkeyAccountNotOnchain'));
       }
-      const guardian = getAddress(guardianAddress.trim());
+      if (!isGuardianAddressValid || !normalizedGuardianAddress) {
+        throw new Error(
+          guardianAddressError || t('settings.passkeyGuardianRequired')
+        );
+      }
+      const guardian = getAddress(normalizedGuardianAddress);
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
@@ -429,6 +486,11 @@ const PasskeyAccountPolicy = () => {
         300000
       )) as GuardianRecoveryStatus;
       setGuardianStatus(status);
+      if (status?.delay) {
+        const nextRecoveryDelay = Number(status.delay);
+        setRecoveryDelay(nextRecoveryDelay);
+        setConfirmedRecoveryDelay(nextRecoveryDelay);
+      }
 
       alert.success(t('settings.passkeyGuardianRecoveryConnected'));
     } catch (error: any) {
@@ -491,6 +553,11 @@ const PasskeyAccountPolicy = () => {
         300000
       )) as GuardianRecoveryStatus;
       setGuardianStatus(status);
+      if (status?.delay) {
+        const nextRecoveryDelay = Number(status.delay);
+        setRecoveryDelay(nextRecoveryDelay);
+        setConfirmedRecoveryDelay(nextRecoveryDelay);
+      }
 
       alert.success(t('settings.passkeyGuardianRecoveryPolicyUpdated'));
     } catch (error: any) {
@@ -687,14 +754,23 @@ const PasskeyAccountPolicy = () => {
                   </p>
                 )}
                 {!guardianConnected && (
-                  <Input
-                    type="text"
-                    disabled={isBusy}
-                    placeholder={t('settings.passkeyGuardianAddress')}
-                    className="custom-input-normal passkey-input relative mt-3"
-                    value={guardianAddress}
-                    onChange={(event) => setGuardianAddress(event.target.value)}
-                  />
+                  <Form.Item
+                    className="mb-0 mt-3"
+                    hasFeedback
+                    help={guardianAddressError}
+                    validateStatus={guardianAddressValidateStatus}
+                  >
+                    <Input
+                      type="text"
+                      disabled={isBusy}
+                      placeholder={t('settings.passkeyGuardianAddress')}
+                      className="custom-input-normal passkey-input relative"
+                      value={guardianAddress}
+                      onChange={(event) =>
+                        setGuardianAddress(event.target.value)
+                      }
+                    />
+                  </Form.Item>
                 )}
                 <div className="mt-3">
                   <p className="mb-2 font-medium text-white">
@@ -723,7 +799,11 @@ const PasskeyAccountPolicy = () => {
                 <button
                   type="button"
                   className="rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-1 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white focus:border-brand-blue100 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-brand-blue500 disabled:hover:bg-opacity-20 disabled:hover:text-brand-blue100"
-                  disabled={isBusy}
+                  disabled={
+                    isBusy ||
+                    (guardianConnected && !hasRecoveryDelayChanges) ||
+                    (!guardianConnected && !isGuardianAddressValid)
+                  }
                   onClick={
                     guardianConnected
                       ? updateGuardianRecoveryPolicy

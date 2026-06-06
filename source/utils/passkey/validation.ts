@@ -172,10 +172,11 @@ export const normalizePasskeySponsorProof = (
     return null;
   }
 
-  const v =
+  const rawV =
     typeof proofOrSignature.v === 'string'
       ? Number(proofOrSignature.v)
       : proofOrSignature.v;
+  const v = rawV === 0 || rawV === 1 ? rawV + 27 : rawV;
   if (!Number.isInteger(v) || (v !== 27 && v !== 28)) {
     throw new Error('Invalid passkey sponsor signature recovery id');
   }

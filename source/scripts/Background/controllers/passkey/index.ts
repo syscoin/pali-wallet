@@ -1,9 +1,11 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
 import { BigNumber } from '@ethersproject/bignumber';
-import { isHexString } from '@ethersproject/bytes';
+import { arrayify, isHexString } from '@ethersproject/bytes';
 import { AddressZero, HashZero } from '@ethersproject/constants';
 import { Contract } from '@ethersproject/contracts';
+import { hashMessage } from '@ethersproject/hash';
+import { recoverAddress } from '@ethersproject/transactions';
 import { formatUnits } from '@ethersproject/units';
 import { retryableFetch } from '@sidhujag/sysweb3-network';
 import { ITxid } from '@sidhujag/sysweb3-utils';
@@ -1937,6 +1939,58 @@ class PasskeyController {
     return null;
   }
 
+  private async getPasskeyGuardianEoaAddress(
+    guardianAddress: string,
+    provider: any
+  ) {
+    const guardian = getAddress(guardianAddress);
+    const existingGuardian = this.getExistingAccountByAddress(guardian);
+    if (
+      existingGuardian?.accountType ===
+        PaliKeyringAccountType.PasskeySmartAccount ||
+      existingGuardian?.account?.isPasskeySmartAccount
+    ) {
+      throw new Error(
+        'Recovery guardian must be a backup or hardware wallet, not a passkey account'
+      );
+    }
+    const guardianCode = await provider.getCode(guardian);
+    if (guardianCode && guardianCode !== '0x') {
+      throw new Error(
+        'Recovery guardian must be an EOA, not a smart contract account'
+      );
+    }
+
+    return guardian;
+  }
+
+  private async assertPasskeyAccountUsesRecoveryValidator({
+    account,
+    provider,
+    recoveryValidator,
+  }: {
+    account: string;
+    provider: any;
+    recoveryValidator: string;
+  }) {
+    const accountContract = new Contract(
+      account,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const configuredRecoveryValidator = await this.withPasskeyRpcBackoff(() =>
+      accountContract.recoveryValidator()
+    );
+    if (
+      String(configuredRecoveryValidator).toLowerCase() !==
+      recoveryValidator.toLowerCase()
+    ) {
+      throw new Error(
+        'This passkey account was created with an older recovery contract. Recreate or recover it before enabling guardian recovery.'
+      );
+    }
+  }
+
   private async getLocalSponsorProof(
     actionHash: string,
     sponsorSigner?: string
@@ -1962,6 +2016,32 @@ class PasskeyController {
     }
 
     return sponsorProof;
+  }
+
+  private async getVerifiedLocalGuardianSignature(
+    recoveryHash: string,
+    guardianAccount: { account: any; accountType: PaliKeyringAccountType }
+  ) {
+    const guardian = getAddress(guardianAccount.account.address);
+    const recoveryDigest = hashMessage(arrayify(recoveryHash));
+    const rawSignature = await this.runWithGasPayer(
+      guardianAccount,
+      () =>
+        this.ethereumTransaction.signPersonalMessage([recoveryHash, guardian]),
+      { persistRestore: false }
+    );
+    const signature = this.normalizePasskeySponsorProof(
+      rawSignature
+    ) as PasskeyGuardianSignature | null;
+    if (!signature) {
+      throw new Error('Guardian did not return a valid signature');
+    }
+    const recovered = recoverAddress(recoveryDigest, signature);
+    if (recovered.toLowerCase() !== guardian.toLowerCase()) {
+      throw new Error('Guardian signature did not match the selected guardian');
+    }
+
+    return signature;
   }
 
   private async passkeyGasPayerHasBalance(
@@ -2475,13 +2555,25 @@ class PasskeyController {
     const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
       metadata.chainId
     );
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const [guardian] = await Promise.all([
+      this.getPasskeyGuardianEoaAddress(params.guardian, provider),
+      this.assertPasskeyAccountUsesRecoveryValidator({
+        account: account.address,
+        provider,
+        recoveryValidator,
+      }),
+    ]);
 
     return this.preparePasskeyExecution({
       data: passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
         'addGuardian',
         [
           account.address,
-          getAddress(params.guardian),
+          guardian,
           params.recoveryDelay ||
             PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
           params.threshold || PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
@@ -2563,6 +2655,15 @@ class PasskeyController {
     const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
       metadata.chainId
     );
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    await this.assertPasskeyAccountUsesRecoveryValidator({
+      account: account.address,
+      provider,
+      recoveryValidator,
+    });
     let threshold: number | string = params.threshold ?? '';
     if (!threshold) {
       const status = await this.getPasskeyGuardianRecoveryStatus({
@@ -2599,6 +2700,15 @@ class PasskeyController {
     const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
       metadata.chainId
     );
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    await this.assertPasskeyAccountUsesRecoveryValidator({
+      account: account.address,
+      provider,
+      recoveryValidator,
+    });
 
     return this.preparePasskeyExecution({
       data: params.guardian
@@ -2704,16 +2814,7 @@ class PasskeyController {
         'A guardian recovery is already pending for this account'
       );
     }
-    const { maxFeePerGas, maxPriorityFeePerGas } =
-      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
-        maxFeePerGas: BigNumber;
-        maxPriorityFeePerGas: BigNumber;
-      };
-    const gasLimit = BigNumber.from(700_000);
-    const gasPayer = await this.getDefaultPasskeyGasPayer(
-      BigNumber.from(maxFeePerGas).mul(gasLimit)
-    );
-    const intent = {
+    const recoveryIntent = {
       account,
       chainId: activeNetwork.chainId,
       expiresAt: Math.floor(Date.now() / 1000) + 15 * 60,
@@ -2721,22 +2822,11 @@ class PasskeyController {
       recoveryNonce: recoveryNonce.toString(),
       recoveryValidator,
     };
-    const recoveryHash = getPasskeyGuardianRecoveryHash(intent);
-    const rawSignature = await this.runWithGasPayer(
-      guardianAccount,
-      () =>
-        this.ethereumTransaction.signPersonalMessage([
-          recoveryHash,
-          guardianAccount.account.address,
-        ]),
-      { persistRestore: false }
+    const recoveryHash = getPasskeyGuardianRecoveryHash(recoveryIntent);
+    const signature = await this.getVerifiedLocalGuardianSignature(
+      recoveryHash,
+      guardianAccount
     );
-    const signature = this.normalizePasskeySponsorProof(
-      rawSignature
-    ) as PasskeyGuardianSignature | null;
-    if (!signature) {
-      throw new Error('Guardian did not return a valid signature');
-    }
 
     const data = passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
       'startRecovery',
@@ -2744,7 +2834,7 @@ class PasskeyController {
         {
           account,
           expectedRecoveryNonce: recoveryNonce.toString(),
-          expiresAt: intent.expiresAt,
+          expiresAt: recoveryIntent.expiresAt,
           newIdentity: params.newIdentity,
           signatures: [
             {
@@ -2756,6 +2846,16 @@ class PasskeyController {
           ],
         },
       ]
+    );
+
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
+    const gasLimit = BigNumber.from(700_000);
+    const gasPayer = await this.getDefaultPasskeyGasPayer(
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
     );
 
     return this.runWithGasPayer(

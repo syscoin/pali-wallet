@@ -12,6 +12,9 @@ const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
 const destPath = join(__dirname, '../../build');
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
+const passkeyGuardianShortRecoveryDelaySeconds = Number(
+  process.env.PASSKEY_GUARDIAN_SHORT_RECOVERY_DELAY_SECONDS || 0
+);
 
 module.exports = {
   entry: {
@@ -129,6 +132,13 @@ module.exports = {
     }),
     new DefinePlugin({
       NODE_ENV: JSON.stringify(process.env.NODE_ENV),
+      'process.env.PASSKEY_GUARDIAN_SHORT_RECOVERY_DELAY_SECONDS':
+        JSON.stringify(
+          Number.isFinite(passkeyGuardianShortRecoveryDelaySeconds) &&
+            passkeyGuardianShortRecoveryDelaySeconds > 0
+            ? String(Math.floor(passkeyGuardianShortRecoveryDelaySeconds))
+            : ''
+        ),
       TARGET_BROWSER: JSON.stringify(targetBrowser),
     }),
     new ProvidePlugin({
