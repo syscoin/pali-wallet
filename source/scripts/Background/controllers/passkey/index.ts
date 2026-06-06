@@ -2835,8 +2835,8 @@ class PasskeyController {
 
     return this.runWithGasPayer(
       gasPayer,
-      async () =>
-        this.ethereumTransaction.sendFormattedTransaction(
+      async () => {
+        const tx = await this.ethereumTransaction.sendFormattedTransaction(
           {
             chainId: activeNetwork.chainId,
             data,
@@ -2848,7 +2848,13 @@ class PasskeyController {
             value: 0,
           },
           false
-        ),
+        );
+        await tx.wait?.();
+        if (tx.hash) {
+          await this.waitForPasskeyTransactionConfirmation(tx.hash);
+        }
+        return tx;
+      },
       { persistRestore: false }
     );
   }
