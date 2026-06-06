@@ -106,10 +106,17 @@ export const BRIDGE_METHOD_SIGNATURES = {
 
 // Pali passkey smart-account method signatures
 export const PASSKEY_METHOD_SIGNATURES = {
-  '0xe33aed36': 'createAccount',
-  '0xed29ef67': 'createAccountAndExecute',
+  '0xa25c585e': 'createAccount',
+  '0xcac0bdb8': 'createAccountAndExecute',
   '0x1b18c84b': 'execute',
   '0xc81b6d20': 'setSponsor',
+  '0xc0d9f755': 'addGuardian',
+  '0xce1b6463': 'updateRecoveryPolicy',
+  '0x65d279ee': 'removeGuardian',
+  '0x78be3802': 'clearGuardians',
+  '0x78c4a442': 'startRecovery',
+  '0xc90db447': 'cancelRecovery',
+  '0x315a7af3': 'finalizeRecovery',
 } as const;
 
 // Combine all method signatures

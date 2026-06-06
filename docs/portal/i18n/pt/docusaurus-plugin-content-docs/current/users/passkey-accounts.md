@@ -45,3 +45,31 @@ Contas com passkey exigem contratos de smart account com passkey da zkSYS e supo
 </figure>
 
 Se o estado local da carteira for excluído ou a Pali for instalada em um novo dispositivo, a Pali pode recuperar smart accounts com passkey a partir do registro da fábrica on-chain e logs de eventos. Qualquer instalação da Pali com acesso à mesma credencial passkey pode descobrir as contas implantadas correspondentes após uma asserção WebAuthn, ignorar contas que já existem localmente e importar as contas selecionadas.
+
+## Recuperação com guardiões
+
+A Pali usa guardiões de recuperação autocustodiais para a recuperação de contas passkey em produção. Um guardião é uma carteira EVM de backup, uma conta importada ou uma carteira de hardware que o usuário controla separadamente da passkey ativa. Enquanto a passkey ainda controla a conta, o usuário pode adicionar ou remover guardiões e atualizar o período de espera da recuperação na tela de política.
+
+A recuperação com guardiões não é instantânea. Iniciar a recuperação cria uma passkey substituta, solicita que o guardião configurado assine a intenção de recuperação e envia uma solicitação de recuperação com bloqueio temporal. Depois que o período de espera termina, qualquer pessoa pode finalizar a transação de recuperação. Em seguida, o usuário pode usar a recuperação normal de passkey para importar a conta com a passkey substituta.
+
+A assinatura do guardião vincula a chain, o validador de recuperação com guardiões, o endereço da conta, a identidade da passkey substituta, o nonce de recuperação e a expiração. Isso impede reutilizar uma assinatura de guardião para outra conta, chain ou passkey, mas ainda permite que a transação que inicia a recuperação seja retransmitida.
+
+Nota técnica: o validador de recuperação com guardiões armazena, por conta, o conjunto de guardiões, o limiar, o atraso e a recuperação pendente. Atualmente, a Pali expõe o fluxo simples 1-de-1 por clareza de UX, enquanto o contrato oferece suporte a políticas de limiar como 1-de-N ou M-de-N.
+
+## Contas criadas por dapps
+
+Dapps podem solicitar metadados de recuperação com guardiões durante `wallet_createPasskeyAccount`:
+
+```json
+{
+  "label": "Trading desk",
+  "recovery": {
+    "guardian": {
+      "address": "0x...",
+      "delay": 86400
+    }
+  }
+}
+```
+
+A Pali não anexa automaticamente um guardião fornecido por uma dapp durante a criação da conta, porque a carteira ainda não consegue autenticar esse endereço. Se uma dapp sugerir um guardião, a Pali avisa o usuário e permite criar a conta; depois o usuário pode adicionar seu próprio guardião confiável na tela de política da conta passkey. Versões futuras podem adicionar um dicionário confiável ou uma lista de permissões para guardiões padrão conhecidos.

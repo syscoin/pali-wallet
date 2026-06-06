@@ -11,8 +11,11 @@ import { formatFullPrecisionBalance, ellipsis } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 import {
   bytesToHex,
+  createPasskeyCredential,
   getDiscoverablePasskeyAssertion,
+  getPasskeyAssertion,
   passkeyAssertionToProof,
+  toPasskeyRecoveryIdentityFromPublicKey,
 } from 'utils/passkey';
 import type { PasskeyAssertionResult } from 'utils/passkey';
 
@@ -43,6 +46,15 @@ type RecoveryCredential = {
   verificationProof: ReturnType<typeof passkeyAssertionToProof>;
 };
 
+type GuardianReplacementCredential = {
+  backupStatus?: string;
+  credentialId: string;
+  credentialIdHash: string;
+};
+
+const guardianReplacementCredentialKey = (account: string) =>
+  `pali-passkey-guardian-replacement:${account.toLowerCase()}`;
+
 const RecoverPasskeyAccounts = () => {
   const { t } = useTranslation();
   const { alert, useCopyClipboard } = useUtils();
@@ -67,7 +79,14 @@ const RecoverPasskeyAccounts = () => {
     useState<RecoveryCredential | null>(null);
   const [discovering, setDiscovering] = useState<boolean>(false);
   const [importing, setImporting] = useState<boolean>(false);
-  const loading = discovering || importing;
+  const [recoveryAccountAddress, setRecoveryAccountAddress] =
+    useState<string>('');
+  const [guardianAddress, setGuardianAddress] = useState<string>('');
+  const [guardianLoading, setGuardianLoading] = useState<boolean>(false);
+  const [guardianStep, setGuardianStep] = useState<string>('');
+  const [guardianReplacementCredential, setGuardianReplacementCredential] =
+    useState<GuardianReplacementCredential | null>(null);
+  const loading = discovering || importing || guardianLoading;
   const selectedCount = selectedAddresses.size;
   const allSelected =
     candidates.length > 0 && selectedAddresses.size === candidates.length;
@@ -224,11 +243,168 @@ const RecoverPasskeyAccounts = () => {
     });
   };
 
+  const startGuardianRecovery = async () => {
+    const account = recoveryAccountAddress.trim();
+    const guardian = guardianAddress.trim();
+    if (!account) {
+      alert.error(t('settings.passkeyGuardianRecoveryAccountRequired'));
+      return;
+    }
+    if (!guardian) {
+      alert.error(t('settings.passkeyGuardianRequired'));
+      return;
+    }
+
+    setGuardianLoading(true);
+    try {
+      setGuardianStep(t('settings.passkeyGuardianRecoveryStepPasskey'));
+      await controllerEmitter(['wallet', 'assertPasskeySmartAccountSupported']);
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const newCredential = await createPasskeyCredential({
+        accountName: t('settings.passkeyRecoveryReplacementName'),
+        challengeHex: bytesToHex(challenge),
+        userDisplayName: t('settings.passkeyRecoveryReplacementName'),
+      });
+      const newIdentity = toPasskeyRecoveryIdentityFromPublicKey({
+        credentialIdHash: newCredential.credentialIdHash,
+        originHash: newCredential.originHash,
+        originLength: newCredential.originLength,
+        rpIdHash: newCredential.rpIdHash,
+        x: newCredential.x,
+        y: newCredential.y,
+      });
+      const replacementCredential = {
+        backupStatus: newCredential.backupStatus,
+        credentialId: newCredential.credentialId,
+        credentialIdHash: newCredential.credentialIdHash,
+      };
+      setGuardianReplacementCredential(replacementCredential);
+      localStorage.setItem(
+        guardianReplacementCredentialKey(account),
+        JSON.stringify(replacementCredential)
+      );
+
+      setGuardianStep(t('settings.passkeyGuardianRecoveryStepSubmit'));
+      await controllerEmitter(
+        ['wallet', 'submitPasskeyGuardianStartRecovery'],
+        [
+          {
+            account,
+            guardian,
+            newIdentity,
+          },
+        ],
+        300000
+      );
+
+      alert.success(t('settings.passkeyGuardianRecoveryStarted'));
+    } catch (error: any) {
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        alert.error(
+          error?.message || t('settings.passkeyGuardianRecoveryStartFailed')
+        );
+      }
+    } finally {
+      setGuardianLoading(false);
+      setGuardianStep('');
+    }
+  };
+
+  const importGuardianRecoveredAccount = async (account: string) => {
+    setGuardianStep(t('settings.passkeyGuardianRecoveryStepImport'));
+    const storedReplacement =
+      guardianReplacementCredential ||
+      (() => {
+        const stored = localStorage.getItem(
+          guardianReplacementCredentialKey(account)
+        );
+        if (!stored) return null;
+        try {
+          return JSON.parse(stored) as GuardianReplacementCredential;
+        } catch {
+          return null;
+        }
+      })();
+    const verificationHash = bytesToHex(
+      crypto.getRandomValues(new Uint8Array(32))
+    );
+    const assertion = storedReplacement
+      ? await getPasskeyAssertion(
+          storedReplacement.credentialId,
+          verificationHash
+        )
+      : await getDiscoverablePasskeyAssertion(verificationHash);
+    const imported = (await controllerEmitter(
+      ['wallet', 'importPasskeySmartAccountByAddress'],
+      [
+        {
+          address: account,
+          backupStatus:
+            storedReplacement?.backupStatus || assertion.backupStatus,
+          credentialId:
+            storedReplacement?.credentialId || assertion.credentialId,
+          credentialIdHash:
+            storedReplacement?.credentialIdHash || assertion.credentialIdHash,
+          verificationHash,
+          verificationProof: passkeyAssertionToProof(assertion),
+        },
+      ],
+      300000
+    )) as any;
+    localStorage.removeItem(guardianReplacementCredentialKey(account));
+    setGuardianReplacementCredential(null);
+    setAddress(imported.address);
+    setAccountName(imported.label || t('settings.passkeyAccount'));
+    setRecoveredCount(1);
+  };
+
+  const finalizeGuardianRecovery = async () => {
+    const account = recoveryAccountAddress.trim();
+    if (!account) {
+      alert.error(t('settings.passkeyGuardianRecoveryAccountRequired'));
+      return;
+    }
+
+    setGuardianLoading(true);
+    try {
+      setGuardianStep(t('settings.passkeyGuardianRecoveryStepFinalize'));
+      await controllerEmitter(
+        ['wallet', 'finalizePasskeyGuardianRecovery'],
+        [account],
+        300000
+      );
+      await importGuardianRecoveredAccount(account);
+      alert.success(t('settings.passkeyGuardianRecoveryFinalized'));
+    } catch (error: any) {
+      if (
+        String(error?.message || error)
+          .toLowerCase()
+          .includes('no guardian recovery is pending')
+      ) {
+        try {
+          await importGuardianRecoveredAccount(account);
+          alert.success(t('settings.passkeyGuardianRecoveryImported'));
+          return;
+        } catch (importError: any) {
+          error = importError;
+        }
+      }
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        alert.error(
+          error?.message || t('settings.passkeyGuardianRecoveryFinalizeFailed')
+        );
+      }
+    } finally {
+      setGuardianLoading(false);
+      setGuardianStep('');
+    }
+  };
+
   const getPolicyLabel = (candidate: RecoveryCandidate) => {
     const mode = candidate.sponsor?.mode || 'disabled';
-    return t(`settings.passkeyPolicy.${mode}.title`, {
-      defaultValue: t('settings.passkeyPolicy.disabled.title'),
-    });
+    return t(`settings.passkeyPolicy.${mode}.title`);
   };
 
   const copyValue = (
@@ -303,6 +479,56 @@ const RecoverPasskeyAccounts = () => {
                 </p>
               </Card>
             )}
+
+            <div className="rounded-lg border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 p-4 text-xs text-brand-graylight">
+              <p className="font-medium text-white">
+                {t('settings.passkeyGuardianRecoveryTitle')}
+              </p>
+              <p className="mt-2 leading-5">
+                {t('settings.passkeyGuardianRecoveryLostDescription')}
+              </p>
+              <input
+                type="text"
+                className="custom-input-normal passkey-input relative mt-3 w-full"
+                disabled={loading}
+                placeholder={t(
+                  'settings.passkeyGuardianRecoveryAccountAddress'
+                )}
+                value={recoveryAccountAddress}
+                onChange={(event) =>
+                  setRecoveryAccountAddress(event.target.value)
+                }
+              />
+              <input
+                type="text"
+                className="custom-input-normal passkey-input relative mt-3 w-full"
+                disabled={loading}
+                placeholder={t('settings.passkeyGuardianAddress')}
+                value={guardianAddress}
+                onChange={(event) => setGuardianAddress(event.target.value)}
+              />
+              {guardianStep && (
+                <p className="mt-3 text-brand-yellowInfo">{guardianStep}</p>
+              )}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={loading}
+                  onClick={startGuardianRecovery}
+                >
+                  {t('settings.passkeyGuardianRecoveryStart')}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={loading}
+                  onClick={finalizeGuardianRecovery}
+                >
+                  {t('settings.passkeyGuardianRecoveryFinalize')}
+                </button>
+              </div>
+            </div>
 
             {candidates.length > 0 && (
               <>

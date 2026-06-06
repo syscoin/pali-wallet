@@ -35,6 +35,8 @@ import { clearNavigationState } from 'utils/navigationState';
 import {
   getPasskeyFactory,
   getPasskeyFactoryAddress,
+  getPasskeyGuardianRecoveryHash,
+  getPasskeyGuardianRecoveryValidatorAddress,
   getPasskeyBackupStatus,
   hexToBytes,
   PasskeyContractSponsorMode,
@@ -56,9 +58,15 @@ import {
   selectFundedPasskeyGasPayerCandidate,
   PasskeyRelayedTransactionNotFoundError,
   PasskeyAssertionResult,
+  PasskeyExecution,
   verifyPasskeyRelayedSponsorProof,
   verifyPasskeySponsorProof,
   PasskeyWebAuthnProof,
+  passkeyGuardianRecoveryValidatorInterface,
+  PasskeyGuardianSignature,
+  PasskeyRecoveryIdentity,
+  PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
+  PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
 } from 'utils/passkey';
 import {
   isValidSponsorServiceUrl,
@@ -1140,9 +1148,22 @@ class PasskeyController {
     const sponsorMode = metadata.sponsorMode ?? metadata[6];
     const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
     const sponsorUrl = metadata.sponsorUrl ?? metadata[8];
+    const recoveryValidator = await this.withPasskeyRpcBackoff(() =>
+      account.recoveryValidator()
+    );
+    const expectedRecoveryValidator =
+      getPasskeyGuardianRecoveryValidatorAddress(
+        store.getState().vault.activeNetwork.chainId
+      );
 
     if (
       storedCredentialIdHash.toLowerCase() !== credentialIdHash.toLowerCase()
+    ) {
+      return null;
+    }
+    if (
+      String(recoveryValidator).toLowerCase() !==
+      expectedRecoveryValidator.toLowerCase()
     ) {
       return null;
     }
@@ -1183,6 +1204,112 @@ class PasskeyController {
         },
         sponsor,
       },
+    };
+  }
+
+  public async importPasskeySmartAccountByAddress(params: {
+    address: string;
+    backupStatus?: PasskeyBackupStatus;
+    credentialId: string;
+    credentialIdHash: string;
+    label?: string;
+    verificationHash: string;
+    verificationProof: PasskeyWebAuthnProof;
+  }): Promise<{ address: string; id: number; label: string }> {
+    const { activeNetwork, factoryAddress, provider } =
+      this.getPasskeyRecoveryContext(params.credentialIdHash);
+    const address = getAddress(params.address);
+    const recovered = await this.readRecoveredPasskeyAccount({
+      address,
+      backupStatus: params.backupStatus,
+      credentialId: params.credentialId,
+      credentialIdHash: params.credentialIdHash,
+      factoryAddress,
+      provider,
+      verificationHash: params.verificationHash,
+      verificationProof: params.verificationProof,
+    });
+    if (!recovered?.metadata) {
+      throw new Error(
+        'The recovered passkey does not control this account on the active network'
+      );
+    }
+
+    const existing = this.getExistingAccountByAddress(address);
+    if (existing && !existing.account?.isPasskeySmartAccount) {
+      throw new Error('Account already exists on your Wallet.');
+    }
+
+    const label =
+      existing?.account?.label ||
+      params.label ||
+      recovered.metadata.passkeyName ||
+      'Recovered Passkey Account';
+    const metadata = {
+      ...recovered.metadata,
+      chainId: activeNetwork.chainId,
+      passkeyName: label,
+    };
+
+    const profile = {
+      credentialId: metadata.credentialId,
+      credentialIdHash: metadata.credentialIdHash,
+      backupStatus: metadata.backupStatus,
+      passkeyName: label,
+      publicKey: metadata.publicKey,
+    };
+
+    if (existing) {
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: existing.account.id,
+          type: existing.accountType as PaliKeyringAccountType,
+          property: 'passkey',
+          value: metadata,
+        })
+      );
+      store.dispatch(
+        setActiveAccount({
+          id: existing.account.id,
+          type: PaliKeyringAccountType.PasskeySmartAccount,
+        })
+      );
+      store.dispatch(setPasskeyCredentialProfile(profile));
+      await this.savePasskeyCredentialProfileState(profile);
+      await this.refreshRecoveredPasskeyNativeBalances(
+        [{ address, id: existing.account.id }],
+        provider
+      );
+      await this.saveWalletState(
+        'import-recovered-passkey-smart-account',
+        true,
+        true
+      );
+      return {
+        address,
+        id: existing.account.id,
+        label,
+      };
+    }
+
+    const account = await this.addRecoveredPasskeyAccount({
+      address,
+      label,
+      metadata,
+      provider,
+      saveOperation: 'import-recovered-passkey-smart-account',
+    });
+    store.dispatch(setPasskeyCredentialProfile(profile));
+    await this.savePasskeyCredentialProfileState(profile);
+    await this.saveWalletState(
+      'import-recovered-passkey-smart-account',
+      true,
+      true
+    );
+    return {
+      address: account.address,
+      id: account.id,
+      label: account.label,
     };
   }
 
@@ -1480,6 +1607,11 @@ class PasskeyController {
     const sponsorMode = metadata.sponsorMode ?? metadata[6];
     const sponsorSigner = metadata.sponsorSigner ?? metadata[7];
     const sponsorUrl = metadata.sponsorUrl ?? metadata[8];
+    const recoveryValidator = await this.withPasskeyRpcBackoff(() =>
+      account.recoveryValidator()
+    );
+    const expectedRecoveryValidator =
+      getPasskeyGuardianRecoveryValidatorAddress(expected.chainId);
 
     if (
       storedCredentialIdHash.toLowerCase() !==
@@ -1491,7 +1623,9 @@ class PasskeyController {
       String(originHash).toLowerCase() !==
         expected.publicKey.originHash.toLowerCase() ||
       BigNumber.from(originLength).toNumber() !==
-        expected.publicKey.originLength
+        expected.publicKey.originLength ||
+      String(recoveryValidator).toLowerCase() !==
+        expectedRecoveryValidator.toLowerCase()
     ) {
       throw new Error('Passkey smart account recovery metadata mismatch');
     }
@@ -1578,6 +1712,7 @@ class PasskeyController {
     const sponsor = normalizePasskeySponsor(params.sponsor);
     this.assertSponsorHasUsableAuthorizationPath(sponsor);
     const accountParams = getPasskeyFactoryAccountParams({
+      chainId: activeNetwork.chainId,
       credentialIdHash: params.credentialIdHash,
       deploymentSalt: params.deploymentSalt,
       publicKey: params.publicKey,
@@ -2073,13 +2208,7 @@ class PasskeyController {
       deadline,
     }));
 
-    const actionHash = getPasskeyActionHash({
-      account: account.address,
-      chainId: metadata.chainId,
-      executions,
-      sponsorMode: getPasskeySponsorContractMode(metadata),
-      sponsorSigner: metadata.sponsor?.signer || AddressZero,
-    });
+    const actionHash = await contract.getActionHash(executions);
 
     return {
       actionHash,
@@ -2140,6 +2269,27 @@ class PasskeyController {
     const metadata = account.passkey as IPasskeySmartAccountMetadata;
     this.assertPasskeyAccountNetwork(metadata);
     const executions = params.executions || [params.execution];
+    if (!metadata.isDeployed) {
+      throw new Error(
+        'This passkey account was not confirmed on-chain. Recover or recreate it before using it.'
+      );
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const contract = new Contract(
+      account.address,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const expectedActionHash = await contract.getActionHash(executions);
+    if (
+      params.actionHash &&
+      params.actionHash.toLowerCase() !== expectedActionHash.toLowerCase()
+    ) {
+      throw new Error('Passkey approval does not match execution calldata');
+    }
     const confirmedSponsor =
       'confirmedSponsor' in params
         ? this.getConfirmedSponsorFromExecutions({
@@ -2154,12 +2304,6 @@ class PasskeyController {
       }
     }
 
-    if (!metadata.isDeployed) {
-      throw new Error(
-        'This passkey account was not confirmed on-chain. Recover or recreate it before using it.'
-      );
-    }
-
     const emptySponsorProof = { v: 0, r: HashZero, s: HashZero };
     let sponsorProof = emptySponsorProof;
     const sponsorResult = await this.resolvePasskeySponsorResult(
@@ -2167,7 +2311,7 @@ class PasskeyController {
       activeNetwork.chainId,
       {
         ...params,
-        actionHash: params.actionHash,
+        actionHash: expectedActionHash,
         confirmedSponsor,
         executions,
       }
@@ -2312,6 +2456,395 @@ class PasskeyController {
       console.error('[MainController] Failed to clear navigation state:', e);
     }
     return response;
+  }
+
+  public async preparePasskeyGuardianRegistration(params: {
+    guardian: string;
+    recoveryDelay?: number;
+    threshold?: number;
+  }) {
+    const { activeAccount, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      metadata.chainId
+    );
+
+    return this.preparePasskeyExecution({
+      data: passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+        'addGuardian',
+        [
+          account.address,
+          getAddress(params.guardian),
+          params.recoveryDelay ||
+            PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
+          params.threshold || PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
+        ]
+      ),
+      target: recoveryValidator,
+      value: '0',
+    });
+  }
+
+  public async getPasskeyGuardianRecoveryStatus(params: { account: string }) {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      activeNetwork.chainId
+    );
+    const contract = new Contract(
+      recoveryValidator,
+      passkeyGuardianRecoveryValidatorInterface,
+      provider
+    );
+    const [pendingRecovery, defaultDelay, policy] = await Promise.all([
+      contract.pendingRecoveries(params.account),
+      contract.delay(),
+      contract.recoveryPolicies(params.account),
+    ]);
+    const pendingReadyAt = BigNumber.from(pendingRecovery.readyAt);
+    const guardianCount = BigNumber.from(policy.guardianCount);
+    const guardians = await Promise.all(
+      Array.from({ length: guardianCount.toNumber() }, (_, index) =>
+        contract.guardianAt(params.account, index)
+      )
+    );
+    const policyDelay = BigNumber.from(policy.delay);
+    const policyThreshold = BigNumber.from(policy.threshold);
+
+    return {
+      delay: (policyDelay.isZero()
+        ? BigNumber.from(defaultDelay)
+        : policyDelay
+      ).toString(),
+      exists: !guardianCount.isZero(),
+      guardianCount: guardianCount.toString(),
+      guardians,
+      pending: pendingReadyAt.isZero()
+        ? null
+        : {
+            credentialIdHash: pendingRecovery.newIdentity.credentialIdHash,
+            readyAt: pendingReadyAt.toString(),
+            recoveryNonce: BigNumber.from(
+              pendingRecovery.recoveryNonce
+            ).toString(),
+          },
+      recoveryValidator,
+      threshold: policyThreshold.isZero()
+        ? String(PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD)
+        : policyThreshold.toString(),
+    };
+  }
+
+  public async preparePasskeyGuardianPolicyUpdate(params: {
+    recoveryDelay: number;
+    threshold?: number;
+  }) {
+    const { activeAccount, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      metadata.chainId
+    );
+
+    return this.preparePasskeyExecution({
+      data: passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+        'updateRecoveryPolicy',
+        [
+          account.address,
+          params.recoveryDelay,
+          params.threshold || PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
+        ]
+      ),
+      target: recoveryValidator,
+      value: '0',
+    });
+  }
+
+  public async preparePasskeyGuardianRemoval(params: {
+    guardian?: string;
+    threshold?: number;
+  }) {
+    const { activeAccount, accounts } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    if (!account?.isPasskeySmartAccount || !account.passkey) {
+      throw new Error('Active account is not a passkey account');
+    }
+
+    const metadata = account.passkey as IPasskeySmartAccountMetadata;
+    this.assertPasskeyAccountNetwork(metadata);
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      metadata.chainId
+    );
+
+    return this.preparePasskeyExecution({
+      data: params.guardian
+        ? passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+            'removeGuardian',
+            [
+              account.address,
+              getAddress(params.guardian),
+              params.threshold || PASSKEY_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
+            ]
+          )
+        : passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+            'clearGuardians',
+            [account.address]
+          ),
+      target: recoveryValidator,
+      value: '0',
+    });
+  }
+
+  public async submitPasskeyGuardianPolicyTransaction(params: {
+    actionHash?: string;
+    execution: PasskeyExecution;
+    executions?: PasskeyExecution[];
+    proof: PasskeyWebAuthnProof;
+  }) {
+    return this.submitPasskeyExecution({
+      ...params,
+      waitForConfirmation: true,
+    });
+  }
+
+  public async submitPasskeyGuardianStartRecovery(params: {
+    account: string;
+    guardian: string;
+    newIdentity: PasskeyRecoveryIdentity;
+  }) {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    const account = getAddress(params.account);
+    const guardian = getAddress(params.guardian);
+    const guardianAccount = this.getLocalSponsorSignerAccount(guardian);
+    if (!guardianAccount) {
+      throw new Error('Guardian must be a local EVM account in this wallet');
+    }
+
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      activeNetwork.chainId
+    );
+    const accountContract = new Contract(
+      account,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const recoveryValidatorContract = new Contract(
+      recoveryValidator,
+      passkeyGuardianRecoveryValidatorInterface,
+      provider
+    );
+    const [
+      accountCode,
+      configuredRecoveryValidator,
+      isRegisteredGuardian,
+      pendingRecovery,
+      policy,
+      recoveryNonce,
+    ] = await Promise.all([
+      provider.getCode(account),
+      accountContract.recoveryValidator(),
+      recoveryValidatorContract.guardians(account, guardian),
+      recoveryValidatorContract.pendingRecoveries(account),
+      recoveryValidatorContract.recoveryPolicies(account),
+      accountContract.recoveryNonce(),
+    ]);
+    if (!accountCode || accountCode === '0x') {
+      throw new Error('Passkey account is not deployed on the active network');
+    }
+    if (
+      String(configuredRecoveryValidator).toLowerCase() !==
+      recoveryValidator.toLowerCase()
+    ) {
+      throw new Error(
+        'This passkey account is not configured for the current guardian recovery validator'
+      );
+    }
+    if (!isRegisteredGuardian) {
+      throw new Error('Guardian is not registered for this passkey account');
+    }
+    if (!BigNumber.from(policy.threshold).eq(1)) {
+      throw new Error(
+        'This wallet currently supports starting recovery with a single guardian threshold only'
+      );
+    }
+    if (!BigNumber.from(pendingRecovery.readyAt).isZero()) {
+      throw new Error(
+        'A guardian recovery is already pending for this account'
+      );
+    }
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
+    const gasLimit = BigNumber.from(700_000);
+    const gasPayer = await this.getDefaultPasskeyGasPayer(
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
+    );
+    const intent = {
+      account,
+      chainId: activeNetwork.chainId,
+      expiresAt: Math.floor(Date.now() / 1000) + 15 * 60,
+      newIdentity: params.newIdentity,
+      recoveryNonce: recoveryNonce.toString(),
+      recoveryValidator,
+    };
+    const recoveryHash = getPasskeyGuardianRecoveryHash(intent);
+    const rawSignature = await this.runWithGasPayer(
+      guardianAccount,
+      () =>
+        this.ethereumTransaction.signPersonalMessage([
+          recoveryHash,
+          guardianAccount.account.address,
+        ]),
+      { persistRestore: false }
+    );
+    const signature = this.normalizePasskeySponsorProof(
+      rawSignature
+    ) as PasskeyGuardianSignature | null;
+    if (!signature) {
+      throw new Error('Guardian did not return a valid signature');
+    }
+
+    const data = passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+      'startRecovery',
+      [
+        {
+          account,
+          expectedRecoveryNonce: recoveryNonce.toString(),
+          expiresAt: intent.expiresAt,
+          newIdentity: params.newIdentity,
+          signatures: [
+            {
+              guardian,
+              r: signature.r,
+              s: signature.s,
+              v: signature.v,
+            },
+          ],
+        },
+      ]
+    );
+
+    return this.runWithGasPayer(
+      gasPayer,
+      async () =>
+        this.ethereumTransaction.sendFormattedTransaction(
+          {
+            chainId: activeNetwork.chainId,
+            data,
+            from: gasPayer.account.address,
+            gasLimit: gasLimit.toNumber(),
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            to: recoveryValidator,
+            value: 0,
+          },
+          false
+        ),
+      { persistRestore: false }
+    );
+  }
+
+  public async finalizePasskeyGuardianRecovery(accountAddress: string) {
+    const { activeNetwork } = store.getState().vault;
+    if (activeNetwork.kind !== INetworkType.Ethereum) {
+      throw new Error('Passkey accounts are only supported on EVM networks');
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const account = getAddress(accountAddress);
+    const recoveryValidator = getPasskeyGuardianRecoveryValidatorAddress(
+      activeNetwork.chainId
+    );
+    const accountContract = new Contract(
+      account,
+      passkeySmartAccountInterface,
+      provider
+    );
+    const recoveryValidatorContract = new Contract(
+      recoveryValidator,
+      passkeyGuardianRecoveryValidatorInterface,
+      provider
+    );
+    const [configuredRecoveryValidator, pendingRecovery] = await Promise.all([
+      accountContract.recoveryValidator(),
+      recoveryValidatorContract.pendingRecoveries(account),
+    ]);
+    if (
+      String(configuredRecoveryValidator).toLowerCase() !==
+      recoveryValidator.toLowerCase()
+    ) {
+      throw new Error(
+        'This passkey account is not configured for the current guardian recovery validator'
+      );
+    }
+    const readyAt = BigNumber.from(pendingRecovery.readyAt);
+    if (readyAt.isZero()) {
+      throw new Error('No guardian recovery is pending for this account');
+    }
+    if (readyAt.gt(Math.floor(Date.now() / 1000))) {
+      throw new Error('Guardian recovery timelock has not elapsed yet');
+    }
+    const { maxFeePerGas, maxPriorityFeePerGas } =
+      (await this.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas()) as {
+        maxFeePerGas: BigNumber;
+        maxPriorityFeePerGas: BigNumber;
+      };
+    const gasLimit = BigNumber.from(500_000);
+    const gasPayer = await this.getDefaultPasskeyGasPayer(
+      BigNumber.from(maxFeePerGas).mul(gasLimit)
+    );
+    const data = passkeyGuardianRecoveryValidatorInterface.encodeFunctionData(
+      'finalizeRecovery',
+      [account]
+    );
+
+    return this.runWithGasPayer(
+      gasPayer,
+      async () =>
+        this.ethereumTransaction.sendFormattedTransaction(
+          {
+            chainId: activeNetwork.chainId,
+            data,
+            from: gasPayer.account.address,
+            gasLimit: gasLimit.toNumber(),
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            to: recoveryValidator,
+            value: 0,
+          },
+          false
+        ),
+      { persistRestore: false }
+    );
   }
 
   private async waitForPasskeyTransactionConfirmation(txHash: string) {

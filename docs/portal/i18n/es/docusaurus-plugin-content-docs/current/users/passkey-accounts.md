@@ -45,3 +45,31 @@ Las cuentas passkey requieren contratos de cuenta inteligente passkey zkSYS y so
 </figure>
 
 Si se elimina el estado local de la billetera o Pali se instala en un dispositivo nuevo, Pali puede recuperar cuentas inteligentes passkey desde el registro de fábrica on-chain y los logs de eventos. Cualquier instalación de Pali con acceso a la misma credencial passkey puede descubrir las cuentas desplegadas coincidentes después de una assertion WebAuthn, omitir las cuentas que ya existen localmente e importar las cuentas seleccionadas.
+
+## Recuperación con guardianes
+
+Pali usa guardianes de recuperación autocustodiados para la recuperación de cuentas passkey en producción. Un guardián es una billetera EVM de respaldo, una cuenta importada o una billetera hardware que el usuario controla por separado de la passkey activa. Mientras la passkey siga controlando la cuenta, el usuario puede agregar o quitar guardianes y actualizar el período de espera de recuperación desde la pantalla de política.
+
+La recuperación con guardianes no es instantánea. Al iniciar la recuperación se crea una passkey de reemplazo, se solicita al guardián configurado que firme la intención de recuperación y se envía una solicitud de recuperación con bloqueo temporal. Cuando termina el período de espera, cualquiera puede finalizar la transacción de recuperación. Luego el usuario puede usar la recuperación normal de passkeys para importar la cuenta con la passkey de reemplazo.
+
+La firma del guardián vincula la cadena, el validador de recuperación con guardianes, la dirección de la cuenta, la identidad de la passkey de reemplazo, el nonce de recuperación y la expiración. Esto evita reutilizar una firma de guardián para otra cuenta, cadena o passkey, pero permite que la transacción que inicia la recuperación sea retransmitida.
+
+Nota técnica: el validador de recuperación con guardianes almacena un conjunto de guardianes, umbral, demora y recuperación pendiente por cuenta. Actualmente Pali expone el flujo simple 1-de-1 para mayor claridad de UX, mientras que el contrato admite políticas de umbral como 1-de-N o M-de-N.
+
+## Cuentas creadas por dapps
+
+Las dapps pueden solicitar metadatos de recuperación con guardianes durante `wallet_createPasskeyAccount`:
+
+```json
+{
+  "label": "Trading desk",
+  "recovery": {
+    "guardian": {
+      "address": "0x...",
+      "delay": 86400
+    }
+  }
+}
+```
+
+Pali no adjunta automáticamente un guardián proporcionado por una dapp durante la creación de la cuenta porque la billetera aún no puede autenticar esa dirección. Si una dapp sugiere un guardián, Pali advierte al usuario y le permite crear la cuenta; luego el usuario puede agregar su propio guardián de confianza desde la pantalla de política de la cuenta passkey. En versiones futuras se podría agregar un diccionario o una lista permitida de guardianes predeterminados conocidos.

@@ -4,6 +4,7 @@ import InputDataDecoder from 'ethereum-input-data-decoder';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import {
   passkeyFactoryInterface,
+  passkeyGuardianRecoveryValidatorInterface,
   passkeySmartAccountInterface,
 } from 'utils/passkey/contracts';
 import { retryableFetch } from 'utils/retryableFetch';
@@ -197,6 +198,7 @@ const decodePasskeyTransactionData = (data: string) => {
   for (const passkeyInterface of [
     passkeySmartAccountInterface,
     passkeyFactoryInterface,
+    passkeyGuardianRecoveryValidatorInterface,
   ]) {
     try {
       const parsed = passkeyInterface.parseTransaction({ data });
@@ -215,6 +217,89 @@ const decodePasskeyTransactionData = (data: string) => {
           types: ['uint8', 'address', 'string'],
           inputs: [parsed.args.mode, parsed.args.signer, parsed.args.url],
           names: ['mode', 'signer', 'url'],
+        };
+      }
+
+      if (parsed.name === 'addGuardian') {
+        return {
+          method: parsed.name,
+          types: ['address', 'address', 'uint256', 'uint256'],
+          inputs: [
+            parsed.args.account,
+            parsed.args.guardian,
+            parsed.args.recoveryDelay,
+            parsed.args.threshold,
+          ],
+          names: ['account', 'guardian', 'recoveryDelay', 'threshold'],
+        };
+      }
+
+      if (parsed.name === 'updateRecoveryPolicy') {
+        return {
+          method: parsed.name,
+          types: ['address', 'uint256', 'uint256'],
+          inputs: [
+            parsed.args.account,
+            parsed.args.recoveryDelay,
+            parsed.args.threshold,
+          ],
+          names: ['account', 'recoveryDelay', 'threshold'],
+        };
+      }
+
+      if (parsed.name === 'removeGuardian') {
+        return {
+          method: parsed.name,
+          types: ['address', 'address', 'uint256'],
+          inputs: [
+            parsed.args.account,
+            parsed.args.guardian,
+            parsed.args.threshold,
+          ],
+          names: ['account', 'guardian', 'threshold'],
+        };
+      }
+
+      if (parsed.name === 'clearGuardians') {
+        return {
+          method: parsed.name,
+          types: ['address'],
+          inputs: [parsed.args.account],
+          names: ['account'],
+        };
+      }
+
+      if (
+        parsed.name === 'cancelRecovery' ||
+        parsed.name === 'finalizeRecovery'
+      ) {
+        return {
+          method: parsed.name,
+          types: ['address'],
+          inputs: [parsed.args.account],
+          names: ['account'],
+        };
+      }
+
+      if (parsed.name === 'startRecovery') {
+        const data = parsed.args.data;
+        return {
+          method: parsed.name,
+          types: ['address', 'bytes32', 'uint256', 'uint256', 'uint256'],
+          inputs: [
+            data.account,
+            data.newIdentity.credentialIdHash,
+            data.expectedRecoveryNonce,
+            data.expiresAt,
+            data.signatures.length,
+          ],
+          names: [
+            'account',
+            'newCredentialIdHash',
+            'expectedRecoveryNonce',
+            'expiresAt',
+            'signatureCount',
+          ],
         };
       }
 

@@ -170,7 +170,7 @@ const CreatePasskeyAccount = () => {
       }
 
       setCreationStep('confirming');
-      const { address: newAddress } = (await controllerEmitter(
+      const account = (await controllerEmitter(
         ['wallet', 'createPasskeySmartAccount'],
         [
           {
@@ -190,7 +190,7 @@ const CreatePasskeyAccount = () => {
         setSharedPasskeyExists(true);
         setSharedPasskeyBackupStatus(pendingCredentialProfile.backupStatus);
       }
-      setAddress(newAddress);
+      setAddress(account.address);
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {

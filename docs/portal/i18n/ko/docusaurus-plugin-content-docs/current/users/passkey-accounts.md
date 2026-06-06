@@ -45,3 +45,31 @@ Passkey 계정에는 zkSYS passkey smart account contract와 P-256 verification 
 </figure>
 
 local wallet state가 삭제되었거나 새 기기에 Pali를 설치한 경우 Pali는 on-chain factory registry와 event log에서 passkey smart account를 복구할 수 있습니다. 같은 passkey credential에 접근할 수 있는 모든 Pali 설치는 WebAuthn assertion 후 일치하는 deployed account를 찾고, 이미 local에 있는 account는 건너뛴 뒤, 선택한 account를 import할 수 있습니다.
+
+## Guardian recovery
+
+Pali는 프로덕션 passkey account 복구에 self-custodial recovery guardian을 사용합니다. Guardian은 사용자가 active passkey와 별도로 관리하는 backup EVM wallet, imported account 또는 hardware wallet입니다. passkey가 여전히 account를 제어하는 동안 사용자는 policy 화면에서 guardian을 추가하거나 제거하고 recovery 대기 시간을 업데이트할 수 있습니다.
+
+Guardian recovery는 즉시 완료되지 않습니다. Recovery를 시작하면 replacement passkey를 만들고, configured guardian에게 recovery intent 서명을 요청한 뒤, timelock이 걸린 recovery request를 제출합니다. 대기 시간이 지나면 누구나 recovery transaction을 finalize할 수 있습니다. 이후 사용자는 일반 passkey recovery를 사용해 replacement passkey로 account를 import할 수 있습니다.
+
+Guardian signature는 chain, guardian recovery validator, account address, replacement passkey identity, recovery nonce, expiry에 바인딩됩니다. 이를 통해 guardian signature를 다른 account, chain 또는 passkey에 재사용할 수 없으면서도 recovery start transaction은 relay할 수 있습니다.
+
+기술 참고: guardian recovery validator는 account별 guardian set, threshold, delay, pending recovery를 저장합니다. Pali는 UX 명확성을 위해 현재 단순한 1-of-1 guardian flow를 제공하지만, contract는 1-of-N 또는 M-of-N 같은 threshold policy를 지원합니다.
+
+## Dapp이 생성한 accounts
+
+Dapp은 `wallet_createPasskeyAccount` 중 guardian recovery metadata를 요청할 수 있습니다:
+
+```json
+{
+  "label": "Trading desk",
+  "recovery": {
+    "guardian": {
+      "address": "0x...",
+      "delay": 86400
+    }
+  }
+}
+```
+
+Pali는 account creation 중 dapp이 제공한 guardian을 자동으로 연결하지 않습니다. wallet이 아직 그 address의 진위를 인증할 수 없기 때문입니다. dapp이 guardian을 제안하면 Pali는 사용자에게 경고하고 account 생성을 허용합니다. 이후 사용자는 passkey account policy 화면에서 자신이 신뢰하는 guardian을 추가할 수 있습니다. 향후 버전에서는 알려진 default guardian을 위한 trusted dictionary 또는 whitelist가 추가될 수 있습니다.

@@ -460,6 +460,7 @@ export class WalletMethodHandler implements IMethodHandler {
       case 'createPasskeyAccount':
         return {
           label: params?.[0]?.label,
+          recovery: params?.[0]?.recovery,
           sponsor: params?.[0]?.sponsor,
         };
       case 'sendCalls':

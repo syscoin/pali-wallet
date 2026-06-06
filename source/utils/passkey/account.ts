@@ -9,11 +9,13 @@ import {
 } from 'types/network';
 
 import {
+  getPasskeyGuardianRecoveryValidatorAddress,
   PasskeyContractSponsorMode,
   passkeySmartAccountInterface,
 } from './contracts';
 
 export const getPasskeyFactoryAccountParams = (metadata: {
+  chainId: number;
   credentialIdHash: string;
   deploymentSalt: string;
   publicKey: {
@@ -30,6 +32,9 @@ export const getPasskeyFactoryAccountParams = (metadata: {
   rpIdHash: metadata.publicKey.rpIdHash,
   originHash: metadata.publicKey.originHash,
   originLength: metadata.publicKey.originLength,
+  recoveryValidator: getPasskeyGuardianRecoveryValidatorAddress(
+    metadata.chainId
+  ),
   salt: metadata.deploymentSalt,
 });
 
@@ -37,6 +42,7 @@ export const getPasskeyMetadataFactoryAccountParams = (
   metadata: IPasskeySmartAccountMetadata
 ) =>
   getPasskeyFactoryAccountParams({
+    chainId: metadata.chainId,
     credentialIdHash: metadata.credentialIdHash,
     deploymentSalt: metadata.deploymentSalt,
     publicKey: metadata.publicKey,

@@ -19,6 +19,8 @@ import { navigateBack } from 'utils/navigationState';
 import {
   bytesToHex,
   getPasskeyAssertion,
+  passkeyAssertionToProof,
+  PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
   PasskeyContractSponsorMode,
   passkeySmartAccountInterface,
   signAndSubmitPasskeyExecutions,
@@ -40,7 +42,35 @@ const contractModeByPolicy = {
 const scrollAreaClassName =
   'remove-scrollbar flex w-full max-w-[352px] max-h-[calc(100vh-240px)] flex-col gap-4 overflow-y-auto pb-36 text-left';
 
+const recoveryDelayOptions = [
+  {
+    labelKey: 'settings.passkeyGuardianRecoveryDelayOneDay',
+    seconds: 24 * 60 * 60,
+  },
+  {
+    labelKey: 'settings.passkeyGuardianRecoveryDelayThreeDays',
+    seconds: 3 * 24 * 60 * 60,
+  },
+  {
+    labelKey: 'settings.passkeyGuardianRecoveryDelaySevenDays',
+    seconds: 7 * 24 * 60 * 60,
+  },
+];
+
 type PolicyStep = 'idle' | 'preparing' | 'approval' | 'confirming' | 'saving';
+
+type GuardianRecoveryStatus = {
+  delay: string;
+  exists: boolean;
+  guardianCount: string;
+  guardians: string[];
+  pending: {
+    credentialIdHash: string;
+    readyAt: string;
+    recoveryNonce: string;
+  } | null;
+  threshold: string;
+} | null;
 
 const PasskeyAccountPolicy = () => {
   const location = useLocation();
@@ -66,6 +96,13 @@ const PasskeyAccountPolicy = () => {
     PasskeyBackupStatus | undefined
   >(state?.passkey?.backupStatus);
   const [policyStep, setPolicyStep] = useState<PolicyStep>('idle');
+  const [guardianLoading, setGuardianLoading] = useState<boolean>(false);
+  const [guardianStatus, setGuardianStatus] =
+    useState<GuardianRecoveryStatus>(null);
+  const [recoveryDelay, setRecoveryDelay] = useState<number>(
+    PASSKEY_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS
+  );
+  const [guardianAddress, setGuardianAddress] = useState<string>('');
   const [refreshingStatus, setRefreshingStatus] = useState<boolean>(false);
 
   const normalizeSponsorSignerInput = (value: string) => {
@@ -133,17 +170,55 @@ const PasskeyAccountPolicy = () => {
       !isLocalSponsorSigner(trimmedSponsorSigner));
   const isPolicySubmitDisabled =
     loading ||
+    guardianLoading ||
     !policyHasChanges ||
     (sponsorUrlRequired && !trimmedSponsorUrl) ||
     (policyMode === PasskeySponsorMode.Required &&
       (!trimmedSponsorSigner || !isSponsorSignerValid || !isSponsorUrlValid));
   const hasKnownBackupStatus = Boolean(backupStatus);
+  const isBusy = loading || guardianLoading || refreshingStatus;
+  const guardianConnected = Boolean(guardianStatus?.exists);
+  const guardianPending = Boolean(guardianStatus?.pending);
 
   useEffect(() => {
     if (policyMode === PasskeySponsorMode.Required && !trimmedSponsorUrl) {
       form.setFields([{ name: 'sponsorUrl', errors: [] }]);
     }
   }, [form, policyMode, trimmedSponsorUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!state?.address || !state?.passkey?.isDeployed) {
+      setGuardianStatus(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    controllerEmitter(
+      ['wallet', 'getPasskeyGuardianRecoveryStatus'],
+      [{ account: state.address }],
+      300000
+    )
+      .then((status) => {
+        if (!cancelled) {
+          const guardianStatus = status as GuardianRecoveryStatus;
+          setGuardianStatus(guardianStatus);
+          if (guardianStatus?.delay) {
+            setRecoveryDelay(Number(guardianStatus.delay));
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGuardianStatus(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [controllerEmitter, state?.address, state?.passkey?.isDeployed]);
 
   const navigateBackWithUpdatedSponsor = (
     sponsor: {
@@ -305,6 +380,194 @@ const PasskeyAccountPolicy = () => {
     }
   };
 
+  const connectGuardianRecovery = async () => {
+    setGuardianLoading(true);
+
+    try {
+      if (
+        state?.id === null ||
+        state?.id === undefined ||
+        !state?.address ||
+        !state?.passkey
+      ) {
+        throw new Error('Passkey account metadata is unavailable');
+      }
+      if (!state.passkey.isDeployed) {
+        throw new Error(t('settings.passkeyAccountNotOnchain'));
+      }
+      const guardian = getAddress(guardianAddress.trim());
+
+      await controllerEmitter(
+        ['wallet', 'setAccount'],
+        [state.id, KeyringAccountType.PasskeySmartAccount],
+        300000
+      );
+      const prepared = (await controllerEmitter(
+        ['wallet', 'preparePasskeyGuardianRegistration'],
+        [{ guardian, recoveryDelay, threshold: 1 }],
+        300000
+      )) as any;
+      const assertion = await getPasskeyAssertion(
+        state.passkey.credentialId,
+        prepared.actionHash
+      );
+      await controllerEmitter(
+        ['wallet', 'submitPasskeyGuardianPolicyTransaction'],
+        [
+          {
+            actionHash: prepared.actionHash,
+            execution: prepared.execution,
+            executions: prepared.executions,
+            proof: passkeyAssertionToProof(assertion),
+          },
+        ],
+        300000
+      );
+      const status = (await controllerEmitter(
+        ['wallet', 'getPasskeyGuardianRecoveryStatus'],
+        [{ account: state.address }],
+        300000
+      )) as GuardianRecoveryStatus;
+      setGuardianStatus(status);
+
+      alert.success(t('settings.passkeyGuardianRecoveryConnected'));
+    } catch (error: any) {
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        alert.error(
+          error?.message || t('settings.passkeyGuardianRecoveryConnectFailed')
+        );
+      }
+    } finally {
+      setGuardianLoading(false);
+    }
+  };
+
+  const updateGuardianRecoveryPolicy = async () => {
+    setGuardianLoading(true);
+
+    try {
+      if (
+        state?.id === null ||
+        state?.id === undefined ||
+        !state?.address ||
+        !state?.passkey
+      ) {
+        throw new Error('Passkey account metadata is unavailable');
+      }
+      if (!state.passkey.isDeployed) {
+        throw new Error(t('settings.passkeyAccountNotOnchain'));
+      }
+
+      await controllerEmitter(
+        ['wallet', 'setAccount'],
+        [state.id, KeyringAccountType.PasskeySmartAccount],
+        300000
+      );
+      const prepared = (await controllerEmitter(
+        ['wallet', 'preparePasskeyGuardianPolicyUpdate'],
+        [{ recoveryDelay }],
+        300000
+      )) as any;
+      const assertion = await getPasskeyAssertion(
+        state.passkey.credentialId,
+        prepared.actionHash
+      );
+      await controllerEmitter(
+        ['wallet', 'submitPasskeyGuardianPolicyTransaction'],
+        [
+          {
+            actionHash: prepared.actionHash,
+            execution: prepared.execution,
+            executions: prepared.executions,
+            proof: passkeyAssertionToProof(assertion),
+          },
+        ],
+        300000
+      );
+      const status = (await controllerEmitter(
+        ['wallet', 'getPasskeyGuardianRecoveryStatus'],
+        [{ account: state.address }],
+        300000
+      )) as GuardianRecoveryStatus;
+      setGuardianStatus(status);
+
+      alert.success(t('settings.passkeyGuardianRecoveryPolicyUpdated'));
+    } catch (error: any) {
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        alert.error(
+          error?.message ||
+            t('settings.passkeyGuardianRecoveryPolicyUpdateFailed')
+        );
+      }
+    } finally {
+      setGuardianLoading(false);
+    }
+  };
+
+  const disableGuardianRecovery = async () => {
+    setGuardianLoading(true);
+
+    try {
+      if (
+        state?.id === null ||
+        state?.id === undefined ||
+        !state?.address ||
+        !state?.passkey
+      ) {
+        throw new Error('Passkey account metadata is unavailable');
+      }
+      if (!state.passkey.isDeployed) {
+        throw new Error(t('settings.passkeyAccountNotOnchain'));
+      }
+
+      await controllerEmitter(
+        ['wallet', 'setAccount'],
+        [state.id, KeyringAccountType.PasskeySmartAccount],
+        300000
+      );
+      const prepared = (await controllerEmitter(
+        ['wallet', 'preparePasskeyGuardianRemoval'],
+        [{}],
+        300000
+      )) as any;
+      const assertion = await getPasskeyAssertion(
+        state.passkey.credentialId,
+        prepared.actionHash
+      );
+      await controllerEmitter(
+        ['wallet', 'submitPasskeyGuardianPolicyTransaction'],
+        [
+          {
+            actionHash: prepared.actionHash,
+            execution: prepared.execution,
+            executions: prepared.executions,
+            proof: passkeyAssertionToProof(assertion),
+          },
+        ],
+        300000
+      );
+      const status = (await controllerEmitter(
+        ['wallet', 'getPasskeyGuardianRecoveryStatus'],
+        [{ account: state.address }],
+        300000
+      )) as GuardianRecoveryStatus;
+      setGuardianStatus(status);
+
+      alert.success(t('settings.passkeyGuardianRecoveryDisabled'));
+    } catch (error: any) {
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        alert.error(
+          error?.message || t('settings.passkeyGuardianRecoveryDisableFailed')
+        );
+      }
+    } finally {
+      setGuardianLoading(false);
+    }
+  };
+
   return (
     <>
       <Form
@@ -352,7 +615,7 @@ const PasskeyAccountPolicy = () => {
               <button
                 type="button"
                 className="shrink-0 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-1 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white focus:border-brand-blue100 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-brand-blue500 disabled:hover:bg-opacity-20 disabled:hover:text-brand-blue100"
-                disabled={loading || refreshingStatus}
+                disabled={isBusy}
                 onClick={refreshPasskeyStatus}
               >
                 {t('settings.refreshPasskeyStatus')}
@@ -374,6 +637,117 @@ const PasskeyAccountPolicy = () => {
             </p>
           </div>
 
+          <div className="rounded-lg border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 p-4 text-xs text-brand-graylight">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-white">
+                  {t('settings.passkeyGuardianRecoveryTitle')}
+                </p>
+                <p className="mt-2 leading-5">
+                  {t('settings.passkeyGuardianRecoveryDescription')}
+                </p>
+                <span
+                  className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                    guardianConnected
+                      ? 'bg-brand-blue600 text-white'
+                      : 'bg-alpha-whiteAlpha100 text-brand-yellowInfo'
+                  }`}
+                >
+                  {guardianPending
+                    ? t('settings.passkeyGuardianRecoveryPending')
+                    : guardianConnected
+                    ? t('settings.passkeyGuardianRecoveryConnectedStatus')
+                    : t('settings.passkeyGuardianRecoveryNotConnected')}
+                </span>
+                {guardianPending && guardianStatus?.pending?.readyAt && (
+                  <p className="mt-2 leading-5 text-brand-yellowInfo">
+                    {t('settings.passkeyGuardianRecoveryReadyAt', {
+                      time: new Date(
+                        Number(guardianStatus.pending.readyAt) * 1000
+                      ).toLocaleString(),
+                    })}
+                  </p>
+                )}
+                {guardianConnected && (
+                  <p className="mt-2 leading-5">
+                    {t('settings.passkeyGuardianRecoveryPolicySummary', {
+                      delay:
+                        recoveryDelayOptions.find(
+                          (option) => option.seconds === recoveryDelay
+                        )?.seconds === recoveryDelay
+                          ? t(
+                              recoveryDelayOptions.find(
+                                (option) => option.seconds === recoveryDelay
+                              )!.labelKey
+                            )
+                          : `${Math.round(recoveryDelay / 86400)} days`,
+                      guardianCount: guardianStatus?.guardianCount || '1',
+                      threshold: guardianStatus?.threshold || '1',
+                    })}
+                  </p>
+                )}
+                {!guardianConnected && (
+                  <Input
+                    type="text"
+                    disabled={isBusy}
+                    placeholder={t('settings.passkeyGuardianAddress')}
+                    className="custom-input-normal passkey-input relative mt-3"
+                    value={guardianAddress}
+                    onChange={(event) => setGuardianAddress(event.target.value)}
+                  />
+                )}
+                <div className="mt-3">
+                  <p className="mb-2 font-medium text-white">
+                    {t('settings.passkeyGuardianRecoveryDelayTitle')}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {recoveryDelayOptions.map((option) => (
+                      <button
+                        key={option.seconds}
+                        type="button"
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-all duration-200 ${
+                          recoveryDelay === option.seconds
+                            ? 'border-brand-blue500 bg-brand-blue600 text-white'
+                            : 'border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 text-brand-graylight hover:bg-brand-blue500 hover:bg-opacity-20'
+                        }`}
+                        disabled={isBusy}
+                        onClick={() => setRecoveryDelay(option.seconds)}
+                      >
+                        {t(option.labelKey)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2">
+                <button
+                  type="button"
+                  className="rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-1 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white focus:border-brand-blue100 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-brand-blue500 disabled:hover:bg-opacity-20 disabled:hover:text-brand-blue100"
+                  disabled={isBusy}
+                  onClick={
+                    guardianConnected
+                      ? updateGuardianRecoveryPolicy
+                      : connectGuardianRecovery
+                  }
+                >
+                  {guardianConnected
+                    ? t('settings.passkeyGuardianRecoveryUpdate')
+                    : t('settings.passkeyGuardianRecoveryConnect')}
+                </button>
+                {guardianConnected && (
+                  <button
+                    type="button"
+                    className="rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-1 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isBusy}
+                    onClick={disableGuardianRecovery}
+                  >
+                    {t('settings.passkeyGuardianRecoveryDisable')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="space-y-3 text-xs text-brand-graylight">
             {policyRows.map((mode) => (
               <button
@@ -384,7 +758,7 @@ const PasskeyAccountPolicy = () => {
                     ? 'border-brand-blue500 bg-brand-blue600'
                     : 'border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100'
                 }`}
-                disabled={loading}
+                disabled={isBusy}
                 onClick={() => setPolicyMode(mode)}
               >
                 <span
@@ -436,7 +810,7 @@ const PasskeyAccountPolicy = () => {
               >
                 <Input
                   type="text"
-                  disabled={loading}
+                  disabled={isBusy}
                   placeholder={t('settings.sponsorServiceUrl')}
                   className="custom-input-normal passkey-input relative"
                   onChange={(event) => setSponsorUrl(event.target.value)}
@@ -472,7 +846,7 @@ const PasskeyAccountPolicy = () => {
                 >
                   <Input
                     type="text"
-                    disabled={loading}
+                    disabled={isBusy}
                     placeholder={t('settings.sponsorSignerAddress')}
                     className="custom-input-normal passkey-input relative"
                     onChange={(event) => setSponsorSigner(event.target.value)}
@@ -494,10 +868,12 @@ const PasskeyAccountPolicy = () => {
         </div>
 
         <div className="w-full px-4 absolute bottom-12 md:static space-y-3">
-          {loading && (
+          {(loading || guardianLoading) && (
             <Card type="info">
               <p className="text-brand-yellowInfo text-sm font-normal text-left">
-                {t(`settings.passkeyPolicyStep.${policyStep}`)}
+                {guardianLoading
+                  ? t('settings.passkeyGuardianRecoveryConnecting')
+                  : t(`settings.passkeyPolicyStep.${policyStep}`)}
               </p>
             </Card>
           )}

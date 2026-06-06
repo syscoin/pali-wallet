@@ -16,6 +16,8 @@ import {
   PasskeySponsorMode,
 } from 'types/network';
 
+import { getPasskeyGuardianRecoveryValidatorAddress } from './contracts';
+
 export type PasskeySponsorProof = { r: string; s: string; v: number };
 
 export type PasskeyExecution = {
@@ -68,6 +70,7 @@ export const getPasskeyCreateHash = ({
         'bytes32',
         'bytes32',
         'uint256',
+        'address',
         'bytes32',
       ],
       [
@@ -80,6 +83,7 @@ export const getPasskeyCreateHash = ({
         publicKey.rpIdHash,
         publicKey.originHash,
         publicKey.originLength,
+        getPasskeyGuardianRecoveryValidatorAddress(chainId),
         deploymentSalt,
       ]
     )

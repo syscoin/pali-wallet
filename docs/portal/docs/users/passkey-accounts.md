@@ -47,3 +47,31 @@ Passkey accounts require zkSYS passkey smart account contracts and P-256 verific
 If local wallet state is deleted or Pali is installed on a new device, Pali can recover passkey smart accounts from the on-chain factory registry and event logs. Any Pali install with access to the same passkey credential can discover matching deployed accounts after a WebAuthn assertion, skip accounts already present locally, and import the selected accounts.
 
 One passkey credential can control multiple smart accounts. Because new accounts use fresh deployment salts, Pali recovers them from the on-chain registry rather than by locally guessing indexes.
+
+## Guardian recovery
+
+Pali uses self-custodial recovery guardians for production passkey account recovery. A guardian is a backup EVM wallet, imported account, or hardware wallet that the user controls separately from the active passkey. While the passkey still controls the account, the user can add or remove guardians and update the recovery wait period from the policy screen.
+
+Guardian recovery is not instant. Starting recovery creates a replacement passkey, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then use normal passkey recovery to import the account with the replacement passkey.
+
+The guardian signature binds the chain, guardian recovery validator, account address, replacement passkey identity, recovery nonce, and expiry. This prevents reusing a guardian signature for a different account, chain, or passkey while still allowing the recovery start transaction to be relayed.
+
+Technical note: the guardian recovery validator stores a per-account guardian set, threshold, delay, and pending recovery. Pali currently exposes the simple 1-of-1 guardian flow for UX clarity, while the contract supports threshold policies such as 1-of-N or M-of-N.
+
+## Dapp-created accounts
+
+Dapps can request guardian recovery metadata during `wallet_createPasskeyAccount`:
+
+```
+{
+  "label": "Trading desk",
+  "recovery": {
+    "guardian": {
+      "address": "0x...",
+      "delay": 86400
+    }
+  }
+}
+```
+
+Pali does not automatically attach a dapp-provided guardian during account creation because the wallet cannot authenticate that address yet. If a dapp suggests a guardian, Pali warns the user and lets them create the account, then the user can add their own trusted guardian from the passkey account policy screen. Future versions may add a trusted dictionary or whitelist for known default guardians.
