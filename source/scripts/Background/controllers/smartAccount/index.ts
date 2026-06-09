@@ -49,6 +49,9 @@ import {
   SmartAccountPackedUserOperation,
   getAvailablePaliModules,
   SmartAccountAuthenticatorBuildResult,
+  SmartAccountAuthenticatorRuntimeContexts,
+  encodeSmartAccountAuthenticatorSignature,
+  signSmartAccountActionHash,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
 
@@ -1104,11 +1107,9 @@ class SmartAccountController {
       target: params.target,
     });
     await this.proveRecoveryTargetOwnership(params.target, operation.hash);
-    const guardianAccount = this.getLocalSigningAccount(params.guardian);
-    const guardianSignature = await this.deps.signEthWithAccount(
-      [params.guardian, operation.hash],
-      guardianAccount
-    );
+    const { approval, gasPayer: preferredGasPayer } =
+      await this.signGuardianApproval(params.guardian, operation.hash);
+    const approvals = [approval];
     const recoveryCallData =
       paliGuardianRecoveryModuleInterface.encodeFunctionData(
         'scheduleRecovery',
@@ -1117,18 +1118,20 @@ class SmartAccountController {
           operation.salt,
           operation.mode,
           operation.executionCalldata,
-          [
-            {
-              guardian: getAddress(params.guardian),
-              signature: guardianSignature,
-            },
-          ],
+          approvals,
         ]
       );
+    const gasPayer =
+      preferredGasPayer ||
+      (await this.getWalletGasPayerAccount(undefined, {
+        data: recoveryCallData,
+        to: recoveryModule,
+        value: '0x0',
+      }));
     const response = await this.deps.sendAndSaveEthTransaction(
       { data: recoveryCallData, to: recoveryModule, value: '0x0' },
       false,
-      guardianAccount,
+      gasPayer,
       {
         smartAccountGuardianRecovery: true,
         smartAccountRecoveryAccount: account,
@@ -1235,10 +1238,102 @@ class SmartAccountController {
     );
   }
 
-  private getLocalSigningAccount(address: string): {
+  private getSmartAccountAuthenticatorContexts(): SmartAccountAuthenticatorRuntimeContexts {
+    const { accounts } = store.getState().vault;
+    const ownerTypes: PaliKeyringAccountType[] = [
+      PaliKeyringAccountType.HDAccount,
+      PaliKeyringAccountType.Imported,
+      PaliKeyringAccountType.Ledger,
+      PaliKeyringAccountType.Trezor,
+    ];
+    const localOwners = ownerTypes.flatMap((type) =>
+      Object.entries(accounts[type] || {}).flatMap(
+        ([id, walletAccount]: [string, any]) => {
+          try {
+            return [
+              {
+                address: getAddress(walletAccount.address),
+                id: Number(id),
+                type,
+              },
+            ];
+          } catch {
+            return [];
+          }
+        }
+      )
+    );
+
+    return {
+      ecdsa: {
+        localOwners,
+        signActionHash: ({ actionHash, owner }) =>
+          this.deps.signEthWithAccount([owner.address, actionHash], {
+            id: owner.id,
+            type: owner.type,
+          }),
+      },
+    };
+  }
+
+  private async signGuardianApproval(
+    guardian: string,
+    operationHash: string
+  ): Promise<{
+    approval: { guardian: string; signature: string };
+    gasPayer?: { address: string; id: number; type: PaliKeyringAccountType };
+  }> {
+    const normalizedGuardian = getAddress(guardian);
+    const localEoaGuardian = this.findLocalSigningAccount(normalizedGuardian);
+    if (localEoaGuardian) {
+      return {
+        approval: {
+          guardian: normalizedGuardian,
+          signature: await this.deps.signEthWithAccount(
+            [normalizedGuardian, operationHash],
+            localEoaGuardian
+          ),
+        },
+        gasPayer: { ...localEoaGuardian, address: normalizedGuardian },
+      };
+    }
+
+    let smartGuardian: Awaited<
+      ReturnType<SmartAccountController['getHydratedActiveSmartAccount']>
+    >;
+    try {
+      smartGuardian = await this.getHydratedActiveSmartAccount(
+        normalizedGuardian
+      );
+    } catch {
+      throw new Error(
+        'This guardian is not available as a local Pali wallet account. Use a local EOA guardian, a local smart-account guardian, or an external recovery flow that can provide the guardian approval signature.'
+      );
+    }
+    if (!smartGuardian.metadata.isDeployed) {
+      throw new Error(
+        'Smart-account guardians must be deployed before they can approve recovery.'
+      );
+    }
+
+    const signature = await signSmartAccountActionHash({
+      actionHash: operationHash,
+      authenticatorContexts: this.getSmartAccountAuthenticatorContexts(),
+      smartAccount: smartGuardian.metadata,
+    });
+
+    return {
+      approval: {
+        guardian: normalizedGuardian,
+        signature: encodeSmartAccountAuthenticatorSignature(signature),
+      },
+    };
+  }
+
+  private findLocalSigningAccount(address: string): {
     id: number;
     type: PaliKeyringAccountType;
-  } {
+  } | null {
     const normalizedAddress = getAddress(address);
     const { accounts } = store.getState().vault;
     const accountTypes = [
@@ -1257,6 +1352,18 @@ class SmartAccountController {
           continue;
         }
       }
+    }
+
+    return null;
+  }
+
+  private getLocalSigningAccount(address: string): {
+    id: number;
+    type: PaliKeyringAccountType;
+  } {
+    const localSigningAccount = this.findLocalSigningAccount(address);
+    if (localSigningAccount) {
+      return localSigningAccount;
     }
 
     throw new Error(
@@ -1451,15 +1558,14 @@ class SmartAccountController {
         : null;
     const hydrated: ISmartAccountMetadata = {
       ...metadata,
-      ...(activeValidator?.type === 'validator'
-        ? {
-            auth: {
+      auth:
+        activeValidator?.type === 'validator'
+          ? {
               data: activeValidator.data || '0x',
               module: activeValidator.id,
               validator: activeValidator.address,
-            },
-          }
-        : {}),
+            }
+          : undefined,
       availableModules: getAvailablePaliModules(chainId),
       isDeployed: true,
       installedModules,
