@@ -2787,6 +2787,100 @@ class MainController {
     return this.passkey.submitPasskeyExecution(params);
   }
 
+  public async preparePasskeyGuardianRegistration(params: {
+    guardian: string;
+    recoveryDelay?: number;
+    threshold?: number;
+  }) {
+    return this.passkey.preparePasskeyGuardianRegistration(params);
+  }
+
+  public async getPasskeyGuardianRecoveryStatus(params: { account: string }) {
+    return this.passkey.getPasskeyGuardianRecoveryStatus(params);
+  }
+
+  public async preparePasskeyGuardianPolicyUpdate(params: {
+    recoveryDelay: number;
+    threshold?: number;
+  }) {
+    return this.passkey.preparePasskeyGuardianPolicyUpdate(params);
+  }
+
+  public async preparePasskeyGuardianRemoval(params: {
+    guardian?: string;
+    threshold?: number;
+  }) {
+    return this.passkey.preparePasskeyGuardianRemoval(params);
+  }
+
+  public async submitPasskeyGuardianPolicyTransaction(params: {
+    actionHash?: string;
+    execution: {
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    };
+    executions?: Array<{
+      data: string;
+      deadline: number;
+      nonce: string;
+      target: string;
+      value: string;
+    }>;
+    proof: {
+      authenticatorData: string;
+      challengeOffset: number;
+      clientDataJSON: string;
+      originOffset: number;
+      r: string;
+      s: string;
+      typeOffset: number;
+    };
+  }) {
+    return this.passkey.submitPasskeyGuardianPolicyTransaction(params);
+  }
+
+  public async submitPasskeyGuardianStartRecovery(params: {
+    account: string;
+    guardian: string;
+    newIdentity: {
+      credentialIdHash: string;
+      originHash: string;
+      originLength: number;
+      passkeyX: string;
+      passkeyY: string;
+      rpIdHash: string;
+    };
+  }) {
+    return this.passkey.submitPasskeyGuardianStartRecovery(params);
+  }
+
+  public async finalizePasskeyGuardianRecovery(accountAddress: string) {
+    return this.passkey.finalizePasskeyGuardianRecovery(accountAddress);
+  }
+
+  public async importPasskeySmartAccountByAddress(params: {
+    address: string;
+    backupStatus?: any;
+    credentialId: string;
+    credentialIdHash: string;
+    label?: string;
+    verificationHash: string;
+    verificationProof: {
+      authenticatorData: string;
+      challengeOffset: number;
+      clientDataJSON: string;
+      originOffset: number;
+      r: string;
+      s: string;
+      typeOffset: number;
+    };
+  }) {
+    return this.passkey.importPasskeySmartAccountByAddress(params);
+  }
+
   public async setAccount(
     id: number,
     type: KeyringAccountType,

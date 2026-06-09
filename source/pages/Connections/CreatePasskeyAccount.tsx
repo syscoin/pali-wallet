@@ -42,7 +42,7 @@ type CreationStep =
 
 export const CreatePasskeyAccount = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
-  const { eventName, host, label, sponsor } = useQueryData();
+  const { eventName, host, label, recovery, sponsor } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector(
     (rootState: RootState) => rootState.vault.accounts
@@ -52,6 +52,7 @@ export const CreatePasskeyAccount = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [useSeparatePasskey, setUseSeparatePasskey] = useState(false);
+  const requestedGuardianRecovery = Boolean(recovery?.guardian);
   const displayHost = host || t('connections.dappFallback');
   const requestedLabel =
     label || t('connections.passkeyDefaultLabel', { host: displayHost });
@@ -326,6 +327,13 @@ export const CreatePasskeyAccount = () => {
             <p className="text-xs text-brand-yellowInfo">
               {t('settings.passkeyPolicyLocked')}
             </p>
+          )}
+          {requestedGuardianRecovery && (
+            <Card type="info">
+              <p className="text-brand-yellowInfo text-sm font-normal text-left">
+                {t('connections.passkeyGuardianRecoveryDappWarning')}
+              </p>
+            </Card>
           )}
           {(sponsorUrlError || sponsorSignerError) && (
             <Card type="error">

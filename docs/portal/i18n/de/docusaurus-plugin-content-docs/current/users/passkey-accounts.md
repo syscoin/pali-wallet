@@ -45,3 +45,31 @@ Passkey-Accounts erfordern zkSYS-Passkey-Smart-Account-Contracts und P-256-Verif
 </figure>
 
 Wenn lokaler Wallet-Zustand gelöscht wird oder Pali auf einem neuen Gerät installiert ist, kann Pali Passkey Smart Accounts aus der on-chain Factory-Registry und Event-Logs wiederherstellen. Jede Pali-Installation mit Zugriff auf dasselbe Passkey-Credential kann die passenden deployten Accounts nach einer WebAuthn-Assertion entdecken, lokal bereits vorhandene Accounts überspringen und die ausgewählten Accounts importieren.
+
+## Wiederherstellung mit Guardians
+
+Pali verwendet selbstverwaltete Recovery-Guardians für die Wiederherstellung von Passkey-Accounts in Produktion. Ein Guardian ist eine Backup-EVM-Wallet, ein importierter Account oder eine Hardware-Wallet, die der Nutzer getrennt vom aktiven Passkey kontrolliert. Solange der Passkey den Account noch kontrolliert, kann der Nutzer Guardians hinzufügen oder entfernen und die Wartezeit für die Wiederherstellung im Policy-Bildschirm aktualisieren.
+
+Die Wiederherstellung mit Guardians ist nicht sofort wirksam. Beim Start der Wiederherstellung wird ein Ersatz-Passkey erstellt, der konfigurierte Guardian signiert die Wiederherstellungsabsicht, und eine zeitgesperrte Wiederherstellungsanfrage wird gesendet. Nach Ablauf der Wartezeit kann jeder die Wiederherstellungstransaktion finalisieren. Danach kann der Nutzer die normale Passkey-Wiederherstellung verwenden, um den Account mit dem Ersatz-Passkey zu importieren.
+
+Die Guardian-Signatur bindet Chain, Guardian-Recovery-Validator, Account-Adresse, Ersatz-Passkey-Identität, Recovery-Nonce und Ablaufzeit. Dadurch kann eine Guardian-Signatur nicht für einen anderen Account, eine andere Chain oder einen anderen Passkey wiederverwendet werden, während die Transaktion zum Starten der Wiederherstellung weiterhin relayed werden kann.
+
+Technischer Hinweis: Der Guardian-Recovery-Validator speichert pro Account Guardian-Set, Schwellenwert, Verzögerung und ausstehende Wiederherstellung. Pali stellt derzeit aus UX-Gründen den einfachen 1-von-1-Guardian-Flow bereit, während der Contract Schwellenwert-Policies wie 1-von-N oder M-von-N unterstützt.
+
+## Von Dapps erstellte Accounts
+
+Dapps können während `wallet_createPasskeyAccount` Metadaten für Guardian-Recovery anfordern:
+
+```json
+{
+  "label": "Trading desk",
+  "recovery": {
+    "guardian": {
+      "address": "0x...",
+      "delay": 86400
+    }
+  }
+}
+```
+
+Pali fügt einen von einer Dapp bereitgestellten Guardian bei der Account-Erstellung nicht automatisch hinzu, weil die Wallet diese Adresse noch nicht authentifizieren kann. Wenn eine Dapp einen Guardian vorschlägt, warnt Pali den Nutzer und erlaubt die Erstellung des Accounts; anschließend kann der Nutzer im Policy-Bildschirm des Passkey-Accounts seinen eigenen vertrauenswürdigen Guardian hinzufügen. Zukünftige Versionen können ein vertrauenswürdiges Verzeichnis oder eine Whitelist für bekannte Standard-Guardians ergänzen.

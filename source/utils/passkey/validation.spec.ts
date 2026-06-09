@@ -110,6 +110,16 @@ describe('passkey validation utilities', () => {
     ).not.toThrow();
   });
 
+  it('canonicalizes 0/1 recovery ids to 27/28', () => {
+    const proof = normalizePasskeySponsorProof({
+      r: '0x1111111111111111111111111111111111111111111111111111111111111111',
+      s: '0x2222222222222222222222222222222222222222222222222222222222222222',
+      v: 1,
+    });
+
+    expect(proof?.v).toBe(28);
+  });
+
   it('rejects relayed required sponsor transactions without a sponsor proof', () => {
     const sponsor = Wallet.createRandom();
     const actionHash =
