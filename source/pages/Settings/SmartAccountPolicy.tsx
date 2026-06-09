@@ -27,7 +27,6 @@ import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
-  paliGuardianRecoveryModuleInterface,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
@@ -1243,54 +1242,16 @@ const SmartAccountPolicy = () => {
     try {
       setGuardianStep(t('settings.smartAccountGuardianRecoveryStepFinalize'));
       const recoveryOperation = activeGuardianReplacement.recoveryOperation;
-      if (activeAccount.type === KeyringAccountType.SmartAccount) {
-        const payerAccount = accounts[KeyringAccountType.SmartAccount]?.[
-          activeAccount.id
-        ] as any;
-        const recoveryModule =
-          recoveryOperation.recoveryModule ||
-          guardianStatus?.moduleAddress ||
-          installedGuardianRecovery?.address;
-        if (!payerAccount?.smartAccount || !recoveryModule) {
-          throw new Error(
-            t('settings.smartAccountGuardianRecoveryFinalizeFailed')
-          );
-        }
-        await signAndSubmitSmartAccountExecutions({
-          accountId: activeAccount.id,
-          authenticatorContexts: getLocalOwnerContexts(),
-          controllerEmitter,
-          executions: [
-            {
-              data: paliGuardianRecoveryModuleInterface.encodeFunctionData(
-                'executeRecovery',
-                [
-                  smartAccountAddress,
-                  recoveryOperation.salt,
-                  recoveryOperation.mode,
-                  recoveryOperation.executionCalldata,
-                ]
-              ),
-              target: recoveryModule,
-              value: '0x0',
-            },
-          ],
-          smartAccount: payerAccount.smartAccount,
-          skipRapidPolling: true,
-          waitForConfirmation: true,
-        });
-      } else {
-        await controllerEmitter(
-          ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-          [
-            {
-              account: smartAccountAddress,
-              ...recoveryOperation,
-            },
-          ],
-          300000
-        );
-      }
+      await controllerEmitter(
+        ['wallet', 'finalizeSmartAccountGuardianRecovery'],
+        [
+          {
+            account: smartAccountAddress,
+            ...recoveryOperation,
+          },
+        ],
+        300000
+      );
       clearGuardianReplacementCredential();
       setIsGuardianRecoveryScreenOpen(false);
       const recoveredValidator = getConfiguredAuthenticatorAddress(

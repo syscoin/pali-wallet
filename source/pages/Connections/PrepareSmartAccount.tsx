@@ -88,6 +88,11 @@ const sameAddress = (left?: string, right?: string) => {
   }
 };
 
+const isNativeGasRequiredError = (error: unknown) =>
+  String((error as { message?: string })?.message || error).includes(
+    'PALI_NATIVE_GAS_REQUIRED'
+  );
+
 const localAccountCandidates = (
   accounts: RootState['vault']['accounts']
 ): Array<{
@@ -410,6 +415,20 @@ export const PrepareSmartAccount = () => {
         return;
       }
 
+      await controllerEmitter(
+        ['wallet', 'registerSmartAccountOnChain'],
+        [{ accountId: account.id }],
+        300000
+      );
+      const gasStatus = (await controllerEmitter(
+        ['wallet', 'getSmartAccountNativeGasStatus'],
+        [{ accountId: account.id }],
+        300000
+      )) as { hasNativeGas: boolean };
+      if (!gasStatus.hasNativeGas) {
+        throw new Error('PALI_NATIVE_GAS_REQUIRED');
+      }
+
       setCreationStep('installing');
       await replaceRequestedValidator({
         account,
@@ -445,7 +464,11 @@ export const PrepareSmartAccount = () => {
     } catch (err: any) {
       const wasHandled = handleWalletLockedError(err);
       if (!wasHandled) {
-        setError(err?.message || t('connections.smartAccountPrepareFailed'));
+        setError(
+          isNativeGasRequiredError(err)
+            ? t('send.insufficientFundsForGas')
+            : err?.message || t('connections.smartAccountPrepareFailed')
+        );
       }
     } finally {
       setLoading(false);
