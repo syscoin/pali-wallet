@@ -104,19 +104,32 @@ export const BRIDGE_METHOD_SIGNATURES = {
   '0x3ccfd60b': 'withdraw',
 } as const;
 
-// Pali passkey smart-account method signatures
-export const PASSKEY_METHOD_SIGNATURES = {
-  '0xa25c585e': 'createAccount',
-  '0xcac0bdb8': 'createAccountAndExecute',
-  '0x1b18c84b': 'execute',
-  '0xc81b6d20': 'setSponsor',
-  '0xc0d9f755': 'addGuardian',
-  '0xce1b6463': 'updateRecoveryPolicy',
-  '0x65d279ee': 'removeGuardian',
-  '0x78be3802': 'clearGuardians',
-  '0x78c4a442': 'startRecovery',
-  '0xc90db447': 'cancelRecovery',
-  '0x315a7af3': 'finalizeRecovery',
+// ERC-4337 / ERC-7579 smart-account method signatures used by Pali modules.
+export const SMART_ACCOUNT_METHOD_SIGNATURES = {
+  '0x765e827f': 'handleOps',
+  '0xf8a59370': 'createAccount',
+  '0x731db2ac': 'createAccountWithModules',
+  '0xd959fd0e': 'getAddress',
+  '0x18f1c514': 'getInitData',
+  '0x19e925aa': 'getInitData',
+  '0xd8dcbebf': 'getInitData',
+  '0x5c60da1b': 'implementation',
+  '0xe9ae5c53': 'execute',
+  '0xd691c964': 'executeFromExecutor',
+  '0x9517e29f': 'installModule',
+  '0xa71763a8': 'uninstallModule',
+  '0x112d3a7d': 'isModuleInstalled',
+  '0x19822f7c': 'validateUserOp',
+  '0x97003203': 'validateUserOp',
+  '0x6d61fe70': 'onInstall',
+  '0x8a91b0e3': 'onUninstall',
+  '0xecd05961': 'isModuleType',
+  '0xd60b347f': 'isInitialized',
+  '0xf551e2ee': 'isValidSignatureWithSender',
+  '0x02030577': 'scheduleRecovery',
+  '0x0857e3d1': 'cancelRecovery',
+  '0x0165f182': 'executeRecovery',
+  '0x6591e72d': 'getOperationId',
 } as const;
 
 // Combine all method signatures
@@ -127,7 +140,7 @@ export const ALL_METHOD_SIGNATURES = {
   ...DEFI_METHOD_SIGNATURES,
   ...GOVERNANCE_METHOD_SIGNATURES,
   ...BRIDGE_METHOD_SIGNATURES,
-  ...PASSKEY_METHOD_SIGNATURES,
+  ...SMART_ACCOUNT_METHOD_SIGNATURES,
 } as const;
 
 /**

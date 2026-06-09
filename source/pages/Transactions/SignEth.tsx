@@ -1,4 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
 import { arrayify, isHexString } from '@ethersproject/bytes';
 import { hashMessage, _TypedDataEncoder } from '@ethersproject/hash';
 import React, { useEffect, useState } from 'react';
@@ -17,27 +16,29 @@ import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { ISmartAccountMetadata } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
-import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
-import { getPasskeyAssertion } from 'utils/passkey';
+import {
+  encodeSmartAccountAuthenticatorSignature,
+  signSmartAccountActionHash,
+} from 'utils/smartAccount';
 
 interface ISign {
   send?: boolean;
 }
 
-type PasskeyTypedDataRequest = {
+type SmartAccountTypedDataRequest = {
   actionHash: string;
-  credentialId?: string;
 };
 
-const passkeyTypedDataPrimaryTypes = new Set([
-  'PaliPasskeyAccountCreation',
-  'PaliPasskeyExecution',
-  'PaliPasskeyPolicyUpdate',
+const smartAccountTypedDataPrimaryTypes = new Set([
+  'PaliSmartAccountExecution',
+  'PaliSmartAccountPolicyUpdate',
+  'PaliSmartAccountModuleInstall',
 ]);
 
 const EthSign: React.FC<ISign> = () => {
@@ -152,9 +153,9 @@ const EthSign: React.FC<ISign> = () => {
     return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
   };
 
-  const getPasskeyTypedDataRequest = (
+  const getSmartAccountTypedDataRequest = (
     typedData?: any
-  ): PasskeyTypedDataRequest | null => {
+  ): SmartAccountTypedDataRequest | null => {
     if (!typedData?.message || !typedData?.primaryType) {
       return null;
     }
@@ -162,14 +163,14 @@ const EthSign: React.FC<ISign> = () => {
     const { message: typedMessage, primaryType } = typedData;
     const requestType =
       typedMessage.requestType ||
-      typedMessage.passkeyType ||
+      typedMessage.smartAccountType ||
       typedMessage.type ||
       primaryType;
-    const isPasskeyRequest =
-      passkeyTypedDataPrimaryTypes.has(primaryType) ||
+    const isSmartAccountRequest =
+      smartAccountTypedDataPrimaryTypes.has(primaryType) ||
       (typeof requestType === 'string' &&
-        requestType.toLowerCase().startsWith('passkey.'));
-    if (!isPasskeyRequest) {
+        requestType.toLowerCase().startsWith('smartaccount.'));
+    if (!isSmartAccountRequest) {
       return null;
     }
 
@@ -183,89 +184,47 @@ const EthSign: React.FC<ISign> = () => {
 
     return {
       actionHash,
-      credentialId: typedMessage.credentialId,
     };
   };
 
-  const encodePasskey1271Signature = async (hash: string) => {
-    if (!activeAccount.passkey) {
-      throw { message: t('send.passkeyActiveAccountRequired') };
-    }
+  const getHydratedSmartAccountMetadata =
+    async (): Promise<ISmartAccountMetadata> => {
+      if (!activeAccount.isSmartAccount || !activeAccount.smartAccount) {
+        throw { message: t('send.smartAccountActiveAccountRequired') };
+      }
 
-    const assertion = await getPasskeyAssertion(
-      activeAccount.passkey.credentialId,
-      hash
-    );
-    if (activeAccount.isPasskeySmartAccount) {
-      await controllerEmitter(
-        ['wallet', 'updatePasskeyBackupStatus'],
-        [activeAccount.id, assertion.backupStatus],
+      return controllerEmitter(
+        ['wallet', 'hydrateSmartAccount'],
+        [activeAccount.id],
         300000
-      ).catch((error) =>
-        logError('Failed to update passkey backup status', 'UI', error)
-      );
-    }
+      ) as Promise<ISmartAccountMetadata>;
+    };
 
-    return defaultAbiCoder.encode(
-      [
-        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
-      ],
-      [
-        {
-          authenticatorData: assertion.authenticatorData,
-          clientDataJSON: assertion.clientDataJSON,
-          typeOffset: assertion.typeOffset,
-          challengeOffset: assertion.challengeOffset,
-          originOffset: assertion.originOffset,
-          r: assertion.r,
-          s: assertion.s,
-        },
-      ]
-    );
+  const encodeSmartAccount1271Signature = async (hash: string) => {
+    const smartAccount = await getHydratedSmartAccountMetadata();
+
+    const signature = await signSmartAccountActionHash({
+      actionHash: hash,
+      smartAccount,
+    });
+
+    return encodeSmartAccountAuthenticatorSignature(signature);
   };
 
-  const encodePasskeyTypedDataProof = async (
-    request: PasskeyTypedDataRequest
+  const encodeSmartAccountTypedDataSignature = async (
+    request: SmartAccountTypedDataRequest
   ) => {
-    const credentialId =
-      request.credentialId || activeAccount.passkey?.credentialId;
-    if (!credentialId) {
-      throw { message: t('send.passkeyActiveAccountRequired') };
-    }
+    const smartAccount = await getHydratedSmartAccountMetadata();
 
-    const assertion = await getPasskeyAssertion(
-      credentialId,
-      request.actionHash
-    );
-    if (activeAccount.isPasskeySmartAccount) {
-      await controllerEmitter(
-        ['wallet', 'updatePasskeyBackupStatus'],
-        [activeAccount.id, assertion.backupStatus],
-        300000
-      ).catch((error) =>
-        logError('Failed to update passkey backup status', 'UI', error)
-      );
-    }
+    const signature = await signSmartAccountActionHash({
+      actionHash: request.actionHash,
+      smartAccount,
+    });
 
-    return defaultAbiCoder.encode(
-      [
-        'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
-      ],
-      [
-        {
-          authenticatorData: assertion.authenticatorData,
-          clientDataJSON: assertion.clientDataJSON,
-          typeOffset: assertion.typeOffset,
-          challengeOffset: assertion.challengeOffset,
-          originOffset: assertion.originOffset,
-          r: assertion.r,
-          s: assertion.s,
-        },
-      ]
-    );
+    return encodeSmartAccountAuthenticatorSignature(signature);
   };
 
-  const getPasskeySignHash = (typedData?: any) => {
+  const getSmartAccount1271Hash = (typedData?: any) => {
     if (data.eventName === 'personal_sign') {
       const msg = getPersonalSignMessage();
       return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
@@ -275,7 +234,7 @@ const EthSign: React.FC<ISign> = () => {
       const payload = getEthSignPayload();
       if (!isHexString(payload, 32)) {
         throw {
-          message: t('send.passkeyEthSignHashRequired'),
+          message: t('send.smartAccountEthSignHashRequired'),
         };
       }
       return payload;
@@ -284,7 +243,7 @@ const EthSign: React.FC<ISign> = () => {
     if (typedData) {
       if (data.eventName === 'eth_signTypedData') {
         throw {
-          message: t('send.passkeyLegacyTypedDataUnsupported'),
+          message: t('send.smartAccountLegacyTypedDataUnsupported'),
         };
       }
 
@@ -298,7 +257,7 @@ const EthSign: React.FC<ISign> = () => {
       );
     }
 
-    throw { message: t('send.passkeyUnsupportedSigningRequest') };
+    throw { message: t('send.smartAccountUnsupportedSigningRequest') };
   };
 
   const onSubmit = async () => {
@@ -317,23 +276,27 @@ const EthSign: React.FC<ISign> = () => {
     try {
       let response = '';
       const type = data.eventName;
-      if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+      if (activeAccount.isSmartAccount && activeAccount.smartAccount) {
         const typedData =
           data.eventName === 'eth_signTypedData' ||
           data.eventName === 'eth_signTypedData_v3' ||
           data.eventName === 'eth_signTypedData_v4'
             ? getTypedDataPayload()
             : undefined;
-        const signHash = getPasskeySignHash(typedData);
-        response = await encodePasskey1271Signature(signHash);
+        const smartAccountRequest = getSmartAccountTypedDataRequest(typedData);
+        response = smartAccountRequest
+          ? await encodeSmartAccountTypedDataSignature(smartAccountRequest)
+          : await encodeSmartAccount1271Signature(
+              getSmartAccount1271Hash(typedData)
+            );
       } else if (
         data.eventName === 'eth_signTypedData_v3' ||
         data.eventName === 'eth_signTypedData_v4'
       ) {
         const typedData = getTypedDataPayload();
-        const passkeyRequest = getPasskeyTypedDataRequest(typedData);
-        if (passkeyRequest) {
-          response = await encodePasskeyTypedDataProof(passkeyRequest);
+        const smartAccountRequest = getSmartAccountTypedDataRequest(typedData);
+        if (smartAccountRequest) {
+          throw { message: t('send.smartAccountActiveAccountRequired') };
         } else {
           const version =
             data.eventName === 'eth_signTypedData_v3' ? 'V3' : 'V4';
@@ -377,6 +340,9 @@ const EthSign: React.FC<ISign> = () => {
           throw { message: t('send.signingForWrongAddress') };
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
+        if (getSmartAccountTypedDataRequest(typedData)) {
+          throw { message: t('send.smartAccountActiveAccountRequired') };
+        }
         if (data.eventName === 'eth_signTypedData') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],
@@ -1277,6 +1243,22 @@ const EthSign: React.FC<ISign> = () => {
               <p className="text-xs text-gray-400 text-center">
                 from <span className="font-medium">{host}</span>
               </p>
+              {activeAccount.isSmartAccount && (
+                <div className="mt-4 rounded-lg border border-brand-blue500 bg-brand-blue500 bg-opacity-10 px-4 py-3 text-center">
+                  <p className="text-xs font-medium text-brand-blue200">
+                    {t(
+                      'send.smartAccountSignatureNotice',
+                      'Smart account signature'
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-300">
+                    {t(
+                      'send.smartAccountSignatureNoticeDescription',
+                      'Pali will ask the active authenticator driver to authorize this request.'
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Message Preview Section */}

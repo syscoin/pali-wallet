@@ -115,9 +115,6 @@ const ConnectHardwareWallet = lazy(() =>
 const CreateAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.CreateAccount }))
 );
-const CreatePasskeySettingsAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.CreatePasskeySettingsAccount }))
-);
 const CreatePass = lazy(() =>
   import('pages').then((m) => ({ default: m.CreatePass }))
 );
@@ -176,11 +173,8 @@ const CreatePasswordImport = lazy(() =>
 const ManageAccounts = lazy(() =>
   import('pages').then((m) => ({ default: m.ManageAccounts }))
 );
-const RecoverPasskeyAccounts = lazy(() =>
-  import('pages').then((m) => ({ default: m.RecoverPasskeyAccounts }))
-);
-const PasskeyAccountPolicy = lazy(() =>
-  import('pages').then((m) => ({ default: m.PasskeyAccountPolicy }))
+const SmartAccountPolicy = lazy(() =>
+  import('pages').then((m) => ({ default: m.SmartAccountPolicy }))
 );
 const EditAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.EditAccount }))
@@ -210,11 +204,11 @@ const ConnectWallet = lazy(() =>
 const ChangeAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.ChangeAccount }))
 );
-const CreatePasskeyAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.CreatePasskeyAccount }))
-);
 const ChangeConnectedAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.ChangeConnectedAccount }))
+);
+const PrepareSmartAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.PrepareSmartAccount }))
 );
 const ExternalWatchAsset = lazy(() =>
   import('pages').then((m) => ({ default: m.ExternalWatchAsset }))
@@ -340,16 +334,8 @@ export const Router = () => {
             {/* Account sub-routes */}
             <Route path="/settings/account/new" element={<CreateAccount />} />
             <Route
-              path="/settings/account/passkey-new"
-              element={<CreatePasskeySettingsAccount />}
-            />
-            <Route
-              path="/settings/account/passkey-recover"
-              element={<RecoverPasskeyAccounts />}
-            />
-            <Route
-              path="/settings/account/passkey-policy"
-              element={<PasskeyAccountPolicy />}
+              path="/settings/account/smart-account-policy"
+              element={<SmartAccountPolicy />}
             />
             <Route
               path="/settings/account/import"
@@ -381,11 +367,8 @@ export const Router = () => {
               <Route path="phrase" element={<SeedConfirm />} />
               <Route path="login" element={<Start isExternal={true} />} />
               <Route path="connect-wallet" element={<ConnectWallet />} />
-              <Route
-                path="create-passkey-account"
-                element={<CreatePasskeyAccount />}
-              />
               <Route path="change-account" element={<ChangeAccount />} />
+              <Route path="smart-account" element={<PrepareSmartAccount />} />
               <Route
                 path="change-active-connected-account"
                 element={<ChangeConnectedAccount />}

@@ -1,6 +1,78 @@
 import { IMasterController } from 'scripts/Background/controllers';
 import { extractErrorMessage } from 'utils/index';
 
+const AA21_PREFUND_REASON_HEX =
+  '41413231206469646e2774207061792070726566756e64';
+const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
+
+const stringifyControllerError = (error: unknown): string => {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return '';
+  }
+};
+
+const getControllerErrorText = (error: unknown, depth = 0): string => {
+  if (!error || depth > 4) {
+    return '';
+  }
+  if (typeof error === 'string') {
+    try {
+      return [error, getControllerErrorText(JSON.parse(error), depth + 1)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+    } catch {
+      return error.toLowerCase();
+    }
+  }
+  if (typeof error !== 'object') {
+    return String(error).toLowerCase();
+  }
+
+  const errorRecord = error as Record<string, unknown>;
+  const parts = [
+    errorRecord.message,
+    errorRecord.reason,
+    errorRecord.code,
+    errorRecord.data,
+    errorRecord.error,
+    errorRecord.body,
+    errorRecord.response,
+    errorRecord.info,
+    errorRecord.transaction,
+    errorRecord.tx,
+    extractErrorMessage(error, ''),
+    stringifyControllerError(error),
+    ...Object.getOwnPropertyNames(error)
+      .filter((key) => key !== 'stack')
+      .map((key) => errorRecord[key]),
+  ].flatMap((value) =>
+    value ? [getControllerErrorText(value, depth + 1)] : []
+  );
+
+  return parts.filter(Boolean).join(' ').toLowerCase();
+};
+
+const normalizeControllerErrorMessage = (error: unknown): string => {
+  const errorText = getControllerErrorText(error);
+  if (
+    errorText.includes('aa21') ||
+    errorText.includes("didn't pay prefund") ||
+    errorText.includes('did not pay prefund') ||
+    errorText.includes(AA21_PREFUND_REASON_HEX)
+  ) {
+    return NATIVE_GAS_REQUIRED_ERROR;
+  }
+
+  return extractErrorMessage(error, 'Unknown error');
+};
+
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
@@ -56,7 +128,7 @@ export const handleMasterControllerResponses = (
             } else {
               // For regular errors, wrap in error object
               sendResponse({
-                error: extractErrorMessage(error, 'Unknown error'),
+                error: normalizeControllerErrorMessage(error),
                 success: false,
               });
             }
@@ -81,7 +153,7 @@ export const handleMasterControllerResponses = (
       } else {
         // For regular errors, wrap in error object
         sendResponse({
-          error: extractErrorMessage(error, 'Unknown error'),
+          error: normalizeControllerErrorMessage(error),
           success: false,
         });
       }

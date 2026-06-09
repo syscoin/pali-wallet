@@ -16,7 +16,7 @@ export const removeSensitiveDataFromVault = (
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    [KeyringAccountType.PasskeySmartAccount]: {},
+    [KeyringAccountType.SmartAccount]: {},
   };
 
   for (const accountType of Object.values(KeyringAccountType)) {

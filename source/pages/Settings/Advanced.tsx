@@ -1,24 +1,63 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
+  Card,
   DefaultModal,
   NeutralButton,
   ConfirmationModal,
 } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
+
+type InfrastructureStatus = {
+  contracts: Array<{
+    deployed: boolean;
+    displayName: string;
+    id: string;
+  }>;
+  create2Deployer: {
+    deployed: boolean;
+  };
+  ready: boolean;
+};
+
+const getInfrastructureDeployErrorMessage = (error: any, t: any) => {
+  const message = String(error?.message || error || '');
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('lackoffund') ||
+    normalized.includes('lack of fund') ||
+    normalized.includes('insufficient funds') ||
+    normalized.includes('insufficient balance') ||
+    (normalized.includes('maxfee') && normalized.includes('fund'))
+  ) {
+    return t('settings.smartAccountInfrastructureInsufficientGas');
+  }
+
+  if (message.length > 180 || normalized.includes('0x')) {
+    return t('settings.smartAccountInfrastructureDeployFailed');
+  }
+
+  return message || t('settings.smartAccountInfrastructureDeployFailed');
+};
 
 const Advanced = () => {
   const { advancedSettings } = useSelector(
     (state: RootState) => state.vaultGlobal
   );
+  const { activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => state.vault
+  );
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{
     [k: string]: boolean | number | undefined;
@@ -36,6 +75,9 @@ const Advanced = () => {
     useState<string>('');
   const [isOpenConfirmationModal, setIsOpenConfirmationModal] =
     useState<boolean>(false);
+  const [infrastructureStatus, setInfrastructureStatus] =
+    useState<InfrastructureStatus | null>(null);
+  const [loadingInfrastructure, setLoadingInfrastructure] = useState(false);
 
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
@@ -58,6 +100,26 @@ const Advanced = () => {
     setSavedProperties({ ...advancedSettings });
     setEnabledProperties({ ...advancedSettings });
   }, [advancedSettings]);
+
+  const loadInfrastructureStatus = useCallback(async () => {
+    if (isBitcoinBased) {
+      setInfrastructureStatus(null);
+      return;
+    }
+    try {
+      const status = (await controllerEmitter([
+        'wallet',
+        'getSmartAccountInfrastructureStatus',
+      ])) as InfrastructureStatus;
+      setInfrastructureStatus(status);
+    } catch {
+      setInfrastructureStatus(null);
+    }
+  }, [controllerEmitter, isBitcoinBased]);
+
+  useEffect(() => {
+    loadInfrastructureStatus();
+  }, [activeNetwork.chainId, loadInfrastructureStatus]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = ADVANCED_SETTINGS.some(
@@ -121,11 +183,88 @@ const Advanced = () => {
     }
   };
 
+  const deployInfrastructure = async () => {
+    setLoadingInfrastructure(true);
+    try {
+      await controllerEmitter(
+        ['wallet', 'deploySmartAccountInfrastructure'],
+        [],
+        300000
+      );
+      await loadInfrastructureStatus();
+      alert.success(t('settings.smartAccountInfrastructureSubmitted'));
+    } catch (error: any) {
+      alert.error(getInfrastructureDeployErrorMessage(error, t));
+    } finally {
+      try {
+        await loadInfrastructureStatus();
+      } finally {
+        setLoadingInfrastructure(false);
+      }
+    }
+  };
+
+  const missingInfrastructure =
+    infrastructureStatus?.contracts.filter((contract) => !contract.deployed) ||
+    [];
+
   return (
     <>
       <p className="mb-8 text-center text-white text-sm">
         {t('settings.hereYouCanEnable')}
       </p>
+
+      {!isBitcoinBased && (
+        <div className="mx-auto mb-5 flex w-full max-w-[352px] text-left">
+          <Card type={infrastructureStatus?.ready ? 'success' : 'info'}>
+            <div className="flex w-full flex-col gap-2 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-brand-white">
+                    {t('settings.smartAccountInfrastructure')}
+                  </p>
+                  <p className="mt-1 text-xs leading-4 text-brand-graylight">
+                    {infrastructureStatus?.ready
+                      ? t('settings.smartAccountInfrastructureReady')
+                      : t('settings.smartAccountInfrastructureMissingAdvanced')}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-alpha-whiteAlpha100 px-2 py-1 text-[10px] font-medium text-brand-graylight">
+                  {t(
+                    infrastructureStatus?.ready
+                      ? 'settings.smartAccountInfrastructureReadyStatus'
+                      : 'settings.smartAccountInfrastructureNotReadyStatus'
+                  )}
+                </span>
+              </div>
+              {!infrastructureStatus?.create2Deployer.deployed && (
+                <p className="text-xs leading-4 text-brand-graylight">
+                  {t('settings.smartAccountCreate2Missing')}
+                </p>
+              )}
+              {missingInfrastructure.length > 0 && (
+                <p className="text-xs leading-4 text-brand-graylight">
+                  {t('settings.smartAccountInfrastructureMissingCount', {
+                    count: missingInfrastructure.length,
+                  })}
+                </p>
+              )}
+              {!infrastructureStatus?.ready &&
+                infrastructureStatus?.create2Deployer.deployed &&
+                missingInfrastructure.length > 0 && (
+                  <NeutralButton
+                    type="button"
+                    loading={loadingInfrastructure}
+                    disabled={loadingInfrastructure}
+                    onClick={deployInfrastructure}
+                  >
+                    {t('settings.deploySmartAccountInfrastructure')}
+                  </NeutralButton>
+                )}
+            </div>
+          </Card>
+        </div>
+      )}
 
       <DefaultModal
         show={confirmed}

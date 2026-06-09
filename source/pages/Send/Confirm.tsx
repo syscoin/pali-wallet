@@ -43,13 +43,19 @@ import {
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
-import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
 import { safeToFixed } from 'utils/safeToFixed';
+import {
+  getSmartAccountLocalOwnerContexts,
+  signAndSubmitSmartAccountExecutions,
+} from 'utils/smartAccount';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+
+const SMART_ACCOUNT_USER_OP_GAS_RESERVE = BigNumber.from(2_050_000);
+const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 
 export const SendConfirm = () => {
   const { controllerEmitter } = useController();
@@ -346,15 +352,19 @@ export const SendConfirm = () => {
         basicTxValues.transactionType ||
         (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
 
-      const submitPasskeyExecution = async (
+      const submitSmartAccountExecution = async (
         target: string,
         value: string,
         data: string
       ) => {
-        await signAndSubmitPasskeyExecutions({
+        await signAndSubmitSmartAccountExecutions({
+          authenticatorContexts: getSmartAccountLocalOwnerContexts({
+            accounts,
+            controllerEmitter,
+          }),
           controllerEmitter,
-          credentialId: activeAccount.passkey.credentialId,
           executions: [{ target, value, data }],
+          smartAccount: activeAccount.smartAccount,
         });
       };
 
@@ -488,21 +498,79 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case TransactionType.NATIVE_ETH:
-          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+          if (activeAccount.isSmartAccount && activeAccount.smartAccount) {
             try {
-              const amount = parseUnits(
+              let amountWei = parseUnits(
                 String(
                   removeScientificNotation(String(basicTxValues.amount || '0'))
                 ),
                 18
-              ).toHexString();
-              await submitPasskeyExecution(destinationTo, amount, '0x');
+              );
+
+              if (basicTxValues.isMax) {
+                const balanceWei = parseUnits(
+                  String(removeScientificNotation(String(balance || '0'))),
+                  18
+                );
+                let gasPriceWei: BigNumber;
+                if (customFee.isCustom) {
+                  gasPriceWei =
+                    isEIP1559Compatible === false
+                      ? parseUnits(safeToFixed(customFee.gasPrice || 0), 9)
+                      : parseUnits(safeToFixed(customFee.maxFeePerGas), 9);
+                } else if (isEIP1559Compatible === false) {
+                  gasPriceWei = BigNumber.from(
+                    await controllerEmitter([
+                      'wallet',
+                      'ethereumTransaction',
+                      'getRecommendedGasPrice',
+                    ])
+                  );
+                } else {
+                  const feeData = (await controllerEmitter([
+                    'wallet',
+                    'ethereumTransaction',
+                    'getFeeDataWithDynamicMaxPriorityFeePerGas',
+                  ])) as { maxFeePerGas?: BigNumber | string };
+                  gasPriceWei = BigNumber.from(feeData.maxFeePerGas || 0);
+                }
+
+                if (gasPriceWei.lte(0)) {
+                  alert.error(t('send.unableToCalculateFees'));
+                  setLoading(false);
+                  return;
+                }
+
+                amountWei = balanceWei
+                  .sub(SMART_ACCOUNT_USER_OP_GAS_RESERVE.mul(gasPriceWei))
+                  .sub(SMART_ACCOUNT_MAX_SEND_BUFFER_WEI);
+
+                if (amountWei.lte(0)) {
+                  alert.error(t('send.insufficientFundsForGas'));
+                  setLoading(false);
+                  return;
+                }
+              }
+
+              const amount = amountWei.toHexString();
+              await submitSmartAccountExecution(destinationTo, amount, '0x');
 
               setConfirmed(true);
               setLoading(false);
             } catch (error: any) {
-              logError('error', 'Transaction', error);
-              alert.error(error?.message || t('send.cantCompleteTxs'));
+              const wasHandledSpecifically = handleTransactionError(
+                error,
+                alert,
+                t,
+                activeAccount,
+                activeNetwork,
+                basicTxValues
+              );
+
+              if (!wasHandledSpecifically) {
+                logError('error', 'Transaction', error);
+                alert.error(t('send.cantCompleteTxs'));
+              }
               setLoading(false);
             }
             return;
@@ -702,11 +770,11 @@ export const SendConfirm = () => {
         case TransactionType.ERC721:
         // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
         case TransactionType.ERC1155:
-          if (activeAccount.isPasskeySmartAccount && activeAccount.passkey) {
+          if (activeAccount.isSmartAccount && activeAccount.smartAccount) {
             try {
               await assertPasskeyTokenRecipientAllowed();
               const data = await buildPasskeyTokenTransferData();
-              await submitPasskeyExecution(
+              await submitSmartAccountExecution(
                 basicTxValues.token.contractAddress,
                 '0x0',
                 data
@@ -726,7 +794,7 @@ export const SendConfirm = () => {
 
               if (!wasHandledSpecifically) {
                 logError('error send passkey token', 'Transaction', error);
-                alert.error(error?.message || t('send.cantCompleteTxs'));
+                alert.error(t('send.cantCompleteTxs'));
               }
 
               setLoading(false);

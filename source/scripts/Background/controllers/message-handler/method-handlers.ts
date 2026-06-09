@@ -378,16 +378,18 @@ export class WalletMethodHandler implements IMethodHandler {
           throw cleanErrorStack(error);
 
         case 'getCapabilities':
-          // Passkey smart accounts execute wallet_sendCalls as a single smart
-          // account batch, while regular EOAs are still submitted sequentially.
+          // Smart accounts execute wallet_sendCalls as a single ERC-7579 batch,
+          // while regular EOAs are still submitted sequentially.
           const chainId = `0x${activeNetwork.chainId.toString(16)}`;
-          const passkeyAtomicSupported =
-            account?.isPasskeySmartAccount &&
-            account.passkey?.chainId === activeNetwork.chainId;
+          const smartAccountAtomicSupported =
+            account?.isSmartAccount &&
+            account.smartAccount?.chainId === activeNetwork.chainId;
           const capabilities = {
             [chainId]: {
               atomic: {
-                status: passkeyAtomicSupported ? 'supported' : 'unsupported',
+                status: smartAccountAtomicSupported
+                  ? 'supported'
+                  : 'unsupported',
               },
             },
           };
@@ -457,15 +459,14 @@ export class WalletMethodHandler implements IMethodHandler {
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
-      case 'createPasskeyAccount':
-        return {
-          label: params?.[0]?.label,
-          recovery: params?.[0]?.recovery,
-          sponsor: params?.[0]?.sponsor,
-        };
       case 'sendCalls':
         // Parse the sendCalls parameters
         return params?.[0] || {};
+      case 'prepareSmartAccount':
+        return {
+          host,
+          request: params?.[0] || {},
+        };
       default:
         return {};
     }

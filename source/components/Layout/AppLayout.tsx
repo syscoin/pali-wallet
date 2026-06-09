@@ -171,12 +171,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       if (path === '/settings/edit-account') return t('settings.editAccount');
 
       if (path === '/settings/account/new') return t('settings.createAccount');
-      if (path === '/settings/account/passkey-new')
-        return t('settings.createPasskeyAccount');
-      if (path === '/settings/account/passkey-recover')
-        return t('settings.recoverPasskeyAccounts');
-      if (path === '/settings/account/passkey-policy')
-        return t('settings.passkeyAccountPolicy');
+      if (path === '/settings/account/smart-account-policy')
+        return t('settings.smartAccountAccountPolicy');
       if (path === '/settings/account/import')
         return t('header.importAccount').toUpperCase();
       if (path === '/settings/account/private-key')

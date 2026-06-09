@@ -2,12 +2,16 @@ import { defaultAbiCoder } from '@ethersproject/abi';
 import InputDataDecoder from 'ethereum-input-data-decoder';
 
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
-import {
-  passkeyFactoryInterface,
-  passkeyGuardianRecoveryValidatorInterface,
-  passkeySmartAccountInterface,
-} from 'utils/passkey/contracts';
 import { retryableFetch } from 'utils/retryableFetch';
+import {
+  paliCompositeValidatorInterface,
+  paliEcdsaValidatorInterface,
+  paliEntryPointInterface,
+  paliGuardianRecoveryModuleInterface,
+  paliP256WebAuthnValidatorInterface,
+  paliSmartAccountFactoryInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
 import { getErc20Abi, getContractType } from 'utils/validations';
 
 import { getMethodName } from './commonMethodSignatures';
@@ -142,175 +146,128 @@ export const fetchFunctionSignature = async (
 const normalizeBytesValue = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : '0x';
 
-const getPasskeyExecutionValue = (execution: any, key: string, index: number) =>
-  execution?.[key] ?? execution?.[index];
+const getParsedArg = (args: any, key: string, index: number) =>
+  args?.[key] ?? args?.[index];
 
-const decodePasskeyExecutions = (method: string, executionsArg: any) => {
-  const executions = Array.from(executionsArg || []);
+const parsedTransactionToDecodedTx = (parsed: any): IDecodedTx => ({
+  method: parsed.name,
+  types: parsed.functionFragment.inputs.map((input: any) => input.type),
+  inputs: parsed.functionFragment.inputs.map((input: any, index: number) =>
+    getParsedArg(parsed.args, input.name, index)
+  ),
+  names: parsed.functionFragment.inputs.map((input: any) => input.name),
+});
 
-  if (executions.length === 1) {
-    const execution = executions[0];
+const decodeERC7579ExecutionPayload = (
+  method: string,
+  mode: string,
+  executionCalldata: string
+): IDecodedTx | null => {
+  const callType = mode.slice(0, 4).toLowerCase();
+  if (callType === '0x00') {
+    if (executionCalldata.length < 106) {
+      return null;
+    }
+    const target = `0x${executionCalldata.slice(2, 42)}`;
+    const [value] = defaultAbiCoder.decode(
+      ['uint256'],
+      `0x${executionCalldata.slice(42, 106)}`
+    );
+    const data = normalizeBytesValue(`0x${executionCalldata.slice(106)}`);
 
     return {
       method,
-      types: ['address', 'uint256', 'bytes', 'uint256', 'uint256'],
-      inputs: [
-        getPasskeyExecutionValue(execution, 'target', 0),
-        getPasskeyExecutionValue(execution, 'value', 1),
-        normalizeBytesValue(getPasskeyExecutionValue(execution, 'data', 2)),
-        getPasskeyExecutionValue(execution, 'nonce', 3),
-        getPasskeyExecutionValue(execution, 'deadline', 4),
-      ],
-      names: ['target', 'value', 'data', 'nonce', 'deadline'],
+      types: ['bytes32', 'address', 'uint256', 'bytes'],
+      inputs: [mode, target, value, data],
+      names: ['mode', 'target', 'value', 'data'],
     };
   }
 
+  if (callType !== '0x01') {
+    return {
+      method,
+      types: ['bytes32', 'bytes'],
+      inputs: [mode, executionCalldata],
+      names: ['mode', 'executionCalldata'],
+    };
+  }
+
+  const [executions] = defaultAbiCoder.decode(
+    ['tuple(address target,uint256 value,bytes callData)[]'],
+    executionCalldata
+  ) as unknown as [any[]];
+
   return executions.reduce<IDecodedTx>(
     (decoded, execution: any, index) => {
-      decoded.types.push('address', 'uint256', 'bytes', 'uint256', 'uint256');
+      decoded.types.push('address', 'uint256', 'bytes');
       decoded.inputs.push(
-        getPasskeyExecutionValue(execution, 'target', 0),
-        getPasskeyExecutionValue(execution, 'value', 1),
-        normalizeBytesValue(getPasskeyExecutionValue(execution, 'data', 2)),
-        getPasskeyExecutionValue(execution, 'nonce', 3),
-        getPasskeyExecutionValue(execution, 'deadline', 4)
+        getParsedArg(execution, 'target', 0),
+        getParsedArg(execution, 'value', 1),
+        normalizeBytesValue(getParsedArg(execution, 'callData', 2))
       );
       decoded.names.push(
         `execution${index + 1}Target`,
         `execution${index + 1}Value`,
-        `execution${index + 1}Data`,
-        `execution${index + 1}Nonce`,
-        `execution${index + 1}Deadline`
+        `execution${index + 1}Data`
       );
 
       return decoded;
     },
     {
       method,
-      inputs: [executions.length],
-      names: ['executionCount'],
-      types: ['uint256'],
+      inputs: [mode, executions.length],
+      names: ['mode', 'executionCount'],
+      types: ['bytes32', 'uint256'],
     }
   );
 };
 
-const decodePasskeyTransactionData = (data: string) => {
-  for (const passkeyInterface of [
-    passkeySmartAccountInterface,
-    passkeyFactoryInterface,
-    passkeyGuardianRecoveryValidatorInterface,
+export const decodeSmartAccountTransactionData = (data: string) => {
+  for (const smartAccountInterface of [
+    paliEntryPointInterface,
+    paliSmartAccountInterface,
+    paliSmartAccountFactoryInterface,
+    paliEcdsaValidatorInterface,
+    paliP256WebAuthnValidatorInterface,
+    paliCompositeValidatorInterface,
+    paliGuardianRecoveryModuleInterface,
   ]) {
     try {
-      const parsed = passkeyInterface.parseTransaction({ data });
+      const parsed = smartAccountInterface.parseTransaction({ data });
+
+      if (parsed.name === 'handleOps') {
+        const userOperations = getParsedArg(parsed.args, 'ops', 0) || [];
+        return {
+          method: parsed.name,
+          types: ['uint256', 'address', 'address'],
+          inputs: [
+            userOperations.length,
+            getParsedArg(userOperations[0], 'sender', 0),
+            getParsedArg(parsed.args, 'beneficiary', 1),
+          ],
+          names: ['operationCount', 'firstSender', 'beneficiary'],
+        };
+      }
 
       if (parsed.name === 'execute') {
-        return decodePasskeyExecutions(parsed.name, parsed.args.executions);
+        return decodeERC7579ExecutionPayload(
+          parsed.name,
+          getParsedArg(parsed.args, 'mode', 0),
+          getParsedArg(parsed.args, 'executionCalldata', 1)
+        );
       }
 
-      if (parsed.name === 'createAccountAndExecute') {
-        return decodePasskeyExecutions(parsed.name, parsed.args.executions);
+      if (parsed.name === 'executeFromExecutor') {
+        return decodeERC7579ExecutionPayload(
+          parsed.name,
+          getParsedArg(parsed.args, 'mode', 0),
+          getParsedArg(parsed.args, 'executionCalldata', 1)
+        );
       }
 
-      if (parsed.name === 'setSponsor') {
-        return {
-          method: parsed.name,
-          types: ['uint8', 'address', 'string'],
-          inputs: [parsed.args.mode, parsed.args.signer, parsed.args.url],
-          names: ['mode', 'signer', 'url'],
-        };
-      }
-
-      if (parsed.name === 'addGuardian') {
-        return {
-          method: parsed.name,
-          types: ['address', 'address', 'uint256', 'uint256'],
-          inputs: [
-            parsed.args.account,
-            parsed.args.guardian,
-            parsed.args.recoveryDelay,
-            parsed.args.threshold,
-          ],
-          names: ['account', 'guardian', 'recoveryDelay', 'threshold'],
-        };
-      }
-
-      if (parsed.name === 'updateRecoveryPolicy') {
-        return {
-          method: parsed.name,
-          types: ['address', 'uint256', 'uint256'],
-          inputs: [
-            parsed.args.account,
-            parsed.args.recoveryDelay,
-            parsed.args.threshold,
-          ],
-          names: ['account', 'recoveryDelay', 'threshold'],
-        };
-      }
-
-      if (parsed.name === 'removeGuardian') {
-        return {
-          method: parsed.name,
-          types: ['address', 'address', 'uint256'],
-          inputs: [
-            parsed.args.account,
-            parsed.args.guardian,
-            parsed.args.threshold,
-          ],
-          names: ['account', 'guardian', 'threshold'],
-        };
-      }
-
-      if (parsed.name === 'clearGuardians') {
-        return {
-          method: parsed.name,
-          types: ['address'],
-          inputs: [parsed.args.account],
-          names: ['account'],
-        };
-      }
-
-      if (
-        parsed.name === 'cancelRecovery' ||
-        parsed.name === 'finalizeRecovery'
-      ) {
-        return {
-          method: parsed.name,
-          types: ['address'],
-          inputs: [parsed.args.account],
-          names: ['account'],
-        };
-      }
-
-      if (parsed.name === 'startRecovery') {
-        const data = parsed.args.data;
-        return {
-          method: parsed.name,
-          types: ['address', 'bytes32', 'uint256', 'uint256', 'uint256'],
-          inputs: [
-            data.account,
-            data.newIdentity.credentialIdHash,
-            data.expectedRecoveryNonce,
-            data.expiresAt,
-            data.signatures.length,
-          ],
-          names: [
-            'account',
-            'newCredentialIdHash',
-            'expectedRecoveryNonce',
-            'expiresAt',
-            'signatureCount',
-          ],
-        };
-      }
-
-      return {
-        method: parsed.name,
-        types: [],
-        inputs: [],
-        names: [],
-      };
+      return parsedTransactionToDecodedTx(parsed);
     } catch {
-      // Try the next passkey ABI before falling through to generic decoding.
+      // Try the next smart-account ABI before falling through to generic decoding.
     }
   }
 
@@ -390,8 +347,9 @@ export const decodeTransactionData = async (
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
       decoderValue = decoderInstance.decodeData(validatedData);
       if (decoderValue.method !== null) return decoderValue;
-      const passkeyDecoderValue = decodePasskeyTransactionData(validatedData);
-      if (passkeyDecoderValue) return passkeyDecoderValue;
+      const smartAccountDecoderValue =
+        decodeSmartAccountTransactionData(validatedData);
+      if (smartAccountDecoderValue) return smartAccountDecoderValue;
       if (decoderValue.method === null) {
         const methodId = data.slice(0, 10); // Get first 4 bytes (0x + 8 chars)
         const knownMethodName = getMethodName(methodId);

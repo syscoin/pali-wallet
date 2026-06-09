@@ -201,10 +201,11 @@ export const ConnectWallet = () => {
   const isAccountValidForNetwork = useCallback(
     (account: any, keyringAccountType?: KeyringAccountType | string) => {
       if (!account) return false;
-      if (keyringAccountType === KeyringAccountType.PasskeySmartAccount) {
+      if (keyringAccountType === KeyringAccountType.SmartAccount) {
         return (
           !isBitcoinBased &&
-          Number(account?.passkey?.chainId) === Number(activeNetwork.chainId)
+          Number(account?.smartAccount?.chainId) ===
+            Number(activeNetwork.chainId)
         );
       }
 

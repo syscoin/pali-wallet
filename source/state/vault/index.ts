@@ -38,7 +38,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    [KeyringAccountType.PasskeySmartAccount]: {},
+    [KeyringAccountType.SmartAccount]: {},
   },
   accountAssets: {
     [KeyringAccountType.HDAccount]: {
@@ -50,7 +50,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    [KeyringAccountType.PasskeySmartAccount]: {},
+    [KeyringAccountType.SmartAccount]: {},
   },
   accountTransactions: {
     [KeyringAccountType.HDAccount]: {
@@ -62,7 +62,7 @@ const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    [KeyringAccountType.PasskeySmartAccount]: {},
+    [KeyringAccountType.SmartAccount]: {},
   },
   activeAccount: {
     id: 0,
@@ -322,21 +322,21 @@ const VaultState = createSlice({
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
-          [KeyringAccountType.PasskeySmartAccount]: {},
+          [KeyringAccountType.SmartAccount]: {},
         },
         accountAssets: {
           [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default assets!
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
-          [KeyringAccountType.PasskeySmartAccount]: {},
+          [KeyringAccountType.SmartAccount]: {},
         },
         accountTransactions: {
           [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default transactions!
           [KeyringAccountType.Imported]: {},
           [KeyringAccountType.Trezor]: {},
           [KeyringAccountType.Ledger]: {},
-          [KeyringAccountType.PasskeySmartAccount]: {},
+          [KeyringAccountType.SmartAccount]: {},
         },
         activeAccount: {
           id: 0, // Will be updated when first account is created
@@ -369,7 +369,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
-        [KeyringAccountType.PasskeySmartAccount]: {},
+        [KeyringAccountType.SmartAccount]: {},
       };
       state.accountAssets = {
         [KeyringAccountType.HDAccount]: {
@@ -381,7 +381,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
-        [KeyringAccountType.PasskeySmartAccount]: {},
+        [KeyringAccountType.SmartAccount]: {},
       };
       state.accountTransactions = {
         [KeyringAccountType.HDAccount]: {
@@ -393,7 +393,7 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {},
         [KeyringAccountType.Trezor]: {},
         [KeyringAccountType.Ledger]: {},
-        [KeyringAccountType.PasskeySmartAccount]: {},
+        [KeyringAccountType.SmartAccount]: {},
       };
       state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },
@@ -548,8 +548,19 @@ const VaultState = createSlice({
             const hasMoreConfirmations =
               (transaction.confirmations ?? 0) >
               (existingTx.confirmations ?? 0);
+            const isSmartAccountExecution =
+              Boolean(transactionAny.smartAccountExecutionFrom) ||
+              Boolean(existingTxAny.smartAccountExecutionFrom);
 
-            if (
+            if (isSmartAccountExecution) {
+              currentUserTransactions[existingTxIndex] = {
+                ...existingTxAny,
+                ...transactionAny,
+                smartAccountExecutionFrom:
+                  transactionAny.smartAccountExecutionFrom ||
+                  existingTxAny.smartAccountExecutionFrom,
+              } as any;
+            } else if (
               hasMoreConfirmations ||
               (transactionInBlock && !existingInBlock)
             ) {
@@ -627,6 +638,9 @@ const VaultState = createSlice({
         if (!transactionId) return false;
         if (incomingTransactionIds.has(transactionId.toLowerCase())) {
           return false;
+        }
+        if (networkType === TransactionsType.Ethereum) {
+          return Boolean(transaction.smartAccountExecutionFrom);
         }
 
         const isConfirmed =
