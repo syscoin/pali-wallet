@@ -2,7 +2,7 @@
 title: Начало работы для пользователя
 ---
 
-Pali позволяет управлять EVM аккаунтами, Syscoin UTXO аккаунтами и passkey smart accounts из одного расширения.
+Pali позволяет управлять EVM аккаунтами, Syscoin UTXO аккаунтами и Pali smart accounts из одного расширения.
 
 ## Базовая настройка
 
@@ -37,6 +37,6 @@ EVM dapps могут запрашивать:
 
 Используйте UTXO аккаунты для Syscoin UTXO и Bitcoin-style transaction flows. UTXO dapps могут запрашивать состояние с учетом xpub, change addresses, подписание PSBT и broadcast транзакций.
 
-## Passkey smart accounts
+## Pali smart accounts
 
-Passkey accounts — это smart accounts, контролируемые WebAuthn credentials. Они могут быть полезны для onboarding, управляемого институцией, восстановления аккаунта и sponsored execution. Некоторые passkey accounts являются counterfactual до своей первой deployment transaction.
+Smart accounts — это smart accounts, контролируемые WebAuthn credentials. Они могут быть полезны для onboarding, управляемого институцией, восстановления аккаунта и sponsored execution. Некоторые smart accounts являются counterfactual до своей первой deployment transaction.

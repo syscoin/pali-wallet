@@ -7,7 +7,7 @@ Pali Wallet es una billetera de extensión de navegador para personas y aplicaci
 
 Para dapps EVM, Pali expone un proveedor `window.ethereum` compatible con MetaMask, con solicitudes EIP-1193, descubrimiento EIP-6963, permisos de cuenta, cambio de cadena, firmas, transacciones y llamadas por lotes. Para aplicaciones Syscoin UTXO y de estilo Bitcoin, Pali expone `window.pali` con métodos de cuenta, xpub, dirección de cambio, firma PSBT, transacciones y activos.
 
-Pali también admite cuentas inteligentes passkey para instituciones y dapps avanzadas. Una dapp puede pedir a Pali que cree o recupere una cuenta inteligente respaldada por WebAuthn, adjuntar una política de sponsor y luego ejecutar lotes atómicos mediante `wallet_sendCalls`.
+Pali también admite cuentas inteligentes passkey para instituciones y dapps avanzadas. Una dapp puede pedir a Pali que cree o recupere una cuenta inteligente respaldada por WebAuthn, adjuntar una política de módulos y luego ejecutar lotes atómicos mediante `wallet_sendCalls`.
 
 ## Elige tu camino
 

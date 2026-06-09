@@ -58,6 +58,6 @@ const signature = await window.ethereum.request({
 
 Pali валидирует структуру typed data перед показом signing popup. Dapps должны использовать canonical EIP-712 JSON и не полагаться на wallet-specific parsing quirks.
 
-## Passkey accounts и подписание
+## Smart accounts и подписание
 
-Passkey smart accounts могут подтверждать транзакции и signing flows через WebAuthn-backed smart account logic. Пользователь все равно подтверждает действие в Pali и через platform passkey prompt.
+Pali smart accounts могут подтверждать транзакции и signing flows через WebAuthn-backed smart account logic. Пользователь все равно подтверждает действие в Pali и через platform passkey prompt.

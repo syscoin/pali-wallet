@@ -18,4 +18,4 @@ title: 이전 Pali 버전에서 업그레이드
 
 ## Migration 후 passkey 계정
 
-Passkey smart account는 이전 docs보다 새로운 기능입니다. passkey 계정을 사용했고 local metadata가 없다면 Settings의 passkey recovery flow를 사용하세요. 복구에는 같은 authenticator credential이 필요할 수 있습니다.
+Pali smart account는 이전 docs보다 새로운 기능입니다. passkey 계정을 사용했고 local metadata가 없다면 Settings의 passkey recovery flow를 사용하세요. 복구에는 같은 authenticator credential이 필요할 수 있습니다.

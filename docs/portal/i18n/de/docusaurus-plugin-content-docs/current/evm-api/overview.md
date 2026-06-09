@@ -15,7 +15,7 @@ Palis EVM-Provider wird über `window.ethereum` bereitgestellt und ist mit stand
 | Berechtigungen | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | Assets | `wallet_watchAsset` |
 | Batches | `wallet_sendCalls`, `wallet_getCapabilities` |
-| Passkeys | `wallet_createPasskeyAccount` |
+| Passkeys | `wallet_prepareSmartAccount` |
 
 ## Form eines Provider-Requests
 

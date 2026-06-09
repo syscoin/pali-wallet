@@ -13,7 +13,7 @@ EVM mode предназначен для dapps, использующих `window
 - Rollux и Syscoin NEVM dapps
 - взаимодействия ERC-20, ERC-721 и ERC-1155
 - подписание EIP-712 typed data
-- создание и выполнение passkey smart account
+- создание и выполнение Pali smart account
 
 ## Режим UTXO
 

@@ -44,4 +44,4 @@ The locale code must remain in `i18n.locales` in `docusaurus.config.js` for the 
 
 ## Review Notes
 
-Do not machine-translate passkey, sponsor policy, transaction signing, recovery, or provider API pages without technical review. Stale or imprecise translations can create security and integration errors.
+Do not machine-translate passkey, smart-account module policy, transaction signing, recovery, or provider API pages without technical review. Stale or imprecise translations can create security and integration errors.

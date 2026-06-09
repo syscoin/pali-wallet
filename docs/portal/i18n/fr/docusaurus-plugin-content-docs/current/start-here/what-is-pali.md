@@ -28,7 +28,7 @@ Cela permet à une dapp de construire des expériences qui traversent des chaîn
 | Requêtes groupées EIP-5792 | `wallet_sendCalls`, `wallet_getCapabilities` |
 | État de compte UTXO et xpub | `window.pali` et méthodes `sys_*` |
 | Signature PSBT et diffusion | `sys_sign`, `sys_signAndSend` |
-| Création de compte intelligent passkey | `wallet_createPasskeyAccount` |
+| Création de compte intelligent passkey | `wallet_prepareSmartAccount` |
 
 ## Portée actuelle des passkeys
 

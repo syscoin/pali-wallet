@@ -48,4 +48,4 @@ Pali는 JSON-RPC, EIP-1193, EIP-1474, wallet-specific error를 사용합니다. 
 - `4001`은 일반적인 user cancellation으로 취급하세요.
 - `4101`은 사용자를 올바른 network family로 안내하라는 prompt로 취급하세요.
 - blocking request를 tight loop로 retry하지 마세요. Pali는 popup spam으로부터 사용자를 보호합니다.
-- 특히 required sponsor mode에서 passkey sponsor failure에 대해 actionable copy를 보여주세요.
+- 특히 guardian or module configuration에서 passkey sponsor failure에 대해 actionable copy를 보여주세요.

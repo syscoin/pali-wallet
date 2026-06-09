@@ -19,11 +19,11 @@ dapp은 public account identifier, provider state, signature, transaction hash, 
 
 ## Passkey 안전성
 
-Passkey smart account는 WebAuthn credential을 사용합니다. Pali는 public metadata와 credential identifier를 저장하며, private key material은 authenticator 내부에 남아 있습니다. Pali는 cross-origin WebAuthn assertion을 거부하고 passkey action hash가 준비된 transaction set과 일치하는지 검증합니다.
+Pali smart account는 WebAuthn credential을 사용합니다. Pali는 public metadata와 credential identifier를 저장하며, private key material은 authenticator 내부에 남아 있습니다. Pali는 cross-origin WebAuthn assertion을 거부하고 passkey action hash가 준비된 transaction set과 일치하는지 검증합니다.
 
-## Sponsor policy 안전성
+## Smart-account module policy 안전성
 
-기관 sponsor policy는 다음으로 나뉩니다.
+기관 smart-account module policy는 다음으로 나뉩니다.
 
 - **On-chain policy:** mode, sponsor signer, sponsor URL.
 - **Wallet metadata:** 표시용 policy text 및 기타 local wallet context.

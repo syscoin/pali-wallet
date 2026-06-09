@@ -12,7 +12,7 @@ Syscoin test dapp размещен по адресу:
 https://syscoin-test-dapp.vercel.app/
 ```
 
-Он включает Pali passkey flows, `wallet_createPasskeyAccount`, `wallet_sendCalls`, генерацию ERC-20 allowance batch и распространенные wallet requests.
+Он включает Pali passkey flows, `wallet_prepareSmartAccount`, `wallet_sendCalls`, генерацию ERC-20 allowance batch и распространенные wallet requests.
 
 ## Локальный test dapp
 
@@ -39,8 +39,8 @@ yarn dev:chrome
 ## Checklist тестирования passkey
 
 1. Подключите Pali через default provider selector.
-2. Создайте или восстановите passkey account с отключенным sponsorship.
-3. Пополните или deploy passkey account, если это требуется тестом.
+2. Создайте или восстановите smart account с отключенным sponsorship.
+3. Пополните или deploy smart account, если это требуется тестом.
 4. Соберите batch ERC-20 approve плюс `transferFrom`.
 5. Отправьте batch с `wallet_sendCalls`.
 6. Подтвердите, что кошелек показывает decoded calldata и одно WebAuthn approval для passkey batch.

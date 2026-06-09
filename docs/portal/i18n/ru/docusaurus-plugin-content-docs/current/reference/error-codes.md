@@ -48,4 +48,4 @@ Pali использует JSON-RPC, EIP-1193, EIP-1474 и wallet-specific errors
 - Считайте `4001` обычной отменой пользователем.
 - Считайте `4101` сигналом направить пользователя к правильному семейству сетей.
 - Не повторяйте blocking requests в tight loop. Pali защищает пользователей от popup spam.
-- Показывайте actionable copy для passkey sponsor failures, особенно в required sponsor mode.
+- Показывайте actionable copy для passkey sponsor failures, особенно в guardian or module configuration.

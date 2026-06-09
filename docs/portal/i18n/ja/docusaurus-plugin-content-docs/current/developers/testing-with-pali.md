@@ -12,7 +12,7 @@ Syscoinテストdappは次の場所でホストされています。
 https://syscoin-test-dapp.vercel.app/
 ```
 
-Pali passkeyフロー、`wallet_createPasskeyAccount`、`wallet_sendCalls`、ERC-20 allowanceバッチ生成、一般的なウォレットリクエストが含まれています。
+Pali passkeyフロー、`wallet_prepareSmartAccount`、`wallet_sendCalls`、ERC-20 allowanceバッチ生成、一般的なウォレットリクエストが含まれています。
 
 ## ローカルテストdapp
 

@@ -15,7 +15,7 @@ Pali 的 EVM provider 通过 `window.ethereum` 暴露，并兼容标准 MetaMask
 | 权限 | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | 资产 | `wallet_watchAsset` |
 | 批量操作 | `wallet_sendCalls`, `wallet_getCapabilities` |
-| Passkey | `wallet_createPasskeyAccount` |
+| Passkey | `wallet_prepareSmartAccount` |
 
 ## Provider 请求形状
 

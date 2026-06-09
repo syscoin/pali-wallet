@@ -1,52 +1,13 @@
 ---
-title: Servicios sponsor
+title: Gas y financiación
 ---
 
-Un servicio sponsor es un endpoint controlado por una institución que participa en la política de ejecución de cuentas inteligentes passkey.
+La autorización de una cuenta inteligente y el pago de gas son cosas separadas. Un passkey o validador autoriza la acción; una cuenta financiada paga la comisión de red.
 
-## Objeto sponsor
+## Modelo actual
 
+El flujo actual usa gas pagado por la wallet: despliegue, instalación de módulos, `wallet_sendCalls` y guardian recovery se envían con una cuenta local financiada. No anuncies una experiencia gasless salvo que una capability futura lo indique explícitamente.
 
-```js
-{
-  mode: 'required',
-  url: 'https://institution.example/sponsor/user-123',
-  signer: '0xSponsorSignerAddress',
-  policyText: 'Institution co-authorization is required.'
-}
-```
+## Guía para dapps
 
-## Significado de campos
-
-| Campo | Propósito |
-| --- | --- |
-| `mode` | `disabled`, `gasOnly` o `required`. |
-| `url` | Endpoint opcional de servicio que Pali contacta para soporte de ejecución sponsor. Pali lo requiere para sponsorship `gasOnly` porque no hay sponsor remoto de gas sin una URL de servicio. |
-| `signer` | Dirección esperada del firmante sponsor para pruebas de política requerida. Obligatorio para modo `required`. |
-| `policyText` | Explicación visible al usuario almacenada en metadatos de billetera. No es aplicación on-chain. |
-
-## Política on-chain
-
-La política de la cuenta inteligente almacena modo, firmante y una URL pública de sponsor. El texto de política es metadato de billetera usado para visualización.
-
-## Idempotencia
-
-Las solicitudes de ejecución sponsor usan una clave de idempotencia derivada del hash de acción passkey. Un servicio sponsor debe tratar solicitudes repetidas con la misma clave como la misma acción.
-
-## Modo sponsor requerido
-
-En modo `required`, la prueba de sponsor debe recuperar al firmante configurado. La URL de sponsor es opcional: Pali puede obtener la prueba del servicio sponsor cuando se configura una URL, o firmar localmente cuando el firmante configurado es una cuenta disponible en la billetera. Si Pali no puede obtener o validar la prueba de sponsor, la ejecución falla.
-
-El pago de gas es independiente de la autorización del sponsor. Después de que haya una prueba de sponsor válida, Pali todavía puede pagar gas desde cualquier cuenta de software financiada seleccionada para ejecución passkey.
-
-## Modo gas-only
-
-En modo `gasOnly`, el servicio sponsor puede retransmitir o ayudar a pagar gas. Pali requiere una URL de sponsor para este modo porque la URL identifica el servicio de sponsorship de gas. Si sponsorship no está disponible, Pali puede hacer fallback a ejecución con gas de la billetera donde la política lo permita.
-
-## Guía institucional
-
-- Usa URLs de sponsor estables por usuario.
-- Mantén las claves de firmante en infraestructura institucional, no en el frontend de la dapp.
-- Haz que el texto de política sea corto, específico y comprensible.
-- Devuelve estado consistente para claves de idempotencia repetidas.
-- Monitorea solicitudes de sponsor fallidas y deadlines de ejecución expirados.
+Explica que Pali creará una cuenta inteligente, que el usuario aprobará la acción y que puede necesitar native token para despliegue o recuperación. No pases objetos legacy de patrocinio a `wallet_prepareSmartAccount`; la solicitud actual usa label y configuración de authenticator/módulos.

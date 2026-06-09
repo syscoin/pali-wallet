@@ -28,7 +28,7 @@ title: Method matrix
 | `wallet_watchAsset` | EVM | asset watch를 요청합니다. | Yes |
 | `wallet_addEthereumChain` | EVM | EVM chain을 추가합니다. | Yes |
 | `wallet_switchEthereumChain` | EVM | EVM chain을 전환합니다. | Yes |
-| `wallet_createPasskeyAccount` | EVM | passkey smart account를 생성하고 deploy합니다. | Yes |
+| `wallet_prepareSmartAccount` | EVM | Pali smart account를 생성하고 deploy합니다. | Yes |
 | `wallet_sendCalls` | EVM | EIP-5792 batch request를 전송합니다. | Yes |
 | `wallet_getCapabilities` | EVM | account capability를 읽습니다. | No |
 | `wallet_getCallsStatus` | EVM | Compatibility stub; unknown id error. | No |

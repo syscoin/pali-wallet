@@ -37,4 +37,4 @@ La recuperación passkey de Pali usa metadatos de recuperación limitados a la b
 
 ## Idempotencia de crear/recuperar desde dapp
 
-Cuando una dapp llama `wallet_createPasskeyAccount`, Pali primero comprueba si una cuenta passkey on-chain existente coincide con la política de sponsor solicitada. Si la cuenta coincidente ya existe localmente, Pali la reutiliza en vez de crear un duplicado. Si existe on-chain pero no localmente, Pali puede recuperarla en la billetera.
+Cuando una dapp llama `wallet_prepareSmartAccount`, Pali primero comprueba si una cuenta passkey on-chain existente coincide con la política de módulos solicitada. Si la cuenta coincidente ya existe localmente, Pali la reutiliza en vez de crear un duplicado. Si existe on-chain pero no localmente, Pali puede recuperarla en la billetera.

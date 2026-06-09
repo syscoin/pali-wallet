@@ -10,7 +10,7 @@ Pali는 seed phrase, private key, passkey private material, wallet password 또�
 
 ## dapp이 요청할 수 있는 것
 
-dapp은 public account address, provider state, network state, signature, transaction approval, PSBT signing, asset watch approval, chain switching, passkey account creation, batch execution을 요청할 수 있습니다.
+dapp은 public account address, provider state, network state, signature, transaction approval, PSBT signing, asset watch approval, chain switching, smart account creation, batch execution을 요청할 수 있습니다.
 
 ## 연결 안전
 
@@ -18,7 +18,7 @@ dapp은 public account address, provider state, network state, signature, transa
 
 ## 공개 blockchain data
 
-Blockchain activity는 공개됩니다. address, transaction history, token approval, UTXO activity, smart account deployment, passkey smart account activity가 explorer와 indexer에 표시될 수 있습니다.
+Blockchain activity는 공개됩니다. address, transaction history, token approval, UTXO activity, smart account deployment, Pali smart account activity가 explorer와 indexer에 표시될 수 있습니다.
 
 ## 기관 passkey 개인정보
 

@@ -30,6 +30,18 @@ Passkeys use WebAuthn. Most platform passkeys sign with ES256, which is ECDSA ov
 
 Pali's P-256 WebAuthn validator lets the smart account verify passkey proofs on-chain. The user approves with the browser or operating system passkey UI, while the passkey private key stays inside the authenticator or platform account.
 
+## For institutions and teams
+
+Institutions should treat Pali smart accounts as account infrastructure, not only as a passkey login flow. The useful controls are operational:
+
+- Use passkeys for lower-friction onboarding when a user should not handle a raw private key.
+- Use wallet-owned ECDSA or composite validators when a team, hardware wallet, or controlled owner set must co-authorize actions.
+- Use guardian recovery for a delayed replacement path when the active authenticator is lost.
+- Keep gas payer accounts funded because the current Pali flow uses wallet-paid deployment and execution.
+- Document who controls each validator, who the guardians are, and what the recovery delay means for the user.
+
+The wallet UI is intentionally explicit when a dapp requests an external ECDSA owner. That address can approve future account actions, so Pali shows it separately and requires acknowledgement before continuing.
+
 ## Dapp method
 
 Dapps request creation with `wallet_prepareSmartAccount`:

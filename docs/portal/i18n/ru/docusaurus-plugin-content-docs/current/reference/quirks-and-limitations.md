@@ -28,7 +28,7 @@ title: Особенности и ограничения
 
 ## Атомарность
 
-- Passkey smart accounts могут выполнять выбранные batch calls через одно smart account execution.
+- Pali smart accounts могут выполнять выбранные batch calls через одно smart account execution.
 - Обычные EOA batch calls являются последовательными wallet sends и не должны рассматриваться как настоящее atomic execution.
 
 ## Подписки
@@ -37,10 +37,10 @@ title: Особенности и ограничения
 
 ## Passkeys
 
-- Поддержка passkey smart account зависит от factory configuration для активной chain.
+- Поддержка Pali smart account зависит от factory configuration для активной chain.
 - Contract deployment calls не поддерживаются через passkey `wallet_sendCalls`.
 - `policyText` — wallet metadata и display text, а не on-chain enforcement.
-- Required sponsor mode зависит от availability sponsor service и proof validation.
+- Текущий smart-account execution использует wallet-paid gas, если будущая capability явно не сообщает sponsorship.
 
 ## Iframes
 

@@ -28,7 +28,7 @@ Dadurch kann eine dapp Erlebnisse entwickeln, die accountbasierte und UTXO-basie
 | EIP-5792-Batch-Requests | `wallet_sendCalls`, `wallet_getCapabilities` |
 | UTXO-Account- und xpub-Zustand | `window.pali` und `sys_*`-Methoden |
 | PSBT-Signatur und Broadcast | `sys_sign`, `sys_signAndSend` |
-| Erstellung von Passkey Smart Accounts | `wallet_createPasskeyAccount` |
+| Erstellung von Passkey Smart Accounts | `wallet_prepareSmartAccount` |
 
 ## Aktueller Passkey-Umfang
 

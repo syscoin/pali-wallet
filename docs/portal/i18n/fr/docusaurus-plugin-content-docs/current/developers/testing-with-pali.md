@@ -12,7 +12,7 @@ La dapp de test Syscoin est hébergée à l'adresse :
 https://syscoin-test-dapp.vercel.app/
 ```
 
-Elle inclut les flux passkey Pali, `wallet_createPasskeyAccount`, `wallet_sendCalls`, la génération de lots d'allowance ERC-20 et les requêtes de portefeuille courantes.
+Elle inclut les flux passkey Pali, `wallet_prepareSmartAccount`, `wallet_sendCalls`, la génération de lots d'allowance ERC-20 et les requêtes de portefeuille courantes.
 
 ## Dapp de test locale
 

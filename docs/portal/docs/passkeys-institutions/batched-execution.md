@@ -52,7 +52,7 @@ When `atomicRequired` is true, the user should approve or reject the full batch.
 
 ## Gas payment
 
-The current Pali flow submits smart-account executions with a wallet gas payer. Dapps should not assume a remote sponsor service is available unless a future wallet capability explicitly reports one.
+The current Pali flow submits smart-account executions with a wallet gas payer. Dapps should not assume remote gas sponsorship is available unless a future wallet capability explicitly reports one.
 
 ## Unsupported call type
 

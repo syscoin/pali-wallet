@@ -15,12 +15,12 @@
     "message": "Entwickler",
     "description": "Navbar item with label Developers"
   },
-  "item.label.Passkeys": {
-    "message": "Passkeys",
-    "description": "Navbar item with label Passkeys"
-  },
   "item.label.GitHub": {
     "message": "GitHub",
     "description": "Navbar item with label GitHub"
+  },
+  "item.label.Smart Accounts": {
+    "message": "Smart Accounts",
+    "description": "Navbar item with label Smart Accounts"
   }
 }

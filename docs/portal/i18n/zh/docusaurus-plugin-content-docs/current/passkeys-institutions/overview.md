@@ -1,85 +1,31 @@
 ---
-title: Passkey 与机构
+title: Pali 智能账户
 ---
 
-Pali Passkey 智能账户让 dapp 可以从钱包请求链上账户创建，同时用户通过 WebAuthn 控制执行。
+Pali 智能账户是由合约实现的账户，Pali 可以为用户创建、连接并操作它。对普通用户来说，它像一个普通钱包账户：查看 dapp 请求，用 passkey 或钱包密钥批准，然后由 Pali 发送交易。底层是模块化设计：验证器模块负责授权，执行器模块提供恢复等功能。
 
-这适用于：
+## 简单理解
 
-- 机构引导流程
-- sponsor 支持的 gas 流程
-- 共同授权策略
-- 钱包重装后的账户恢复
-- 原子多调用工作流
-- 希望获得 Passkey UX 但不想构建钱包的 dapp
+- 一个账户地址持有资产，也是 dapp 看到的地址。
+- 账户可以使用 passkey、ECDSA 或组合策略授权。
+- Guardian recovery 可以在延迟后替换当前验证器。
+- `wallet_sendCalls` 可以把多个 call 作为一次原子操作执行。
 
-## 为什么 zkSYS Passkey 可行
+## 技术模型
 
-Passkey 使用 WebAuthn，而 WebAuthn 的标准签名算法是 ES256：基于 P-256 曲线的 ECDSA，也称为 secp256r1。通用 EVM 钱包通常使用 secp256k1 EOA，因此 Passkey 签名并不直接等同于 EOA 签名。
+`PaliSmartAccount` 执行 calls，并通过 ERC-7579 风格的模块验证签名。`PaliSmartAccountFactory` 派生确定性地址并部署账户。Pali 内部使用 ERC-4337 风格编码准备执行，并使用 EIP-1271 做合约签名验证。
 
-Pali 的 Passkey 账户是围绕链上 P-256 验证设计的 zkSYS 智能账户。钱包提取 WebAuthn 公钥坐标、challenge、authenticator data、client data 和 P-256 签名，然后智能账户/factory 路径会根据账户注册元数据验证该证明。这就是设备生物识别或平台 Passkey 能够在私钥留在用户 authenticator 内部的同时用于账户授权的原因。
+## 面向机构和团队
 
-实际结果是一种感觉像生物识别登录、但会授权链上操作的钱包 UX：
+机构应把 Pali 智能账户当作账户基础设施，而不仅是 passkey 登录。passkey 适合低摩擦 onboarding；ECDSA 或组合验证器适合团队、硬件钱包或受控 owner 集；guardian recovery 适合作为延迟替换路径；同时需要准备有余额的 gas payer 来部署和执行。应清楚记录谁控制验证器、谁是 guardian、恢复延迟对用户意味着什么。
 
-1. dapp 请求 Passkey 智能账户或批量执行。
-2. Pali 为确切的链、账户、调用、nonce、deadline 和 sponsor 策略准备 action hash。
-3. 浏览器/OS 请求用户进行 Passkey 批准。
-4. zkSYS 智能账户在执行前在链上验证 P-256 WebAuthn proof。
+如果 dapp 请求外部 ECDSA owner，Pali 会单独警告，因为该地址可以批准未来的账户操作。
 
-## 支持的网络
-
-并非每条 EVM 链都启用了 Passkey 账户。它们需要已配置的 Passkey factory 和 zkSYS P-256 验证支持。
-
-| 网络 | Chain id | 此 Pali 构建中的状态 |
-| --- | --- | --- |
-| `zkTanenbaum` | `57057` | 已配置。Factory：`0x4DB71a59725aB275fc2127da02F9DBA4946227F0`。 |
-| `zkSYS` | 钱包配置中待定 | 一旦 factory 地址在 Pali 中配置完成，计划作为相同 Passkey 架构的生产目标。 |
-
-如果 dapp 在没有已配置 factory 的网络上调用 `wallet_createPasskeyAccount`，Pali 会拒绝该请求，而不是创建不受支持的元数据。
-
-## dapp 方法
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/passkey-create-disabled.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/passkey-create-disabled.png" alt="sponsorship disabled 的 Pali wallet_createPasskeyAccount 弹窗" />
-</a>
-  <figcaption>默认的 dapp 驱动 Passkey 流程应以 sponsorship disabled 开始，除非机构明确需要 sponsor 策略。</figcaption>
-</figure>
+## Dapp 方法
 
 ```js
 const account = await window.ethereum.request({
-  method: 'wallet_createPasskeyAccount',
-  params: [
-    {
-      label: 'Pali Wallet Passkey',
-      sponsor: { mode: 'disabled' },
-    },
-  ],
+  method: 'wallet_prepareSmartAccount',
+  params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
-
-结果包含智能账户 `address` 和公开 Passkey 元数据。
-
-## Sponsor modes
-
-| 模式 | 含义 |
-| --- | --- |
-| `disabled` | 无 sponsor 策略。钱包/用户支付 gas。 |
-| `gasOnly` | Sponsor service 可以支付 gas。Pali 对此模式要求 sponsor URL；如果 sponsorship 失败，可以允许 wallet-gas 回退。 |
-| `required` | 策略要求 sponsor 共同授权。必须提供 signer；当 Pali 可以从钱包中的本地账户获得 signer proof 时，sponsor URL 是可选的。 |
-
-## 用户控制
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/browser-passkey-create.png" alt="浏览器或操作系统 Passkey 创建界面" />
-</a>
-  <figcaption>钱包审核后，浏览器或操作系统会处理 WebAuthn Passkey 创建。</figcaption>
-</figure>
-
-用户会在批准前看到请求站点、label、sponsor mode、signer、URL 和策略文本。然后浏览器或 OS 会显示 WebAuthn Passkey 提示。
-
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp 引导流程"></video>
-  <figcaption>Passkey 引导流程：品牌介绍、dapp 请求和 Pali 账户批准。</figcaption>
-</figure>

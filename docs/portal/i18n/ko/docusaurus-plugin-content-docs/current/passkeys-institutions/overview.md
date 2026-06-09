@@ -1,85 +1,31 @@
 ---
-title: Passkey와 기관
+title: Pali 스마트 계정
 ---
 
-Pali passkey smart account를 사용하면 사용자가 WebAuthn을 통해 execution을 제어하는 동안 dapp이 wallet에 account creation 또는 recovery를 요청할 수 있습니다.
+Pali 스마트 계정은 Pali가 사용자를 위해 생성, 연결, 실행할 수 있는 contract account입니다. 일반 사용자에게는 지갑 계정처럼 보입니다. dapp 요청을 확인하고 passkey 또는 지갑 키로 승인하면 Pali가 transaction을 전송합니다. 내부적으로는 modular 구조이며 validator module이 action을 승인하고 executor module이 recovery 같은 기능을 추가합니다.
 
-이는 다음에 유용합니다.
+## 간단한 모델
 
-- institutional onboarding
-- sponsor-backed gas flow
-- co-authorized policy
-- wallet reinstall 후 account recovery
-- atomic multi-call workflow
-- wallet을 직접 만들지 않고 passkey UX를 원하는 dapp
+- 하나의 account address가 자금을 보관하고 dapp도 그 주소를 봅니다.
+- 계정은 passkey, ECDSA 또는 composite policy를 사용할 수 있습니다.
+- Guardian recovery는 delay 후 active validator를 교체할 수 있습니다.
+- `wallet_sendCalls`는 여러 call을 하나의 atomic action으로 실행할 수 있습니다.
 
-## zkSYS passkey가 가능한 이유
+## 기술 모델
 
-Passkey는 WebAuthn을 사용하며, WebAuthn의 표준 signing algorithm은 ES256입니다. 이는 secp256r1이라고도 하는 P-256 curve 위의 ECDSA입니다. 일반 EVM wallet은 보통 secp256k1 EOA를 사용하므로 passkey signature는 EOA signature가 직접 아닙니다.
+`PaliSmartAccount`는 call을 실행하고 ERC-7579-style module로 signature를 검증합니다. `PaliSmartAccountFactory`는 deterministic address를 계산하고 계정을 deploy합니다. Pali는 내부적으로 ERC-4337-style encoding을 사용하고 EIP-1271로 contract signature를 검증합니다.
 
-Pali의 passkey account는 on-chain P-256 verification을 중심으로 설계된 zkSYS smart account입니다. wallet은 WebAuthn public key coordinate, challenge, authenticator data, client data, P-256 signature를 추출하고, smart account/factory path는 그 proof를 account의 registered metadata에 대해 검증합니다. 이것이 private key를 사용자의 authenticator 내부에 유지하면서 device biometric 또는 platform passkey를 account authorization에 사용할 수 있게 하는 이유입니다.
+## 기관과 팀을 위해
 
-실제 결과는 biometric login처럼 느껴지지만 chain action을 승인하는 wallet UX입니다.
+기관은 Pali 스마트 계정을 단순한 passkey login이 아니라 account infrastructure로 다뤄야 합니다. Passkey는 쉬운 onboarding에, ECDSA 또는 composite validator는 팀이나 hardware wallet control에, guardian recovery는 delay가 있는 교체 경로에 적합합니다. Deployment와 execution을 위해 gas payer 계정도 funded 상태여야 합니다.
 
-1. dapp이 passkey smart account 또는 batch execution을 요청합니다.
-2. Pali는 정확한 chain, account, call, nonce, deadline, sponsor policy에 대한 action hash를 준비합니다.
-3. browser/OS가 사용자에게 passkey approval을 요청합니다.
-4. zkSYS smart account가 execution 전에 P-256 WebAuthn proof를 on-chain으로 검증합니다.
-
-## 지원 network
-
-Passkey 계정은 모든 EVM chain에서 활성화되어 있지 않습니다. 설정된 passkey factory와 zkSYS P-256 verification support가 필요합니다.
-
-| Network | Chain id | 이 Pali build에서의 status |
-| --- | --- | --- |
-| `zkTanenbaum` | `57057` | 설정됨. Factory: `0x4DB71a59725aB275fc2127da02F9DBA4946227F0`. |
-| `zkSYS` | wallet config에서 TBD | factory address가 Pali에 설정되면 같은 passkey architecture의 production target으로 의도됨. |
-
-설정된 factory가 없는 network에서 dapp이 `wallet_createPasskeyAccount`를 호출하면 Pali는 unsupported metadata를 생성하는 대신 요청을 거부합니다.
+dapp이 external ECDSA owner를 요청하면 Pali는 별도로 경고합니다. 그 주소는 이후 계정 action을 승인할 수 있기 때문입니다.
 
 ## Dapp method
 
-<figure>
-  <a className="pali-media-link" href="/img/screens/passkey-create-disabled.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/passkey-create-disabled.png" alt="sponsorship disabled 상태의 Pali wallet_createPasskeyAccount popup" />
-</a>
-  <figcaption>기본 dapp-driven passkey flow는 기관이 명시적으로 sponsor policy를 필요로 하지 않는 한 sponsorship disabled로 시작해야 합니다.</figcaption>
-</figure>
-
 ```js
 const account = await window.ethereum.request({
-  method: 'wallet_createPasskeyAccount',
-  params: [
-    {
-      label: 'Pali Wallet Passkey',
-      sponsor: { mode: 'disabled' },
-    },
-  ],
+  method: 'wallet_prepareSmartAccount',
+  params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
-
-result에는 smart account `address`와 public passkey metadata가 포함됩니다.
-
-## Sponsor mode
-
-| Mode | 의미 |
-| --- | --- |
-| `disabled` | sponsor policy 없음. wallet/user가 gas를 지불합니다. |
-| `gasOnly` | Sponsor service가 gas를 지불할 수 있습니다. Pali는 이 mode에 sponsor URL을 요구합니다. sponsorship이 실패하면 wallet-gas fallback이 허용될 수 있습니다. |
-| `required` | policy에 따라 sponsor co-authorization이 필요합니다. signer가 필요하며, Pali가 wallet의 local account에서 signer proof를 얻을 수 있으면 sponsor URL은 optional입니다. |
-
-## 사용자 제어
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/browser-passkey-create.png" alt="Browser 또는 operating system passkey creation sheet" />
-</a>
-  <figcaption>wallet review 후 browser 또는 operating system이 WebAuthn passkey creation을 처리합니다.</figcaption>
-</figure>
-
-사용자는 승인 전에 requesting site, label, sponsor mode, signer, URL, policy text를 봅니다. 그런 다음 browser 또는 OS가 WebAuthn passkey prompt를 표시합니다.
-
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp onboarding flow"></video>
-  <figcaption>Passkey onboarding flow: branded intro, dapp request, Pali account approval.</figcaption>
-</figure>

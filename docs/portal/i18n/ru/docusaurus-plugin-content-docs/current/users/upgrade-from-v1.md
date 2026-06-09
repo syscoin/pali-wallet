@@ -16,6 +16,6 @@ title: Обновление со старых версий Pali
 8. Задайте новый пароль кошелька.
 9. Проверьте ожидаемые аккаунты и сети.
 
-## Passkey accounts после миграции
+## Smart accounts после миграции
 
-Passkey smart accounts новее старой документации. Если вы использовали passkey accounts, а локальные metadata отсутствуют, используйте recovery flow passkey в Settings. Для восстановления может потребоваться тот же authenticator credential и, для некоторых required sponsor policies, URL sponsor service.
+Pali smart accounts новее старой документации. Если вы использовали smart accounts, а локальные metadata отсутствуют, используйте recovery flow в Settings. Для восстановления может потребоваться соответствующий authenticator credential или guardian recovery path.

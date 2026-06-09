@@ -28,7 +28,7 @@ title: メソッド一覧
 | `wallet_watchAsset` | EVM | アセット監視をリクエストします。 | はい |
 | `wallet_addEthereumChain` | EVM | EVMチェーンを追加します。 | はい |
 | `wallet_switchEthereumChain` | EVM | EVMチェーンを切り替えます。 | はい |
-| `wallet_createPasskeyAccount` | EVM | passkeyスマートアカウントを作成してデプロイします。 | はい |
+| `wallet_prepareSmartAccount` | EVM | passkeyスマートアカウントを作成してデプロイします。 | はい |
 | `wallet_sendCalls` | EVM | EIP-5792バッチリクエストを送信します。 | はい |
 | `wallet_getCapabilities` | EVM | アカウントcapabilitiesを読み取ります。 | いいえ |
 | `wallet_getCallsStatus` | EVM | 互換性stub。不明なidsはエラーになります。 | いいえ |
