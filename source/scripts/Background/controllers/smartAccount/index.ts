@@ -713,22 +713,32 @@ class SmartAccountController {
         module.type === 'validator' &&
         module.address.toLowerCase() === validatorAddress.toLowerCase()
     );
-    if (validator && metadata.isDeployed) {
+    if (validator) {
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error('Web3 provider not available');
       }
-      const accountContract = new Contract(
-        account.address,
-        paliSmartAccountInterface,
-        provider
-      );
-      const isInstalled = await accountContract.isModuleInstalled(
-        ERC7579_MODULE_TYPE_VALIDATOR,
-        validatorAddress,
-        '0x'
-      );
-      if (!isInstalled) {
+
+      if (metadata.isDeployed) {
+        const accountContract = new Contract(
+          account.address,
+          paliSmartAccountInterface,
+          provider
+        );
+        const isInstalled = await accountContract.isModuleInstalled(
+          ERC7579_MODULE_TYPE_VALIDATOR,
+          validatorAddress,
+          '0x'
+        );
+        if (!isInstalled) {
+          metadata = await this.hydrateSmartAccount(account.id);
+          validator = metadata.installedModules?.find(
+            (module) =>
+              module.type === 'validator' &&
+              module.address.toLowerCase() === validatorAddress.toLowerCase()
+          );
+        }
+      } else if ((await provider.getCode(account.address)) !== '0x') {
         metadata = await this.hydrateSmartAccount(account.id);
         validator = metadata.installedModules?.find(
           (module) =>
