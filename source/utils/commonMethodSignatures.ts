@@ -126,7 +126,7 @@ export const SMART_ACCOUNT_METHOD_SIGNATURES = {
   '0xecd05961': 'isModuleType',
   '0xd60b347f': 'isInitialized',
   '0xf551e2ee': 'isValidSignatureWithSender',
-  '0x02030577': 'scheduleRecovery',
+  '0x15c278db': 'scheduleRecovery',
   '0x0857e3d1': 'cancelRecovery',
   '0x0165f182': 'executeRecovery',
   '0x6591e72d': 'getOperationId',
