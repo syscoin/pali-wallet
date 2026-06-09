@@ -1163,16 +1163,31 @@ class SmartAccountController {
       paliSmartAccountInterface,
       provider
     );
+    const targetValidator = getAddress(params.target.auth.validator);
     const replaceExistingValidator = await accountContract.isModuleInstalled(
       ERC7579_MODULE_TYPE_VALIDATOR,
-      params.target.auth.validator,
+      targetValidator,
       '0x'
     );
+    const currentSmartAccount = this.getActiveSmartAccount(account);
+    const currentValidator = currentSmartAccount.metadata.auth?.validator
+      ? getAddress(currentSmartAccount.metadata.auth.validator)
+      : undefined;
+    const revokeValidator =
+      currentValidator &&
+      (await accountContract.isModuleInstalled(
+        ERC7579_MODULE_TYPE_VALIDATOR,
+        currentValidator,
+        '0x'
+      ))
+        ? currentValidator
+        : undefined;
     const operation = buildSmartAccountGuardianRecoveryOperation({
       account,
       chainId: activeNetwork.chainId,
       replaceExistingValidator,
       recoveryModule,
+      revokeValidator,
       salt: randomBytes32Hex(),
       target: params.target,
     });

@@ -70,32 +70,41 @@ export const buildSmartAccountGuardianRecoveryOperation = (params: {
   chainId: number;
   recoveryModule: string;
   replaceExistingValidator?: boolean;
+  revokeValidator?: string;
   salt: string;
   target: PaliRecoveryTarget;
 }) => {
   const installCall = encodeRecoveryTargetExecution(params.target);
-  const executions = params.replaceExistingValidator
-    ? [
-        {
-          data: encodeUninstallValidatorModuleCall(
-            params.target.auth.validator
-          ),
-          target: params.account,
-          value: '0',
-        },
-        {
-          data: installCall,
-          target: params.account,
-          value: '0',
-        },
-      ]
-    : [
-        {
-          data: installCall,
-          target: params.account,
-          value: '0',
-        },
-      ];
+  const replacesActiveTarget =
+    params.revokeValidator?.toLowerCase() ===
+    params.target.auth.validator.toLowerCase();
+  const executions = [
+    ...(params.replaceExistingValidator
+      ? [
+          {
+            data: encodeUninstallValidatorModuleCall(
+              params.target.auth.validator
+            ),
+            target: params.account,
+            value: '0',
+          },
+        ]
+      : []),
+    {
+      data: installCall,
+      target: params.account,
+      value: '0',
+    },
+    ...(params.revokeValidator && !replacesActiveTarget
+      ? [
+          {
+            data: encodeUninstallValidatorModuleCall(params.revokeValidator),
+            target: params.account,
+            value: '0',
+          },
+        ]
+      : []),
+  ];
   const { executionCalldata, mode } = encodeERC7579Executions(executions);
 
   return {
