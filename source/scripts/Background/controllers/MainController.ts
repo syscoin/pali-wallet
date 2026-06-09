@@ -2675,13 +2675,6 @@ class MainController {
     return this.smartAccount.hydrateSmartAccount(accountId);
   }
 
-  public async switchSmartAccountValidator(params: {
-    accountId: number;
-    validator: string;
-  }): Promise<ISmartAccountMetadata> {
-    return this.smartAccount.switchSmartAccountValidator(params);
-  }
-
   public async getSmartAccountNativeGasStatus(params: {
     accountId: number;
   }): Promise<{

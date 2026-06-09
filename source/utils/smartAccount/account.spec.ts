@@ -31,6 +31,7 @@ import {
   paliSmartAccountInterface,
   paliSmartAccountFactoryInterface,
 } from './contracts';
+import { encodeSmartAccountAuthenticatorSignature } from './execution';
 
 describe('ERC-7579 smart account helpers', () => {
   const auth = {
@@ -84,6 +85,15 @@ describe('ERC-7579 smart account helpers', () => {
         [['0x1111111111111111111111111111111111111111'], 1]
       )
     );
+  });
+
+  it('prefixes ERC-1271 smart-account signatures with the validator', () => {
+    expect(
+      encodeSmartAccountAuthenticatorSignature({
+        signature: '0x1234',
+        validator: auth.validator,
+      })
+    ).toBe(hexConcat([auth.validator, '0x1234']));
   });
 
   it('encodes ERC-7579 single and batch executions with matching modes', () => {

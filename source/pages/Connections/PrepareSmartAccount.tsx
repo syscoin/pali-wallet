@@ -437,8 +437,8 @@ export const PrepareSmartAccount = () => {
       });
       setCreationStep('saving');
       await controllerEmitter(
-        ['wallet', 'switchSmartAccountValidator'],
-        [{ accountId: account.id, validator: requested.auth.validator }],
+        ['wallet', 'hydrateSmartAccount'],
+        [account.id],
         300000
       );
       await controllerEmitter(

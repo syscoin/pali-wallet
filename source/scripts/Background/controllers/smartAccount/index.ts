@@ -699,94 +699,6 @@ class SmartAccountController {
     return metadata;
   }
 
-  public async switchSmartAccountValidator(params: {
-    accountId: number;
-    validator: string;
-  }): Promise<ISmartAccountMetadata> {
-    const { account, metadata: cachedMetadata } = this.getSmartAccountById(
-      params.accountId
-    );
-    const validatorAddress = getAddress(params.validator);
-    let metadata = cachedMetadata;
-    let validator = metadata.installedModules?.find(
-      (module) =>
-        module.type === 'validator' &&
-        module.address.toLowerCase() === validatorAddress.toLowerCase()
-    );
-    if (validator) {
-      const provider = this.ethereumTransaction?.web3Provider;
-      if (!provider) {
-        throw new Error('Web3 provider not available');
-      }
-
-      if (metadata.isDeployed) {
-        const accountContract = new Contract(
-          account.address,
-          paliSmartAccountInterface,
-          provider
-        );
-        const isInstalled = await accountContract.isModuleInstalled(
-          ERC7579_MODULE_TYPE_VALIDATOR,
-          validatorAddress,
-          '0x'
-        );
-        if (!isInstalled) {
-          metadata = await this.hydrateSmartAccount(account.id);
-          validator = metadata.installedModules?.find(
-            (module) =>
-              module.type === 'validator' &&
-              module.address.toLowerCase() === validatorAddress.toLowerCase()
-          );
-        }
-      } else if ((await provider.getCode(account.address)) !== '0x') {
-        metadata = await this.hydrateSmartAccount(account.id);
-        validator = metadata.installedModules?.find(
-          (module) =>
-            module.type === 'validator' &&
-            module.address.toLowerCase() === validatorAddress.toLowerCase()
-        );
-      }
-    }
-    if (!validator) {
-      const hydrated = await this.getHydratedSmartAccountById(params.accountId);
-      metadata = hydrated.metadata;
-      validator = metadata.installedModules?.find(
-        (module) =>
-          module.type === 'validator' &&
-          module.address.toLowerCase() === validatorAddress.toLowerCase()
-      );
-    }
-    if (!validator || validator.type !== 'validator') {
-      throw new Error(
-        'Selected validator is not installed on this smart account'
-      );
-    }
-
-    const updatedMetadata: ISmartAccountMetadata = {
-      ...metadata,
-      auth: {
-        data: validator.data || '0x',
-        module: validator.id,
-        validator: validator.address,
-      },
-    };
-    store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: account.id,
-        property: 'smartAccount',
-        type: PaliKeyringAccountType.SmartAccount,
-        value: updatedMetadata,
-      })
-    );
-    await this.deps.saveWalletState(
-      'switch-smart-account-validator',
-      true,
-      true
-    );
-
-    return updatedMetadata;
-  }
-
   public async getSmartAccountNativeGasStatus(params: {
     accountId: number;
   }): Promise<{
@@ -1205,7 +1117,12 @@ class SmartAccountController {
           operation.salt,
           operation.mode,
           operation.executionCalldata,
-          [guardianSignature],
+          [
+            {
+              guardian: getAddress(params.guardian),
+              signature: guardianSignature,
+            },
+          ],
         ]
       );
     const response = await this.deps.sendAndSaveEthTransaction(

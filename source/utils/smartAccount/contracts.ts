@@ -159,7 +159,7 @@ export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'function isModuleType(uint256 moduleTypeId) view returns (bool)',
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
-  'function scheduleRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata,bytes[] signatures) returns (bytes32 operationId)',
+  'function scheduleRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata,(address guardian,bytes signature)[] approvals) returns (bytes32 operationId)',
 ] as const;
 
 export const getPaliModuleRegistryEntry = (id: PaliAuthenticatorModuleId) => {

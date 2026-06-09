@@ -24,7 +24,6 @@ import {
   encodeInstallValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   ERC7579_MODULE_TYPE_EXECUTOR,
-  ERC7579_MODULE_TYPE_VALIDATOR,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
   paliSmartAccountInterface,
@@ -33,6 +32,7 @@ import {
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
+  SmartAccountAuthenticatorBuildResult,
   SmartAccountAuthenticatorRuntimeContexts,
 } from 'utils/smartAccount';
 
@@ -219,10 +219,6 @@ const moduleHintKey = (id: string, capability?: string) => {
 };
 
 type RecoveryAuthenticatorId = 'ecdsa' | 'p256-webauthn';
-type InstalledModule = NonNullable<
-  ISmartAccountMetadata['installedModules']
->[number];
-
 type GuardianRecoveryStatus = {
   delay: string;
   exists: boolean;
@@ -296,8 +292,6 @@ const SmartAccountPolicy = () => {
     isGuardianPolicyUpdateConfirmOpen,
     setIsGuardianPolicyUpdateConfirmOpen,
   ] = useState(false);
-  const [modulePendingUninstall, setModulePendingUninstall] =
-    useState<InstalledModule | null>(null);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
     metadata?.installedModules?.map((module) => module.id) || []
@@ -423,10 +417,6 @@ const SmartAccountPolicy = () => {
       configuredGuardianDelaySeconds !== guardianDelaySeconds);
   const guardianActionLoading =
     loading || guardianLoading || guardianStatusLoading;
-  const validatorModules =
-    metadata?.installedModules?.filter(
-      (module) => module.type === 'validator'
-    ) || [];
   const isReplacementAuthenticatorReady =
     replacementAuthenticator === 'p256-webauthn' ||
     Boolean(normalizedReplacementEcdsaOwner);
@@ -442,8 +432,6 @@ const SmartAccountPolicy = () => {
   const hasPendingGuardianRecovery = Boolean(
     activeGuardianReplacement?.recoveryOperation
   );
-  const pendingUninstallIsGuardianRecovery =
-    modulePendingUninstall?.id === 'guardian-recovery';
   const walletManagementAddress = (() => {
     try {
       const address =
@@ -679,7 +667,7 @@ const SmartAccountPolicy = () => {
   };
 
   const replaceActiveValidator = async (
-    authenticator: ReturnType<typeof buildP256WebAuthnAuthenticator>
+    authenticator: SmartAccountAuthenticatorBuildResult
   ) => {
     if (!account?.isSmartAccount || !metadata) {
       return;
@@ -693,6 +681,12 @@ const SmartAccountPolicy = () => {
       throw new Error(t('settings.noActiveAuthenticator'));
     }
 
+    const targetValidator = metadata.installedModules?.find(
+      (module) =>
+        module.type === 'validator' &&
+        module.address.toLowerCase() ===
+          authenticator.auth.validator.toLowerCase()
+    );
     const sameValidatorModule =
       activeValidator.address.toLowerCase() ===
       authenticator.auth.validator.toLowerCase();
@@ -704,30 +698,38 @@ const SmartAccountPolicy = () => {
       target: account.address,
       value: '0x0',
     };
-    const uninstallExecution = {
+    const uninstallActiveExecution = {
       data: encodeUninstallValidatorModuleCall(activeValidator.address),
       target: account.address,
       value: '0x0',
     };
+    const uninstallTargetExecution = targetValidator
+      ? {
+          data: encodeUninstallValidatorModuleCall(targetValidator.address),
+          target: account.address,
+          value: '0x0',
+        }
+      : null;
+    const executions = [
+      ...(uninstallTargetExecution ? [uninstallTargetExecution] : []),
+      installExecution,
+      ...(!sameValidatorModule ? [uninstallActiveExecution] : []),
+    ];
 
     await signAndSubmitSmartAccountExecutions({
       accountId: account.id,
       authenticatorContexts: getLocalOwnerContexts(),
       controllerEmitter,
-      executions: sameValidatorModule
-        ? [uninstallExecution, installExecution]
-        : [installExecution],
+      executions,
       smartAccount: metadata,
       skipRapidPolling: true,
       useCachedMetadata: true,
       waitForConfirmation: true,
     });
-    const updatedMetadata = (await controllerEmitter(
-      ['wallet', 'switchSmartAccountValidator'],
-      [{ accountId: account.id, validator: authenticator.auth.validator }],
-      300000
-    )) as ISmartAccountMetadata;
-    setMetadata(updatedMetadata);
+    const hydrated = await refreshMetadata();
+    if (hydrated) {
+      setMetadata(hydrated);
+    }
   };
 
   const assertSmartAccountHasAuthenticatorGas = async () => {
@@ -846,103 +848,25 @@ const SmartAccountPolicy = () => {
     setModuleActionKey('ecdsa:use');
     try {
       const data = encodeEcdsaValidatorInitData([walletManagementAddress], 1);
-      await submitModuleExecutions(
-        [
-          {
-            data: encodeInstallValidatorModuleCall(ecdsaValidator, data),
-            target: account.address,
-            value: '0x0',
-          },
-        ],
-        {
-          refreshAfterSubmit: false,
-          useCachedMetadata: true,
-          waitForConfirmation: true,
-        }
-      );
-
-      const updatedMetadata = (await controllerEmitter(
-        ['wallet', 'switchSmartAccountValidator'],
-        [{ accountId: account.id, validator: ecdsaValidator }],
-        300000
-      )) as ISmartAccountMetadata;
-      setMetadata(updatedMetadata);
+      await replaceActiveValidator({
+        auth: {
+          data,
+          module: 'ecdsa',
+          validator: ecdsaValidator,
+        },
+        metadata: {
+          installedModules: [
+            {
+              address: getAddress(ecdsaValidator),
+              config: { owners: [walletManagementAddress], threshold: 1 },
+              data,
+              id: 'ecdsa',
+              type: 'validator',
+            },
+          ],
+        },
+      });
       alert.success(t('settings.smartAccountAuthenticatorConfigured'));
-    } catch (error: any) {
-      const wasHandled = handleWalletLockedError(error);
-      if (!wasHandled) {
-        alert.error(
-          getSmartAccountActionErrorMessage(
-            error,
-            t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
-          )
-        );
-      }
-    } finally {
-      setModuleActionKey('');
-      setLoading(false);
-    }
-  };
-
-  const requestUninstallModule = (module: InstalledModule) => {
-    setModulePendingUninstall(module);
-  };
-
-  const confirmUninstallModule = async () => {
-    const module = modulePendingUninstall;
-    if (!module) {
-      return;
-    }
-    setModulePendingUninstall(null);
-    await uninstallModule(module);
-  };
-
-  const uninstallModule = async (module: InstalledModule) => {
-    if (!metadata) {
-      return;
-    }
-    if (
-      module.type === 'validator' &&
-      (validatorModules.length <= 1 ||
-        metadata.auth?.validator?.toLowerCase() ===
-          module.address.toLowerCase())
-    ) {
-      alert.error(t('settings.smartAccountCannotRemoveActiveValidator'));
-      return;
-    }
-    setLoading(true);
-    setModuleActionKey(`${module.id}:uninstall`);
-    try {
-      await submitModuleExecutions(
-        [
-          {
-            data: paliSmartAccountInterface.encodeFunctionData(
-              'uninstallModule',
-              [
-                module.type === 'validator'
-                  ? ERC7579_MODULE_TYPE_VALIDATOR
-                  : ERC7579_MODULE_TYPE_EXECUTOR,
-                module.address,
-                '0x',
-              ]
-            ),
-            target: account.address,
-            value: '0x0',
-          },
-        ],
-        {
-          useCachedMetadata: true,
-          waitForConfirmation: true,
-        }
-      );
-      alert.success(t('settings.smartAccountModuleRemoved'));
-      if (module.id === 'guardian-recovery' && smartAccountAddress) {
-        clearGuardianReplacementCredential();
-        setGuardianStatus(null);
-        setGuardianAddress('');
-        setGuardianDelaySeconds(86400);
-      }
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
@@ -1074,39 +998,6 @@ const SmartAccountPolicy = () => {
     }
 
     installGuardianRecovery();
-  };
-
-  const switchValidator = async (
-    module: NonNullable<ISmartAccountMetadata['installedModules']>[number]
-  ) => {
-    if (!account?.isSmartAccount || module.type !== 'validator') {
-      return;
-    }
-    setLoading(true);
-    setModuleActionKey(`${module.id}:use`);
-    try {
-      const updatedMetadata = (await controllerEmitter(
-        ['wallet', 'switchSmartAccountValidator'],
-        [{ accountId: account.id, validator: module.address }],
-        300000
-      )) as ISmartAccountMetadata;
-      setMetadata(updatedMetadata);
-      alert.success(t('settings.smartAccountValidatorSelected'));
-    } catch (error: any) {
-      const wasHandled = handleWalletLockedError(error);
-      if (!wasHandled) {
-        alert.error(
-          getSmartAccountActionErrorMessage(
-            error,
-            t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
-          )
-        );
-      }
-    } finally {
-      setModuleActionKey('');
-      setLoading(false);
-    }
   };
 
   const startGuardianRecovery = async () => {
@@ -1254,24 +1145,7 @@ const SmartAccountPolicy = () => {
       );
       clearGuardianReplacementCredential();
       setIsGuardianRecoveryScreenOpen(false);
-      const recoveredValidator = getConfiguredAuthenticatorAddress(
-        activeNetwork.chainId,
-        activeGuardianReplacement.authenticator.id
-      );
-      if (recoveredValidator && account?.id !== undefined) {
-        try {
-          const updatedMetadata = (await controllerEmitter(
-            ['wallet', 'switchSmartAccountValidator'],
-            [{ accountId: account.id, validator: recoveredValidator }],
-            300000
-          )) as ISmartAccountMetadata;
-          setMetadata(updatedMetadata);
-        } catch {
-          await refreshMetadata();
-        }
-      } else {
-        await refreshMetadata();
-      }
+      await refreshMetadata();
       alert.success(t('settings.smartAccountGuardianRecoveryFinalized'));
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
@@ -1316,12 +1190,6 @@ const SmartAccountPolicy = () => {
     );
     return activePaliWalletModule?.config.owners[0] || '';
   })();
-  const uninstallModuleConfirmDescription =
-    pendingUninstallIsGuardianRecovery && hasPendingGuardianRecovery
-      ? t('settings.smartAccountGuardianRecoveryUninstallPendingWarning')
-      : pendingUninstallIsGuardianRecovery
-      ? t('settings.smartAccountGuardianRecoveryUninstallWarning')
-      : t('settings.smartAccountUninstallModuleConfirmDescription');
   const guardianPolicyUpdateConfirmDescription = hasPendingGuardianRecovery
     ? t('settings.smartAccountGuardianRecoveryUpdatePendingWarning')
     : t('settings.smartAccountGuardianRecoveryPolicyUpdateConfirmDescription');
@@ -1565,24 +1433,17 @@ const SmartAccountPolicy = () => {
                   installedModule?.type === 'validator' &&
                   metadata?.auth?.validator?.toLowerCase() ===
                     installedModule.address.toLowerCase();
-                const cannotRemoveValidator =
-                  installedModule?.type === 'validator' &&
-                  (isActiveValidator || validatorModules.length <= 1);
                 const canInstallPasskey =
                   module.id === 'p256-webauthn' &&
                   module.supported &&
-                  !installed;
+                  !isActiveValidator;
                 const canInstallPaliWallet =
                   module.id === 'ecdsa' &&
                   module.supported &&
-                  !installed &&
+                  !isActiveValidator &&
                   Boolean(walletManagementAddress);
                 const canManageGuardianRecovery =
                   module.id === 'guardian-recovery' && module.supported;
-                const canSwitchValidator =
-                  installedModule?.type === 'validator' && !isActiveValidator;
-                const canUninstallModule =
-                  Boolean(installedModule) && !cannotRemoveValidator;
                 const paliWalletOwnerAddress =
                   installedModule?.type === 'validator' &&
                   installedModule.id === 'ecdsa'
@@ -1591,9 +1452,7 @@ const SmartAccountPolicy = () => {
                 const hasAction =
                   canInstallPaliWallet ||
                   canInstallPasskey ||
-                  canManageGuardianRecovery ||
-                  canSwitchValidator ||
-                  canUninstallModule;
+                  canManageGuardianRecovery;
                 if (isActiveValidator || !hasAction) {
                   return null;
                 }
@@ -1802,38 +1661,6 @@ const SmartAccountPolicy = () => {
                           )}
                         </div>
                       )}
-                      {installedModule && (
-                        <div className="flex flex-wrap gap-2">
-                          {canSwitchValidator && (
-                            <button
-                              type="button"
-                              className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={loading}
-                              onClick={() => switchValidator(installedModule)}
-                            >
-                              {moduleActionKey === `${module.id}:use` && (
-                                <LoadingSvg className="h-4 w-4 animate-spin" />
-                              )}
-                              {t('settings.useSmartAccountValidator')}
-                            </button>
-                          )}
-                          {canUninstallModule && (
-                            <button
-                              type="button"
-                              className="flex items-center justify-center gap-2 rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={loading}
-                              onClick={() =>
-                                requestUninstallModule(installedModule)
-                              }
-                            >
-                              {moduleActionKey === `${module.id}:uninstall` && (
-                                <LoadingSvg className="h-4 w-4 animate-spin" />
-                              )}
-                              {t('settings.uninstallModule')}
-                            </button>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
@@ -1842,15 +1669,6 @@ const SmartAccountPolicy = () => {
           </div>
         )}
       </div>
-      <ConfirmationModal
-        show={Boolean(modulePendingUninstall)}
-        title={t('settings.smartAccountUninstallModuleConfirmTitle')}
-        description={uninstallModuleConfirmDescription}
-        buttonText={t('settings.uninstallModule')}
-        isButtonLoading={loading}
-        onClick={confirmUninstallModule}
-        onClose={() => setModulePendingUninstall(null)}
-      />
       <ConfirmationModal
         show={isGuardianPolicyUpdateConfirmOpen}
         title={t('settings.smartAccountGuardianRecoveryUpdateConfirmTitle')}

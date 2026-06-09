@@ -1,5 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
+import { hexConcat } from '@ethersproject/bytes';
 
 import {
   getP256WebAuthnExternalSignatureMetadata,
@@ -41,6 +42,7 @@ export type SubmitSmartAccountExecutionsParams = {
 export type SmartAccountAuthenticatorSignature = {
   proof?: unknown;
   signature: string;
+  validator?: string;
 };
 
 export type SmartAccountExternalSignatureRequest = {
@@ -418,17 +420,29 @@ export const signSmartAccountActionHash = async (params: {
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
 
-  return driver.signActionHash({
+  const signature = await driver.signActionHash({
     actionHash: params.actionHash,
     runtimeContext: params.authenticatorContexts?.[validator.id],
     smartAccount: params.smartAccount,
     validator,
   });
+
+  return {
+    ...signature,
+    validator: getAddress(validator.address),
+  };
 };
 
 export const encodeSmartAccountAuthenticatorSignature = (
   signature: SmartAccountAuthenticatorSignature | string
-) => (typeof signature === 'string' ? signature : signature.signature);
+) => {
+  if (typeof signature === 'string') {
+    return signature;
+  }
+  return signature.validator
+    ? hexConcat([getAddress(signature.validator), signature.signature])
+    : signature.signature;
+};
 
 export const signAndSubmitSmartAccountExecutions = async (
   params: SubmitSmartAccountExecutionsParams
