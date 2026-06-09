@@ -27,13 +27,13 @@ const EditAccountView = () => {
 
   const [form] = useForm();
 
-  const isPasskeyAccount =
-    state.accountType === KeyringAccountType.PasskeySmartAccount ||
-    state.isPasskeySmartAccount;
+  const isSmartAccount =
+    state.accountType === KeyringAccountType.SmartAccount ||
+    state.isSmartAccount;
 
   const getWalletType = useMemo(() => {
-    if (isPasskeyAccount) {
-      return 'Passkey';
+    if (isSmartAccount) {
+      return 'Smart Account';
     } else if (state.isTrezorWallet) {
       return HardWallets.TREZOR;
     } else if (state.isLedgerWallet) {
@@ -42,9 +42,9 @@ const EditAccountView = () => {
       return 'Imported';
     }
     return 'Pali';
-  }, [isPasskeyAccount, state]);
+  }, [isSmartAccount, state]);
 
-  const walletTypeBadgeClassName = isPasskeyAccount
+  const walletTypeBadgeClassName = isSmartAccount
     ? 'bg-purple-500 text-white'
     : 'bg-brand-blue500 text-brand-blue100';
 
@@ -64,8 +64,8 @@ const EditAccountView = () => {
           ? KeyringAccountType.Trezor
           : state.isLedgerWallet
           ? KeyringAccountType.Ledger
-          : state.isPasskeySmartAccount
-          ? KeyringAccountType.PasskeySmartAccount
+          : state.isSmartAccount
+          ? KeyringAccountType.SmartAccount
           : KeyringAccountType.HDAccount);
 
       const accountId = state.id;
@@ -88,12 +88,17 @@ const EditAccountView = () => {
     copyText(state.address);
   };
 
-  const openPasskeyPolicy = () => {
-    navigateWithContext(navigate, '/settings/account/passkey-policy', state, {
-      returnRoute: '/settings/edit-account',
-      returnContext: state.returnContext,
+  const openSmartAccountPolicy = () => {
+    navigateWithContext(
+      navigate,
+      '/settings/account/smart-account-policy',
       state,
-    });
+      {
+        returnRoute: '/settings/edit-account',
+        returnContext: state.returnContext,
+        state,
+      }
+    );
   };
 
   return (
@@ -184,20 +189,20 @@ const EditAccountView = () => {
           />
         </Form.Item>
 
-        {isPasskeyAccount && (
+        {isSmartAccount && (
           <button
             type="button"
             className="mb-4 flex w-full cursor-pointer items-center justify-between rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left text-sm hover:bg-brand-blue500 hover:bg-opacity-20"
-            onClick={openPasskeyPolicy}
+            onClick={openSmartAccountPolicy}
           >
             <span className="flex min-w-0 items-center gap-3">
               <LockIconSvg className="shrink-0 w-6 h-6 text-white opacity-90" />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-white">
-                  {t('settings.passkeyAccountPolicy')}
+                  {t('settings.smartAccountAccountPolicy')}
                 </span>
                 <span className="mt-1 block text-xs text-brand-graylight">
-                  {t('settings.passkeyAccountPolicySummary')}
+                  {t('settings.smartAccountAccountPolicySummary')}
                 </span>
               </span>
             </span>
@@ -207,7 +212,7 @@ const EditAccountView = () => {
 
         <div
           className={`w-full px-4 ${
-            isPasskeyAccount ? 'static' : 'absolute bottom-12 md:static'
+            isSmartAccount ? 'static' : 'absolute bottom-12 md:static'
           }`}
         >
           <NeutralButton type="submit" fullWidth loading={loading}>

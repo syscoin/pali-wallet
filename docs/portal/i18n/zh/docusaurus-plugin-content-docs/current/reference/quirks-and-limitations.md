@@ -40,7 +40,7 @@ title: 特性差异和限制
 - Passkey 智能账户支持取决于活跃链的 factory 配置。
 - 通过 Passkey `wallet_sendCalls` 不支持合约部署调用。
 - `policyText` 是钱包元数据和显示文本，不是链上执行。
-- Required sponsor mode 取决于 sponsor service 可用性和 proof 验证。
+- 当前智能账户执行使用 wallet-paid gas，除非未来 capability 明确报告 sponsorship。
 
 ## Iframe
 

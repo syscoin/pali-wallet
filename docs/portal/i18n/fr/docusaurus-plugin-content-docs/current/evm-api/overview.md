@@ -15,7 +15,7 @@ Le provider EVM de Pali est exposé via `window.ethereum` et est compatible avec
 | Permissions | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | Actifs | `wallet_watchAsset` |
 | Lots | `wallet_sendCalls`, `wallet_getCapabilities` |
-| Passkeys | `wallet_createPasskeyAccount` |
+| Passkeys | `wallet_prepareSmartAccount` |
 
 ## Forme d'une requête de provider
 

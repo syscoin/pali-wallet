@@ -28,7 +28,7 @@ title: Quirk 및 제한 사항
 
 ## Atomicity
 
-- Passkey smart account는 하나의 smart account execution을 통해 선택된 batch call을 execute할 수 있습니다.
+- Pali smart account는 하나의 smart account execution을 통해 선택된 batch call을 execute할 수 있습니다.
 - 일반 EOA batch call은 순차적인 wallet send이며 진정한 atomic execution으로 취급해서는 안 됩니다.
 
 ## Subscription
@@ -37,10 +37,10 @@ title: Quirk 및 제한 사항
 
 ## Passkey
 
-- Passkey smart account support는 active chain의 factory configuration에 의존합니다.
+- Pali smart account support는 active chain의 factory configuration에 의존합니다.
 - Contract deployment call은 passkey `wallet_sendCalls`를 통해 지원되지 않습니다.
 - `policyText`는 wallet metadata 및 display text이며 on-chain enforcement가 아닙니다.
-- Required sponsor mode는 sponsor service availability 및 proof validation에 의존합니다.
+- 현재 smart-account execution은 future capability가 sponsorship을 명시적으로 보고하지 않는 한 wallet-paid gas를 사용합니다.
 
 ## Iframe
 

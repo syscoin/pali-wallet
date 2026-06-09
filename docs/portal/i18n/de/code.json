@@ -12,16 +12,16 @@
     "message": "Nutze window.pali für Syscoin-UTXO-Konten, PSBT-Signaturen, Wechselgeldadressen, xpub-basierten Status, SPT-Assets und Bitcoin-ähnliche Integrationen."
   },
   "homepage.feature.passkeys.title": {
-    "message": "Passkeys für Institutionen"
+    "message": "Smart Accounts"
   },
   "homepage.feature.passkeys.description": {
-    "message": "Erstelle und stelle Passkey-Smart-Accounts wieder her, hinterlege Sponsor-Richtlinien und sende atomare Batches mit einer einzigen WebAuthn-Freigabe."
+    "message": "Erstelle modulare Konten, nutze Passkey- oder ECDSA-Validatoren, konfiguriere Guardian-Recovery und sende atomare Batches."
   },
   "homepage.hero.eyebrow": {
     "message": "Pali Wallet Dokumentation"
   },
   "homepage.hero.title": {
-    "message": "Eine Wallet-Oberfläche für EVM, Syscoin UTXO, Bitcoin-ähnliche Apps und Passkey-Konten."
+    "message": "Eine Wallet-Oberfläche für EVM, Syscoin UTXO, Bitcoin-ähnliche Apps und Smart Accounts."
   },
   "homepage.hero.subtitle": {
     "message": "Pali ist eine sichere Browser-Wallet-Erweiterung für Nutzer, Entwickler und Institutionen, die über kontobasierte und UTXO-basierte Chains hinweg bauen."
@@ -57,7 +57,7 @@
     "message": "Aktion anfordern"
   },
   "homepage.flow.request.description": {
-    "message": "Sende EVM-Transaktionen, signiere typisierte Daten, signiere UTXO-PSBTs oder erstelle Passkey-Smart-Accounts mit Sponsor-Richtlinie."
+    "message": "Sende EVM-Transaktionen, signiere Typed Data, signiere UTXO-PSBTs oder erstelle Pali Smart Accounts mit Passkey- oder ECDSA-Validatoren."
   },
   "theme.ErrorPageContent.title": {
     "message": "Die Seite ist abgestürzt.",

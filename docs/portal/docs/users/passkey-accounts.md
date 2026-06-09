@@ -1,77 +1,96 @@
 ---
-title: Passkey accounts
+title: Smart accounts and passkeys
 ---
 
-Passkey accounts are EVM smart accounts controlled by WebAuthn credentials. Instead of signing with a normal EOA private key, the user approves actions with the device or account passkey UI provided by the browser and operating system.
+Pali smart accounts are EVM contract accounts that can be controlled by modules. A passkey is one supported way to control a smart account. Instead of signing every action with a normal EOA private key, the user can approve actions with the browser or operating system passkey UI.
 
-Behind the scenes, WebAuthn passkeys use P-256 signatures. zkSYS passkey accounts are built so those P-256 proofs can be verified by the smart account/factory system, which is why a biometric or platform passkey approval can authorize an on-chain action.
+Behind the scenes, WebAuthn passkeys use P-256 signatures. Pali's passkey validator is built so those P-256 proofs can be verified by the smart account. That is why a biometric or platform passkey approval can authorize an on-chain action without exposing the passkey private key to Pali or the dapp.
 
-## Why use a passkey account?
+## Why use a smart account?
 
-- Easier institutional onboarding.
-- Smart account policy support.
-- Optional sponsor services for gas or co-authorization.
+- Passkey UX for everyday approvals.
+- Wallet-owned ECDSA control when a normal wallet key should own the account.
+- Co-managed policies through composite validators.
 - Batch execution with a single user approval.
-- Recovery from on-chain registry data when local wallet metadata is missing.
+- Guardian recovery after a timelock.
+- Deterministic account creation so Pali can reconstruct account records.
 
-## Shared and separate passkeys
+## Passkeys, ECDSA, and co-managed accounts
 
 <figure>
   <a className="pali-media-link" href="/img/screens/settings-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-passkey-create.png" alt="Pali settings screen for creating a passkey account" />
+  <img src="/img/screens/settings-passkey-create.png" alt="Pali settings screen for creating a smart account" />
 </a>
-  <figcaption>Users can create passkey accounts from Settings as well as from dapp requests.</figcaption>
+  <figcaption>Users can create smart accounts from Settings as well as from dapp requests.</figcaption>
 </figure>
 
-Pali can use a shared wallet passkey profile or create a separate passkey credential for an account. Shared passkeys are convenient for users who want one wallet-controlled passkey. Separate passkeys can help institutions isolate credentials per service or policy.
+Pali supports three validator styles:
+
+- **Passkey:** the browser or operating system asks for WebAuthn approval.
+- **ECDSA:** configured EVM owner addresses approve account actions.
+- **Composite:** child validators are combined under a threshold, such as passkey or ECDSA.
+
+Pali can use a shared wallet passkey profile or create a separate passkey credential for an account. Shared passkeys are convenient for users who want one wallet-controlled passkey. Separate passkeys can help isolate credentials per service or policy.
 
 ## Deployment
 
-A passkey smart account may exist as a counterfactual address while Pali prepares creation, but Pali only saves the account locally after the deployment transaction is confirmed and the on-chain recovery metadata matches the credential.
+A smart account may exist as a counterfactual address while Pali prepares creation. Pali derives the address from deterministic factory inputs, deploys through the Pali factory, and saves durable account metadata locally.
 
-If a sponsor policy is selected during creation, Pali can deploy the account and apply the initial policy in the same on-chain transaction. Later policy changes are separate on-chain transactions and require another passkey approval.
+The account starts from a wallet-owned bootstrap validator for deterministic deployment. If the user or dapp selected a passkey or another validator, Pali installs that validator and removes the bootstrap validator through a smart-account execution.
 
 ## Network support
 
-Passkey accounts require zkSYS passkey smart account contracts and P-256 verification support. In this Pali build, `zkTanenbaum` testnet is configured for passkey account creation. zkSYS production support uses the same model once the production factory address is configured in the wallet.
+Smart accounts require Pali factory and module contracts configured for the active chain. Passkey validators also require P-256 verification support. In this Pali build, `zkTanenbaum` testnet is configured for smart-account creation. zkSYS production support uses the same model once the production factory and module addresses are configured in the wallet.
 
 ## Recovery
 
 <figure>
   <a className="pali-media-link" href="/img/screens/settings-passkey-policy.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-passkey-policy.png" alt="Pali passkey account policy settings screen" />
+  <img src="/img/screens/settings-passkey-policy.png" alt="Pali smart-account policy settings screen" />
 </a>
-  <figcaption>The passkey policy screen shows sponsor mode, signer, URL, and backup status where available.</figcaption>
+  <figcaption>The smart-account policy screen shows installed modules, validator details, guardian recovery, and passkey backup status where available.</figcaption>
 </figure>
 
-If local wallet state is deleted or Pali is installed on a new device, Pali can recover passkey smart accounts from the on-chain factory registry and event logs. Any Pali install with access to the same passkey credential can discover matching deployed accounts after a WebAuthn assertion, skip accounts already present locally, and import the selected accounts.
+If local wallet state is deleted or Pali is installed on a new device, deterministic Pali smart accounts can be reconstructed from wallet metadata and chain configuration. Accounts with passkey validators still need access to the relevant passkey credential to approve actions.
 
-One passkey credential can control multiple smart accounts. Because new accounts use fresh deployment salts, Pali recovers them from the on-chain registry rather than by locally guessing indexes.
+One passkey credential can control multiple smart accounts. Pali separates the passkey credential profile from each deployed account's smart-account metadata.
 
 ## Guardian recovery
 
-Pali uses self-custodial recovery guardians for production passkey account recovery. A guardian is a backup EVM wallet, imported account, or hardware wallet that the user controls separately from the active passkey. While the passkey still controls the account, the user can add or remove guardians and update the recovery wait period from the policy screen.
+Pali uses self-custodial recovery guardians for smart-account recovery. A guardian is a backup EVM wallet, imported account, or hardware wallet that the user controls separately from the active validator. While the account is healthy, the user can add or remove guardians and update the recovery wait period from the policy screen.
 
-Guardian recovery is not instant. Starting recovery creates a replacement passkey, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then use normal passkey recovery to import the account with the replacement passkey.
+Guardian recovery is not instant. Starting recovery creates a replacement recovery target, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then operate the account with the replacement validator.
 
-The guardian signature binds the chain, guardian recovery validator, account address, replacement passkey identity, recovery nonce, and expiry. This prevents reusing a guardian signature for a different account, chain, or passkey while still allowing the recovery start transaction to be relayed.
+The guardian signature binds the chain, account address, recovery module, recovery salt, execution mode, and recovery calldata. Pali uses a fresh salt for each recovery attempt, and the module permits only one active recovery per account.
 
-Technical note: the guardian recovery validator stores a per-account guardian set, threshold, delay, and pending recovery. Pali currently exposes the simple 1-of-1 guardian flow for UX clarity, while the contract supports threshold policies such as 1-of-N or M-of-N.
+Technical note: the guardian recovery executor stores a per-account guardian set, threshold, delay, expiration, and pending recovery. Pali currently exposes simple guardian flows for UX clarity, while the module supports threshold policies such as 1-of-N or M-of-N.
 
 ## Dapp-created accounts
 
-Dapps can request guardian recovery metadata during `wallet_createPasskeyAccount`:
+Dapps can request a smart account with `wallet_prepareSmartAccount`:
 
 ```
 {
   "label": "Trading desk",
-  "recovery": {
-    "guardian": {
-      "address": "0x...",
-      "delay": 86400
+  "authenticator": {
+    "id": "p256-webauthn"
+  }
+}
+```
+
+Dapps can also request an ECDSA validator:
+
+```
+{
+  "label": "Trading desk",
+  "authenticator": {
+    "id": "ecdsa",
+    "config": {
+      "owners": ["0x..."],
+      "threshold": 1
     }
   }
 }
 ```
 
-Pali does not automatically attach a dapp-provided guardian during account creation because the wallet cannot authenticate that address yet. If a dapp suggests a guardian, Pali warns the user and lets them create the account, then the user can add their own trusted guardian from the passkey account policy screen. Future versions may add a trusted dictionary or whitelist for known default guardians.
+If the requested ECDSA owner is not a local Pali account, Pali shows a warning and requires explicit acknowledgement before continuing.

@@ -31,6 +31,86 @@ export const isBlacklistError = (error: any): boolean =>
   error?.message?.includes('Token transfer blocked:') ||
   error?.message?.includes('Connection blocked:');
 
+const AA21_PREFUND_REASON_HEX =
+  '41413231206469646e2774207061792070726566756e64';
+
+const stringifyError = (error: any): string => {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return '';
+  }
+};
+
+const getErrorText = (error: any, depth = 0): string => {
+  if (!error || depth > 4) {
+    return '';
+  }
+  if (typeof error === 'string') {
+    try {
+      return [error, getErrorText(JSON.parse(error), depth + 1)]
+        .filter(Boolean)
+        .join(' ');
+    } catch {
+      return error;
+    }
+  }
+  if (typeof error !== 'object') {
+    return String(error);
+  }
+
+  const errorRecord = error as Record<string, unknown>;
+  const directParts = [
+    errorRecord.message,
+    errorRecord.reason,
+    errorRecord.code,
+    errorRecord.data,
+    errorRecord.error,
+    errorRecord.body,
+    errorRecord.response,
+    errorRecord.info,
+  ];
+  const ownPropertyParts = Object.getOwnPropertyNames(error)
+    .filter((key) => key !== 'stack')
+    .map((key) => errorRecord[key]);
+  const parts = [
+    ...directParts,
+    ...ownPropertyParts,
+    stringifyError(error),
+  ].flatMap((value) => {
+    if (!value) {
+      return [];
+    }
+    if (typeof value === 'string') {
+      try {
+        return [value, getErrorText(JSON.parse(value), depth + 1)];
+      } catch {
+        return [value];
+      }
+    }
+    return [getErrorText(value, depth + 1)];
+  });
+
+  return parts.filter(Boolean).join(' ');
+};
+
+export const isSmartAccountPrefundError = (error: any): boolean => {
+  const message = getErrorText(error);
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes('aa21') ||
+    normalized.includes("didn't pay prefund") ||
+    normalized.includes('did not pay prefund') ||
+    normalized.includes('prefund') ||
+    normalized.includes(AA21_PREFUND_REASON_HEX)
+  );
+};
+
 export const isUserCancellationError = (error: any): boolean => {
   // Standard EIP-1193 user rejection error (most reliable)
   if (error?.code === 4001) return true;
@@ -267,8 +347,13 @@ export const handleTransactionError = (
   }
 
   // Handle EVM insufficient funds errors (gas/value)
-  if (isEvmInsufficientFundsError(error)) {
+  if (isEvmInsufficientFundsError(error) || isSmartAccountPrefundError(error)) {
     // Show a concise message that clearly points to gas fees requirement
+    alert.error(t('send.insufficientFundsForGas'));
+    return true;
+  }
+
+  if (error?.message?.includes('PALI_NATIVE_GAS_REQUIRED')) {
     alert.error(t('send.insufficientFundsForGas'));
     return true;
   }

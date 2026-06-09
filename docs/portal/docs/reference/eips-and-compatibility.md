@@ -2,7 +2,7 @@
 title: EIPs and compatibility
 ---
 
-Pali aims to support the wallet standards that real dapps use, while adding UTXO and passkey capabilities.
+Pali aims to support the wallet standards that real dapps use, while adding UTXO and smart-account capabilities.
 
 ## EVM wallet standards
 
@@ -18,6 +18,9 @@ Pali aims to support the wallet standards that real dapps use, while adding UTXO
 | EIP-5792 | `wallet_sendCalls`, `wallet_getCapabilities`, status compatibility methods. |
 | EIP-712 | Typed data signing through `eth_signTypedData_v4` and related methods. |
 | EIP-747 | `wallet_watchAsset`. |
+| ERC-7579-style modules | Pali smart accounts use validator and executor modules for authorization and recovery. |
+| ERC-4337-style encoding | Pali builds packed user-operation style data internally for smart-account execution preparation. |
+| EIP-1271 | Smart accounts validate signatures through installed validators. |
 
 ## MetaMask compatibility
 
@@ -32,4 +35,5 @@ Pali adds `window.pali` for UTXO/Syscoin flows. These methods are not Ethereum E
 - EVM subscriptions are not supported by the extension provider.
 - `wallet_getCallsStatus` and `wallet_showCallsStatus` are compatibility stubs.
 - EOA `wallet_sendCalls` execution is sequential, not true on-chain atomicity.
+- Pali smart-account support depends on chain-specific factory and module configuration.
 - UTXO and EVM network families are separated by provider surface and wallet state.

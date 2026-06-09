@@ -21,9 +21,9 @@ Las dapps reciben identificadores públicos de cuenta, estado del proveedor, fir
 
 Las cuentas inteligentes passkey usan credenciales WebAuthn. Pali almacena metadatos públicos e identificadores de credenciales; el material de clave privada permanece dentro del autenticador. Pali rechaza assertions WebAuthn entre orígenes y verifica que los hashes de acción passkey coincidan con el conjunto de transacciones preparado.
 
-## Seguridad de la política de sponsor
+## Seguridad de la política de módulos
 
-La política de sponsor institucional se divide en:
+La política de módulos institucional se divide en:
 
 - **Política on-chain:** modo, firmante sponsor y URL de sponsor.
 - **Metadatos de billetera:** texto de política mostrado y otro contexto local de billetera.

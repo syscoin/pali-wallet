@@ -41,8 +41,8 @@ const BADGE_INFO_MAP = {
     hoverColor: 'group-hover:bg-orange-400',
     loadingColor: 'text-orange-500',
   },
-  [KeyringAccountType.PasskeySmartAccount]: {
-    label: 'Passkey',
+  [KeyringAccountType.SmartAccount]: {
+    label: 'Smart Account',
     bgColor: 'bg-purple-500',
     hoverColor: 'group-hover:bg-purple-400',
     loadingColor: 'text-purple-500',
@@ -96,7 +96,7 @@ const getAccountIcon = (accountType: KeyringAccountType, account: any) => {
       return (
         <PaliWhiteSmallIconSvg className="w-7 h-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
       );
-    case KeyringAccountType.PasskeySmartAccount:
+    case KeyringAccountType.SmartAccount:
       return (
         <LockIconSvg className="w-6 h-6 text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
       );
@@ -246,13 +246,13 @@ const RenderAccountsListByBitcoinBased =
         Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
           Object.values(accountsOfType || {})
             .filter((account: any) => {
-              if (accountType !== KeyringAccountType.PasskeySmartAccount) {
+              if (accountType !== KeyringAccountType.SmartAccount) {
                 return true;
               }
 
               return (
                 !isBitcoinBased &&
-                Number(account?.passkey?.chainId) ===
+                Number(account?.smartAccount?.chainId) ===
                   Number(activeNetwork.chainId)
               );
             })

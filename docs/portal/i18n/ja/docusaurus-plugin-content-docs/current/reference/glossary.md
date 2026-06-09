@@ -14,7 +14,7 @@ Ethereumウォレットが`provider.request()`を通じて使用する標準Java
 
 dappsが`window.ethereum`だけに依存せずにプロバイダーを検出できるようにする、マルチウォレットディスカバリー標準。
 
-## Passkey smart account
+## Pali smart account
 
 通常のEOA秘密鍵の代わりにWebAuthn credentialで制御されるEVMスマートアカウント。
 

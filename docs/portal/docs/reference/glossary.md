@@ -14,17 +14,25 @@ The standard JavaScript provider interface used by Ethereum wallets through `pro
 
 A multi-wallet discovery standard that lets dapps discover providers without relying only on `window.ethereum`.
 
-## Passkey smart account
+## Guardian recovery
 
-An EVM smart account controlled by a WebAuthn credential instead of a normal EOA private key.
+A delayed smart-account recovery module. Guardians sign a recovery intent, the module schedules it with a timelock, and finalization replaces the account's validator after the delay.
+
+## Pali smart account
+
+An EVM contract account created by Pali. It uses modules to decide who can authorize actions and which recovery features are available.
+
+## Passkey validator
+
+A smart-account validator module that verifies WebAuthn/P-256 proofs so a passkey approval can authorize account actions.
 
 ## PSBT
 
 Partially Signed Bitcoin Transaction. A common format for coordinating UTXO transaction signing.
 
-## Sponsor service
+## Smart-account validator
 
-An institution-operated service that can provide gas sponsorship, relay support, or required co-authorization for passkey smart account execution.
+A module that decides whether a smart-account action is authorized. Pali supports ECDSA, P-256 WebAuthn, and composite validators.
 
 ## SPT
 

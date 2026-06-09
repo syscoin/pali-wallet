@@ -13,7 +13,7 @@ EVM mode는 `window.ethereum`을 사용하는 dapp을 위한 것입니다. MetaM
 - Rollux 및 Syscoin NEVM dapp
 - ERC-20, ERC-721, ERC-1155 interaction
 - EIP-712 typed data signing
-- passkey smart account creation 및 execution
+- Pali smart account creation 및 execution
 
 ## UTXO mode
 

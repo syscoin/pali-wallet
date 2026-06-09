@@ -6,7 +6,7 @@ Pali Wallet is the official Syscoin wallet extension and a general-purpose web3 
 
 - **Regular users** who want a secure browser wallet for EVM, Syscoin, Rollux, and UTXO assets.
 - **Dapp developers** who want MetaMask-compatible EVM access and UTXO access from the same extension.
-- **Institutions** that want passkey smart accounts, account recovery, sponsor policy, and dapp-driven onboarding.
+- **Institutions** that want modular smart accounts, passkey approvals, account recovery, and dapp-driven onboarding.
 
 ## What makes Pali different
 
@@ -28,8 +28,8 @@ This lets a dapp build experiences that cross account-based and UTXO-based chain
 | EIP-5792 batch requests | `wallet_sendCalls`, `wallet_getCapabilities` |
 | UTXO account and xpub state | `window.pali` and `sys_*` methods |
 | PSBT signing and broadcast | `sys_sign`, `sys_signAndSend` |
-| Passkey smart account creation | `wallet_createPasskeyAccount` |
+| Smart account creation | `wallet_prepareSmartAccount` |
 
-## Current passkey scope
+## Current smart-account scope
 
-Passkey smart accounts are available only on zkSYS-family EVM networks where Pali has configured the passkey factory contracts and the chain supports P-256 WebAuthn proof verification. This Pali build configures `zkTanenbaum` testnet (`57057`). zkSYS production support uses the same architecture once the production factory address is configured in Pali. Dapps should check capabilities and handle unsupported chains cleanly.
+Pali smart accounts are available only on EVM networks where Pali has configured the factory and module contracts. Passkey validators additionally require P-256 WebAuthn proof verification. This Pali build configures `zkTanenbaum` testnet (`57057`). zkSYS production support uses the same architecture once the production factory and module addresses are configured in Pali. Dapps should check capabilities and handle unsupported chains cleanly.

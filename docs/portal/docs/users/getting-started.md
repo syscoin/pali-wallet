@@ -2,7 +2,7 @@
 title: User getting started
 ---
 
-Pali lets you manage EVM accounts, Syscoin UTXO accounts, and passkey smart accounts from one extension.
+Pali lets you manage EVM accounts, Syscoin UTXO accounts, and modular smart accounts from one extension.
 
 ## Basic setup
 
@@ -37,6 +37,6 @@ EVM dapps can request:
 
 Use UTXO accounts for Syscoin UTXO and Bitcoin-style transaction flows. UTXO dapps may request xpub-aware state, change addresses, PSBT signing, and transaction broadcast.
 
-## Passkey smart accounts
+## Smart accounts
 
-Passkey accounts are smart accounts controlled by WebAuthn credentials. They can be useful for institution-managed onboarding, account recovery, and sponsored execution. Some passkey accounts are counterfactual until their first deployment transaction.
+Smart accounts are contract accounts controlled by modules. Pali can create accounts controlled by a passkey validator, a wallet-owned ECDSA validator, or a co-managed policy. They are useful for dapp onboarding, batched actions, and guardian recovery. Some smart accounts are counterfactual until their first deployment transaction.

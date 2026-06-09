@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -10,6 +10,10 @@ import {
   selectVaultCoreData,
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
+import type {
+  ITransactionInfoEvm,
+  ITransactionInfoUtxo,
+} from 'types/useTransactionsInfo';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
@@ -28,46 +32,31 @@ export const TransactionsPanel = () => {
     activeNetwork.explorer || activeNetwork.url
   );
 
-  const [previousTransactions, setPreviousTransactions] = useState([]);
-
-  // ✅ OPTIMIZED: Memoized transaction selection
-  const transactions = useMemo(() => {
-    if (isBitcoinBased) {
-      const sysTxs =
-        accountTransactions[TransactionsType.Syscoin][activeNetwork.chainId];
-      return sysTxs && sysTxs.length > 0 ? sysTxs : [];
-    } else {
-      const ethTxs =
-        accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
-      return ethTxs && ethTxs.length > 0 ? ethTxs : [];
+  const utxoTransactions = useMemo<ITransactionInfoUtxo[]>(() => {
+    if (!isBitcoinBased) {
+      return [];
     }
+    const sysTxs =
+      accountTransactions[TransactionsType.Syscoin][activeNetwork.chainId];
+    return (sysTxs || []) as unknown as ITransactionInfoUtxo[];
   }, [accountTransactions, activeNetwork.chainId, isBitcoinBased]);
+  const evmTransactions = useMemo<ITransactionInfoEvm[]>(() => {
+    if (isBitcoinBased) {
+      return [];
+    }
+    const ethTxs =
+      accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
+    return (ethTxs || []) as unknown as ITransactionInfoEvm[];
+  }, [accountTransactions, activeNetwork.chainId, isBitcoinBased]);
+  const transactions = isBitcoinBased ? utxoTransactions : evmTransactions;
 
   const hasTransactions = useMemo(
-    () => transactions.length > 0 || previousTransactions.length > 0,
-    [transactions.length, previousTransactions.length]
+    () => transactions.length > 0,
+    [transactions.length]
   );
 
-  // ✅ OPTIMIZED: useCallback for state updates to prevent unnecessary re-renders
-  const updatePreviousTransactions = useCallback((newTransactions: any[]) => {
-    setPreviousTransactions(newTransactions);
-  }, []);
-
-  // Use a stable reference for transactions update
-  useEffect(() => {
-    if (transactions.length === 0 && previousTransactions.length > 0) {
-      updatePreviousTransactions([]);
-    } else if (transactions.length > 0) {
-      updatePreviousTransactions(transactions);
-    }
-  }, [
-    transactions.length, // Use length instead of the array itself
-    previousTransactions.length, // Use length for stable comparison
-    updatePreviousTransactions,
-  ]);
-
   // ✅ MEMOIZED: Component definitions to prevent recreation
-  const NoTransactionsComponent = useCallback(
+  const NoTransactionsComponent = useMemo(
     () => (
       <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
         <p>{t('home.youHaveNoTxs')}</p>
@@ -76,7 +65,7 @@ export const TransactionsPanel = () => {
     [t]
   );
 
-  const TransactionSkeleton = useCallback(
+  const TransactionSkeleton = useMemo(
     () => (
       <div className="p-4 mt-8 w-full mb-9 text-white text-base bg-brand-blue600">
         <div className="space-y-3">
@@ -152,17 +141,12 @@ export const TransactionsPanel = () => {
 
   const isLoading = useMemo(() => isSwitchingAccount, [isSwitchingAccount]);
 
-  const allTransactions = useMemo(
-    () => (hasTransactions ? transactions : previousTransactions),
-    [hasTransactions, transactions, previousTransactions]
-  );
-
   return (
     <>
-      {isLoading && !hasTransactions && <TransactionSkeleton />}
+      {isLoading && !hasTransactions && TransactionSkeleton}
       {!isLoading && !hasTransactions && (
         <div className="w-full mt-8 text-white bg-brand-blue600">
-          <NoTransactionsComponent />
+          {NoTransactionsComponent}
           {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>
@@ -171,9 +155,9 @@ export const TransactionsPanel = () => {
       {hasTransactions && (
         <div className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600">
           {isBitcoinBased ? (
-            <UtxoTransactionsList userTransactions={allTransactions} />
+            <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (
-            <EvmTransactionsList userTransactions={allTransactions} />
+            <EvmTransactionsList userTransactions={evmTransactions} />
           )}
           {OpenTransactionExplorer}
         </div>

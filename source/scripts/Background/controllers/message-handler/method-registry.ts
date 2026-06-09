@@ -155,22 +155,6 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresActiveAccount: true,
   },
 
-  wallet_createPasskeyAccount: {
-    name: 'wallet_createPasskeyAccount',
-    handlerType: MethodHandlerType.Wallet,
-    requiresTabId: true,
-    requiresAuth: true,
-    requiresConnection: true,
-    allowHardwareWallet: false,
-    networkPreference: NetworkPreference.EVM,
-    networkEnforcement: NetworkEnforcement.Always,
-    hasPopup: true,
-    popupRoute: MethodRoute.CreatePasskeyAccount,
-    popupEventName: 'createPasskeyAccount',
-    requiresActiveAccount: true,
-    isBlocking: true,
-  },
-
   wallet_getTokens: {
     name: 'wallet_getTokens',
     handlerType: MethodHandlerType.Wallet,
@@ -356,6 +340,21 @@ export const METHOD_REGISTRY: MethodRegistry = {
     hasPopup: true,
     popupRoute: MethodRoute.SendCalls,
     popupEventName: 'wallet_sendCalls',
+    isBlocking: true,
+  },
+
+  wallet_prepareSmartAccount: {
+    name: 'wallet_prepareSmartAccount',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false, // Popup handles auth and user consent.
+    requiresConnection: false,
+    allowHardwareWallet: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: true,
+    popupRoute: MethodRoute.SmartAccount,
+    popupEventName: 'wallet_prepareSmartAccount',
     isBlocking: true,
   },
 

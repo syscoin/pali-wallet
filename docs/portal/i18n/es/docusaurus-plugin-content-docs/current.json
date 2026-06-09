@@ -23,12 +23,12 @@
     "message": "UTXO and Syscoin API",
     "description": "The label for category 'UTXO and Syscoin API' in sidebar 'tutorialSidebar'"
   },
-  "sidebar.tutorialSidebar.category.Passkeys and Institutions": {
-    "message": "Passkeys e instituciones",
-    "description": "The label for category 'Passkeys and Institutions' in sidebar 'tutorialSidebar'"
-  },
   "sidebar.tutorialSidebar.category.Reference": {
     "message": "Referencia",
     "description": "The label for category 'Reference' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Smart Accounts": {
+    "message": "Cuentas inteligentes",
+    "description": "The label for category 'Smart Accounts' in sidebar 'tutorialSidebar'"
   }
 }

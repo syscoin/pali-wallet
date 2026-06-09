@@ -16,6 +16,6 @@ If you are migrating from an older Pali version, the safest path is to import yo
 8. Set a new wallet password.
 9. Verify your expected accounts and networks.
 
-## Passkey accounts after migration
+## Smart accounts after migration
 
-Passkey smart accounts are newer than the old docs. If you used passkey accounts and local metadata is missing, use the passkey recovery flow in Settings. Recovery requires the same authenticator credential.
+Pali smart accounts are newer than the old docs. If you used a passkey-controlled smart account and local metadata is missing, use the smart-account recovery flow in Settings. Recovery requires the relevant authenticator or guardian recovery path.

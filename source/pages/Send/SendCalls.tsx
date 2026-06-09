@@ -21,7 +21,10 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { getMethodName } from 'utils/commonMethodSignatures';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
-import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
+import {
+  getSmartAccountLocalOwnerContexts,
+  signAndSubmitSmartAccountExecutions,
+} from 'utils/smartAccount';
 
 interface ISendCallsData {
   atomicRequired: boolean;
@@ -141,6 +144,20 @@ const decodeCommonCallData = (data?: string) => {
   }
 };
 
+const getSafeSmartAccountCallErrorMessage = (error: any, fallback: string) => {
+  const message = error?.message ? String(error.message) : '';
+  const normalized = message.toLowerCase();
+  const isRawRpcError =
+    normalized.includes('"jsonrpc"') ||
+    normalized.includes('execution reverted') ||
+    normalized.includes('0x220266b6') ||
+    normalized.includes('"data":"0x') ||
+    normalized.includes('data: 0x') ||
+    normalized.includes('pali_smart_account_signature_error');
+
+  return message && !isRawRpcError ? message : fallback;
+};
+
 export const SendCalls = () => {
   const { t } = useTranslation();
   const { alert } = useUtils();
@@ -172,14 +189,10 @@ export const SendCalls = () => {
       txHash?: string;
     }>
   >();
-  const [requestPasskeyAccount] = useState(() => ({
-    credentialId: activeAccount?.isPasskeySmartAccount
-      ? activeAccount.passkey?.credentialId
-      : undefined,
+  const [requestSmartAccount] = useState(() => ({
     supportsAtomicBatch: Boolean(
-      activeAccount?.isPasskeySmartAccount &&
-        activeAccount.passkey?.credentialId &&
-        activeAccount.passkey?.chainId === activeNetwork.chainId
+      activeAccount?.isSmartAccount &&
+        activeAccount.smartAccount?.chainId === activeNetwork.chainId
     ),
   }));
 
@@ -239,17 +252,6 @@ export const SendCalls = () => {
     [effectiveSelectedCalls, transactionStatuses]
   );
 
-  const getPasskeySponsorProofForCall = (
-    call: ISendCallsData['calls'][number]
-  ) =>
-    call.capabilities?.passkeySponsorProof ||
-    call.capabilities?.sponsorProof ||
-    callsData.capabilities?.passkeySponsorProof ||
-    callsData.capabilities?.sponsorProof;
-  const getPasskeySponsorProofForBatch = () =>
-    callsData.capabilities?.passkeySponsorProof ||
-    callsData.capabilities?.sponsorProof;
-
   // Watch for when all transactions are completed and dispatch response
   useEffect(() => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
@@ -276,7 +278,7 @@ export const SendCalls = () => {
       setConfirmed(false); // Reset confirmed state for each attempt
 
       // Filter calls based on selection AND exclude already successful transactions.
-      // Even atomic batches may be executed sequentially for non-passkey accounts,
+      // Even atomic batches may be executed sequentially for non-smart accounts,
       // so retry attempts must not resubmit calls that already succeeded.
       const shouldSubmitCall = (_: unknown, index: number) =>
         (callsData.atomicRequired || effectiveSelectedCalls[index]) &&
@@ -331,9 +333,9 @@ export const SendCalls = () => {
         return newStatuses;
       });
 
-      if (requestPasskeyAccount.credentialId) {
+      if (requestSmartAccount.supportsAtomicBatch) {
         try {
-          const passkeyCalls = [];
+          const smartAccountCalls = [];
           for (let i = 0; i < selectedCallsData.length; i++) {
             const call = selectedCallsData[i];
             const originalIndex = selectedIndices[i];
@@ -378,19 +380,24 @@ export const SendCalls = () => {
             const target =
               toResolved && toResolved.startsWith('0x') ? toResolved : '';
             if (!target) {
-              throw new Error(t('send.passkeyContractDeploymentUnsupported'));
+              throw new Error(
+                t('send.smartAccountContractDeploymentUnsupported')
+              );
             }
-            passkeyCalls.push({
+            smartAccountCalls.push({
               target,
               value: call.value || '0x0',
               data: call.data || '0x',
             });
           }
 
-          const response = (await signAndSubmitPasskeyExecutions({
+          const response = (await signAndSubmitSmartAccountExecutions({
+            authenticatorContexts: getSmartAccountLocalOwnerContexts({
+              accounts,
+              controllerEmitter,
+            }),
             controllerEmitter,
-            credentialId: requestPasskeyAccount.credentialId,
-            executions: passkeyCalls,
+            executions: smartAccountCalls,
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
                 setTransactionStatuses((prev) => {
@@ -400,10 +407,7 @@ export const SendCalls = () => {
                 });
               });
             },
-            sponsorProof:
-              selectedCallsData.length === 1
-                ? getPasskeySponsorProofForCall(selectedCallsData[0])
-                : getPasskeySponsorProofForBatch(),
+            smartAccount: activeAccount.smartAccount,
           })) as any;
           const txHash = response.hash || response;
 
@@ -419,20 +423,24 @@ export const SendCalls = () => {
           alert.success(t('send.txSuccessfull'));
           return;
         } catch (error) {
-          console.error('Failed to process passkey batch calls', error);
+          console.error('Failed to process smart account batch calls', error);
+          const errorMessage = getSafeSmartAccountCallErrorMessage(
+            error,
+            t('send.sendError')
+          );
           selectedIndices.forEach((index) => {
             setTransactionStatuses((prev) => {
               const newStatuses = [...prev];
               newStatuses[index] = {
                 status: 'error',
-                error: error.message,
+                error: errorMessage,
               };
               return newStatuses;
             });
           });
           setLoading(false);
           setProcessingIndex(-1);
-          alert.error(error.message || t('send.sendError'));
+          alert.error(errorMessage);
           return;
         }
       }
@@ -598,9 +606,13 @@ export const SendCalls = () => {
           // No delay needed - using incremented nonces prevents conflicts
         } catch (error) {
           console.error(`Failed to process call ${i}:`, error);
+          const errorMessage = getSafeSmartAccountCallErrorMessage(
+            error,
+            t('send.sendError')
+          );
           receipts.push({
             status: '0x0',
-            error: error.message,
+            error: errorMessage,
           });
 
           // Update status to error
@@ -608,7 +620,7 @@ export const SendCalls = () => {
             const newStatuses = [...prev];
             newStatuses[originalIndex] = {
               status: 'error',
-              error: error.message,
+              error: errorMessage,
             };
             return newStatuses;
           });
@@ -702,7 +714,7 @@ export const SendCalls = () => {
 
       {/* Warning for atomic requirement */}
       {callsData.atomicRequired &&
-        !requestPasskeyAccount.supportsAtomicBatch &&
+        !requestSmartAccount.supportsAtomicBatch &&
         !loading && (
           <div className="bg-brand-yellowBg p-3 mx-4 mt-4 rounded-lg border border-brand-yellow">
             <div className="flex items-start gap-2">

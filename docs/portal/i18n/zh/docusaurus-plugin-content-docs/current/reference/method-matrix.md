@@ -28,7 +28,7 @@ title: 方法矩阵
 | `wallet_watchAsset` | EVM | 请求资产 watch。 | 是 |
 | `wallet_addEthereumChain` | EVM | 添加 EVM 链。 | 是 |
 | `wallet_switchEthereumChain` | EVM | 切换 EVM 链。 | 是 |
-| `wallet_createPasskeyAccount` | EVM | 创建并部署 Passkey 智能账户。 | 是 |
+| `wallet_prepareSmartAccount` | EVM | 创建并部署 Passkey 智能账户。 | 是 |
 | `wallet_sendCalls` | EVM | 发送 EIP-5792 批量请求。 | 是 |
 | `wallet_getCapabilities` | EVM | 读取账户能力。 | 否 |
 | `wallet_getCallsStatus` | EVM | 兼容性 stub；未知 id 报错。 | 否 |

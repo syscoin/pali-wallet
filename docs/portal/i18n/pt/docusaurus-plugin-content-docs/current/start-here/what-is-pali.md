@@ -6,7 +6,7 @@ A Pali Wallet é a extensão oficial de carteira da Syscoin e uma carteira web3 
 
 - **Usuários comuns** que querem uma carteira de navegador segura para EVM, Syscoin, Rollux e ativos UTXO.
 - **Desenvolvedores de dapps** que querem acesso EVM compatível com MetaMask e acesso UTXO na mesma extensão.
-- **Instituições** que querem smart accounts com passkey, recuperação de conta, política de sponsor e onboarding orientado por dapp.
+- **Instituições** que querem smart accounts com passkey, recuperação de conta, política de módulos e onboarding orientado por dapp.
 
 ## O que torna a Pali diferente
 
@@ -28,7 +28,7 @@ Isso permite que uma dapp construa experiências que atravessam chains baseadas 
 | Solicitações em lote EIP-5792 | `wallet_sendCalls`, `wallet_getCapabilities` |
 | Estado de conta UTXO e xpub | `window.pali` e métodos `sys_*` |
 | Assinatura e broadcast de PSBT | `sys_sign`, `sys_signAndSend` |
-| Criação de smart account com passkey | `wallet_createPasskeyAccount` |
+| Criação de smart account com passkey | `wallet_prepareSmartAccount` |
 
 ## Escopo atual de passkey
 

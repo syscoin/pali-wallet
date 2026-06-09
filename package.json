@@ -63,7 +63,7 @@
     "@heroicons/react": "^1.0.6",
     "@reduxjs/toolkit": "^2.8.2",
     "@sidhujag/sysweb3-core": "^1.0.28",
-    "@sidhujag/sysweb3-keyring": "^1.0.589",
+    "@sidhujag/sysweb3-keyring": "^1.0.591",
     "@sidhujag/sysweb3-network": "^1.0.107",
     "@sidhujag/sysweb3-utils": "^1.1.272",
     "@tippyjs/react": "^4.2.6",
@@ -183,5 +183,10 @@
     "tmp": "^0.2.4",
     "jws": "^4.0.1",
     "js-yaml": "^4.1.1"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": []
 }

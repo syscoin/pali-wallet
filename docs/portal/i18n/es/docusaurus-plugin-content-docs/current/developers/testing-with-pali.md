@@ -12,7 +12,7 @@ La dapp de prueba de Syscoin está alojada en:
 https://syscoin-test-dapp.vercel.app/
 ```
 
-Incluye flujos passkey de Pali, `wallet_createPasskeyAccount`, `wallet_sendCalls`, generación de lotes de allowance ERC-20 y solicitudes comunes de billetera.
+Incluye flujos passkey de Pali, `wallet_prepareSmartAccount`, `wallet_sendCalls`, generación de lotes de allowance ERC-20 y solicitudes comunes de billetera.
 
 ## Dapp de prueba local
 

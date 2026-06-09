@@ -1,85 +1,31 @@
 ---
-title: Passkeys und Institutionen
+title: Pali Smart Accounts
 ---
 
-Pali Passkey Smart Accounts ermöglichen einer dapp, Account-Erstellung oder -Wiederherstellung von der Wallet anzufordern, während der Benutzer die Ausführung über WebAuthn kontrolliert.
+Pali Smart Accounts sind Contract-Konten, die Pali für Nutzer erstellen, verbinden und bedienen kann. Für normale Nutzer fühlt sich das wie eine Wallet an: Dapp-Anfrage prüfen, mit Passkey oder Wallet-Schlüssel bestätigen, und Pali sendet die Transaktion. Technisch ist das Konto modular: Validatoren autorisieren Aktionen, Executor-Module fügen Funktionen wie Recovery hinzu.
 
-Dies ist nützlich für:
+## Einfach erklärt
 
-- institutionelles Onboarding
-- sponsorgestützte Gas-Flows
-- co-autorisierte Policies
-- Account-Wiederherstellung nach Wallet-Neuinstallation
-- atomare Multi-Call-Workflows
-- dapps, die Passkey-UX möchten, ohne eine Wallet zu bauen
+- Eine Konto-Adresse hält die Assets und ist die Adresse, die Dapps sehen.
+- Das Konto kann Passkey, ECDSA oder eine Composite-Policy nutzen.
+- Guardian-Recovery kann den aktiven Validator nach einer Wartezeit ersetzen.
+- `wallet_sendCalls` kann mehrere Calls als eine atomare Aktion ausführen.
 
-## Warum zkSYS-Passkeys möglich sind
+## Technisches Modell
 
-Passkeys verwenden WebAuthn, und WebAuthns Standard-Signaturalgorithmus ist ES256: ECDSA über der P-256-Kurve, auch bekannt als secp256r1. Generische EVM-Wallets verwenden normalerweise secp256k1-EOAs, daher ist eine Passkey-Signatur nicht direkt eine EOA-Signatur.
+`PaliSmartAccount` führt Calls aus und validiert Signaturen über ERC-7579-style Module. `PaliSmartAccountFactory` leitet deterministische Adressen ab und deployed Konten. Pali nutzt ERC-4337-style Encoding und EIP-1271 für Contract-Signaturen.
 
-Palis Passkey-Accounts sind zkSYS Smart Accounts, die um on-chain P-256-Verifikation herum entworfen sind. Die Wallet extrahiert die WebAuthn-Public-Key-Koordinaten, Challenge, Authenticator-Daten, Client-Daten und P-256-Signatur; anschließend verifiziert der Smart-Account/Factory-Pfad diesen Proof gegen die registrierten Metadaten des Accounts. Dadurch werden Gerätebiometrie oder Plattform-Passkeys für Account-Autorisierung nutzbar, während der private Schlüssel im Authenticator des Benutzers bleibt.
+## Für Institutionen und Teams
 
-Das praktische Ergebnis ist eine Wallet-UX, die sich wie biometrischer Login anfühlt, aber eine Chain-Aktion autorisiert:
+Institutionen sollten Pali Smart Accounts als Kontoinfrastruktur behandeln, nicht nur als Passkey-Login. Nutzt Passkeys für einfaches Onboarding, ECDSA oder Composite-Validatoren für Team- oder Hardware-Wallet-Kontrolle, Guardian-Recovery für verzögerten Ersatz und finanzierte Gas-Payer für Deployment und Ausführung.
 
-1. Die dapp fordert einen Passkey Smart Account oder Batch-Ausführung an.
-2. Pali bereitet einen Action-Hash für die genaue Chain, den Account, die Calls, Nonce, Deadline und Sponsor-Policy vor.
-3. Der Browser/das OS fragt den Benutzer nach Passkey-Freigabe.
-4. Der zkSYS Smart Account verifiziert den P-256-WebAuthn-Proof on-chain vor der Ausführung.
+Pali warnt ausdrücklich, wenn eine Dapp externe ECDSA-Owner anfordert, weil diese Adressen zukünftige Kontoaktionen autorisieren können.
 
-## Unterstützte Netzwerke
-
-Passkey-Accounts sind nicht auf jeder EVM-Chain aktiviert. Sie erfordern eine konfigurierte Passkey-Factory und zkSYS-P-256-Verifikationsunterstützung.
-
-| Netzwerk | Chain id | Status in diesem Pali-Build |
-| --- | --- | --- |
-| `zkTanenbaum` | `57057` | Konfiguriert. Factory: `0x4DB71a59725aB275fc2127da02F9DBA4946227F0`. |
-| `zkSYS` | TBD in wallet config | Vorgesehenes Produktionsziel für dieselbe Passkey-Architektur, sobald die Factory-Adresse in Pali konfiguriert ist. |
-
-Wenn eine dapp `wallet_createPasskeyAccount` auf einem Netzwerk ohne konfigurierte Factory aufruft, lehnt Pali den Request ab, statt nicht unterstützte Metadaten zu erstellen.
-
-## dapp-Methode
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/passkey-create-disabled.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/passkey-create-disabled.png" alt="Pali wallet_createPasskeyAccount-Popup mit deaktiviertem Sponsoring" />
-</a>
-  <figcaption>Der standardmäßige dapp-gesteuerte Passkey-Flow sollte mit deaktiviertem Sponsoring starten, sofern die Institution nicht ausdrücklich Sponsor-Policy benötigt.</figcaption>
-</figure>
+## Dapp-Methode
 
 ```js
 const account = await window.ethereum.request({
-  method: 'wallet_createPasskeyAccount',
-  params: [
-    {
-      label: 'Pali Wallet Passkey',
-      sponsor: { mode: 'disabled' },
-    },
-  ],
+  method: 'wallet_prepareSmartAccount',
+  params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
-
-Das Ergebnis enthält die Smart-Account-`address` und öffentliche Passkey-Metadaten.
-
-## Sponsor-Modi
-
-| Modus | Bedeutung |
-| --- | --- |
-| `disabled` | Keine Sponsor-Policy. Die Wallet/der Benutzer zahlt Gas. |
-| `gasOnly` | Sponsor-Service kann Gas zahlen. Pali benötigt für diesen Modus eine Sponsor-URL; wenn Sponsoring fehlschlägt, kann Wallet-Gas-Fallback erlaubt sein. |
-| `required` | Sponsor-Co-Autorisierung ist durch Policy erforderlich. Ein Signer ist erforderlich; die Sponsor-URL ist optional, wenn Pali den Signer-Proof von einem lokalen Konto in der Wallet erhalten kann. |
-
-## Benutzerkontrolle
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/browser-passkey-create.png" alt="Passkey-Erstellungsdialog des Browsers oder Betriebssystems" />
-</a>
-  <figcaption>Nach der Wallet-Prüfung übernimmt der Browser oder das Betriebssystem die WebAuthn-Passkey-Erstellung.</figcaption>
-</figure>
-
-Der Benutzer sieht die anfragende Site, Label, Sponsor-Modus, Signer, URL und Policy-Text vor der Freigabe. Der Browser oder das OS zeigt anschließend den WebAuthn-Passkey-Prompt.
-
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey-dapp-Onboarding-Flow"></video>
-  <figcaption>Passkey-Onboarding-Flow: gebrandetes Intro, dapp-Request und Pali-Account-Freigabe.</figcaption>
-</figure>

@@ -13,7 +13,7 @@ Examples:
 - Rollux and Syscoin NEVM dapps
 - ERC-20, ERC-721, and ERC-1155 interactions
 - EIP-712 typed data signing
-- passkey smart account creation and execution
+- smart-account creation and execution
 
 ## UTXO mode
 

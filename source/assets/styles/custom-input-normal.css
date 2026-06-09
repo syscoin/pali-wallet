@@ -18,9 +18,22 @@
   justify-content: center;
 }
 
-.custom-input-normal.passkey-input,
-.custom-input-normal.passkey-input .ant-input {
+.custom-input-normal.smartAccount-input,
+.custom-input-normal.smartAccount-input .ant-input {
   width: 100% !important;
+  min-width: 0;
+  border-radius: 100px !important;
+}
+
+.custom-input-normal.smartAccount-input.ant-input-affix-wrapper {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.custom-input-normal.smartAccount-input .ant-input {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .custom-input-normal .ant-input-suffix .anticon-close-circle {

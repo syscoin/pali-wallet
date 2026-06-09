@@ -33,8 +33,8 @@ A recuperação de passkey da Pali usa metadados de recuperação escopados à c
 2. Procura smart accounts correspondentes no registro da fábrica e nos logs de criação.
 3. Ignora contas que já estão na carteira.
 4. Adiciona contas recuperáveis quando os metadados de sponsor podem ser resolvidos.
-5. Avisa se metadados de URL de sponsor são necessários para uma política de sponsor obrigatória.
+5. Avisa se metadados de URL de sponsor são necessários para uma política de módulos obrigatória.
 
 ## Idempotência de criação/recuperação por dapp
 
-Quando uma dapp chama `wallet_createPasskeyAccount`, a Pali primeiro verifica se uma conta com passkey on-chain existente corresponde à política de sponsor solicitada. Se a conta correspondente já existe localmente, a Pali a reutiliza em vez de criar uma duplicata. Se ela existe on-chain, mas não localmente, a Pali pode recuperá-la para a carteira.
+Quando uma dapp chama `wallet_prepareSmartAccount`, a Pali primeiro verifica se uma conta com passkey on-chain existente corresponde à política de módulos solicitada. Se a conta correspondente já existe localmente, a Pali a reutiliza em vez de criar uma duplicata. Se ela existe on-chain, mas não localmente, a Pali pode recuperá-la para a carteira.

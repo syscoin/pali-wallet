@@ -58,10 +58,10 @@ const signature = await window.ethereum.request({
 
 Pali validates typed data structure before showing the signing popup. Dapps should use canonical EIP-712 JSON and avoid relying on wallet-specific parsing quirks.
 
-## Passkey accounts and signing
+## Smart accounts and signing
 
-Passkey smart accounts can approve transactions and signing flows through WebAuthn-backed smart account logic. The user still approves in Pali and through the platform passkey prompt.
+Pali smart accounts approve transactions and signing flows through the active validator module. The user still approves in Pali. If the validator is passkey-based, the browser or operating system also shows a WebAuthn prompt.
 
-For normal transactions and `wallet_sendCalls`, Pali prepares the smart account execution, obtains a WebAuthn assertion over the action hash, and submits the smart account transaction. Local passkey accounts represent confirmed on-chain deployments.
+For normal transactions and `wallet_sendCalls`, Pali prepares the smart-account execution, obtains validator authorization over the action hash, checks execution targets against the wallet blacklist, and submits the smart-account transaction.
 
 For passkey-specific `eth_signTypedData_v4` requests, Pali can return an ABI-encoded WebAuthn proof for the requested action hash instead of an ECDSA EOA signature. Dapps should use explicit passkey typed-data fields such as `actionHash` and a passkey-specific primary type, then submit or fund the resulting on-chain transaction themselves.

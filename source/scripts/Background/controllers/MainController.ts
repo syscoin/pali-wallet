@@ -6,8 +6,6 @@ import { namehash } from '@ethersproject/hash';
 import { formatUnits } from '@ethersproject/units';
 import {
   KeyringManager,
-  IKeyringAccountState,
-  KeyringAccountType,
   CustomJsonRpcProvider,
 } from '@sidhujag/sysweb3-keyring';
 import {
@@ -86,10 +84,9 @@ import {
 } from 'state/vaultGlobal';
 import {
   INetworkType,
-  IPasskeySmartAccountMetadata,
-  IPasskeyCredentialProfile,
-  KeyringAccountType as PaliKeyringAccountType,
-  PasskeyBackupStatus,
+  ISmartAccountMetadata,
+  IKeyringAccountState,
+  KeyringAccountType,
 } from 'types/network';
 import { IBlacklistCheckResult } from 'types/security';
 import {
@@ -112,8 +109,12 @@ import {
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
-import type { PasskeyWebAuthnProof } from 'utils/passkey';
 import { blacklistService } from 'utils/security/blacklistService';
+import type {
+  PaliRecoveryTarget,
+  PaliSmartAccountAuthenticatorSetup,
+  SmartAccountPackedUserOperation,
+} from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
 import {
   isTransactionInBlock,
@@ -131,12 +132,12 @@ import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-import PasskeyController from './passkey';
 import {
   CancellablePromises,
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import SmartAccountController from './smartAccount';
 import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
 import EvmTransactionsController from './transactions/evm';
@@ -162,7 +163,7 @@ class MainController {
   private assetsManager: IAssetsManager;
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
-  private passkey: PasskeyController;
+  private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
   private currentPromise: {
     cancel: () => void;
@@ -184,6 +185,7 @@ class MainController {
 
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
+  private pendingEvmReceiptChecks = new Map<string, number>();
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
@@ -637,7 +639,7 @@ class MainController {
     this.transactionsManager = TransactionsManager();
     this.balancesManager = BalancesManager();
     this.cancellablePromises = new CancellablePromises();
-    this.passkey = new PasskeyController({
+    this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
       getLatestUpdateForCurrentAccount: (
         isPolling,
@@ -653,6 +655,10 @@ class MainController {
         ),
       saveWalletState: (operation, isUserActivity, sync) =>
         this.saveWalletState(operation, isUserActivity, sync),
+      signEthWithAccount: (params, targetAccount) =>
+        this.ethSignWithAccount(params, targetAccount),
+      createSmartAccountRecord: (params) =>
+        this.createSmartAccountRecord(params),
       sendAndSaveEthTransaction: (
         params,
         isLegacy,
@@ -2513,7 +2519,14 @@ class MainController {
     return;
   }
 
-  public async createAccount(label?: string): Promise<IKeyringAccountState> {
+  public async createAccount(
+    label?: string,
+    accountType: KeyringAccountType = KeyringAccountType.HDAccount
+  ): Promise<IKeyringAccountState> {
+    if (accountType === KeyringAccountType.SmartAccount) {
+      return this.createSmartAccountRecord({ label });
+    }
+
     const keyring = this.getActiveKeyring();
     const newAccount = await keyring.addNewAccount(label);
 
@@ -2575,89 +2588,60 @@ class MainController {
     return newAccount;
   }
 
-  public async createPasskeySmartAccount(params: {
+  public async createSmartAccount(params?: {
     address: string;
-    credentialProfile?: IPasskeyCredentialProfile;
-    deploymentActionHash?: string;
-    deploymentExecutions?: Array<{
-      data: string;
-      deadline: number;
-      nonce: string;
-      target: string;
-      value: string;
-    }>;
-    deploymentProof?: PasskeyWebAuthnProof;
     label?: string;
-    metadata: IPasskeySmartAccountMetadata;
+    metadata: ISmartAccountMetadata;
   }): Promise<any> {
-    return this.passkey.createPasskeySmartAccount(params);
+    if (!params?.address || !params.metadata) {
+      return this.createSmartAccountRecord({ label: params?.label });
+    }
+    return this.createSmartAccountRecord(params);
   }
 
-  public getPasskeyCredentialProfile(): IPasskeyCredentialProfile | null {
-    return this.passkey.getPasskeyCredentialProfile();
-  }
-
-  public async savePasskeyCredentialProfile(
-    profile: IPasskeyCredentialProfile | null
-  ): Promise<IPasskeyCredentialProfile | null> {
-    return this.passkey.savePasskeyCredentialProfile(profile);
-  }
-
-  public async previewPasskeySmartAccountRecovery(params: {
-    backupStatus?: PasskeyBackupStatus;
-    credentialId: string;
-    credentialIdHash: string;
-    publicKeyCandidates: Array<{
-      originHash: string;
-      originLength: number;
-      rpIdHash: string;
-      x: string;
-      y: string;
-    }>;
-    verificationHash: string;
-    verificationProof: PasskeyWebAuthnProof;
-  }) {
-    return this.passkey.previewPasskeySmartAccountRecovery(params);
-  }
-
-  public async importPasskeySmartAccounts(params: {
-    addresses: string[];
-    backupStatus?: PasskeyBackupStatus;
-    credentialId: string;
-    credentialIdHash: string;
-    publicKeyCandidates: Array<{
-      originHash: string;
-      originLength: number;
-      rpIdHash: string;
-      x: string;
-      y: string;
-    }>;
-    verificationHash: string;
-    verificationProof: PasskeyWebAuthnProof;
-  }) {
-    return this.passkey.importPasskeySmartAccounts(params);
-  }
-
-  public async preparePasskeySmartAccount(params: {
-    backupStatus?: PasskeyBackupStatus;
-    credentialId: string;
-    credentialIdHash: string;
-    deploymentSalt: string;
+  private async createSmartAccountRecord(params: {
+    address?: string;
     label?: string;
-    passkeyName: string;
-    publicKey: {
-      originHash: string;
-      originLength: number;
-      rpIdHash: string;
-      x: string;
-      y: string;
-    };
-    sponsor?: {
-      mode?: string;
-      policyText?: string;
-      signer?: string;
-      url?: string;
-    };
+    metadata?: ISmartAccountMetadata;
+  }): Promise<IKeyringAccountState> {
+    const keyring = this.getActiveKeyring();
+    const account = await keyring.createSmartAccount({
+      address: params.address,
+      deriveAccount: params.address
+        ? undefined
+        : (accountIndex: number) =>
+            this.smartAccount.deriveSmartAccountRecord(accountIndex),
+      label: params.label,
+      metadata: params.metadata,
+    });
+
+    store.dispatch(
+      createAccount({
+        account,
+        accountType: KeyringAccountType.SmartAccount,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: account.id,
+        type: KeyringAccountType.SmartAccount,
+      })
+    );
+    await this.saveWalletState('create-smart-account', true, true);
+
+    setTimeout(() => {
+      this.refreshActiveAccountLightweight('smart account creation');
+      store.dispatch(setIsPollingUpdate(false));
+      store.dispatch(setPostNetworkSwitchLoading(false));
+    }, 10);
+
+    return account;
+  }
+
+  public async prepareSmartAccount(params: {
+    accountIndex?: number;
+    authenticator: PaliSmartAccountAuthenticatorSetup;
+    label?: string;
   }): Promise<{
     address: string;
     deploymentActionHash?: string;
@@ -2676,23 +2660,52 @@ class MainController {
       value: string;
     }>;
     factoryAddress: string;
-    metadata: IPasskeySmartAccountMetadata;
+    metadata: ISmartAccountMetadata;
   }> {
-    return this.passkey.preparePasskeySmartAccount(params);
+    return this.smartAccount.prepareSmartAccount(params);
   }
 
-  public async updatePasskeyBackupStatus(
-    accountId: number,
-    backupStatus: PasskeyBackupStatus
-  ): Promise<PasskeyBackupStatus> {
-    return this.passkey.updatePasskeyBackupStatus(accountId, backupStatus);
+  public async registerSmartAccountOnChain(params: { accountId: number }) {
+    return this.smartAccount.registerSmartAccountOnChain(params);
   }
 
-  public assertPasskeySmartAccountSupported(): boolean {
-    return this.passkey.assertPasskeySmartAccountSupported();
+  public async hydrateSmartAccount(
+    accountId: number
+  ): Promise<ISmartAccountMetadata> {
+    return this.smartAccount.hydrateSmartAccount(accountId);
   }
 
-  public async preparePasskeyExecution(params: {
+  public async switchSmartAccountValidator(params: {
+    accountId: number;
+    validator: string;
+  }): Promise<ISmartAccountMetadata> {
+    return this.smartAccount.switchSmartAccountValidator(params);
+  }
+
+  public async getSmartAccountNativeGasStatus(params: {
+    accountId: number;
+  }): Promise<{
+    balance: string;
+    hasNativeGas: boolean;
+    requiredBalance: string;
+  }> {
+    return this.smartAccount.getSmartAccountNativeGasStatus(params);
+  }
+
+  public assertSmartAccountSupported(): Promise<boolean> {
+    return this.smartAccount.assertSmartAccountSupported();
+  }
+
+  public getSmartAccountInfrastructureStatus() {
+    return this.smartAccount.getSmartAccountInfrastructureStatus();
+  }
+
+  public deploySmartAccountInfrastructure() {
+    return this.smartAccount.deploySmartAccountInfrastructure();
+  }
+
+  public async prepareSmartAccountExecution(params: {
+    accountId?: number;
     data?: string;
     target: string;
     value: string;
@@ -2700,120 +2713,105 @@ class MainController {
     actionHash: string;
     execution: {
       data: string;
-      deadline: number;
       nonce: string;
       target: string;
       value: string;
     };
+    executionCalldata: string;
     executions: Array<{
       data: string;
-      deadline: number;
       nonce: string;
       target: string;
       value: string;
     }>;
+    mode: string;
+    userOperation: SmartAccountPackedUserOperation;
+    validator: string;
   }> {
-    return this.passkey.preparePasskeyExecution(params);
+    return this.smartAccount.prepareSmartAccountExecution(params);
   }
 
-  public async preparePasskeyExecutions(
+  public async prepareSmartAccountExecutions(
     params: Array<{
       data?: string;
       target: string;
       value: string;
-    }>
+    }>,
+    accountId?: number,
+    options?: { useCachedMetadata?: boolean }
   ): Promise<{
     actionHash: string;
     execution: {
       data: string;
-      deadline: number;
       nonce: string;
       target: string;
       value: string;
     };
+    executionCalldata: string;
     executions: Array<{
       data: string;
-      deadline: number;
       nonce: string;
       target: string;
       value: string;
     }>;
+    mode: string;
+    userOperation: SmartAccountPackedUserOperation;
+    validator: string;
   }> {
-    return this.passkey.preparePasskeyExecutions(params);
+    return this.smartAccount.prepareSmartAccountExecutions(
+      params,
+      accountId,
+      options
+    );
   }
 
-  public async submitPasskeyExecution(params: {
-    actionHash?: string;
-    confirmedSponsor?: {
-      mode?: string;
-      policyText?: string;
-      signer?: string;
-      url?: string;
-    } | null;
-    execution: {
-      data: string;
-      deadline: number;
-      nonce: string;
-      target: string;
-      value: string;
-    };
+  public async submitSmartAccountExecution(params: {
+    accountId?: number;
+    executionCalldata?: string;
     executions?: Array<{
       data: string;
-      deadline: number;
-      nonce: string;
+      nonce?: string;
       target: string;
       value: string;
     }>;
-    proof: {
-      authenticatorData: string;
-      challengeOffset: number;
-      clientDataJSON: string;
-      originOffset: number;
-      r: string;
-      s: string;
-      typeOffset: number;
-    };
-    sponsorProof?:
-      | string
-      | {
-          r?: string;
-          s?: string;
-          signature?: string;
-          v?: number | string;
-        };
-    sponsorSignature?: string;
+    mode?: string;
+    signature: string;
+    userOperation?: SmartAccountPackedUserOperation;
+    validator?: string;
     waitForConfirmation?: boolean;
   }) {
-    return this.passkey.submitPasskeyExecution(params);
+    return this.smartAccount.submitSmartAccountExecution(params);
   }
 
-  public async preparePasskeyGuardianRegistration(params: {
+  public async prepareSmartAccountGuardianRegistration(params: {
     guardian: string;
     recoveryDelay?: number;
     threshold?: number;
   }) {
-    return this.passkey.preparePasskeyGuardianRegistration(params);
+    return this.smartAccount.prepareSmartAccountGuardianRegistration(params);
   }
 
-  public async getPasskeyGuardianRecoveryStatus(params: { account: string }) {
-    return this.passkey.getPasskeyGuardianRecoveryStatus(params);
+  public async getSmartAccountGuardianRecoveryStatus(params: {
+    account: string;
+  }) {
+    return this.smartAccount.getSmartAccountGuardianRecoveryStatus(params);
   }
 
-  public async preparePasskeyGuardianPolicyUpdate(params: {
+  public async prepareSmartAccountGuardianPolicyUpdate(params: {
     recoveryDelay: number;
     threshold?: number;
   }) {
-    return this.passkey.preparePasskeyGuardianPolicyUpdate(params);
+    return this.smartAccount.prepareSmartAccountGuardianPolicyUpdate(params);
   }
 
-  public async preparePasskeyGuardianRemoval(params: {
+  public async prepareSmartAccountGuardianRemoval(params: {
     guardian?: string;
     threshold?: number;
   }) {
-    return this.passkey.preparePasskeyGuardianRemoval(params);
+    return this.smartAccount.prepareSmartAccountGuardianRemoval(params);
   }
 
-  public async submitPasskeyGuardianPolicyTransaction(params: {
+  public async submitSmartAccountGuardianPolicyTransaction(params: {
     actionHash?: string;
     execution: {
       data: string;
@@ -2829,56 +2827,29 @@ class MainController {
       target: string;
       value: string;
     }>;
-    proof: {
-      authenticatorData: string;
-      challengeOffset: number;
-      clientDataJSON: string;
-      originOffset: number;
-      r: string;
-      s: string;
-      typeOffset: number;
-    };
+    signature: string;
   }) {
-    return this.passkey.submitPasskeyGuardianPolicyTransaction(params);
+    return this.smartAccount.submitSmartAccountGuardianPolicyTransaction(
+      params
+    );
   }
 
-  public async submitPasskeyGuardianStartRecovery(params: {
+  public async submitSmartAccountGuardianStartRecovery(params: {
     account: string;
     guardian: string;
-    newIdentity: {
-      credentialIdHash: string;
-      originHash: string;
-      originLength: number;
-      passkeyX: string;
-      passkeyY: string;
-      rpIdHash: string;
-    };
+    target: PaliRecoveryTarget;
   }) {
-    return this.passkey.submitPasskeyGuardianStartRecovery(params);
+    return this.smartAccount.submitSmartAccountGuardianStartRecovery(params);
   }
 
-  public async finalizePasskeyGuardianRecovery(accountAddress: string) {
-    return this.passkey.finalizePasskeyGuardianRecovery(accountAddress);
-  }
-
-  public async importPasskeySmartAccountByAddress(params: {
-    address: string;
-    backupStatus?: any;
-    credentialId: string;
-    credentialIdHash: string;
-    label?: string;
-    verificationHash: string;
-    verificationProof: {
-      authenticatorData: string;
-      challengeOffset: number;
-      clientDataJSON: string;
-      originOffset: number;
-      r: string;
-      s: string;
-      typeOffset: number;
-    };
+  public async finalizeSmartAccountGuardianRecovery(params: {
+    account: string;
+    executionCalldata: string;
+    mode: string;
+    recoveryModule?: string;
+    salt: string;
   }) {
-    return this.passkey.importPasskeySmartAccountByAddress(params);
+    return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
   }
 
   public async setAccount(
@@ -2892,18 +2863,19 @@ class MainController {
       try {
         const { accounts, activeNetwork, isBitcoinBased } =
           store.getState().vault;
-        if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+        if (String(type) === KeyringAccountType.SmartAccount) {
           const account = accounts[type]?.[id] as any;
           if (isBitcoinBased) {
             throw new Error(
-              'Passkey accounts are only available on EVM networks'
+              'Smart accounts are only available on EVM networks'
             );
           }
           if (
-            Number(account?.passkey?.chainId) !== Number(activeNetwork.chainId)
+            Number(account?.smartAccount?.chainId) !==
+            Number(activeNetwork.chainId)
           ) {
             throw new Error(
-              'Passkey account is not available on the active network'
+              'Smart account is not available on the active network'
             );
           }
         }
@@ -3014,15 +2986,15 @@ class MainController {
 
   private isAccountCompatibleWithNetwork(
     account: any,
-    type: PaliKeyringAccountType,
+    type: KeyringAccountType,
     network: INetwork
   ): boolean {
     if (!account) return false;
 
-    if (String(type) === PaliKeyringAccountType.PasskeySmartAccount) {
+    if (String(type) === KeyringAccountType.SmartAccount) {
       return (
         network.kind === INetworkType.Ethereum &&
-        Number(account?.passkey?.chainId) === Number(network.chainId)
+        Number(account?.smartAccount?.chainId) === Number(network.chainId)
       );
     }
 
@@ -3042,14 +3014,14 @@ class MainController {
         if (
           this.isAccountCompatibleWithNetwork(
             account,
-            accountType as PaliKeyringAccountType,
+            accountType as KeyringAccountType,
             network
           )
         ) {
           return {
             account,
             id: account.id,
-            type: accountType as PaliKeyringAccountType,
+            type: accountType as KeyringAccountType,
           };
         }
       }
@@ -4053,6 +4025,13 @@ class MainController {
               notificationManager.updatePendingTransactionBadge(txs);
             }
 
+            if (!isBitcoinBased) {
+              await this.reconcileLocalPendingEvmSmartAccountTransactions(
+                activeAccount,
+                activeNetwork.chainId
+              );
+            }
+
             // No-op for loading flags; transactions update fully in background
             resolve();
           } catch (error) {
@@ -4073,11 +4052,34 @@ class MainController {
 
   private async sendAndSaveTransaction(
     tx: IEvmTransactionResponse | ISysTransaction | ITxid,
-    targetAccount?: { id: number; type: PaliKeyringAccountType },
-    options: { clearNavigation?: boolean; persist?: boolean } = {}
+    targetAccount?: { id: number; type: KeyringAccountType },
+    options: {
+      clearNavigation?: boolean;
+      persist?: boolean;
+      skipRapidPolling?: boolean;
+      transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
+    } = {}
   ) {
-    const { clearNavigation = true, persist = true } = options;
+    const {
+      clearNavigation = true,
+      persist = true,
+      skipRapidPolling = false,
+      transactionAccounts = [],
+    } = options;
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
+    const transactionOwners = (
+      transactionAccounts.length
+        ? transactionAccounts
+        : targetAccount
+        ? [targetAccount]
+        : []
+    ).filter(
+      (account, index, accountsToSave) =>
+        accountsToSave.findIndex(
+          (candidate) =>
+            candidate.id === account.id && candidate.type === account.type
+        ) === index
+    );
 
     // Handle ITxid type for UTXO transactions (returned by sendTransaction)
     if ('txid' in tx && Object.keys(tx).length === 1) {
@@ -4124,24 +4126,6 @@ class MainController {
         });
       }
 
-      // Start rapid polling for this transaction
-      try {
-        console.log(
-          `[MainController] Starting rapid polling for transaction ${tx.txid}`
-        );
-        this.startRapidTransactionPolling(
-          tx.txid,
-          activeNetwork.chainId,
-          true,
-          targetAccount
-        );
-      } catch (error) {
-        console.error(
-          '[MainController] Failed to start rapid transaction polling:',
-          error
-        );
-      }
-
       if (persist) {
         try {
           await this.saveWalletState('send-and-save-transaction', true, true);
@@ -4168,6 +4152,25 @@ class MainController {
         }
       }
 
+      if (!skipRapidPolling) {
+        try {
+          console.log(
+            `[MainController] Scheduling rapid polling for transaction ${tx.txid}`
+          );
+          this.startRapidTransactionPolling(
+            tx.txid,
+            activeNetwork.chainId,
+            true,
+            targetAccount
+          );
+        } catch (error) {
+          console.error(
+            '[MainController] Failed to schedule rapid transaction polling:',
+            error
+          );
+        }
+      }
+
       return;
     }
 
@@ -4179,21 +4182,35 @@ class MainController {
       ),
     } as IEvmTransactionResponse & ISysTransaction;
 
-    store.dispatch(
-      setSingleTransactionToState({
-        accountId: targetAccount?.id,
-        accountType: targetAccount?.type,
-        chainId: activeNetwork.chainId,
-        networkType: isBitcoinBased
-          ? TransactionsType.Syscoin
-          : TransactionsType.Ethereum,
-        transaction: txWithTimestamp,
-      })
-    );
+    if (transactionOwners.length) {
+      transactionOwners.forEach((owner) => {
+        store.dispatch(
+          setSingleTransactionToState({
+            accountId: owner.id,
+            accountType: owner.type,
+            chainId: activeNetwork.chainId,
+            networkType: isBitcoinBased
+              ? TransactionsType.Syscoin
+              : TransactionsType.Ethereum,
+            transaction: txWithTimestamp,
+          })
+        );
+      });
+    } else {
+      store.dispatch(
+        setSingleTransactionToState({
+          chainId: activeNetwork.chainId,
+          networkType: isBitcoinBased
+            ? TransactionsType.Syscoin
+            : TransactionsType.Ethereum,
+          transaction: txWithTimestamp,
+        })
+      );
+    }
 
     // Notify about new pending transaction
     const { accounts, activeAccount } = store.getState().vault;
-    const accountInfo = targetAccount ?? activeAccount;
+    const accountInfo = transactionOwners[0] ?? activeAccount;
     const account = accounts[accountInfo.type]?.[accountInfo.id];
     if (account) {
       notificationManager.notifyTransaction({
@@ -4206,30 +4223,6 @@ class MainController {
         network: activeNetwork,
         isEvm: !isBitcoinBased,
       });
-    }
-
-    // Start rapid polling for this transaction to detect confirmation quickly
-    try {
-      const txHash = isBitcoinBased
-        ? (tx as ISysTransaction).txid
-        : (tx as IEvmTransactionResponse).hash;
-
-      console.log(
-        `[MainController] Starting rapid polling for transaction ${txHash}`
-      );
-
-      // Start rapid polling inline to avoid import issues
-      this.startRapidTransactionPolling(
-        txHash,
-        activeNetwork.chainId,
-        isBitcoinBased,
-        targetAccount
-      );
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to start rapid transaction polling:',
-        error
-      );
     }
 
     if (persist) {
@@ -4252,6 +4245,32 @@ class MainController {
         );
       } catch (e) {
         console.error('[MainController] Failed to clear navigation state:', e);
+      }
+    }
+
+    // Schedule rapid polling only after the pending tx is persisted and the UI
+    // can receive the send response. The first actual poll is still delayed.
+    if (!skipRapidPolling) {
+      try {
+        const txHash = isBitcoinBased
+          ? (tx as ISysTransaction).txid
+          : (tx as IEvmTransactionResponse).hash;
+
+        console.log(
+          `[MainController] Scheduling rapid polling for transaction ${txHash}`
+        );
+
+        this.startRapidTransactionPolling(
+          txHash,
+          activeNetwork.chainId,
+          isBitcoinBased,
+          transactionOwners[0]
+        );
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to schedule rapid transaction polling:',
+          error
+        );
       }
     }
   }
@@ -4314,9 +4333,14 @@ class MainController {
   public async sendAndSaveEthTransaction(
     params: any,
     isLegacy?: boolean,
-    targetAccount?: { id: number; type: PaliKeyringAccountType },
+    targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
-    saveOptions?: { clearNavigation?: boolean; persist?: boolean }
+    saveOptions?: {
+      clearNavigation?: boolean;
+      persist?: boolean;
+      skipRapidPolling?: boolean;
+      transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
+    }
   ): Promise<IEvmTransactionResponse> {
     try {
       const controller = getController();
@@ -4337,12 +4361,43 @@ class MainController {
         }
       }
 
-      // Send the formatted transaction
-      const txResponse =
-        await controller.wallet.ethereumTransaction.sendFormattedTransaction(
-          params,
-          isLegacy
+      const { accounts, activeAccount } = store.getState().vault;
+      const shouldUseTargetAccount =
+        targetAccount &&
+        (targetAccount.id !== activeAccount.id ||
+          targetAccount.type !== activeAccount.type);
+      const targetAccountExists = targetAccount
+        ? accounts[targetAccount.type]?.[targetAccount.id]
+        : undefined;
+      if (targetAccount && !targetAccountExists) {
+        throw new Error(
+          `Target account ${targetAccount.type}:${targetAccount.id} was not found`
         );
+      }
+
+      // sendFormattedTransaction signs with the active keyring account. When a
+      // background flow pays from a local account while a smart account is active,
+      // override only the keyring's state getter for the signing call. Do not
+      // dispatch setActiveAccount here; that briefly changes the visible UI.
+      const keyring = this.getActiveKeyring();
+      let txResponse: IEvmTransactionResponse;
+      try {
+        if (shouldUseTargetAccount) {
+          keyring.setVaultStateGetter(() => ({
+            ...store.getState().vault,
+            activeAccount: targetAccount,
+          }));
+        }
+        txResponse =
+          await controller.wallet.ethereumTransaction.sendFormattedTransaction(
+            params,
+            isLegacy
+          );
+      } finally {
+        if (shouldUseTargetAccount) {
+          keyring.setVaultStateGetter(() => store.getState().vault);
+        }
+      }
 
       // Save the transaction (this will also clear navigation state)
       const txToSave = transactionMetadata
@@ -4363,6 +4418,39 @@ class MainController {
         );
       }
       throw error;
+    }
+  }
+
+  public async ethSignWithAccount(
+    params: string[],
+    targetAccount: { id: number; type: KeyringAccountType }
+  ): Promise<string> {
+    const { accounts, activeAccount } = store.getState().vault;
+    const targetAccountExists =
+      accounts[targetAccount.type]?.[targetAccount.id];
+    if (!targetAccountExists) {
+      throw new Error(
+        `Target account ${targetAccount.type}:${targetAccount.id} was not found`
+      );
+    }
+
+    const shouldUseTargetAccount =
+      targetAccount.id !== activeAccount.id ||
+      targetAccount.type !== activeAccount.type;
+    const keyring = this.getActiveKeyring();
+    try {
+      if (shouldUseTargetAccount) {
+        keyring.setVaultStateGetter(() => ({
+          ...store.getState().vault,
+          activeAccount: targetAccount,
+        }));
+      }
+
+      return await getController().wallet.ethereumTransaction.ethSign(params);
+    } finally {
+      if (shouldUseTargetAccount) {
+        keyring.setVaultStateGetter(() => store.getState().vault);
+      }
     }
   }
 
@@ -4545,7 +4633,7 @@ class MainController {
   }: {
     activeAccount: {
       id: number;
-      type: PaliKeyringAccountType;
+      type: KeyringAccountType;
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
@@ -4670,7 +4758,7 @@ class MainController {
   }: {
     activeAccount: {
       id: number;
-      type: PaliKeyringAccountType;
+      type: KeyringAccountType;
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
@@ -5131,7 +5219,7 @@ class MainController {
     txHash: string,
     chainId: number,
     isBitcoinBased: boolean,
-    targetAccount?: { id: number; type: PaliKeyringAccountType }
+    targetAccount?: { id: number; type: KeyringAccountType }
   ) {
     const pollKey = `${txHash}_${chainId}`;
     const maxPolls = 4;
@@ -5313,7 +5401,7 @@ class MainController {
       this.getEvmMinedTransactionNotificationType(txUpdate);
     const notifiedAccounts = new Set<string>();
 
-    Object.values(PaliKeyringAccountType).forEach((accountType) => {
+    Object.values(KeyringAccountType).forEach((accountType) => {
       Object.entries(accountTransactions[accountType] || {}).forEach(
         ([accountId, transactionsByNetwork]: [string, any]) => {
           const chainTxs = transactionsByNetwork?.ethereum?.[chainId];
@@ -5355,7 +5443,8 @@ class MainController {
               networkType: TransactionsType.Ethereum,
               transaction: {
                 ...txUpdate,
-                passkeyExecutionFrom: (existingTx as any).passkeyExecutionFrom,
+                smartAccountExecutionFrom: (existingTx as any)
+                  .smartAccountExecutionFrom,
                 timestamp: (existingTx as any).timestamp,
               } as IEvmTransactionResponse,
             })
@@ -5373,6 +5462,42 @@ class MainController {
 
       if (Array.isArray(activeAccountTxs)) {
         notificationManager.updatePendingTransactionBadge(activeAccountTxs);
+      }
+    }
+  }
+
+  private async reconcileLocalPendingEvmSmartAccountTransactions(
+    accountInfo: { id: number; type: KeyringAccountType },
+    chainId: number
+  ) {
+    const chainTxs =
+      store.getState().vault.accountTransactions[accountInfo.type]?.[
+        accountInfo.id
+      ]?.ethereum?.[chainId];
+    if (!Array.isArray(chainTxs)) {
+      return;
+    }
+
+    const now = Date.now();
+    const pendingSmartAccountTxs = chainTxs
+      .filter(
+        (tx: IEvmTransactionResponse | any) =>
+          tx?.hash && tx?.smartAccountExecutionFrom && !isTransactionInBlock(tx)
+      )
+      .slice(0, 5);
+
+    for (const tx of pendingSmartAccountTxs) {
+      const txHash = tx.hash.toLowerCase();
+      const checkKey = `${chainId}:${txHash}`;
+      const lastCheckedAt = this.pendingEvmReceiptChecks.get(checkKey) || 0;
+      if (now - lastCheckedAt < 30_000) {
+        continue;
+      }
+      this.pendingEvmReceiptChecks.set(checkKey, now);
+
+      const directTx = await this.getEvmTransactionFromProvider(tx.hash);
+      if (directTx && isTransactionInBlock(directTx)) {
+        this.updateTrackedEvmTransactionCopies(tx.hash, chainId, directTx);
       }
     }
   }

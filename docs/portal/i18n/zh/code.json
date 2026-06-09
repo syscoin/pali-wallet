@@ -12,16 +12,16 @@
     "message": "通过 window.pali 使用 Syscoin UTXO 账户、PSBT 签名、找零地址、xpub 感知状态、SPT 资产和类 Bitcoin 集成。"
   },
   "homepage.feature.passkeys.title": {
-    "message": "面向机构的 Passkey"
+    "message": "智能账户"
   },
   "homepage.feature.passkeys.description": {
-    "message": "创建和恢复 passkey 智能账户，附加赞助策略，并通过一次 WebAuthn 批准提交原子批量调用。"
+    "message": "创建模块化账户，使用 passkey 或 ECDSA 验证器，配置守护人恢复，并发送原子批量交易。"
   },
   "homepage.hero.eyebrow": {
     "message": "Pali Wallet 文档"
   },
   "homepage.hero.title": {
-    "message": "一个 wallet 接口，支持 EVM、Syscoin UTXO、类 Bitcoin 应用和 passkey 账户。"
+    "message": "一个钱包界面，同时服务 EVM、Syscoin UTXO、Bitcoin 风格应用和智能账户。"
   },
   "homepage.hero.subtitle": {
     "message": "Pali 是安全的浏览器扩展 wallet，服务于在账户模型和 UTXO 模型链上构建的用户、开发者和机构。"
@@ -57,7 +57,7 @@
     "message": "请求操作"
   },
   "homepage.flow.request.description": {
-    "message": "发送 EVM 交易、签名 typed data、签名 UTXO PSBT，或创建带赞助策略的 passkey 智能账户。"
+    "message": "发送 EVM 交易、签署 typed data、签署 UTXO PSBT，或使用 passkey/ECDSA 验证器创建 Pali 智能账户。"
   },
   "theme.ErrorPageContent.title": {
     "message": "页面已崩溃。",

@@ -1,4 +1,3 @@
-import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
 import { INetwork } from '@sidhujag/sysweb3-network';
 
 import { notificationManager } from '../notification-manager';
@@ -7,6 +6,7 @@ import { IDApp } from 'state/dapp/types';
 import store, { saveMainState } from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
+import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';

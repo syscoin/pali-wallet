@@ -31,7 +31,7 @@ import {
 } from 'utils/commonMethodSignatures';
 import { getTokenLogo } from 'utils/index';
 import {
-  getPasskeyDisplayTransaction,
+  getSmartAccountDisplayTransaction,
   getTransactionDisplayInfo,
   handleUpdateTransaction,
 } from 'utils/transactions';
@@ -94,7 +94,7 @@ const EvmTransactionItem = React.memo(
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
-    const displayTx = getPasskeyDisplayTransaction(tx) || tx;
+    const displayTx = getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
     const currentAddress = currentAccount?.address?.toLowerCase();
     const txFrom = displayTx?.from?.toLowerCase?.();

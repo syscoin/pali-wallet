@@ -36,10 +36,13 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
 import { clearNavigationState } from 'utils/navigationState';
-import { signAndSubmitPasskeyExecutions } from 'utils/passkey';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
+import {
+  getSmartAccountLocalOwnerContexts,
+  signAndSubmitSmartAccountExecutions,
+} from 'utils/smartAccount';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 import { getErc20Abi } from 'utils/validations';
@@ -91,14 +94,6 @@ export const SendTransaction = () => {
   const txMetadata = isExternal
     ? externalTx.txMetadata
     : state?.txMetadata || {};
-  const passkeySponsorProof =
-    txMetadata?.passkeySponsorProof ||
-    txMetadata?.sponsorProof ||
-    externalTx?.passkeySponsorProof ||
-    externalTx?.sponsorProof ||
-    (dataTx as any)?.passkeySponsorProof ||
-    (dataTx as any)?.sponsorProof;
-
   // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
   const explicitType = (dataTx as any)?.type;
   const isLegacyTransaction =
@@ -330,7 +325,7 @@ export const SendTransaction = () => {
       ? BigNumber.from(dataTx.value)
       : BigNumber.from(0);
     const canUsePasskeyGasPayer =
-      activeAccount?.isPasskeySmartAccount && requestedValue.isZero();
+      activeAccount?.isSmartAccount && requestedValue.isZero();
 
     if (activeAccount && (balance > 0 || canUsePasskeyGasPayer)) {
       let txToSend = tx;
@@ -384,14 +379,14 @@ export const SendTransaction = () => {
       try {
         let response;
         const isPasskeyAccount = Boolean(
-          activeAccount.isPasskeySmartAccount && activeAccount.passkey
+          activeAccount.isSmartAccount && activeAccount.smartAccount
         );
 
         if (isPasskeyAccount) {
           const candidateTo =
             resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
           if (!candidateTo) {
-            alert.error(t('send.passkeyContractDeploymentUnsupported'));
+            alert.error(t('send.smartAccountContractDeploymentUnsupported'));
             setLoading(false);
             return;
           }
@@ -403,9 +398,12 @@ export const SendTransaction = () => {
                 'transaction value'
               ).toHexString()
             : '0x0';
-          response = await signAndSubmitPasskeyExecutions({
+          response = await signAndSubmitSmartAccountExecutions({
+            authenticatorContexts: getSmartAccountLocalOwnerContexts({
+              accounts,
+              controllerEmitter,
+            }),
             controllerEmitter,
-            credentialId: activeAccount.passkey.credentialId,
             executions: [
               {
                 target: candidateTo,
@@ -413,7 +411,7 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
-            sponsorProof: passkeySponsorProof,
+            smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {
           // Legacy transaction handling - MUST remove all EIP-1559 fields

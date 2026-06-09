@@ -6,7 +6,7 @@ Pali Wallet — официальное расширение-кошелек Sysco
 
 - **Обычные пользователи**, которым нужен безопасный браузерный кошелек для EVM, Syscoin, Rollux и UTXO активов.
 - **Dapp-разработчики**, которым нужен MetaMask-совместимый EVM-доступ и UTXO-доступ из одного расширения.
-- **Институции**, которым нужны passkey smart accounts, восстановление аккаунтов, sponsor policy и dapp-driven onboarding.
+- **Институции**, которым нужны Pali smart accounts, восстановление аккаунтов, smart-account module policy и dapp-driven onboarding.
 
 ## Чем Pali отличается
 
@@ -28,8 +28,8 @@ Pali Wallet — официальное расширение-кошелек Sysco
 | EIP-5792 batch requests | `wallet_sendCalls`, `wallet_getCapabilities` |
 | Состояние UTXO аккаунта и xpub | `window.pali` и методы `sys_*` |
 | Подписание и broadcast PSBT | `sys_sign`, `sys_signAndSend` |
-| Создание passkey smart account | `wallet_createPasskeyAccount` |
+| Создание Pali smart account | `wallet_prepareSmartAccount` |
 
 ## Текущий объем passkey
 
-Passkey smart accounts доступны только в EVM-сетях семейства zkSYS, где Pali настроил контракты passkey factory и цепь поддерживает проверку P-256 WebAuthn proof. В этой сборке Pali настроена тестовая сеть `zkTanenbaum` (`57057`). Поддержка zkSYS production использует ту же архитектуру после настройки production factory address в Pali. Dapps должны проверять capabilities и корректно обрабатывать неподдерживаемые цепи.
+Pali smart accounts доступны только в EVM-сетях семейства zkSYS, где Pali настроил контракты passkey factory и цепь поддерживает проверку P-256 WebAuthn proof. В этой сборке Pali настроена тестовая сеть `zkTanenbaum` (`57057`). Поддержка zkSYS production использует ту же архитектуру после настройки production factory address в Pali. Dapps должны проверять capabilities и корректно обрабатывать неподдерживаемые цепи.

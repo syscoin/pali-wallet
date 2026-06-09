@@ -4,18 +4,18 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { LockIconSvg } from 'components/Icon/Icon';
-import { Icon, NeutralButton } from 'components/index';
+import { Card, Icon, NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { navigateBack, navigateWithContext } from 'utils/navigationState';
-import { PASSKEY_FACTORY_ADDRESSES } from 'utils/passkey/contracts';
+import { INetworkType } from 'types/network';
+import { navigateBack } from 'utils/navigationState';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
+  const [error, setError] = useState<string>('');
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
@@ -23,12 +23,11 @@ const CreateAccount = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isPasskeySupported = Boolean(
-    PASSKEY_FACTORY_ADDRESSES[activeNetwork.chainId]
-  );
+  const isSmartAccountSupported = activeNetwork.kind === INetworkType.Ethereum;
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
+    setError('');
 
     try {
       const { address: newAddress } = (await controllerEmitter(
@@ -38,29 +37,47 @@ const CreateAccount = () => {
 
       setAddress(newAddress);
       setLoading(false);
-    } catch (error) {
+    } catch (caughtError: any) {
       setLoading(false);
 
       // Check if this is a wallet locked error and handle redirect
-      const wasHandled = handleWalletLockedError(error);
+      const wasHandled = handleWalletLockedError(caughtError);
       if (!wasHandled) {
+        setError(caughtError?.message || t('send.cantCompleteTxs'));
         // If not a wallet locked error, just log it since the original component
         // didn't have explicit error handling UI for create account failures
-        console.error('Error creating account:', error);
+        console.error('Error creating account:', caughtError);
       }
     }
   };
 
-  const createPasskeyAccount = () => {
-    navigateWithContext(
-      navigate,
-      '/settings/account/passkey-new',
-      { initialLabel: accountName },
-      {
-        returnRoute: '/settings/account/new',
-        returnContext: location.state?.returnContext,
+  const createSmartAccount = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      const account = (await controllerEmitter(
+        ['wallet', 'createSmartAccount'],
+        [{ label: accountName || undefined }],
+        300000
+      )) as any;
+
+      setAddress(account.address);
+    } catch (caughtError: any) {
+      const wasHandled = handleWalletLockedError(caughtError);
+      if (!wasHandled) {
+        const message =
+          caughtError?.message || t('settings.smartAccountCreateFailed');
+        setError(
+          message.includes('CREATE2') || message.includes('smart account')
+            ? t('settings.smartAccountCreateFailed')
+            : message
+        );
+        console.error('Error creating smart account:', caughtError);
       }
-    );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -108,25 +125,43 @@ const CreateAccount = () => {
             />
           </Form.Item>
 
-          {isPasskeySupported && (
+          {error && (
+            <Card type="error">
+              <p className="text-left text-sm font-normal">{error}</p>
+            </Card>
+          )}
+
+          {isSmartAccountSupported && (
             <button
               type="button"
-              className="flex w-full cursor-pointer items-center justify-between rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left hover:bg-brand-blue500 hover:bg-opacity-20"
+              className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left hover:bg-brand-blue500 hover:bg-opacity-20"
               disabled={loading}
-              onClick={createPasskeyAccount}
+              onClick={createSmartAccount}
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <LockIconSvg className="shrink-0 text-brand-white" />
+              <span className="flex min-w-0 flex-1 items-center gap-3">
+                <Icon
+                  name="Lock"
+                  isSvg
+                  size={30}
+                  className="shrink-0 opacity-90"
+                />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium text-white">
-                    {t('settings.createPasskeyAccount')}
+                    {t('settings.createSmartAccount')}
                   </span>
                   <span className="mt-1 block text-xs text-brand-graylight">
-                    {t('settings.createPasskeyAccountDescription')}
+                    {t('settings.createSmartAccountDescription')}
                   </span>
                 </span>
               </span>
-              <Icon name="arrowright" isSvg size={24} className="shrink-0" />
+              <span className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-alpha-whiteAlpha100">
+                <Icon
+                  name="arrowright"
+                  isSvg
+                  size={18}
+                  className="opacity-90"
+                />
+              </span>
             </button>
           )}
 

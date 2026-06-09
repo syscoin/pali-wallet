@@ -85,6 +85,9 @@ export async function controllerEmitter<
                 if (response.error === true && response.code) {
                   return reject(response);
                 }
+                if (typeof response.error === 'object') {
+                  return reject(response.error);
+                }
                 // For simple error messages, wrap in Error object
                 return reject(new Error(response.error));
               }

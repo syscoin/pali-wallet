@@ -1,52 +1,37 @@
 ---
-title: Sponsor services
+title: Gas and funding
 ---
 
-A sponsor service is an institution-controlled endpoint that participates in passkey smart account execution policy.
+Pali smart accounts are contract accounts, so the account authorization and the gas payer are separate concerns. A passkey or validator approval authorizes the smart account action. A funded wallet account still pays the network fee for deploying the account, installing modules, scheduling recovery, or executing calls.
 
-## Sponsor object
+## Current model
 
+The current Pali smart-account flow uses wallet-paid gas:
 
-```js
-{
-  mode: 'required',
-  url: 'https://institution.example/sponsor/user-123',
-  signer: '0xSponsorSignerAddress',
-  policyText: 'Institution co-authorization is required.'
-}
-```
+- Account deployment is sent by a local funded EVM account.
+- Validator replacement and module installation are smart-account executions submitted by a local gas payer.
+- `wallet_sendCalls` batches are authorized by the active smart-account validator and submitted as one transaction.
+- Guardian recovery start/finalize transactions are sent by a local gas payer or guardian account.
 
-## Field meaning
+This means a user can approve with a passkey, but the wallet still needs native gas on the active chain unless a future capability explicitly adds sponsorship.
 
-| Field | Purpose |
-| --- | --- |
-| `mode` | `disabled`, `gasOnly`, or `required`. |
-| `url` | Optional service endpoint Pali contacts for sponsor execution support. Pali requires it for `gasOnly` sponsorship because there is no remote gas sponsor without a service URL. |
-| `signer` | Expected sponsor signer address for required policy proofs. Required for `required` mode. |
-| `policyText` | User-facing explanation stored in wallet metadata. Not on-chain enforcement. |
+## What dapps should tell users
 
-## On-chain policy
+Dapps should avoid saying "gasless" unless the wallet reports a real sponsorship capability. Better wording is:
 
-The smart account policy stores mode, signer, and a bounded public sponsor URL. Policy text remains wallet metadata used for display and is not enforced on-chain.
+- "Pali will create a smart account and may ask for gas."
+- "You will approve the account action, and Pali will submit it on-chain."
+- "Keep a small amount of native token available for deployment and recovery."
 
-## Idempotency
+## Future sponsorship
 
-Sponsor execution requests use an idempotency key derived from the passkey action hash. A sponsor service should treat repeated requests with the same key as the same action.
+The smart-account design does not prevent future paymaster or sponsorship support. Those features should be exposed as explicit wallet capabilities and should be described separately from validator authorization.
 
-## Required sponsor mode
-
-In `required` mode, the sponsor proof must recover to the configured signer. The sponsor URL is optional: Pali can obtain proof from the sponsor service when a URL is configured, or sign locally when the configured signer is an available account in the wallet. If Pali cannot obtain or validate the sponsor proof, execution fails.
-
-Gas payment is separate from sponsor authorization. After a valid sponsor proof is available, Pali can still pay gas from any funded software account selected for passkey execution.
-
-## Gas-only mode
-
-In `gasOnly` mode, the sponsor service may relay or help pay gas. Pali requires a sponsor URL for this mode because the URL is what identifies the gas sponsorship service. If sponsorship is unavailable, Pali can fall back to wallet-gas execution where policy allows it.
+For now, do not pass legacy sponsorship objects to `wallet_prepareSmartAccount`. The current creation request is based on account label and authenticator/module configuration.
 
 ## Institution guidance
 
-- Use stable public sponsor URLs and keep user-specific or secret data in POST bodies or signed sponsor payloads.
-- Keep signer keys in institutional infrastructure, not in the dapp frontend.
-- Make policy text short, specific, and understandable.
-- Return consistent status for repeated idempotency keys.
-- Monitor failed sponsor requests and expired execution deadlines.
+- Keep the deployment gas payer funded.
+- Monitor failed deployments and failed module installs.
+- Explain who controls each validator or guardian.
+- Avoid conflating "passkey approval" with "free transaction."

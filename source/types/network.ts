@@ -28,16 +28,8 @@ export enum KeyringAccountType {
   HDAccount = 'HDAccount',
   Imported = 'Imported',
   Ledger = 'Ledger',
-  PasskeySmartAccount = 'PasskeySmartAccount',
+  SmartAccount = 'SmartAccount',
   Trezor = 'Trezor',
-}
-/* eslint-enable no-shadow */
-
-/* eslint-disable no-shadow */
-export enum PasskeySponsorMode {
-  Disabled = 'disabled',
-  GasOnly = 'gasOnly',
-  Required = 'required',
 }
 /* eslint-enable no-shadow */
 
@@ -50,21 +42,81 @@ export enum PasskeyBackupStatus {
 }
 /* eslint-enable no-shadow */
 
-export interface IPasskeySmartAccountMetadata {
-  backupStatus?: PasskeyBackupStatus;
+export interface ISmartAccountMetadata {
+  auth?: {
+    data: string;
+    module?: 'composite' | 'ecdsa' | 'p256-webauthn';
+    scheme?: 'composite' | 'ecdsa' | 'p256-webauthn';
+    validator: string;
+  };
+  availableModules?: Array<{
+    displayName: string;
+    id: 'composite' | 'ecdsa' | 'guardian-recovery' | 'p256-webauthn';
+    installed?: boolean;
+    supported?: boolean;
+  }>;
   chainId: number;
   contractVersion: string;
-  credentialId: string;
-  credentialIdHash: string;
   deploymentGasPayer?: {
     address: string;
     id: number;
     type: KeyringAccountType;
   };
   deploymentSalt: string;
+  descriptor?: {
+    accountIndex: number;
+    accountVersion: string;
+    anchor: string;
+    anchorHash: string;
+    chainId: number;
+    deploymentSalt: string;
+    factoryAddress: string;
+  };
   factoryAddress?: string;
+  installedModules?: SmartAccountInstalledModule[];
   isDeployed: boolean;
-  passkeyName: string;
+}
+
+export type SmartAccountInstalledModule =
+  | SmartAccountValidatorModule
+  | SmartAccountExecutorModule;
+
+export type SmartAccountValidatorModule =
+  | {
+      address: string;
+      config: SmartAccountP256WebAuthnConfig;
+      data?: string;
+      id: 'p256-webauthn';
+      type: 'validator';
+    }
+  | {
+      address: string;
+      config: SmartAccountEcdsaConfig;
+      data?: string;
+      id: 'ecdsa';
+      type: 'validator';
+    }
+  | {
+      address: string;
+      config: SmartAccountCompositeConfig;
+      data?: string;
+      id: 'composite';
+      type: 'validator';
+    };
+
+export type SmartAccountExecutorModule = {
+  address: string;
+  config: SmartAccountGuardianRecoveryConfig;
+  data?: string;
+  id: 'guardian-recovery';
+  type: 'executor';
+};
+
+export type SmartAccountP256WebAuthnConfig = {
+  backupStatus?: PasskeyBackupStatus;
+  credentialId?: string;
+  credentialIdHash: string;
+  passkeyName?: string;
   publicKey: {
     originHash: string;
     originLength: number;
@@ -72,22 +124,32 @@ export interface IPasskeySmartAccountMetadata {
     x: string;
     y: string;
   };
-  sponsor?: {
-    mode: PasskeySponsorMode;
-    policyText?: string;
-    signer?: string;
-    url?: string;
-  };
-}
+};
+
+export type SmartAccountEcdsaConfig = {
+  owners: string[];
+  threshold: number;
+};
+
+export type SmartAccountCompositeConfig = {
+  childValidators: string[];
+  threshold: number;
+};
+
+export type SmartAccountGuardianRecoveryConfig = {
+  delaySeconds: number;
+  expirationSeconds?: number;
+  guardians: string[];
+  threshold: number;
+};
 
 export interface IPasskeyCredentialProfile {
   backupStatus?: PasskeyBackupStatus;
   credentialId: string;
   credentialIdHash: string;
   passkeyName: string;
-  publicKey: IPasskeySmartAccountMetadata['publicKey'];
+  publicKey: SmartAccountP256WebAuthnConfig['publicKey'];
 }
-
 export type IKeyringBalances = {
   [INetworkType.Syscoin]: number;
   [INetworkType.Ethereum]: number;
@@ -102,10 +164,10 @@ export interface IKeyringAccountState {
   id: number;
   isImported: boolean;
   isLedgerWallet: boolean;
-  isPasskeySmartAccount?: boolean;
+  isSmartAccount?: boolean;
   isTrezorWallet: boolean;
   label: string;
-  passkey?: IPasskeySmartAccountMetadata;
+  smartAccount?: ISmartAccountMetadata;
   xprv: string;
   xpub: string;
 }
@@ -120,7 +182,7 @@ export const initialActiveHdAccountState: IKeyringAccountState = {
   isTrezorWallet: false,
   isLedgerWallet: false,
   label: 'Account 1',
-  isPasskeySmartAccount: false,
+  isSmartAccount: false,
   evmTxCountByChainId: {},
   xprv: '',
   xpub: '',

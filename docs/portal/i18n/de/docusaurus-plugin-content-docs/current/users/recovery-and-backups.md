@@ -37,4 +37,4 @@ Pali-Passkey-Wiederherstellung nutzt wallet-bezogene Wiederherstellungsmetadaten
 
 ## Idempotenz bei dapp-Erstellung/Wiederherstellung
 
-Wenn eine dapp `wallet_createPasskeyAccount` aufruft, prüft Pali zuerst, ob ein vorhandener on-chain Passkey-Account zur angeforderten Sponsor-Policy passt. Wenn der passende Account bereits lokal existiert, verwendet Pali ihn wieder, statt ein Duplikat zu erstellen. Wenn er on-chain existiert, aber nicht lokal, kann Pali ihn in die Wallet wiederherstellen.
+Wenn eine dapp `wallet_prepareSmartAccount` aufruft, prüft Pali zuerst, ob ein vorhandener on-chain Passkey-Account zur angeforderten Sponsor-Policy passt. Wenn der passende Account bereits lokal existiert, verwendet Pali ihn wieder, statt ein Duplikat zu erstellen. Wenn er on-chain existiert, aber nicht lokal, kann Pali ihn in die Wallet wiederherstellen.

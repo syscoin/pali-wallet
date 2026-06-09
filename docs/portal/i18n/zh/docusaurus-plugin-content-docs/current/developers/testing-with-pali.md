@@ -12,7 +12,7 @@ Syscoin 测试 dapp 托管在：
 https://syscoin-test-dapp.vercel.app/
 ```
 
-它包含 Pali Passkey 流程、`wallet_createPasskeyAccount`、`wallet_sendCalls`、ERC-20 allowance 批量生成，以及常见钱包请求。
+它包含 Pali Passkey 流程、`wallet_prepareSmartAccount`、`wallet_sendCalls`、ERC-20 allowance 批量生成，以及常见钱包请求。
 
 ## 本地测试 dapp
 

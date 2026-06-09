@@ -28,7 +28,7 @@ This reference summarizes the public dapp-facing methods documented from Pali's 
 | `wallet_watchAsset` | EVM | Request asset watch. | Yes |
 | `wallet_addEthereumChain` | EVM | Add an EVM chain. | Yes |
 | `wallet_switchEthereumChain` | EVM | Switch EVM chain. | Yes |
-| `wallet_createPasskeyAccount` | EVM | Create and deploy a passkey smart account. | Yes |
+| `wallet_prepareSmartAccount` | EVM | Create, deploy, and connect a Pali smart account. | Yes |
 | `wallet_sendCalls` | EVM | Send an EIP-5792 batch request. | Yes |
 | `wallet_getCapabilities` | EVM | Read account capabilities. | No |
 | `wallet_getCallsStatus` | EVM | Compatibility stub; unknown ids error. | No |

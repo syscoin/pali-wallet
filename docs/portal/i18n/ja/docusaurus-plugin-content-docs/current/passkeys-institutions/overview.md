@@ -1,85 +1,31 @@
 ---
-title: Passkeysと機関
+title: Paliスマートアカウント
 ---
 
-Pali passkeyスマートアカウントにより、dappはウォレットにオンチェーンアカウント作成をリクエストでき、ユーザーはWebAuthnを通じて実行を制御できます。
+Paliスマートアカウントは、Paliがユーザーのために作成・接続・操作できるコントラクトアカウントです。一般ユーザーには通常のウォレットのように見えます。dappの要求を確認し、passkeyまたはウォレットキーで承認し、Paliがトランザクションを送信します。内部ではモジュール式で、validatorが承認を行い、executorが復元などの機能を追加します。
 
-これは次に役立ちます。
+## シンプルな考え方
 
-- 機関向けオンボーディング
-- スポンサーが支えるgasフロー
-- 共同承認policy
-- ウォレット再インストール後のアカウント復元
-- アトミックな複数呼び出しワークフロー
-- ウォレットを構築せずにpasskey UXを提供したいdapps
+- 1つのアカウントアドレスが資産を保持し、dappにもそのアドレスが見えます。
+- passkey、ECDSA、composite policyで承認できます。
+- Guardian recoveryは遅延後に active validator を置き換えられます。
+- `wallet_sendCalls` は複数の call を1つの atomic action として実行できます。
 
-## zkSYS passkeysが可能な理由
+## 技術モデル
 
-PasskeysはWebAuthnを使用し、WebAuthnの標準署名アルゴリズムはES256、つまりsecp256r1としても知られるP-256曲線上のECDSAです。一般的なEVMウォレットは通常secp256k1 EOAを使用するため、passkey署名は直接EOA署名にはなりません。
+`PaliSmartAccount` は call を実行し、ERC-7579風のモジュールで署名を検証します。`PaliSmartAccountFactory` は deterministic address を導出してアカウントを deploy します。Paliは内部でERC-4337風の encoding を使い、EIP-1271でcontract signatureを検証します。
 
-Paliのpasskeyアカウントは、オンチェーンP-256検証を中心に設計されたzkSYSスマートアカウントです。ウォレットはWebAuthn公開鍵座標、challenge、authenticator data、client data、P-256署名を抽出し、スマートアカウント/ファクトリー経路がそのproofをアカウントの登録済みメタデータに対して検証します。これにより、秘密鍵をユーザーの認証器内に保持したまま、デバイスの生体認証やプラットフォームpasskeysをアカウント承認に使用できます。
+## 企業・チーム向け
 
-実用上の結果として、生体認証ログインのように感じられるウォレットUXでありながら、チェーン上の操作を承認できます。
+企業はPaliスマートアカウントを単なるpasskey loginではなく、アカウント基盤として扱うべきです。passkeyは低摩擦のonboardingに、ECDSAやcomposite validatorはチームやhardware wallet管理に、guardian recoveryは遅延付きの置き換えに使えます。deploymentとexecutionのためにgas payerにも資金が必要です。
 
-1. dappがpasskeyスマートアカウントまたはバッチ実行をリクエストします。
-2. Paliが正確なチェーン、アカウント、呼び出し、nonce、deadline、スポンサーpolicyに対するアクションハッシュを準備します。
-3. ブラウザ/OSがユーザーにpasskey承認を求めます。
-4. zkSYSスマートアカウントが実行前にP-256 WebAuthn proofをオンチェーンで検証します。
+外部ECDSA ownerをdappが要求した場合、Paliは明示的に警告します。そのアドレスは将来のアカウント操作を承認できるためです。
 
-## サポートされるネットワーク
-
-PasskeyアカウントはすべてのEVMチェーンで有効ではありません。設定済みpasskeyファクトリーとzkSYS P-256検証サポートが必要です。
-
-| ネットワーク | Chain id | このPaliビルドでの状態 |
-| --- | --- | --- |
-| `zkTanenbaum` | `57057` | 設定済み。Factory: `0x4DB71a59725aB275fc2127da02F9DBA4946227F0`。 |
-| `zkSYS` | TBD in wallet config | Paliにファクトリーアドレスが設定された後、同じpasskeyアーキテクチャの本番ターゲットとして意図されています。 |
-
-設定済みファクトリーがないネットワークでdappが`wallet_createPasskeyAccount`を呼び出した場合、Paliは未サポートのメタデータを作成する代わりにリクエストを拒否します。
-
-## dappメソッド
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/passkey-create-disabled.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/passkey-create-disabled.png" alt="Pali wallet_createPasskeyAccount popup with sponsorship disabled" />
-</a>
-  <figcaption>デフォルトのdapp主導passkeyフローは、機関が明示的にスポンサーpolicyを必要としない限り、スポンサーシップ無効から始めるべきです。</figcaption>
-</figure>
+## Dappメソッド
 
 ```js
 const account = await window.ethereum.request({
-  method: 'wallet_createPasskeyAccount',
-  params: [
-    {
-      label: 'Pali Wallet Passkey',
-      sponsor: { mode: 'disabled' },
-    },
-  ],
+  method: 'wallet_prepareSmartAccount',
+  params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
-
-結果にはスマートアカウントの`address`と公開passkeyメタデータが含まれます。
-
-## スポンサーmodes
-
-| Mode | 意味 |
-| --- | --- |
-| `disabled` | スポンサーpolicyはありません。ウォレット/ユーザーがgasを支払います。 |
-| `gasOnly` | スポンサーサービスがgasを支払う場合があります。PaliはこのmodeにスポンサーURLを要求します。スポンサーシップが失敗した場合、wallet-gas fallbackを許可できます。 |
-| `required` | policyによりスポンサーの共同承認が必須です。signerが必要です。Paliがwallet内のlocal accountからsigner proofを取得できる場合、スポンサーURLはoptionalです。 |
-
-## ユーザー制御
-
-<figure>
-  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
-</a>
-  <figcaption>ウォレットでの確認後、ブラウザまたはオペレーティングシステムがWebAuthn passkey作成を処理します。</figcaption>
-</figure>
-
-ユーザーは承認前に、リクエスト元サイト、label、スポンサーmode、signer、URL、policy textを確認します。その後、ブラウザまたはOSがWebAuthn passkeyプロンプトを表示します。
-
-<figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp onboarding flow"></video>
-  <figcaption>Passkeyオンボーディングフロー: ブランド付きイントロ、dappリクエスト、Paliアカウント承認。</figcaption>
-</figure>

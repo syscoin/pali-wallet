@@ -1,4 +1,5 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
+import { getAddress } from '@ethersproject/address';
 import { id } from '@ethersproject/hash';
 import { formatUnits } from '@ethersproject/units';
 import { omit } from 'lodash';
@@ -36,10 +37,10 @@ export const getTransactionDisplayInfo = async (
   isNft: boolean;
   tokenId?: string; // Token ID for NFTs
 }> => {
-  const passkeyInnerTx = getPasskeyDisplayTransaction(tx);
-  if (passkeyInnerTx) {
+  const smartAccountInnerTx = getSmartAccountDisplayTransaction(tx);
+  if (smartAccountInnerTx) {
     return getTransactionDisplayInfo(
-      passkeyInnerTx,
+      smartAccountInnerTx,
       currency,
       skipUnknownTokenFetch,
       controller
@@ -323,17 +324,53 @@ export const getTransactionDisplayInfo = async (
   };
 };
 
-const PASSKEY_EXECUTE_SELECTOR = id(
-  'execute((address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
+const ENTRYPOINT_HANDLE_OPS_SELECTOR = id(
+  'handleOps((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes)[],address)'
 ).slice(0, 10);
-const PASSKEY_CREATE_AND_EXECUTE_SELECTOR = id(
-  'createAccountAndExecute((bytes32,bytes32,bytes32,bytes32,bytes32,uint256,address,bytes32),(address,uint256,bytes,uint256,uint256)[],(bytes,bytes,uint256,uint256,uint256,bytes32,bytes32),(uint8,bytes32,bytes32))'
+const ERC7579_EXECUTE_SELECTOR = id('execute(bytes32,bytes)').slice(0, 10);
+const INSTALL_MODULE_SELECTOR = id(
+  'installModule(uint256,address,bytes)'
 ).slice(0, 10);
-const PASSKEY_SET_SPONSOR_SELECTOR = id(
-  'setSponsor(uint8,address,string)'
+const UNINSTALL_MODULE_SELECTOR = id(
+  'uninstallModule(uint256,address,bytes)'
 ).slice(0, 10);
 
-export const getPasskeyDisplayTransaction = (tx: any): any | null => {
+const decodeERC7579ExecutionCalldata = (
+  mode: string,
+  executionCalldata: string
+): any[] | null => {
+  const callType = mode.slice(0, 4).toLowerCase();
+  if (callType === '0x00') {
+    if (executionCalldata.length < 106) {
+      return null;
+    }
+    const target = getAddress(`0x${executionCalldata.slice(2, 42)}`);
+    const [value] = defaultAbiCoder.decode(
+      ['uint256'],
+      `0x${executionCalldata.slice(42, 106)}`
+    );
+    const data = `0x${executionCalldata.slice(106)}`;
+
+    return [{ data, target, value }];
+  }
+
+  if (callType === '0x01') {
+    const [executions] = defaultAbiCoder.decode(
+      ['tuple(address target,uint256 value,bytes callData)[]'],
+      executionCalldata
+    ) as unknown as [any[]];
+
+    return executions.map((execution) => ({
+      data: execution.callData || execution.data || execution[2] || '0x',
+      target: execution.target || execution[0],
+      value: execution.value || execution[1] || '0',
+    }));
+  }
+
+  return null;
+};
+
+export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
   const input = String(tx?.input || tx?.data || '');
   if (!input || input === '0x' || input.length < 10) {
     return null;
@@ -341,27 +378,43 @@ export const getPasskeyDisplayTransaction = (tx: any): any | null => {
 
   try {
     let executions: any[] | null = null;
-    let passkeyExecutionFrom = tx.passkeyExecutionFrom || tx.from;
-    if (input.startsWith(PASSKEY_EXECUTE_SELECTOR)) {
-      [executions] = defaultAbiCoder.decode(
+    let smartAccountExecutionFrom = tx.smartAccountExecutionFrom || tx.from;
+    if (input.startsWith(ENTRYPOINT_HANDLE_OPS_SELECTOR)) {
+      const [userOperations] = defaultAbiCoder.decode(
         [
-          'tuple(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[]',
-          'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
-          'tuple(uint8 v,bytes32 r,bytes32 s)',
+          'tuple(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)[]',
+          'address',
         ],
         `0x${input.slice(10)}`
-      ) as unknown as [any[], unknown, unknown];
-      passkeyExecutionFrom = tx.passkeyExecutionFrom || tx.to || tx.from;
-    } else if (input.startsWith(PASSKEY_CREATE_AND_EXECUTE_SELECTOR)) {
-      [, executions] = defaultAbiCoder.decode(
-        [
-          'tuple(bytes32 passkeyX,bytes32 passkeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength,address recoveryValidator,bytes32 salt)',
-          'tuple(address target,uint256 value,bytes data,uint256 nonce,uint256 deadline)[]',
-          'tuple(bytes authenticatorData,bytes clientDataJSON,uint256 typeOffset,uint256 challengeOffset,uint256 originOffset,bytes32 r,bytes32 s)',
-          'tuple(uint8 v,bytes32 r,bytes32 s)',
-        ],
-        `0x${input.slice(10)}`
-      ) as unknown as [unknown, any[], unknown, unknown];
+      ) as unknown as [any[], string];
+      const smartAccount = String(
+        tx.smartAccountExecutionFrom || ''
+      ).toLowerCase();
+      const userOperation =
+        userOperations.find(
+          (operation) =>
+            smartAccount &&
+            String(operation.sender || operation[0]).toLowerCase() ===
+              smartAccount
+        ) || userOperations[0];
+      const callData = String(
+        userOperation?.callData || userOperation?.[3] || ''
+      );
+      if (!callData.startsWith(ERC7579_EXECUTE_SELECTOR)) {
+        return null;
+      }
+      const [mode, executionCalldata] = defaultAbiCoder.decode(
+        ['bytes32', 'bytes'],
+        `0x${callData.slice(10)}`
+      ) as unknown as [string, string];
+      executions = decodeERC7579ExecutionCalldata(mode, executionCalldata);
+      smartAccountExecutionFrom =
+        tx.smartAccountExecutionFrom ||
+        userOperation.sender ||
+        userOperation[0] ||
+        tx.from;
+    } else {
+      return null;
     }
 
     if (!executions?.length) {
@@ -369,34 +422,35 @@ export const getPasskeyDisplayTransaction = (tx: any): any | null => {
     }
 
     const outerTo = String(tx?.to || '').toLowerCase();
-    const passkeyAccount = String(passkeyExecutionFrom || '').toLowerCase();
-    const isPolicyExecution = (execution: any) => {
+    const smartAccount = String(smartAccountExecutionFrom || '').toLowerCase();
+    const isMeaningfulExecution = (execution: any) => {
       const target = String(execution.target || '').toLowerCase();
       const data = String(execution.data || '0x');
       const value =
         execution.value?.toString?.() || String(execution.value || '0');
 
       return (
-        executions.length > 1 &&
-        data.startsWith(PASSKEY_SET_SPONSOR_SELECTOR) &&
-        value === '0' &&
-        (!passkeyAccount || target === passkeyAccount)
+        data !== '0x' ||
+        value !== '0' ||
+        (target !== outerTo && target !== smartAccount)
       );
     };
+    const moduleInstallExecution = executions.find((execution) => {
+      const data = String(execution.data || '0x').toLowerCase();
+      return data.startsWith(INSTALL_MODULE_SELECTOR);
+    });
+    const hasModuleUninstallExecution = executions.some((execution) => {
+      const data = String(execution.data || '0x').toLowerCase();
+      return data.startsWith(UNINSTALL_MODULE_SELECTOR);
+    });
     const selected =
-      executions.find((execution) => !isPolicyExecution(execution)) ||
-      executions.find((execution) => {
-        const target = String(execution.target || '').toLowerCase();
-        const data = String(execution.data || '0x');
-        const value =
-          execution.value?.toString?.() || String(execution.value || '0');
-        return target !== outerTo || data !== '0x' || value !== '0';
-      }) ||
+      (hasModuleUninstallExecution && moduleInstallExecution) ||
+      executions.find((execution) => isMeaningfulExecution(execution)) ||
       executions[executions.length - 1];
 
     return {
       ...tx,
-      from: passkeyExecutionFrom,
+      from: smartAccountExecutionFrom,
       input: selected.data || '0x',
       data: selected.data || '0x',
       to: selected.target,

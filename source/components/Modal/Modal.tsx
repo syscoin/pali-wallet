@@ -16,6 +16,7 @@ interface IModal {
 
 interface IDefaultModal {
   buttonText?: string;
+  children?: ReactNode;
   description?: string;
   isButtonLoading?: boolean;
   onClose?: () => any;
@@ -176,6 +177,7 @@ export const WarningModal = ({
 
 export const ConfirmationModal = ({
   buttonText = 'Ok',
+  children,
   description = '',
   onClose,
   onClick,
@@ -196,6 +198,7 @@ export const ConfirmationModal = ({
 
         <div className="mt-2">
           <p className="text-white text-sm">{description}</p>
+          {children}
         </div>
 
         <div className="flex items-center justify-center mt-4 gap-4">

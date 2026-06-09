@@ -2,7 +2,7 @@
 title: 사용자 시작하기
 ---
 
-Pali를 사용하면 하나의 extension에서 EVM 계정, Syscoin UTXO 계정, passkey smart account를 관리할 수 있습니다.
+Pali를 사용하면 하나의 extension에서 EVM 계정, Syscoin UTXO 계정, Pali smart account를 관리할 수 있습니다.
 
 ## 기본 설정
 
@@ -37,6 +37,6 @@ EVM dapp은 다음을 요청할 수 있습니다.
 
 UTXO 계정은 Syscoin UTXO 및 Bitcoin-style transaction flow에 사용하세요. UTXO dapp은 xpub-aware state, change address, PSBT signing, transaction broadcast를 요청할 수 있습니다.
 
-## Passkey smart account
+## Pali smart account
 
 Passkey 계정은 WebAuthn credential로 제어되는 smart account입니다. 기관 관리 onboarding, account recovery, sponsored execution에 유용할 수 있습니다. 일부 passkey 계정은 첫 deployment transaction 전까지 counterfactual 상태입니다.

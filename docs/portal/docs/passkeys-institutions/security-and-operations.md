@@ -2,41 +2,46 @@
 title: Security and operations
 ---
 
-Institutional passkey integrations should be designed like production account infrastructure, not just a login button.
+Pali smart accounts should be treated like production account infrastructure, not just a nicer login button. The account contract holds assets, and installed modules decide who can move those assets.
 
-## Network and verifier dependency
+## Network and module dependency
 
-Passkey accounts depend on zkSYS support for verifying P-256 WebAuthn signatures. Do not assume a passkey account can be created on any EVM chain just because the chain supports smart contracts. The chain must have the passkey factory deployed and Pali must have that factory address configured for the active chain.
+Do not assume a Pali smart account can be created on any EVM chain just because the chain supports smart contracts. The chain must have the Pali factory and module addresses configured in the wallet. Passkey validators also require P-256 WebAuthn verification support.
 
-Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS production as the production deployment target for the same architecture once its factory is configured in the wallet.
+Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS production as the production deployment target once the factory and modules are configured in the wallet.
 
 ## Operational checklist
 
-- Decide whether each user receives a shared Pali passkey account or a separate credential.
-- Decide whether sponsorship is disabled, gas-only, or required.
-- Maintain sponsor service uptime when `required` mode depends on a remote sponsor URL, and document any local signer fallback policy.
-- Monitor relayer failures, expired deadlines, and repeated idempotency keys.
-- Provide a user support path for lost devices and failed recovery.
-- Document whether the institution can co-authorize execution.
+- Decide which validator should control the account: passkey, wallet-owned ECDSA, composite, or a later guardian recovery path.
+- Treat external ECDSA owners as high-risk. If an address is not a local Pali account, users must understand that it can approve future account actions.
+- Decide whether guardian recovery is enabled, who the guardians are, what threshold is required, and how long the recovery delay should be.
+- Keep the gas payer account funded for deployment and smart-account executions.
+- Monitor failed deployments, failed module installs, expired recovery schedules, and repeated recovery attempts.
+- Provide a user support path for lost passkeys, lost wallet state, and failed guardian recovery.
 
 ## Creation, funding, and deployment
 
-Passkey smart accounts are counterfactual while Pali prepares creation. Pali stores the local account after the deployment transaction is confirmed. Account creation needs a deployment gas payer with enough native token for `createAccount` or `createAccountAndExecute`.
+Pali smart accounts are counterfactual while Pali prepares creation. Pali stores durable metadata locally and deploys the account through the configured factory. Account creation needs a wallet gas payer with enough native token for deployment and any immediate module replacement.
 
-If a sponsor policy is configured during creation, Pali includes the initial policy update in the deployment transaction and verifies the deployed metadata afterwards. Updating policy later is also an on-chain smart account execution.
+The current flow does not rely on remote gas sponsorship. Pali deploys with a wallet-owned bootstrap validator, then installs the requested validator through an account execution when needed.
 
-The factory can compute the account address before deployment. This is useful for display and funding UX. Production integrations should treat the account as usable after Pali returns success from `wallet_createPasskeyAccount`.
+The factory can compute the account address before deployment. This is useful for display and funding UX. Production integrations should treat the account as usable after Pali returns success from `wallet_prepareSmartAccount`.
 
-## Recovery assumptions
+## Validator assumptions
 
-Recovery is passkey-scoped. A user generally needs:
+Validators are the account's authorization boundary:
 
-- the relevant WebAuthn credential
-- chain support for the passkey factory
+- A P-256 WebAuthn validator means the passkey proof authorizes actions.
+- An ECDSA validator means the configured owner addresses authorize actions.
+- A composite validator can combine child validators under a threshold.
 
-Recovery is not a custodial backdoor. The chain provides discoverable account lists and public recovery metadata for deployed accounts, but the user still needs the relevant WebAuthn credential to prove control.
+Installing a malicious validator is equivalent to giving that validator control of the account. Dapps that request module installation or validator replacement must be reviewed carefully by the user.
 
-Creation uses fresh deployment salts. Recovery queries the factory registry and event history for the credential hash, then imports the matching deployed accounts.
+## Guardian recovery assumptions
+
+Guardian recovery is a delayed validator replacement path. A guardian signature schedules recovery to a new recovery target. After the delay has passed, anyone can finalize the recovery transaction. Pali uses a fresh recovery salt per attempt and the contract permits only one active recovery schedule per account, so a stale guardian signature cannot be replayed forever and parallel active recoveries are blocked.
+
+Guardian recovery is not a custodial backdoor. It only works if the module is installed and the configured guardian threshold signs the recovery intent.
 
 ## Credential backup status
 
@@ -55,22 +60,23 @@ For higher-assurance institutional accounts, decide and document whether synced 
 
 ## User communication
 
-Use clear policy text. A good policy explains:
+Use clear language in dapp copy and user support material. A good explanation tells the user:
 
-- who operates the sponsor service
-- what actions require co-authorization
-- whether the institution pays gas
-- what happens if the sponsor service is unavailable
+- who can currently authorize the account
+- whether a passkey, ECDSA owner, or composite policy is being installed
+- whether any owner address is external to Pali
+- whether guardian recovery is enabled and how long recovery takes
+- who pays gas for deployment and account actions
 
-## Do not rely on policy text for enforcement
+## Do not rely on display text for enforcement
 
-`policyText` is a disclosure and wallet metadata field. Enforcement is through on-chain policy and sponsor proof validation.
+Wallet labels and explanatory text are disclosure fields. Enforcement is through on-chain modules and signatures.
 
 ## Local storage model
 
-Pali stores two different passkey concepts:
+Pali stores these smart-account concepts:
 
-- The passkey credential profile is lightweight local state for the shared WebAuthn credential: credential id, credential hash, public key, backup status, and display name.
-- Passkey account metadata belongs to each deployed smart account: address, chain id, factory, deployment salt, public key, sponsor policy, and deployment status.
+- The passkey credential profile is lightweight local state for WebAuthn credentials: credential id, credential hash, public key, backup status, and display name.
+- Smart-account metadata belongs to each account: address, chain id, factory, deployment salt, descriptor, active validator, available modules, installed modules, and deployment status.
 
-The credential profile can exist before an account is created. A local passkey account represents a confirmed on-chain deployment.
+The credential profile can exist before an account is created. A local smart account represents a Pali-managed account record that can be deployed, operated, and recovered according to its modules.

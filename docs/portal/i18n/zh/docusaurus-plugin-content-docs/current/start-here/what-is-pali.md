@@ -6,7 +6,7 @@ Pali Wallet 是官方 Syscoin 钱包扩展，也是面向 EVM 兼容链的通用
 
 - **普通用户**，希望获得用于 EVM、Syscoin、Rollux 和 UTXO 资产的安全浏览器钱包。
 - **Dapp 开发者**，希望在同一扩展中同时获得兼容 MetaMask 的 EVM 访问和 UTXO 访问。
-- **机构**，需要 Passkey 智能账户、账户恢复、sponsor 策略和由 dapp 驱动的引导流程。
+- **机构**，需要 Passkey 智能账户、账户恢复、模块策略和由 dapp 驱动的引导流程。
 
 ## Pali 的不同之处
 
@@ -28,7 +28,7 @@ Pali Wallet 是官方 Syscoin 钱包扩展，也是面向 EVM 兼容链的通用
 | EIP-5792 批量请求 | `wallet_sendCalls`, `wallet_getCapabilities` |
 | UTXO 账户和 xpub 状态 | `window.pali` 和 `sys_*` 方法 |
 | PSBT 签名和广播 | `sys_sign`, `sys_signAndSend` |
-| Passkey 智能账户创建 | `wallet_createPasskeyAccount` |
+| Passkey 智能账户创建 | `wallet_prepareSmartAccount` |
 
 ## 当前 Passkey 范围
 

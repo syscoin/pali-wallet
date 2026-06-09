@@ -12,16 +12,16 @@
     "message": "Usa window.pali para cuentas UTXO de Syscoin, firma PSBT, direcciones de cambio, estado con xpub, activos SPT e integraciones estilo Bitcoin."
   },
   "homepage.feature.passkeys.title": {
-    "message": "Passkeys para instituciones"
+    "message": "Cuentas inteligentes"
   },
   "homepage.feature.passkeys.description": {
-    "message": "Crea y recupera cuentas inteligentes con passkey, adjunta políticas de patrocinio y envía lotes atómicos con una sola aprobación WebAuthn."
+    "message": "Crea cuentas modulares, usa validadores passkey o ECDSA, configura recuperación con guardianes y envía lotes atómicos."
   },
   "homepage.hero.eyebrow": {
     "message": "Documentación de Pali Wallet"
   },
   "homepage.hero.title": {
-    "message": "Una sola superficie de wallet para EVM, Syscoin UTXO, apps estilo Bitcoin y cuentas con passkey."
+    "message": "Una sola superficie de wallet para EVM, Syscoin UTXO, apps estilo Bitcoin y cuentas inteligentes."
   },
   "homepage.hero.subtitle": {
     "message": "Pali es una extensión de wallet segura para usuarios, desarrolladores e instituciones que construyen entre cadenas basadas en cuentas y UTXO."
@@ -57,7 +57,7 @@
     "message": "Solicitar una acción"
   },
   "homepage.flow.request.description": {
-    "message": "Envía transacciones EVM, firma datos tipados, firma PSBTs UTXO o crea cuentas inteligentes con passkey y política de patrocinio."
+    "message": "Envía transacciones EVM, firma datos tipados, firma PSBTs UTXO o crea cuentas inteligentes de Pali con validadores passkey o ECDSA."
   },
   "theme.ErrorPageContent.title": {
     "message": "Esta página ha fallado.",

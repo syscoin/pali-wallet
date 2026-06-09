@@ -3,10 +3,6 @@
     "message": "构建",
     "description": "The title of the footer links column with title=Build in the footer"
   },
-  "link.title.Passkeys": {
-    "message": "Passkeys",
-    "description": "The title of the footer links column with title=Passkeys in the footer"
-  },
   "link.title.Community": {
     "message": "社区",
     "description": "The title of the footer links column with title=Community in the footer"
@@ -23,14 +19,6 @@
     "message": "UTXO and Syscoin API",
     "description": "The label of footer link with label=UTXO and Syscoin API linking to /docs/utxo-syscoin-api/overview"
   },
-  "link.item.label.Institutional Accounts": {
-    "message": "机构账户",
-    "description": "The label of footer link with label=Institutional Accounts linking to /docs/passkeys-institutions/overview"
-  },
-  "link.item.label.Sponsor Services": {
-    "message": "赞助服务",
-    "description": "The label of footer link with label=Sponsor Services linking to /docs/passkeys-institutions/sponsor-services"
-  },
   "link.item.label.Syscoin Discord": {
     "message": "Syscoin Discord",
     "description": "The label of footer link with label=Syscoin Discord linking to https://discord.com/invite/syscoin"
@@ -42,5 +30,17 @@
   "copyright": {
     "message": "Copyright © 2026 Syscoin. Built for Pali Wallet.",
     "description": "The footer copyright"
+  },
+  "link.title.Smart Accounts": {
+    "message": "智能账户",
+    "description": "The title of the footer links column with title=Smart Accounts in the footer"
+  },
+  "link.item.label.Pali Smart Accounts": {
+    "message": "Pali 智能账户",
+    "description": "The label of footer link with label=Pali Smart Accounts linking to /docs/passkeys-institutions/overview"
+  },
+  "link.item.label.Gas and Funding": {
+    "message": "Gas 与资金",
+    "description": "The label of footer link with label=Gas and Funding linking to /docs/passkeys-institutions/sponsor-services"
   }
 }

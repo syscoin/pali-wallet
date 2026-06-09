@@ -12,16 +12,16 @@
     "message": "window.pali で Syscoin UTXO アカウント、PSBT 署名、変更アドレス、xpub 対応状態、SPT アセット、Bitcoin 形式の連携を使えます。"
   },
   "homepage.feature.passkeys.title": {
-    "message": "機関向け Passkeys"
+    "message": "スマートアカウント"
   },
   "homepage.feature.passkeys.description": {
-    "message": "passkey スマートアカウントを作成・復元し、スポンサー方針を付与し、1 回の WebAuthn 承認でアトミックなバッチを送信できます。"
+    "message": "モジュール式アカウントを作成し、passkeyまたはECDSAバリデータ、guardian recovery、atomic batchを利用できます。"
   },
   "homepage.hero.eyebrow": {
     "message": "Pali Wallet ドキュメント"
   },
   "homepage.hero.title": {
-    "message": "EVM、Syscoin UTXO、Bitcoin 形式アプリ、passkey アカウントに対応する 1 つの wallet インターフェイス。"
+    "message": "EVM、Syscoin UTXO、Bitcoinスタイルアプリ、スマートアカウントのための1つのウォレット画面。"
   },
   "homepage.hero.subtitle": {
     "message": "Pali は、アカウントベースと UTXO ベースのチェーンをまたいで構築するユーザー、開発者、機関向けの安全なブラウザー拡張 wallet です。"
@@ -57,7 +57,7 @@
     "message": "操作を要求する"
   },
   "homepage.flow.request.description": {
-    "message": "EVM トランザクションの送信、typed data の署名、UTXO PSBT の署名、またはスポンサー方針付き passkey スマートアカウントの作成ができます。"
+    "message": "EVMトランザクション、typed data署名、UTXO PSBT署名、またはpasskey/ECDSAバリデータ付きのPaliスマートアカウント作成を行います。"
   },
   "theme.ErrorPageContent.title": {
     "message": "エラーが発生しました",

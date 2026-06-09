@@ -48,4 +48,4 @@ Pali uses JSON-RPC, EIP-1193, EIP-1474, and wallet-specific errors. Dapps should
 - Treat `4001` as a normal user cancellation.
 - Treat `4101` as a prompt to guide the user to the right network family.
 - Do not retry blocking requests in a tight loop. Pali protects users from popup spam.
-- Show actionable copy for passkey sponsor failures, especially required sponsor mode.
+- Show actionable copy for unsupported smart-account networks, missing gas, rejected validator setup, or guardian recovery delays.

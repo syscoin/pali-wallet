@@ -10,7 +10,7 @@ Pali не раскрывает web pages seed phrases, приватные клю
 
 ## Что могут запрашивать dapps
 
-Dapps могут запрашивать публичные адреса аккаунтов, состояние провайдера, состояние сети, подписи, подтверждения транзакций, подписание PSBT, подтверждения отслеживания активов, переключение цепей, создание passkey account и batch execution.
+Dapps могут запрашивать публичные адреса аккаунтов, состояние провайдера, состояние сети, подписи, подтверждения транзакций, подписание PSBT, подтверждения отслеживания активов, переключение цепей, создание smart account и batch execution.
 
 ## Безопасность подключения
 
@@ -18,7 +18,7 @@ Dapps могут запрашивать публичные адреса акка
 
 ## Публичные blockchain data
 
-Активность в блокчейне публична. Ваш адрес, история транзакций, token approvals, UTXO activity, deployment smart account и активность passkey smart account могут быть видны в explorers и indexers.
+Активность в блокчейне публична. Ваш адрес, история транзакций, token approvals, UTXO activity, deployment smart account и активность Pali smart account могут быть видны в explorers и indexers.
 
 ## Конфиденциальность institutional passkey
 

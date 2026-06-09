@@ -28,7 +28,7 @@ title: Матрица методов
 | `wallet_watchAsset` | EVM | Запросить asset watch. | Yes |
 | `wallet_addEthereumChain` | EVM | Добавить EVM chain. | Yes |
 | `wallet_switchEthereumChain` | EVM | Переключить EVM chain. | Yes |
-| `wallet_createPasskeyAccount` | EVM | Создать или восстановить passkey smart account. | Yes |
+| `wallet_prepareSmartAccount` | EVM | Создать или восстановить Pali smart account. | Yes |
 | `wallet_sendCalls` | EVM | Отправить EIP-5792 batch request. | Yes |
 | `wallet_getCapabilities` | EVM | Читать account capabilities. | No |
 | `wallet_getCallsStatus` | EVM | Compatibility stub; ошибка для неизвестных ids. | No |
