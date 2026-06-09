@@ -28,19 +28,19 @@ This page documents behavior dapps should account for.
 
 ## Atomicity
 
-- Passkey smart accounts can execute selected batch calls through one smart account execution.
+- Pali smart accounts can execute selected batch calls through one smart-account execution.
 - Regular EOA batch calls are sequential wallet sends and should not be treated as true atomic execution.
 
 ## Subscriptions
 
 `eth_subscribe` and `eth_unsubscribe` are unsupported. Use a dedicated WebSocket RPC provider for realtime chain subscriptions.
 
-## Passkeys
+## Smart accounts
 
-- Passkey smart account support depends on factory configuration for the active chain.
-- Contract deployment calls are not supported through passkey `wallet_sendCalls`.
-- `policyText` is wallet metadata and display text, not on-chain enforcement.
-- Required sponsor mode depends on sponsor service availability and proof validation.
+- Smart-account support depends on factory and module configuration for the active chain.
+- Contract deployment calls are not supported through smart-account `wallet_sendCalls`.
+- External ECDSA owners can approve future account actions; Pali warns before installing them.
+- Current smart-account execution uses wallet-paid gas unless a future capability reports sponsorship.
 
 ## Iframes
 

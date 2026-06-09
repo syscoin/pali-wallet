@@ -59,7 +59,7 @@ const sidebars = {
     },
     {
       type: 'category',
-      label: 'Passkeys and Institutions',
+      label: 'Smart Accounts',
       items: [
         'passkeys-institutions/overview',
         'passkeys-institutions/create-recover',

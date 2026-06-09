@@ -7,14 +7,14 @@ Pali Wallet is a browser extension wallet for people and applications that need 
 
 For EVM dapps, Pali exposes a MetaMask-compatible `window.ethereum` provider with EIP-1193 requests, EIP-6963 discovery, account permissions, chain switching, signing, transactions, and batch calls. For Syscoin UTXO and Bitcoin-style applications, Pali exposes `window.pali` with account, xpub, change address, PSBT signing, transaction, and asset methods.
 
-Pali also supports passkey smart accounts for institutions and advanced dapps. A dapp can ask Pali to create and deploy a WebAuthn-backed smart account, attach sponsor policy during creation, and later execute atomic batches through `wallet_sendCalls`. Wallet recovery for existing passkey accounts is handled separately in Pali.
+Pali also supports modular smart accounts for institutions and advanced dapps. A dapp can ask Pali to create and deploy a Pali smart account, use a passkey or wallet-owned ECDSA validator, and later execute atomic batches through `wallet_sendCalls`. Guardian recovery and module management are handled in Pali.
 
 ## Choose your path
 
 - **Users** should start with [Getting started](./users/getting-started.md).
 - **EVM developers** should start with [Provider discovery](./developers/provider-discovery.md) and [EVM API overview](./evm-api/overview.md).
 - **UTXO and Syscoin developers** should start with [UTXO and Syscoin API overview](./utxo-syscoin-api/overview.md).
-- **Institutions using passkeys** should start with [Passkeys and institutions](./passkeys-institutions/overview.md).
+- **Institutions and smart-account dapps** should start with [Pali smart accounts](./passkeys-institutions/overview.md).
 
 ## Provider surfaces
 

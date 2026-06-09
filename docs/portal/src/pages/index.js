@@ -36,12 +36,12 @@ const featureCards = [
   {
     title: translate({
       id: 'homepage.feature.passkeys.title',
-      message: 'Passkeys for institutions',
+      message: 'Smart accounts',
     }),
     description: translate({
       id: 'homepage.feature.passkeys.description',
       message:
-        'Create and recover passkey smart accounts, attach sponsor policy, and submit atomic batches with a single WebAuthn approval.',
+        'Create modular accounts, use passkey or ECDSA validators, configure guardian recovery, and submit atomic batches.',
     }),
     to: '/docs/passkeys-institutions/overview',
   },
@@ -59,7 +59,7 @@ function HomepageHeader() {
         <h1 className={styles.heroTitle}>
           <Translate id="homepage.hero.title">
             One wallet surface for EVM, Syscoin UTXO, Bitcoin-style apps, and
-            passkey accounts.
+            smart accounts.
           </Translate>
         </h1>
         <p className={styles.heroSubtitle}>
@@ -179,7 +179,7 @@ export default function Home() {
                 <p>
                   <Translate id="homepage.flow.request.description">
                     Send EVM transactions, sign typed data, sign UTXO PSBTs, or
-                    create passkey smart accounts with sponsor policy.
+                    create Pali smart accounts with passkey or ECDSA validators.
                   </Translate>
                 </p>
               </div>

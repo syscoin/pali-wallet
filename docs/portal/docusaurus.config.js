@@ -46,7 +46,7 @@ const searchLanguages = docsLocales.filter((locale) => locale !== 'ko');
 const config = {
   title: 'Pali Wallet Docs',
   tagline:
-    'Build EVM, Syscoin UTXO, Bitcoin-style, and passkey-powered dapps with Pali Wallet.',
+    'Build EVM, Syscoin UTXO, Bitcoin-style, and smart-account dapps with Pali Wallet.',
   favicon: 'img/favicon.svg',
 
   url: 'https://docs.paliwallet.com',
@@ -129,7 +129,7 @@ const config = {
           },
           {
             to: '/docs/passkeys-institutions/overview',
-            label: 'Passkeys',
+            label: 'Smart Accounts',
             position: 'left',
           },
           {
@@ -164,14 +164,14 @@ const config = {
             ],
           },
           {
-            title: 'Passkeys',
+            title: 'Smart Accounts',
             items: [
               {
-                label: 'Institutional Accounts',
+                label: 'Pali Smart Accounts',
                 to: '/docs/passkeys-institutions/overview',
               },
               {
-                label: 'Sponsor Services',
+                label: 'Gas and Funding',
                 to: '/docs/passkeys-institutions/sponsor-services',
               },
             ],
