@@ -214,6 +214,8 @@ export const PrepareSmartAccount = () => {
     'credential' | 'deploying' | 'idle' | 'installing' | 'saving'
   >('idle');
   const [error, setError] = useState<string | null>(null);
+  const [externalEcdsaAcknowledged, setExternalEcdsaAcknowledged] =
+    useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
   const host = queryData.host || '';
@@ -231,6 +233,32 @@ export const PrepareSmartAccount = () => {
   const createsWalletPasskey =
     requestedAuthenticator.id === 'p256-webauthn' &&
     !hasP256Config(requestedAuthenticator.config);
+  const externalEcdsaOwners = useMemo(() => {
+    if (requestedAuthenticator.id !== 'ecdsa') {
+      return [];
+    }
+    const owners = requestedAuthenticator.config?.owners;
+    if (!Array.isArray(owners)) {
+      return [];
+    }
+
+    return owners
+      .map((owner: string) => {
+        try {
+          return getAddress(owner);
+        } catch {
+          return '';
+        }
+      })
+      .filter(Boolean)
+      .filter(
+        (owner: string) =>
+          !localAccountCandidates(accounts).some(({ account }) =>
+            sameAddress(account.address, owner)
+          )
+      );
+  }, [accounts, requestedAuthenticator]);
+  const hasExternalEcdsaOwners = externalEcdsaOwners.length > 0;
 
   const findLocalOwner = useCallback(
     (address: string) =>
@@ -291,8 +319,11 @@ export const PrepareSmartAccount = () => {
             ],
             signActionHash: ({ actionHash, owner }) =>
               controllerEmitter(
-                ['wallet', 'ethereumTransaction', 'ethSign'],
-                [[owner.address, actionHash]],
+                ['wallet', 'ethSignWithAccount'],
+                [
+                  [owner.address, actionHash],
+                  { id: owner.id, type: owner.type },
+                ],
                 300000
               ) as Promise<string>,
           },
@@ -333,6 +364,12 @@ export const PrepareSmartAccount = () => {
               requested: requestedAuthenticator,
             })
           : undefined;
+
+      if (hasExternalEcdsaOwners && !externalEcdsaAcknowledged) {
+        throw new Error(
+          t('connections.prepareSmartAccountExternalEcdsaRequired')
+        );
+      }
 
       setCreationStep('deploying');
       const account = (await controllerEmitter(
@@ -418,7 +455,9 @@ export const PrepareSmartAccount = () => {
     activeNetwork.chainId,
     controllerEmitter,
     eventName,
+    externalEcdsaAcknowledged,
     handleWalletLockedError,
+    hasExternalEcdsaOwners,
     host,
     label,
     replaceRequestedValidator,
@@ -472,6 +511,34 @@ export const PrepareSmartAccount = () => {
               <p className="text-left text-sm font-normal text-brand-yellowInfo">
                 {t('connections.prepareSmartAccountPasskeyHint')}
               </p>
+            </Card>
+          )}
+
+          {hasExternalEcdsaOwners && (
+            <Card type="info">
+              <div className="space-y-3 text-left text-sm font-normal text-brand-yellowInfo">
+                <p>
+                  {t('connections.prepareSmartAccountExternalEcdsaWarning')}
+                </p>
+                <div className="space-y-1 break-all text-xs text-brand-graylight">
+                  {externalEcdsaOwners.map((owner) => (
+                    <p key={owner}>{owner}</p>
+                  ))}
+                </div>
+                <label className="flex items-start gap-2 text-xs text-brand-white">
+                  <input
+                    type="checkbox"
+                    checked={externalEcdsaAcknowledged}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setExternalEcdsaAcknowledged(event.target.checked)
+                    }
+                  />
+                  <span>
+                    {t('connections.prepareSmartAccountExternalEcdsaConfirm')}
+                  </span>
+                </label>
+              </div>
             </Card>
           )}
 
@@ -536,7 +603,9 @@ export const PrepareSmartAccount = () => {
           <PrimaryButton
             type="button"
             onClick={approve}
-            disabled={loading}
+            disabled={
+              loading || (hasExternalEcdsaOwners && !externalEcdsaAcknowledged)
+            }
             loading={loading}
           >
             {t('buttons.confirm')}

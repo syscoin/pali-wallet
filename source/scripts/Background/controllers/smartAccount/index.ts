@@ -15,6 +15,7 @@ import {
   ISmartAccountMetadata,
   KeyringAccountType as PaliKeyringAccountType,
 } from 'types/network';
+import { blacklistService } from 'utils/security/blacklistService';
 import {
   buildP256WebAuthnAuthenticator,
   buildHydratedP256WebAuthnAuthenticator,
@@ -123,6 +124,14 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const SMART_ACCOUNT_USER_OP_GAS_RESERVE = BigNumber.from(2_050_000);
+
+const randomBytes32Hex = () => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return `0x${Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('')}`;
+};
 
 const stringifyError = (error: unknown): string => {
   if (!error || typeof error !== 'object') {
@@ -813,6 +822,8 @@ class SmartAccountController {
     accountId?: number,
     options: { useCachedMetadata?: boolean } = {}
   ) {
+    await this.assertSmartAccountExecutionTargetsAllowed(params);
+
     const useCachedMetadata = options.useCachedMetadata !== false;
     let active = useCachedMetadata
       ? Number.isInteger(accountId)
@@ -919,6 +930,26 @@ class SmartAccountController {
       userOperation,
       validator,
     };
+  }
+
+  private async assertSmartAccountExecutionTargetsAllowed(
+    executions: Array<{ target: string }>
+  ): Promise<void> {
+    for (const execution of executions) {
+      const target = getAddress(execution.target);
+      const blacklistResult = await blacklistService.checkAddress(target);
+      if (
+        blacklistResult.isBlacklisted &&
+        (blacklistResult.severity === 'critical' ||
+          blacklistResult.severity === 'high')
+      ) {
+        throw new Error(
+          `Smart account execution blocked: ${
+            blacklistResult.reason || 'Target address is blacklisted'
+          }. Severity: ${blacklistResult.severity}`
+        );
+      }
+    }
   }
 
   private hasUsableSmartAccountAuthMetadata(
@@ -1132,7 +1163,7 @@ class SmartAccountController {
       chainId: activeNetwork.chainId,
       replaceExistingValidator,
       recoveryModule,
-      salt: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      salt: randomBytes32Hex(),
       target: params.target,
     });
     await this.proveRecoveryTargetOwnership(params.target, operation.hash);
