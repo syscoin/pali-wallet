@@ -90,6 +90,7 @@ export const PALI_ERC7579_FACTORY_ABI = [
 
 export const PALI_SMART_ACCOUNT_ABI = [
   'function accountId() view returns (string)',
+  'function activeValidator() view returns (address)',
   'function entryPoint() view returns (address)',
   'function execute(bytes32 mode,bytes executionCalldata) payable',
   'function executeFromExecutor(bytes32 mode,bytes executionCalldata) payable returns (bytes[] returnData)',

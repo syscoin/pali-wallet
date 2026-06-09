@@ -1520,15 +1520,18 @@ class SmartAccountController {
       });
     }
 
+    const activeValidatorAddress = getAddress(
+      await accountContract.activeValidator()
+    );
     const activeValidator =
-      installedModules.find(
-        (module) =>
-          module.type === 'validator' &&
-          module.address.toLowerCase() ===
-            metadata.auth?.validator?.toLowerCase()
-      ) ||
-      installedModules.find((module) => module.type === 'validator') ||
-      null;
+      activeValidatorAddress !== AddressZero
+        ? installedModules.find(
+            (module) =>
+              module.type === 'validator' &&
+              module.address.toLowerCase() ===
+                activeValidatorAddress.toLowerCase()
+          )
+        : null;
     const hydrated: ISmartAccountMetadata = {
       ...metadata,
       ...(activeValidator?.type === 'validator'
