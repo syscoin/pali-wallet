@@ -1016,34 +1016,8 @@ const SmartAccountPolicy = () => {
           : [installExecution];
 
       await submitModuleExecutions(executions, {
-        refreshAfterSubmit: false,
         useCachedMetadata: true,
-      });
-      setMetadata((currentMetadata) => {
-        if (!currentMetadata) {
-          return currentMetadata;
-        }
-        const guardianModule = {
-          address: getAddress(guardianRecoveryModule),
-          config: {
-            delaySeconds: guardianDelaySeconds,
-            expirationSeconds: guardianDelaySeconds * 2,
-            guardians: [normalizedGuardianAddress],
-            threshold: 1,
-          },
-          data: installExecution.data,
-          id: 'guardian-recovery' as const,
-          type: 'executor' as const,
-        };
-        return {
-          ...currentMetadata,
-          installedModules: [
-            ...(currentMetadata.installedModules || []).filter(
-              (module) => module.id !== 'guardian-recovery'
-            ),
-            guardianModule,
-          ],
-        };
+        waitForConfirmation: true,
       });
       setGuardianStatus((currentStatus) =>
         currentStatus
