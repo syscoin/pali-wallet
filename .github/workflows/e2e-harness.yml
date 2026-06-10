@@ -1,0 +1,53 @@
+name: e2e harness (zkTanenbaum)
+
+# Agent QA loop: runs real-extension journeys against the live testnet.
+# Manual dispatch for on-demand runs; nightly schedule for drift detection.
+on:
+  workflow_dispatch:
+    inputs:
+      journey:
+        description: 'Journey filter (e.g. journeys/onboarding); empty = all'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 5 * * *'
+
+jobs:
+  journeys:
+    name: playwright journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '23.11.1'
+          check-latest: true
+      - run: yarn install
+      - run: npx playwright install --with-deps chromium
+      - name: Build extension
+        run: yarn build:chrome
+      - name: Run journeys
+        env:
+          PALI_E2E_SEED: ${{ secrets.PALI_E2E_SEED }}
+          PALI_E2E_PASSWORD: ${{ secrets.PALI_E2E_PASSWORD }}
+          # Dispatch inputs are untrusted; validate as a plain test filter and
+          # quote so the shell never interprets them.
+          JOURNEY_FILTER: ${{ github.event.inputs.journey }}
+        run: |
+          if [ -n "$JOURNEY_FILTER" ] && ! printf '%s' "$JOURNEY_FILTER" | grep -Eq '^[A-Za-z0-9/_.-]+$'; then
+            echo "::error::journey filter contains unexpected characters"
+            exit 1
+          fi
+          if [ -n "$JOURNEY_FILTER" ]; then
+            yarn e2e:harness "$JOURNEY_FILTER"
+          else
+            yarn e2e:harness
+          fi
+      - name: Upload artifacts (summaries, screenshots, videos, traces)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-${{ github.run_id }}
+          path: e2e/artifacts/
+          retention-days: 14

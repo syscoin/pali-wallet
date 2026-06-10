@@ -1,0 +1,58 @@
+import { type BrowserContext, chromium } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+
+import { E2E_CONFIG } from './config';
+
+export type LaunchedExtension = {
+  context: BrowserContext;
+  extensionId: string;
+};
+
+// Launches a fresh Chromium profile with the built extension loaded. Each run
+// gets its own profile under the artifacts dir so runs are reproducible and
+// never inherit vault state from a previous loop iteration.
+export const launchExtension = async (
+  profileName: string
+): Promise<LaunchedExtension> => {
+  const manifest = path.join(E2E_CONFIG.extensionPath, 'manifest.json');
+  if (!fs.existsSync(manifest)) {
+    throw new Error(
+      `Extension build not found at ${E2E_CONFIG.extensionPath}. Run "yarn build" first.`
+    );
+  }
+
+  const profileDir = path.join(
+    E2E_CONFIG.artifactsDir,
+    'profiles',
+    profileName
+  );
+  fs.mkdirSync(profileDir, { recursive: true });
+
+  const args = [
+    `--disable-extensions-except=${E2E_CONFIG.extensionPath}`,
+    `--load-extension=${E2E_CONFIG.extensionPath}`,
+  ];
+  if (E2E_CONFIG.headless) {
+    // MV3 extensions require the new headless mode.
+    args.unshift('--headless=new');
+  }
+
+  const context = await chromium.launchPersistentContext(profileDir, {
+    args,
+    headless: false,
+    recordVideo: {
+      dir: path.join(E2E_CONFIG.artifactsDir, 'videos'),
+      size: { height: 800, width: 600 },
+    },
+    viewport: { height: 800, width: 600 },
+  });
+
+  let [background] = context.serviceWorkers();
+  if (!background) {
+    background = await context.waitForEvent('serviceworker');
+  }
+  const extensionId = background.url().split('/')[2];
+
+  return { context, extensionId };
+};

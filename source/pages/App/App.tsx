@@ -160,12 +160,16 @@ const App: FC = () => {
               (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
                 const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
 
-                // Check for any TAB context from our extension
+                // Only dapp popups (external.html) should block the main app.
+                // app.html itself may legitimately run in a TAB context (e.g.
+                // opened in a full browser tab), and must not block itself.
                 const hasExternalTab = contexts.some((ctx) => {
-                  const isExtensionTab =
+                  const isExternalExtensionTab =
                     ctx.contextType === 'TAB' &&
-                    ctx.documentOrigin === ourExtensionOrigin;
-                  return isExtensionTab;
+                    ctx.documentOrigin === ourExtensionOrigin &&
+                    typeof ctx.documentUrl === 'string' &&
+                    ctx.documentUrl.includes('external.html');
+                  return isExternalExtensionTab;
                 });
 
                 setIsExternalActive(hasExternalTab);
