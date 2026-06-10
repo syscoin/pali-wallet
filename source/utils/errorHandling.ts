@@ -280,12 +280,14 @@ export const handleTransactionError = (
     return true;
   }
 
-  // Handle EVM insufficient funds errors (gas/value), including
-  // smart-account prefund (AA21) and native-gas detection
+  // Handle EVM insufficient funds errors (gas/value). The broader AA helpers
+  // (AA21 prefund / native-gas markers, including generic "insufficient
+  // balance" text) are scoped to smart accounts so a token-balance revert on
+  // an EOA send isn't mislabeled as a gas problem
   if (
     isEvmInsufficientFundsError(error) ||
-    isSmartAccountPrefundError(error) ||
-    isNativeGasError(error)
+    (activeAccount?.isSmartAccount &&
+      (isSmartAccountPrefundError(error) || isNativeGasError(error)))
   ) {
     // Show a concise message that clearly points to gas fees requirement
     alert.error(t('send.insufficientFundsForGas'));
