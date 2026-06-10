@@ -77,7 +77,8 @@ const TransactionsManager = (): ITransactionsManager => {
     if (isBitcoinBased) {
       result = await SysTransactionController().pollingSysTransactions(
         currentAccount.xpub,
-        activeNetworkUrl
+        activeNetworkUrl,
+        isRapidPolling
       );
     } else {
       // Always pull the latest provider at call time (prevents stale references across network switches)

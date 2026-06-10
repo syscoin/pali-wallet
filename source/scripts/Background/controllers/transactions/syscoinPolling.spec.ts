@@ -1,0 +1,195 @@
+const fetchBackendAccountCachedMock = jest.fn();
+
+jest.mock('../utils/fetchBackendAccountWrapper', () => ({
+  fetchBackendAccountCached: (...args: any[]) =>
+    fetchBackendAccountCachedMock(...args),
+}));
+
+let vaultState: any;
+
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: {
+    dispatch: jest.fn(),
+    getState: () => ({ vault: vaultState }),
+  },
+}));
+
+import SysTransactionController from './syscoin';
+
+const CHAIN_ID = 57;
+const URL = 'https://blockbook.test/';
+
+const buildVaultState = (localTxs: any[]) => ({
+  activeAccount: { type: 'HDAccount', id: 0 },
+  activeNetwork: { chainId: CHAIN_ID },
+  accountTransactions: {
+    HDAccount: {
+      0: {
+        syscoin: {
+          [CHAIN_ID]: localTxs,
+        },
+      },
+    },
+  },
+});
+
+const txsResponse = (overrides: any = {}) => ({
+  balance: '100000000',
+  unconfirmedBalance: '0',
+  txs: 1,
+  unconfirmedTxs: 0,
+  transactions: [
+    {
+      txid: 'tx1',
+      confirmations: 10,
+      blockTime: 1700000000,
+      value: '100000000',
+    },
+  ],
+  ...overrides,
+});
+
+describe('SysTransactionController rapid polling', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    vaultState = buildVaultState([]);
+  });
+
+  it('regular polling always performs the full details=txs fetch', async () => {
+    // Use a unique xpub per test: the activity snapshot map is module-level
+    const xpub = 'zpub-regular-poll';
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(xpub, URL, false);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      URL,
+      xpub,
+      'details=txs&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
+  it('rapid polling skips the full fetch when the basic summary is unchanged', async () => {
+    const xpub = 'zpub-rapid-unchanged';
+    const controller = SysTransactionController();
+
+    // Seed the activity snapshot with a full fetch
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+    await controller.pollingSysTransactions(xpub, URL, false);
+
+    const localTxs = [{ txid: 'tx1', confirmations: 10 }];
+    vaultState = buildVaultState(localTxs);
+
+    // Rapid poll: basic probe reports the same summary -> no txs fetch
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValueOnce({
+      balance: '100000000',
+      unconfirmedBalance: '0',
+      txs: 1,
+      unconfirmedTxs: 0,
+    });
+
+    const result = await controller.pollingSysTransactions(xpub, URL, true);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      URL,
+      xpub,
+      'details=basic&pageSize=0',
+      true
+    );
+    // Local state is returned untouched
+    expect(result).toEqual(localTxs);
+  });
+
+  it('rapid polling performs the full fetch when the summary changed', async () => {
+    const xpub = 'zpub-rapid-changed';
+    const controller = SysTransactionController();
+
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+    await controller.pollingSysTransactions(xpub, URL, false);
+
+    fetchBackendAccountCachedMock.mockClear();
+    // Basic probe: a new unconfirmed tx appeared
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({
+        balance: '100000000',
+        unconfirmedBalance: '-50000000',
+        txs: 1,
+        unconfirmedTxs: 1,
+      })
+      .mockResolvedValueOnce(
+        txsResponse({
+          txs: 1,
+          unconfirmedTxs: 1,
+          unconfirmedBalance: '-50000000',
+          transactions: [
+            { txid: 'tx2', confirmations: 0, blockTime: 1700000100 },
+            {
+              txid: 'tx1',
+              confirmations: 10,
+              blockTime: 1700000000,
+            },
+          ],
+        })
+      );
+
+    const result = await controller.pollingSysTransactions(xpub, URL, true);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      URL,
+      xpub,
+      'details=basic&pageSize=0',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      URL,
+      xpub,
+      'details=txs&pageSize=30',
+      true
+    );
+    expect(result.some((tx: any) => tx.txid === 'tx2')).toBe(true);
+  });
+
+  it('rapid polling without a prior snapshot goes straight to the full fetch', async () => {
+    const xpub = 'zpub-rapid-no-snapshot';
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    await controller.pollingSysTransactions(xpub, URL, true);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      URL,
+      xpub,
+      'details=txs&pageSize=30',
+      true
+    );
+  });
+
+  it('rapid polling falls back to the full fetch when the basic probe fails', async () => {
+    const xpub = 'zpub-rapid-probe-fail';
+    const controller = SysTransactionController();
+
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+    await controller.pollingSysTransactions(xpub, URL, false);
+
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(txsResponse());
+
+    const result = await controller.pollingSysTransactions(xpub, URL, true);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+});

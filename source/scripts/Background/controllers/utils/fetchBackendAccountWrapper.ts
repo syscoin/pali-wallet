@@ -5,7 +5,9 @@ const requestCache = new Map<
   string,
   {
     abortController?: AbortController;
+    detailsLevel: number;
     promise: Promise<any>;
+    scopeKey: string;
     timestamp: number;
   }
 >();
@@ -25,20 +27,47 @@ const cleanupCache = () => {
   });
 };
 
-// Create a unique key for the request
-const createRequestKey = (
+// Blockbook `details=` levels are strictly cumulative: every level includes the
+// summary fields (balance, unconfirmedBalance, txs, unconfirmedTxs, ...) that a
+// `details=basic` response carries. This lets a basic request piggyback on any
+// in-flight higher-level request for the same xpub/address.
+const DETAILS_LEVEL_RANK: Record<string, number> = {
+  basic: 1,
+  tokens: 2,
+  tokenBalances: 3,
+  txids: 4,
+  txslight: 5,
+  txs: 6,
+};
+
+const BASIC_LEVEL = DETAILS_LEVEL_RANK.basic;
+
+const parseDetailsLevel = (requestOptions: string): number => {
+  const match = /(?:^|&)details=([^&]*)/.exec(requestOptions);
+  // Blockbook defaults to txids when details is omitted
+  if (!match) return DETAILS_LEVEL_RANK.txids;
+  return DETAILS_LEVEL_RANK[match[1]] ?? 0;
+};
+
+// Scope key identifies the account being queried, regardless of detail options
+const createScopeKey = (
   networkUrl: string,
   xpubOrAddress: string,
-  requestOptions: string,
   isXpub: boolean
-): string =>
-  `${networkUrl}::${
-    isXpub ? 'xpub' : 'addr'
-  }::${xpubOrAddress}::${requestOptions}`;
+): string => `${networkUrl}::${isXpub ? 'xpub' : 'addr'}::${xpubOrAddress}`;
+
+// Create a unique key for the request
+const createRequestKey = (scopeKey: string, requestOptions: string): string =>
+  `${scopeKey}::${requestOptions}`;
 
 /**
  * Wrapper around sys.utils.fetchBackendAccount that provides request deduplication
- * This prevents multiple identical requests from being made simultaneously
+ * This prevents multiple identical requests from being made simultaneously.
+ *
+ * It is also level-aware: a `details=basic` request is satisfied by any in-flight
+ * request for the same xpub/address at a higher detail level (Blockbook levels are
+ * cumulative), consolidating the balance fetch with the heavier transaction/token
+ * fetches fired in the same poll cycle.
  */
 export const fetchBackendAccountCached = async (
   networkUrl: string,
@@ -58,12 +87,9 @@ export const fetchBackendAccountCached = async (
     );
   const isXpub = looksLikeXpub || looksLikeDescriptor;
 
-  const cacheKey = createRequestKey(
-    networkUrl,
-    xpubOrAddress,
-    requestOptions,
-    isXpub
-  );
+  const scopeKey = createScopeKey(networkUrl, xpubOrAddress, isXpub);
+  const cacheKey = createRequestKey(scopeKey, requestOptions);
+  const detailsLevel = parseDetailsLevel(requestOptions);
 
   // Check if we have an in-flight request for the same parameters
   const cachedEntry = requestCache.get(cacheKey);
@@ -72,6 +98,19 @@ export const fetchBackendAccountCached = async (
       `[fetchBackendAccountWrapper] Using in-flight request for ${cacheKey}`
     );
     return cachedEntry.promise;
+  }
+
+  // Level-aware reuse: a basic request only needs the summary fields, which every
+  // Blockbook response includes, so any in-flight request for this account works.
+  if (detailsLevel === BASIC_LEVEL) {
+    for (const entry of requestCache.values()) {
+      if (entry.scopeKey === scopeKey && entry.detailsLevel >= BASIC_LEVEL) {
+        console.log(
+          `[fetchBackendAccountWrapper] Satisfying basic request from in-flight higher-level request for ${scopeKey}`
+        );
+        return entry.promise;
+      }
+    }
   }
 
   // Create abort controller for this request
@@ -104,6 +143,8 @@ export const fetchBackendAccountCached = async (
     promise: requestPromise,
     timestamp: Date.now(),
     abortController,
+    detailsLevel,
+    scopeKey,
   });
 
   // Clean up cache entry after request completes
