@@ -1471,14 +1471,23 @@ class SmartAccountController {
   }
 
   private invalidateHydratedMetadata(address?: string): void {
+    // Detach in-flight hydrations too: they may have started before the
+    // on-chain change being invalidated, so joining them (or letting them
+    // populate the cache when they resolve) would resurrect stale metadata.
     if (!address) {
       this.hydratedMetadataCache.clear();
+      this.inflightHydrations.clear();
       return;
     }
     const normalized = address.toLowerCase();
     for (const key of Array.from(this.hydratedMetadataCache.keys())) {
       if (key.endsWith(`:${normalized}`)) {
         this.hydratedMetadataCache.delete(key);
+      }
+    }
+    for (const key of Array.from(this.inflightHydrations.keys())) {
+      if (key.endsWith(`:${normalized}`)) {
+        this.inflightHydrations.delete(key);
       }
     }
   }
@@ -1489,31 +1498,40 @@ class SmartAccountController {
   ): Promise<ISmartAccountMetadata> {
     const key = this.getHydrationKey(account);
 
-    // Joining an in-flight hydration is always acceptable (it is at most a
-    // few seconds old) and deduplicates concurrent UI/controller requests.
-    const inflight = this.inflightHydrations.get(key);
-    if (inflight) {
-      return inflight;
-    }
-
+    // Joining an in-flight hydration deduplicates concurrent UI/controller
+    // requests — but never for forced refreshes: those run after on-chain
+    // state changes (deployment, module install, recovery) and an in-flight
+    // fetch may have started before the change, so it could return stale
+    // metadata.
     if (!options.forceRefresh) {
+      const inflight = this.inflightHydrations.get(key);
+      if (inflight) {
+        return inflight;
+      }
       const cached = this.hydratedMetadataCache.get(key);
       if (cached && Date.now() - cached.timestamp < HYDRATED_METADATA_TTL_MS) {
         return cached.metadata;
       }
     }
 
-    const hydration = this.fetchSmartAccountMetadata(account)
-      .then((metadata) => {
-        this.hydratedMetadataCache.set(key, {
-          metadata,
-          timestamp: Date.now(),
+    const hydration: Promise<ISmartAccountMetadata> =
+      this.fetchSmartAccountMetadata(account)
+        .then((metadata) => {
+          // Only the most recent hydration may populate the cache; a
+          // superseded fetch resolving late must not overwrite fresher data.
+          if (this.inflightHydrations.get(key) === hydration) {
+            this.hydratedMetadataCache.set(key, {
+              metadata,
+              timestamp: Date.now(),
+            });
+          }
+          return metadata;
+        })
+        .finally(() => {
+          if (this.inflightHydrations.get(key) === hydration) {
+            this.inflightHydrations.delete(key);
+          }
         });
-        return metadata;
-      })
-      .finally(() => {
-        this.inflightHydrations.delete(key);
-      });
     this.inflightHydrations.set(key, hydration);
     return hydration;
   }
