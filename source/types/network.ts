@@ -149,6 +149,9 @@ export interface IPasskeyCredentialProfile {
   credentialIdHash: string;
   passkeyName: string;
   publicKey: SmartAccountP256WebAuthnConfig['publicKey'];
+  // WebAuthn user handle (base64url) the credential was registered with;
+  // required for Signal API cleanup of stale credential-manager entries.
+  userHandle?: string;
 }
 export type IKeyringBalances = {
   [INetworkType.Syscoin]: number;

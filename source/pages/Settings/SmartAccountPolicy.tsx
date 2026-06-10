@@ -11,10 +11,23 @@ import { ConfirmationModal, Icon, NeutralButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { ISmartAccountMetadata, KeyringAccountType } from 'types/network';
+import {
+  IPasskeyCredentialProfile,
+  ISmartAccountMetadata,
+  KeyringAccountType,
+} from 'types/network';
 import {
   bytesToHex,
+  clearPasskeyAccountRecords,
   createPasskeyCredential,
+  derivePasskeyUserHandle,
+  getPasskeyAccountRecords,
+  passkeyRegistrationToProfile,
+  setActivePasskeyRecord,
+  setPendingPasskeyRecord,
+  signalAcceptedPasskeyCredentials,
+  signalUnknownPasskeyCredential,
+  signP256WebAuthnActionHash,
   toP256WebAuthnRecoveryTarget,
 } from 'utils/passkey';
 import {
@@ -244,6 +257,7 @@ type GuardianReplacementCredential = {
     recoveryModule?: string;
     salt: string;
   };
+  userHandle?: string;
 };
 
 const guardianReplacementAuthenticatorKey = (account: string) =>
@@ -295,6 +309,8 @@ const SmartAccountPolicy = () => {
     isGuardianPolicyUpdateConfirmOpen,
     setIsGuardianPolicyUpdateConfirmOpen,
   ] = useState(false);
+  const [isPasskeyRecreateConfirmOpen, setIsPasskeyRecreateConfirmOpen] =
+    useState(false);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
     metadata?.installedModules?.map((module) => module.id) || []
@@ -781,7 +797,60 @@ const SmartAccountPolicy = () => {
     }
   };
 
-  const setupPasskeyAuthenticator = async () => {
+  // Resolves a previously linked passkey for this account, preferring the
+  // local registry (pending first: it marks a created-but-not-yet-on-chain
+  // credential from an interrupted attempt) and falling back to the hydrated
+  // on-chain module config (covers wallet reinstall while the p256 module is
+  // still installed).
+  const resolveExistingPasskeyProfile =
+    (): IPasskeyCredentialProfile | null => {
+      if (!account?.address) {
+        return null;
+      }
+      const records = getPasskeyAccountRecords(account.address);
+      const stored = records.pending?.profile || records.active;
+      if (stored?.credentialIdHash && stored?.publicKey?.x) {
+        return stored;
+      }
+      const installedPasskeyModule = metadata?.installedModules?.find(
+        (module) => module.type === 'validator' && module.id === 'p256-webauthn'
+      );
+      if (
+        installedPasskeyModule?.type === 'validator' &&
+        installedPasskeyModule.id === 'p256-webauthn' &&
+        installedPasskeyModule.config?.credentialIdHash &&
+        installedPasskeyModule.config?.publicKey?.x
+      ) {
+        const config = installedPasskeyModule.config;
+        return {
+          backupStatus: config.backupStatus,
+          credentialId: config.credentialId || '',
+          credentialIdHash: config.credentialIdHash,
+          passkeyName: config.passkeyName || '',
+          publicKey: config.publicKey,
+        };
+      }
+      return null;
+    };
+
+  const buildPasskeyAuthenticator = (
+    profile: IPasskeyCredentialProfile,
+    passkeyName: string
+  ) =>
+    buildP256WebAuthnAuthenticator({
+      chainId: activeNetwork.chainId,
+      config: {
+        backupStatus: profile.backupStatus,
+        credentialId: profile.credentialId || undefined,
+        credentialIdHash: profile.credentialIdHash,
+        passkeyName: profile.passkeyName || passkeyName,
+        publicKey: profile.publicKey,
+      },
+    });
+
+  const setupPasskeyAuthenticator = async (
+    options: { forceCreateNew?: boolean } = {}
+  ) => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
@@ -789,33 +858,96 @@ const SmartAccountPolicy = () => {
     setModuleActionKey('p256-webauthn:use');
     try {
       await assertSmartAccountHasAuthenticatorGas();
-      const challenge = crypto.getRandomValues(new Uint8Array(32));
       const passkeyName = t('settings.paliWalletPasskeyForAccount', {
         address: shortAddress(account.address),
         index: metadata.descriptor?.accountIndex ?? account.id,
       });
+      const existingProfile = options.forceCreateNew
+        ? null
+        : resolveExistingPasskeyProfile();
+
+      if (existingProfile) {
+        // Reuse-first: prove the user still holds the previously linked
+        // passkey, then rotate to it without creating a duplicate credential.
+        let possession: Awaited<
+          ReturnType<typeof signP256WebAuthnActionHash>
+        > | null = null;
+        try {
+          possession = await signP256WebAuthnActionHash({
+            actionHash: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
+            credentialId: existingProfile.credentialId || undefined,
+            expectedCredentialIdHash: existingProfile.credentialIdHash,
+            expectedPublicKey: existingProfile.publicKey,
+          });
+        } catch {
+          // Verification failed or was cancelled: ask before minting a new
+          // passkey so a cancelled prompt never silently creates duplicates.
+          setIsPasskeyRecreateConfirmOpen(true);
+          return;
+        }
+        const reusedProfile: IPasskeyCredentialProfile = {
+          ...existingProfile,
+          // The assertion returns the full credential id (and user handle)
+          // even when only the hash was known, e.g. when the profile was
+          // hydrated from chain after a wallet reinstall.
+          credentialId: possession.credentialId,
+          ...(possession.backupStatus
+            ? { backupStatus: possession.backupStatus }
+            : {}),
+          ...(possession.userHandle && !existingProfile.userHandle
+            ? { userHandle: possession.userHandle }
+            : {}),
+          passkeyName: existingProfile.passkeyName || passkeyName,
+        };
+        await replaceActiveValidator(
+          buildPasskeyAuthenticator(reusedProfile, passkeyName)
+        );
+        setActivePasskeyRecord(account.address, reusedProfile);
+        if (reusedProfile.userHandle) {
+          await signalAcceptedPasskeyCredentials({
+            credentialIds: [reusedProfile.credentialId],
+            userHandle: reusedProfile.userHandle,
+          });
+        }
+        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+        return;
+      }
+
+      const previousProfile = options.forceCreateNew
+        ? resolveExistingPasskeyProfile()
+        : null;
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      // Deterministic user handle: a re-created passkey for this account
+      // replaces the stale credential-manager entry instead of stacking a new
+      // one. Safe here because this action is only offered while the passkey
+      // validator is NOT active, so no prior passkey is needed for signing.
+      const userId = await derivePasskeyUserHandle(account.address);
       const credential = await createPasskeyCredential({
         accountName: passkeyName,
         challengeHex: bytesToHex(challenge),
         userDisplayName: passkeyName,
+        userId,
       });
-      const authenticator = buildP256WebAuthnAuthenticator({
-        chainId: activeNetwork.chainId,
-        config: {
-          backupStatus: credential.backupStatus,
-          credentialId: credential.credentialId,
-          credentialIdHash: credential.credentialIdHash,
-          passkeyName,
-          publicKey: {
-            originHash: credential.originHash,
-            originLength: credential.originLength,
-            rpIdHash: credential.rpIdHash,
-            x: credential.x,
-            y: credential.y,
-          },
-        },
-      });
-      await replaceActiveValidator(authenticator);
+      const profile = passkeyRegistrationToProfile(credential, passkeyName);
+      // Persist before the on-chain step: if the rotation fails, the retry
+      // reuses this credential instead of creating yet another passkey.
+      setPendingPasskeyRecord(account.address, profile);
+      await replaceActiveValidator(
+        buildPasskeyAuthenticator(profile, passkeyName)
+      );
+      setActivePasskeyRecord(account.address, profile);
+      if (
+        previousProfile?.credentialId &&
+        previousProfile.credentialId !== profile.credentialId
+      ) {
+        await signalUnknownPasskeyCredential(previousProfile.credentialId);
+      }
+      if (profile.userHandle) {
+        await signalAcceptedPasskeyCredentials({
+          credentialIds: [profile.credentialId],
+          userHandle: profile.userHandle,
+        });
+      }
       alert.success(t('settings.smartAccountAuthenticatorConfigured'));
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
@@ -1023,44 +1155,108 @@ const SmartAccountPolicy = () => {
       let replacementCredential: GuardianReplacementCredential;
 
       if (replacementAuthenticator === 'p256-webauthn') {
-        const challenge = crypto.getRandomValues(new Uint8Array(32));
         const replacementAuthenticatorName = t(
           'settings.smartAccountRecoveryReplacementName',
           { account: shortAddress(smartAccountAddress) }
         );
-        const newCredential = await createPasskeyCredential({
-          accountName: replacementAuthenticatorName,
-          challengeHex: bytesToHex(challenge),
-          userDisplayName: replacementAuthenticatorName,
-        });
-        const publicKey = {
-          originHash: newCredential.originHash,
-          originLength: newCredential.originLength,
-          rpIdHash: newCredential.rpIdHash,
-          x: newCredential.x,
-          y: newCredential.y,
-        };
-        const authenticator: PaliSmartAccountAuthenticatorSetup = {
-          id: 'p256-webauthn',
-          config: {
+        // Idempotent retry: a previous attempt may have minted a replacement
+        // passkey and then failed before the recovery was submitted on-chain.
+        // Reuse that credential instead of creating another one.
+        const storedReplacement =
+          activeGuardianReplacement &&
+          !activeGuardianReplacement.recoveryOperation &&
+          activeGuardianReplacement.kind === 'p256-webauthn' &&
+          activeGuardianReplacement.authenticator.id === 'p256-webauthn' &&
+          activeGuardianReplacement.authenticator.config?.credentialIdHash &&
+          activeGuardianReplacement.authenticator.config?.publicKey?.x
+            ? activeGuardianReplacement
+            : null;
+
+        // The recovery rotates the account to this key, so prove the user can
+        // still sign with the stored replacement before reusing it. If the
+        // passkey was deleted in the meantime, discard the record and mint a
+        // fresh credential instead of recovering to an unusable key.
+        let verifiedReplacement: GuardianReplacementCredential | null = null;
+        if (storedReplacement) {
+          const storedConfig = storedReplacement.authenticator
+            .config as Extract<
+            PaliSmartAccountAuthenticatorSetup,
+            { id: 'p256-webauthn' }
+          >['config'];
+          try {
+            await signP256WebAuthnActionHash({
+              actionHash: bytesToHex(
+                crypto.getRandomValues(new Uint8Array(32))
+              ),
+              credentialId: storedConfig.credentialId || undefined,
+              expectedCredentialIdHash: storedConfig.credentialIdHash,
+              expectedPublicKey: storedConfig.publicKey,
+            });
+            verifiedReplacement = storedReplacement;
+          } catch {
+            if (storedConfig.credentialId) {
+              await signalUnknownPasskeyCredential(storedConfig.credentialId);
+            }
+            clearGuardianReplacementCredential();
+          }
+        }
+
+        if (verifiedReplacement) {
+          const verifiedConfig = verifiedReplacement.authenticator
+            .config as Extract<
+            PaliSmartAccountAuthenticatorSetup,
+            { id: 'p256-webauthn' }
+          >['config'];
+          target = toP256WebAuthnRecoveryTarget({
+            credentialIdHash: verifiedConfig.credentialIdHash,
+            ...verifiedConfig.publicKey,
+          });
+          replacementCredential = verifiedReplacement;
+        } else {
+          const challenge = crypto.getRandomValues(new Uint8Array(32));
+          // Intentionally a fresh random user handle: a deterministic handle
+          // would overwrite the account's previous passkey in the credential
+          // manager before the recovery is finalized, which would lock the
+          // user out if the recovery is abandoned and the old passkey was
+          // still usable.
+          const newCredential = await createPasskeyCredential({
+            accountName: replacementAuthenticatorName,
+            challengeHex: bytesToHex(challenge),
+            userDisplayName: replacementAuthenticatorName,
+          });
+          const publicKey = {
+            originHash: newCredential.originHash,
+            originLength: newCredential.originLength,
+            rpIdHash: newCredential.rpIdHash,
+            x: newCredential.x,
+            y: newCredential.y,
+          };
+          const authenticator: PaliSmartAccountAuthenticatorSetup = {
+            id: 'p256-webauthn',
+            config: {
+              backupStatus: newCredential.backupStatus,
+              credentialId: newCredential.credentialId,
+              credentialIdHash: newCredential.credentialIdHash,
+              passkeyName: replacementAuthenticatorName,
+              publicKey,
+            },
+          };
+          target = toP256WebAuthnRecoveryTarget({
+            credentialIdHash: newCredential.credentialIdHash,
+            ...publicKey,
+          });
+          replacementCredential = {
+            authenticator,
             backupStatus: newCredential.backupStatus,
             credentialId: newCredential.credentialId,
             credentialIdHash: newCredential.credentialIdHash,
-            passkeyName: replacementAuthenticatorName,
-            publicKey,
-          },
-        };
-        target = toP256WebAuthnRecoveryTarget({
-          credentialIdHash: newCredential.credentialIdHash,
-          ...publicKey,
-        });
-        replacementCredential = {
-          authenticator,
-          backupStatus: newCredential.backupStatus,
-          credentialId: newCredential.credentialId,
-          credentialIdHash: newCredential.credentialIdHash,
-          kind: replacementAuthenticator,
-        };
+            kind: replacementAuthenticator,
+            userHandle: newCredential.userHandle,
+          };
+          // Persist before any on-chain step so a failure below cannot orphan
+          // the freshly created passkey.
+          storeGuardianReplacementCredential(replacementCredential);
+        }
       } else {
         const owner = getAddress(normalizedReplacementEcdsaOwner);
         const threshold = 1;
@@ -1143,7 +1339,9 @@ const SmartAccountPolicy = () => {
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
-        clearGuardianReplacementCredential();
+        // Keep the stored replacement credential: it has no recovery
+        // operation attached yet, so it does not block the UI, and a retry
+        // reuses the already-created passkey instead of minting another.
         const errorMessage = getSmartAccountActionErrorMessage(
           error,
           t('settings.smartAccountGuardianRecoveryStartFailed'),
@@ -1177,6 +1375,37 @@ const SmartAccountPolicy = () => {
         ],
         300000
       );
+      // The replaced validator's passkey (if any) is now obsolete: signal the
+      // credential manager to drop it and update the local registry to the
+      // replacement credential so future rotations reuse the right passkey.
+      const previousRecords = getPasskeyAccountRecords(smartAccountAddress);
+      const previousCredentialId = previousRecords.active?.credentialId;
+      if (
+        previousCredentialId &&
+        previousCredentialId !== activeGuardianReplacement.credentialId
+      ) {
+        await signalUnknownPasskeyCredential(previousCredentialId);
+      }
+      if (
+        activeGuardianReplacement.kind === 'p256-webauthn' &&
+        activeGuardianReplacement.authenticator.id === 'p256-webauthn' &&
+        activeGuardianReplacement.credentialId &&
+        activeGuardianReplacement.credentialIdHash
+      ) {
+        setActivePasskeyRecord(smartAccountAddress, {
+          backupStatus: activeGuardianReplacement.backupStatus as
+            | IPasskeyCredentialProfile['backupStatus']
+            | undefined,
+          credentialId: activeGuardianReplacement.credentialId,
+          credentialIdHash: activeGuardianReplacement.credentialIdHash,
+          passkeyName:
+            activeGuardianReplacement.authenticator.config.passkeyName || '',
+          publicKey: activeGuardianReplacement.authenticator.config.publicKey,
+          userHandle: activeGuardianReplacement.userHandle,
+        });
+      } else {
+        clearPasskeyAccountRecords(smartAccountAddress);
+      }
       clearGuardianReplacementCredential();
       setIsGuardianRecoveryScreenOpen(false);
       await refreshMetadata();
@@ -1538,7 +1767,7 @@ const SmartAccountPolicy = () => {
                           type="button"
                           className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                           disabled={loading}
-                          onClick={setupPasskeyAuthenticator}
+                          onClick={() => setupPasskeyAuthenticator()}
                         >
                           {moduleActionKey === `${module.id}:use` && (
                             <LoadingSvg className="h-4 w-4 animate-spin" />
@@ -1711,6 +1940,20 @@ const SmartAccountPolicy = () => {
         isButtonLoading={loading}
         onClick={installGuardianRecovery}
         onClose={() => setIsGuardianPolicyUpdateConfirmOpen(false)}
+      />
+      <ConfirmationModal
+        show={isPasskeyRecreateConfirmOpen}
+        title={t('settings.smartAccountPasskeyRecreateConfirmTitle')}
+        description={t(
+          'settings.smartAccountPasskeyRecreateConfirmDescription'
+        )}
+        buttonText={t('settings.smartAccountPasskeyRecreateConfirmButton')}
+        isButtonLoading={loading}
+        onClick={() => {
+          setIsPasskeyRecreateConfirmOpen(false);
+          setupPasskeyAuthenticator({ forceCreateNew: true });
+        }}
+        onClose={() => setIsPasskeyRecreateConfirmOpen(false)}
       />
     </div>
   );

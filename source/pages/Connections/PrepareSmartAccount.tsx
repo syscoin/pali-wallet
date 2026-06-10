@@ -13,8 +13,20 @@ import {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
+import type { IPasskeyCredentialProfile } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { bytesToHex, createPasskeyCredential } from 'utils/passkey';
+import {
+  bytesToHex,
+  clearPendingCreationPasskey,
+  createPasskeyCredential,
+  getPendingCreationPasskey,
+  passkeyRegistrationToProfile,
+  setActivePasskeyRecord,
+  setPendingCreationPasskey,
+  signalAcceptedPasskeyCredentials,
+  signalUnknownPasskeyCredential,
+  signP256WebAuthnActionHash,
+} from 'utils/passkey';
 import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
 import {
   encodeEcdsaValidatorInitData,
@@ -48,6 +60,9 @@ type PreparedAuthenticator = {
     validator: string;
   };
   module: SmartAccountValidatorModule;
+  // Set when a wallet-managed passkey backs the authenticator; used to promote
+  // the pending credential record once the account is fully set up.
+  passkeyProfile?: IPasskeyCredentialProfile;
 };
 
 const displayNameForAuthenticator = (
@@ -114,6 +129,53 @@ const localAccountCandidates = (
     }))
   );
 
+// Resolves the wallet-managed passkey for a new smart account. A credential
+// minted by a previous interrupted attempt is recorded in the pending-creation
+// slot; it is reused (after proving the user still holds it) instead of
+// minting a duplicate passkey on every retry.
+const resolveWalletCreationPasskey = async (
+  label: string
+): Promise<IPasskeyCredentialProfile> => {
+  const pending = getPendingCreationPasskey();
+  if (pending?.profile?.credentialId && pending.profile.passkeyName === label) {
+    try {
+      const possession = await signP256WebAuthnActionHash({
+        actionHash: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
+        credentialId: pending.profile.credentialId,
+        expectedCredentialIdHash: pending.profile.credentialIdHash,
+        expectedPublicKey: pending.profile.publicKey,
+      });
+      return {
+        ...pending.profile,
+        ...(possession.backupStatus
+          ? { backupStatus: possession.backupStatus }
+          : {}),
+      };
+    } catch {
+      // The pending credential is gone or the user declined to reuse it:
+      // best-effort cleanup, then fall through to creating a fresh one.
+      await signalUnknownPasskeyCredential(pending.profile.credentialId);
+      clearPendingCreationPasskey();
+    }
+  } else if (pending?.profile?.credentialId) {
+    // Orphan from a different creation flow: drop it from the credential
+    // manager so it does not linger as a confusing stale entry.
+    await signalUnknownPasskeyCredential(pending.profile.credentialId);
+    clearPendingCreationPasskey();
+  }
+
+  const credential = await createPasskeyCredential({
+    accountName: label,
+    challengeHex: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
+    userDisplayName: label,
+  });
+  const profile = passkeyRegistrationToProfile(credential, label);
+  // Persist before any on-chain step so a failed flow retries with the same
+  // credential instead of orphaning it and minting another.
+  setPendingCreationPasskey(profile);
+  return profile;
+};
+
 const normalizeP256Authenticator = async ({
   chainId,
   label,
@@ -123,28 +185,16 @@ const normalizeP256Authenticator = async ({
   label: string;
   requested: { config?: any; id: string };
 }): Promise<PreparedAuthenticator> => {
-  const config = hasP256Config(requested.config)
-    ? requested.config
-    : (() => null)();
-  const credential = config
-    ? null
-    : await createPasskeyCredential({
-        accountName: label,
-        challengeHex: bytesToHex(crypto.getRandomValues(new Uint8Array(32))),
-        userDisplayName: label,
-      });
+  const config = hasP256Config(requested.config) ? requested.config : null;
+  const passkeyProfile = config
+    ? undefined
+    : await resolveWalletCreationPasskey(label);
   const resolvedConfig = config || {
-    backupStatus: credential?.backupStatus,
-    credentialId: credential?.credentialId,
-    credentialIdHash: credential?.credentialIdHash,
+    backupStatus: passkeyProfile?.backupStatus,
+    credentialId: passkeyProfile?.credentialId,
+    credentialIdHash: passkeyProfile?.credentialIdHash,
     passkeyName: label,
-    publicKey: {
-      originHash: credential?.originHash,
-      originLength: credential?.originLength,
-      rpIdHash: credential?.rpIdHash,
-      x: credential?.x,
-      y: credential?.y,
-    },
+    publicKey: passkeyProfile?.publicKey,
   };
   const validator = getPaliModuleAddress(chainId, 'p256-webauthn');
   const data = encodeP256WebAuthnAuthData({
@@ -165,6 +215,7 @@ const normalizeP256Authenticator = async ({
       id: 'p256-webauthn',
       type: 'validator',
     },
+    passkeyProfile,
   };
 };
 
@@ -453,6 +504,19 @@ export const PrepareSmartAccount = () => {
         [account.id],
         300000
       );
+      if (requested.passkeyProfile) {
+        // The passkey is live on-chain: promote the pending credential to the
+        // account's durable record so future rotations reuse it, and let the
+        // credential manager prune anything else under this user handle.
+        setActivePasskeyRecord(account.address, requested.passkeyProfile);
+        clearPendingCreationPasskey();
+        if (requested.passkeyProfile.userHandle) {
+          await signalAcceptedPasskeyCredentials({
+            credentialIds: [requested.passkeyProfile.credentialId],
+            userHandle: requested.passkeyProfile.userHandle,
+          });
+        }
+      }
       await controllerEmitter(
         ['dapp', 'connect'],
         [

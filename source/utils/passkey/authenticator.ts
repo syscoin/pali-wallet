@@ -52,6 +52,7 @@ export const signP256WebAuthnActionHash = async ({
   credentialId: string;
   proof: PasskeyWebAuthnProof;
   signature: string;
+  userHandle?: string;
 }> => {
   const assertion = credentialId
     ? await getPasskeyAssertion(credentialId, actionHash)
@@ -88,5 +89,6 @@ export const signP256WebAuthnActionHash = async ({
     credentialId: assertion.credentialId,
     proof,
     signature: encodePasskeyWebAuthnProof(proof),
+    userHandle: assertion.userHandle,
   };
 };
