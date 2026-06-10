@@ -911,6 +911,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         const userOpTransactions = await fetchSmartAccountUserOpTransactions(
           web3Provider,
           currentAccount as any,
+          activeAccount.type,
           currentNetworkChainId
         );
         rawTransactions = [...rawTransactions, ...userOpTransactions];

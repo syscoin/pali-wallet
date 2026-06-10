@@ -3,8 +3,9 @@ import { hexZeroPad } from '@ethersproject/bytes';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import { setAccountPropertyByIdAndType } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
+import type { KeyringAccountType } from 'types/network';
 import {
   PALI_ENTRYPOINT_V09_ADDRESS,
   paliEntryPointInterface,
@@ -27,8 +28,18 @@ const USER_OP_EVENT_TOPIC =
   paliEntryPointInterface.getEventTopic('UserOperationEvent');
 // Re-scan a small window behind the cursor to tolerate shallow reorgs.
 const REORG_SAFETY_BLOCKS = 5;
-// Bounded window retry for providers that cap eth_getLogs block ranges.
+// Bounded chunk size for providers that cap eth_getLogs block ranges.
 const FALLBACK_SCAN_BLOCKS = 10_000;
+// Cap RPC load per poll while backfilling on range-capped providers; the
+// cursor persists partial contiguous progress so successive polls walk the
+// remaining range up to the tip.
+const MAX_BACKFILL_CHUNKS_PER_POLL = 10;
+
+type ScannedAccount = {
+  address: string;
+  id: number;
+  smartAccountUserOpScanByChainId?: Record<number, number>;
+};
 
 type RawRpcTransaction = {
   blockHash: string | null;
@@ -69,22 +80,27 @@ const sendBatchOrSequential = async (
   return results;
 };
 
-const getVaultSmartAccountTransactions = (chainId: number): any[] => {
-  const { accountTransactions, activeAccount } = store.getState().vault;
+const getVaultSmartAccountTransactions = (
+  accountId: number,
+  accountType: KeyringAccountType,
+  chainId: number
+): any[] => {
+  const { accountTransactions } = store.getState().vault;
   return (
-    accountTransactions[activeAccount.type]?.[activeAccount.id]?.[
+    accountTransactions[accountType]?.[accountId]?.[
       TransactionsType.Ethereum
     ]?.[chainId] || []
   );
 };
 
 const refreshExistingConfirmations = (
-  accountAddress: string,
+  account: ScannedAccount,
+  accountType: KeyringAccountType,
   chainId: number,
   latestBlock: number
 ): IEvmTransactionResponse[] => {
-  const normalizedAccount = accountAddress.toLowerCase();
-  return getVaultSmartAccountTransactions(chainId)
+  const normalizedAccount = account.address.toLowerCase();
+  return getVaultSmartAccountTransactions(account.id, accountType, chainId)
     .filter(
       (tx: any) =>
         tx?.blockNumber &&
@@ -98,17 +114,31 @@ const refreshExistingConfirmations = (
     }));
 };
 
-const persistScanCursor = (chainId: number, latestBlock: number) => {
+// Always target the account whose logs were scanned: a poll can still be in
+// flight when the user switches accounts, and writing through an
+// "active account" reducer at completion time would stamp the cursor onto
+// the wrong account, permanently skipping its older user operations.
+const persistScanCursor = (
+  accountId: number,
+  accountType: KeyringAccountType,
+  chainId: number,
+  scannedThroughBlock: number
+) => {
   try {
-    const { accounts, activeAccount } = store.getState().vault;
-    const account = accounts[activeAccount.type]?.[activeAccount.id] as any;
+    const { accounts } = store.getState().vault;
+    const account = accounts[accountType]?.[accountId] as any;
+    if (!account) {
+      return;
+    }
     const byChain = {
-      ...(account?.smartAccountUserOpScanByChainId || {}),
-      [chainId]: latestBlock,
+      ...(account.smartAccountUserOpScanByChainId || {}),
+      [chainId]: scannedThroughBlock,
     };
     store.dispatch(
-      setActiveAccountProperty({
+      setAccountPropertyByIdAndType({
+        id: accountId,
         property: 'smartAccountUserOpScanByChainId',
+        type: accountType,
         value: byChain,
       })
     );
@@ -117,17 +147,62 @@ const persistScanCursor = (chainId: number, latestBlock: number) => {
   }
 };
 
+/**
+ * Backfill logs in bounded chunks for providers that reject wide ranges.
+ * Coverage is contiguous from `fromBlock`: the scan stops at the first
+ * failing chunk (or the per-poll chunk cap) and reports how far it got, so
+ * the cursor can persist partial progress without leaving gaps. Returns
+ * null when not even the first chunk could be scanned.
+ */
+const scanLogsInChunks = async (
+  provider: CustomJsonRpcProvider,
+  filter: Record<string, unknown>,
+  fromBlock: number,
+  latestBlock: number
+): Promise<{ coveredToBlock: number; logs: any[] } | null> => {
+  const logs: any[] = [];
+  let coveredToBlock = fromBlock - 1;
+  let chunkStart = fromBlock;
+  for (
+    let chunk = 0;
+    chunk < MAX_BACKFILL_CHUNKS_PER_POLL && chunkStart <= latestBlock;
+    chunk++
+  ) {
+    const chunkEnd = Math.min(
+      chunkStart + FALLBACK_SCAN_BLOCKS - 1,
+      latestBlock
+    );
+    try {
+      const chunkLogs = await provider.getLogs({
+        ...filter,
+        fromBlock: chunkStart,
+        toBlock: chunkEnd,
+      });
+      logs.push(...chunkLogs);
+    } catch {
+      // Stop here to keep coverage contiguous; the next poll resumes from
+      // the persisted cursor.
+      break;
+    }
+    coveredToBlock = chunkEnd;
+    chunkStart = chunkEnd + 1;
+  }
+  if (coveredToBlock < fromBlock) {
+    return null;
+  }
+  return { coveredToBlock, logs };
+};
+
 export const fetchSmartAccountUserOpTransactions = async (
   provider: CustomJsonRpcProvider,
-  account: {
-    address: string;
-    smartAccountUserOpScanByChainId?: Record<number, number>;
-  },
+  account: ScannedAccount,
+  accountType: KeyringAccountType,
   chainId: number
 ): Promise<IEvmTransactionResponse[]> => {
   const latestBlock = await provider.getBlockNumber();
   const refreshedExisting = refreshExistingConfirmations(
-    account.address,
+    account,
+    accountType,
     chainId,
     latestBlock
   );
@@ -143,23 +218,44 @@ export const fetchSmartAccountUserOpTransactions = async (
   };
 
   let logs;
-  let scannedFromBlock = fromBlock;
+  // Highest block contiguously covered from `fromBlock`; only this can be
+  // persisted as the cursor without leaving gaps.
+  let coveredToBlock = latestBlock;
   try {
     logs = await provider.getLogs(filter);
   } catch {
-    const boundedFromBlock = Math.max(0, latestBlock - FALLBACK_SCAN_BLOCKS);
-    try {
-      logs = await provider.getLogs({
-        ...filter,
-        fromBlock: boundedFromBlock,
-      });
-      scannedFromBlock = boundedFromBlock;
-    } catch (fallbackError) {
+    // Range-capped RPC: backfill in bounded chunks from the intended start
+    // so older history is eventually indexed (partial contiguous progress
+    // is persisted via the cursor), then peek at the tip window so fresh
+    // activity is visible immediately while the backfill catches up.
+    const chunked = await scanLogsInChunks(
+      provider,
+      filter,
+      fromBlock,
+      latestBlock
+    );
+    if (!chunked) {
       console.warn(
-        '[smartAccountHistory] eth_getLogs failed, keeping local history only:',
-        fallbackError
+        '[smartAccountHistory] eth_getLogs failed, keeping local history only'
       );
       return refreshedExisting;
+    }
+    logs = chunked.logs;
+    coveredToBlock = chunked.coveredToBlock;
+    if (coveredToBlock < latestBlock) {
+      const tipFromBlock = Math.max(
+        coveredToBlock + 1,
+        latestBlock - FALLBACK_SCAN_BLOCKS
+      );
+      try {
+        const tipLogs = await provider.getLogs({
+          ...filter,
+          fromBlock: tipFromBlock,
+        });
+        logs = [...logs, ...tipLogs];
+      } catch {
+        // Best effort only; the backfill cursor reaches these blocks later.
+      }
     }
   }
 
@@ -183,7 +279,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   }
 
   const vaultTxsByHash = new Map<string, any>(
-    getVaultSmartAccountTransactions(chainId)
+    getVaultSmartAccountTransactions(account.id, accountType, chainId)
       .filter((tx: any) => tx?.hash)
       .map((tx: any) => [String(tx.hash).toLowerCase(), tx])
   );
@@ -270,16 +366,13 @@ export const fetchSmartAccountUserOpTransactions = async (
     });
   }
 
-  // Only advance the cursor when the scan actually covered the intended
-  // range AND every logged transaction in that range was materialized:
-  // - A bounded fallback window that starts after the previous cursor (or
-  //   after genesis on a first scan) leaves a gap of unindexed blocks.
-  // - A transient eth_getTransactionByHash failure drops a logged user
-  //   operation that would never be re-scanned once the cursor passes it.
-  // In either case persisting latestBlock would permanently skip those user
-  // operations; leaving the cursor untouched makes the next poll retry.
-  if (scannedFromBlock <= fromBlock && allDetailsFetched) {
-    persistScanCursor(chainId, latestBlock);
+  // Advance the cursor only through the contiguously covered range and only
+  // when every logged transaction was materialized: a transient
+  // eth_getTransactionByHash failure drops a logged user operation that
+  // would never be re-scanned once the cursor passes it. Tip-window logs
+  // beyond coveredToBlock are display-only and never move the cursor.
+  if (allDetailsFetched) {
+    persistScanCursor(account.id, accountType, chainId, coveredToBlock);
   }
 
   // Reorged transactions that were successfully refetched replace their

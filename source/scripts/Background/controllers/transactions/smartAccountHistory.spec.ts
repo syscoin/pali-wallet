@@ -18,9 +18,9 @@ jest.mock('state/store', () => ({
 }));
 
 jest.mock('state/vault', () => ({
-  setActiveAccountProperty: (payload: any) => ({
+  setAccountPropertyByIdAndType: (payload: any) => ({
     payload,
-    type: 'vault/setActiveAccountProperty',
+    type: 'vault/setAccountPropertyByIdAndType',
   }),
 }));
 
@@ -33,6 +33,7 @@ import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 
 const SMART_ACCOUNT = '0x9999999999999999999999999999999999999999';
 const GAS_PAYER = '0x8888888888888888888888888888888888888888';
+const ACCOUNT_TYPE = 'SmartAccount' as any;
 const CHAIN_ID = 57;
 const TX_HASH = `0x${'ab'.repeat(32)}`;
 const BLOCK_HASH = `0x${'cd'.repeat(32)}`;
@@ -90,6 +91,16 @@ const buildProvider = (overrides: Partial<Record<string, any>> = {}) => ({
   ...overrides,
 });
 
+const expectCursorDispatch = (block: number) =>
+  expect.objectContaining({
+    payload: {
+      id: 0,
+      property: 'smartAccountUserOpScanByChainId',
+      type: ACCOUNT_TYPE,
+      value: { [CHAIN_ID]: block },
+    },
+  });
+
 describe('smart account EntryPoint log history', () => {
   beforeEach(() => {
     dispatchMock.mockClear();
@@ -99,10 +110,14 @@ describe('smart account EntryPoint log history', () => {
       },
       accounts: {
         SmartAccount: {
-          0: { address: SMART_ACCOUNT, smartAccountUserOpScanByChainId: {} },
+          0: {
+            address: SMART_ACCOUNT,
+            id: 0,
+            smartAccountUserOpScanByChainId: {},
+          },
         },
       },
-      activeAccount: { id: 0, type: 'SmartAccount' },
+      activeAccount: { id: 0, type: ACCOUNT_TYPE },
     };
   });
 
@@ -113,6 +128,7 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       account,
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
@@ -152,6 +168,7 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
@@ -160,22 +177,16 @@ describe('smart account EntryPoint log history', () => {
     expect(tx.isError).toBe('1');
   });
 
-  it('persists the scan cursor and resumes behind it with a reorg safety window', async () => {
+  it('persists the scan cursor on the scanned account and resumes behind it', async () => {
     const provider = buildProvider();
     await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
-    expect(dispatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: {
-          property: 'smartAccountUserOpScanByChainId',
-          value: { [CHAIN_ID]: 100 },
-        },
-      })
-    );
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
 
     const resumedProvider = buildProvider({
       getLogs: jest.fn().mockResolvedValue([]),
@@ -184,8 +195,10 @@ describe('smart account EntryPoint log history', () => {
       resumedProvider as any,
       {
         address: SMART_ACCOUNT,
+        id: 0,
         smartAccountUserOpScanByChainId: { [CHAIN_ID]: 100 },
       },
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
     expect(resumedProvider.getLogs).toHaveBeenCalledWith(
@@ -208,6 +221,7 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
@@ -234,6 +248,7 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
@@ -248,62 +263,127 @@ describe('smart account EntryPoint log history', () => {
     expect((matching[0] as any).blockNumber).toBe(5);
   });
 
-  it('does not advance the cursor when a bounded fallback scan leaves a gap', async () => {
-    // Full-range scan (fromBlock 0) is rejected; the bounded fallback only
-    // covers [latest - 10000, latest], leaving older blocks unindexed.
+  it('backfills range-capped RPCs in chunks and advances the cursor over the covered range', async () => {
     const provider = buildProvider({
-      getBlockNumber: jest.fn().mockResolvedValue(50_000),
+      getBlockNumber: jest.fn().mockResolvedValue(25_000),
       getLogs: jest
         .fn()
         .mockRejectedValueOnce(new Error('range too large'))
-        .mockResolvedValueOnce([buildUserOpEventLog(true)]),
+        .mockResolvedValueOnce([buildUserOpEventLog(true)])
+        .mockResolvedValue([]),
     });
 
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
+    // Full range rejected, then contiguous 10k chunks up to the tip.
     expect(provider.getLogs).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ fromBlock: 40_000, toBlock: 50_000 })
+      expect.objectContaining({ fromBlock: 0, toBlock: 9_999 })
     );
-    // The bounded window still yields transactions...
+    expect(provider.getLogs).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ fromBlock: 10_000, toBlock: 19_999 })
+    );
+    expect(provider.getLogs).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ fromBlock: 20_000, toBlock: 25_000 })
+    );
     expect(transactions).toHaveLength(1);
-    // ...but the cursor must not be persisted, so the next poll retries the
-    // full range instead of permanently skipping blocks 0..40000.
-    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(25_000));
   });
 
-  it('advances the cursor when the bounded fallback window covers the previous cursor', async () => {
+  it('persists partial backfill progress and peeks at the tip window when capped', async () => {
+    // 200k blocks: 10 chunks per poll cover 0..99,999; the tip window is
+    // queried separately so fresh activity is visible during the backfill.
+    const getLogs = jest.fn(async (filter: any) => {
+      if (filter.fromBlock === 0 && filter.toBlock === 200_000) {
+        throw new Error('range too large');
+      }
+      if (filter.fromBlock === 190_000) {
+        return [buildUserOpEventLog(true)];
+      }
+      return [];
+    });
+    const provider = buildProvider({
+      getBlockNumber: jest.fn().mockResolvedValue(200_000),
+      getLogs,
+    });
+
+    const transactions = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+
+    // 1 full-range attempt + 10 chunks + 1 tip window.
+    expect(getLogs).toHaveBeenCalledTimes(12);
+    expect(getLogs).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fromBlock: 190_000, toBlock: 200_000 })
+    );
+    // Tip-window transactions are surfaced for display...
+    expect(transactions).toHaveLength(1);
+    // ...but the cursor only advances through the contiguous covered range.
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(99_999));
+  });
+
+  it('stops the backfill at the first failing chunk and persists contiguous progress only', async () => {
+    const getLogs = jest.fn(async (filter: any) => {
+      if (filter.fromBlock === 0 && filter.toBlock === 50_000) {
+        throw new Error('range too large');
+      }
+      if (filter.fromBlock === 10_000 && filter.toBlock === 19_999) {
+        throw new Error('transient chunk failure');
+      }
+      return [];
+    });
+    const provider = buildProvider({
+      getBlockNumber: jest.fn().mockResolvedValue(50_000),
+      getLogs,
+    });
+
+    await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+
+    // Coverage is contiguous 0..9,999; the failed chunk is retried from the
+    // persisted cursor on the next poll instead of leaving a gap.
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(9_999));
+  });
+
+  it('covers a near-tip cursor with a single chunk on range-capped RPCs', async () => {
     const provider = buildProvider({
       getBlockNumber: jest.fn().mockResolvedValue(50_000),
       getLogs: jest
         .fn()
         .mockRejectedValueOnce(new Error('transient error'))
-        .mockResolvedValueOnce([]),
+        .mockResolvedValue([]),
     });
 
     await fetchSmartAccountUserOpTransactions(
       provider as any,
       {
         address: SMART_ACCOUNT,
+        id: 0,
         smartAccountUserOpScanByChainId: { [CHAIN_ID]: 49_000 },
       },
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
-    // Intended range starts at 48995 (cursor - reorg window); the fallback
-    // window starts at 40000, so nothing was skipped.
-    expect(dispatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: {
-          property: 'smartAccountUserOpScanByChainId',
-          value: { [CHAIN_ID]: 50_000 },
-        },
-      })
+    expect(provider.getLogs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fromBlock: 48_995, toBlock: 50_000 })
     );
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(50_000));
   });
 
   it('does not advance the cursor when transaction details fail to load', async () => {
@@ -325,6 +405,7 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
@@ -336,16 +417,10 @@ describe('smart account EntryPoint log history', () => {
     await fetchSmartAccountUserOpTransactions(
       retryProvider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
-    expect(dispatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payload: {
-          property: 'smartAccountUserOpScanByChainId',
-          value: { [CHAIN_ID]: 100 },
-        },
-      })
-    );
+    expect(dispatchMock).toHaveBeenCalledWith(expectCursorDispatch(100));
   });
 
   it('keeps local history when eth_getLogs fails entirely', async () => {
@@ -365,10 +440,11 @@ describe('smart account EntryPoint log history', () => {
     const transactions = await fetchSmartAccountUserOpTransactions(
       provider as any,
       vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
       CHAIN_ID
     );
 
-    // Both the full-range and bounded-window attempts failed.
+    // The full-range attempt and the first backfill chunk both failed.
     expect(provider.getLogs).toHaveBeenCalledTimes(2);
     expect(transactions).toHaveLength(1);
     expect((transactions[0] as any).confirmations).toBe(95);
