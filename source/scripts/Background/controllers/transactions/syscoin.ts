@@ -7,6 +7,55 @@ import { TransactionsType } from 'state/vault/types';
 import { ISysTransaction, ISysTransactionsController } from './types';
 import { treatAndSortTransactions } from './utils';
 
+// Snapshot of the Blockbook account summary captured at the last full
+// `details=txs` fetch. Used by rapid polling to detect whether anything
+// changed via a cheap `details=basic` probe before paying for a full fetch.
+interface IAccountActivitySnapshot {
+  balance: string;
+  txs: number;
+  unconfirmedBalance: string;
+  unconfirmedTxs: number;
+}
+
+const MAX_SNAPSHOT_ENTRIES = 20;
+const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
+
+const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
+  `${networkUrl}::${xpubOrAddress}`;
+
+const buildActivitySnapshot = (accountData: any): IAccountActivitySnapshot => ({
+  balance: String(accountData?.balance ?? ''),
+  txs: Number(accountData?.txs ?? 0),
+  unconfirmedBalance: String(accountData?.unconfirmedBalance ?? ''),
+  unconfirmedTxs: Number(accountData?.unconfirmedTxs ?? 0),
+});
+
+const snapshotsEqual = (
+  a: IAccountActivitySnapshot,
+  b: IAccountActivitySnapshot
+) =>
+  a.txs === b.txs &&
+  a.unconfirmedTxs === b.unconfirmedTxs &&
+  a.balance === b.balance &&
+  a.unconfirmedBalance === b.unconfirmedBalance;
+
+const storeActivitySnapshot = (
+  key: string,
+  snapshot: IAccountActivitySnapshot
+) => {
+  // Simple insertion-order eviction to keep the map bounded
+  if (
+    !accountActivitySnapshots.has(key) &&
+    accountActivitySnapshots.size >= MAX_SNAPSHOT_ENTRIES
+  ) {
+    const oldestKey = accountActivitySnapshots.keys().next().value;
+    if (oldestKey !== undefined) {
+      accountActivitySnapshots.delete(oldestKey);
+    }
+  }
+  accountActivitySnapshots.set(key, snapshot);
+};
+
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,
@@ -20,6 +69,13 @@ const SysTransactionController = (): ISysTransactionsController => {
       requestOptions,
       true
     );
+
+    // Record the account summary so rapid polling can detect changes cheaply
+    storeActivitySnapshot(
+      getSnapshotKey(networkUrl, xpubOrAddress),
+      buildActivitySnapshot(accountData)
+    );
+
     const transactions = (accountData as any)?.transactions as
       | ISysTransaction[]
       | undefined;
@@ -30,15 +86,11 @@ const SysTransactionController = (): ISysTransactionsController => {
 
   const pollingSysTransactions = async (
     xpubOrAddress: string,
-    networkUrl: string
+    networkUrl: string,
+    isRapidPolling = false
   ): Promise<ISysTransaction[]> => {
     const { activeAccount, activeNetwork, accountTransactions } =
       store.getState().vault;
-
-    const getSysTxs = await getInitialUserTransactionsByXpub(
-      xpubOrAddress,
-      networkUrl
-    );
 
     // Ensure syscoinUserTransactions is always an array
     const syscoinUserTransactions = clone(
@@ -46,6 +98,46 @@ const SysTransactionController = (): ISysTransactionsController => {
         TransactionsType.Syscoin
       ]?.[activeNetwork.chainId] || []
     ) as ISysTransaction[];
+
+    // Rapid polling (post-send confirmation checks) probes the cheap
+    // `details=basic` summary first and only pays for the full
+    // `details=txs` fetch when the account actually changed since the
+    // last full fetch. The basic probe shares the same request the
+    // balance controller fires in the same cycle (deduplicated).
+    if (isRapidPolling) {
+      const snapshotKey = getSnapshotKey(networkUrl, xpubOrAddress);
+      const previousSnapshot = accountActivitySnapshots.get(snapshotKey);
+
+      if (previousSnapshot) {
+        try {
+          const basicData = await fetchBackendAccountCached(
+            networkUrl,
+            xpubOrAddress,
+            'details=basic&pageSize=0',
+            true
+          );
+          const currentSnapshot = buildActivitySnapshot(basicData);
+
+          if (snapshotsEqual(previousSnapshot, currentSnapshot)) {
+            // Nothing changed on the backend - keep current local state
+            return Array.isArray(syscoinUserTransactions)
+              ? syscoinUserTransactions
+              : [];
+          }
+        } catch (error) {
+          // Probe failed - fall through to the full fetch below
+          console.warn(
+            '[SysTransactionController] Rapid poll basic probe failed, falling back to full fetch:',
+            error
+          );
+        }
+      }
+    }
+
+    const getSysTxs = await getInitialUserTransactionsByXpub(
+      xpubOrAddress,
+      networkUrl
+    );
 
     // Ensure both values are arrays before spreading
     const validGetSysTxs = Array.isArray(getSysTxs) ? getSysTxs : [];
