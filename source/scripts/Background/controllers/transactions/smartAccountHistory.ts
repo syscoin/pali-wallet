@@ -167,12 +167,16 @@ export const fetchSmartAccountUserOpTransactions = async (
   // (success=false). Aggregate per outer transaction: every op for this
   // sender in the bundle must have succeeded for the tx to show as success.
   const successByTxHash = new Map<string, boolean>();
+  const logBlockHashByTxHash = new Map<string, string>();
   for (const log of logs) {
     try {
       const parsed = paliEntryPointInterface.parseLog(log);
       const key = log.transactionHash.toLowerCase();
       const success = Boolean(parsed.args.success);
       successByTxHash.set(key, (successByTxHash.get(key) ?? true) && success);
+      if (log.blockHash) {
+        logBlockHashByTxHash.set(key, String(log.blockHash).toLowerCase());
+      }
     } catch {
       // Topic filter guarantees the event type; decode failures are skipped.
     }
@@ -187,8 +191,20 @@ export const fetchSmartAccountUserOpTransactions = async (
     const existing = vaultTxsByHash.get(hash);
     // Skip outer transactions that are already confirmed in the vault; their
     // confirmation counters are refreshed locally above.
-    return !(existing?.blockNumber && existing?.blockHash);
+    if (!(existing?.blockNumber && existing?.blockHash)) {
+      return true;
+    }
+    // A shallow reorg inside the safety window can move an already-indexed
+    // transaction to a different block; refetch when the freshly scanned
+    // log's blockHash disagrees with the cached copy.
+    const logBlockHash = logBlockHashByTxHash.get(hash);
+    return Boolean(
+      logBlockHash && logBlockHash !== String(existing.blockHash).toLowerCase()
+    );
   });
+  const hashesToRefetch = new Set(
+    hashesToFetch.filter((hash) => vaultTxsByHash.has(hash))
+  );
 
   let fetchedTransactions: IEvmTransactionResponse[] = [];
   let allDetailsFetched = true;
@@ -266,5 +282,20 @@ export const fetchSmartAccountUserOpTransactions = async (
     persistScanCursor(chainId, latestBlock);
   }
 
-  return [...refreshedExisting, ...fetchedTransactions];
+  // Reorged transactions that were successfully refetched replace their
+  // stale cached copies; if the refetch failed, keep the cached copy until
+  // the next poll retries.
+  const refetchedHashes = new Set(
+    fetchedTransactions
+      .filter((tx) => hashesToRefetch.has(String(tx.hash).toLowerCase()))
+      .map((tx) => String(tx.hash).toLowerCase())
+  );
+  const survivingExisting =
+    refetchedHashes.size > 0
+      ? refreshedExisting.filter(
+          (tx) => !refetchedHashes.has(String(tx.hash).toLowerCase())
+        )
+      : refreshedExisting;
+
+  return [...survivingExisting, ...fetchedTransactions];
 };

@@ -216,6 +216,38 @@ describe('smart account EntryPoint log history', () => {
     expect((transactions[0] as any).confirmations).toBe(95);
   });
 
+  it('refetches and replaces a cached transaction moved by a shallow reorg', async () => {
+    const STALE_BLOCK_HASH = `0x${'ee'.repeat(32)}`;
+    vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
+      {
+        blockHash: STALE_BLOCK_HASH,
+        blockNumber: 4,
+        confirmations: 1,
+        hash: TX_HASH,
+        smartAccountExecutionFrom: SMART_ACCOUNT,
+      },
+    ];
+    // The fresh log carries the canonical (post-reorg) block hash, which
+    // disagrees with the cached copy, so the outer tx must be refetched.
+    const provider = buildProvider();
+
+    const transactions = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      CHAIN_ID
+    );
+
+    expect(provider.send).toHaveBeenCalledWith('eth_getTransactionByHash', [
+      TX_HASH,
+    ]);
+    const matching = transactions.filter(
+      (tx: any) => String(tx.hash).toLowerCase() === TX_HASH
+    );
+    expect(matching).toHaveLength(1);
+    expect((matching[0] as any).blockHash).toBe(BLOCK_HASH);
+    expect((matching[0] as any).blockNumber).toBe(5);
+  });
+
   it('does not advance the cursor when a bounded fallback scan leaves a gap', async () => {
     // Full-range scan (fromBlock 0) is rejected; the bounded fallback only
     // covers [latest - 10000, latest], leaving older blocks unindexed.
