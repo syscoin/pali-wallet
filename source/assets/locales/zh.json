@@ -656,6 +656,7 @@
       "getInitData": "准备智能账户初始化数据",
       "installModule": "安装智能账户模块",
       "uninstallModule": "卸载智能账户模块",
+      "rotateValidator": "更新智能账户验证器",
       "isModuleInstalled": "检查智能账户模块",
       "validateUserOp": "验证 User Operation",
       "onInstall": "安装模块配置",

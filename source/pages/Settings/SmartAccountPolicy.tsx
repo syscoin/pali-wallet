@@ -22,6 +22,7 @@ import {
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
   encodeInstallValidatorModuleCall,
+  encodeRotateValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   ERC7579_MODULE_TYPE_EXECUTOR,
   encodeSmartAccountAuthenticatorSignature,
@@ -692,11 +693,20 @@ const SmartAccountPolicy = () => {
     const sameValidatorModule =
       activeValidator.address.toLowerCase() ===
       authenticator.auth.validator.toLowerCase();
+    // An already-installed validator module must be re-keyed via the account's
+    // atomic rotateValidator (a plain uninstall of the active validator is
+    // rejected by the account, and installing an installed module reverts).
+    // Rotation also makes the module the active validator.
     const installExecution = {
-      data: encodeInstallValidatorModuleCall(
-        authenticator.auth.validator,
-        authenticator.auth.data
-      ),
+      data: targetValidator
+        ? encodeRotateValidatorModuleCall(
+            authenticator.auth.validator,
+            authenticator.auth.data
+          )
+        : encodeInstallValidatorModuleCall(
+            authenticator.auth.validator,
+            authenticator.auth.data
+          ),
       target: account.address,
       value: '0x0',
     };
@@ -705,15 +715,7 @@ const SmartAccountPolicy = () => {
       target: account.address,
       value: '0x0',
     };
-    const uninstallTargetExecution = targetValidator
-      ? {
-          data: encodeUninstallValidatorModuleCall(targetValidator.address),
-          target: account.address,
-          value: '0x0',
-        }
-      : null;
     const executions = [
-      ...(uninstallTargetExecution ? [uninstallTargetExecution] : []),
       installExecution,
       ...(!sameValidatorModule ? [uninstallActiveExecution] : []),
     ];

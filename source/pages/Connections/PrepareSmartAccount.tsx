@@ -19,6 +19,7 @@ import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
 import {
   encodeEcdsaValidatorInitData,
   encodeInstallValidatorModuleCall,
+  encodeRotateValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
   PaliSmartAccountAuthenticatorSetup,
@@ -298,6 +299,17 @@ export const PrepareSmartAccount = () => {
         bootstrapValidator.address,
         requested.auth.validator
       );
+      // Re-keying the bootstrap validator module must go through the account's
+      // atomic rotateValidator: a plain uninstall of the active validator is
+      // rejected by the account, and installing an installed module reverts.
+      const rotateExecution = {
+        data: encodeRotateValidatorModuleCall(
+          requested.auth.validator,
+          requested.auth.data
+        ),
+        target: account.address,
+        value: '0x0',
+      };
       const installExecution = {
         data: encodeInstallValidatorModuleCall(
           requested.auth.validator,
@@ -335,7 +347,7 @@ export const PrepareSmartAccount = () => {
         },
         controllerEmitter,
         executions: replacesSameValidatorModule
-          ? [uninstallBootstrapExecution, installExecution]
+          ? [rotateExecution]
           : [installExecution, uninstallBootstrapExecution],
         skipRapidPolling: true,
         smartAccount: bootstrapMetadata,

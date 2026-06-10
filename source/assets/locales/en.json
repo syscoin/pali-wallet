@@ -865,6 +865,7 @@
       "getInitData": "Prepare Smart Account Init Data",
       "installModule": "Install Smart Account Module",
       "uninstallModule": "Uninstall Smart Account Module",
+      "rotateValidator": "Update Smart Account Validator",
       "isModuleInstalled": "Check Smart Account Module",
       "validateUserOp": "Validate User Operation",
       "onInstall": "Install Module Config",

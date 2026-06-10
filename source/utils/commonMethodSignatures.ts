@@ -118,6 +118,7 @@ export const SMART_ACCOUNT_METHOD_SIGNATURES = {
   '0xd691c964': 'executeFromExecutor',
   '0x9517e29f': 'installModule',
   '0xa71763a8': 'uninstallModule',
+  '0xde31f7b5': 'rotateValidator',
   '0x112d3a7d': 'isModuleInstalled',
   '0x19822f7c': 'validateUserOp',
   '0x97003203': 'validateUserOp',

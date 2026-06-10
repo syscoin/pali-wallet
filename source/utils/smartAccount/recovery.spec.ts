@@ -57,7 +57,7 @@ describe('smart account guardian recovery operation encoding', () => {
     expect(parsed.args.module).toBe(VALIDATOR);
   });
 
-  it('replaces the recovery target when its validator is already installed', () => {
+  it('rotates the recovery target when its validator is already installed', () => {
     const operation = buildSmartAccountGuardianRecoveryOperation({
       account: ACCOUNT,
       chainId: CHAIN_ID,
@@ -68,23 +68,16 @@ describe('smart account guardian recovery operation encoding', () => {
       target,
     });
 
-    expect(operation.mode).toBe(ERC7579_MODE_BATCH_DEFAULT);
-    const [executions] = defaultAbiCoder.decode(
-      ['tuple(address target,uint256 value,bytes callData)[]'],
-      operation.executionCalldata
-    ) as unknown as [any[]];
-    const parsed = executions.map((execution) =>
-      paliSmartAccountInterface.parseTransaction({
-        data: execution.callData,
-      })
-    );
+    expect(operation.mode).toBe(ERC7579_MODE_SINGLE_DEFAULT);
+    const rotateData = `0x${operation.executionCalldata.slice(106)}`;
+    const parsed = paliSmartAccountInterface.parseTransaction({
+      data: rotateData,
+    });
 
-    expect(parsed.map((call) => call.name)).toEqual([
-      'uninstallModule',
-      'installModule',
-    ]);
-    expect(parsed[0].args.module).toBe(VALIDATOR);
-    expect(parsed[1].args.module).toBe(VALIDATOR);
+    expect(parsed.name).toBe('rotateValidator');
+    expect(parsed.args.module).toBe(VALIDATOR);
+    expect(parsed.args.initData).toBe(target.auth.data);
+    expect(parsed.args.deInitData).toBe('0x');
   });
 
   it('installs the recovery target and revokes a different active validator', () => {
@@ -116,7 +109,7 @@ describe('smart account guardian recovery operation encoding', () => {
     expect(parsed[1].args.module).toBe(OLD_VALIDATOR);
   });
 
-  it('updates an installed target before revoking a different active validator', () => {
+  it('rotates an installed target before revoking a different active validator', () => {
     const operation = buildSmartAccountGuardianRecoveryOperation({
       account: ACCOUNT,
       chainId: CHAIN_ID,
@@ -139,12 +132,11 @@ describe('smart account guardian recovery operation encoding', () => {
     );
 
     expect(parsed.map((call) => call.name)).toEqual([
-      'uninstallModule',
-      'installModule',
+      'rotateValidator',
       'uninstallModule',
     ]);
     expect(parsed[0].args.module).toBe(VALIDATOR);
-    expect(parsed[1].args.module).toBe(VALIDATOR);
-    expect(parsed[2].args.module).toBe(OLD_VALIDATOR);
+    expect(parsed[0].args.initData).toBe(target.auth.data);
+    expect(parsed[1].args.module).toBe(OLD_VALIDATOR);
   });
 });

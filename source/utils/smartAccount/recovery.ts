@@ -6,6 +6,7 @@ import {
   encodeERC7579Executions,
   encodeGuardianRecoveryInitData,
   encodeRecoveryTargetExecution,
+  encodeRotateValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   PaliRecoveryTarget,
 } from './account';
@@ -74,22 +75,20 @@ export const buildSmartAccountGuardianRecoveryOperation = (params: {
   salt: string;
   target: PaliRecoveryTarget;
 }) => {
-  const installCall = encodeRecoveryTargetExecution(params.target);
   const replacesActiveTarget =
     params.revokeValidator?.toLowerCase() ===
     params.target.auth.validator.toLowerCase();
+  // When the target validator module is already installed it must be re-keyed
+  // through the account's atomic rotateValidator: the account rejects a plain
+  // uninstall of its active validator, and an install of an already-installed
+  // module reverts.
+  const installCall = params.replaceExistingValidator
+    ? encodeRotateValidatorModuleCall(
+        params.target.auth.validator,
+        params.target.auth.data
+      )
+    : encodeRecoveryTargetExecution(params.target);
   const executions = [
-    ...(params.replaceExistingValidator
-      ? [
-          {
-            data: encodeUninstallValidatorModuleCall(
-              params.target.auth.validator
-            ),
-            target: params.account,
-            value: '0',
-          },
-        ]
-      : []),
     {
       data: installCall,
       target: params.account,

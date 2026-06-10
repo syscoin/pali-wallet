@@ -865,6 +865,7 @@
       "getInitData": "Smart-Konto-Initialisierungsdaten vorbereiten",
       "installModule": "Smart-Konto-Modul installieren",
       "uninstallModule": "Smart-Konto-Modul deinstallieren",
+      "rotateValidator": "Smart-Konto-Validator aktualisieren",
       "isModuleInstalled": "Smart-Konto-Modul prüfen",
       "validateUserOp": "User Operation validieren",
       "onInstall": "Modulkonfiguration installieren",

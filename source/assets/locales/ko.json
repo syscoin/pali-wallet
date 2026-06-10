@@ -865,6 +865,7 @@
       "getInitData": "스마트 계정 초기화 데이터 준비",
       "installModule": "스마트 계정 모듈 설치",
       "uninstallModule": "스마트 계정 모듈 제거",
+      "rotateValidator": "스마트 계정 검증자 업데이트",
       "isModuleInstalled": "스마트 계정 모듈 확인",
       "validateUserOp": "User Operation 검증",
       "onInstall": "모듈 설정 설치",
