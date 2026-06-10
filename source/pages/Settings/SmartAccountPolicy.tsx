@@ -1172,17 +1172,46 @@ const SmartAccountPolicy = () => {
             ? activeGuardianReplacement
             : null;
 
+        // The recovery rotates the account to this key, so prove the user can
+        // still sign with the stored replacement before reusing it. If the
+        // passkey was deleted in the meantime, discard the record and mint a
+        // fresh credential instead of recovering to an unusable key.
+        let verifiedReplacement: GuardianReplacementCredential | null = null;
         if (storedReplacement) {
           const storedConfig = storedReplacement.authenticator
             .config as Extract<
             PaliSmartAccountAuthenticatorSetup,
             { id: 'p256-webauthn' }
           >['config'];
+          try {
+            await signP256WebAuthnActionHash({
+              actionHash: bytesToHex(
+                crypto.getRandomValues(new Uint8Array(32))
+              ),
+              credentialId: storedConfig.credentialId || undefined,
+              expectedCredentialIdHash: storedConfig.credentialIdHash,
+              expectedPublicKey: storedConfig.publicKey,
+            });
+            verifiedReplacement = storedReplacement;
+          } catch {
+            if (storedConfig.credentialId) {
+              await signalUnknownPasskeyCredential(storedConfig.credentialId);
+            }
+            clearGuardianReplacementCredential();
+          }
+        }
+
+        if (verifiedReplacement) {
+          const verifiedConfig = verifiedReplacement.authenticator
+            .config as Extract<
+            PaliSmartAccountAuthenticatorSetup,
+            { id: 'p256-webauthn' }
+          >['config'];
           target = toP256WebAuthnRecoveryTarget({
-            credentialIdHash: storedConfig.credentialIdHash,
-            ...storedConfig.publicKey,
+            credentialIdHash: verifiedConfig.credentialIdHash,
+            ...verifiedConfig.publicKey,
           });
-          replacementCredential = storedReplacement;
+          replacementCredential = verifiedReplacement;
         } else {
           const challenge = crypto.getRandomValues(new Uint8Array(32));
           // Intentionally a fresh random user handle: a deterministic handle
