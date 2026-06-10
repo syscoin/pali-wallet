@@ -51,14 +51,16 @@ const collectMedia = (runId) => {
       });
     }
   }
-  // Playwright stores one video per test dir under test-output/.
-  const testOutput = path.join(runDir, 'test-output');
-  if (fs.existsSync(testOutput)) {
-    for (const dir of fs.readdirSync(testOutput, { withFileTypes: true })) {
-      if (!dir.isDirectory()) continue;
-      const candidate = path.join(testOutput, dir.name, 'video.webm');
-      if (fs.existsSync(candidate)) {
-        files.push({ rel: `${dir.name}.webm`, src: candidate });
+  // The extension launcher records context videos to <runDir>/videos/
+  // (see harness/launch.ts recordVideo.dir).
+  const videosDir = path.join(runDir, 'videos');
+  if (fs.existsSync(videosDir)) {
+    for (const file of fs.readdirSync(videosDir).sort()) {
+      if (file.endsWith('.webm')) {
+        files.push({
+          rel: `videos/${file}`,
+          src: path.join(videosDir, file),
+        });
       }
     }
   }

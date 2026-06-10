@@ -123,7 +123,14 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
     await wallet.step('activity panel renders for smart account', async () => {
       await wallet.gotoRoute('#/home');
       await wallet.page.locator('#activity-btn').click();
-      await wallet.page.waitForTimeout(3_000);
+      // Same content assertion as the onboarding journey: empty state or the
+      // explorer link that accompanies transaction rows.
+      await expect(
+        wallet.page
+          .getByText(/you have no transaction history/i)
+          .or(wallet.page.getByText(/see all your transactions/i))
+          .first()
+      ).toBeVisible({ timeout: 30_000 });
     });
 
     await wallet.dispose('passed');

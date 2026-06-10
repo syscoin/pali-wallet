@@ -33,16 +33,31 @@ jobs:
     name: run QA agent
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Only react to /pali-agent from users with write access to the repo.
     if: >-
-      (
-        (github.event_name == 'issues' && startsWith(github.event.issue.body, '/pali-agent')) ||
-        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/pali-agent'))
-      ) && contains(
-        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
-        github.event_name == 'issues' && github.event.issue.author_association || github.event.comment.author_association
-      )
+      (github.event_name == 'issues' && startsWith(github.event.issue.body, '/pali-agent')) ||
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/pali-agent'))
     steps:
+      # author_association is not a permission check (e.g. MEMBER only means
+      # org membership). Gate on actual write access to this repository
+      # before touching secrets or the privileged token.
+      - name: Verify invoker has write access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: >-
+            ${{ github.event_name == 'issues' && github.event.issue.user.login || github.event.comment.user.login }}
+        run: |
+          permission=$(gh api \
+            "repos/${{ github.repository }}/collaborators/${ACTOR}/permission" \
+            --jq '.permission' 2>/dev/null || echo "none")
+          echo "invoker=$ACTOR permission=$permission"
+          case "$permission" in
+            admin|write) ;;
+            *)
+              echo "::error::@$ACTOR does not have write access to ${{ github.repository }}; refusing to run the agent"
+              exit 1
+              ;;
+          esac
+
       - name: Acknowledge invocation
         env:
           GH_TOKEN: ${{ github.token }}

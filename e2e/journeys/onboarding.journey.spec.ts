@@ -43,13 +43,15 @@ test('onboarding: import seed, unlock state, switch network, read balance', asyn
 
     await wallet.step('activity tab renders', async () => {
       await wallet.page.locator('#activity-btn').click();
-      // Either transactions or the explicit empty state must render — a blank
+      // The panel must show real content: either the explicit empty state or
+      // the explorer link that renders alongside transaction rows. A blank
       // panel is a bug.
       await expect(
         wallet.page
-          .locator('#activity-btn')
-          .or(wallet.page.getByText(/you have no/i))
-      ).toBeVisible();
+          .getByText(/you have no transaction history/i)
+          .or(wallet.page.getByText(/see all your transactions/i))
+          .first()
+      ).toBeVisible({ timeout: 30_000 });
     });
 
     await wallet.dispose('passed');
