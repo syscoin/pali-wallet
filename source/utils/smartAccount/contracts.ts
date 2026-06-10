@@ -107,6 +107,7 @@ export const PALI_SMART_ACCOUNT_ABI = [
 export const PALI_ENTRYPOINT_V09_ADDRESS = PALI_CANONICAL_ENTRYPOINT_ADDRESS;
 
 export const PALI_ENTRYPOINT_V09_ABI = [
+  'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
   'function getNonce(address sender,uint192 key) view returns (uint256 nonce)',
   'function getUserOpHash((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp) view returns (bytes32)',
   'function handleOps((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)[] ops,address payable beneficiary)',

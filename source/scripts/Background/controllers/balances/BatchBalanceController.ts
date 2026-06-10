@@ -5,6 +5,7 @@ import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';
+import { resolveMulticall3Address } from 'utils/smartAccount';
 
 // Minimal ERC20 ABI for balance queries
 const ERC20_BALANCE_ABI = [
@@ -50,11 +51,9 @@ const MULTICALL3_ABI = [
 
 export class BatchBalanceController {
   private provider: CustomJsonRpcProvider;
-  private multicallAddress: string | undefined;
 
   constructor(provider: CustomJsonRpcProvider) {
     this.provider = provider;
-    this.multicallAddress = '0xcA11bde05977b3631167028862bE2a173976CA11';
   }
 
   /**
@@ -73,9 +72,20 @@ export class BatchBalanceController {
     }
 
     try {
+      // Resolve the canonical Multicall3 deployment, or the Pali CREATE2
+      // infrastructure deployment on chains without it (cached per chain).
+      const network = await this.provider.getNetwork();
+      const multicallAddress = await resolveMulticall3Address(
+        this.provider,
+        Number(network.chainId)
+      );
+      if (!multicallAddress) {
+        return await this.fallbackToIndividualCalls(tokens, userAddress);
+      }
+
       // Prepare multicall
       const multicall = new Contract(
-        this.multicallAddress!,
+        multicallAddress,
         MULTICALL3_ABI,
         this.provider
       );
@@ -209,12 +219,5 @@ export class BatchBalanceController {
     );
 
     return balances;
-  }
-
-  /**
-   * Check if multicall is supported on the current network
-   */
-  isMulticallSupported(): boolean {
-    return !!this.multicallAddress;
   }
 }

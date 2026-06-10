@@ -168,6 +168,9 @@ export interface IKeyringAccountState {
   isTrezorWallet: boolean;
   label: string;
   smartAccount?: ISmartAccountMetadata;
+  // Per-chain last block scanned for ERC-4337 UserOperationEvent logs
+  // (smart accounts only; chainId -> blockNumber)
+  smartAccountUserOpScanByChainId?: Record<number, number>;
   xprv: string;
   xpub: string;
 }

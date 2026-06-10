@@ -249,8 +249,7 @@ const Advanced = () => {
                   })}
                 </p>
               )}
-              {!infrastructureStatus?.ready &&
-                infrastructureStatus?.create2Deployer.deployed &&
+              {infrastructureStatus?.create2Deployer.deployed &&
                 missingInfrastructure.length > 0 && (
                   <NeutralButton
                     type="button"

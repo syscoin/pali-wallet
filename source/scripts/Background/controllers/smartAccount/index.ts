@@ -17,6 +17,10 @@ import {
 } from 'types/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
+  aggregateContractCalls,
+  AggregateCallRequest,
+  AggregateCallResult,
+  clearMulticall3AddressCache,
   buildP256WebAuthnAuthenticator,
   buildHydratedP256WebAuthnAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
@@ -100,6 +104,18 @@ export interface ISmartAccountControllerDependencies {
   ) => Promise<string>;
 }
 
+type GuardianRecoveryStatusForAccount = {
+  delay: string;
+  delaySeconds: number;
+  exists: boolean;
+  expirationSeconds: number;
+  guardianCount: string;
+  guardians: string[];
+  moduleAddress: string;
+  pending: null;
+  threshold: number;
+};
+
 type SmartAccountInfrastructureStatus = {
   chainId: number;
   contracts: Array<{
@@ -107,6 +123,7 @@ type SmartAccountInfrastructureStatus = {
     deployed: boolean;
     displayName: string;
     id: PaliInfrastructureContractId;
+    optional: boolean;
   }>;
   create2Deployer: {
     address: string;
@@ -124,6 +141,7 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const SMART_ACCOUNT_USER_OP_GAS_RESERVE = BigNumber.from(2_050_000);
+const HYDRATED_METADATA_TTL_MS = 30_000;
 
 const randomBytes32Hex = () => {
   const bytes = new Uint8Array(32);
@@ -246,6 +264,14 @@ class SmartAccountController {
     status: SmartAccountInfrastructureStatus;
   };
   private readonly pendingDeploymentAddresses = new Set<string>();
+  private readonly hydratedMetadataCache = new Map<
+    string,
+    { metadata: ISmartAccountMetadata; timestamp: number }
+  >();
+  private readonly inflightHydrations = new Map<
+    string,
+    Promise<ISmartAccountMetadata>
+  >();
 
   constructor(private readonly deps: ISmartAccountControllerDependencies) {}
 
@@ -287,25 +313,46 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
 
-    const [create2Code, contracts] = await Promise.all([
-      provider.getCode(PALI_CREATE2_DEPLOYER_ADDRESS),
-      Promise.all(
-        PALI_INFRASTRUCTURE_CONTRACTS.map(async (contract) => {
-          const code = await provider.getCode(contract.address);
-          const isDeployed = code !== '0x';
-          const initialized = contract.id !== 'factory' || isDeployed;
-          return {
-            address: contract.address,
-            deployed: isDeployed,
-            displayName: contract.displayName,
-            id: contract.id,
-            initialized,
-          };
-        })
-      ),
-    ]);
+    // One batched eth_getCode round trip for the CREATE2 deployer plus every
+    // infrastructure contract (falls back to parallel single calls when the
+    // RPC rejects batches).
+    const probeAddresses = [
+      PALI_CREATE2_DEPLOYER_ADDRESS,
+      ...PALI_INFRASTRUCTURE_CONTRACTS.map((contract) => contract.address),
+    ];
+    let codes: string[];
+    try {
+      if (typeof provider.sendBatch !== 'function') {
+        throw new Error('Provider does not support JSON-RPC batching');
+      }
+      codes = await provider.sendBatch(
+        'eth_getCode',
+        probeAddresses.map((address) => [address, 'latest'])
+      );
+    } catch {
+      codes = await Promise.all(
+        probeAddresses.map((address) => provider.getCode(address))
+      );
+    }
+    const create2Code = codes[0];
+    const contracts = PALI_INFRASTRUCTURE_CONTRACTS.map((contract, index) => {
+      const code = codes[index + 1];
+      const isDeployed = Boolean(code) && code !== '0x';
+      const initialized = contract.id !== 'factory' || isDeployed;
+      return {
+        address: contract.address,
+        deployed: isDeployed,
+        displayName: contract.displayName,
+        id: contract.id,
+        initialized,
+        optional: Boolean(contract.optional),
+      };
+    });
     const missing = contracts
       .filter((contract) => !contract.deployed)
+      .map((contract) => contract.id);
+    const missingRequired = contracts
+      .filter((contract) => !contract.deployed && !contract.optional)
       .map((contract) => contract.id);
     const factoryInitialized =
       contracts.find((contract) => contract.id === 'factory')?.initialized ??
@@ -322,7 +369,9 @@ class SmartAccountController {
             PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
       },
       missing,
-      ready: missing.length === 0 && factoryInitialized,
+      // Optional contracts (e.g. Multicall3) never gate smart-account
+      // readiness; they are deployed opportunistically.
+      ready: missingRequired.length === 0 && factoryInitialized,
     };
     this.infrastructureStatusCache = {
       chainId: activeNetwork.chainId,
@@ -369,6 +418,9 @@ class SmartAccountController {
       deployed.push(contract.id);
     }
 
+    if (deployed.includes('multicall3')) {
+      clearMulticall3AddressCache(status.chainId);
+    }
     await this.getSmartAccountInfrastructureStatus(true);
 
     return { deployed, skipped };
@@ -558,8 +610,10 @@ class SmartAccountController {
       } finally {
         this.pendingDeploymentAddresses.delete(accountAddress);
       }
+      this.invalidateHydratedMetadata(accountAddress);
       const hydratedMetadata = await this.hydrateSmartAccountMetadata(
-        active.account
+        active.account,
+        { forceRefresh: true }
       );
       store.dispatch(
         setAccountPropertyByIdAndType({
@@ -690,7 +744,11 @@ class SmartAccountController {
     accountId: number
   ): Promise<ISmartAccountMetadata> {
     const active = this.getSmartAccountById(accountId);
-    const metadata = await this.hydrateSmartAccountMetadata(active.account);
+    // Explicit hydration requests (UI refresh, post-action flows) bypass the
+    // short-lived metadata cache.
+    const metadata = await this.hydrateSmartAccountMetadata(active.account, {
+      forceRefresh: true,
+    });
     await this.persistSmartAccountMetadata(
       active.account.id,
       metadata,
@@ -971,6 +1029,9 @@ class SmartAccountController {
           ],
         }
       );
+      // Executions may install/uninstall modules or rotate the active
+      // validator; drop the cached hydrated metadata for this account.
+      this.invalidateHydratedMetadata(active.account.address);
       if (params.waitForConfirmation) {
         await response.wait();
       }
@@ -1221,6 +1282,8 @@ class SmartAccountController {
         { clearNavigation: false, persist: true }
       );
       await response.wait();
+      // Recovery rotates validators on the target account.
+      this.invalidateHydratedMetadata(account);
       return response;
     } catch (error) {
       if (hasGuardianRecoveryNotReadyRevert(error)) {
@@ -1402,7 +1465,88 @@ class SmartAccountController {
     return { account: active.account, metadata };
   }
 
+  private getHydrationKey(account: any): string {
+    const metadata = account.smartAccount as ISmartAccountMetadata;
+    return `${metadata.chainId}:${String(account.address).toLowerCase()}`;
+  }
+
+  private invalidateHydratedMetadata(address?: string): void {
+    // Detach in-flight hydrations too: they may have started before the
+    // on-chain change being invalidated, so joining them (or letting them
+    // populate the cache when they resolve) would resurrect stale metadata.
+    if (!address) {
+      this.hydratedMetadataCache.clear();
+      this.inflightHydrations.clear();
+      return;
+    }
+    const normalized = address.toLowerCase();
+    for (const key of Array.from(this.hydratedMetadataCache.keys())) {
+      if (key.endsWith(`:${normalized}`)) {
+        this.hydratedMetadataCache.delete(key);
+      }
+    }
+    for (const key of Array.from(this.inflightHydrations.keys())) {
+      if (key.endsWith(`:${normalized}`)) {
+        this.inflightHydrations.delete(key);
+      }
+    }
+  }
+
   private async hydrateSmartAccountMetadata(
+    account: any,
+    options: { forceRefresh?: boolean } = {}
+  ): Promise<ISmartAccountMetadata> {
+    const key = this.getHydrationKey(account);
+
+    // Joining an in-flight hydration deduplicates concurrent UI/controller
+    // requests — but never for forced refreshes: those run after on-chain
+    // state changes (deployment, module install, recovery) and an in-flight
+    // fetch may have started before the change, so it could return stale
+    // metadata.
+    if (!options.forceRefresh) {
+      const inflight = this.inflightHydrations.get(key);
+      if (inflight) {
+        return inflight;
+      }
+      const cached = this.hydratedMetadataCache.get(key);
+      if (cached && Date.now() - cached.timestamp < HYDRATED_METADATA_TTL_MS) {
+        return cached.metadata;
+      }
+    }
+
+    const hydration: Promise<ISmartAccountMetadata> =
+      this.fetchSmartAccountMetadata(account)
+        .then((metadata) => {
+          // Only the most recent hydration may populate the cache; a
+          // superseded fetch resolving late must not overwrite fresher data.
+          if (this.inflightHydrations.get(key) === hydration) {
+            this.hydratedMetadataCache.set(key, {
+              metadata,
+              timestamp: Date.now(),
+            });
+          }
+          return metadata;
+        })
+        .finally(() => {
+          if (this.inflightHydrations.get(key) === hydration) {
+            this.inflightHydrations.delete(key);
+          }
+        });
+    this.inflightHydrations.set(key, hydration);
+    return hydration;
+  }
+
+  private requireAggregateResult(
+    result: AggregateCallResult | undefined,
+    label: string
+  ): NonNullable<AggregateCallResult['result']> {
+    if (!result?.success) {
+      throw new Error(`Failed to read smart account state (${label})`);
+    }
+    return result.result;
+  }
+
+  private async fetchSmartAccountMetadata(
     account: any
   ): Promise<ISmartAccountMetadata> {
     const metadata = account.smartAccount as ISmartAccountMetadata;
@@ -1410,7 +1554,97 @@ class SmartAccountController {
     if (!provider) {
       throw new Error('Web3 provider not available');
     }
-    const code = await provider.getCode(account.address);
+    const chainId = metadata.chainId;
+
+    const p256Address = getConfiguredAuthenticatorAddress(
+      chainId,
+      'p256-webauthn'
+    );
+    const ecdsaAddress = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
+    const compositeAddress = getConfiguredAuthenticatorAddress(
+      chainId,
+      'composite'
+    );
+    const { activeNetwork } = store.getState().vault;
+    const guardianModuleAddress = getConfiguredAuthenticatorAddress(
+      activeNetwork.chainId,
+      'guardian-recovery'
+    );
+    const includeGuardian = Boolean(
+      guardianModuleAddress && guardianModuleAddress !== AddressZero
+    );
+
+    const isModuleInstalledCall = (
+      moduleAddress: string
+    ): AggregateCallRequest => ({
+      args: [ERC7579_MODULE_TYPE_VALIDATOR, moduleAddress, '0x'],
+      fn: 'isModuleInstalled',
+      iface: paliSmartAccountInterface,
+      target: account.address,
+    });
+
+    const calls: AggregateCallRequest[] = [
+      isModuleInstalledCall(p256Address),
+      {
+        args: [account.address],
+        fn: 'authData',
+        iface: paliP256WebAuthnValidatorInterface,
+        target: p256Address,
+      },
+      isModuleInstalledCall(ecdsaAddress),
+      {
+        args: [account.address],
+        fn: 'owners',
+        iface: paliEcdsaValidatorInterface,
+        target: ecdsaAddress,
+      },
+      {
+        args: [account.address],
+        fn: 'threshold',
+        iface: paliEcdsaValidatorInterface,
+        target: ecdsaAddress,
+      },
+      isModuleInstalledCall(compositeAddress),
+      {
+        args: [account.address],
+        fn: 'childValidators',
+        iface: paliCompositeValidatorInterface,
+        target: compositeAddress,
+      },
+      {
+        args: [account.address],
+        fn: 'threshold',
+        iface: paliCompositeValidatorInterface,
+        target: compositeAddress,
+      },
+      {
+        args: [],
+        fn: 'activeValidator',
+        iface: paliSmartAccountInterface,
+        target: account.address,
+      },
+      ...(includeGuardian
+        ? ([
+            {
+              args: [account.address],
+              fn: 'config',
+              iface: paliGuardianRecoveryModuleInterface,
+              target: guardianModuleAddress,
+            },
+            {
+              args: [account.address],
+              fn: 'guardians',
+              iface: paliGuardianRecoveryModuleInterface,
+              target: guardianModuleAddress,
+            },
+          ] as AggregateCallRequest[])
+        : []),
+    ];
+
+    const [code, results] = await Promise.all([
+      provider.getCode(account.address),
+      aggregateContractCalls(provider, chainId, calls),
+    ]);
     if (code === '0x') {
       return {
         ...metadata,
@@ -1420,33 +1654,19 @@ class SmartAccountController {
       };
     }
 
-    const accountContract = new Contract(
-      account.address,
-      paliSmartAccountInterface,
-      provider
-    );
-    const chainId = metadata.chainId;
     const installedModules: NonNullable<
       ISmartAccountMetadata['installedModules']
     > = [];
 
-    const p256Address = getConfiguredAuthenticatorAddress(
-      chainId,
-      'p256-webauthn'
+    const [p256Installed] = this.requireAggregateResult(
+      results[0],
+      'p256 isModuleInstalled'
     );
-    if (
-      await accountContract.isModuleInstalled(
-        ERC7579_MODULE_TYPE_VALIDATOR,
-        p256Address,
-        '0x'
-      )
-    ) {
-      const validator = new Contract(
-        p256Address,
-        paliP256WebAuthnValidatorInterface,
-        provider
-      );
-      const authData = await validator.authData(account.address);
+    if (p256Installed) {
+      const [authData] = this.requireAggregateResult(
+        results[1],
+        'p256 authData'
+      ) as unknown as [any];
       const credentialIdHash = authData.credentialIdHash || authData[2];
       const publicKey = {
         originHash: authData.originHash || authData[4],
@@ -1463,23 +1683,19 @@ class SmartAccountController {
       installedModules.push(...(built.metadata.installedModules || []));
     }
 
-    const ecdsaAddress = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
-    if (
-      await accountContract.isModuleInstalled(
-        ERC7579_MODULE_TYPE_VALIDATOR,
-        ecdsaAddress,
-        '0x'
-      )
-    ) {
-      const validator = new Contract(
-        ecdsaAddress,
-        paliEcdsaValidatorInterface,
-        provider
+    const [ecdsaInstalled] = this.requireAggregateResult(
+      results[2],
+      'ecdsa isModuleInstalled'
+    );
+    if (ecdsaInstalled) {
+      const [rawOwners] = this.requireAggregateResult(
+        results[3],
+        'ecdsa owners'
+      ) as unknown as [string[]];
+      const owners = rawOwners.map((owner: string) => getAddress(owner));
+      const threshold = Number(
+        this.requireAggregateResult(results[4], 'ecdsa threshold')[0]
       );
-      const owners = (await validator.owners(account.address)).map(
-        (owner: string) => getAddress(owner)
-      );
-      const threshold = Number(await validator.threshold(account.address));
       installedModules.push({
         address: getAddress(ecdsaAddress),
         config: { owners, threshold },
@@ -1489,26 +1705,21 @@ class SmartAccountController {
       });
     }
 
-    const compositeAddress = getConfiguredAuthenticatorAddress(
-      chainId,
-      'composite'
+    const [compositeInstalled] = this.requireAggregateResult(
+      results[5],
+      'composite isModuleInstalled'
     );
-    if (
-      await accountContract.isModuleInstalled(
-        ERC7579_MODULE_TYPE_VALIDATOR,
-        compositeAddress,
-        '0x'
-      )
-    ) {
-      const validator = new Contract(
-        compositeAddress,
-        paliCompositeValidatorInterface,
-        provider
+    if (compositeInstalled) {
+      const [rawChildren] = this.requireAggregateResult(
+        results[6],
+        'composite childValidators'
+      ) as unknown as [string[]];
+      const childValidators = rawChildren.map((child: string) =>
+        getAddress(child)
       );
-      const childValidators = (
-        await validator.childValidators(account.address)
-      ).map((child: string) => getAddress(child));
-      const threshold = Number(await validator.threshold(account.address));
+      const threshold = Number(
+        this.requireAggregateResult(results[7], 'composite threshold')[0]
+      );
       installedModules.push({
         address: getAddress(compositeAddress),
         config: { childValidators, threshold },
@@ -1518,31 +1729,35 @@ class SmartAccountController {
       });
     }
 
-    const guardianStatus = await this.getGuardianRecoveryStatusForAccount(
-      account.address
-    );
-    if (guardianStatus) {
-      installedModules.push({
-        address: getAddress(guardianStatus.moduleAddress),
-        config: {
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        },
-        data: encodeGuardianRecoveryInitData({
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        }),
-        id: 'guardian-recovery',
-        type: 'executor',
-      });
+    if (includeGuardian) {
+      const guardianStatus = this.decodeGuardianRecoveryStatus(
+        guardianModuleAddress,
+        results[9],
+        results[10]
+      );
+      if (guardianStatus) {
+        installedModules.push({
+          address: getAddress(guardianStatus.moduleAddress),
+          config: {
+            delaySeconds: guardianStatus.delaySeconds,
+            expirationSeconds: guardianStatus.expirationSeconds,
+            guardians: guardianStatus.guardians,
+            threshold: guardianStatus.threshold,
+          },
+          data: encodeGuardianRecoveryInitData({
+            delaySeconds: guardianStatus.delaySeconds,
+            expirationSeconds: guardianStatus.expirationSeconds,
+            guardians: guardianStatus.guardians,
+            threshold: guardianStatus.threshold,
+          }),
+          id: 'guardian-recovery',
+          type: 'executor',
+        });
+      }
     }
 
     const activeValidatorAddress = getAddress(
-      await accountContract.activeValidator()
+      this.requireAggregateResult(results[8], 'activeValidator')[0] as string
     );
     const activeValidator =
       activeValidatorAddress !== AddressZero
@@ -1570,41 +1785,25 @@ class SmartAccountController {
     return hydrated;
   }
 
-  private async getGuardianRecoveryStatusForAccount(account: string): Promise<{
-    delay: string;
-    delaySeconds: number;
-    exists: boolean;
-    expirationSeconds: number;
-    guardianCount: string;
-    guardians: string[];
-    moduleAddress: string;
-    pending: null;
-    threshold: number;
-  } | null> {
-    const { activeNetwork } = store.getState().vault;
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error('Web3 provider not available');
-    }
-    const moduleAddress = getConfiguredAuthenticatorAddress(
-      activeNetwork.chainId,
-      'guardian-recovery'
-    );
-    if (!moduleAddress || moduleAddress === AddressZero) {
-      return null;
-    }
-    const module = new Contract(
-      moduleAddress,
-      paliGuardianRecoveryModuleInterface,
-      provider
-    );
-    const config = await module.config(account);
+  private decodeGuardianRecoveryStatus(
+    moduleAddress: string,
+    configResult: AggregateCallResult | undefined,
+    guardiansResult: AggregateCallResult | undefined
+  ): GuardianRecoveryStatusForAccount | null {
+    const [config] = this.requireAggregateResult(
+      configResult,
+      'guardian-recovery config'
+    ) as unknown as [any];
     const installed = Boolean(config.installed ?? config[3]);
     if (!installed) {
       return null;
     }
-    const guardians = (await module.guardians(account)).map(
-      (guardian: string) => getAddress(guardian)
+    const [rawGuardians] = this.requireAggregateResult(
+      guardiansResult,
+      'guardian-recovery guardians'
+    ) as unknown as [string[]];
+    const guardians = rawGuardians.map((guardian: string) =>
+      getAddress(guardian)
     );
     const delaySeconds = Number(config.delay ?? config[0] ?? 0);
     const expirationSeconds = Number(config.expiration ?? config[1] ?? 0);
@@ -1620,6 +1819,104 @@ class SmartAccountController {
       pending: null,
       threshold,
     };
+  }
+
+  private getGuardianStatusFromHydratedMetadata(
+    metadata: ISmartAccountMetadata
+  ): GuardianRecoveryStatusForAccount | null {
+    const module = metadata.installedModules?.find(
+      (installedModule) => installedModule.id === 'guardian-recovery'
+    );
+    if (!module) {
+      return null;
+    }
+    const config = (module.config || {}) as {
+      delaySeconds?: number;
+      expirationSeconds?: number;
+      guardians?: string[];
+      threshold?: number;
+    };
+    const guardians = (config.guardians || []).map((guardian) =>
+      getAddress(guardian)
+    );
+    const delaySeconds = Number(config.delaySeconds || 0);
+    return {
+      delay: String(delaySeconds),
+      delaySeconds,
+      exists: true,
+      expirationSeconds: Number(config.expirationSeconds || 0),
+      guardianCount: String(guardians.length),
+      guardians,
+      moduleAddress: module.address,
+      pending: null,
+      threshold: Number(config.threshold || 0),
+    };
+  }
+
+  private async getGuardianRecoveryStatusForAccount(
+    account: string
+  ): Promise<GuardianRecoveryStatusForAccount | null> {
+    const { activeNetwork } = store.getState().vault;
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const moduleAddress = getConfiguredAuthenticatorAddress(
+      activeNetwork.chainId,
+      'guardian-recovery'
+    );
+    if (!moduleAddress || moduleAddress === AddressZero) {
+      return null;
+    }
+
+    // Reuse a fresh (or currently running) hydration of the same account
+    // instead of re-fetching guardian state with dedicated RPC calls.
+    const hydrationKey = `${activeNetwork.chainId}:${account.toLowerCase()}`;
+    const inflight = this.inflightHydrations.get(hydrationKey);
+    if (inflight) {
+      try {
+        const metadata = await inflight;
+        if (metadata.isDeployed) {
+          return this.getGuardianStatusFromHydratedMetadata(metadata);
+        }
+      } catch {
+        // Fall through to the dedicated fetch below.
+      }
+    } else {
+      const cached = this.hydratedMetadataCache.get(hydrationKey);
+      if (
+        cached &&
+        Date.now() - cached.timestamp < HYDRATED_METADATA_TTL_MS &&
+        cached.metadata.isDeployed
+      ) {
+        return this.getGuardianStatusFromHydratedMetadata(cached.metadata);
+      }
+    }
+
+    const calls: AggregateCallRequest[] = [
+      {
+        args: [account],
+        fn: 'config',
+        iface: paliGuardianRecoveryModuleInterface,
+        target: moduleAddress,
+      },
+      {
+        args: [account],
+        fn: 'guardians',
+        iface: paliGuardianRecoveryModuleInterface,
+        target: moduleAddress,
+      },
+    ];
+    const results = await aggregateContractCalls(
+      provider,
+      activeNetwork.chainId,
+      calls
+    );
+    return this.decodeGuardianRecoveryStatus(
+      moduleAddress,
+      results[0],
+      results[1]
+    );
   }
 
   private getActiveSmartAccount(address?: string): {
@@ -1810,22 +2107,30 @@ class SmartAccountController {
 
     if (provider) {
       if (transaction) {
-        for (const gasPayerCandidate of gasPayers) {
-          const gasPayer = toGasPayer(gasPayerCandidate);
+        // Shared lookups hoisted out of the candidate loop: one fee-data call
+        // and one batched balance fetch instead of repeating both per
+        // candidate. Gas estimation stays per candidate because it depends on
+        // the `from` address.
+        const [feeData, balances] = await Promise.all([
+          provider.getFeeData(),
+          this.getNativeBalances(
+            provider,
+            gasPayers.map((candidate) => candidate.address)
+          ),
+        ]);
+        const maxFeePerGas = BigNumber.from(
+          feeData.maxFeePerGas || feeData.gasPrice || 0
+        );
+        for (let index = 0; index < gasPayers.length; index += 1) {
+          const gasPayer = toGasPayer(gasPayers[index]);
+          const balance = balances[index];
           try {
-            const [balance, feeData, gasLimit] = await Promise.all([
-              provider.getBalance(gasPayer.address),
-              provider.getFeeData(),
-              provider.estimateGas({
-                data: transaction.data || '0x',
-                from: gasPayer.address,
-                to: transaction.to,
-                value: transaction.value || '0x0',
-              }),
-            ]);
-            const maxFeePerGas = BigNumber.from(
-              feeData.maxFeePerGas || feeData.gasPrice || 0
-            );
+            const gasLimit = await provider.estimateGas({
+              data: transaction.data || '0x',
+              from: gasPayer.address,
+              to: transaction.to,
+              value: transaction.value || '0x0',
+            });
             const requiredBalance = gasLimit
               .mul(maxFeePerGas)
               .add(BigNumber.from(transaction.value || '0x0'));
@@ -1851,11 +2156,13 @@ class SmartAccountController {
         return toGasPayer(cachedFundedGasPayer);
       }
 
-      for (const gasPayerCandidate of gasPayers) {
-        const gasPayer = toGasPayer(gasPayerCandidate);
-        const balance = await provider.getBalance(gasPayer.address);
-        if (!balance.isZero()) {
-          return gasPayer;
+      const balances = await this.getNativeBalances(
+        provider,
+        gasPayers.map((candidate) => candidate.address)
+      );
+      for (let index = 0; index < gasPayers.length; index += 1) {
+        if (!balances[index].isZero()) {
+          return toGasPayer(gasPayers[index]);
         }
       }
     }
@@ -1866,6 +2173,29 @@ class SmartAccountController {
 
     throw new Error(
       'A local EVM account is required to submit ERC-4337 operations'
+    );
+  }
+
+  private async getNativeBalances(
+    provider: any,
+    addresses: string[]
+  ): Promise<BigNumber[]> {
+    if (addresses.length === 0) {
+      return [];
+    }
+    if (addresses.length > 1 && typeof provider.sendBatch === 'function') {
+      try {
+        const results = await provider.sendBatch(
+          'eth_getBalance',
+          addresses.map((address) => [address, 'latest'])
+        );
+        return results.map((result: string) => BigNumber.from(result || 0));
+      } catch {
+        // Fall back to individual calls below.
+      }
+    }
+    return Promise.all(
+      addresses.map((address) => provider.getBalance(address))
     );
   }
 
