@@ -143,14 +143,17 @@ export const fetchSmartAccountUserOpTransactions = async (
   };
 
   let logs;
+  let scannedFromBlock = fromBlock;
   try {
     logs = await provider.getLogs(filter);
   } catch {
+    const boundedFromBlock = Math.max(0, latestBlock - FALLBACK_SCAN_BLOCKS);
     try {
       logs = await provider.getLogs({
         ...filter,
-        fromBlock: Math.max(0, latestBlock - FALLBACK_SCAN_BLOCKS),
+        fromBlock: boundedFromBlock,
       });
+      scannedFromBlock = boundedFromBlock;
     } catch (fallbackError) {
       console.warn(
         '[smartAccountHistory] eth_getLogs failed, keeping local history only:',
@@ -247,7 +250,15 @@ export const fetchSmartAccountUserOpTransactions = async (
     });
   }
 
-  persistScanCursor(chainId, latestBlock);
+  // Only advance the cursor when the scan actually covered the intended
+  // range. A bounded fallback window that starts after the previous cursor
+  // (or after genesis on a first scan) leaves a gap of unindexed blocks;
+  // persisting latestBlock then would permanently skip those user
+  // operations. Leaving the cursor untouched makes the next poll retry the
+  // full range (e.g. after a transient error or an RPC switch).
+  if (scannedFromBlock <= fromBlock) {
+    persistScanCursor(chainId, latestBlock);
+  }
 
   return [...refreshedExisting, ...fetchedTransactions];
 };

@@ -216,6 +216,64 @@ describe('smart account EntryPoint log history', () => {
     expect((transactions[0] as any).confirmations).toBe(95);
   });
 
+  it('does not advance the cursor when a bounded fallback scan leaves a gap', async () => {
+    // Full-range scan (fromBlock 0) is rejected; the bounded fallback only
+    // covers [latest - 10000, latest], leaving older blocks unindexed.
+    const provider = buildProvider({
+      getBlockNumber: jest.fn().mockResolvedValue(50_000),
+      getLogs: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('range too large'))
+        .mockResolvedValueOnce([buildUserOpEventLog(true)]),
+    });
+
+    const transactions = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      CHAIN_ID
+    );
+
+    expect(provider.getLogs).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ fromBlock: 40_000, toBlock: 50_000 })
+    );
+    // The bounded window still yields transactions...
+    expect(transactions).toHaveLength(1);
+    // ...but the cursor must not be persisted, so the next poll retries the
+    // full range instead of permanently skipping blocks 0..40000.
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('advances the cursor when the bounded fallback window covers the previous cursor', async () => {
+    const provider = buildProvider({
+      getBlockNumber: jest.fn().mockResolvedValue(50_000),
+      getLogs: jest
+        .fn()
+        .mockRejectedValueOnce(new Error('transient error'))
+        .mockResolvedValueOnce([]),
+    });
+
+    await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      {
+        address: SMART_ACCOUNT,
+        smartAccountUserOpScanByChainId: { [CHAIN_ID]: 49_000 },
+      },
+      CHAIN_ID
+    );
+
+    // Intended range starts at 48995 (cursor - reorg window); the fallback
+    // window starts at 40000, so nothing was skipped.
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          property: 'smartAccountUserOpScanByChainId',
+          value: { [CHAIN_ID]: 50_000 },
+        },
+      })
+    );
+  });
+
   it('keeps local history when eth_getLogs fails entirely', async () => {
     vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
       {
