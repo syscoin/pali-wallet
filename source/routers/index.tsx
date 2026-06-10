@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom';
 
 import { AppLayout } from 'components/Layout/AppLayout';
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { WarningModal } from 'components/Modal';
 import { useController } from 'hooks/useController';
 import { useNavigationState } from 'hooks/useNavigationState';
@@ -70,7 +71,7 @@ const ExternalQueryHandler = () => {
       }
     }
   }, [navigate, searchParams, isUnlocked, isLoading]);
-  return <div style={{ opacity: 0 }}>Loading...</div>;
+  return <AppLoadingSkeleton />;
 };
 
 // Navigation state restorer component
@@ -274,8 +275,9 @@ export const Router = () => {
       />
       <Suspense
         fallback={
-          // Minimal transparent fallback - AppLayout will handle the actual loading display
-          <div style={{ opacity: 0 }}>Loading...</div>
+          // Branded skeleton matching the HTML loader - avoids a blank popup
+          // while lazy route chunks load
+          <AppLoadingSkeleton />
         }
       >
         <Routes>

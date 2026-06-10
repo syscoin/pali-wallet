@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
+import { RootState } from 'state/store';
 import {
   selectActiveAccountWithTransactions,
   selectVaultCoreData,
@@ -88,9 +89,12 @@ export const TransactionsPanel = () => {
             </div>
           ))}
         </div>
+        <p className="mt-3 text-center text-xs text-brand-gray200">
+          {t('networkConnection.loadingTransactions')}
+        </p>
       </div>
     ),
-    []
+    [t]
   );
 
   // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
@@ -139,7 +143,47 @@ export const TransactionsPanel = () => {
     );
   }, [activeAccount, adjustedExplorer, isBitcoinBased, t]);
 
-  const isLoading = useMemo(() => isSwitchingAccount, [isSwitchingAccount]);
+  // Show the skeleton until the first transaction fetch for this
+  // account/network has settled, instead of flashing the empty state.
+  // Empty fetches don't dispatch anything, so we treat either incoming
+  // transactions or a completed background poll cycle as the settle signal
+  // (with a short safety timeout so zero-tx accounts don't wait forever).
+  const isPollingUpdate = useSelector(
+    (state: RootState) => state.vaultGlobal.isPollingUpdate
+  );
+  const settleKey = `${(activeAccount as any)?.address ?? ''}:${
+    activeNetwork.chainId
+  }`;
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const hasSettled = settledKey === settleKey;
+  const sawPollRef = useRef(false);
+
+  useEffect(() => {
+    sawPollRef.current = false;
+  }, [settleKey]);
+
+  useEffect(() => {
+    if (hasTransactions) setSettledKey(settleKey);
+  }, [hasTransactions, settleKey]);
+
+  useEffect(() => {
+    if (isPollingUpdate) {
+      sawPollRef.current = true;
+      return;
+    }
+    if (sawPollRef.current) setSettledKey(settleKey);
+  }, [isPollingUpdate, settleKey]);
+
+  useEffect(() => {
+    if (hasSettled) return;
+    const timeout = setTimeout(() => setSettledKey(settleKey), 5000);
+    return () => clearTimeout(timeout);
+  }, [settleKey, hasSettled]);
+
+  const isLoading = useMemo(
+    () => isSwitchingAccount || (!hasSettled && !hasTransactions),
+    [isSwitchingAccount, hasSettled, hasTransactions]
+  );
 
   return (
     <>

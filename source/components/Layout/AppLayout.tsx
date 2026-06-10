@@ -391,17 +391,22 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         </div>
       )}
 
-      {/* Content area */}
+      {/* Content area - keyed by route so each navigation gets a short fade-in */}
       {location.pathname === '/home' ? (
-        // Home page gets no wrapper - it has its own layout
-        <>{children || <Outlet />}</>
+        // Home page gets a minimal wrapper - it has its own layout
+        <div key={location.pathname} className="animate-fadeIn h-full">
+          {children || <Outlet />}
+        </div>
       ) : hideHeader ? (
-        // Hardware wallet and other hideHeader pages get no wrapper
-        <>{children || <Outlet />}</>
+        // Hardware wallet and other hideHeader pages get a minimal wrapper
+        <div key={location.pathname} className="animate-fadeIn h-full">
+          {children || <Outlet />}
+        </div>
       ) : (
         // Other pages get the standard content wrapper
         <div
-          className={`flex flex-col items-center justify-center md:mx-auto ${
+          key={location.pathname}
+          className={`animate-fadeIn flex flex-col items-center justify-center md:mx-auto ${
             showBanner ? 'pt-8' : 'pt-4'
           } px-[24px] w-full page-content ${
             isConnectPage ? '' : 'md:max-w-sm'

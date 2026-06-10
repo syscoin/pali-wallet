@@ -123,32 +123,48 @@ export const useTransactionsListConfig = (
     [t]
   );
 
-  const formatTimeStamp = useCallback((timestamp: number) => {
-    // Validate timestamp - should be in seconds, not too far in past or future
-    const currentTime = Math.floor(Date.now() / 1000);
-    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
-    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+  const formatTimeStamp = useCallback(
+    (timestamp: number) => {
+      // Validate timestamp - should be in seconds, not too far in past or future
+      const currentTime = Math.floor(Date.now() / 1000);
+      const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+      const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
 
-    // If timestamp is invalid, use current time
-    if (!timestamp || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
-      console.warn(
-        `Invalid timestamp detected: ${timestamp}, using current time`
+      // If timestamp is invalid, use current time
+      if (!timestamp || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
+        console.warn(
+          `Invalid timestamp detected: ${timestamp}, using current time`
+        );
+        timestamp = currentTime;
+      }
+
+      const data = new Date(timestamp * 1000);
+
+      // Friendly relative headers for recent dates
+      const isSameDay = (a: Date, b: Date) =>
+        a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate();
+      const today = new Date();
+      const yesterday = new Date();
+      yesterday.setDate(today.getDate() - 1);
+      if (isSameDay(data, today)) return t('transactions.today');
+      if (isSameDay(data, yesterday)) return t('transactions.yesterday');
+
+      const options: Intl.DateTimeFormatOptions = {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+      };
+
+      const formatedData = new Intl.DateTimeFormat('en-US', options).format(
+        data
       );
-      timestamp = currentTime;
-    }
 
-    const data = new Date(timestamp * 1000);
-
-    const options: Intl.DateTimeFormatOptions = {
-      month: 'short',
-      day: '2-digit',
-      year: 'numeric',
-    };
-
-    const formatedData = new Intl.DateTimeFormat('en-US', options).format(data);
-
-    return formatedData;
-  }, []);
+      return formatedData;
+    },
+    [t]
+  );
 
   const formatTimeStampUtxo = useCallback((timestamp: number) => {
     // Validate timestamp for UTXO as well

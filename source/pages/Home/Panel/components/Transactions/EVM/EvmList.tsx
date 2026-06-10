@@ -70,9 +70,11 @@ const EvmTransactionItem = React.memo(
     getTxOptions,
     t,
     tokenMeta,
+    ensCache,
   }: {
     currency: string;
     currentAccount: any;
+    ensCache?: any;
     getFiatAmount: any;
     getTxOptions: any;
     getTxStatus: any;
@@ -88,9 +90,6 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
-    const ensCache = useSelector(
-      (state: RootState) => (state as any).vaultGlobal?.ensCache
-    );
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
@@ -258,7 +257,7 @@ const EvmTransactionItem = React.memo(
 
       // Resolve token icon for imported ERC-20s (no fetches; skip if absent)
       let tokenIcon: React.ReactNode = null;
-      if (displayInfo.isErc20Transfer && tx.to && tokenMeta) {
+      if (displayInfo.isErc20Transfer && displayTx?.to && tokenMeta) {
         const symbol = tokenMeta?.tokenSymbol || tokenMeta?.symbol;
         const logo = tokenMeta?.logo || getTokenLogo(symbol);
         if (logo && symbol) {
@@ -300,9 +299,11 @@ const EvmTransactionItem = React.memo(
               {amountStr}
               {(() => {
                 try {
-                  // Prefer decoded actual recipient when we have it; fallback to tx.to
+                  // Prefer decoded actual recipient when we have it; fallback
+                  // to the (smart-account-unwrapped) display target
                   const recipient =
-                    (displayInfo as any)?.actualRecipient || (tx as any)?.to;
+                    (displayInfo as any)?.actualRecipient ||
+                    (displayTx as any)?.to;
                   if (recipient) {
                     const cache = (ensCache as any)?.[
                       String(recipient).toLowerCase()
@@ -429,7 +430,7 @@ const EvmTransactionItem = React.memo(
                     currency
                   )}
                 </span>
-                {isContractCall && tx.to && (
+                {isContractCall && displayTx?.to && (
                   <Tooltip
                     content={
                       <div className="flex flex-col gap-1">
@@ -437,7 +438,9 @@ const EvmTransactionItem = React.memo(
                           Contract Address
                         </span>
                         <span className="text-xs font-mono text-brand-gray300">
-                          {tx.to}
+                          {/* For smart-account executions, show the decoded
+                              inner target, not the outer EntryPoint */}
+                          {displayTx.to}
                         </span>
                       </div>
                     }
@@ -547,6 +550,11 @@ export const EvmTransactionsList = ({
   const activeAssets = useSelector(selectActiveAccountAssets);
   const currentAccountTransactions = useSelector(
     selectActiveAccountTransactions
+  );
+  // Selected once at list level and passed down so each row doesn't hold
+  // its own store subscription (avoids N selector runs per store update)
+  const ensCache = useSelector(
+    (state: RootState) => (state as any).vaultGlobal?.ensCache
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
@@ -725,6 +733,22 @@ export const EvmTransactionsList = ({
     return map;
   }, [activeAssets?.ethereum]);
 
+  // Smart-account executions wrap the real target inside an EntryPoint
+  // handleOps call; resolve the decoded inner target once per tx so token
+  // metadata lookups key off the actual contract, not the EntryPoint.
+  const innerTargetByHash = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const tx of filteredTransactions) {
+      const hash = (tx as any)?.hash;
+      if (!hash) continue;
+      const inner = getSmartAccountDisplayTransaction(tx);
+      if (inner?.to) {
+        map.set(String(hash).toLowerCase(), String(inner.to));
+      }
+    }
+    return map;
+  }, [filteredTransactions]);
+
   // Invalidate cached display info when the assets list changes so decimals/symbols refresh immediately
   useEffect(() => {
     txDisplayInfoCache.clear();
@@ -749,8 +773,12 @@ export const EvmTransactionsList = ({
                 tx.nonce !== undefined
                   ? `nonce-${tx.nonce}-${tx?.hash || `unknown-${index}`}`
                   : `${tx?.hash || tx?.txid || `unknown-${index}`}-${index}`;
-              const tokenMetaForTx = tx?.to
-                ? tokenMetaByAddress.get(String(tx.to).toLowerCase())
+              const metaTarget =
+                (tx?.hash &&
+                  innerTargetByHash.get(String(tx.hash).toLowerCase())) ||
+                tx?.to;
+              const tokenMetaForTx = metaTarget
+                ? tokenMetaByAddress.get(String(metaTarget).toLowerCase())
                 : undefined;
 
               return (
@@ -768,6 +796,7 @@ export const EvmTransactionsList = ({
                   getTxOptions={getTxOptions}
                   t={t}
                   tokenMeta={tokenMetaForTx}
+                  ensCache={ensCache}
                 />
               );
             })}
@@ -810,7 +839,7 @@ export const EvmTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore ? 'Loading…' : 'Load more'}
+                {isLoadingMore ? t('buttons.loading') : t('buttons.loadMore')}
               </button>
             </div>
           )
@@ -821,7 +850,7 @@ export const EvmTransactionsList = ({
                 onClick={() => setVisibleCount((c) => c + 50)}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
               >
-                Load more
+                {t('buttons.loadMore')}
               </button>
             </div>
           )}

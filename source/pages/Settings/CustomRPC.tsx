@@ -947,24 +947,24 @@ const CustomRPCView = () => {
 
       {/* RPC Testing Progress Indicator */}
       {testingRpcs && currentRpcTest && (
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mb-4 p-4 bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300 rounded-lg">
           <div className="flex items-center gap-3">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-royalblue"></div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900">
+              <p className="text-sm font-medium text-white">
                 {t('settings.testingRpcProgress', {
                   current: currentRpcTest.index,
                   total: currentRpcTest.total,
                 })}
               </p>
-              <p className="text-xs text-blue-700 truncate">
+              <p className="text-xs text-brand-gray200 truncate">
                 {new URL(currentRpcTest.url).hostname}
               </p>
             </div>
           </div>
-          <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+          <div className="w-full bg-alpha-whiteAlpha200 rounded-full h-2 mt-2">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-brand-royalblue h-2 rounded-full transition-all duration-300"
               style={{
                 width: `${
                   (currentRpcTest.index / currentRpcTest.total) * 100
@@ -978,7 +978,7 @@ const CustomRPCView = () => {
       {state?.isEditing && currentNetwork && (
         <div className="mb-6">
           {/* Beautiful display for edit mode with animations - using fresh Redux data */}
-          <div className="group custom-input-normal relative flex items-center gap-3 py-3 px-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 hover:border-blue-300">
+          <div className="group custom-input-normal relative flex items-center gap-3 py-3 px-4 bg-alpha-whiteAlpha100 border border-alpha-whiteAlpha300 rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 hover:border-brand-royalblue">
             <div className="relative">
               <ChainIcon
                 chainId={currentNetwork.chainId || 0}
@@ -987,13 +987,13 @@ const CustomRPCView = () => {
                   currentNetwork.kind ||
                   (isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum)
                 }
-                className="flex-shrink-0 ring-2 ring-white shadow-md rounded-full transform group-hover:scale-110 transition-transform duration-300"
+                className="flex-shrink-0 ring-2 ring-alpha-whiteAlpha300 shadow-md rounded-full transform group-hover:scale-110 transition-transform duration-300"
               />
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse ring-2 ring-white"></div>
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-pulse ring-2 ring-bkg-2"></div>
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-900 truncate text-xl group-hover:text-blue-600 transition-colors duration-200">
+                <span className="font-bold text-white truncate text-xl group-hover:text-brand-royalbluemedium transition-colors duration-200">
                   {currentNetwork.label || 'Unknown Network'}
                 </span>
                 <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
@@ -1002,7 +1002,7 @@ const CustomRPCView = () => {
                     : currentNetwork.chainId}
                 </span>
               </div>
-              <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
+              <div className="text-sm text-brand-gray200 mt-1 font-medium group-hover:text-white transition-colors duration-200">
                 {'$'}
                 {(currentNetwork.currency || 'sys').toUpperCase()} •{' '}
                 {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc

@@ -13,6 +13,7 @@ import {
   IconButton,
   WarningModal,
   Tooltip,
+  DeviceWaitingBanner,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -1142,6 +1143,12 @@ export const SendTransaction = () => {
 
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+            <DeviceWaitingBanner account={activeAccount} show={loading} />
+            {hasTxDataError && (
+              <p className="text-center text-warning-error text-xs mb-2">
+                {t('send.contractEstimateError')}
+              </p>
+            )}
             <div className="flex gap-3 justify-center">
               <SecondaryButton
                 type="button"
@@ -1162,6 +1169,7 @@ export const SendTransaction = () => {
               <PrimaryButton
                 type="button"
                 loading={loading}
+                disabled={hasTxDataError}
                 onClick={handleConfirm}
               >
                 {t('buttons.confirm')}

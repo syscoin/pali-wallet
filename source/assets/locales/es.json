@@ -36,7 +36,9 @@
     "delete": "Eliminar",
     "remove": "Remover",
     "errorDescription": "Descripción del error",
-    "generate": "Generar"
+    "generate": "Generar",
+    "loadMore": "Cargar más",
+    "loading": "Cargando…"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 12 caracteres)",
@@ -117,7 +119,8 @@
     "manageAccounts": "Administrar cuentas",
     "yourKeys": "Tus claves",
     "connectTrezor": "Monedero Hardware",
-    "importAccount": "Importar cuenta"
+    "importAccount": "Importar cuenta",
+    "switchAccountError": "No se pudo cambiar de cuenta. Inténtalo de nuevo."
   },
   "connections": {
     "connectedAccount": "CUENTA CONECTADA",
@@ -183,7 +186,8 @@
     "clickToVerify": "Haz clic para verificar tu dirección {{currency}}.",
     "ifYouHaveAHardWallet": "Si tienes una billetera física, ¡puedes conectarla ahora!",
     "congratulations": "¡Felicitaciones!",
-    "youWalletWas": "Tu billetera se importó con éxito."
+    "youWalletWas": "Tu billetera se importó con éxito.",
+    "youHaveNoNfts": "No tienes NFTs."
   },
   "titles": {
     "assetDetails": "Detalles del activo",
@@ -198,7 +202,11 @@
     "pasteYourWalletSeed": "Escribe tu frase semilla"
   },
   "receive": {
-    "receiveTitle": "RECIBIR"
+    "receiveTitle": "RECIBIR",
+    "smartAccount": "Cuenta inteligente",
+    "hdAccount": "Cuenta HD",
+    "addressUnavailable": "Dirección no disponible. Comprueba tu conexión e inténtalo de nuevo.",
+    "retry": "Reintentar"
   },
   "seedConfirm": {
     "seedError": "La frase semilla proporcionada es incorrecta. Verifícala e inténtalo de nuevo.",
@@ -425,7 +433,15 @@
     "smartAccountLegacyTypedDataUnsupported": "Las cuentas inteligentes aún no admiten firma typed-data V1 heredada",
     "smartAccountUnsupportedSigningRequest": "Solicitud de firma de cuenta inteligente no compatible",
     "smartAccountSignatureNotice": "Firma de cuenta inteligente",
-    "smartAccountSignatureNoticeDescription": "Pali pedirá al controlador del autenticador activo que autorice esta solicitud."
+    "smartAccountSignatureNoticeDescription": "Pali pedirá al controlador del autenticador activo que autorice esta solicitud.",
+    "invalidEthAddress": "Dirección de Ethereum no válida",
+    "invalidSysAddress": "Dirección de Syscoin no válida",
+    "feeNetworkBusyRetry": "La red está temporalmente ocupada. Haz clic para reintentar.",
+    "feeCalculationFailedRetry": "No se pudieron calcular las tarifas. Haz clic para reintentar.",
+    "missingTokenId": "Falta el ID del token",
+    "smartAccountSignatureError": "Tu cuenta inteligente rechazó la firma. Vuelve a aprobar con tu autenticador activo e inténtalo de nuevo.",
+    "amountRequired": "El importe es obligatorio",
+    "addressRequired": "La dirección del destinatario es obligatoria"
   },
   "settings": {
     "bgError": "Error de Fondo",
@@ -880,7 +896,13 @@
       "cancelRecovery": "Cancelar recuperación con guardián",
       "executeRecovery": "Ejecutar recuperación con guardián",
       "getOperationId": "Obtener ID de operación de recuperación"
-    }
+    },
+    "today": "Hoy",
+    "yesterday": "Ayer",
+    "confirmOnDevice": "Confirma en tu dispositivo",
+    "checkYourDevice": "Revisa tu {{device}} para aprobar esta solicitud",
+    "useYourPasskey": "Usa tu llave de acceso",
+    "passkeyPrompt": "Sigue las indicaciones del navegador para firmar con tu llave de acceso"
   },
   "switchNetworkPage": {
     "connectedOn": "Estás conectado en",

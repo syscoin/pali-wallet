@@ -34,9 +34,10 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { navigate } = useUtils();
-  const {} = useSelector((state: RootState) => state.vault);
-  const { advancedSettings } = useSelector(
-    (state: RootState) => state.vaultGlobal
+  // Narrow field selector: avoids re-rendering the menu on every
+  // vault/vaultGlobal mutation (balances, polling flags, etc.)
+  const advancedSettings = useSelector(
+    (state: RootState) => state.vaultGlobal.advancedSettings
   );
 
   // Get dapps from Redux state

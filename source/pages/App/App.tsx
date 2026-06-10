@@ -2,6 +2,7 @@ import React, { FC, useEffect, useState } from 'react';
 import { HashRouter, useNavigate } from 'react-router-dom';
 
 import { Container } from 'components/index';
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import { Router } from 'routers/index';
 
@@ -216,12 +217,12 @@ const App: FC = () => {
     };
   }, []);
 
-  // Show loading while checking
+  // Show branded skeleton while checking (matches the HTML loader)
   if (isCheckingExternal) {
     return (
       <section className="mx-auto h-full min-w-popup min-h-popup md:max-w-2xl">
         <Container>
-          <div style={{ opacity: 0 }}>Loading...</div>
+          <AppLoadingSkeleton />
         </Container>
       </section>
     );

@@ -36,7 +36,9 @@
     "delete": "Löschen",
     "remove": "Entfernen",
     "errorDescription": "Fehlerbeschreibung",
-    "generate": "Generieren"
+    "generate": "Generieren",
+    "loadMore": "Mehr laden",
+    "loading": "Lädt…"
   },
   "header": {
     "importAccount": "Konto importieren",
@@ -68,7 +70,8 @@
     "clickToVerify": "Klicken Sie, um Ihre {{currency}}-Adresse zu verifizieren.",
     "ifYouHaveAHardWallet": "Wenn Sie eine Hardware-Wallet haben, können Sie diese jetzt verbinden!",
     "congratulations": "Glückwunsch!",
-    "youWalletWas": "Ihre Wallet wurde erfolgreich importiert"
+    "youWalletWas": "Ihre Wallet wurde erfolgreich importiert",
+    "youHaveNoNfts": "Du hast keine NFTs."
   },
   "settings": {
     "bgError": "Hintergrundfehler",
@@ -416,7 +419,8 @@
     "manageAccounts": "Konten verwalten",
     "yourKeys": "Ihre Schlüssel",
     "connectTrezor": "Hardware Wallet verbinden",
-    "importAccount": "Konto importieren"
+    "importAccount": "Konto importieren",
+    "switchAccountError": "Kontowechsel fehlgeschlagen. Bitte versuchen Sie es erneut."
   },
   "connections": {
     "connectedAccount": "VERBUNDENES KONTO",
@@ -476,7 +480,11 @@
     "pasteYourWalletSeed": "Fügen Sie Ihre Wallet-Seed-Phrase ein"
   },
   "receive": {
-    "receiveTitle": "EMPFANGEN"
+    "receiveTitle": "EMPFANGEN",
+    "smartAccount": "Smart Account",
+    "hdAccount": "HD-Konto",
+    "addressUnavailable": "Adresse nicht verfügbar. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+    "retry": "Erneut versuchen"
   },
   "seedConfirm": {
     "seedError": "Die eingegebene Seed-Phrase ist falsch. Überprüfen Sie sie und versuchen Sie es erneut.",
@@ -703,7 +711,15 @@
     "smartAccountLegacyTypedDataUnsupported": "Smart-Konten unterstützen noch keine Legacy-typed-data-V1-Signaturen",
     "smartAccountUnsupportedSigningRequest": "Nicht unterstützte Smart-Konto-Signaturanfrage",
     "smartAccountSignatureNotice": "Smart-Konto-Signatur",
-    "smartAccountSignatureNoticeDescription": "Pali fordert den aktiven Authenticator-Treiber auf, diese Anfrage zu autorisieren."
+    "smartAccountSignatureNoticeDescription": "Pali fordert den aktiven Authenticator-Treiber auf, diese Anfrage zu autorisieren.",
+    "invalidEthAddress": "Ungültige Ethereum-Adresse",
+    "invalidSysAddress": "Ungültige Syscoin-Adresse",
+    "feeNetworkBusyRetry": "Das Netzwerk ist vorübergehend ausgelastet. Zum Wiederholen klicken.",
+    "feeCalculationFailedRetry": "Gebühren konnten nicht berechnet werden. Zum Wiederholen klicken.",
+    "missingTokenId": "Token-ID fehlt",
+    "smartAccountSignatureError": "Ihr Smart Account hat die Signatur abgelehnt. Bestätigen Sie erneut mit Ihrem aktiven Authentifikator und versuchen Sie es noch einmal.",
+    "amountRequired": "Betrag ist erforderlich",
+    "addressRequired": "Empfängeradresse ist erforderlich"
   },
   "start": {
     "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",
@@ -880,7 +896,13 @@
       "cancelRecovery": "Guardian-Wiederherstellung abbrechen",
       "executeRecovery": "Guardian-Wiederherstellung ausführen",
       "getOperationId": "Wiederherstellungs-Operation-ID abrufen"
-    }
+    },
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "confirmOnDevice": "Auf Ihrem Gerät bestätigen",
+    "checkYourDevice": "Prüfen Sie Ihr {{device}}, um diese Anfrage zu genehmigen",
+    "useYourPasskey": "Verwenden Sie Ihren Passkey",
+    "passkeyPrompt": "Folgen Sie der Browser-Aufforderung, um mit Ihrem Passkey zu signieren"
   },
   "switchNetworkPage": {
     "connectedOn": "Sie sind verbunden mit",

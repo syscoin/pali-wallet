@@ -58,7 +58,6 @@ if (window.__PALI_OFFSCREEN__) {
           React.useEffect(() => {
             // Initialize store and state
             const initializeState = async () => {
-              setIsReady(true);
               // Architecture: Single source of truth state management
               //
               // State Flow:
@@ -74,7 +73,9 @@ if (window.__PALI_OFFSCREEN__) {
               // - Efficient - no duplicate blockchain calls
 
               try {
-                // Request state from background (the source of truth)
+                // Request state from background (the source of truth).
+                // First paint is gated on this callback so we never flash
+                // default state before rehydration completes.
                 chrome.runtime.sendMessage(
                   { type: 'getCurrentState' },
                   (backgroundState) => {
@@ -83,6 +84,8 @@ if (window.__PALI_OFFSCREEN__) {
                         '[App] Error getting state from background:',
                         chrome.runtime.lastError
                       );
+                      // Fall back to defaults rather than hanging on the loader
+                      setIsReady(true);
                       return;
                     }
 
@@ -99,6 +102,7 @@ if (window.__PALI_OFFSCREEN__) {
                         '[App] No state from background, using defaults'
                       );
                     }
+                    setIsReady(true);
                   }
                 );
 
@@ -108,6 +112,7 @@ if (window.__PALI_OFFSCREEN__) {
               } catch (error) {
                 console.error('[App] Error during initialization:', error);
                 // Fallback: allow render with default state
+                setIsReady(true);
               }
             };
 

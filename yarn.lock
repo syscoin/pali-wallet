@@ -2666,10 +2666,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.28.tgz#05daaf0a9411febfe36d96a43f76767a5bcd5d03"
   integrity sha512-YN3qdoPNyFFdseO/iaUmr0gSWpKbVEPA6I9ePd8Sny2BhY11SsXkj1x+acL9RfmtsfZ7kh+tzo3//OOGCw+PLA==
 
-"@sidhujag/sysweb3-keyring@^1.0.591":
-  version "1.0.591"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.591.tgz#ea90af750483c21724872755103d9414cd69fa3c"
-  integrity sha512-w74/RRuEfL1iQufvcCz/nrgFRTZP/9lqAGyUpZAtxuWjTlSbHYOezOvVvmBxxV+PqxsByLrBt+XFJmT4eExIDA==
+"@sidhujag/sysweb3-keyring@^1.0.592":
+  version "1.0.592"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.592.tgz#e199f61f1b66202534b0fce46f91325f5ebdcbdd"
+  integrity sha512-norTSwcy2hExjhpaeW1Pkv9JpNseiH13Nc5eS4rLqQaVnPtKRPiiahmFfS0zH5MyrIrjYLQqwswHJbk2WaIsSA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abstract-provider" "^5.8.0"
@@ -2690,7 +2690,7 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.28"
     "@sidhujag/sysweb3-network" "^1.0.107"
-    "@sidhujag/sysweb3-utils" "^1.1.272"
+    "@sidhujag/sysweb3-utils" "^1.1.273"
     "@trezor/connect-web" "^9.7.1"
     "@trezor/connect-webextension" "^9.7.1"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2707,10 +2707,10 @@
     "@ethersproject/bytes" "^5.8.0"
     eth-chains "^1.0.0"
 
-"@sidhujag/sysweb3-utils@^1.1.272":
-  version "1.1.272"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.272.tgz#441b845361fd0d6c7a0b3801c57b2255a9953e68"
-  integrity sha512-xTbgsIll+1z9QVBQC5mwNkMQ7ImYNn8WCcNAezkEvaTYu162756Sh4tc8bPIPtJNOwwYYFTnukBZEGXkvjc3/g==
+"@sidhujag/sysweb3-utils@^1.1.273":
+  version "1.1.273"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.273.tgz#43ca8edf8cd8c5eebda55b3a402d2e53acd76b9e"
+  integrity sha512-MvrufvGgfo/GmRp2RxOPMoRgTtB8FuQXIfNv/6hulADnsqIDbgOEVdw1pEluKa3wAafxhKKvw7+aNaPYy3f2MA==
   dependencies:
     "@ethersproject/address" "^5.8.0"
     "@ethersproject/contracts" "^5.8.0"

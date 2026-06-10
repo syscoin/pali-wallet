@@ -36,7 +36,9 @@
     "delete": "Delete",
     "remove": "Remove",
     "errorDescription": "Error description",
-    "generate": "Generate"
+    "generate": "Generate",
+    "loadMore": "Load more",
+    "loading": "Loading…"
   },
   "components": {
     "newPassword": "New password (min 12 chars)",
@@ -87,7 +89,8 @@
     "manageAccounts": "Manage accounts",
     "yourKeys": "Your keys",
     "connectTrezor": "Connect Hardware Wallet",
-    "importAccount": "Import account"
+    "importAccount": "Import account",
+    "switchAccountError": "Failed to switch account. Please try again."
   },
   "tooltip": {
     "assetDetails": "Asset Details",
@@ -183,7 +186,8 @@
     "clickToVerify": "Click to verify your {{currency}} address.",
     "ifYouHaveAHardWallet": "If you have a hard wallet you can connect now!",
     "congratulations": "Congratulations",
-    "youWalletWas": "Your wallet was successfully imported."
+    "youWalletWas": "Your wallet was successfully imported.",
+    "youHaveNoNfts": "You have no NFTs."
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",
@@ -198,7 +202,11 @@
     "pasteYourWalletSeed": "Paste your wallet seed phrase"
   },
   "receive": {
-    "receiveTitle": "RECEIVE"
+    "receiveTitle": "RECEIVE",
+    "smartAccount": "Smart Account",
+    "hdAccount": "HD Account",
+    "addressUnavailable": "Address unavailable. Check your connection and try again.",
+    "retry": "Retry"
   },
   "seedConfirm": {
     "seedError": "The seed passed is wrong. Verify it and try again.",
@@ -425,7 +433,15 @@
     "smartAccountLegacyTypedDataUnsupported": "Smart accounts do not support legacy typed-data V1 signing yet",
     "smartAccountUnsupportedSigningRequest": "Unsupported smart account signing request",
     "smartAccountSignatureNotice": "Smart account signature",
-    "smartAccountSignatureNoticeDescription": "Pali will ask the active authenticator driver to authorize this request."
+    "smartAccountSignatureNoticeDescription": "Pali will ask the active authenticator driver to authorize this request.",
+    "invalidEthAddress": "Invalid Ethereum address",
+    "invalidSysAddress": "Invalid Syscoin address",
+    "feeNetworkBusyRetry": "Network is temporarily busy. Click to retry.",
+    "feeCalculationFailedRetry": "Unable to calculate fees. Click to retry.",
+    "missingTokenId": "Missing Token ID",
+    "smartAccountSignatureError": "Your smart account rejected the signature. Re-approve with your active authenticator and try again.",
+    "amountRequired": "Amount is required",
+    "addressRequired": "Recipient address is required"
   },
   "settings": {
     "bgError": "Background Error",
@@ -880,7 +896,13 @@
       "cancelRecovery": "Cancel Guardian Recovery",
       "executeRecovery": "Execute Guardian Recovery",
       "getOperationId": "Get Recovery Operation ID"
-    }
+    },
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "confirmOnDevice": "Confirm on your device",
+    "checkYourDevice": "Check your {{device}} to approve this request",
+    "useYourPasskey": "Use your passkey",
+    "passkeyPrompt": "Follow your browser prompt to sign with your passkey"
   },
   "switchNetworkPage": {
     "connectedOn": "You are connected on",

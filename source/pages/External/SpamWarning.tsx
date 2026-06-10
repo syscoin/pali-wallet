@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { useQueryData } from 'hooks/index';
+import { useAppReady } from 'hooks/useAppReady';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
@@ -19,6 +20,10 @@ export const SpamWarning: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const popupData = useQueryData() as ISpamWarningData;
   const [timeRemaining, setTimeRemaining] = useState<string>('1 minute');
+
+  // This route renders outside AppLayout, so signal readiness explicitly
+  // to dismiss the HTML loader in external popups
+  useAppReady();
 
   const spamConfig = useSelector((state: RootState) => state.spamFilter.config);
   useEffect(() => {

@@ -713,7 +713,7 @@ export const SendSys = () => {
             rules={[
               {
                 required: true,
-                message: '',
+                message: t('send.addressRequired'),
               },
               () => ({
                 async validator(_, value) {
@@ -729,7 +729,7 @@ export const SendSys = () => {
                     return Promise.resolve();
                   }
 
-                  return Promise.reject(new Error('Invalid Syscoin address'));
+                  return Promise.reject(new Error(t('send.invalidSysAddress')));
                 },
               }),
             ]}
@@ -860,7 +860,7 @@ export const SendSys = () => {
                 rules={[
                   {
                     required: true,
-                    message: '',
+                    message: t('send.amountRequired'),
                   },
                   () => ({
                     async validator(_, value) {
@@ -869,13 +869,17 @@ export const SendSys = () => {
 
                       // Check if empty or invalid
                       if (!inputAmount || inputAmount === '') {
-                        return Promise.reject('');
+                        return Promise.reject(
+                          new Error(t('send.amountRequired'))
+                        );
                       }
 
                       // Check if it's a valid positive number
                       const numValue = parseFloat(inputAmount);
                       if (isNaN(numValue) || numValue <= 0) {
-                        return Promise.reject('');
+                        return Promise.reject(
+                          new Error(t('send.invalidAmount'))
+                        );
                       }
 
                       // Get balance as string to preserve precision
@@ -904,17 +908,23 @@ export const SendSys = () => {
                         });
 
                         if (inputCurrency.value <= 0) {
-                          return Promise.reject('');
+                          return Promise.reject(
+                            new Error(t('send.invalidAmount'))
+                          );
                         }
 
                         if (inputCurrency.value > balanceCurrency.value) {
-                          return Promise.reject(t('send.insufficientFunds'));
+                          return Promise.reject(
+                            new Error(t('send.insufficientFunds'))
+                          );
                         }
 
                         return Promise.resolve();
                       } catch (error) {
                         // If currency.js can't parse, it's an invalid amount
-                        return Promise.reject('');
+                        return Promise.reject(
+                          new Error(t('send.invalidAmount'))
+                        );
                       }
                     },
                   }),

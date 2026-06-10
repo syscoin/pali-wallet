@@ -36,7 +36,9 @@
     "delete": "삭제",
     "remove": "제거",
     "errorDescription": "오류 설명",
-    "generate": "생성"
+    "generate": "생성",
+    "loadMore": "더 보기",
+    "loading": "로딩 중…"
   },
   "header": {
     "importAccount": "계정 가져오기",
@@ -68,7 +70,8 @@
     "clickToVerify": "클릭하여 {{currency}} 주소를 확인하세요.",
     "ifYouHaveAHardWallet": "하드웨어 지갑이 있다면 지금 연결할 수 있습니다!",
     "congratulations": "축하합니다!",
-    "youWalletWas": "지갑을 성공적으로 가져왔습니다"
+    "youWalletWas": "지갑을 성공적으로 가져왔습니다",
+    "youHaveNoNfts": "NFT가 없습니다."
   },
   "settings": {
     "bgError": "백그라운드 오류",
@@ -416,7 +419,8 @@
     "manageAccounts": "계정 관리",
     "yourKeys": "내 키",
     "connectTrezor": "하드웨어 지갑 연결",
-    "importAccount": "계정 가져오기"
+    "importAccount": "계정 가져오기",
+    "switchAccountError": "계정 전환에 실패했습니다. 다시 시도해 주세요."
   },
   "connections": {
     "connectedAccount": "연결된 계정",
@@ -476,7 +480,11 @@
     "pasteYourWalletSeed": "지갑 시드 구문을 붙여넣으세요"
   },
   "receive": {
-    "receiveTitle": "받기"
+    "receiveTitle": "받기",
+    "smartAccount": "스마트 계정",
+    "hdAccount": "HD 계정",
+    "addressUnavailable": "주소를 사용할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
+    "retry": "다시 시도"
   },
   "seedConfirm": {
     "seedError": "입력한 시드가 잘못되었습니다. 확인하고 다시 시도하세요.",
@@ -703,7 +711,15 @@
     "smartAccountLegacyTypedDataUnsupported": "스마트 계정은 아직 레거시 typed-data V1 서명을 지원하지 않습니다",
     "smartAccountUnsupportedSigningRequest": "지원되지 않는 스마트 계정 서명 요청입니다",
     "smartAccountSignatureNotice": "스마트 계정 서명",
-    "smartAccountSignatureNoticeDescription": "Pali가 활성 인증기 드라이버에 이 요청 승인을 요청합니다."
+    "smartAccountSignatureNoticeDescription": "Pali가 활성 인증기 드라이버에 이 요청 승인을 요청합니다.",
+    "invalidEthAddress": "유효하지 않은 이더리움 주소",
+    "invalidSysAddress": "유효하지 않은 시스코인 주소",
+    "feeNetworkBusyRetry": "네트워크가 일시적으로 혼잡합니다. 클릭하여 다시 시도하세요.",
+    "feeCalculationFailedRetry": "수수료를 계산할 수 없습니다. 클릭하여 다시 시도하세요.",
+    "missingTokenId": "토큰 ID 없음",
+    "smartAccountSignatureError": "스마트 계정이 서명을 거부했습니다. 활성 인증기로 다시 승인한 후 다시 시도하세요.",
+    "amountRequired": "금액을 입력하세요",
+    "addressRequired": "받는 주소를 입력하세요"
   },
   "start": {
     "paliDoesnt": "Pali는 비밀번호를 저장하지 않습니다. 액세스를 복구하려면 비밀 복구 구문으로 지갑을 재설정해야 합니다.",
@@ -880,7 +896,13 @@
       "cancelRecovery": "가디언 복구 취소",
       "executeRecovery": "가디언 복구 실행",
       "getOperationId": "복구 작업 ID 가져오기"
-    }
+    },
+    "today": "오늘",
+    "yesterday": "어제",
+    "confirmOnDevice": "기기에서 확인하세요",
+    "checkYourDevice": "{{device}}에서 이 요청을 승인하세요",
+    "useYourPasskey": "패스키를 사용하세요",
+    "passkeyPrompt": "브라우저 안내에 따라 패스키로 서명하세요"
   },
   "switchNetworkPage": {
     "connectedOn": "연결됨:",

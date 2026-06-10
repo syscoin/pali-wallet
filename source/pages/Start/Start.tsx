@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
@@ -64,9 +65,10 @@ export const Start = (props: any) => {
   // Signal app is ready when we have content to show
   useAppReady(!isInitialLoading);
 
-  // Don't render anything while loading - the HTML loader is showing
+  // Branded skeleton while loading: invisible under the HTML loader on first
+  // boot, and prevents a blank screen on later visits (e.g. after logout)
   if (isInitialLoading) {
-    return null;
+    return <AppLoadingSkeleton />;
   }
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen login-animated-bg">

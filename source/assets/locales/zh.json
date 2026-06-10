@@ -36,7 +36,9 @@
     "delete": "删除",
     "remove": "移除",
     "errorDescription": "错误描述",
-    "generate": "生成"
+    "generate": "生成",
+    "loadMore": "加载更多",
+    "loading": "加载中…"
   },
   "header": {
     "importAccount": "导入账户",
@@ -68,7 +70,8 @@
     "clickToVerify": "点击验证您的{{currency}}地址。",
     "ifYouHaveAHardWallet": "如果您有硬件钱包，现在就可以连接！",
     "congratulations": "恭喜！",
-    "youWalletWas": "您的钱包已成功导入"
+    "youWalletWas": "您的钱包已成功导入",
+    "youHaveNoNfts": "您没有 NFT。"
   },
   "settings": {
     "bgError": "背景错误",
@@ -416,7 +419,8 @@
     "manageAccounts": "管理账户",
     "yourKeys": "您的密钥",
     "connectTrezor": "连接硬件钱包",
-    "importAccount": "导入账户"
+    "importAccount": "导入账户",
+    "switchAccountError": "切换账户失败。请重试。"
   },
   "connections": {
     "connectedAccount": "已连接账户",
@@ -671,7 +675,13 @@
       "cancelRecovery": "取消守护人恢复",
       "executeRecovery": "执行守护人恢复",
       "getOperationId": "获取恢复操作ID"
-    }
+    },
+    "today": "今天",
+    "yesterday": "昨天",
+    "confirmOnDevice": "请在设备上确认",
+    "checkYourDevice": "请在 {{device}} 上批准此请求",
+    "useYourPasskey": "使用您的通行密钥",
+    "passkeyPrompt": "请按照浏览器提示使用通行密钥签名"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",
@@ -715,7 +725,11 @@
     "pasteYourWalletSeed": "粘贴您的钱包助记词"
   },
   "receive": {
-    "receiveTitle": "接收"
+    "receiveTitle": "接收",
+    "smartAccount": "智能账户",
+    "hdAccount": "HD 账户",
+    "addressUnavailable": "地址不可用。请检查网络连接后重试。",
+    "retry": "重试"
   },
   "seedConfirm": {
     "seedError": "输入的助记词错误。请验证后重试。",
@@ -942,7 +956,15 @@
     "smartAccountLegacyTypedDataUnsupported": "智能账户暂不支持旧版 typed-data V1 签名",
     "smartAccountUnsupportedSigningRequest": "不支持的智能账户签名请求",
     "smartAccountSignatureNotice": "智能账户签名",
-    "smartAccountSignatureNoticeDescription": "Pali 将请求当前认证器驱动授权此请求。"
+    "smartAccountSignatureNoticeDescription": "Pali 将请求当前认证器驱动授权此请求。",
+    "invalidEthAddress": "无效的以太坊地址",
+    "invalidSysAddress": "无效的 Syscoin 地址",
+    "feeNetworkBusyRetry": "网络暂时繁忙。点击重试。",
+    "feeCalculationFailedRetry": "无法计算费用。点击重试。",
+    "missingTokenId": "缺少代币 ID",
+    "smartAccountSignatureError": "您的智能账户拒绝了该签名。请使用当前的验证器重新批准后重试。",
+    "amountRequired": "请输入金额",
+    "addressRequired": "请输入收款地址"
   },
   "nftDetails": {
     "collectionInfo": "收藏信息",

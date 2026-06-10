@@ -36,7 +36,9 @@
     "delete": "Удалить",
     "remove": "Удалить",
     "errorDescription": "Описание ошибки",
-    "generate": "Сгенерировать"
+    "generate": "Сгенерировать",
+    "loadMore": "Загрузить ещё",
+    "loading": "Загрузка…"
   },
   "header": {
     "importAccount": "Импорт аккаунта",
@@ -68,7 +70,8 @@
     "clickToVerify": "Нажмите, чтобы проверить ваш {{currency}} адрес.",
     "ifYouHaveAHardWallet": "Если у вас есть аппаратный кошелек, вы можете подключить его прямо сейчас!",
     "congratulations": "Поздравляем!",
-    "youWalletWas": "Ваш кошелек успешно импортирован"
+    "youWalletWas": "Ваш кошелек успешно импортирован",
+    "youHaveNoNfts": "У вас нет NFT."
   },
   "settings": {
     "bgError": "Фоновая ошибка",
@@ -416,7 +419,8 @@
     "manageAccounts": "Управление аккаунтами",
     "yourKeys": "Ваши ключи",
     "connectTrezor": "Подключить аппаратный кошелек",
-    "importAccount": "Импортировать аккаунт"
+    "importAccount": "Импортировать аккаунт",
+    "switchAccountError": "Не удалось переключить аккаунт. Попробуйте ещё раз."
   },
   "connections": {
     "connectedAccount": "ПОДКЛЮЧЕННЫЙ АККАУНТ",
@@ -476,7 +480,11 @@
     "pasteYourWalletSeed": "Вставьте сид-фразу вашего кошелька"
   },
   "receive": {
-    "receiveTitle": "ПОЛУЧИТЬ"
+    "receiveTitle": "ПОЛУЧИТЬ",
+    "smartAccount": "Смарт-аккаунт",
+    "hdAccount": "HD-аккаунт",
+    "addressUnavailable": "Адрес недоступен. Проверьте подключение и попробуйте снова.",
+    "retry": "Повторить"
   },
   "seedConfirm": {
     "seedError": "Введенная сид-фраза неверна. Проверьте ее и попробуйте снова.",
@@ -703,7 +711,15 @@
     "smartAccountLegacyTypedDataUnsupported": "Смарт-аккаунты пока не поддерживают устаревшую подпись typed-data V1",
     "smartAccountUnsupportedSigningRequest": "Неподдерживаемый запрос подписи смарт-аккаунта",
     "smartAccountSignatureNotice": "Подпись смарт-аккаунта",
-    "smartAccountSignatureNoticeDescription": "Pali попросит драйвер активного аутентификатора авторизовать этот запрос."
+    "smartAccountSignatureNoticeDescription": "Pali попросит драйвер активного аутентификатора авторизовать этот запрос.",
+    "invalidEthAddress": "Недействительный адрес Ethereum",
+    "invalidSysAddress": "Недействительный адрес Syscoin",
+    "feeNetworkBusyRetry": "Сеть временно перегружена. Нажмите, чтобы повторить.",
+    "feeCalculationFailedRetry": "Не удалось рассчитать комиссию. Нажмите, чтобы повторить.",
+    "missingTokenId": "Отсутствует ID токена",
+    "smartAccountSignatureError": "Ваш смарт-аккаунт отклонил подпись. Повторно подтвердите с помощью активного аутентификатора и попробуйте снова.",
+    "amountRequired": "Укажите сумму",
+    "addressRequired": "Укажите адрес получателя"
   },
   "start": {
     "paliDoesnt": "Pali не хранит ваш пароль. Восстановление доступа требует сброса кошелька с помощью секретной фразы восстановления.",
@@ -880,7 +896,13 @@
       "cancelRecovery": "Отменить восстановление через guardian",
       "executeRecovery": "Выполнить восстановление через guardian",
       "getOperationId": "Получить ID операции восстановления"
-    }
+    },
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "confirmOnDevice": "Подтвердите на устройстве",
+    "checkYourDevice": "Проверьте {{device}}, чтобы одобрить этот запрос",
+    "useYourPasskey": "Используйте ваш ключ доступа",
+    "passkeyPrompt": "Следуйте подсказке браузера, чтобы подписать с помощью ключа доступа"
   },
   "switchNetworkPage": {
     "connectedOn": "Вы подключены к",

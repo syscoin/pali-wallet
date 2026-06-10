@@ -5,6 +5,7 @@ import { useLocation } from 'react-router-dom';
 
 import { WarnIconSvg } from 'components/Icon/Icon';
 import { useQueryData } from 'hooks/index';
+import { useAppReady } from 'hooks/useAppReady';
 import { RootState } from 'state/store';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -14,6 +15,10 @@ export const SwitchNetwork = () => {
   const { state }: { state: any } = useLocation();
   const queryData = useQueryData();
   const { t } = useTranslation();
+
+  // This route renders outside AppLayout, so signal readiness explicitly
+  // to dismiss the HTML loader in external popups
+  useAppReady();
 
   // Use query data for popup data, fallback to location state for navigation
   const popupData = Object.keys(queryData).length > 0 ? queryData : state;

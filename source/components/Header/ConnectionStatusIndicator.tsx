@@ -23,12 +23,17 @@ export const ConnectionStatusIndicator = memo(
     const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const previousNetworkActivityRef = useRef<boolean>(false);
 
-    // Get all network-related loading states from vaultGlobal
-    const {
-      networkStatus,
-      loadingStates: { isLoadingBalances },
-      networkQuality,
-    } = useSelector((state: RootState) => state.vaultGlobal);
+    // Narrow field selectors so the indicator only re-renders when the
+    // fields it actually reads change (not on every vaultGlobal mutation)
+    const networkStatus = useSelector(
+      (state: RootState) => state.vaultGlobal.networkStatus
+    );
+    const isLoadingBalances = useSelector(
+      (state: RootState) => state.vaultGlobal.loadingStates.isLoadingBalances
+    );
+    const networkQuality = useSelector(
+      (state: RootState) => state.vaultGlobal.networkQuality
+    );
     const networkTarget = useSelector(
       (state: RootState) => state.vaultGlobal.networkTarget
     );

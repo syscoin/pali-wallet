@@ -36,7 +36,9 @@
     "delete": "Supprimer",
     "remove": "Retirer",
     "errorDescription": "Description de l'erreur",
-    "generate": "Générer"
+    "generate": "Générer",
+    "loadMore": "Charger plus",
+    "loading": "Chargement…"
   },
   "header": {
     "importAccount": "Importer un compte",
@@ -68,7 +70,8 @@
     "addressVerified": "Adresse vérifiée avec succès",
     "verificationDeniedByUser": "Vérification refusée par l'utilisateur.",
     "clickToVerify": "Cliquez pour vérifier votre adresse {{currency}}.",
-    "ifYouHaveAHardWallet": "Si vous avez un portefeuille matériel, vous pouvez vous connecter maintenant !"
+    "ifYouHaveAHardWallet": "Si vous avez un portefeuille matériel, vous pouvez vous connecter maintenant !",
+    "youHaveNoNfts": "Vous n'avez pas de NFT."
   },
   "settings": {
     "bgError": "Erreur en arrière-plan",
@@ -416,7 +419,8 @@
     "manageAccounts": "Gérer les comptes",
     "yourKeys": "Vos clés",
     "connectTrezor": "Connecter un portefeuille matériel",
-    "importAccount": "Importer un compte"
+    "importAccount": "Importer un compte",
+    "switchAccountError": "Échec du changement de compte. Veuillez réessayer."
   },
   "connections": {
     "connectedAccount": "COMPTE CONNECTÉ",
@@ -471,7 +475,11 @@
     "pasteYourWalletSeed": "Collez votre phrase de récupération"
   },
   "receive": {
-    "receiveTitle": "RECEVOIR"
+    "receiveTitle": "RECEVOIR",
+    "smartAccount": "Compte intelligent",
+    "hdAccount": "Compte HD",
+    "addressUnavailable": "Adresse indisponible. Vérifiez votre connexion et réessayez.",
+    "retry": "Réessayer"
   },
   "seedConfirm": {
     "seedError": "La phrase de récupération est incorrecte. Vérifiez-la et réessayez.",
@@ -698,7 +706,15 @@
     "smartAccountLegacyTypedDataUnsupported": "Les comptes intelligents ne prennent pas encore en charge la signature typed-data V1 héritée",
     "smartAccountUnsupportedSigningRequest": "Demande de signature de compte intelligent non prise en charge",
     "smartAccountSignatureNotice": "Signature de compte intelligent",
-    "smartAccountSignatureNoticeDescription": "Pali demandera au pilote de l’authentificateur actif d’autoriser cette demande."
+    "smartAccountSignatureNoticeDescription": "Pali demandera au pilote de l’authentificateur actif d’autoriser cette demande.",
+    "invalidEthAddress": "Adresse Ethereum invalide",
+    "invalidSysAddress": "Adresse Syscoin invalide",
+    "feeNetworkBusyRetry": "Le réseau est temporairement occupé. Cliquez pour réessayer.",
+    "feeCalculationFailedRetry": "Impossible de calculer les frais. Cliquez pour réessayer.",
+    "missingTokenId": "ID du jeton manquant",
+    "smartAccountSignatureError": "Votre compte intelligent a rejeté la signature. Approuvez à nouveau avec votre authentificateur actif et réessayez.",
+    "amountRequired": "Le montant est requis",
+    "addressRequired": "L'adresse du destinataire est requise"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",
@@ -880,7 +896,13 @@
       "cancelRecovery": "Annuler la récupération avec gardien",
       "executeRecovery": "Exécuter la récupération avec gardien",
       "getOperationId": "Obtenir l’ID d’opération de récupération"
-    }
+    },
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "confirmOnDevice": "Confirmez sur votre appareil",
+    "checkYourDevice": "Vérifiez votre {{device}} pour approuver cette demande",
+    "useYourPasskey": "Utilisez votre clé d'accès",
+    "passkeyPrompt": "Suivez les instructions du navigateur pour signer avec votre clé d'accès"
   },
   "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",
