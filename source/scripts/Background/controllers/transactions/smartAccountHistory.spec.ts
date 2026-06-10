@@ -274,6 +274,48 @@ describe('smart account EntryPoint log history', () => {
     );
   });
 
+  it('does not advance the cursor when transaction details fail to load', async () => {
+    // The log scan succeeds but eth_getTransactionByHash transiently returns
+    // null for the outer transaction; advancing the cursor would permanently
+    // skip this user operation once it falls out of the reorg window.
+    const provider = buildProvider({
+      send: jest.fn(async (method: string) => {
+        if (method === 'eth_getTransactionByHash') {
+          return null;
+        }
+        if (method === 'eth_getBlockByNumber') {
+          return { timestamp: '0x60' };
+        }
+        return null;
+      }),
+    });
+
+    const transactions = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      CHAIN_ID
+    );
+
+    expect(transactions).toHaveLength(0);
+    expect(dispatchMock).not.toHaveBeenCalled();
+
+    // Once the details load on a later poll, the cursor advances again.
+    const retryProvider = buildProvider();
+    await fetchSmartAccountUserOpTransactions(
+      retryProvider as any,
+      vaultState.accounts.SmartAccount[0],
+      CHAIN_ID
+    );
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          property: 'smartAccountUserOpScanByChainId',
+          value: { [CHAIN_ID]: 100 },
+        },
+      })
+    );
+  });
+
   it('keeps local history when eth_getLogs fails entirely', async () => {
     vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
       {

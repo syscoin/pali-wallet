@@ -191,6 +191,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   });
 
   let fetchedTransactions: IEvmTransactionResponse[] = [];
+  let allDetailsFetched = true;
   if (hashesToFetch.length > 0) {
     const rawTransactions = (await sendBatchOrSequential(
       provider,
@@ -201,6 +202,9 @@ export const fetchSmartAccountUserOpTransactions = async (
       (tx): tx is RawRpcTransaction =>
         Boolean(tx && tx.blockNumber && tx.blockHash)
     );
+    // Logs only exist for mined transactions, so a null/unmined detail result
+    // is a transient RPC failure; the dropped entry must be retried later.
+    allDetailsFetched = minedTransactions.length === hashesToFetch.length;
 
     const uniqueBlockNumbers = Array.from(
       new Set(minedTransactions.map((tx) => tx.blockNumber as string))
@@ -251,12 +255,14 @@ export const fetchSmartAccountUserOpTransactions = async (
   }
 
   // Only advance the cursor when the scan actually covered the intended
-  // range. A bounded fallback window that starts after the previous cursor
-  // (or after genesis on a first scan) leaves a gap of unindexed blocks;
-  // persisting latestBlock then would permanently skip those user
-  // operations. Leaving the cursor untouched makes the next poll retry the
-  // full range (e.g. after a transient error or an RPC switch).
-  if (scannedFromBlock <= fromBlock) {
+  // range AND every logged transaction in that range was materialized:
+  // - A bounded fallback window that starts after the previous cursor (or
+  //   after genesis on a first scan) leaves a gap of unindexed blocks.
+  // - A transient eth_getTransactionByHash failure drops a logged user
+  //   operation that would never be re-scanned once the cursor passes it.
+  // In either case persisting latestBlock would permanently skip those user
+  // operations; leaving the cursor untouched makes the next poll retry.
+  if (scannedFromBlock <= fromBlock && allDetailsFetched) {
     persistScanCursor(chainId, latestBlock);
   }
 
