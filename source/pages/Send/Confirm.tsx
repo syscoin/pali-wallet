@@ -20,7 +20,13 @@ import {
   ITxState,
   TransactionType,
 } from '../../types/transactions';
-import { Button, Icon, Tooltip, IconButton } from 'components/index';
+import {
+  Button,
+  Icon,
+  Tooltip,
+  IconButton,
+  DeviceWaitingBanner,
+} from 'components/index';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1268,11 +1274,9 @@ export const SendConfirm = () => {
           error.message?.includes('429');
 
         if (isRateLimited) {
-          setFeeCalculationError(
-            'Network is temporarily busy. Click to retry.'
-          );
+          setFeeCalculationError(t('send.feeNetworkBusyRetry'));
         } else {
-          setFeeCalculationError('Unable to calculate fees. Click to retry.');
+          setFeeCalculationError(t('send.feeCalculationFailedRetry'));
         }
       } finally {
         setIsCalculatingFees(false);
@@ -1362,14 +1366,21 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
-  // Navigate home when transaction is confirmed
+  // Navigate home with success feedback when the transaction is submitted
   useEffect(() => {
     if (confirmed) {
-      navigate('/home', {
-        state: { fromTransaction: true },
-      });
+      alert.success(t('send.txSuccessfullMessage'));
+      navigate('/home');
     }
   }, [confirmed, alert, t, navigate]);
+
+  // A Confirm page without transaction data is unusable (e.g. stale
+  // restored route): redirect home instead of rendering a blank screen
+  useEffect(() => {
+    if (!basicTxValues && !confirmed) {
+      navigate('/home');
+    }
+  }, [basicTxValues, confirmed, navigate]);
 
   // Don't render main content if transaction is confirmed (toast will show)
   // The overlay handles loading display, so we just check for confirmed state
@@ -1458,7 +1469,7 @@ export const SendConfirm = () => {
                         )
                       ) : (
                         <span className="text-warning-error">
-                          Missing Token ID
+                          {t('send.missingTokenId')}
                         </span>
                       )}
                     </div>
@@ -1967,6 +1978,8 @@ export const SendConfirm = () => {
               )}
             </div>
           )}
+
+          <DeviceWaitingBanner account={activeAccount} show={loading} />
 
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button

@@ -23,3 +23,4 @@ export { SeedPhraseDisplay } from './Input/SeedPhraseDisplay';
 export * from './ImportableAssetsList';
 
 export { TokenIcon } from './TokenIcon';
+export { DeviceWaitingBanner } from './DeviceWaitingBanner';

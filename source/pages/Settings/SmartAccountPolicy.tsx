@@ -1,4 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
 import { Form, Input } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -51,163 +50,16 @@ import type {
   SmartAccountAuthenticatorBuildResult,
   SmartAccountAuthenticatorRuntimeContexts,
 } from 'utils/smartAccount';
+import {
+  getSmartAccountActionErrorMessage,
+  isGuardianRecoveryNotReadyError,
+  isNativeGasError,
+  isSmartAccountPrefundError,
+  isSmartAccountSignatureError,
+} from 'utils/smartAccountErrors';
 
 const shortAddress = (address: string) =>
   `${address.slice(0, 6)}...${address.slice(-4)}`;
-const AA21_PREFUND_REASON_HEX =
-  '41413231206469646e2774207061792070726566756e64';
-
-const stringifyError = (error: unknown): string => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return '';
-  }
-};
-
-const getErrorText = (error: unknown, depth = 0): string => {
-  if (!error || depth > 4) {
-    return '';
-  }
-  if (typeof error === 'string') {
-    try {
-      return [error, getErrorText(JSON.parse(error), depth + 1)]
-        .filter(Boolean)
-        .join(' ');
-    } catch {
-      return error;
-    }
-  }
-  if (typeof error !== 'object') {
-    return String(error);
-  }
-
-  const errorRecord = error as Record<string, unknown>;
-  const directParts = [
-    errorRecord.message,
-    errorRecord.reason,
-    errorRecord.code,
-    errorRecord.data,
-    errorRecord.error,
-    errorRecord.body,
-    errorRecord.response,
-    errorRecord.info,
-    errorRecord.transaction,
-    errorRecord.tx,
-  ];
-  const ownPropertyParts = Object.getOwnPropertyNames(error)
-    .filter((key) => key !== 'stack')
-    .map((key) => errorRecord[key]);
-  const parts = [
-    ...directParts,
-    ...ownPropertyParts,
-    stringifyError(error),
-  ].flatMap((value) => {
-    if (!value) {
-      return [];
-    }
-    if (typeof value === 'string') {
-      try {
-        return [value, getErrorText(JSON.parse(value), depth + 1)];
-      } catch {
-        return [value];
-      }
-    }
-    return [getErrorText(value, depth + 1)];
-  });
-
-  return parts.filter(Boolean).join(' ');
-};
-
-const getEntryPointFailedOpReason = (error: unknown): string => {
-  const message = getErrorText(error);
-  const match = message.match(/0x220266b6[0-9a-fA-F]*/);
-  if (!match) {
-    return '';
-  }
-
-  try {
-    const [, reason] = defaultAbiCoder.decode(
-      ['uint256', 'string'],
-      `0x${match[0].slice(10)}`
-    );
-    return String(reason);
-  } catch {
-    return '';
-  }
-};
-
-const isSmartAccountPrefundError = (error: unknown) => {
-  const message = getErrorText(error);
-  const normalized = message.toLowerCase();
-  const failedOpReason = getEntryPointFailedOpReason(error).toLowerCase();
-
-  return (
-    message.includes('AA21') ||
-    normalized.includes("didn't pay prefund") ||
-    normalized.includes(AA21_PREFUND_REASON_HEX) ||
-    failedOpReason.includes('aa21') ||
-    failedOpReason.includes("didn't pay prefund") ||
-    failedOpReason.includes('did not pay prefund') ||
-    failedOpReason.includes('prefund')
-  );
-};
-
-const isNativeGasError = (error: unknown) => {
-  const message = getErrorText(error);
-  const normalized = message.toLowerCase();
-
-  return (
-    message.includes('OutOfNativeResourcesDuringValidation') ||
-    normalized.includes('insufficient funds') ||
-    normalized.includes('insufficient balance') ||
-    message.includes('PALI_NATIVE_GAS_REQUIRED') ||
-    normalized.includes('not enough native') ||
-    normalized.includes('gas required exceeds allowance')
-  );
-};
-
-const isGuardianRecoveryNotReadyError = (error: unknown) =>
-  getErrorText(error).includes('0x201b632a') ||
-  getErrorText(error).includes('PALI_GUARDIAN_RECOVERY_NOT_READY');
-
-const isSmartAccountSignatureError = (error: unknown) => {
-  const message = getErrorText(error);
-  const failedOpReason = getEntryPointFailedOpReason(error);
-  return (
-    failedOpReason.includes('AA24') ||
-    message.includes('AA24') ||
-    message.includes('PALI_SMART_ACCOUNT_SIGNATURE_ERROR')
-  );
-};
-
-const isRawRpcRevertMessage = (message: string) => {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('"jsonrpc"') ||
-    normalized.includes('execution reverted') ||
-    normalized.includes('0x220266b6') ||
-    normalized.includes('"data":"0x') ||
-    normalized.includes('data: 0x')
-  );
-};
-
-const getSmartAccountActionErrorMessage = (
-  error: unknown,
-  fallback: string,
-  gasMessage: string
-) => {
-  if (isSmartAccountPrefundError(error) || isNativeGasError(error)) {
-    return gasMessage;
-  }
-
-  const message = (error as any)?.message;
-  return message && !isRawRpcRevertMessage(message) ? message : fallback;
-};
 
 const moduleDisplayKey = (id: string) => {
   switch (id) {

@@ -63,6 +63,8 @@ export const usePageLoadingState = (
 
   const isLoading =
     navigationLoading ||
+    isNetworkChanging ||
+    isSwitchingAccount ||
     isConnecting ||
     isNonPollingBalanceLoad ||
     additionalLoadingConditions.some((condition) => condition);
@@ -136,6 +138,13 @@ export const usePageLoadingState = (
 
   // Track navigation changes
   useEffect(() => {
+    // Settings drilling is instant (small synchronous pages) and already has
+    // a route fade transition - skip the 100ms overlay flash there
+    if (location.pathname.startsWith('/settings')) {
+      setNavigationLoading(false);
+      return;
+    }
+
     setNavigationLoading(true);
 
     const navigationTimer = setTimeout(() => {

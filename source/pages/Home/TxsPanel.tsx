@@ -12,7 +12,7 @@ import { AssetsPanel, TransactionsPanel } from './Panel/index';
 export const TxsPanel: FC = () => {
   const { t } = useTranslation();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Access network information to determine if Assets tab should be enabled
   const chainId = useSelector(
@@ -58,6 +58,14 @@ export const TxsPanel: FC = () => {
     });
   }, [searchParams, isAssetsTabEnabled]);
 
+  // Keep the ?tab= URL param in sync so deep links / route restore work
+  const syncTabParam = (tab: 'activity' | 'assets') => {
+    if (searchParams.get('tab') === tab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  };
+
   // Handlers for tab switching with transitions
   const handleShowAssets = () => {
     // Don't allow switching to Assets if it's disabled for this network
@@ -66,12 +74,14 @@ export const TxsPanel: FC = () => {
     startTransition(() => {
       setActivity(false);
     });
+    syncTabParam('assets');
   };
 
   const handleShowActivity = () => {
     startTransition(() => {
       setActivity(true);
     });
+    syncTabParam('activity');
   };
 
   return (

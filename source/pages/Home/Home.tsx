@@ -135,13 +135,9 @@ export const Home = () => {
   const isOpenFaucetModal = useSelector(
     (rootState: RootState) => rootState.vault.shouldShowFaucetModal
   );
-  const {
-    lastLogin,
-    loadingStates: { isLoadingBalances },
-    isPollingUpdate,
-    isSwitchingAccount,
-    isPostNetworkSwitchLoading,
-  } = useSelector((rootState: RootState) => rootState.vaultGlobal);
+  const { isSwitchingAccount, isPostNetworkSwitchLoading } = useSelector(
+    (rootState: RootState) => rootState.vaultGlobal
+  );
 
   // ALL useState hooks
   const [showModalCongrats, setShowModalCongrats] = useState(false);
@@ -286,22 +282,10 @@ export const Home = () => {
   // Safe computed values - AFTER all hooks
   const isWalletImported = state?.isWalletImported;
 
-  // Get network status to check for errors
-  const networkStatus = useSelector(
-    (rootState: RootState) => rootState.vaultGlobal.networkStatus
-  );
-
   // Show skeleton only when no balance is known for this account/network yet.
   // Background refreshes should update the value behind the scenes instead of
   // making the already-rendered home view unusable.
-  const isLoadingBalance =
-    rawBalance === '-1' ||
-    (rawBalance === '-1' &&
-      (isPostNetworkSwitchLoading ||
-        (isLoadingBalances && !isPollingUpdate) ||
-        networkStatus === 'error' ||
-        networkStatus === 'connecting' ||
-        networkStatus === 'switching'));
+  const isLoadingBalance = rawBalance === '-1';
 
   // Derived state for faucet visibility
   const shouldShowFaucet = useMemo(
@@ -330,7 +314,7 @@ export const Home = () => {
 
   return (
     <div className="h-full bg-bkg-3">
-      {currentAccount && lastLogin && isUnlocked && (
+      {currentAccount && isUnlocked && (
         <>
           {shouldShowFaucet && (
             <>
@@ -384,7 +368,6 @@ export const Home = () => {
                   className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   onClick={() => navigate('/receive')}
-                  disabled={isLoadingBalance}
                 >
                   <ReceiveIcon />
                   {t('buttons.receive')}

@@ -28,6 +28,9 @@ export const AccountHeader: React.FC = () => {
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
+  const isSwitchingAccount = useSelector(
+    (state: RootState) => state.vaultGlobal.isSwitchingAccount
+  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -48,9 +51,11 @@ export const AccountHeader: React.FC = () => {
     [activeAccount?.type]
   );
 
-  const isNetworkChanging = useMemo(
-    () => networkStatus === 'switching',
-    [networkStatus]
+  // Show identity skeletons during both network and account switches so the
+  // header never displays stale account data mid-switch
+  const isSwitchInProgress = useMemo(
+    () => networkStatus === 'switching' || isSwitchingAccount,
+    [networkStatus, isSwitchingAccount]
   );
 
   const editAccount = useCallback(
@@ -194,7 +199,7 @@ export const AccountHeader: React.FC = () => {
         </Tooltip>
 
         <div className="items-center justify-center px-1 text-brand-white">
-          {isNetworkChanging ? (
+          {isSwitchInProgress ? (
             <SkeletonLoader width="150px" height="20px" />
           ) : (
             <p
@@ -214,7 +219,7 @@ export const AccountHeader: React.FC = () => {
               </IconButton>
             </p>
           )}
-          {isNetworkChanging ? (
+          {isSwitchInProgress ? (
             <SkeletonLoader width="200px" height="15px" margin="5px 0 0 0" />
           ) : (
             <div className="flex items-center">

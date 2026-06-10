@@ -11,6 +11,7 @@ import {
   IconButton,
   Icon,
   WarningModal,
+  DeviceWaitingBanner,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -265,6 +266,7 @@ const EthSign: React.FC<ISign> = () => {
 
     // Safety check: signing is only for EVM networks
     if (isBitcoinBased) {
+      setLoading(false);
       setErrorMsg(t('send.messageSigningNotAvailable'));
       createTemporaryAlarm({
         delayInSeconds: 40,
@@ -1452,6 +1454,7 @@ const EthSign: React.FC<ISign> = () => {
 
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+            <DeviceWaitingBanner account={activeAccount} show={loading} />
             <div className="flex gap-3 justify-center">
               <SecondaryButton
                 type="button"

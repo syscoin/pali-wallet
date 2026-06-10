@@ -36,7 +36,9 @@
     "delete": "削除",
     "remove": "削除",
     "errorDescription": "エラーの説明",
-    "generate": "生成"
+    "generate": "生成",
+    "loadMore": "もっと見る",
+    "loading": "読み込み中…"
   },
   "header": {
     "importAccount": "アカウントインポート",
@@ -68,7 +70,8 @@
     "clickToVerify": "クリックして{{currency}}アドレスを確認してください。",
     "ifYouHaveAHardWallet": "ハードウェアウォレットをお持ちの場合は、今すぐ接続できます！",
     "congratulations": "おめでとう！",
-    "youWalletWas": "ウォレットのインポートに成功しました"
+    "youWalletWas": "ウォレットのインポートに成功しました",
+    "youHaveNoNfts": "NFTはありません。"
   },
   "settings": {
     "bgError": "バックグラウンドエラー",
@@ -416,7 +419,8 @@
     "manageAccounts": "アカウントを管理",
     "yourKeys": "あなたの鍵",
     "connectTrezor": "ハードウェアウォレットを接続",
-    "importAccount": "アカウントをインポート"
+    "importAccount": "アカウントをインポート",
+    "switchAccountError": "アカウントの切り替えに失敗しました。もう一度お試しください。"
   },
   "connections": {
     "connectedAccount": "接続済みアカウント",
@@ -476,7 +480,11 @@
     "pasteYourWalletSeed": "ウォレットのシードフレーズを貼り付けてください"
   },
   "receive": {
-    "receiveTitle": "受信"
+    "receiveTitle": "受信",
+    "smartAccount": "スマートアカウント",
+    "hdAccount": "HDアカウント",
+    "addressUnavailable": "アドレスを取得できません。接続を確認してもう一度お試しください。",
+    "retry": "再試行"
   },
   "seedConfirm": {
     "seedError": "入力されたシードが間違っています。確認してもう一度お試しください。",
@@ -703,7 +711,15 @@
     "smartAccountLegacyTypedDataUnsupported": "スマートアカウントはまだレガシー typed-data V1 署名に対応していません",
     "smartAccountUnsupportedSigningRequest": "対応していないスマートアカウント署名リクエストです",
     "smartAccountSignatureNotice": "スマートアカウント署名",
-    "smartAccountSignatureNoticeDescription": "Pali はアクティブな認証器ドライバーにこのリクエストの承認を求めます。"
+    "smartAccountSignatureNoticeDescription": "Pali はアクティブな認証器ドライバーにこのリクエストの承認を求めます。",
+    "invalidEthAddress": "無効なEthereumアドレス",
+    "invalidSysAddress": "無効なSyscoinアドレス",
+    "feeNetworkBusyRetry": "ネットワークが一時的に混雑しています。クリックして再試行してください。",
+    "feeCalculationFailedRetry": "手数料を計算できません。クリックして再試行してください。",
+    "missingTokenId": "トークンIDがありません",
+    "smartAccountSignatureError": "スマートアカウントが署名を拒否しました。有効な認証器で再承認して、もう一度お試しください。",
+    "amountRequired": "金額を入力してください",
+    "addressRequired": "受取先アドレスを入力してください"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",
@@ -880,7 +896,13 @@
       "cancelRecovery": "ガーディアン復旧をキャンセル",
       "executeRecovery": "ガーディアン復旧を実行",
       "getOperationId": "復旧操作IDを取得"
-    }
+    },
+    "today": "今日",
+    "yesterday": "昨日",
+    "confirmOnDevice": "デバイスで確認してください",
+    "checkYourDevice": "{{device}} でこのリクエストを承認してください",
+    "useYourPasskey": "パスキーを使用してください",
+    "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

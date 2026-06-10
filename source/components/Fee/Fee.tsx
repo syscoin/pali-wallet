@@ -175,7 +175,7 @@ export const Fee = ({
 
                   const numValue = parseFloat(value);
                   if (isNaN(numValue)) {
-                    return Promise.reject(new Error('Invalid fee rate'));
+                    return Promise.reject(new Error(t('send.invalidFeeRate')));
                   }
 
                   const validation = validateFeeRate(numValue);

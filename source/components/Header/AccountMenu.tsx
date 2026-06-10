@@ -22,7 +22,7 @@ import {
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
 export const AccountMenu: React.FC = () => {
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { t } = useTranslation();
   const activeAccountMeta = useSelector(
@@ -39,9 +39,10 @@ export const AccountMenu: React.FC = () => {
       // Check if this is a wallet locked error and handle redirect
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
-        // If not a wallet locked error, log it but don't show UI error
-        // since account switching should be seamless
+        // Surface the failure: otherwise the user is left on the old
+        // account with no feedback that the switch didn't happen
         console.error('Error switching account:', error);
+        alert.error(t('accountMenu.switchAccountError'));
       }
     }
   };

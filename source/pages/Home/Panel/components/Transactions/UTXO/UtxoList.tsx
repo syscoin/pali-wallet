@@ -13,6 +13,7 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
+  selectActiveAccountAssets,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
@@ -43,6 +44,7 @@ const UtxoTransactionsListComponentBase = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const activeAssets = useSelector(selectActiveAccountAssets);
 
   const isConfirmed = isTransactionInBlock(tx);
 
@@ -60,14 +62,43 @@ const UtxoTransactionsListComponentBase = ({
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
 
+  // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
+  // then vout/vin assetInfo) so we can show the imported asset's icon
+  const txAssetGuid = useMemo(() => {
+    const transfers = Array.isArray((tx as any)?.tokenTransfers)
+      ? (tx as any).tokenTransfers
+      : [];
+    const fromTransfer = transfers[0]?.token || transfers[0]?.assetGuid;
+    if (fromTransfer) return String(fromTransfer);
+    for (const list of [tx?.vout, tx?.vin]) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list as any[]) {
+        if (item?.assetInfo?.assetGuid) return String(item.assetInfo.assetGuid);
+      }
+    }
+    return null;
+  }, [tx]);
+
+  const sptAssetInfo = useMemo(() => {
+    if (!txAssetGuid) return null;
+    const list = activeAssets?.syscoin || [];
+    return (
+      list.find(
+        (asset: any) =>
+          String(asset?.assetGuid) === txAssetGuid &&
+          (asset?.chainId === undefined ||
+            asset.chainId === activeNetwork.chainId)
+      ) || null
+    );
+  }, [txAssetGuid, activeAssets?.syscoin, activeNetwork.chainId]);
+
   // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
   let sptAmountDisplay: string | null = null;
-  const sptAssetInfo: any | null = null;
   let sysAmountDisplay: string | null = null;
   const intent = getSyscoinIntentAmount(tx);
   if (intent) {
-    const decimals = intent.decimals ?? 8;
-    const symbol = intent.symbol ?? 'SYSX';
+    const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
+    const symbol = intent.symbol ?? (sptAssetInfo as any)?.symbol ?? 'SYSX';
     const amountText = formatDisplayValue(intent.amount, decimals);
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
@@ -146,7 +177,7 @@ const UtxoTransactionsListComponentBase = ({
             </div>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
-              {isSentByUs ? 'Sent' : 'Received'}
+              {isSentByUs ? t('send.sent') : t('send.received')}
             </p>
           ) : (
             getTxStatus(false, isConfirmed)
@@ -388,7 +419,7 @@ export const UtxoTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore ? 'Loading…' : 'Load more'}
+                {isLoadingMore ? t('buttons.loading') : t('buttons.loadMore')}
               </button>
             </div>
           )
@@ -399,7 +430,7 @@ export const UtxoTransactionsList = ({
                 onClick={() => setVisibleCount((c) => c + 50)}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
               >
-                Load more
+                {t('buttons.loadMore')}
               </button>
             </div>
           )}

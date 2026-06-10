@@ -129,7 +129,12 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
   );
 
   if (collections.length === 0) {
-    return null; // Let the parent AssetsPanel handle empty state with Import Token link
+    // Parent AssetsPanel renders the Import Token link below this list
+    return (
+      <div className="flex mt-4 items-center justify-center p-3 text-brand-white text-sm">
+        <p>{t('home.youHaveNoNfts')}</p>
+      </div>
+    );
   }
 
   return (

@@ -1199,7 +1199,7 @@ export const SendEth = () => {
                     );
                   }
 
-                  return Promise.reject(new Error('Invalid Ethereum address'));
+                  return Promise.reject(new Error(t('send.invalidEthAddress')));
                 },
               }),
             ]}

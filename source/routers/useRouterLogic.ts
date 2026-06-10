@@ -16,6 +16,7 @@ import {
 } from 'state/vault';
 import { setNetworkRuntimeState, setNetworkStatus } from 'state/vaultGlobal';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
+import { loadNavigationState } from 'utils/navigationState';
 
 export const useRouterLogic = () => {
   const [showModal, setShowModal] = useState(false);
@@ -271,8 +272,16 @@ export const useRouterLogic = () => {
         // Preserve external route after login
         debouncedNavigate(`/external/${externalRoute}`);
       } else {
-        // Navigate to home page for main app
-        debouncedNavigate('/home');
+        // Defer to NavigationRestorer when a saved route exists, so
+        // post-unlock navigation has a single authority and the forced
+        // /home doesn't race with saved-route restoration
+        loadNavigationState()
+          .then((savedState) => {
+            if (!savedState) {
+              debouncedNavigate('/home');
+            }
+          })
+          .catch(() => debouncedNavigate('/home'));
       }
       setInitialCheckComplete(true);
       return;

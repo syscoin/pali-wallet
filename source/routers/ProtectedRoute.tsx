@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { useAppReady } from 'hooks/useAppReady';
 import { useController } from 'hooks/useController';
 
@@ -16,8 +17,8 @@ export function ProtectedRoute({ element }: { element: JSX.Element }) {
 
   // Wait for authentication check to complete before deciding what to render
   if (isLoading) {
-    // Return minimal loading without blue screen - just prevent premature redirect
-    return <div style={{ opacity: 0 }}>Loading...</div>;
+    // Branded skeleton keeps the popup from flashing a blank dark screen
+    return <AppLoadingSkeleton />;
   }
 
   // Special handling for hardware wallet page - don't redirect on logout
