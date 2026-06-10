@@ -390,5 +390,22 @@ export const fetchSmartAccountUserOpTransactions = async (
         )
       : refreshedExisting;
 
-  return [...survivingExisting, ...fetchedTransactions];
+  // Cached rows skipped from refetch still need the log-derived inner-op
+  // status: a locally submitted execution is saved from the outer handleOps
+  // transaction, which mines successfully even when the inner user
+  // operation reverted (UserOperationEvent success=false).
+  const statusPatchedExisting = survivingExisting.map((tx: any) => {
+    const success = successByTxHash.get(String(tx.hash).toLowerCase());
+    if (success === undefined) {
+      return tx;
+    }
+    return {
+      ...tx,
+      isError: success ? '0' : '1',
+      // eslint-disable-next-line camelcase
+      txreceipt_status: success ? '1' : '0',
+    };
+  });
+
+  return [...statusPatchedExisting, ...fetchedTransactions];
 };

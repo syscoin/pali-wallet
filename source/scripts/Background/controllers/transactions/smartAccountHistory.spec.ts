@@ -230,6 +230,41 @@ describe('smart account EntryPoint log history', () => {
     expect((transactions[0] as any).confirmations).toBe(95);
   });
 
+  it('applies log-derived inner-op status to cached transactions without refetching', async () => {
+    // Locally submitted execution: saved from the successful outer handleOps
+    // transaction even though the inner user operation reverted.
+    vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
+      {
+        blockHash: BLOCK_HASH,
+        blockNumber: 5,
+        confirmations: 1,
+        hash: TX_HASH,
+        isError: '0',
+        smartAccountExecutionFrom: SMART_ACCOUNT,
+        // eslint-disable-next-line camelcase
+        txreceipt_status: '1',
+      },
+    ];
+    const provider = buildProvider({
+      getLogs: jest.fn().mockResolvedValue([buildUserOpEventLog(false)]),
+    });
+
+    const transactions = await fetchSmartAccountUserOpTransactions(
+      provider as any,
+      vaultState.accounts.SmartAccount[0],
+      ACCOUNT_TYPE,
+      CHAIN_ID
+    );
+
+    // No refetch: block hash matches, only the status is corrected.
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(transactions).toHaveLength(1);
+    const tx = transactions[0] as any;
+    expect(tx.txreceipt_status).toBe('0');
+    expect(tx.isError).toBe('1');
+    expect(tx.confirmations).toBe(95);
+  });
+
   it('refetches and replaces a cached transaction moved by a shallow reorg', async () => {
     const STALE_BLOCK_HASH = `0x${'ee'.repeat(32)}`;
     vaultState.accountTransactions.SmartAccount[0].ethereum[CHAIN_ID] = [
