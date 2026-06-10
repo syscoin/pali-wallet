@@ -803,8 +803,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       }
 
       // ENHANCEMENT: When no API is available, also check specific pending transactions
-      // This ensures pending transactions are tracked even if they fall outside the polling window
+      // This ensures pending transactions are tracked even if they fall outside the polling window.
+      // Skipped during rapid polling: the rapid poller already does a targeted
+      // getTransaction lookup for the just-sent hash every 4s, so re-checking
+      // every pending transaction here would only duplicate those calls.
       if (
+        !isRapidPolling &&
         !activeNetwork?.apiUrl &&
         currentAccountTxs?.ethereum?.[currentNetworkChainId]
       ) {
@@ -815,18 +819,41 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
         if (pendingTxs.length > 0) {
           console.log(
-            `[pollingEvmTransactions] Checking ${pendingTxs.length} pending transactions individually`
+            `[pollingEvmTransactions] Checking ${pendingTxs.length} pending transactions`
           );
 
-          // Fetch each pending transaction individually to get its current status
+          // Shared lookups across all pending transactions: one block-height
+          // call and one getBlock per unique block instead of per tx. Both
+          // are lazy so nothing fires when every tx is still pending.
+          let latestBlockPromise: Promise<number> | undefined;
+          const getLatestBlockOnce = () => {
+            if (!latestBlockPromise) {
+              latestBlockPromise = web3Provider.getBlockNumber();
+            }
+            return latestBlockPromise;
+          };
+          const blockFetchCache = new Map<number, Promise<any>>();
+          const getBlockOnce = (blockNumber: number) => {
+            let cached = blockFetchCache.get(blockNumber);
+            if (!cached) {
+              cached = web3Provider.getBlock(blockNumber).catch(() => null);
+              blockFetchCache.set(blockNumber, cached);
+            }
+            return cached;
+          };
+
+          // Per-tx status lookups still run, but in parallel and without the
+          // redundant per-tx block/height calls.
           const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
             try {
               const tx = await web3Provider.getTransaction(pendingTx.hash);
               if (tx) {
                 // If transaction is found and has a block number, it's confirmed
                 if (tx.blockNumber) {
-                  const block = await web3Provider.getBlock(tx.blockNumber);
-                  const latestBlock = await web3Provider.getBlockNumber();
+                  const [block, latestBlock] = await Promise.all([
+                    getBlockOnce(tx.blockNumber),
+                    getLatestBlockOnce(),
+                  ]);
                   const confirmations = Math.max(
                     0,
                     latestBlock - tx.blockNumber
