@@ -250,10 +250,26 @@ export const treatAndSortTransactions = (
     // Normal deduplication by hash
     const existing = txMap.get(id);
 
-    // Update if: no existing tx, more confirmations, or transaction just got into a block
+    // Two mined rows under the same id with different block hashes mean a
+    // reorg moved the transaction; the later-observed row (provider rows are
+    // merged after vault rows) carries the canonical placement and must win
+    // even though a later block height yields fewer confirmations.
+    const isReorgReplacement = Boolean(
+      existing &&
+        isTransactionInBlock(existing) &&
+        isTransactionInBlock(tx) &&
+        (existing as any).blockHash &&
+        (tx as any).blockHash &&
+        String((existing as any).blockHash).toLowerCase() !==
+          String((tx as any).blockHash).toLowerCase()
+    );
+
+    // Update if: no existing tx, more confirmations, reorg replacement, or
+    // transaction just got into a block
     const shouldUpdate =
       !existing ||
       tx.confirmations > existing.confirmations ||
+      isReorgReplacement ||
       (existing && !isTransactionInBlock(existing) && isTransactionInBlock(tx));
 
     if (shouldUpdate) {
