@@ -25,6 +25,7 @@ export type PasskeyPublicKey = {
 
 export type PasskeyRegistrationResult = PasskeyPublicKey & {
   rawId: string;
+  userHandle: string;
 };
 
 export type PasskeyAssertionResult = {
@@ -46,11 +47,13 @@ export type PasskeyAssertionResult = {
   r: string;
   s: string;
   typeOffset: number;
+  userHandle?: string;
 };
 
 export type PasskeyCredentialRequest = {
   accountName: string;
   challengeHex: string;
+  excludeCredentialIds?: string[];
   rpId?: string;
   rpName?: string;
   userDisplayName?: string;
@@ -390,6 +393,7 @@ const extractCredentialPublicKey = async (
 export const createPasskeyCredential = async ({
   accountName,
   challengeHex,
+  excludeCredentialIds,
   rpId,
   rpName = 'Pali Wallet',
   userDisplayName,
@@ -397,6 +401,12 @@ export const createPasskeyCredential = async ({
 }: PasskeyCredentialRequest): Promise<PasskeyRegistrationResult> => {
   const challenge = hexToBytes(challengeHex);
   const userIdBytes = userId || crypto.getRandomValues(new Uint8Array(32));
+  const excludeCredentials = (excludeCredentialIds || []).map(
+    (credentialId) => ({
+      id: toArrayBuffer(base64UrlToBytes(credentialId)),
+      type: 'public-key' as const,
+    })
+  );
   const credential = (await navigator.credentials.create({
     publicKey: {
       attestation: 'none',
@@ -406,6 +416,7 @@ export const createPasskeyCredential = async ({
         userVerification: 'required',
       },
       challenge: toArrayBuffer(challenge),
+      ...(excludeCredentials.length ? { excludeCredentials } : {}),
       pubKeyCredParams: [{ type: 'public-key', alg: ES256_ALGORITHM }],
       rp: {
         name: rpName,
@@ -437,6 +448,7 @@ export const createPasskeyCredential = async ({
   return {
     ...publicKey,
     rawId: bytesToBase64Url(toBytes(credential.rawId)),
+    userHandle: bytesToBase64Url(userIdBytes),
   };
 };
 
@@ -491,6 +503,9 @@ const getPasskeyAssertionForCredential = async (
   const rpIdHash = bytesToHex(authenticatorData.slice(0, 32));
   const originLength = toUtf8Bytes(origin).length;
   const originHash = hashText(origin);
+  const userHandle = response.userHandle
+    ? bytesToBase64Url(toBytes(response.userHandle))
+    : undefined;
 
   return {
     authenticatorData: bytesToHex(authenticatorData),
@@ -512,6 +527,7 @@ const getPasskeyAssertionForCredential = async (
     r: bytesToHex(r),
     s: bytesToHex(s),
     typeOffset,
+    userHandle,
   };
 };
 
@@ -527,3 +543,193 @@ export const getDiscoverablePasskeyAssertion = async (
   rpId?: string
 ): Promise<PasskeyAssertionResult> =>
   getPasskeyAssertionForCredential(undefined, challengeHex, rpId);
+
+// Stable user handle per smart account so that a re-created passkey for the
+// same account replaces (instead of duplicating) the stale entry inside the
+// same credential manager. Only safe when the previous passkey is no longer
+// required to sign — callers must guarantee that.
+export const derivePasskeyUserHandle = async (
+  accountAddress: string
+): Promise<Uint8Array> =>
+  sha256(toUtf8Bytes(`pali:passkey:user:v1:${accountAddress.toLowerCase()}`));
+
+const getDefaultRpId = (): string | undefined =>
+  typeof window !== 'undefined' && window.location?.hostname
+    ? window.location.hostname
+    : undefined;
+
+type SignalCapablePublicKeyCredential = typeof PublicKeyCredential & {
+  signalAllAcceptedCredentials?: (options: {
+    allAcceptedCredentialIds: string[];
+    rpId: string;
+    userId: string;
+  }) => Promise<void>;
+  signalUnknownCredential?: (options: {
+    credentialId: string;
+    rpId: string;
+  }) => Promise<void>;
+};
+
+// Best-effort WebAuthn Signal API (Chrome/Edge 132+, Safari 26+). Lets the
+// credential manager remove or hide passkeys the wallet no longer accepts.
+// Never throws — callers treat cleanup as advisory.
+export const signalUnknownPasskeyCredential = async (
+  credentialId: string,
+  rpId?: string
+): Promise<boolean> => {
+  try {
+    const credentialApi =
+      typeof PublicKeyCredential !== 'undefined'
+        ? (PublicKeyCredential as SignalCapablePublicKeyCredential)
+        : undefined;
+    const resolvedRpId = rpId || getDefaultRpId();
+    if (!credentialApi?.signalUnknownCredential || !resolvedRpId) {
+      return false;
+    }
+    await credentialApi.signalUnknownCredential({
+      credentialId,
+      rpId: resolvedRpId,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const signalAcceptedPasskeyCredentials = async ({
+  credentialIds,
+  rpId,
+  userHandle,
+}: {
+  credentialIds: string[];
+  rpId?: string;
+  userHandle: string;
+}): Promise<boolean> => {
+  try {
+    const credentialApi =
+      typeof PublicKeyCredential !== 'undefined'
+        ? (PublicKeyCredential as SignalCapablePublicKeyCredential)
+        : undefined;
+    const resolvedRpId = rpId || getDefaultRpId();
+    if (!credentialApi?.signalAllAcceptedCredentials || !resolvedRpId) {
+      return false;
+    }
+    await credentialApi.signalAllAcceptedCredentials({
+      allAcceptedCredentialIds: credentialIds,
+      rpId: resolvedRpId,
+      userId: userHandle,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export type RecoveredPasskeyProfile = {
+  backupStatus: PasskeyBackupStatus;
+  credentialId: string;
+  credentialIdHash: string;
+  publicKey: {
+    originHash: string;
+    originLength: number;
+    rpIdHash: string;
+    x: string;
+    y: string;
+  };
+  userHandle?: string;
+};
+
+const randomChallengeHex = (): string =>
+  bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+
+export const intersectPasskeyPublicKeyCandidates = (
+  first: PasskeyAssertionResult['publicKeyCandidates'],
+  second: PasskeyAssertionResult['publicKeyCandidates']
+): PasskeyAssertionResult['publicKeyCandidates'] =>
+  first.filter((candidate) =>
+    second.some(
+      (other) =>
+        other.x.toLowerCase() === candidate.x.toLowerCase() &&
+        other.y.toLowerCase() === candidate.y.toLowerCase()
+    )
+  );
+
+// Recovers the full P-256 public key of an EXISTING passkey without creating a
+// new credential. WebAuthn assertions never return the public key directly,
+// but ECDSA public key recovery from (r, s, digest) yields up to four
+// candidates per signature:
+// - when the expected public key is known (e.g. from on-chain authData), one
+//   assertion suffices: we match it against the candidate set;
+// - otherwise a second assertion over a different challenge is requested and
+//   the candidate sets are intersected, which uniquely identifies the key.
+export const recoverExistingPasskeyProfile = async ({
+  expectedCredentialIdHash,
+  expectedPublicKey,
+  rpId,
+}: {
+  expectedCredentialIdHash?: string;
+  expectedPublicKey?: { x: string; y: string };
+  rpId?: string;
+} = {}): Promise<RecoveredPasskeyProfile> => {
+  const firstAssertion = await getDiscoverablePasskeyAssertion(
+    randomChallengeHex(),
+    rpId
+  );
+  if (
+    expectedCredentialIdHash &&
+    firstAssertion.credentialIdHash.toLowerCase() !==
+      expectedCredentialIdHash.toLowerCase()
+  ) {
+    throw new Error('Selected passkey does not match this smart account');
+  }
+
+  let candidates = firstAssertion.publicKeyCandidates;
+  if (expectedPublicKey) {
+    candidates = candidates.filter(
+      (candidate) =>
+        candidate.x.toLowerCase() === expectedPublicKey.x.toLowerCase() &&
+        candidate.y.toLowerCase() === expectedPublicKey.y.toLowerCase()
+    );
+    if (candidates.length !== 1) {
+      throw new Error(
+        'Selected passkey public key does not match this smart account'
+      );
+    }
+  } else {
+    const secondAssertion = await getPasskeyAssertion(
+      firstAssertion.credentialId,
+      randomChallengeHex(),
+      rpId
+    );
+    if (
+      secondAssertion.credentialIdHash.toLowerCase() !==
+      firstAssertion.credentialIdHash.toLowerCase()
+    ) {
+      throw new Error('Passkey changed between confirmation prompts');
+    }
+    candidates = intersectPasskeyPublicKeyCandidates(
+      candidates,
+      secondAssertion.publicKeyCandidates
+    );
+    if (candidates.length !== 1) {
+      throw new Error(
+        'Could not uniquely recover the passkey public key. Please try again.'
+      );
+    }
+  }
+
+  const [publicKey] = candidates;
+  return {
+    backupStatus: firstAssertion.backupStatus,
+    credentialId: firstAssertion.credentialId,
+    credentialIdHash: firstAssertion.credentialIdHash,
+    publicKey: {
+      originHash: publicKey.originHash,
+      originLength: publicKey.originLength,
+      rpIdHash: publicKey.rpIdHash,
+      x: publicKey.x,
+      y: publicKey.y,
+    },
+    userHandle: firstAssertion.userHandle,
+  };
+};
