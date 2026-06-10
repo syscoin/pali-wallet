@@ -96,6 +96,7 @@ export const PALI_SMART_ACCOUNT_ABI = [
   'function executeFromExecutor(bytes32 mode,bytes executionCalldata) payable returns (bytes[] returnData)',
   'function getNonce(uint192 key) view returns (uint256)',
   'function installModule(uint256 moduleTypeId,address module,bytes initData)',
+  'function rotateValidator(address module,bytes deInitData,bytes initData)',
   'function uninstallModule(uint256 moduleTypeId,address module,bytes deInitData)',
   'function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)',
   'function isValidSignature(bytes32 hash,bytes signature) view returns (bytes4)',

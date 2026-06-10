@@ -234,6 +234,21 @@ export const encodeUninstallValidatorModuleCall = (
     deInitData,
   ]);
 
+// Atomically re-keys an installed validator module (uninstall + reinstall with
+// fresh config) and makes it the active validator. Required for same-module
+// configuration changes since the account rejects uninstalling its active
+// validator.
+export const encodeRotateValidatorModuleCall = (
+  moduleAddress: string,
+  initData: string,
+  deInitData = '0x'
+) =>
+  paliSmartAccountInterface.encodeFunctionData('rotateValidator', [
+    getAddress(moduleAddress),
+    deInitData,
+    initData,
+  ]);
+
 export const encodeInstallExecutorModuleCall = (
   moduleAddress: string,
   initData: string

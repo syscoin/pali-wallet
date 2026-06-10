@@ -865,6 +865,7 @@
       "getInitData": "Préparer les données d’initialisation du compte intelligent",
       "installModule": "Installer le module de compte intelligent",
       "uninstallModule": "Désinstaller le module de compte intelligent",
+      "rotateValidator": "Mettre à jour le validateur du compte intelligent",
       "isModuleInstalled": "Vérifier le module de compte intelligent",
       "validateUserOp": "Valider User Operation",
       "onInstall": "Installer la configuration du module",

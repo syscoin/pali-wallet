@@ -334,6 +334,9 @@ const INSTALL_MODULE_SELECTOR = id(
 const UNINSTALL_MODULE_SELECTOR = id(
   'uninstallModule(uint256,address,bytes)'
 ).slice(0, 10);
+const ROTATE_VALIDATOR_SELECTOR = id(
+  'rotateValidator(address,bytes,bytes)'
+).slice(0, 10);
 
 const decodeERC7579ExecutionCalldata = (
   mode: string,
@@ -437,7 +440,10 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
     };
     const moduleInstallExecution = executions.find((execution) => {
       const data = String(execution.data || '0x').toLowerCase();
-      return data.startsWith(INSTALL_MODULE_SELECTOR);
+      return (
+        data.startsWith(INSTALL_MODULE_SELECTOR) ||
+        data.startsWith(ROTATE_VALIDATOR_SELECTOR)
+      );
     });
     const hasModuleUninstallExecution = executions.some((execution) => {
       const data = String(execution.data || '0x').toLowerCase();

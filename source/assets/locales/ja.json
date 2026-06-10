@@ -865,6 +865,7 @@
       "getInitData": "スマートアカウント初期化データを準備",
       "installModule": "スマートアカウントモジュールをインストール",
       "uninstallModule": "スマートアカウントモジュールをアンインストール",
+      "rotateValidator": "スマートアカウントのバリデーターを更新",
       "isModuleInstalled": "スマートアカウントモジュールを確認",
       "validateUserOp": "User Operationを検証",
       "onInstall": "モジュール設定をインストール",
