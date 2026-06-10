@@ -6,9 +6,9 @@ Pali smart accounts should be treated like production account infrastructure, no
 
 ## Network and module dependency
 
-Do not assume a Pali smart account can be created on any EVM chain just because the chain supports smart contracts. The chain must have the Pali factory and module addresses configured in the wallet. Passkey validators also require P-256 WebAuthn verification support.
+Do not assume a Pali smart account can be created on an EVM chain before the Pali infrastructure exists there. The chain must have the Pali factory and modules available at the addresses Pali uses, either from a known deployment or from Pali's in-wallet Smart account setup flow. If the active network exposes the canonical CREATE2 deployer, Pali can deploy the missing setup from Settings > Advanced. Passkey validators also require P-256 WebAuthn verification support, which many modern EVM environments provide through a P-256/passkey precompile.
 
-Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS production as the production deployment target once the factory and modules are configured in the wallet.
+Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS production as the production deployment target once the factory and modules are configured. Other compatible EVM chains can be enabled from the wallet when canonical CREATE2 support is present.
 
 ## Operational checklist
 

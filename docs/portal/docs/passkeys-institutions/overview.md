@@ -62,14 +62,17 @@ If no authenticator is supplied, Pali defaults to a passkey-backed account. Dapp
 
 ## Supported networks
 
-Smart accounts are not enabled on every EVM chain. The chain must have the Pali factory and modules configured in the wallet. Passkey validators also require P-256 verification support.
+Pali smart accounts work on compatible EVM chains where the Pali smart-account infrastructure exists at the addresses Pali expects. The shipped wallet config includes known deployments, and Pali can also deploy the required infrastructure for the active EVM network from the wallet itself. If the network exposes the canonical CREATE2 deployer, open Pali Settings, go to Advanced, and use **Smart account setup** to deploy the missing factory and module contracts.
+
+Passkey validators need P-256 WebAuthn verification support. Many modern EVM environments expose this through a P-256/passkey precompile, but integrators should verify chain support before relying on passkey validators.
 
 | Network | Chain id | Status in this Pali build |
 | --- | --- | --- |
 | `zkTanenbaum` | `57057` | Configured for the Pali smart-account factory and modules. |
-| `zkSYS` | Production config dependent | Intended production target once the factory and module addresses are configured in Pali. |
+| `zkSYS` | Production config dependent | Intended production target once the factory and module addresses are ready for the production network. |
+| Other compatible EVM chains | Chain-specific | Use Pali's in-wallet Smart account setup flow to deploy the required infrastructure when the network has canonical CREATE2 support. |
 
-If a dapp calls `wallet_prepareSmartAccount` on an unsupported network, Pali rejects the request instead of creating local-only metadata.
+If a dapp calls `wallet_prepareSmartAccount` before the active chain has the required contracts available to Pali, Pali rejects the request instead of creating local-only metadata.
 
 ## User control
 

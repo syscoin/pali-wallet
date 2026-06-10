@@ -37,7 +37,7 @@ This page documents behavior dapps should account for.
 
 ## Smart accounts
 
-- Smart-account support depends on factory and module configuration for the active chain.
+- Smart-account support depends on the Pali factory and modules existing at the addresses Pali uses for the active chain. Compatible EVM chains can be enabled from Pali Settings > Advanced with the in-wallet Smart account setup Deploy flow when the network has canonical CREATE2 support.
 - Contract deployment calls are not supported through smart-account `wallet_sendCalls`.
 - External ECDSA owners can approve future account actions; Pali warns before installing them.
 - Current smart-account execution uses wallet-paid gas unless a future capability reports sponsorship.

@@ -29,3 +29,9 @@ const account = await window.ethereum.request({
   params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
+
+## 지원 네트워크
+
+Pali 스마트 계정은 Pali가 기대하는 주소에 Pali factory와 module이 존재하는 호환 EVM 체인에서 사용할 수 있습니다. 이는 Pali가 운영하는 체인으로 제한되지 않습니다. 활성 체인이 canonical CREATE2 deployer를 제공하면 Pali가 누락된 스마트 계정 설정을 지갑 안에서 배포할 수 있습니다. Pali Settings를 열고 Advanced로 이동한 뒤 **Smart account setup**의 Deploy 버튼을 사용하세요.
+
+Passkey validator에는 P-256 WebAuthn 검증 지원이 필요합니다. 많은 최신 EVM 환경은 P-256/passkey precompile로 이를 제공하지만, passkey validator에 의존하기 전에 체인 지원을 확인해야 합니다.

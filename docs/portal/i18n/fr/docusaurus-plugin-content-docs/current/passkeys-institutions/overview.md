@@ -33,3 +33,9 @@ const account = await window.ethereum.request({
 ```
 
 Si no se pasa `authenticator`, Pali usa passkey por defecto.
+
+## Réseaux pris en charge
+
+Les comptes intelligents Pali fonctionnent sur les chaînes EVM compatibles où la factory et les modules Pali existent aux adresses attendues par Pali. Ce n'est pas limité aux chaînes opérées par Pali : si la chaîne active expose le déployeur CREATE2 canonique, Pali peut déployer la configuration de compte intelligent manquante directement depuis le portefeuille. Ouvrez Pali Settings, allez dans Advanced, puis utilisez le bouton Deploy dans **Smart account setup**.
+
+Les validateurs passkey ont besoin de la vérification P-256 WebAuthn. Beaucoup d'environnements EVM modernes l'exposent via un precompile P-256/passkey, mais les intégrateurs doivent vérifier le support de la chaîne avant de dépendre des validateurs passkey.

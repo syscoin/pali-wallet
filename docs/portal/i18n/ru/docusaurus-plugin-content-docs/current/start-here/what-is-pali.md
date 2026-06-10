@@ -32,4 +32,6 @@ Pali Wallet — официальное расширение-кошелек Sysco
 
 ## Текущий объем passkey
 
-Pali smart accounts доступны только в EVM-сетях семейства zkSYS, где Pali настроил контракты passkey factory и цепь поддерживает проверку P-256 WebAuthn proof. В этой сборке Pali настроена тестовая сеть `zkTanenbaum` (`57057`). Поддержка zkSYS production использует ту же архитектуру после настройки production factory address в Pali. Dapps должны проверять capabilities и корректно обрабатывать неподдерживаемые цепи.
+Смарт-аккаунты Pali доступны в EVM-сетях, где factory и модули Pali существуют по адресам, которые использует Pali. В этой сборке Pali настроена тестовая сеть `zkTanenbaum` (`57057`), а поддержка zkSYS production использует ту же архитектуру после настройки production-адресов.
+
+Инфраструктура не ограничена сетями, которые разворачивает Pali. В совместимых EVM-сетях с canonical CREATE2 support Pali может развернуть нужную настройку смарт-аккаунта прямо из кошелька: откройте Pali Settings, перейдите в Advanced и используйте кнопку Deploy в **Smart account setup**. Passkey-валидаторам нужна P-256 WebAuthn verification, которую многие современные EVM-среды предоставляют через P-256/passkey precompile.

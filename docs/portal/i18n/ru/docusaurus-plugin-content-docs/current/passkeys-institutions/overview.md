@@ -29,3 +29,9 @@ const account = await window.ethereum.request({
   params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
+
+## Поддерживаемые сети
+
+Смарт-аккаунты Pali работают в совместимых EVM-сетях, где factory и модули Pali существуют по адресам, которые ожидает Pali. Это не ограничено сетями, которые разворачивает Pali: если активная сеть предоставляет canonical CREATE2 deployer, Pali может развернуть недостающую настройку смарт-аккаунта прямо из кошелька. Откройте Pali Settings, перейдите в Advanced и используйте кнопку Deploy в **Smart account setup**.
+
+Passkey-валидаторам нужна поддержка P-256 WebAuthn verification. Многие современные EVM-среды предоставляют ее через P-256/passkey precompile, но интеграторам следует проверить поддержку сети перед использованием passkey-валидаторов.

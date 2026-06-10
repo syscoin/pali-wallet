@@ -37,7 +37,7 @@ Diese Seite dokumentiert Verhalten, das dapps berücksichtigen sollten.
 
 ## Passkeys
 
-- Passkey-Smart-Account-Unterstützung hängt von der Factory-Konfiguration für die aktive Chain ab.
+- Passkey-Smart-Account-Unterstützung hängt davon ab, dass die Pali Factory und Module auf der aktiven Chain vorhanden sind. Auf kompatiblen EVM-Chains mit kanonischem CREATE2-Support kann Pali diese Einrichtung über Settings > Advanced > **Smart account setup** deployen.
 - Contract-Deployment-Calls werden über Passkey-`wallet_sendCalls` nicht unterstützt.
 - `policyText` ist Wallet-Metadatum und Anzeigetext, kein on-chain Enforcement.
 - Der erforderliche Sponsor-Modus hängt von Sponsor-Service-Verfügbarkeit und Proof-Validierung ab.

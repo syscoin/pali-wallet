@@ -24,10 +24,12 @@ import {
   encodeInstallValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   ERC7579_MODULE_TYPE_EXECUTOR,
+  encodeSmartAccountAuthenticatorSignature,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
+  signSmartAccountActionHash,
 } from 'utils/smartAccount';
 import type {
   PaliRecoveryTarget,
@@ -1081,9 +1083,39 @@ const SmartAccountPolicy = () => {
           ? t('settings.smartAccountGuardianRecoveryStepAuthenticatorProof')
           : t('settings.smartAccountGuardianRecoveryStepSubmit')
       );
-      const recoveryResponse = (await controllerEmitter(
-        ['wallet', 'submitSmartAccountGuardianStartRecovery'],
+      const preparedRecovery = (await controllerEmitter(
+        ['wallet', 'prepareSmartAccountGuardianStartRecovery'],
         [{ account: smartAccountAddress, guardian, target }],
+        300000
+      )) as any;
+      const approval =
+        preparedRecovery.approval ||
+        (preparedRecovery.smartGuardian
+          ? {
+              guardian,
+              signature: encodeSmartAccountAuthenticatorSignature(
+                await signSmartAccountActionHash({
+                  actionHash: preparedRecovery.operation.hash,
+                  authenticatorContexts: getLocalOwnerContexts(),
+                  smartAccount: preparedRecovery.smartGuardian,
+                })
+              ),
+            }
+          : null);
+      if (!approval) {
+        throw new Error(t('settings.smartAccountGuardianRecoveryStartFailed'));
+      }
+      const recoveryResponse = (await controllerEmitter(
+        ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
+        [
+          {
+            account: smartAccountAddress,
+            approval,
+            gasPayer: preparedRecovery.gasPayer,
+            guardian,
+            operation: preparedRecovery.operation,
+          },
+        ],
         300000
       )) as any;
       const delaySeconds = Number(

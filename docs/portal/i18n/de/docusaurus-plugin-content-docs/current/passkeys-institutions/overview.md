@@ -29,3 +29,9 @@ const account = await window.ethereum.request({
   params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
+
+## Unterstützte Netzwerke
+
+Pali Smart Accounts funktionieren auf kompatiblen EVM-Chains, auf denen die Pali Factory und Module an den von Pali erwarteten Adressen existieren. Das ist nicht auf von Pali betriebene Chains beschränkt: Wenn die aktive Chain den kanonischen CREATE2-Deployer bereitstellt, kann Pali die fehlende Smart-Account-Einrichtung direkt in der Wallet deployen. Öffnen Sie Pali Settings, gehen Sie zu Advanced und nutzen Sie bei **Smart account setup** den Deploy-Button.
+
+Passkey-Validatoren benötigen P-256 WebAuthn-Verifikation. Viele moderne EVM-Umgebungen stellen dies über ein P-256/passkey precompile bereit; prüft die Chain-Unterstützung trotzdem vor dem produktiven Einsatz.
