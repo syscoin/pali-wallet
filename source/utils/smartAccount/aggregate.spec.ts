@@ -167,6 +167,70 @@ describe('smart account RPC aggregation', () => {
     expect(provider.getCode).toHaveBeenCalledTimes(2);
   });
 
+  it('shares a single in-flight probe across concurrent cold-cache callers', async () => {
+    let releaseProbe!: (code: string) => void;
+    const probeGate = new Promise<string>((resolve) => {
+      releaseProbe = resolve;
+    });
+    const provider = {
+      call: jest.fn(),
+      getCode: jest.fn().mockReturnValue(probeGate),
+      sendBatch: jest.fn(),
+    };
+
+    const first = resolveMulticall3Address(provider as any, 7);
+    const second = resolveMulticall3Address(provider as any, 7);
+    releaseProbe('0x60806040');
+
+    const [firstAddress, secondAddress] = await Promise.all([first, second]);
+    expect(firstAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
+    expect(secondAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
+    expect(provider.getCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a probe detached by cache invalidation write stale results', async () => {
+    let releaseStaleProbe!: (code: string) => void;
+    const staleGate = new Promise<string>((resolve) => {
+      releaseStaleProbe = resolve;
+    });
+    // Stale probe: started before deployment, sees no code anywhere.
+    const staleProvider = {
+      call: jest.fn(),
+      getCode: jest.fn().mockReturnValue(staleGate),
+      sendBatch: jest.fn(),
+    };
+    const stalePromise = resolveMulticall3Address(staleProvider as any, 8);
+
+    // Infrastructure deployment invalidates the chain mid-probe.
+    clearMulticall3AddressCache(8);
+
+    // Fresh probe after deployment finds the contract.
+    const freshProvider = {
+      call: jest.fn(),
+      getCode: jest.fn().mockResolvedValue('0x60806040'),
+      sendBatch: jest.fn(),
+    };
+    const freshAddress = await resolveMulticall3Address(
+      freshProvider as any,
+      8
+    );
+    expect(freshAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
+
+    // The detached stale probe resolves negative, but must not clobber the
+    // fresh positive cache entry.
+    releaseStaleProbe('0x');
+    await stalePromise;
+    const cachedAddress = await resolveMulticall3Address(
+      {
+        call: jest.fn(),
+        getCode: jest.fn().mockResolvedValue('0x'),
+        sendBatch: jest.fn(),
+      } as any,
+      8
+    );
+    expect(cachedAddress).toBe(PALI_MULTICALL3_CANONICAL_ADDRESS);
+  });
+
   it('resolves the Pali CREATE2 deployment when the canonical address is empty', async () => {
     const infraAddress = PALI_INFRASTRUCTURE_BY_ID.multicall3.address;
     const provider = {

@@ -50,13 +50,40 @@ type Multicall3CacheEntry = {
 };
 
 const multicall3AddressCache = new Map<number, Multicall3CacheEntry>();
+const inflightMulticall3Probes = new Map<number, Promise<string | null>>();
 
 export const clearMulticall3AddressCache = (chainId?: number) => {
+  // Detach in-flight probes too: after an explicit invalidation (e.g. infra
+  // deployment) a probe started against the pre-deployment state must not
+  // be joined or allowed to write its stale result into the cache.
   if (chainId === undefined) {
     multicall3AddressCache.clear();
+    inflightMulticall3Probes.clear();
     return;
   }
   multicall3AddressCache.delete(chainId);
+  inflightMulticall3Probes.delete(chainId);
+};
+
+const probeMulticall3Address = async (
+  provider: EthCallProvider
+): Promise<string | null> => {
+  const candidates = [
+    PALI_MULTICALL3_CANONICAL_ADDRESS,
+    PALI_INFRASTRUCTURE_BY_ID.multicall3.address,
+  ];
+  for (const candidate of candidates) {
+    try {
+      const code = await provider.getCode(candidate);
+      if (code && code !== '0x') {
+        return candidate;
+      }
+    } catch {
+      // Probe failure is treated the same as "not deployed" for this tier;
+      // aggregation falls back to JSON-RPC batch / sequential calls.
+    }
+  }
+  return null;
 };
 
 /**
@@ -64,6 +91,7 @@ export const clearMulticall3AddressCache = (chainId?: number) => {
  * deployment when present, otherwise the Pali CREATE2 infrastructure
  * deployment. Positive results are cached for the session; negative results
  * are re-probed after a short TTL (e.g. after infrastructure deployment).
+ * Concurrent cold-cache callers share a single in-flight probe.
  */
 export const resolveMulticall3Address = async (
   provider: EthCallProvider,
@@ -79,28 +107,30 @@ export const resolveMulticall3Address = async (
     }
   }
 
-  const candidates = [
-    PALI_MULTICALL3_CANONICAL_ADDRESS,
-    PALI_INFRASTRUCTURE_BY_ID.multicall3.address,
-  ];
-  for (const candidate of candidates) {
-    try {
-      const code = await provider.getCode(candidate);
-      if (code && code !== '0x') {
-        multicall3AddressCache.set(chainId, {
-          address: candidate,
-          checkedAt: Date.now(),
-        });
-        return candidate;
-      }
-    } catch {
-      // Probe failure is treated the same as "not deployed" for this tier;
-      // aggregation falls back to JSON-RPC batch / sequential calls.
-    }
+  const inflight = inflightMulticall3Probes.get(chainId);
+  if (inflight) {
+    return inflight;
   }
 
-  multicall3AddressCache.set(chainId, { address: null, checkedAt: Date.now() });
-  return null;
+  const probe: Promise<string | null> = probeMulticall3Address(provider)
+    .then((address) => {
+      // Only the still-current probe may write the cache; a probe detached
+      // by clearMulticall3AddressCache() reflects pre-invalidation state.
+      if (inflightMulticall3Probes.get(chainId) === probe) {
+        multicall3AddressCache.set(chainId, {
+          address,
+          checkedAt: Date.now(),
+        });
+      }
+      return address;
+    })
+    .finally(() => {
+      if (inflightMulticall3Probes.get(chainId) === probe) {
+        inflightMulticall3Probes.delete(chainId);
+      }
+    });
+  inflightMulticall3Probes.set(chainId, probe);
+  return probe;
 };
 
 const encodeCallData = (call: AggregateCallRequest): string =>
