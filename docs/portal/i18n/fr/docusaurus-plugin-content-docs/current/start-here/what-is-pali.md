@@ -32,4 +32,6 @@ Cela permet à une dapp de construire des expériences qui traversent des chaîn
 
 ## Portée actuelle des passkeys
 
-Les comptes intelligents passkey ne sont disponibles que sur les réseaux EVM de la famille zkSYS où Pali a configuré les contrats de factory passkey et où la chaîne prend en charge la vérification des preuves P-256 WebAuthn. Cette version de Pali configure le testnet `zkTanenbaum` (`57057`). La prise en charge de zkSYS en production utilise la même architecture une fois que l'adresse de factory de production est configurée dans Pali. Les dapps doivent vérifier les capacités et gérer proprement les chaînes non prises en charge.
+Les comptes intelligents Pali sont disponibles sur les réseaux EVM où la factory et les modules Pali existent aux adresses utilisées par Pali. Cette version de Pali configure le testnet `zkTanenbaum` (`57057`), et la prise en charge de zkSYS en production utilise la même architecture une fois les adresses de production configurées.
+
+L'infrastructure n'est pas limitée aux chaînes opérées par Pali. Sur les réseaux EVM compatibles avec le support CREATE2 canonique, Pali peut déployer la configuration de compte intelligent requise directement depuis le portefeuille : ouvrez Pali Settings, allez dans Advanced, puis utilisez le bouton Deploy dans **Smart account setup**. Les validateurs passkey ont besoin de la vérification P-256 WebAuthn, souvent fournie par un precompile P-256/passkey.

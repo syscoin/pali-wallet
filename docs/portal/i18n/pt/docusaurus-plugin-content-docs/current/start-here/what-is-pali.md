@@ -32,4 +32,6 @@ Isso permite que uma dapp construa experiências que atravessam chains baseadas 
 
 ## Escopo atual de passkey
 
-Smart accounts com passkey estão disponíveis apenas em redes EVM da família zkSYS onde a Pali configurou os contratos de fábrica de passkey e a chain oferece suporte à verificação de provas WebAuthn P-256. Esta build da Pali configura a testnet `zkTanenbaum` (`57057`). O suporte de produção da zkSYS usa a mesma arquitetura assim que o endereço da fábrica de produção estiver configurado na Pali. Dapps devem verificar capacidades e tratar chains sem suporte de forma limpa.
+As smart accounts da Pali estão disponíveis em redes EVM onde a factory e os módulos da Pali existem nos endereços usados pela Pali. Esta build da Pali configura a testnet `zkTanenbaum` (`57057`), e o suporte de produção da zkSYS usa a mesma arquitetura assim que os endereços de produção estiverem configurados.
+
+A infraestrutura não é limitada a chains operadas pela Pali. Em redes EVM compatíveis com suporte CREATE2 canônico, a Pali pode implantar a configuração de smart account necessária diretamente pela carteira: abra Pali Settings, vá para Advanced e use o botão Deploy em **Smart account setup**. Validadores passkey precisam de verificação P-256 WebAuthn, geralmente fornecida por um precompile P-256/passkey.

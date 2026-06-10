@@ -32,4 +32,6 @@ Pali Wallet 是官方 Syscoin 钱包扩展，也是面向 EVM 兼容链的通用
 
 ## 当前 Passkey 范围
 
-Passkey 智能账户仅在 zkSYS 系列 EVM 网络上可用，在这些网络中 Pali 已配置 Passkey factory 合约，且链支持 P-256 WebAuthn 证明验证。此 Pali 构建配置了 `zkTanenbaum` 测试网（`57057`）。一旦生产 factory 地址在 Pali 中配置完成，zkSYS 生产支持会使用相同架构。dapp 应检查能力，并干净地处理不支持的链。
+Pali 智能账户可在 Pali 使用地址上已经存在 Pali factory 和模块的 EVM 网络上使用。此 Pali 构建配置了 `zkTanenbaum` 测试网（`57057`），zkSYS 生产支持会在生产地址配置后使用相同架构。
+
+该基础设施并不限于 Pali 运营的链。在支持 canonical CREATE2 的兼容 EVM 网络上，Pali 可以直接在钱包内部署所需的智能账户设置：打开 Pali Settings，进入 Advanced，并在 **Smart account setup** 中使用 Deploy 按钮。Passkey 验证器需要 P-256 WebAuthn 验证，许多现代 EVM 环境通过 P-256/passkey precompile 提供该能力。

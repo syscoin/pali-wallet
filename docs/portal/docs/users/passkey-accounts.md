@@ -40,7 +40,9 @@ The account starts from a wallet-owned bootstrap validator for deterministic dep
 
 ## Network support
 
-Smart accounts require Pali factory and module contracts configured for the active chain. Passkey validators also require P-256 verification support. In this Pali build, `zkTanenbaum` testnet is configured for smart-account creation. zkSYS production support uses the same model once the production factory and module addresses are configured in the wallet.
+Smart accounts require the Pali factory and module contracts to exist at the addresses Pali uses for the active chain. In this Pali build, `zkTanenbaum` testnet is configured for smart-account creation, and zkSYS production support uses the same model once the production factory and module addresses are configured.
+
+Other compatible EVM chains can use the same contracts. When the active network has canonical CREATE2 support, Pali can deploy the missing smart-account setup from inside the wallet: open Settings, go to Advanced, and use the **Smart account setup** Deploy button. Passkey validators need P-256 WebAuthn verification support, which many modern EVM environments expose through a P-256/passkey precompile.
 
 ## Recovery
 

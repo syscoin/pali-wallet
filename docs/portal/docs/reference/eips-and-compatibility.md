@@ -35,5 +35,5 @@ Pali adds `window.pali` for UTXO/Syscoin flows. These methods are not Ethereum E
 - EVM subscriptions are not supported by the extension provider.
 - `wallet_getCallsStatus` and `wallet_showCallsStatus` are compatibility stubs.
 - EOA `wallet_sendCalls` execution is sequential, not true on-chain atomicity.
-- Pali smart-account support depends on chain-specific factory and module configuration.
+- Pali smart-account support depends on the Pali factory and modules existing at the addresses Pali uses; compatible EVM chains can be enabled through Pali's in-wallet Smart account setup flow when canonical CREATE2 support is present.
 - UTXO and EVM network families are separated by provider surface and wallet state.

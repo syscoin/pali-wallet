@@ -6,7 +6,7 @@ Las cuentas inteligentes de Pali deben tratarse como infraestructura de cuenta. 
 
 ## Dependencias
 
-La chain debe tener la factory y módulos de Pali configurados. Los validadores passkey también requieren verificación P-256 WebAuthn.
+La chain debe tener la factory y módulos de Pali en las direcciones que usa Pali. En redes EVM compatibles con el deployer CREATE2 canónico, Pali puede desplegar esa configuración desde la wallet: Settings, Advanced, **Smart account setup**, Deploy. Los validadores passkey también requieren verificación P-256 WebAuthn.
 
 ## Checklist operativo
 

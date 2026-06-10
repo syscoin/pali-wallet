@@ -37,7 +37,7 @@ title: Quirk 및 제한 사항
 
 ## Passkey
 
-- Pali smart account support는 active chain의 factory configuration에 의존합니다.
+- Pali smart account support는 active chain에 Pali factory와 module이 존재해야 합니다. canonical CREATE2를 지원하는 호환 EVM 체인에서는 Pali가 Settings > Advanced > **Smart account setup**에서 이 설정을 배포할 수 있습니다.
 - Contract deployment call은 passkey `wallet_sendCalls`를 통해 지원되지 않습니다.
 - `policyText`는 wallet metadata 및 display text이며 on-chain enforcement가 아닙니다.
 - 현재 smart-account execution은 future capability가 sponsorship을 명시적으로 보고하지 않는 한 wallet-paid gas를 사용합니다.

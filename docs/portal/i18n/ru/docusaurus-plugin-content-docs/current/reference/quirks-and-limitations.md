@@ -37,7 +37,7 @@ title: Особенности и ограничения
 
 ## Passkeys
 
-- Поддержка Pali smart account зависит от factory configuration для активной chain.
+- Поддержка Pali smart account требует, чтобы factory и модули Pali существовали в активной chain. В совместимых EVM-сетях с canonical CREATE2 support Pali может развернуть эту настройку через Settings > Advanced > **Smart account setup**.
 - Contract deployment calls не поддерживаются через passkey `wallet_sendCalls`.
 - `policyText` — wallet metadata и display text, а не on-chain enforcement.
 - Текущий smart-account execution использует wallet-paid gas, если будущая capability явно не сообщает sponsorship.

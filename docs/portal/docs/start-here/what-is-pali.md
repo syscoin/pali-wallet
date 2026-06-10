@@ -32,4 +32,6 @@ This lets a dapp build experiences that cross account-based and UTXO-based chain
 
 ## Current smart-account scope
 
-Pali smart accounts are available only on EVM networks where Pali has configured the factory and module contracts. Passkey validators additionally require P-256 WebAuthn proof verification. This Pali build configures `zkTanenbaum` testnet (`57057`). zkSYS production support uses the same architecture once the production factory and module addresses are configured in Pali. Dapps should check capabilities and handle unsupported chains cleanly.
+Pali smart accounts are available on EVM networks where the Pali factory and module contracts exist at the addresses Pali uses. This Pali build configures `zkTanenbaum` testnet (`57057`), and zkSYS production support uses the same architecture once the production factory and module addresses are configured.
+
+The infrastructure is not permissioned to Pali-operated chains. On compatible EVM networks with canonical CREATE2 support, Pali can deploy the required smart-account setup from inside the wallet: open Settings, go to Advanced, and use the **Smart account setup** Deploy button. Passkey validators additionally require P-256 WebAuthn proof verification, commonly provided by a P-256/passkey precompile on modern EVM environments. Dapps should still check capabilities and handle chains that are not ready yet.

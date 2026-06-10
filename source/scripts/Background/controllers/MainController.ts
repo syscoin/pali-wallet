@@ -2835,6 +2835,32 @@ class MainController {
     return this.smartAccount.submitSmartAccountGuardianStartRecovery(params);
   }
 
+  public async prepareSmartAccountGuardianStartRecovery(params: {
+    account: string;
+    guardian: string;
+    target: PaliRecoveryTarget;
+  }) {
+    return this.smartAccount.prepareSmartAccountGuardianStartRecovery(params);
+  }
+
+  public async submitPreparedSmartAccountGuardianStartRecovery(params: {
+    account: string;
+    approval: { guardian: string; signature: string };
+    gasPayer?: { address: string; id: number; type: KeyringAccountType };
+    guardian: string;
+    operation: {
+      executionCalldata: string;
+      hash: string;
+      mode: string;
+      recoveryModule: string;
+      salt: string;
+    };
+  }) {
+    return this.smartAccount.submitPreparedSmartAccountGuardianStartRecovery(
+      params
+    );
+  }
+
   public async finalizeSmartAccountGuardianRecovery(params: {
     account: string;
     executionCalldata: string;

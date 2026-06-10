@@ -29,3 +29,9 @@ const account = await window.ethereum.request({
   params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
+
+## 対応ネットワーク
+
+Paliスマートアカウントは、Paliが参照するアドレスにPali factoryとmodulesが存在する互換EVMチェーンで利用できます。これはPaliが運用するチェーンに限定されません。アクティブなチェーンがcanonical CREATE2 deployerを提供している場合、Paliは不足しているスマートアカウント設定をウォレット内でデプロイできます。Pali Settingsを開き、Advancedに移動し、**Smart account setup** のDeployボタンを使ってください。
+
+Passkey validatorにはP-256 WebAuthn検証が必要です。多くの新しいEVM環境ではP-256/passkey precompileで提供されていますが、本番利用前にチェーン側のサポートを確認してください。

@@ -29,3 +29,9 @@ const account = await window.ethereum.request({
   params: [{ label: 'Trading account', authenticator: { id: 'p256-webauthn' } }],
 });
 ```
+
+## 支持的网络
+
+Pali 智能账户可在 Pali 期望地址上已经存在 Pali factory 和模块的兼容 EVM 链上使用。这并不限于 Pali 运营的链：如果当前链提供 canonical CREATE2 deployer，Pali 可以直接在钱包内部署缺失的智能账户设置。打开 Pali Settings，进入 Advanced，并在 **Smart account setup** 中使用 Deploy 按钮。
+
+Passkey 验证器需要 P-256 WebAuthn 验证支持。许多现代 EVM 环境通过 P-256/passkey precompile 提供该能力，但集成方在依赖 passkey 验证器前仍应确认链上支持。
