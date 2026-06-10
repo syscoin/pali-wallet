@@ -98,7 +98,20 @@ export class PaliWallet {
         .slice(0, 80)}.png`
     );
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    await this.page.screenshot({ fullPage: true, path: file });
+    await this.page.screenshot({
+      fullPage: true,
+      // Screenshots get published to GitHub comments via the e2e-media
+      // branch, and failure shots can land mid-onboarding with the seed or
+      // password on screen. Mask every input that could hold a secret
+      // (#import-wallet-input is the seed textarea; SeedPhraseDisplay pages
+      // are hidden by default behind the eye toggle).
+      mask: [
+        this.page.locator(
+          '#import-wallet-input, input[type="password"], textarea'
+        ),
+      ],
+      path: file,
+    });
     return path.relative(E2E_CONFIG.artifactsDir, file);
   }
 
@@ -111,6 +124,14 @@ export class PaliWallet {
   async importSeedAndCreatePassword() {
     await this.gotoRoute('#/');
     await this.page.click('#import-wallet-link');
+
+    // Screenshots are masked (see shot()), but the context video records the
+    // page as-is. Render the seed input as bullets so the mnemonic never
+    // appears in any published frame; the input value itself is unaffected.
+    await this.page.addStyleTag({
+      content:
+        '#import-wallet-input { -webkit-text-security: disc !important; }',
+    });
 
     const seedInput = this.page.locator('#import-wallet-input');
     await seedInput.fill(E2E_CONFIG.seedPhrase);
