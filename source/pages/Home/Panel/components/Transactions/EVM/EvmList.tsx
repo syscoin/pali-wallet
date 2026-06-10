@@ -531,7 +531,10 @@ const EvmTransactionItem = React.memo(
     (prevProps.tokenMeta?.tokenSymbol ?? prevProps.tokenMeta?.symbol ?? '') ===
       (nextProps.tokenMeta?.tokenSymbol ?? nextProps.tokenMeta?.symbol ?? '') &&
     (prevProps.tokenMeta?.contractAddress ?? '') ===
-      (nextProps.tokenMeta?.contractAddress ?? '')
+      (nextProps.tokenMeta?.contractAddress ?? '') &&
+    // ENS cache is replaced immutably on each resolution; reference compare so
+    // rows re-render when async ENS names arrive (was a per-row selector before)
+    prevProps.ensCache === nextProps.ensCache
 );
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
