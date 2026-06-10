@@ -1,0 +1,36 @@
+{
+  "chainEvidence": {
+    "addresses": {},
+    "txHashes": []
+  },
+  "env": {
+    "chainId": 57057,
+    "headless": true,
+    "rpcUrl": "https://rpc-zk.tanenbaum.io",
+    "runId": "2026-06-10_14-55-13"
+  },
+  "findings": [
+    {
+      "detail": "Dismissed blocking first-run modals: button \"Cancel\", dialog via Escape",
+      "severity": "quirk"
+    }
+  ],
+  "journey": "home",
+  "startedAt": "2026-06-10T14:55:14.084Z",
+  "status": "passed",
+  "steps": [
+    {
+      "durationMs": 31709,
+      "name": "import seed and create password",
+      "screenshot": "screenshots/001-import-seed-and-create-password.png",
+      "status": "passed"
+    },
+    {
+      "durationMs": 1061,
+      "name": "home screen renders",
+      "screenshot": "screenshots/002-home-screen-renders.png",
+      "status": "passed"
+    }
+  ],
+  "endedAt": "2026-06-10T14:56:17.859Z"
+}
