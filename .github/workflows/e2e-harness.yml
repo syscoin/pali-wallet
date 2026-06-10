@@ -31,7 +31,19 @@ jobs:
         env:
           PALI_E2E_SEED: ${{ secrets.PALI_E2E_SEED }}
           PALI_E2E_PASSWORD: ${{ secrets.PALI_E2E_PASSWORD }}
-        run: yarn e2e:harness ${{ github.event.inputs.journey }}
+          # Dispatch inputs are untrusted; validate as a plain test filter and
+          # quote so the shell never interprets them.
+          JOURNEY_FILTER: ${{ github.event.inputs.journey }}
+        run: |
+          if [ -n "$JOURNEY_FILTER" ] && ! printf '%s' "$JOURNEY_FILTER" | grep -Eq '^[A-Za-z0-9/_.-]+$'; then
+            echo "::error::journey filter contains unexpected characters"
+            exit 1
+          fi
+          if [ -n "$JOURNEY_FILTER" ]; then
+            yarn e2e:harness "$JOURNEY_FILTER"
+          else
+            yarn e2e:harness
+          fi
       - name: Upload artifacts (summaries, screenshots, videos, traces)
         if: always()
         uses: actions/upload-artifact@v4

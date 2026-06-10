@@ -120,6 +120,9 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          # Issue titles are attacker-controlled; expose via env so the shell
+          # never interpolates their content as code.
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
           git add -A -- ':!e2e/artifacts'
           if git diff --cached --quiet; then
@@ -135,7 +138,7 @@ jobs:
               commit -m "feat(e2e): agent changes for #${{ github.event.issue.number }}"
           git push -u origin "$branch"
           pr_url=$(gh pr create \
-            --title "Agent: ${{ github.event.issue.title }} (#${{ github.event.issue.number }})" \
+            --title "Agent: ${ISSUE_TITLE} (#${{ github.event.issue.number }})" \
             --body-file /tmp/agent-report-comment.md \
             --head "$branch")
           echo "PR: $pr_url"
