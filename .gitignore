@@ -31,4 +31,5 @@ hardhat.log
 /playwright-report/
 /blob-report/
 /playwright/.cache/
-user-data/
+user-data
+e2e/artifacts/

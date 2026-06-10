@@ -1,0 +1,146 @@
+name: pali agent (issue/PR invoke)
+
+# Authorized users invoke the QA agent from GitHub by opening an issue or
+# commenting on an issue/PR with:
+#
+#   /pali-agent <request>
+#
+# e.g. "/pali-agent add a journey that sends 0.01 TSYS and verify the activity
+# list shows it". The agent (Cursor SDK, local runtime on the runner) can
+# write new journeys, run them against zkTanenbaum, and triage results. The
+# workflow then posts the report with inline screenshots + video links back to
+# the issue/PR, and opens a PR with the changes if the agent modified code.
+#
+# Required secrets: CURSOR_API_KEY (and optionally PALI_E2E_SEED/PASSWORD).
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: pali-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  agent:
+    name: run QA agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Only react to /pali-agent from users with write access to the repo.
+    if: >-
+      (
+        (github.event_name == 'issues' && startsWith(github.event.issue.body, '/pali-agent')) ||
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/pali-agent'))
+      ) && contains(
+        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event_name == 'issues' && github.event.issue.author_association || github.event.comment.author_association
+      )
+    steps:
+      - name: Acknowledge invocation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "🤖 Pali agent started: [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # If invoked from a PR comment, work on the PR branch so triage and
+      # fixes apply to the code under review.
+      - name: Checkout PR branch when invoked from a PR
+        if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr checkout "${{ github.event.issue.number }}"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '23.11.1'
+          check-latest: true
+
+      - run: yarn install
+      - run: npx playwright install --with-deps chromium
+
+      - name: Build extension
+        run: yarn build:chrome
+
+      - name: Extract prompt
+        id: prompt
+        env:
+          BODY: >-
+            ${{ github.event_name == 'issues' && github.event.issue.body || github.event.comment.body }}
+        run: |
+          {
+            echo "text<<PALI_EOF"
+            printf '%s\n' "$BODY" | sed '1s|^/pali-agent[[:space:]]*||'
+            echo "PALI_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run agent
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          AGENT_PROMPT: ${{ steps.prompt.outputs.text }}
+          PALI_E2E_SEED: ${{ secrets.PALI_E2E_SEED }}
+          PALI_E2E_PASSWORD: ${{ secrets.PALI_E2E_PASSWORD }}
+        run: node e2e/scripts/agent-dispatch.mjs
+
+      - name: Publish media + build report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node e2e/scripts/post-results.mjs /tmp/agent-report-comment.md
+
+      - name: Open PR if the agent changed code
+        id: agent_pr
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A -- ':!e2e/artifacts'
+          if git diff --cached --quiet; then
+            echo "no code changes from agent"
+            exit 0
+          fi
+          branch="agent/e2e-${{ github.run_id }}"
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              checkout -b "$branch"
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "feat(e2e): agent changes for #${{ github.event.issue.number }}"
+          git push -u origin "$branch"
+          pr_url=$(gh pr create \
+            --title "Agent: ${{ github.event.issue.title }} (#${{ github.event.issue.number }})" \
+            --body-file /tmp/agent-report-comment.md \
+            --head "$branch")
+          echo "PR: $pr_url"
+          printf 'Opened PR with the changes: %s\n\n' "$pr_url" > /tmp/pr-note.md
+          cat /tmp/agent-report-comment.md >> /tmp/pr-note.md
+          mv /tmp/pr-note.md /tmp/agent-report-comment.md
+
+      - name: Post report to issue/PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "${{ github.event.issue.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file /tmp/agent-report-comment.md
+
+      - name: Upload full artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-e2e-artifacts-${{ github.run_id }}
+          path: e2e/artifacts/
+          retention-days: 14

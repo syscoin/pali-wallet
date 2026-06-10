@@ -44,6 +44,7 @@
     "webpack.config.ts",
     "cypress",
     "tests",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "e2e"
   ]
 }
