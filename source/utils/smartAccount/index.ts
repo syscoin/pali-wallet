@@ -1,5 +1,6 @@
 export * from './account';
 export * from './adapter';
+export * from './aggregate';
 export * from './authenticators';
 export * from './contracts';
 export * from './deployment';

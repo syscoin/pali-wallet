@@ -267,9 +267,11 @@ const VaultState = createSlice({
 
       if (!(property in state.accounts[type][id])) {
         // Allow creating new whitelisted properties introduced via migrations
-        if (property === 'evmTxCountByChainId') {
-          if (property === 'evmTxCountByChainId')
-            (state.accounts[type][id] as any).evmTxCountByChainId = {};
+        if (
+          property === 'evmTxCountByChainId' ||
+          property === 'smartAccountUserOpScanByChainId'
+        ) {
+          (state.accounts[type][id] as any)[property] = {};
         } else {
           throw new Error('Unable to set property. Unknown key');
         }
@@ -296,9 +298,11 @@ const VaultState = createSlice({
       }
 
       if (!(property in state.accounts[type][id])) {
-        if (property === 'evmTxCountByChainId') {
-          if (property === 'evmTxCountByChainId')
-            (state.accounts[type][id] as any).evmTxCountByChainId = {};
+        if (
+          property === 'evmTxCountByChainId' ||
+          property === 'smartAccountUserOpScanByChainId'
+        ) {
+          (state.accounts[type][id] as any)[property] = {};
         } else {
           throw new Error('Unable to set property. Unknown key');
         }

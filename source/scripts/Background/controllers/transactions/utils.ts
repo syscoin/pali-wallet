@@ -378,8 +378,13 @@ export const validateAndManageUserTransactions = (
     .filter((tx: any) => {
       const fromAddr = tx.from?.toLowerCase();
       const toCandidate = (tx.tokenRecipient || tx.to)?.toLowerCase();
+      // ERC-4337 executions: the outer transaction is gasPayer -> EntryPoint,
+      // but it belongs to the smart account recorded as the execution sender.
+      const smartAccountFrom = tx.smartAccountExecutionFrom?.toLowerCase?.();
       return (
-        (fromAddr === userAddress || toCandidate === userAddress) &&
+        (fromAddr === userAddress ||
+          toCandidate === userAddress ||
+          smartAccountFrom === userAddress) &&
         // Include valid transactions: either pending (missing block info) or confirmed (has both)
         (!tx.blockHash || !tx.blockNumber || (tx.blockHash && tx.blockNumber))
       );

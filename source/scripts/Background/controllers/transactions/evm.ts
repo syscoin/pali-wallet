@@ -5,6 +5,7 @@ import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
 
+import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
@@ -718,6 +719,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     let rawTransactions: IEvmTransactionResponse[] = [];
+    const isSmartAccount = Boolean((currentAccount as any).isSmartAccount);
+    let apiSucceeded = false;
 
     // Try to fetch from external API first (more efficient)
     if (activeNetwork?.apiUrl) {
@@ -737,6 +740,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           `[pollingEvmTransactions] Found ${apiResult.transactions.length} transactions from API`
         );
         rawTransactions = apiResult.transactions;
+        apiSucceeded = true;
       } else if (apiResult.error) {
         // Always throw when API is configured but fails
         // Let MainController decide how to handle based on isPolling
@@ -746,10 +750,15 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       }
     }
 
-    // Fallback to RPC scanning if API failed or no API configured
+    // Fallback to RPC scanning if API failed or no API configured.
+    // Smart accounts skip this when the explorer answered (even with an
+    // empty list): their 4337 executions are `gasPayer -> EntryPoint`
+    // transactions, which a from/to block scan keyed on the smart-account
+    // address can never match — EntryPoint logs below cover them instead.
     if (
       rawTransactions.length === 0 &&
-      !rpcForbiddenList.includes(currentNetworkChainId)
+      !rpcForbiddenList.includes(currentNetworkChainId) &&
+      !(isSmartAccount && apiSucceeded)
     ) {
       // Smart block scanning based on account history
       const currentAccountTxs =
@@ -891,6 +900,25 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             rawTransactions = [...rawTransactions, ...validUpdatedTxs];
           }
         }
+      }
+    }
+
+    // Smart accounts: ERC-4337 executions are only visible through
+    // EntryPoint UserOperationEvent logs (one eth_getLogs round trip from a
+    // persisted block cursor).
+    if (isSmartAccount) {
+      try {
+        const userOpTransactions = await fetchSmartAccountUserOpTransactions(
+          web3Provider,
+          currentAccount as any,
+          currentNetworkChainId
+        );
+        rawTransactions = [...rawTransactions, ...userOpTransactions];
+      } catch (error) {
+        console.warn(
+          '[pollingEvmTransactions] Smart account user-op history fetch failed:',
+          error
+        );
       }
     }
 
