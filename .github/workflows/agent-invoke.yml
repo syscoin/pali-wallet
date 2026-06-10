@@ -89,15 +89,33 @@ jobs:
       - name: Build extension
         run: yarn build:chrome
 
-      - name: Extract prompt
+      # Supports an optional per-invocation model override as the first
+      # token: "/pali-agent model=<id> <request>". The id is validated as a
+      # plain model slug so untrusted bodies can never inject shell or flags.
+      - name: Extract prompt and model
         id: prompt
         env:
           BODY: >-
             ${{ github.event_name == 'issues' && github.event.issue.body || github.event.comment.body }}
         run: |
+          prompt=$(printf '%s\n' "$BODY" | sed '1s|^/pali-agent[[:space:]]*||')
+          model=""
+          first_token=$(printf '%s\n' "$prompt" | head -1 | awk '{print $1}')
+          case "$first_token" in
+            model=*)
+              candidate="${first_token#model=}"
+              if ! printf '%s' "$candidate" | grep -Eq '^[A-Za-z0-9._-]+$'; then
+                echo "::error::invalid model id in /pali-agent command"
+                exit 1
+              fi
+              model="$candidate"
+              prompt=$(printf '%s\n' "$prompt" | sed '1s|^model=[^[:space:]]*[[:space:]]*||')
+              ;;
+          esac
           {
+            echo "model=$model"
             echo "text<<PALI_EOF"
-            printf '%s\n' "$BODY" | sed '1s|^/pali-agent[[:space:]]*||'
+            printf '%s\n' "$prompt"
             echo "PALI_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -105,6 +123,9 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           AGENT_PROMPT: ${{ steps.prompt.outputs.text }}
+          # Precedence: per-invocation model= token, then the PALI_AGENT_MODEL
+          # repo variable, then the dispatcher default (composer-2.5).
+          AGENT_MODEL: ${{ steps.prompt.outputs.model || vars.PALI_AGENT_MODEL }}
           PALI_E2E_SEED: ${{ secrets.PALI_E2E_SEED }}
           PALI_E2E_PASSWORD: ${{ secrets.PALI_E2E_PASSWORD }}
         run: node e2e/scripts/agent-dispatch.mjs

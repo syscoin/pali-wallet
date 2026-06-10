@@ -140,6 +140,12 @@ Examples:
 - `/pali-agent add a journey that sends 0.01 TSYS to a second account and
   verify the activity list shows it`
 - `/pali-agent the network switcher feels broken on first run, investigate`
+- `/pali-agent model=auto run the onboarding journey` (per-invocation model)
+
+Model selection precedence: `model=<id>` as the first token of the command →
+`PALI_AGENT_MODEL` repository variable → `composer-2.5` default. Model ids
+are validated as plain slugs; valid values depend on the Cursor account
+behind `CURSOR_API_KEY` (`auto` lets the server pick).
 
 What happens:
 
