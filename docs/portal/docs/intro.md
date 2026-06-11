@@ -9,7 +9,7 @@ For EVM dapps, Pali exposes a MetaMask-compatible `window.ethereum` provider wit
 
 Pali also supports modular smart accounts for institutions and advanced dapps. A dapp can ask Pali to create and deploy a Pali smart account, use a passkey or wallet-owned ECDSA validator, and later execute atomic batches through `wallet_sendCalls`. Guardian recovery and module management are handled in Pali.
 
-Pali v4 rebuilds the wallet around speed and flexible signing authority: batched RPC on both EVM and UTXO networks for a dramatically faster UI, smart accounts that follow the ERC-7579 / ERC-4337 standards, and a modular authorization model where validators (who can sign) and guardians (who can recover) are independent, upgradeable roles on the same stable account address. See [What is Pali?](./start-here/what-is-pali.md) for the full picture.
+What makes Pali different is the combination: one extension for EVM and Syscoin UTXO flows, fast read paths with Multicall3 / RPC-batch fallbacks, normal accounts and modular smart accounts, MetaMask-compatible standards for dapps, and a self-custodial safety model where signing, recovery, and account policy are enforced by user approvals and on-chain modules instead of a Pali server. See [What is Pali?](./start-here/what-is-pali.md) for the full picture.
 
 ## Choose your path
 

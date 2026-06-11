@@ -17,19 +17,20 @@ A maioria das carteiras de navegador expõe apenas um provider EVM. A Pali expõ
 
 Isso permite que uma dapp construa experiências que atravessam chains baseadas em contas e baseadas em UTXO sem pedir que os usuários instalem carteiras diferentes.
 
-## O que há de novo na Pali v4
+## O que torna a Pali diferente?
 
-A Pali v4 é uma modernização completa da carteira em torno de três ideias: velocidade, padrões e autoridade de assinatura flexível.
+A Pali é construída em torno de uma ideia: a carteira deve ser a fronteira de segurança do usuário, não um servidor. A Pali pode ler de nós RPC, explorers e indexadores como qualquer carteira de navegador, mas custódia, aprovações, recuperação e política de conta permanecem com as chaves do usuário e módulos on-chain.
 
-- **Mais rápida em tudo.** A Pali agrupa o tráfego RPC em lotes nas redes EVM e UTXO, então saldos, histórico e dados de taxas carregam com muito menos idas e voltas. O resultado é uma carteira que parece instantânea em vez de ocupada.
-- **Smart accounts baseadas em padrões.** As smart accounts da Pali seguem o modelo de módulos ERC-7579 com codificação de execução no estilo ERC-4337. Nada na conta é aprisionamento proprietário: validadores, executores e o comportamento da conta seguem especificações públicas.
-- **A autorização é separada da conta.** Quem pode assinar é uma decisão de módulo, não uma propriedade gravada no endereço. Hoje isso significa chaves ECDSA controladas pela carteira e passkeys P-256 WebAuthn. Amanhã pode significar novos tipos de validador — incluindo esquemas de assinatura pós-quânticos — instalados na mesma conta, no mesmo endereço, sem nenhum ECDSA envolvido na autorização de cada transação.
-- **Políticas de assinatura componíveis.** Um validador composite combina validadores filhos sob um threshold: 1-of-N para conveniência, t-of-N para controle compartilhado, N-of-N para máxima garantia. Composites podem ser aninhados, então as políticas podem ser hierárquicas.
-- **Guardiões protegem contra perda de acesso.** Guardian recovery é um módulo separado com papel de executor (conforme o ERC-7579), deliberadamente distinto dos validadores. Guardiões não podem assinar transações; eles só podem agendar uma substituição de validador com espera. Adicione ou remova guardiões a qualquer momento enquanto a conta estiver saudável.
+- **Sem servidor de custódia ou recuperação.** A Pali não guarda chave do lado do servidor, dados criptografados na nuvem, motor de políticas ou backdoor de recuperação. Ações sensíveis são aprovadas na extensão, assinadas pela carteira, passkey, dispositivo de hardware ou validador da smart account do usuário, e aplicadas pela chain.
+- **Leituras rápidas com fallbacks seguros.** Quando a Pali precisa de muitas leituras de contratos EVM, ela tenta primeiro Multicall3 `aggregate3`: um `eth_call` on-chain, uma visão do mesmo bloco e isolamento de falha por chamada. Se Multicall3 não estiver implantado ou o RPC rejeitar, a Pali usa batch JSON-RPC; se batch não estiver disponível, volta para chamadas individuais.
+- **Duas famílias de chains em uma carteira.** A Pali expõe `window.ethereum` compatível com MetaMask para dapps EVM e `window.pali` para fluxos Syscoin UTXO / estilo Bitcoin. Uma dapp pode trabalhar com ativos baseados em conta, UTXOs, PSBTs e xpubs em uma única extensão.
+- **Contas comuns e smart accounts.** Usuários podem manter contas estilo EOA, contas de hardware wallet e smart accounts Pali lado a lado. Contas comuns são simples e portáveis. Smart accounts adicionam política programável: passkeys, validadores ECDSA controlados pela carteira, políticas de threshold composite, guardian recovery e módulos personalizados.
+- **Integração dapp baseada em padrões.** A Pali segue as APIs de carteira que dapps já usam: EIP-1193, EIP-6963, permissões EIP-2255, EIP-5792 `wallet_sendCalls`, dados tipados EIP-712 e comportamento compatível com MetaMask. Smart accounts Pali usam módulos validador/executor estilo ERC-7579 e dados de execução estilo ERC-4337.
+- **Autorização programável.** Em uma smart account Pali, o endereço é estável, mas a política de assinatura pode evoluir. Um validador decide quem pode aprovar ações; um executor adiciona recursos como guardian recovery. Assim, uma equipe pode sair de uma passkey para uma política de threshold, adicionar recuperação ou adotar novos tipos de validadores sem mover fundos.
+- **Projetada para assinaturas futuras mais fortes.** Como a autorização é modular, validadores futuros podem suportar esquemas além de ECDSA e passkeys P-256, incluindo designs pós-quânticos quando forem práticos para a chain alvo.
+- **Segurança antes da conveniência.** A Pali serializa aprovações bloqueantes, verifica sites conectados e contexto de rede, bloqueia hits de blacklist de alto risco para envios e aprovações, e mantém guardian recovery separada da assinatura de transações. Guardiões podem ajudar a recuperar acesso após um atraso; eles não podem gastar fundos silenciosamente.
 
-## Para onde a Pali está indo
-
-A direção da Pali é **autoridade de assinatura dinâmica e flexível para frontends de cripto**. Qualquer frontend — uma dapp, uma exchange, um painel institucional, um serviço embarcado — deve poder pedir à carteira exatamente a política de assinatura que o trabalho exige: um passkey para onboarding sem atrito, um composite t-of-N para uma tesouraria compartilhada, um guardião apoiado por hardware para recuperação, ou um tipo de validador futuro que ainda não existe. O endereço da conta permanece estável enquanto a autoridade por trás dele evolui.
+A direção da Pali é **contas programáveis autocustodiais para usuários reais e dapps reais**: rápidas o suficiente para o uso diário, padronizadas o suficiente para desenvolvedores, flexíveis o suficiente para instituições e conservadoras o suficiente para manter o controle crítico de segurança com o usuário e a chain.
 
 ## Compatibilidade em resumo
 
