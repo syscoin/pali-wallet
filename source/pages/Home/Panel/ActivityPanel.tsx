@@ -176,7 +176,10 @@ export const TransactionsPanel = () => {
 
   useEffect(() => {
     if (hasSettled) return;
-    const timeout = setTimeout(() => setSettledKey(settleKey), 5000);
+    // Zero-tx accounts never get a settle signal (empty fetches don't
+    // dispatch), so fall through to the empty state quickly instead of
+    // holding the skeleton for seconds.
+    const timeout = setTimeout(() => setSettledKey(settleKey), 1200);
     return () => clearTimeout(timeout);
   }, [settleKey, hasSettled]);
 

@@ -125,8 +125,7 @@ const PrivateKeyView = () => {
           validateMessages={{ default: '' }}
           name="phraseview"
           form={form}
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
+          className="w-full"
           autoComplete="off"
         >
           <ValidatedPasswordInput

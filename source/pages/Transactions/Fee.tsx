@@ -64,12 +64,10 @@ const Fee: React.FC<IFee> = ({ onFinish }) => {
         validateMessages={{ default: '' }}
         form={form}
         id="site"
-        labelCol={{ span: 8 }}
         initialValues={{ fee: fee }}
-        wrapperCol={{ span: 8 }}
         onFinish={(data) => onFinish(data.fee)}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center"
+        className="flex flex-col gap-3 items-center justify-center mt-4 text-center w-full"
       >
         <FeeFC recommend={fee} disabled={false} form={form} />
 

@@ -19,7 +19,8 @@ const PALI_ANTD_THEME = {
     colorBgContainer: '#111E33', // surface.raised / bkg-2
     colorBgElevated: '#162742', // surface.overlay / bkg-3
     colorBorder: '#283851', // brand.whiteAlpaBlue
-    colorError: '#D70000', // brand.red
+    // colorError intentionally left at the antd default (#ff4d4f): the brand
+    // reds (#D70000/#AF0404) are too dark for error chrome on dark surfaces.
     colorLink: '#4CA1CF',
     colorPrimary: '#4CA1CF', // accent.primary / button.primary
     colorSuccess: '#8EC100', // brand.green
@@ -33,10 +34,13 @@ const PALI_ANTD_THEME = {
     Form: {
       // Pali forms label via placeholders/own markup; antd labels are rare.
       labelColor: '#FFFFFF',
-      itemMarginBottom: 16,
+      // Forms add their own flex gaps; keep antd's per-item margin small so
+      // stacked fields don't double up into long scrolling pages.
+      itemMarginBottom: 8,
     },
     Input: {
-      colorBgContainer: 'transparent',
+      colorBgContainer: '#07152A', // fields.input.primary
+      colorBorder: 'rgba(255, 255, 255, 0.16)',
       colorTextPlaceholder: '#808795', // brand.gray300
     },
   },

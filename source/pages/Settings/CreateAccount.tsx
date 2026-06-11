@@ -96,16 +96,14 @@ const CreateAccount = () => {
       ) : (
         <Form
           validateMessages={{ default: '' }}
-          className="flex flex-col gap-8 items-center justify-center text-center md:w-full"
+          className="flex flex-col gap-8 items-center justify-center text-center w-full"
           name="newaccount"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
           autoComplete="off"
           onFinish={onSubmit}
         >
           <Form.Item
             name="label"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               {

@@ -58,16 +58,14 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         onValuesChange={onValuesChange}
         validateMessages={{ default: '' }}
         name="basic"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={{ remember: true }}
         onFinish={handleSubmit}
         autoComplete="off"
-        className="password flex flex-col gap-4 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+        className="password flex flex-col gap-4 items-center justify-center w-full max-w-md text-center"
       >
         <Form.Item
           name="password"
-          className="w-full flex justify-center"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -92,7 +90,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         <Form.Item
           id="create-password"
           name="repassword"
-          className="w-full flex justify-center"
+          className="w-full"
           hasFeedback
           dependencies={['password']}
           rules={[

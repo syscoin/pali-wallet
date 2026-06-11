@@ -103,19 +103,17 @@ const ImportAccountView = () => {
         {t('settings.importAccountsWont')}
       </p>
 
-      <div className="flex flex-col items-center justify-center">
+      <div className="flex flex-col items-center justify-center w-full">
         <Form
           validateMessages={{ default: '' }}
-          className="flex flex-col gap-2 text-center md:w-full mb-10"
+          className="flex flex-col gap-2 text-center w-full mb-10"
           name="newaccount"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
           autoComplete="off"
           form={form}
         >
           <Form.Item
             name="label"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               {
@@ -178,7 +176,7 @@ const ImportAccountView = () => {
           </div>
           <Form.Item
             name="privKey"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               { required: true, message: '' },

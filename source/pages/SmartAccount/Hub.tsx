@@ -494,7 +494,7 @@ const SmartAccountHub = () => {
           </h2>
           <button
             type="button"
-            className="text-xs text-brand-royalbluemedium hover:underline"
+            className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline"
             onClick={goToPolicyPage}
           >
             {t('smartAccountHub.manage')}
@@ -574,7 +574,7 @@ const SmartAccountHub = () => {
                 {module.id === 'guardian-recovery' ? (
                   <button
                     type="button"
-                    className="text-xs text-brand-royalbluemedium hover:underline"
+                    className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline"
                     onClick={goToPolicyPage}
                   >
                     {t('smartAccountHub.manage')}
@@ -634,7 +634,7 @@ const SmartAccountHub = () => {
                   </div>
                   <button
                     type="button"
-                    className="text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
+                    className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
                     disabled={installed}
                     onClick={goToPolicyPage}
                   >
@@ -658,7 +658,7 @@ const SmartAccountHub = () => {
             </div>
             <button
               type="button"
-              className="text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
+              className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
               disabled={compositeCandidates.length < 2 || !metadata?.isDeployed}
               onClick={() =>
                 setCompositeBuilder({
@@ -692,7 +692,7 @@ const SmartAccountHub = () => {
             </div>
             <button
               type="button"
-              className="text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
+              className="flex-shrink-0 whitespace-nowrap ml-3 text-xs text-brand-royalbluemedium hover:underline disabled:text-brand-gray300"
               disabled={!metadata?.isDeployed}
               onClick={() => setCustomInstall({ ...INITIAL_CUSTOM_INSTALL })}
             >

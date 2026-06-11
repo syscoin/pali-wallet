@@ -146,8 +146,6 @@ const Languages = () => {
         name="language-form"
         id="language-form"
         onFinish={onSubmit}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
         <div className="flex flex-col gap-y-6">

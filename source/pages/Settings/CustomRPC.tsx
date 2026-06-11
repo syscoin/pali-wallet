@@ -1014,12 +1014,10 @@ const CustomRPCView = () => {
         key="custom-rpc-form"
         id="rpc"
         name="rpc"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center text-center"
+        className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
         {!state?.isEditing && (
           <>
@@ -1060,7 +1058,7 @@ const CustomRPCView = () => {
             </Form.Item>
             <Form.Item
               name="label"
-              className="md:w-full"
+              className="w-full"
               hasFeedback
               rules={[
                 {
@@ -1148,7 +1146,7 @@ const CustomRPCView = () => {
         )}
         <Form.Item
           name="url"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -1195,7 +1193,7 @@ const CustomRPCView = () => {
         <Form.Item
           name="chainId"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: !isSyscoinRpc && !state?.isEditing,
@@ -1245,7 +1243,7 @@ const CustomRPCView = () => {
         <Form.Item
           name="symbol"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: true,
@@ -1265,7 +1263,7 @@ const CustomRPCView = () => {
         </Form.Item>
         <Form.Item
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           name="explorer"
           rules={[
             {
@@ -1294,7 +1292,7 @@ const CustomRPCView = () => {
           />
         </Form.Item>
         {!isSyscoinRpc && (
-          <div className="md:w-full">
+          <div className="w-full">
             <div className="flex items-center gap-2 mb-2">
               <label className="text-sm text-white font-medium">
                 {t('settings.blockExplorerApiUrl')}
@@ -1310,7 +1308,7 @@ const CustomRPCView = () => {
             </div>
             <Form.Item
               hasFeedback
-              className="md:w-full mb-6"
+              className="w-full mb-6"
               name="apiUrl"
               rules={[
                 {

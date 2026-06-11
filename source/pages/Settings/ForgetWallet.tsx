@@ -120,7 +120,7 @@ const ForgetWalletView = () => {
           validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-4 items-center justify-center text-center"
+          className="password flex flex-col gap-4 items-center justify-center text-center w-full"
           name="forget"
           autoComplete="off"
         >

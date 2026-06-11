@@ -106,6 +106,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         return t('titles.assetDetails');
       return t('titles.transactionDetails');
     }
+    if (path === '/home/smart-account')
+      return t('smartAccountHub.menuEntry').toUpperCase();
     if (path === '/receive')
       return `${t('receive.receiveTitle')} ${
         activeNetwork?.currency?.toUpperCase() || ''

@@ -335,7 +335,7 @@ const CustomRPCExternal = () => {
       >
         <Form.Item
           name="label"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -353,7 +353,7 @@ const CustomRPCExternal = () => {
 
         <Form.Item
           name="url"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -392,7 +392,7 @@ const CustomRPCExternal = () => {
           />
         </Form.Item>
 
-        <Form.Item name="chainId" hasFeedback className="md:w-full">
+        <Form.Item name="chainId" hasFeedback className="w-full">
           <Input
             type="text"
             readOnly
@@ -408,7 +408,7 @@ const CustomRPCExternal = () => {
         <Form.Item
           name="symbol"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: true,
@@ -431,7 +431,7 @@ const CustomRPCExternal = () => {
 
         <Form.Item
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           name="explorer"
           rules={[
             {
@@ -464,7 +464,7 @@ const CustomRPCExternal = () => {
           <Form.Item
             name="apiUrl"
             hasFeedback
-            className="md:w-full"
+            className="w-full"
             rules={[
               {
                 required: false,

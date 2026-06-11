@@ -61,10 +61,8 @@ const PhraseView = () => {
         <Form
           validateMessages={{ default: '' }}
           form={form}
-          className="password flex flex-col gap-4 items-center justify-center text-center"
+          className="password flex flex-col gap-4 items-center justify-center text-center w-full"
           name="phraseview"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
           autoComplete="off"
         >
           <ValidatedPasswordInput

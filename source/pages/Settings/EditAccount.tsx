@@ -108,12 +108,10 @@ const EditAccountView = () => {
         validateMessages={{ default: '' }}
         id="edit-account"
         name="edit-account"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0"
+        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0 w-full"
       >
         <QRCodeSVG
           value={state.address}
@@ -160,7 +158,7 @@ const EditAccountView = () => {
         </div>
         <Form.Item
           name="label"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {

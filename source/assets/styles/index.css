@@ -135,7 +135,8 @@
 /* Show form validation messages (i18n'd) instead of icon-only feedback;
    empty-string rejects keep their icon-only behavior via :empty */
 .ant-form-item-explain-error {
-  @apply text-warning-error text-xs mt-1 text-center;
+  /* Color comes from the antd error token; brand red is too dark here. */
+  @apply text-xs mt-1 text-center;
 }
 
 .ant-form-item-explain-error:empty {

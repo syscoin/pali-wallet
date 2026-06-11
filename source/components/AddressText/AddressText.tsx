@@ -89,7 +89,7 @@ export const AddressText: FC<IAddressText> = ({
           onClick={handleCopy}
           className="inline-flex items-center text-brand-gray200 hover:text-brand-white transition-colors duration-200"
         >
-          <Icon name="copy" size={12} isSvg />
+          <Icon name="copy" size={12} />
         </button>
       )}
     </span>

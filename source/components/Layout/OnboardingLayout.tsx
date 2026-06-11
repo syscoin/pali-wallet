@@ -32,7 +32,9 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
         </div>
       </section>
 
-      <section>{children}</section>
+      <section className="flex flex-col items-center w-full max-w-md px-6">
+        {children}
+      </section>
     </div>{' '}
   </div>
 );

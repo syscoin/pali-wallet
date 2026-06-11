@@ -287,12 +287,10 @@ const Advanced = () => {
 
       <Form
         validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center text-center"
+        className="flex flex-col gap-8 items-center justify-center text-center w-full"
         name="autolock"
         id="autolock"
         onFinish={onSubmit}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
         {ADVANCED_SETTINGS.map((propName: string, index: number) => (

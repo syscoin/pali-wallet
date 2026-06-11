@@ -1420,7 +1420,7 @@ const SmartAccountPolicy = () => {
               >
                 <Input
                   type="text"
-                  className="custom-input-normal smartAccount-input relative w-full min-w-0 overflow-hidden rounded-full text-ellipsis"
+                  className="custom-input-normal smartAccount-input relative w-full min-w-0 overflow-hidden text-ellipsis"
                   disabled={guardianActionLoading || hasPendingGuardianRecovery}
                   placeholder={t('settings.recoveryAuthenticatorEcdsaOwner')}
                   value={
@@ -1652,7 +1652,7 @@ const SmartAccountPolicy = () => {
                           >
                             <Input
                               type="text"
-                              className="custom-input-normal smartAccount-input relative w-full min-w-0 overflow-hidden rounded-full text-ellipsis"
+                              className="custom-input-normal smartAccount-input relative w-full min-w-0 overflow-hidden text-ellipsis"
                               disabled={loading}
                               placeholder={t(
                                 'settings.smartAccountGuardianAddress'
