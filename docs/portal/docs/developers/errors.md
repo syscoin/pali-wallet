@@ -37,6 +37,7 @@ try {
 | `4200` | Unsupported method. |
 | `4900` | Provider disconnected. |
 | `4901` | Provider disconnected from the requested chain. |
+| `5710` | The EIP-5792 bundle's chain has no RPC configured in the wallet (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
 | `5720` | Duplicate dapp-provided EIP-5792 bundle id in `wallet_sendCalls`. |
 | `5730` | Unknown EIP-5792 bundle id in `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 

@@ -37,6 +37,7 @@ try {
 | `4200` | Nicht unterstützte Methode. |
 | `4900` | Provider getrennt. |
 | `4901` | Provider von der angeforderten Chain getrennt. |
+| `5710` | Für die Chain des EIP-5792-Bundles ist in der Wallet kein RPC konfiguriert (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
 | `5720` | Doppelte von der Dapp gelieferte EIP-5792-Bundle-ID in `wallet_sendCalls`. |
 | `5730` | Unbekannte EIP-5792-Bundle-ID in `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 

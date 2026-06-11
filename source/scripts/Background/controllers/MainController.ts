@@ -207,6 +207,17 @@ class MainController {
     return provider;
   }
 
+  // Read-only provider for an arbitrary configured EVM chain. Used by
+  // EIP-5792 status resolution, which must query the bundle's original
+  // chain even after the user switches the active network. Null when the
+  // chain is not configured in the wallet.
+  public getEvmProviderForChain(chainId: number): CustomJsonRpcProvider | null {
+    const { networks } = store.getState().vaultGlobal;
+    const network = networks?.ethereum?.[chainId];
+    if (!network?.url) return null;
+    return this.getOrCreatePersistentProvider(network.url);
+  }
+
   // Resolve the configured Ethereum mainnet provider (cached)
   private getEnsMainnetProvider(): CustomJsonRpcProvider | null {
     const { networks } = store.getState().vaultGlobal;

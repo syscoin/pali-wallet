@@ -37,6 +37,7 @@ try {
 | `4200` | Méthode non prise en charge. |
 | `4900` | Provider déconnecté. |
 | `4901` | Provider déconnecté de la chaîne demandée. |
+| `5710` | La chaîne du bundle EIP-5792 n'a pas de RPC configuré dans le wallet (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
 | `5720` | Identifiant de bundle EIP-5792 dupliqué fourni par la dapp dans `wallet_sendCalls`. |
 | `5730` | Identifiant de bundle EIP-5792 inconnu dans `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 

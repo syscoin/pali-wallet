@@ -232,7 +232,8 @@ export class WalletMethodHandler implements IMethodHandler {
           );
         }
         const callsStatus = await resolveCallsStatus(
-          wallet?.ethereumTransaction?.web3Provider,
+          (bundleChainId: number) =>
+            wallet?.getEvmProviderForChain(bundleChainId) ?? null,
           host,
           params[0]
         );
@@ -500,7 +501,8 @@ export class WalletMethodHandler implements IMethodHandler {
           }
 
           return resolveCallsStatus(
-            wallet?.ethereumTransaction?.web3Provider,
+            (bundleChainId: number) =>
+              wallet?.getEvmProviderForChain(bundleChainId) ?? null,
             host,
             params[0]
           );

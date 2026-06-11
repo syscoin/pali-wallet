@@ -37,6 +37,7 @@ try {
 | `4200` | 不支持的方法。 |
 | `4900` | Provider 已断开连接。 |
 | `4901` | Provider 已从请求的链断开连接。 |
+| `5710` | 钱包中未为该 EIP-5792 bundle 所在链配置 RPC（`wallet_getCallsStatus` / `wallet_showCallsStatus`）。 |
 | `5720` | `wallet_sendCalls` 中 dapp 提供的 EIP-5792 bundle id 重复。 |
 | `5730` | `wallet_getCallsStatus` / `wallet_showCallsStatus` 中的未知 EIP-5792 bundle id。 |
 

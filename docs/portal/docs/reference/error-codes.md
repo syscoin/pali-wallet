@@ -41,6 +41,7 @@ Pali uses JSON-RPC, EIP-1193, EIP-1474, and wallet-specific errors. Dapps should
 | --- | --- |
 | `4101` | Method is only available for a different chain family, such as EVM-only or UTXO-only. |
 | `4874` | Method does not support hardware wallets. |
+| `5710` | Bundle's chain has no RPC configured in the wallet (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
 | `5720` | Duplicate dapp-provided bundle id in `wallet_sendCalls`. |
 | `5730` | Unknown bundle id for `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 

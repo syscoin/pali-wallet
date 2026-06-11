@@ -37,6 +37,7 @@ try {
 | `4200` | Неподдерживаемый метод. |
 | `4900` | Провайдер отключен. |
 | `4901` | Провайдер отключен от запрошенной цепи. |
+| `5710` | Для сети EIP-5792 bundle в кошельке не настроен RPC (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
 | `5720` | Дублирующийся EIP-5792 bundle id от dapp в `wallet_sendCalls`. |
 | `5730` | Неизвестный EIP-5792 bundle id в `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 

@@ -159,11 +159,14 @@ const aggregateUserOperationSuccess = (
 };
 
 // EIP-5792 v2.0.0 wallet_getCallsStatus: resolves a bundle id into the status
-// object by fetching transaction receipts from the given provider. Throws the
-// spec "Unknown bundle id" error (5730) for ids this wallet did not produce
-// or record.
+// object by fetching transaction receipts. Receipts are queried on the
+// bundle's own chain (the descriptor carries its chainId), not the active
+// network, so status stays correct after the user switches networks. Throws
+// the spec "Unknown bundle id" error (5730) for ids this wallet did not
+// produce or record, and 5710 when the bundle's chain is no longer
+// configured in the wallet.
 export const resolveCallsStatus = async (
-  provider: any,
+  getProviderForChain: (chainId: number) => any | null,
   host: string,
   id: string
 ): Promise<any> => {
@@ -172,11 +175,13 @@ export const resolveCallsStatus = async (
     throw unknownBundleError();
   }
 
+  const provider = getProviderForChain(descriptor.chainId);
   if (!provider) {
     throw cleanErrorStack(
-      ethErrors.rpc.internal(
-        'No EVM provider available to resolve call status.'
-      )
+      ethErrors.provider.custom({
+        code: 5710,
+        message: `This wallet has no RPC configured for the bundle's chain (chainId ${descriptor.chainId}).`,
+      })
     );
   }
 
