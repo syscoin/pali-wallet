@@ -1,5 +1,34 @@
 import * as AntIcons from '@ant-design/icons';
 import React, { FC, memo } from 'react';
+import { BsCheck2 } from 'react-icons/bs';
+import { CgImport, CgSearch } from 'react-icons/cg';
+import { FaRegStickyNote } from 'react-icons/fa';
+import { FiCopy, FiDownload, FiExternalLink } from 'react-icons/fi';
+import { HiTrash } from 'react-icons/hi';
+import { ImWarning } from 'react-icons/im';
+import { MdBugReport, MdClose } from 'react-icons/md';
+import {
+  RiArrowLeftSLine,
+  RiCoinLine,
+  RiFileCopyLine,
+  RiOrderPlayLine,
+  RiShareForward2Line,
+  RiUserReceivedLine,
+} from 'react-icons/ri';
+import { TbFileImport } from 'react-icons/tb';
+
+// ---------------------------------------------------------------------------
+// ICON POLICY
+//
+// This registry is the single entry point for every icon in Pali:
+//   - `<Icon name="..." />` for registry-named icons (preferred).
+//   - Direct component use must import from 'components/Icon' (re-exported
+//     below), never from 'react-icons/*' or '@ant-design/icons' directly.
+//
+// Adding an icon: import it here, register it in the `icons` map under a
+// semantic kebab-case name, and add it to the re-export block at the bottom.
+// This keeps glyph choices auditable and lets us swap icon packs in one file.
+// ---------------------------------------------------------------------------
 
 // Import SVGs as URLs (following existing codebase pattern)
 import AddUser from '../../assets/all_assets/add-user.svg';
@@ -64,7 +93,61 @@ const icons = {
   thunderbolt: AntIcons.ThunderboltOutlined,
   import: AntIcons.ImportOutlined,
   'hamburger-menu': AntIcons.MenuOutlined,
+  loading: AntIcons.LoadingOutlined,
+  lock: AntIcons.LockFilled,
+  // react-icons glyphs routed through the registry (see ICON POLICY above)
+  'bug-report': MdBugReport,
+  'check-thin': BsCheck2,
+  'chevron-left': RiArrowLeftSLine,
+  'close-thin': MdClose,
+  'copy-line': RiFileCopyLine,
+  'copy-outline': FiCopy,
+  'details-forward': RiShareForward2Line,
+  'external-link': FiExternalLink,
+  'file-import': TbFileImport,
+  'import-arrow': CgImport,
+  'import-download': FiDownload,
+  'search-thin': CgSearch,
+  'sticky-note': FaRegStickyNote,
+  'trash-solid': HiTrash,
+  'user-received': RiUserReceivedLine,
+  'warning-solid': ImWarning,
 };
+
+// Direct-component escape hatch: import these from 'components/Icon' instead
+// of the icon packs so all glyph sources stay registered in this file.
+export {
+  BsCheck2,
+  CgImport,
+  CgSearch,
+  FaRegStickyNote,
+  FiCopy,
+  FiDownload,
+  FiExternalLink,
+  HiTrash,
+  ImWarning,
+  MdBugReport,
+  MdClose,
+  RiArrowLeftSLine,
+  RiCoinLine,
+  RiFileCopyLine,
+  RiOrderPlayLine,
+  RiShareForward2Line,
+  RiUserReceivedLine,
+  TbFileImport,
+};
+export const LoadingOutlined = AntIcons.LoadingOutlined;
+export const LockFilled = AntIcons.LockFilled;
+export const QuestionCircleOutlined = AntIcons.QuestionCircleOutlined;
+export const CheckCircleOutlined = AntIcons.CheckCircleOutlined;
+export const CloseCircleOutlined = AntIcons.CloseCircleOutlined;
+export const ExclamationCircleOutlined = AntIcons.ExclamationCircleOutlined;
+export const InfoCircleOutlined = AntIcons.InfoCircleOutlined;
+export const CopyOutlined = AntIcons.CopyOutlined;
+export const WarningOutlined = AntIcons.WarningOutlined;
+export const ClockCircleOutlined = AntIcons.ClockCircleOutlined;
+export const DownOutlined = AntIcons.DownOutlined;
+export const RightOutlined = AntIcons.RightOutlined;
 
 // SVG icons mapping will be defined after inline components
 

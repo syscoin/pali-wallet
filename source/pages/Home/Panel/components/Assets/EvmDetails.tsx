@@ -1,12 +1,14 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
-import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { NeutralButton, Icon } from 'components/index';
+import {
+  FiExternalLink as ExternalLinkIcon,
+  RiFileCopyLine as CopyIcon,
+} from 'components/Icon/Icon';
+import { Button, Icon } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -666,13 +668,15 @@ export const EvmAssetDetails = ({
 
       {/* Close button - Fixed at bottom */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
-        <NeutralButton
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
           onClick={() => navigateBack(navigate, location)}
           type="button"
           fullWidth={true}
         >
           {t('buttons.close')}
-        </NeutralButton>
+        </Button>
       </div>
     </div>
   );

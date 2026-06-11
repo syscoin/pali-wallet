@@ -2,22 +2,16 @@ import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { Button } from 'components/index';
 import {
-  createNavigationContext,
-  navigateWithContext,
-} from 'utils/navigationState';
+  DialogPrimitive,
+  SheetHeader,
+  SheetPanel,
+} from 'components/Dialog/Dialog';
+import { Button } from 'components/index';
 
-/**
- * Z-Index Hierarchy:
- * - Fixed buttons/containers: z-50
- * - PageLoadingOverlay: z-50 (overlay), z-[55] (spinner)
- * - LoadingComponent: z-[60]
- * - Header/Navigation: z-[60]
- * - Warning/Error Modals: z-[100] to z-[102] (highest priority)
- *
- * This ensures warning dialogs always appear above loading spinners.
- */
+// Bottom-sheet modal variants, rebuilt as declarative compositions over the
+// Dialog primitive (components/Dialog). Unused legacy sheets were deleted;
+// new flows should compose DialogPrimitive + SheetPanel directly.
 
 interface IModal {
   children?: ReactNode;
@@ -37,29 +31,11 @@ interface IDefaultModal {
   title: string;
 }
 
-export const ModalBase = ({ children, onClose, show }: IModal) => {
-  if (!show) return null;
-
-  return (
-    <div
-      className="fixed z-[100] inset-0 overflow-y-auto animate-fadeIn"
-      style={{ pointerEvents: 'auto' }}
-    >
-      <div
-        className="fixed inset-0 bg-brand-black bg-opacity-50 transition-opacity duration-200"
-        onClick={() => {
-          if (onClose) onClose();
-        }}
-      />
-      <div
-        className="fixed z-[101] min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]"
-        style={{ pointerEvents: 'auto' }}
-      >
-        <div className="animate-slideIn">{children}</div>
-      </div>
-    </div>
-  );
-};
+export const ModalBase = ({ children, onClose, show }: IModal) => (
+  <DialogPrimitive presentation="sheet" onClose={onClose} show={show}>
+    {children}
+  </DialogPrimitive>
+);
 
 export const WalletReadyModal = ({
   phraseOne,
@@ -71,10 +47,8 @@ export const WalletReadyModal = ({
 
   return (
     <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] flex flex-col align-bottom justify-end items-center bg-brand-blue400 rounded-lg shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
+      <SheetPanel fullWidth={false}>
+        <SheetHeader title={title} />
         <p className="text-white text-left text-sm font-normal w-[94%] px-6 pt-6 pb-7">
           {phraseOne}
         </p>
@@ -88,7 +62,7 @@ export const WalletReadyModal = ({
         >
           {t('buttons.unlock')}
         </Button>
-      </div>
+      </SheetPanel>
     </ModalBase>
   );
 };
@@ -106,10 +80,8 @@ export const ImportWalletWarning = ({
 
   return (
     <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] flex flex-col align-bottom justify-end items-center bg-brand-blue400 rounded-lg shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
+      <SheetPanel fullWidth={false}>
+        <SheetHeader title={title} />
         <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
           <p>{phraseOne}</p>
           <p>{phraseTwo}</p>
@@ -117,8 +89,8 @@ export const ImportWalletWarning = ({
         </div>
         <div className="flex gap-[21.10px]">
           <Button
-            id="unlock-btn"
-            type="submit"
+            id="cancel-import-btn"
+            type="button"
             className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
             onClick={() => {
               if (onClose) onClose(false);
@@ -127,161 +99,15 @@ export const ImportWalletWarning = ({
             {t('buttons.cancel')}
           </Button>
           <Button
-            id="unlock-btn"
-            type="submit"
+            id="confirm-import-btn"
+            type="button"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
             onClick={() => navigate('/import')}
           >
             {t('buttons.import')}
           </Button>
         </div>
-      </div>
-    </ModalBase>
-  );
-};
-
-export const TokenSuccessfullyAdded = ({
-  phraseOne,
-  onClose,
-  show = true,
-  title,
-  buttonText,
-}: IDefaultModal) => (
-  <ModalBase onClose={onClose} show={show}>
-    <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-      <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-        <h1 className="text-white font-medium text-base">{title}</h1>
-      </div>
-      <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
-        <p>{phraseOne}</p>
-      </div>
-      <Button
-        id="unlock-btn"
-        type="submit"
-        className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-        onClick={onClose}
-      >
-        {buttonText}
-      </Button>
-    </div>
-  </ModalBase>
-);
-
-export const TimeSetSuccessfully = ({
-  phraseOne,
-  onClose,
-  show = true,
-  title,
-}: IDefaultModal) => {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-
-  return (
-    <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
-          <p>{phraseOne}</p>
-        </div>
-        <Button
-          id="unlock-btn"
-          type="submit"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.ok')}
-        </Button>
-      </div>
-    </ModalBase>
-  );
-};
-
-export const SignatureRequestSuccessfullySubmit = ({
-  phraseOne,
-  onClose,
-  show = true,
-  title,
-}: IDefaultModal) => {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-
-  return (
-    <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
-          <p>{phraseOne}</p>
-        </div>
-        <Button
-          id="unlock-btn"
-          type="submit"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.ok')}
-        </Button>
-      </div>
-    </ModalBase>
-  );
-};
-
-export const TxSuccessful = ({
-  phraseOne,
-  onClose,
-  show = true,
-  title,
-}: IDefaultModal) => {
-  const { t } = useTranslation();
-
-  return (
-    <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
-          <p>{phraseOne}</p>
-        </div>
-        <Button
-          id="unlock-btn"
-          type="submit"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={onClose}
-        >
-          {t('buttons.ok')}
-        </Button>
-      </div>
-    </ModalBase>
-  );
-};
-
-export const ImportedWalletSuccessfully = ({
-  onClose,
-  show = true,
-  title,
-}: IDefaultModal) => {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-
-  return (
-    <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
-        <Button
-          id="unlock-btn"
-          type="submit"
-          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.ok')}
-        </Button>
-      </div>
+      </SheetPanel>
     </ModalBase>
   );
 };
@@ -298,10 +124,8 @@ export const CreatedAccountSuccessfully = ({
 
   return (
     <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
+      <SheetPanel>
+        <SheetHeader title={title} />
         <div className="flex flex-col pt-6  px-6 text-white text-left text-sm font-normal w-[94%]">
           <p>{phraseOne}</p>
         </div>
@@ -309,20 +133,19 @@ export const CreatedAccountSuccessfully = ({
           <p>{phraseTwo}</p>
         </div>
         <Button
-          id="unlock-btn"
-          type="submit"
+          id="account-created-ok-btn"
+          type="button"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
           onClick={() => navigate('/home')}
         >
           {t('buttons.ok')}
         </Button>
-      </div>
+      </SheetPanel>
     </ModalBase>
   );
 };
 
-export const RPCSuccessfullyAdded = ({
-  phraseOne,
+export const ImportedWalletSuccessfully = ({
   onClose,
   show = true,
   title,
@@ -332,31 +155,17 @@ export const RPCSuccessfullyAdded = ({
 
   return (
     <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
-        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
-          <p>{phraseOne}</p>
-        </div>
-
+      <SheetPanel>
+        <SheetHeader title={title} />
         <Button
-          id="btn-ok"
-          type="submit"
+          id="wallet-imported-ok-btn"
+          type="button"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => {
-            const returnContext = createNavigationContext('/home');
-            navigateWithContext(
-              navigate,
-              '/settings/networks/edit',
-              {},
-              returnContext
-            );
-          }}
+          onClick={() => navigate('/home')}
         >
           {t('buttons.ok')}
         </Button>
-      </div>
+      </SheetPanel>
     </ModalBase>
   );
 };
@@ -403,18 +212,16 @@ export const ConnectHardwareWallet = ({
 
   return (
     <ModalBase onClose={onClose} show={show}>
-      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
-        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-          <h1 className="text-white font-medium text-base">{title}</h1>
-        </div>
+      <SheetPanel>
+        <SheetHeader title={title} />
         <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
           <p>{phraseOne}</p>
         </div>
 
         <div className="flex gap-[21.10px]">
           <Button
-            id="unlock-btn"
-            type="submit"
+            id="hardware-cancel-btn"
+            type="button"
             className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
             onClick={() => {
               if (onClose) onClose(true);
@@ -423,15 +230,15 @@ export const ConnectHardwareWallet = ({
             {t('buttons.cancel')}
           </Button>
           <Button
-            id="unlock-btn"
-            type="submit"
+            id="hardware-connect-btn"
+            type="button"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
             onClick={handleConnectHardwareWallet}
           >
             {t('buttons.connect')}
           </Button>
         </div>
-      </div>
+      </SheetPanel>
     </ModalBase>
   );
 };

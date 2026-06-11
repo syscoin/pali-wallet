@@ -1,7 +1,0 @@
----
-title: スマートアカウントとpasskeys
----
-
-Paliスマートアカウントはモジュールで制御されるEVM contract accountです。Passkeyはサポートされる制御方法の1つで、ECDSAやcomposite policyも利用できます。
-
-Passkey承認、チームowner、batch action、guardian recoveryに役立ちます。Paliはfactoryでdeterministicにdeployし、永続メタデータを保存します。Guardian recoveryは即時ではありません。guardianがintentに署名し、モジュールがdelay付きでscheduleし、その後validatorを置き換えられます。

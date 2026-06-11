@@ -1,0 +1,50 @@
+/* ============================================================
+   antd input layout helpers.
+
+   Visual chrome (background, border, radius, padding, feedback
+   icons) comes from the antd v6 theme in components/AntdProvider.
+   The rules below only pin layout that the surrounding markup
+   relies on. The legacy v4 "pill" overrides that re-styled the
+   inner .ant-input were retired: in antd v6 the affix wrapper owns
+   the chrome, so those rules produced double borders and
+   absolutely-positioned suffix icons.
+   ============================================================ */
+
+/* Form fields fill their form column (the page/form containers cap
+   the overall width), matching the full-width primary buttons. The
+   dialect class lands on the input root (the affix wrapper when a
+   suffix is present), so it sizes the whole control. */
+.custom-input-password,
+.custom-input-normal,
+.custom-edit-input,
+.custom-import-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Smart-account policy fields fill their card. */
+.custom-input-normal.smartAccount-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Token import fields are full width. */
+#assetGuid,
+#assetSymbol,
+#contractAddress,
+#assetDecimals {
+  width: 100% !important;
+}
+
+/* Send screens: the receiver/fee wrappers fill the form column. */
+.sender-custom-input,
+.value-custom-input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Send screens: clear the absolutely-positioned MAX pill on the
+   left edge of the amount input. */
+#with-max-button {
+  padding-left: 64px;
+}

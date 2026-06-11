@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Card, Icon, NeutralButton } from 'components/index';
+import { Button, Card, Icon } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -96,16 +96,14 @@ const CreateAccount = () => {
       ) : (
         <Form
           validateMessages={{ default: '' }}
-          className="flex flex-col gap-8 items-center justify-center text-center md:w-full"
+          className="flex flex-col gap-8 items-center justify-center text-center w-full"
           name="newaccount"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
           autoComplete="off"
           onFinish={onSubmit}
         >
           <Form.Item
             name="label"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               {
@@ -166,7 +164,9 @@ const CreateAccount = () => {
           )}
 
           <div className="w-full px-4 absolute bottom-12 md:static">
-            <NeutralButton
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue"
               type="submit"
               disabled={loading}
               loading={loading}
@@ -174,7 +174,7 @@ const CreateAccount = () => {
               fullWidth
             >
               {t('buttons.create')}
-            </NeutralButton>
+            </Button>
           </div>
         </Form>
       )}

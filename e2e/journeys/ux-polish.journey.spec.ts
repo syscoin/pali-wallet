@@ -112,6 +112,44 @@ test('ux polish: receive, custom rpc, account switch, send validation + toast', 
       await expect(wallet.page).toHaveURL(/#\/home/, { timeout: 60_000 });
     });
 
+    await wallet.step('tx details drill-down from activity', async () => {
+      await wallet.gotoRoute('#/home?tab=activity');
+      await wallet.ensureOnHome();
+      // The self-send above guarantees at least one row once polling lands.
+      const list = wallet.page.locator('#activity-panel-list');
+      await expect(list).toBeVisible({ timeout: 120_000 });
+      const firstRow = list.locator('li, > div > div').first();
+      await expect(firstRow).toBeVisible({ timeout: 60_000 });
+      // Rows are not clickable as a whole; the detail arrow (cursor-pointer
+      // svg on the right of each confirmed row) is the drill-down affordance.
+      wallet.finding({
+        detail:
+          'Activity rows are not clickable as a whole; only the small detail ' +
+          'arrow on the right navigates to tx details. Consider making the ' +
+          'entire row a click target.',
+        severity: 'quirk',
+        step: 'tx details drill-down from activity',
+      });
+      // Wait for at least one confirmed row: pending rows render speed-up /
+      // cancel controls instead of the detail arrow.
+      await expect(list.getByText(/confirmed/i).first()).toBeVisible({
+        timeout: 120_000,
+      });
+      const detailArrow = list.locator('svg.cursor-pointer').first();
+      await expect(detailArrow).toBeVisible({ timeout: 60_000 });
+      await detailArrow.click();
+      await expect(wallet.page).toHaveURL(/home\/details/, {
+        timeout: 30_000,
+      });
+      await expect(wallet.page.locator('#details-view-content')).toBeVisible({
+        timeout: 30_000,
+      });
+      // Details list renders the tx fields and the explorer link.
+      await expect(
+        wallet.page.getByText(/view on explorer/i).first()
+      ).toBeVisible({ timeout: 30_000 });
+    });
+
     await wallet.dispose('passed');
   } catch (error) {
     await wallet.dispose('failed');

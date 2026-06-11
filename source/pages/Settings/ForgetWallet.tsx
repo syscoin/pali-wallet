@@ -4,11 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
-  PrimaryButton,
-  SecondaryButton,
+  Button,
   Card,
-  ValidatedPasswordInput,
   SeedPhraseDisplay,
+  ValidatedPasswordInput,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -121,7 +120,7 @@ const ForgetWalletView = () => {
           validateMessages={{ default: '' }}
           form={form}
           onFinish={onSubmit}
-          className="password flex flex-col gap-4 items-center justify-center text-center"
+          className="password flex flex-col gap-4 items-center justify-center text-center w-full"
           name="forget"
           autoComplete="off"
         >
@@ -173,22 +172,24 @@ const ForgetWalletView = () => {
       {/* Buttons container - pushed to bottom */}
       <div className="w-full px-4 absolute bottom-12 md:static">
         <div className="flex gap-x-8 justify-between md:gap-x-40">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={handleCancel}
             disabled={isSubmitting}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="button"
             onClick={handleSubmit}
             disabled={!isPasswordValid || isSubmitting}
             loading={isSubmitting}
           >
             {t('buttons.forget')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </>

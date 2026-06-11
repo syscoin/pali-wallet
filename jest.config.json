@@ -5,6 +5,7 @@
   "modulePathIgnorePatterns": ["node_modules"],
   "testPathIgnorePatterns": [
     "<rootDir>/tests/account/",
+    "<rootDir>/e2e/",
     "<rootDir>/source/scripts/Background/handlers/handleListeners.spec.ts"
   ],
   "transform": {

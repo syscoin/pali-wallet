@@ -11,11 +11,11 @@
   "homepage.feature.utxo.description": {
     "message": "Используйте window.pali для UTXO-аккаунтов Syscoin, подписи PSBT, адресов сдачи, состояния с xpub, активов SPT и интеграций в стиле Bitcoin."
   },
-  "homepage.feature.passkeys.title": {
+  "homepage.feature.smartAccounts.title": {
     "message": "Смарт-аккаунты"
   },
-  "homepage.feature.passkeys.description": {
-    "message": "Создавайте модульные аккаунты, используйте passkey- или ECDSA-валидаторы, настраивайте guardian recovery и отправляйте атомарные batches."
+  "homepage.feature.smartAccounts.description": {
+    "message": "Создавайте модульные аккаунты, выбирайте валидаторы, настраивайте guardian recovery, управляйте модулями и отправляйте атомарные batches."
   },
   "homepage.hero.eyebrow": {
     "message": "Документация Pali Wallet"
@@ -57,7 +57,7 @@
     "message": "Запросить действие"
   },
   "homepage.flow.request.description": {
-    "message": "Отправляйте EVM-транзакции, подписывайте typed data, подписывайте UTXO PSBT или создавайте смарт-аккаунты Pali с passkey- или ECDSA-валидаторами."
+    "message": "Отправляйте EVM-транзакции, подписывайте typed data, подписывайте UTXO PSBT или создавайте смарт-аккаунты Pali с настраиваемыми валидаторами."
   },
   "theme.ErrorPageContent.title": {
     "message": "На странице произошёл сбой.",

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { NeutralButton } from 'components/Button';
+import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -263,7 +263,9 @@ export const NetworkList = ({
           })}
         </div>
         <div className="mt-4">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="submit"
             disabled={!selectCurrentNetwork?.current || isLoading}
             onClick={() => handleChangeNetwork(selectCurrentNetwork?.current)}
@@ -271,7 +273,7 @@ export const NetworkList = ({
             fullWidth
           >
             {t('buttons.connect')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </div>

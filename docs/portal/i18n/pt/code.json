@@ -11,11 +11,11 @@
   "homepage.feature.utxo.description": {
     "message": "Use window.pali para contas UTXO da Syscoin, assinatura PSBT, endereços de troco, estado com xpub, ativos SPT e integrações no estilo Bitcoin."
   },
-  "homepage.feature.passkeys.title": {
+  "homepage.feature.smartAccounts.title": {
     "message": "Smart accounts"
   },
-  "homepage.feature.passkeys.description": {
-    "message": "Crie contas modulares, use validadores passkey ou ECDSA, configure recuperação por guardiões e envie lotes atômicos."
+  "homepage.feature.smartAccounts.description": {
+    "message": "Crie contas modulares, escolha validadores, configure recuperação por guardiões, gerencie módulos e envie lotes atômicos."
   },
   "homepage.hero.eyebrow": {
     "message": "Documentação da Pali Wallet"
@@ -57,7 +57,7 @@
     "message": "Solicitar uma ação"
   },
   "homepage.flow.request.description": {
-    "message": "Envie transações EVM, assine dados tipados, assine PSBTs UTXO ou crie smart accounts da Pali com validadores passkey ou ECDSA."
+    "message": "Envie transações EVM, assine dados tipados, assine PSBTs UTXO ou crie smart accounts da Pali com validadores configuráveis."
   },
   "theme.ErrorPageContent.title": {
     "message": "Esta página deu erro.",

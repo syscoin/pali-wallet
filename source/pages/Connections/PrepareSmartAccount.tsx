@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { DropdownArrowSvg } from 'components/Icon/Icon';
-import { Card, Icon, PrimaryButton, SecondaryButton } from 'components/index';
+import { Button, Card, Icon } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -692,14 +692,16 @@ export const PrepareSmartAccount = () => {
           </div>
         )}
         <div className="flex justify-center gap-3">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => window.close()}
             disabled={loading}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
-          <PrimaryButton
+          </Button>
+          <Button
+            variant="primary"
             type="button"
             onClick={approve}
             disabled={
@@ -708,7 +710,7 @@ export const PrepareSmartAccount = () => {
             loading={loading}
           >
             {t('buttons.confirm')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>

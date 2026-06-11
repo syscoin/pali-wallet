@@ -13,6 +13,35 @@ jobs:
           check-latest: true
       - run: yarn install
       - run: yarn test-all
+  visual:
+    name: visual regression suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '23.11.1'
+          check-latest: true
+      - run: yarn install
+      - run: npx playwright install --with-deps chromium
+      - name: Build extension
+        run: yarn build:chrome
+      - name: Run visual baselines
+        # Linux baselines are committed under e2e/visual/__screenshots__/linux/.
+        # A screen without a committed baseline FAILS the job but writes the
+        # generated baseline into the artifact below: download it, commit the
+        # new linux png(s), and re-run. Changed screens fail with a diff.
+        run: yarn e2e:visual --update-snapshots=missing
+      - name: Upload visual artifacts (diffs + new baselines)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-artifacts-${{ github.run_id }}
+          path: |
+            e2e/visual/__screenshots__/
+            e2e/artifacts/
+          retention-days: 14
   secrets:
     name: Create env file with gh secrets
     runs-on: ubuntu-latest

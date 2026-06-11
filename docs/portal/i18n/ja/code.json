@@ -11,11 +11,11 @@
   "homepage.feature.utxo.description": {
     "message": "window.pali で Syscoin UTXO アカウント、PSBT 署名、変更アドレス、xpub 対応状態、SPT アセット、Bitcoin 形式の連携を使えます。"
   },
-  "homepage.feature.passkeys.title": {
+  "homepage.feature.smartAccounts.title": {
     "message": "スマートアカウント"
   },
-  "homepage.feature.passkeys.description": {
-    "message": "モジュール式アカウントを作成し、passkeyまたはECDSAバリデータ、guardian recovery、atomic batchを利用できます。"
+  "homepage.feature.smartAccounts.description": {
+    "message": "モジュール式アカウントを作成し、バリデータを選択し、guardian recoveryとモジュールを管理し、atomic batchを送信できます。"
   },
   "homepage.hero.eyebrow": {
     "message": "Pali Wallet ドキュメント"
@@ -57,7 +57,7 @@
     "message": "操作を要求する"
   },
   "homepage.flow.request.description": {
-    "message": "EVMトランザクション、typed data署名、UTXO PSBT署名、またはpasskey/ECDSAバリデータ付きのPaliスマートアカウント作成を行います。"
+    "message": "EVMトランザクション、typed data署名、UTXO PSBT署名、または設定可能なバリデータ付きのPaliスマートアカウント作成を行います。"
   },
   "theme.ErrorPageContent.title": {
     "message": "エラーが発生しました",

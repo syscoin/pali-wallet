@@ -58,6 +58,6 @@ const signature = await window.ethereum.request({
 
 Pali 会在显示签名弹窗前验证 typed data 结构。dapp 应使用规范的 EIP-712 JSON，并避免依赖钱包特定的解析怪癖。
 
-## Passkey 账户和签名
+## 智能账户和签名
 
-Passkey 智能账户可以通过 WebAuthn 支持的智能账户逻辑批准交易和签名流程。用户仍然需要在 Pali 中批准，并通过平台 Passkey 提示批准。
+Pali 智能账户通过活跃的验证器模块批准交易和签名流程。用户仍然需要在 Pali 中批准。如果验证器基于 passkey，浏览器或操作系统也会显示 WebAuthn 提示。

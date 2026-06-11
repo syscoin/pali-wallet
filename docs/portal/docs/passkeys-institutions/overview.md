@@ -24,6 +24,31 @@ The current Pali account design is based on ERC-7579-style modules and ERC-4337-
 
 The factory creates the account with a bootstrap wallet-owned ECDSA validator first. If a dapp requested a passkey or another supported validator, Pali deploys the account and then performs a wallet-signed module replacement. This keeps deployment deterministic and gives Pali a known local signer for the first on-chain setup action.
 
+## Two roles: validators sign, guardians recover
+
+ERC-7579 separates module roles, and Pali leans into that separation deliberately:
+
+- **Validators** are the signing authority. A validator decides whether a given approval (passkey proof, ECDSA signature, composite policy result) authorizes an account action. Only validators can approve transactions.
+- **Executors** add account behavior that is not a signature. Pali's guardian recovery module is an executor: guardians cannot sign or move funds, they can only schedule a timelocked replacement of the active validator.
+
+Keeping these roles separate is what makes recovery safe to recommend. A guardian compromise does not give an attacker signing power — it gives them a delayed, visible, cancelable recovery attempt.
+
+## Composite signing policies
+
+The composite validator combines child validators under a threshold, which turns one account into a policy engine:
+
+- **1-of-N** — any of several authenticators can approve. Convenient for personal accounts with a passkey on each device.
+- **t-of-N** — a quorum must approve. The natural shape for shared treasuries, desks, and team-controlled accounts.
+- **N-of-N** — every configured validator must approve. Maximum-assurance accounts.
+
+Composites can nest: a child of a composite can itself be a composite, so hierarchical policies — for example, "the CFO key AND (any 2 of 3 desk passkeys)" — are expressible without custom contracts. Guardian recovery remains independent of whatever validator policy is active.
+
+## Validator agility and post-quantum readiness
+
+Because authorization lives in replaceable modules, the account is not married to any signature scheme. Today Pali ships ECDSA (the wallet-owned default), P-256 WebAuthn passkeys, and the composite validator. When new validator types are deployed — including post-quantum signature schemes — they install onto the same account at the same address. At that point per-transaction authorization can run with no ECDSA in the loop at all. Funds, history, and integrations never move; only the signing authority evolves.
+
+The same agility extends to recovery. The guardian recovery module verifies approvals through standard signature checking — plain ECDSA for normal addresses, ERC-1271 for contract accounts — so a guardian can itself be a smart account governed by a composite, custom, or post-quantum validator. A deployed contract-account guardian makes the recovery path inherit that account's signature scheme, which is how both signing **and** recovery can eventually run with no classical-ECDSA dependency. Pali's current guardian UX collects key-based approvals; contract-account guardian flows can be added in the wallet later because the on-chain module already supports them.
+
 ## Why passkeys matter
 
 Passkeys use WebAuthn. Most platform passkeys sign with ES256, which is ECDSA over the P-256 curve. A normal EVM EOA uses secp256k1, so a passkey is not a normal Ethereum private key.
@@ -86,6 +111,6 @@ If a dapp calls `wallet_prepareSmartAccount` before the active chain has the req
 The user sees the requesting site, account label, requested authenticator, and any external ECDSA owner addresses before approving. The browser or OS shows the WebAuthn prompt when Pali needs a new passkey credential. Pali shows deployment, module installation, and confirmation progress before the smart account is connected to the dapp.
 
 <figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp onboarding flow"></video>
-  <figcaption>Smart-account onboarding flow: branded intro, dapp request, passkey prompt when needed, and Pali account approval.</figcaption>
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Smart-account onboarding flow: branded intro, dapp request, validator setup when needed, and Pali account approval.</figcaption>
 </figure>

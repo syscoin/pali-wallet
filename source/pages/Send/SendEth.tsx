@@ -16,7 +16,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
-import { NeutralButton, Tooltip, Icon } from 'components/index';
+import { Button, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -1154,17 +1154,15 @@ export const SendEth = () => {
         validateMessages={{ default: '' }}
         form={form}
         id="send-form"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         onFinish={handleSubmit}
         autoComplete="off"
-        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full"
         onValuesChange={handleFormValuesChange}
       >
         <div className="sender-custom-input">
           <Form.Item
             name="receiver"
-            className="md:w-full md:max-w-md"
+            className="w-full md:max-w-md"
             hasFeedback
             rules={[
               {
@@ -1254,7 +1252,7 @@ export const SendEth = () => {
           </Form.Item>
         </div>
 
-        <div className="flex gap-2 w-full items-center mb-6">
+        <div className="flex gap-2 w-full items-start mb-6">
           <div className="flex md:max-w-md">
             <Form.Item
               name="asset"
@@ -1269,7 +1267,7 @@ export const SendEth = () => {
               <Menu>
                 {({ open }) => (
                   <div className="relative inline-block text-left">
-                    <Menu.Button className="inline-flex items-center w-[100px] gap-4 justify-center border border-alpha-whiteAlpha300 px-5 py-[7px] bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                    <Menu.Button className="inline-flex items-center w-[100px] gap-4 justify-center border border-alpha-whiteAlpha300 px-5 py-[7px] bg-brand-blue800 hover:bg-opacity-30 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                       <p className="w-full uppercase text-white text-xs font-normal">
                         {String(getLabel())}
                       </p>
@@ -1385,7 +1383,7 @@ export const SendEth = () => {
           {/* Show amount field for fungible tokens and ERC-1155 NFTs */}
           {(!selectedAsset?.isNft ||
             selectedAsset?.tokenStandard === 'ERC-1155') && (
-            <div className="flex md:w-96 relative">
+            <div className="flex flex-1 min-w-0 relative">
               <div className="value-custom-input w-full relative">
                 <span
                   onClick={
@@ -1401,7 +1399,7 @@ export const SendEth = () => {
                       ? undefined
                       : handleMaxButton
                   }
-                  className={`absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] z-10 ${
+                  className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 ${
                     (selectedAsset?.isNft &&
                       selectedAsset?.tokenStandard === 'ERC-1155' &&
                       verifiedTokenBalance === null) ||
@@ -1906,13 +1904,15 @@ export const SendEth = () => {
           )}
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
             loading={!selectedAsset && isCalculatingGas}
           >
             {t('buttons.next')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </div>

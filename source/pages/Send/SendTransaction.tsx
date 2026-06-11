@@ -7,13 +7,12 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import {
-  PrimaryButton,
-  SecondaryButton,
+  Button,
+  DeviceWaitingBanner,
   Icon,
   IconButton,
-  WarningModal,
   Tooltip,
-  DeviceWaitingBanner,
+  WarningModal,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -1150,7 +1149,8 @@ export const SendTransaction = () => {
               </p>
             )}
             <div className="flex gap-3 justify-center">
-              <SecondaryButton
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={loading}
                 onClick={async () => {
@@ -1164,16 +1164,17 @@ export const SendTransaction = () => {
                 }}
               >
                 {t('buttons.cancel')}
-              </SecondaryButton>
+              </Button>
 
-              <PrimaryButton
+              <Button
+                variant="primary"
                 type="button"
                 loading={loading}
                 disabled={hasTxDataError}
                 onClick={handleConfirm}
               >
                 {t('buttons.confirm')}
-              </PrimaryButton>
+              </Button>
             </div>
           </div>
         </div>

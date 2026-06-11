@@ -1,8 +1,3 @@
-import {
-  LoadingOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from '@ant-design/icons';
 import { debounce } from 'lodash';
 import React, {
   useState,
@@ -13,10 +8,15 @@ import React, {
   useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TbFileImport } from 'react-icons/tb';
 import { useSelector } from 'react-redux';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { TbFileImport } from 'components/Icon/Icon';
+import {
+  LoadingOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+} from 'components/Icon/Icon';
 import { ImportableAssetsList } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';

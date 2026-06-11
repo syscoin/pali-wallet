@@ -7,12 +7,14 @@ import React, {
   useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { HiTrash as DeleteIcon } from 'react-icons/hi';
-import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
+import {
+  HiTrash as DeleteIcon,
+  RiShareForward2Line as DetailsIcon,
+} from 'components/Icon/Icon';
 import { IconButton, TokenIcon } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';

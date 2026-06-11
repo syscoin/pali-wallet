@@ -84,17 +84,17 @@ The smart account address is derived from the factory, account implementation, b
 ## If the user loses local Pali data
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/settings-passkey-recover.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-passkey-recover.png" alt="Pali settings screen for recovering smart accounts" />
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-recover.png" alt="Pali settings screen for recovering smart accounts" />
 </a>
-  <figcaption>The recovery screen helps restore smart accounts that Pali can reconstruct or recover with configured authenticators.</figcaption>
+  <figcaption>The recovery screen helps restore smart-account access by reconstructing Pali-created accounts or using guardian recovery to replace the active validator.</figcaption>
 </figure>
 
 If the browser profile, extension storage, or local smart-account metadata is lost, recovery depends on the account's current modules:
 
 - Deterministic Pali-created accounts can be reconstructed from wallet anchor, chain, account index, and factory configuration.
 - Passkey validators still require the relevant WebAuthn credential to authorize future actions.
-- Guardian recovery can replace the active validator after the configured delay if the original authenticator is unavailable.
+- Guardian recovery can replace the active validator after the configured delay if the original approval method is unavailable.
 
 Pali recovery is self-custodial. It is not a server backdoor and it cannot bypass the account's installed modules.
 

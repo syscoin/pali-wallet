@@ -5,11 +5,11 @@ import { useLocation } from 'react-router-dom';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {
-  IconButton,
-  Icon,
-  NeutralButton,
-  Tooltip,
+  Button,
   ConfirmationModal,
+  Icon,
+  IconButton,
+  Tooltip,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -326,13 +326,15 @@ const ManageNetworkView = () => {
         ))}
       </ul>
       <div className="w-full px-2 md:static">
-        <NeutralButton
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
           type="button"
           onClick={() => navigateBack(navigate, location)}
           fullWidth={true}
         >
           {t('buttons.close')}
-        </NeutralButton>{' '}
+        </Button>{' '}
       </div>
 
       <ConfirmationModal

@@ -36,6 +36,8 @@
     "test:e2e:silent": "NODE_ENV=test HEADLESS=true yarn test:e2e",
     "e2e:harness": "playwright test --config e2e/playwright.config.ts",
     "e2e:harness:headed": "PALI_E2E_HEADED=true playwright test --config e2e/playwright.config.ts",
+    "e2e:visual": "playwright test --config e2e/playwright.visual.config.ts",
+    "e2e:visual:update": "playwright test --config e2e/playwright.visual.config.ts --update-snapshots",
     "postinstall": "patch-package",
     "test-all": "yarn lint && yarn test:unit",
     "analyze": "cross-env NODE_ENV=production webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json",
@@ -45,7 +47,7 @@
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
-    "@ant-design/icons": "^4.8.1",
+    "@ant-design/icons": "^6.0.0",
     "@babel/preset-react": "^7.25.9",
     "@babel/preset-typescript": "^7.25.9",
     "@ethersproject/abi": "^5.8.0",
@@ -72,7 +74,7 @@
     "@types/chrome": "^0.0.270",
     "@types/jest": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "antd": "^4.24.15",
+    "antd": "^6.0.0",
     "axios": "^1.13.2",
     "bignumber.js": "^9.1.2",
     "currency-symbol-map": "^5.1.0",

@@ -14,6 +14,7 @@ import {
   INetworkType,
   ISmartAccountMetadata,
   KeyringAccountType as PaliKeyringAccountType,
+  SmartAccountCustomModuleRecord,
 } from 'types/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
@@ -30,10 +31,15 @@ import {
   encodeGuardianRecoveryInitData,
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
+  CustomValidatorPreflightResult,
+  estimateSmartAccountUserOpGas,
   getConfiguredAuthenticatorAddress,
+  preflightCustomValidatorInstall,
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
+  getSmartAccountGasUnitsReserve,
   getSmartAccountUserOpRequiredPrefund,
+  getSmartAccountValidatorProfile,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
@@ -141,7 +147,6 @@ const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
 const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
-const SMART_ACCOUNT_USER_OP_GAS_RESERVE = BigNumber.from(2_050_000);
 const HYDRATED_METADATA_TTL_MS = 30_000;
 
 const randomBytes32Hex = () => {
@@ -760,10 +765,84 @@ class SmartAccountController {
     return metadata;
   }
 
+  /**
+   * Trustless preflight for a bring-your-own validator install: code at the
+   * address, ERC-7579 isModuleType(1) self-report, duplicate check.
+   */
+  public async preflightSmartAccountCustomValidator(params: {
+    accountId: number;
+    address: string;
+  }): Promise<CustomValidatorPreflightResult> {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const metadata = await this.hydrateSmartAccount(params.accountId);
+    return preflightCustomValidatorInstall(provider, {
+      address: params.address,
+      chainId: metadata.chainId,
+      metadata,
+    });
+  }
+
+  /**
+   * Persists a bring-your-own module record after a successful on-chain
+   * install so hydration probes the address from now on.
+   */
+  public async addSmartAccountCustomModule(params: {
+    accountId: number;
+    record: SmartAccountCustomModuleRecord;
+  }): Promise<ISmartAccountMetadata> {
+    const active = this.getSmartAccountById(params.accountId);
+    const address = getAddress(params.record.address);
+    const existing = active.metadata.customModules || [];
+    if (
+      existing.some(
+        (record) => record.address.toLowerCase() === address.toLowerCase()
+      )
+    ) {
+      return active.metadata;
+    }
+    const metadata: ISmartAccountMetadata = {
+      ...active.metadata,
+      customModules: [...existing, { ...params.record, address }],
+    };
+    await this.persistSmartAccountMetadata(
+      active.account.id,
+      metadata,
+      'add-smart-account-custom-module'
+    );
+    this.invalidateHydratedMetadata(active.account.address);
+    return metadata;
+  }
+
+  /** Drops a bring-your-own module record (after on-chain uninstall). */
+  public async removeSmartAccountCustomModule(params: {
+    accountId: number;
+    address: string;
+  }): Promise<ISmartAccountMetadata> {
+    const active = this.getSmartAccountById(params.accountId);
+    const metadata: ISmartAccountMetadata = {
+      ...active.metadata,
+      customModules: (active.metadata.customModules || []).filter(
+        (record) =>
+          record.address.toLowerCase() !== params.address.toLowerCase()
+      ),
+    };
+    await this.persistSmartAccountMetadata(
+      active.account.id,
+      metadata,
+      'remove-smart-account-custom-module'
+    );
+    this.invalidateHydratedMetadata(active.account.address);
+    return metadata;
+  }
+
   public async getSmartAccountNativeGasStatus(params: {
     accountId: number;
   }): Promise<{
     balance: string;
+    gasUnitsReserve: string;
     hasNativeGas: boolean;
     requiredBalance: string;
   }> {
@@ -790,10 +869,14 @@ class SmartAccountController {
     const maxFeePerGas = BigNumber.from(
       feeData.maxFeePerGas || feeData.gasPrice || 0
     );
-    const requiredBalance = SMART_ACCOUNT_USER_OP_GAS_RESERVE.mul(maxFeePerGas);
+    // Worst-case reserve for this account's validator profile; always >= the
+    // limits the userOp builder will sign for a simple execution.
+    const gasUnitsReserve = getSmartAccountGasUnitsReserve(active.metadata);
+    const requiredBalance = gasUnitsReserve.mul(maxFeePerGas);
 
     return {
       balance: balance.toString(),
+      gasUnitsReserve: gasUnitsReserve.toString(),
       hasNativeGas: maxFeePerGas.isZero()
         ? !balance.isZero()
         : balance.gte(requiredBalance),
@@ -893,17 +976,28 @@ class SmartAccountController {
       maxFeePerGas: (feeData.maxFeePerGas || feeData.gasPrice || 0).toString(),
       maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
     });
+    // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
+    // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
+    // the per-validator table (limits are inside the signed hash).
+    const validatorProfile = getSmartAccountValidatorProfile(active.metadata);
+    const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
+      callData,
+      childValidatorCount: validatorProfile.childValidatorCount,
+      isDeployed: code !== '0x',
+      sender: active.account.address,
+      validatorKind: validatorProfile.validatorKind,
+    });
     const userOperation = buildSmartAccountUserOperation({
       accountGasLimits: encodeSmartAccountGasLimits({
-        callGasLimit: 1_000_000,
-        verificationGasLimit: 1_000_000,
+        callGasLimit: gasEstimate.callGasLimit,
+        verificationGasLimit: gasEstimate.verificationGasLimit,
       }),
       callData,
       gasFees,
       initCode:
         code === '0x' ? await smartAccount.getDeploymentInitCode() : '0x',
       nonce,
-      preVerificationGas: '50000',
+      preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
     });
     const actionHash = await entryPoint.getUserOpHash(userOperation);
@@ -1693,13 +1787,21 @@ class SmartAccountController {
     );
 
     const isModuleInstalledCall = (
-      moduleAddress: string
+      moduleAddress: string,
+      moduleType: number = ERC7579_MODULE_TYPE_VALIDATOR
     ): AggregateCallRequest => ({
-      args: [ERC7579_MODULE_TYPE_VALIDATOR, moduleAddress, '0x'],
+      args: [moduleType, moduleAddress, '0x'],
       fn: 'isModuleInstalled',
       iface: paliSmartAccountInterface,
       target: account.address,
     });
+
+    // Bring-your-own modules: hydration only knows builtin addresses, so the
+    // durable custom records tell us which extra addresses to probe.
+    // v1 scope is custom validators only (moduleType 1).
+    const customRecords = (metadata.customModules || []).filter(
+      (record) => record.moduleType === ERC7579_MODULE_TYPE_VALIDATOR
+    );
 
     const calls: AggregateCallRequest[] = [
       isModuleInstalledCall(p256Address),
@@ -1757,6 +1859,9 @@ class SmartAccountController {
             },
           ] as AggregateCallRequest[])
         : []),
+      ...customRecords.map((record) =>
+        isModuleInstalledCall(record.address, record.moduleType)
+      ),
     ];
 
     const [code, results] = await Promise.all([
@@ -1846,6 +1951,28 @@ class SmartAccountController {
         type: 'validator',
       });
     }
+
+    // Custom (bring-your-own) modules still installed on-chain. Failed
+    // probes (e.g. module self-destructed) simply drop the module from the
+    // installed list; the durable record remains for later re-probing.
+    const customBaseIndex = 9 + (includeGuardian ? 2 : 0);
+    customRecords.forEach((record, index) => {
+      const probe = results[customBaseIndex + index];
+      const installed = probe?.success && Boolean(probe.result[0]);
+      if (installed) {
+        installedModules.push({
+          address: getAddress(record.address),
+          config: {
+            initData: record.initData,
+            moduleType: record.moduleType,
+            name: record.name,
+          },
+          data: record.initData,
+          id: 'custom',
+          type: 'validator',
+        });
+      }
+    });
 
     if (includeGuardian) {
       const guardianStatus = this.decodeGuardianRecoveryStatus(
@@ -2080,6 +2207,15 @@ class SmartAccountController {
     if (!module) {
       throw new Error(
         'Smart account authenticator module metadata is required'
+      );
+    }
+    // Custom (bring-your-own) validators have no Pali-native signer; those
+    // flows must go through the external-signature drivers instead. The
+    // lockout guard prevents activating a custom validator, so reaching this
+    // implies out-of-band state (e.g. external rotation).
+    if (module === 'custom') {
+      throw new Error(
+        'The active validator is a custom module Pali cannot sign with. Switch to a Pali-signable validator first.'
       );
     }
     return {

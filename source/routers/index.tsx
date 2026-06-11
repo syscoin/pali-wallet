@@ -177,6 +177,9 @@ const ManageAccounts = lazy(() =>
 const SmartAccountPolicy = lazy(() =>
   import('pages').then((m) => ({ default: m.SmartAccountPolicy }))
 );
+const SmartAccountHub = lazy(() =>
+  import('pages').then((m) => ({ default: m.SmartAccountHub }))
+);
 const EditAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.EditAccount }))
 );
@@ -210,6 +213,9 @@ const ChangeConnectedAccount = lazy(() =>
 );
 const PrepareSmartAccount = lazy(() =>
   import('pages').then((m) => ({ default: m.PrepareSmartAccount }))
+);
+const SmartAccountModuleConsent = lazy(() =>
+  import('pages').then((m) => ({ default: m.SmartAccountModuleConsent }))
 );
 const ExternalWatchAsset = lazy(() =>
   import('pages').then((m) => ({ default: m.ExternalWatchAsset }))
@@ -335,6 +341,7 @@ export const Router = () => {
 
             {/* Account sub-routes */}
             <Route path="/settings/account/new" element={<CreateAccount />} />
+            <Route path="/home/smart-account" element={<SmartAccountHub />} />
             <Route
               path="/settings/account/smart-account-policy"
               element={<SmartAccountPolicy />}
@@ -371,6 +378,10 @@ export const Router = () => {
               <Route path="connect-wallet" element={<ConnectWallet />} />
               <Route path="change-account" element={<ChangeAccount />} />
               <Route path="smart-account" element={<PrepareSmartAccount />} />
+              <Route
+                path="smart-account-modules"
+                element={<SmartAccountModuleConsent />}
+              />
               <Route
                 path="change-active-connected-account"
                 element={<ChangeConnectedAccount />}

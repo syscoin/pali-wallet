@@ -3,7 +3,7 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { PrimaryButton, SecondaryButton } from 'components/index';
+import { Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { INetwork } from 'types/network';
@@ -335,7 +335,7 @@ const CustomRPCExternal = () => {
       >
         <Form.Item
           name="label"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -353,7 +353,7 @@ const CustomRPCExternal = () => {
 
         <Form.Item
           name="url"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -392,7 +392,7 @@ const CustomRPCExternal = () => {
           />
         </Form.Item>
 
-        <Form.Item name="chainId" hasFeedback className="md:w-full">
+        <Form.Item name="chainId" hasFeedback className="w-full">
           <Input
             type="text"
             readOnly
@@ -408,7 +408,7 @@ const CustomRPCExternal = () => {
         <Form.Item
           name="symbol"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: true,
@@ -431,7 +431,7 @@ const CustomRPCExternal = () => {
 
         <Form.Item
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           name="explorer"
           rules={[
             {
@@ -464,7 +464,7 @@ const CustomRPCExternal = () => {
           <Form.Item
             name="apiUrl"
             hasFeedback
-            className="md:w-full"
+            className="w-full"
             rules={[
               {
                 required: false,
@@ -508,15 +508,17 @@ const CustomRPCExternal = () => {
       {/* Fixed button container at bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={window.close}
             disabled={loading || switchingNetwork}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="submit"
             disabled={confirmed || loading || switchingNetwork}
             loading={loading || switchingNetwork}
@@ -525,7 +527,7 @@ const CustomRPCExternal = () => {
             {switchingNetwork
               ? t('settings.switchingNetwork')
               : t('buttons.addNetwork')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>

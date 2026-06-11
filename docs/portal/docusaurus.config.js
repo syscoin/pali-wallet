@@ -172,7 +172,7 @@ const config = {
               },
               {
                 label: 'Gas and Funding',
-                to: '/docs/passkeys-institutions/sponsor-services',
+                to: '/docs/passkeys-institutions/gas-funding',
               },
             ],
           },

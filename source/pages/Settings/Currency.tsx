@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
-import { DefaultModal, NeutralButton } from 'components/index';
+import { Button, DefaultModal } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -377,14 +377,16 @@ const CurrencyView = () => {
       </div>
 
       <div className="w-full px-4 absolute bottom-12 md:static">
-        <NeutralButton
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
           fullWidth={true}
           type="button"
           disabled={!hasUnsavedChanges}
           onClick={handleConfirmCurrencyChange}
         >
           {t('buttons.save')}
-        </NeutralButton>
+        </Button>
       </div>
     </>
   );

@@ -9,6 +9,8 @@ Pour les dapps EVM, Pali expose un provider `window.ethereum` compatible avec Me
 
 Pali prend aussi en charge les comptes intelligents passkey pour les institutions et les dapps avancées. Une dapp peut demander à Pali de créer et de déployer un compte intelligent adossé à WebAuthn, d'attacher une politique de sponsor pendant la création, puis d'exécuter plus tard des lots atomiques via `wallet_sendCalls`. La récupération des comptes passkey existants est gérée dans Pali.
 
+Ce qui rend Pali différente, c'est la combinaison : une seule extension pour les flux EVM et Syscoin UTXO, des lectures rapides avec fallbacks Multicall3 et RPC groupé, des comptes classiques et des comptes intelligents modulaires, des standards compatibles MetaMask pour les dapps, et un modèle de sécurité en auto-garde où les signatures, la récupération et la politique du compte sont appliquées par les approbations de l'utilisateur et des modules on-chain plutôt que par un serveur Pali. Consultez [Qu'est-ce que Pali ?](./start-here/what-is-pali.md) pour une vue d'ensemble.
+
 ## Choisissez votre parcours
 
 - **Utilisateurs** : commencez par [Bien démarrer](./users/getting-started.md).

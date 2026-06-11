@@ -358,6 +358,49 @@ export const METHOD_REGISTRY: MethodRegistry = {
     isBlocking: true,
   },
 
+  wallet_getSmartAccountModules: {
+    name: 'wallet_getSmartAccountModules',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: true,
+    allowHardwareWallet: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: false,
+    requiresActiveAccount: true,
+  },
+
+  wallet_requestSmartAccountModuleInstall: {
+    name: 'wallet_requestSmartAccountModuleInstall',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false, // Popup handles auth and user consent.
+    requiresConnection: true,
+    allowHardwareWallet: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: true,
+    popupRoute: MethodRoute.SmartAccountModules,
+    popupEventName: 'wallet_requestSmartAccountModuleInstall',
+    isBlocking: true,
+  },
+
+  wallet_requestSmartAccountModuleUninstall: {
+    name: 'wallet_requestSmartAccountModuleUninstall',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false, // Popup handles auth and user consent.
+    requiresConnection: true,
+    allowHardwareWallet: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Always,
+    hasPopup: true,
+    popupRoute: MethodRoute.SmartAccountModules,
+    popupEventName: 'wallet_requestSmartAccountModuleUninstall',
+    isBlocking: true,
+  },
+
   wallet_getCapabilities: {
     name: 'wallet_getCapabilities',
     handlerType: MethodHandlerType.Wallet,

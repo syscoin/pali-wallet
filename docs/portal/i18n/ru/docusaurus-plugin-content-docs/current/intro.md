@@ -9,6 +9,8 @@ Pali Wallet — это браузерное расширение-кошелек 
 
 Pali также поддерживает Pali smart accounts для институций и продвинутых dapps. Dapp может попросить Pali создать и deploy smart account, поддерживаемый WebAuthn, привязать smart-account module policy во время создания, а позже выполнять атомарные batches через `wallet_sendCalls`. Восстановление существующих smart accounts выполняется в Pali.
 
+Отличие Pali — в сочетании возможностей: одна extension для EVM и Syscoin UTXO flows, быстрые чтения с fallbacks через Multicall3 и RPC batching, обычные аккаунты и модульные smart accounts, MetaMask-compatible стандарты для dapps и self-custody модель безопасности, где подпись, восстановление и account policy обеспечиваются подтверждениями пользователя и on-chain модулями, а не сервером Pali. Полную картину см. в [Что такое Pali?](./start-here/what-is-pali.md).
+
 ## Выберите свой путь
 
 - **Пользователям** стоит начать с [Начало работы](./users/getting-started.md).

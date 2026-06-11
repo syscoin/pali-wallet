@@ -43,4 +43,4 @@ Then load `build/chrome` through the browser extension developer page.
 3. Fund the smart account or gas payer if required by your test.
 4. Build an ERC-20 approve plus `transferFrom` batch.
 5. Send the batch with `wallet_sendCalls`.
-6. Confirm the wallet shows decoded calldata and one account approval for the smart-account batch.
+6. Confirm the wallet shows decoded calldata and one smart-account authorization for the smart-account batch.

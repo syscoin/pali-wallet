@@ -1,16 +1,16 @@
 import debounce from 'lodash/debounce';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BsCheck2 as CheckIcon } from 'react-icons/bs';
-import { CgSearch as SearchIcon } from 'react-icons/cg';
-import { FaRegStickyNote as StickyNoteIcon } from 'react-icons/fa';
-import { MdClose as CloseIcon } from 'react-icons/md';
-import { RiArrowLeftSLine as GoBackIcon } from 'react-icons/ri';
+
 import {
+  BsCheck2 as CheckIcon,
+  CgSearch as SearchIcon,
+  FaRegStickyNote as StickyNoteIcon,
+  MdClose as CloseIcon,
+  RiArrowLeftSLine as GoBackIcon,
   RiOrderPlayLine as OrderByIcon,
   RiCoinLine as CoinIcon,
-} from 'react-icons/ri';
-
+} from 'components/Icon/Icon';
 import { Tooltip } from 'components/Tooltip';
 
 interface IAssetsHeader {

@@ -58,6 +58,6 @@ const signature = await window.ethereum.request({
 
 Pali valide la structure des données typées avant d'afficher la popup de signature. Les dapps doivent utiliser du JSON EIP-712 canonique et éviter de dépendre de particularités d'analyse propres à un portefeuille.
 
-## Comptes passkey et signature
+## Comptes intelligents et signature
 
-Les comptes intelligents passkey peuvent approuver les transactions et les flux de signature via une logique de compte intelligent adossée à WebAuthn. L'utilisateur approuve toujours dans Pali et via l'invite passkey de la plateforme.
+Les comptes intelligents Pali approuvent les transactions et les flux de signature via le module validateur actif. L'utilisateur approuve toujours dans Pali. Si le validateur repose sur une passkey, le navigateur ou le système d'exploitation affiche aussi une invite WebAuthn.

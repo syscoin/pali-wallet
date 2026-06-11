@@ -13,14 +13,7 @@ import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';
-import {
-  PrimaryButton,
-  SecondaryButton,
-  Icon,
-  Modal,
-  Tooltip,
-  IconButton,
-} from 'components/index';
+import { Button, Icon, IconButton, Modal, Tooltip } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -546,15 +539,17 @@ export const ConnectWallet = () => {
       {/* Fixed button container at bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => window.close()}
             disabled={isConnecting}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="button"
             disabled={
               isConnecting || accountId === null || accountType === null
@@ -563,7 +558,7 @@ export const ConnectWallet = () => {
             onClick={onConfirm}
           >
             {t('buttons.confirm')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
 
@@ -584,16 +579,18 @@ export const ConnectWallet = () => {
           </div>
 
           <div className="flex gap-5 items-center justify-between mt-8">
-            <SecondaryButton
+            <Button
+              variant="secondary"
               width="36"
               type="button"
               onClick={() => setConfirmUntrusted(false)}
               disabled={isConnecting}
             >
               {t('buttons.cancel')}
-            </SecondaryButton>
+            </Button>
 
-            <PrimaryButton
+            <Button
+              variant="primary"
               width="36"
               type="button"
               onClick={handleConnect}
@@ -601,7 +598,7 @@ export const ConnectWallet = () => {
               disabled={isConnecting}
             >
               {t('buttons.confirm')}
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       </Modal>

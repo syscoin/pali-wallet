@@ -1,4 +1,4 @@
-import { Form } from 'antd';
+import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -59,8 +59,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [gasPriceValid, setGasPriceValid] = useState<boolean | null>(null);
 
   // Track specific validation errors
-  const [priorityFeeError, setPriorityFeeError] = useState<string | null>(null);
-  const [maxFeeError, setMaxFeeError] = useState<string | null>(null);
+  const [, setPriorityFeeError] = useState<string | null>(null);
+  const [, setMaxFeeError] = useState<string | null>(null);
 
   // Use actual gas prices, even if 0 (cancellation now handles this properly)
   const maxFeePerGas = fee?.maxFeePerGas ?? 0;
@@ -486,6 +486,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                 <Form.Item
                   name="gasLimit"
                   className="w-full mb-0"
+                  hasFeedback
+                  validateStatus={
+                    gasLimitValid === false
+                      ? 'error'
+                      : gasLimitValid
+                      ? 'success'
+                      : undefined
+                  }
                   rules={[
                     {
                       validator: (_, value) => {
@@ -500,36 +508,17 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   ]}
                 >
                   <div className="relative">
-                    <input
+                    <Input
                       type="number"
                       placeholder={t('send.gasLimit')}
-                      className={`custom-gas-input w-full ${
-                        gasLimitValid === false ? 'border-red-500' : ''
-                      }`}
-                      style={{ paddingRight: '3.5rem' }}
+                      className="w-full"
                       value={form.getFieldValue('gasLimit') || ''}
                       onChange={(e) =>
                         handleFieldChange('gasLimit', e.target.value)
                       }
                     />
-                    {gasLimitValid !== null && (
-                      <img
-                        src={
-                          gasLimitValid
-                            ? '/assets/all_assets/successIcon.svg'
-                            : '/assets/all_assets/errorIcon.svg'
-                        }
-                        alt={gasLimitValid ? 'Valid' : 'Invalid'}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none"
-                      />
-                    )}
                   </div>
                 </Form.Item>
-                {gasLimitValid === false && (
-                  <p className="text-red-400 text-xs mt-1">
-                    {t('send.gasLimitTooLow')}
-                  </p>
-                )}
               </div>
 
               {!isSendLegacyTransaction ? (
@@ -541,6 +530,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     <Form.Item
                       name="maxPriorityFeePerGas"
                       className="w-full mb-0"
+                      hasFeedback
+                      validateStatus={
+                        priorityFeeValid === false
+                          ? 'error'
+                          : priorityFeeValid
+                          ? 'success'
+                          : undefined
+                      }
                       rules={[
                         {
                           validator: (_, value) => {
@@ -561,13 +558,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                       ]}
                     >
                       <div className="relative">
-                        <input
+                        <Input
                           type="number"
                           placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
-                          className={`custom-gas-input w-full ${
-                            priorityFeeValid === false ? 'border-red-500' : ''
-                          }`}
-                          style={{ paddingRight: '3.5rem' }}
+                          className="w-full"
                           value={
                             form.getFieldValue('maxPriorityFeePerGas')
                               ? removeScientificNotation(
@@ -582,24 +576,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                             )
                           }
                         />
-                        {priorityFeeValid !== null && (
-                          <img
-                            src={
-                              priorityFeeValid
-                                ? '/assets/all_assets/successIcon.svg'
-                                : '/assets/all_assets/errorIcon.svg'
-                            }
-                            alt={priorityFeeValid ? 'Valid' : 'Invalid'}
-                            className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none"
-                          />
-                        )}
                       </div>
                     </Form.Item>
-                    {priorityFeeValid === false && priorityFeeError && (
-                      <p className="text-red-400 text-xs mt-1">
-                        {t(`send.${priorityFeeError}`)}
-                      </p>
-                    )}
                   </div>
 
                   <div className="flex flex-col items-start justify-center w-full">
@@ -609,6 +587,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     <Form.Item
                       name="maxFeePerGas"
                       className="w-full mb-0"
+                      hasFeedback
+                      validateStatus={
+                        maxFeeValid === false
+                          ? 'error'
+                          : maxFeeValid
+                          ? 'success'
+                          : undefined
+                      }
                       dependencies={['maxPriorityFeePerGas']}
                       rules={[
                         {
@@ -632,13 +618,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                       ]}
                     >
                       <div className="relative">
-                        <input
+                        <Input
                           type="number"
                           placeholder={`${t('send.maxFee')} (GWEI)`}
-                          className={`custom-gas-input w-full ${
-                            maxFeeValid === false ? 'border-red-500' : ''
-                          }`}
-                          style={{ paddingRight: '3.5rem' }}
+                          className="w-full"
                           value={
                             form.getFieldValue('maxFeePerGas')
                               ? removeScientificNotation(
@@ -650,24 +633,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                             handleFieldChange('maxFeePerGas', e.target.value)
                           }
                         />
-                        {maxFeeValid !== null && (
-                          <img
-                            src={
-                              maxFeeValid
-                                ? '/assets/all_assets/successIcon.svg'
-                                : '/assets/all_assets/errorIcon.svg'
-                            }
-                            alt={maxFeeValid ? 'Valid' : 'Invalid'}
-                            className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none"
-                          />
-                        )}
                       </div>
                     </Form.Item>
-                    {maxFeeValid === false && maxFeeError && (
-                      <p className="text-red-400 text-xs mt-1">
-                        {t(`send.${maxFeeError}`)}
-                      </p>
-                    )}
                   </div>
                 </>
               ) : (
@@ -678,6 +645,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   <Form.Item
                     name="gasPrice"
                     className="w-full mb-0"
+                    hasFeedback
+                    validateStatus={
+                      gasPriceValid === false
+                        ? 'error'
+                        : gasPriceValid
+                        ? 'success'
+                        : undefined
+                    }
                     rules={[
                       {
                         validator: (_, value) => {
@@ -692,13 +667,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     ]}
                   >
                     <div className="relative">
-                      <input
+                      <Input
                         type="number"
                         placeholder={`${t('send.gasPrice')} (GWEI)`}
-                        className={`custom-gas-input w-full ${
-                          gasPriceValid === false ? 'border-red-500' : ''
-                        }`}
-                        style={{ paddingRight: '3.5rem' }}
+                        className="w-full"
                         value={
                           form.getFieldValue('gasPrice')
                             ? removeScientificNotation(
@@ -710,24 +682,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                           handleFieldChange('gasPrice', e.target.value)
                         }
                       />
-                      {gasPriceValid !== null && (
-                        <img
-                          src={
-                            gasPriceValid
-                              ? '/assets/all_assets/successIcon.svg'
-                              : '/assets/all_assets/errorIcon.svg'
-                          }
-                          alt={gasPriceValid ? 'Valid' : 'Invalid'}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 pointer-events-none"
-                        />
-                      )}
                     </div>
                   </Form.Item>
-                  {gasPriceValid === false && (
-                    <p className="text-red-400 text-xs mt-1">
-                      {t('send.gasPriceTooLow')}
-                    </p>
-                  )}
                 </div>
               )}
             </Form>

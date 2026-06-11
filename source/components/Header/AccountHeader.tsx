@@ -217,6 +217,18 @@ export const AccountHeader: React.FC = () => {
                   className="hover:text-brand-royalblue text-xs ml-1 flex justify-center w-4 h-4"
                 />
               </IconButton>
+              {currentAccount?.isSmartAccount && (
+                <Tooltip content={t('smartAccountHub.openHub')}>
+                  <button
+                    type="button"
+                    id="smart-account-hub-badge"
+                    onClick={() => navigate('/home/smart-account')}
+                    className="ml-1 inline-flex items-center align-middle px-1.5 py-0.5 rounded-pill bg-brand-royalblue bg-opacity-40 text-[9px] font-semibold uppercase tracking-wide text-brand-blue100 hover:bg-opacity-70 transition-colors duration-200"
+                  >
+                    {t('smartAccountHub.badge')}
+                  </button>
+                </Tooltip>
+              )}
             </p>
           )}
           {isSwitchInProgress ? (

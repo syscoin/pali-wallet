@@ -3,12 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import {
-  LoadingComponent,
-  PrimaryButton,
-  SecondaryButton,
-  NeutralButton,
-} from 'components/index';
+import { Button, LoadingComponent } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
@@ -378,28 +373,35 @@ const ExternalWatchAsset = () => {
         <div className="max-w-md mx-auto">
           {formatError || assetError ? (
             <div className="flex justify-center">
-              <NeutralButton type="button" onClick={onClose}>
+              <Button
+                variant="neutral"
+                className="text-sm text-brand-royalblue"
+                type="button"
+                onClick={onClose}
+              >
                 {t('buttons.close')}
-              </NeutralButton>
+              </Button>
             </div>
           ) : assetInfo ? (
             <div className="flex gap-6 justify-center">
-              <SecondaryButton
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={loading}
                 onClick={window.close}
               >
                 {t('buttons.cancel')}
-              </SecondaryButton>
+              </Button>
 
-              <PrimaryButton
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={confirmed}
                 loading={loading}
                 onClick={() => onSubmit()}
               >
                 {t('buttons.addToken')}
-              </PrimaryButton>
+              </Button>
             </div>
           ) : null}
         </div>

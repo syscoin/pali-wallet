@@ -45,18 +45,26 @@ export enum PasskeyBackupStatus {
 export interface ISmartAccountMetadata {
   auth?: {
     data: string;
-    module?: 'composite' | 'ecdsa' | 'p256-webauthn';
-    scheme?: 'composite' | 'ecdsa' | 'p256-webauthn';
+    module?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn';
+    scheme?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn';
     validator: string;
   };
   availableModules?: Array<{
     displayName: string;
-    id: 'composite' | 'ecdsa' | 'guardian-recovery' | 'p256-webauthn';
+    id:
+      | 'composite'
+      | 'custom'
+      | 'ecdsa'
+      | 'guardian-recovery'
+      | 'p256-webauthn';
     installed?: boolean;
+    kind?: 'builtin' | 'custom';
     supported?: boolean;
   }>;
   chainId: number;
   contractVersion: string;
+  /** Bring-your-own modules to probe during hydration (durable). */
+  customModules?: SmartAccountCustomModuleRecord[];
   deploymentGasPayer?: {
     address: string;
     id: number;
@@ -102,6 +110,16 @@ export type SmartAccountValidatorModule =
       data?: string;
       id: 'composite';
       type: 'validator';
+    }
+  // Bring-your-own validator: user/dapp-supplied ERC-7579 module identified
+  // by address. Pali cannot sign with it natively; signing goes through the
+  // external-signature flow and activation is guarded against lockout.
+  | {
+      address: string;
+      config: SmartAccountCustomModuleConfig;
+      data?: string;
+      id: 'custom';
+      type: 'validator';
     };
 
 export type SmartAccountExecutorModule = {
@@ -141,6 +159,24 @@ export type SmartAccountGuardianRecoveryConfig = {
   expirationSeconds?: number;
   guardians: string[];
   threshold: number;
+};
+
+export type SmartAccountCustomModuleConfig = {
+  /** Init data the module was installed with (for display/uninstall hints). */
+  initData?: string;
+  /** ERC-7579 module type id (1 = validator, 2 = executor, ...). */
+  moduleType: number;
+  /** User-facing label chosen at install time. */
+  name: string;
+};
+
+/**
+ * Durable record of a bring-your-own module. Unlike `installedModules`
+ * (rebuilt from chain on every hydration), these records persist in the
+ * wallet state so hydration knows which non-builtin addresses to probe.
+ */
+export type SmartAccountCustomModuleRecord = SmartAccountCustomModuleConfig & {
+  address: string;
 };
 
 export interface IPasskeyCredentialProfile {

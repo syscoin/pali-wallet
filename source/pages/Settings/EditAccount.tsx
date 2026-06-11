@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import { LockIconSvg } from 'components/Icon/Icon';
-import { Icon, NeutralButton } from 'components/index';
+import { Button, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
@@ -108,12 +108,10 @@ const EditAccountView = () => {
         validateMessages={{ default: '' }}
         id="edit-account"
         name="edit-account"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0"
+        className="flex flex-col gap-3 items-center justify-center pb-20 text-center md:pb-0 w-full"
       >
         <QRCodeSVG
           value={state.address}
@@ -160,7 +158,7 @@ const EditAccountView = () => {
         </div>
         <Form.Item
           name="label"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -215,9 +213,15 @@ const EditAccountView = () => {
             isSmartAccount ? 'static' : 'absolute bottom-12 md:static'
           }`}
         >
-          <NeutralButton type="submit" fullWidth loading={loading}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="submit"
+            fullWidth
+            loading={loading}
+          >
             {t('buttons.save')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </>
