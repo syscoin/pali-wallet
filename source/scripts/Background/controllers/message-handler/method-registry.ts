@@ -434,7 +434,9 @@ export const METHOD_REGISTRY: MethodRegistry = {
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.Never,
-    hasPopup: false,
+    hasPopup: true,
+    popupRoute: MethodRoute.CallsStatus,
+    popupEventName: 'wallet_showCallsStatus',
   },
 
   // ===== Ethereum Methods =====

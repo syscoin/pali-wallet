@@ -238,6 +238,9 @@ const SendTransaction = lazy(() =>
 const SendCalls = lazy(() =>
   import('pages').then((m) => ({ default: m.SendCalls }))
 );
+const CallsStatus = lazy(() =>
+  import('pages').then((m) => ({ default: m.CallsStatus }))
+);
 const SignAndSend = lazy(() =>
   import('pages').then((m) => ({ default: m.SignAndSend }))
 );
@@ -401,6 +404,7 @@ export const Router = () => {
                 <Route path="send/confirm" element={<SendConfirm />} />
                 <Route path="send/ethTx" element={<SendTransaction />} />
                 <Route path="send/calls" element={<SendCalls />} />
+                <Route path="calls-status" element={<CallsStatus />} />
                 <Route path="sign" element={<SignAndSend />} />
                 <Route path="ethSign" element={<EthSign />} />
                 <Route path="encryptKey" element={<EncryptPubKey />} />

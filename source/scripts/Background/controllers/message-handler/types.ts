@@ -31,6 +31,7 @@ export enum NetworkEnforcement {
 // Popup routes for methods that need UI
 export enum MethodRoute {
   AddEthChain = 'add-EthChain',
+  CallsStatus = 'tx/calls-status',
   ChangeAccount = 'change-account',
   ChangeActiveConnectedAccount = 'change-active-connected-account',
   Connect = 'connect-wallet',

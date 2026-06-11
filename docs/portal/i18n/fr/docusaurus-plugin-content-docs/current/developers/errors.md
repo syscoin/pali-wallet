@@ -37,6 +37,7 @@ try {
 | `4200` | Méthode non prise en charge. |
 | `4900` | Provider déconnecté. |
 | `4901` | Provider déconnecté de la chaîne demandée. |
-| `5730` | Identifiant de bundle EIP-5792 inconnu dans `wallet_getCallsStatus`. |
+| `5720` | Identifiant de bundle EIP-5792 dupliqué fourni par la dapp dans `wallet_sendCalls`. |
+| `5730` | Identifiant de bundle EIP-5792 inconnu dans `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Voir [Codes d'erreur](../reference/error-codes.md) pour la référence plus longue.

@@ -30,6 +30,6 @@ Pali fügt `window.pali` für UTXO/Syscoin-Flows hinzu. Diese Methoden sind kein
 ## Kompatibilitätshinweise
 
 - EVM-Subscriptions werden vom Erweiterungs-Provider nicht unterstützt.
-- `wallet_getCallsStatus` und `wallet_showCallsStatus` sind Kompatibilitäts-Stubs.
+- `wallet_getCallsStatus` und `wallet_showCallsStatus` sind gemäß EIP-5792 implementiert.
 - EOA-`wallet_sendCalls`-Ausführung ist sequenziell, keine echte on-chain Atomicity.
 - UTXO- und EVM-Netzwerkfamilien sind durch Provider-Oberfläche und Wallet-Zustand getrennt.

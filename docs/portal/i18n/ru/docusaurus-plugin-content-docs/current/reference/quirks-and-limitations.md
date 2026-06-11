@@ -23,8 +23,8 @@ title: Особенности и ограничения
 
 - `wallet_sendCalls` реализован.
 - `wallet_getCapabilities` реализован.
-- `wallet_getCallsStatus` возвращает unknown bundle id для неподдерживаемых status lookups.
-- `wallet_showCallsStatus` является no-op compatibility method.
+- `wallet_getCallsStatus` реализован; неизвестные bundle id завершаются ошибкой `5730`.
+- `wallet_showCallsStatus` реализован и показывает статус batch в popup кошелька.
 
 ## Атомарность
 

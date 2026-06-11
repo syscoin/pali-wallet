@@ -31,8 +31,8 @@ title: Матрица методов
 | `wallet_prepareSmartAccount` | EVM | Создать или восстановить Pali smart account. | Yes |
 | `wallet_sendCalls` | EVM | Отправить EIP-5792 batch request. | Yes |
 | `wallet_getCapabilities` | EVM | Читать account capabilities. | No |
-| `wallet_getCallsStatus` | EVM | Compatibility stub; ошибка для неизвестных ids. | No |
-| `wallet_showCallsStatus` | EVM | Compatibility stub; возвращает `null`. | No |
+| `wallet_getCallsStatus` | EVM | Разрешает отправленный batch в статус EIP-5792 + receipts. | No |
+| `wallet_showCallsStatus` | EVM | Показывает статус batch в popup кошелька. | Yes |
 
 ## Методы EVM
 

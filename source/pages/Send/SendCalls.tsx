@@ -16,6 +16,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { getMethodName } from 'utils/commonMethodSignatures';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
+import { encodeSendCallsBatchId } from 'utils/sendCallsBatch';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
@@ -32,6 +33,9 @@ interface ISendCallsData {
   capabilities?: Record<string, any>;
   chainId: string;
   from?: string;
+  // Optional EIP-5792 app-provided bundle id (validated by the background
+  // handler before the popup opens; must be respected and returned as-is).
+  id?: string;
   version: string;
 }
 
@@ -252,20 +256,72 @@ export const SendCalls = () => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
       setConfirmed(true);
 
+      // Encode the mined transaction hashes into the EIP-5792 bundle id so
+      // wallet_getCallsStatus can resolve receipts statelessly. The smart
+      // account path executes every call in a single atomic user operation
+      // (one hash); the EOA path broadcasts one transaction per call.
+      const smartAccount = requestSmartAccount.supportsAtomicBatch;
+      const txHashes = Array.from(
+        new Set(
+          transactionStatuses
+            .map((status) => status?.txHash)
+            .filter((hash): hash is string => Boolean(hash))
+        )
+      );
+      const bundleDescriptor = {
+        atomic: smartAccount ? true : callsData.atomicRequired,
+        chainId: activeNetwork.chainId,
+        smartAccount,
+        txHashes,
+      };
+      // EIP-5792: an app-provided id must be respected and returned as-is.
+      // It cannot encode the tx hashes (it was chosen before execution), so
+      // the bundle is recorded in the background registry instead.
+      const appProvidedId =
+        typeof callsData.id === 'string' && callsData.id ? callsData.id : null;
+      const id =
+        appProvidedId ??
+        (txHashes.length > 0
+          ? encodeSendCallsBatchId(bundleDescriptor)
+          : `0x${uuidv4().replace(/-/g, '')}`);
+
       const response = {
-        id: `0x${uuidv4().replace(/-/g, '')}`,
+        id,
         capabilities: {},
       };
 
       // Close window after a short delay
-      setTimeout(() => {
+      setTimeout(async () => {
+        if (appProvidedId && txHashes.length > 0) {
+          try {
+            await controllerEmitter(
+              ['wallet', 'recordSendCallsBundle'],
+              [host, appProvidedId, bundleDescriptor]
+            );
+          } catch (error) {
+            // Status lookups for this id will report unknown bundle (5730);
+            // the batch itself already executed, so still resolve the dapp.
+            console.error('Failed to record sendCalls bundle id', error);
+          }
+        }
         clearNavigationState();
         // Dispatch event right before closing
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
     }
-  }, [allTransactionsSuccessful, confirmed, transactionStatuses, eventName]);
+  }, [
+    activeNetwork.chainId,
+    allTransactionsSuccessful,
+    callsData.atomicRequired,
+    callsData.id,
+    confirmed,
+    controllerEmitter,
+    eventName,
+    host,
+    requestSmartAccount.supportsAtomicBatch,
+    transactionStatuses,
+  ]);
 
   const handleApprove = async () => {
     try {

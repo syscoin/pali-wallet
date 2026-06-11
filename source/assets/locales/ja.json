@@ -403,7 +403,12 @@
     "missingTokenId": "トークンIDがありません",
     "smartAccountSignatureError": "スマートアカウントが署名を拒否しました。有効な認証器で再承認して、もう一度お試しください。",
     "amountRequired": "金額を入力してください",
-    "addressRequired": "受取先アドレスを入力してください"
+    "addressRequired": "受取先アドレスを入力してください",
+    "batchStatus": "バッチステータス",
+    "status": "ステータス",
+    "reverted": "リバート済み",
+    "partiallyReverted": "部分的にリバート",
+    "receipts": "レシート"
   },
   "settings": {
     "bgError": "バックグラウンドエラー",

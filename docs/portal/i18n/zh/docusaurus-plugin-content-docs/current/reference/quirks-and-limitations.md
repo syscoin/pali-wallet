@@ -23,8 +23,8 @@ title: 特性差异和限制
 
 - `wallet_sendCalls` 已实现。
 - `wallet_getCapabilities` 已实现。
-- `wallet_getCallsStatus` 对不支持的状态查询返回 unknown bundle id。
-- `wallet_showCallsStatus` 是 no-op 兼容性方法。
+- `wallet_getCallsStatus` 已实现；未知 bundle id 以错误 `5730` 失败。
+- `wallet_showCallsStatus` 已实现，会在钱包弹窗中显示批量状态。
 
 ## 原子性
 

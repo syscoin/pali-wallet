@@ -403,7 +403,12 @@
     "missingTokenId": "缺少代币 ID",
     "smartAccountSignatureError": "您的智能账户拒绝了该签名。请使用当前的验证器重新批准后重试。",
     "amountRequired": "请输入金额",
-    "addressRequired": "请输入收款地址"
+    "addressRequired": "请输入收款地址",
+    "batchStatus": "批量状态",
+    "status": "状态",
+    "reverted": "已回滚",
+    "partiallyReverted": "部分回滚",
+    "receipts": "收据"
   },
   "settings": {
     "bgError": "背景错误",

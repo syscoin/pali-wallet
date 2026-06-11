@@ -23,8 +23,8 @@ Cette page documente les comportements dont les dapps doivent tenir compte.
 
 - `wallet_sendCalls` est implémenté.
 - `wallet_getCapabilities` est implémenté.
-- `wallet_getCallsStatus` retourne un identifiant de bundle inconnu pour les recherches d'état non prises en charge.
-- `wallet_showCallsStatus` est une méthode de compatibilité sans effet.
+- `wallet_getCallsStatus` est implémenté ; les identifiants de bundle inconnus échouent avec l'erreur `5730`.
+- `wallet_showCallsStatus` est implémenté et affiche le statut du batch dans un popup du wallet.
 
 ## Atomicité
 

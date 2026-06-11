@@ -31,8 +31,8 @@ Diese Referenz fasst die öffentlichen dapp-seitigen Methoden zusammen, die aus 
 | `wallet_prepareSmartAccount` | EVM | Einen Passkey Smart Account erstellen und deployen. | Ja |
 | `wallet_sendCalls` | EVM | Einen EIP-5792-Batch-Request senden. | Ja |
 | `wallet_getCapabilities` | EVM | Account-Capabilities lesen. | Nein |
-| `wallet_getCallsStatus` | EVM | Kompatibilitäts-Stub; unbekannte IDs erzeugen Fehler. | Nein |
-| `wallet_showCallsStatus` | EVM | Kompatibilitäts-Stub; gibt `null` zurück. | Nein |
+| `wallet_getCallsStatus` | EVM | Löst einen gesendeten Batch in EIP-5792-Status + Receipts auf. | Nein |
+| `wallet_showCallsStatus` | EVM | Zeigt den Batch-Status in einem Wallet-Popup an. | Ja |
 
 ## EVM-Methoden
 

@@ -403,7 +403,12 @@
     "missingTokenId": "Token-ID fehlt",
     "smartAccountSignatureError": "Ihr Smart Account hat die Signatur abgelehnt. Bestätigen Sie erneut mit Ihrem aktiven Authentifikator und versuchen Sie es noch einmal.",
     "amountRequired": "Betrag ist erforderlich",
-    "addressRequired": "Empfängeradresse ist erforderlich"
+    "addressRequired": "Empfängeradresse ist erforderlich",
+    "batchStatus": "Batch-Status",
+    "status": "Status",
+    "reverted": "Zurückgesetzt",
+    "partiallyReverted": "Teilweise zurückgesetzt",
+    "receipts": "Belege"
   },
   "settings": {
     "bgError": "Hintergrundfehler",

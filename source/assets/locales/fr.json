@@ -403,7 +403,12 @@
     "missingTokenId": "ID du jeton manquant",
     "smartAccountSignatureError": "Votre compte intelligent a rejeté la signature. Approuvez à nouveau avec votre authentificateur actif et réessayez.",
     "amountRequired": "Le montant est requis",
-    "addressRequired": "L'adresse du destinataire est requise"
+    "addressRequired": "L'adresse du destinataire est requise",
+    "batchStatus": "Statut du lot",
+    "status": "Statut",
+    "reverted": "Reverté",
+    "partiallyReverted": "Partiellement reverté",
+    "receipts": "Reçus"
   },
   "settings": {
     "bgError": "Erreur en arrière-plan",

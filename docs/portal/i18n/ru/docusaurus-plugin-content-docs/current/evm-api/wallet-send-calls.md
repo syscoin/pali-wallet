@@ -53,4 +53,4 @@ const result = await window.ethereum.request({
 
 ## Методы статуса
 
-`wallet_getCallsStatus` и `wallet_showCallsStatus` присутствуют для совместимости, но persistent bundle status не реализован. Считайте немедленный результат `wallet_sendCalls` и transaction hash полезным output.
+`wallet_getCallsStatus` и `wallet_showCallsStatus` реализованы в соответствии с EIP-5792. `wallet_getCallsStatus` возвращает стандартный объект статуса (`100` в ожидании, `200` подтверждено, `500` revert, `600` частичный revert) с on-chain receipts; `wallet_showCallsStatus` открывает popup Pali только для чтения с той же информацией. `id`, переданные dapp в `wallet_sendCalls`, учитываются и возвращаются. Неизвестные bundle id завершаются ошибкой `5730`; дублирующиеся id от dapp — `5720`.

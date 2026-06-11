@@ -30,6 +30,6 @@ PaliはUTXO/Syscoinフロー向けに`window.pali`を追加します。これら
 ## 互換性の注意点
 
 - EVMサブスクリプションは拡張機能プロバイダーでサポートされていません。
-- `wallet_getCallsStatus`と`wallet_showCallsStatus`は互換性stubです。
+- `wallet_getCallsStatus`と`wallet_showCallsStatus`はEIP-5792に準拠して実装されています。
 - EOAの`wallet_sendCalls`実行は順次であり、真のオンチェーンアトミック性ではありません。
 - UTXOとEVMのネットワークファミリーは、プロバイダーサーフェスとウォレット状態によって分離されています。

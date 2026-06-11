@@ -37,6 +37,7 @@ try {
 | `4200` | 未サポートのメソッドです。 |
 | `4900` | プロバイダーが切断されています。 |
 | `4901` | プロバイダーが要求されたチェーンから切断されています。 |
-| `5730` | `wallet_getCallsStatus`の不明なEIP-5792 bundle idです。 |
+| `5720` | `wallet_sendCalls`でdappが指定したEIP-5792 bundle idの重複です。 |
+| `5730` | `wallet_getCallsStatus` / `wallet_showCallsStatus`の不明なEIP-5792 bundle idです。 |
 
 より長いリファレンスは[Error codes](../reference/error-codes.md)を参照してください。

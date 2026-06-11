@@ -31,8 +31,8 @@ title: Method matrix
 | `wallet_prepareSmartAccount` | EVM | Pali smart account를 생성하고 deploy합니다. | Yes |
 | `wallet_sendCalls` | EVM | EIP-5792 batch request를 전송합니다. | Yes |
 | `wallet_getCapabilities` | EVM | account capability를 읽습니다. | No |
-| `wallet_getCallsStatus` | EVM | Compatibility stub; unknown id error. | No |
-| `wallet_showCallsStatus` | EVM | Compatibility stub; `null`을 반환합니다. | No |
+| `wallet_getCallsStatus` | EVM | 전송된 batch를 EIP-5792 status + receipts로 해석합니다. | No |
+| `wallet_showCallsStatus` | EVM | 배치 상태를 지갑 팝업으로 표시합니다. | Yes |
 
 ## EVM method
 

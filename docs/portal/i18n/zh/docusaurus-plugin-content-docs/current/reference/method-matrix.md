@@ -31,8 +31,8 @@ title: 方法矩阵
 | `wallet_prepareSmartAccount` | EVM | 创建并部署 Passkey 智能账户。 | 是 |
 | `wallet_sendCalls` | EVM | 发送 EIP-5792 批量请求。 | 是 |
 | `wallet_getCapabilities` | EVM | 读取账户能力。 | 否 |
-| `wallet_getCallsStatus` | EVM | 兼容性 stub；未知 id 报错。 | 否 |
-| `wallet_showCallsStatus` | EVM | 兼容性 stub；返回 `null`。 | 否 |
+| `wallet_getCallsStatus` | EVM | 将已发送的 batch 解析为 EIP-5792 状态 + receipts。 | 否 |
+| `wallet_showCallsStatus` | EVM | 在钱包弹窗中显示批量状态。 | 是 |
 
 ## EVM 方法
 

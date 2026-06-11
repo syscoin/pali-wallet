@@ -53,4 +53,4 @@ Pali smart account의 경우 Pali는 선택된 모든 call을 하나의 smart ac
 
 ## Status method
 
-`wallet_getCallsStatus`와 `wallet_showCallsStatus`는 compatibility를 위해 존재하지만 persistent bundle status는 구현되어 있지 않습니다. 즉시 반환되는 `wallet_sendCalls` result와 transaction hash를 유용한 output으로 취급하세요.
+`wallet_getCallsStatus`와 `wallet_showCallsStatus`는 EIP-5792에 따라 구현되어 있습니다. `wallet_getCallsStatus`는 온체인 receipts가 포함된 표준 status 객체(`100` 대기 중, `200` 확정, `500` 리버트, `600` 부분 리버트)를 반환하며, `wallet_showCallsStatus`는 동일한 정보를 보여주는 읽기 전용 Pali 팝업을 엽니다. `wallet_sendCalls`에서 dapp이 제공한 `id`는 존중되어 그대로 반환됩니다. 알 수 없는 bundle id는 오류 `5730`으로, 중복된 dapp 제공 id는 `5720`으로 실패합니다.

@@ -403,7 +403,12 @@
     "missingTokenId": "Отсутствует ID токена",
     "smartAccountSignatureError": "Ваш смарт-аккаунт отклонил подпись. Повторно подтвердите с помощью активного аутентификатора и попробуйте снова.",
     "amountRequired": "Укажите сумму",
-    "addressRequired": "Укажите адрес получателя"
+    "addressRequired": "Укажите адрес получателя",
+    "batchStatus": "Статус пакета",
+    "status": "Статус",
+    "reverted": "Revert",
+    "partiallyReverted": "Частичный revert",
+    "receipts": "Квитанции"
   },
   "settings": {
     "bgError": "Фоновая ошибка",

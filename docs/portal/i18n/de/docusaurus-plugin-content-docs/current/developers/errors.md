@@ -37,6 +37,7 @@ try {
 | `4200` | Nicht unterstützte Methode. |
 | `4900` | Provider getrennt. |
 | `4901` | Provider von der angeforderten Chain getrennt. |
-| `5730` | Unbekannte EIP-5792-Bundle-ID in `wallet_getCallsStatus`. |
+| `5720` | Doppelte von der Dapp gelieferte EIP-5792-Bundle-ID in `wallet_sendCalls`. |
+| `5730` | Unbekannte EIP-5792-Bundle-ID in `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Siehe [Fehlercodes](../reference/error-codes.md) für die längere Referenz.

@@ -403,7 +403,12 @@
     "missingTokenId": "Falta el ID del token",
     "smartAccountSignatureError": "Tu cuenta inteligente rechazó la firma. Vuelve a aprobar con tu autenticador activo e inténtalo de nuevo.",
     "amountRequired": "El importe es obligatorio",
-    "addressRequired": "La dirección del destinatario es obligatoria"
+    "addressRequired": "La dirección del destinatario es obligatoria",
+    "batchStatus": "Estado del lote",
+    "status": "Estado",
+    "reverted": "Revertido",
+    "partiallyReverted": "Parcialmente revertido",
+    "receipts": "Recibos"
   },
   "settings": {
     "bgError": "Error de Fondo",

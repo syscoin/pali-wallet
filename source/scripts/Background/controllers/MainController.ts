@@ -131,6 +131,7 @@ import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
+import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
   CancellablePromises,
@@ -4588,6 +4589,24 @@ class MainController {
    */
   public async getRecommendedNonceForBatch(address: string): Promise<number> {
     return this.getRecommendedEvmNonce(address);
+  }
+
+  /**
+   * Persist an EIP-5792 bundle record for a dapp-provided wallet_sendCalls id
+   * so wallet_getCallsStatus / wallet_showCallsStatus can resolve it later.
+   * Called by the SendCalls popup after the batch has been broadcast.
+   */
+  public async recordSendCallsBundle(
+    host: string,
+    id: string,
+    bundle: {
+      atomic: boolean;
+      chainId: number;
+      smartAccount: boolean;
+      txHashes: string[];
+    }
+  ): Promise<void> {
+    return recordSendCallsBundle(host, id, bundle);
   }
 
   /**

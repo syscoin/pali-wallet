@@ -41,7 +41,8 @@ Pali는 JSON-RPC, EIP-1193, EIP-1474, wallet-specific error를 사용합니다. 
 | --- | --- |
 | `4101` | method는 EVM-only 또는 UTXO-only처럼 다른 chain family에서만 사용할 수 있습니다. |
 | `4874` | method는 hardware wallet을 지원하지 않습니다. |
-| `5730` | `wallet_getCallsStatus`의 알 수 없는 bundle id입니다. |
+| `5720` | `wallet_sendCalls`에서 dapp이 제공한 bundle id가 중복되었습니다. |
+| `5730` | `wallet_getCallsStatus` / `wallet_showCallsStatus`의 알 수 없는 bundle id입니다. |
 
 ## Best practice
 

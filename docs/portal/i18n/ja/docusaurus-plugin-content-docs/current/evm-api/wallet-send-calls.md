@@ -53,4 +53,4 @@ Passkeyスマートアカウントの場合、Paliは選択されたすべての
 
 ## ステータスメソッド
 
-`wallet_getCallsStatus`と`wallet_showCallsStatus`は互換性のために存在しますが、永続的なbundle statusは実装されていません。即時の`wallet_sendCalls`結果とトランザクションハッシュを有用な出力として扱ってください。
+`wallet_getCallsStatus`と`wallet_showCallsStatus`はEIP-5792に準拠して実装されています。`wallet_getCallsStatus`はオンチェーンreceipts付きの標準ステータスオブジェクト（`100` 保留中、`200` 確認済み、`500` リバート、`600` 部分的リバート）を返します。`wallet_showCallsStatus`は同じ情報を表示する読み取り専用のPaliポップアップを開きます。`wallet_sendCalls`でdappが指定した`id`は尊重され、そのまま返されます。不明なbundle idはエラー`5730`で、dapp指定idの重複は`5720`で失敗します。
