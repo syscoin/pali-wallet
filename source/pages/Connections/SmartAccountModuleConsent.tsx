@@ -96,6 +96,10 @@ export const SmartAccountModuleConsent = () => {
   const validInitData = isHexString(initData);
 
   const isSmartAccount = Boolean(account?.isSmartAccount);
+  const smartAccountMatchesNetwork = Boolean(
+    account?.isSmartAccount &&
+      account.smartAccount?.chainId === activeNetwork.chainId
+  );
 
   const refreshMetadata = useCallback(async () => {
     if (!account?.isSmartAccount) return null;
@@ -121,6 +125,11 @@ export const SmartAccountModuleConsent = () => {
   // Static request validation (no chain access needed).
   const staticError = !isSmartAccount
     ? t('smartAccountHub.notSmartAccount')
+    : !smartAccountMatchesNetwork
+    ? t('smartAccountHub.wrongNetwork', {
+        accountChainId: account?.smartAccount?.chainId,
+        activeChainId: activeNetwork.chainId,
+      })
     : !moduleAddress
     ? t('smartAccountHub.invalidModuleAddress')
     : action === 'install' && !validInitData
@@ -138,7 +147,7 @@ export const SmartAccountModuleConsent = () => {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (!account?.isSmartAccount || !moduleAddress) return;
+      if (!smartAccountMatchesNetwork || !moduleAddress) return;
       setChecking(true);
       try {
         if (account.smartAccount?.isDeployed) {
@@ -177,10 +186,12 @@ export const SmartAccountModuleConsent = () => {
     };
   }, [
     account?.id,
-    account?.isSmartAccount,
+    account?.smartAccount?.chainId,
     action,
+    activeNetwork.chainId,
     controllerEmitter,
     moduleAddress,
+    smartAccountMatchesNetwork,
     t,
   ]);
 
@@ -207,6 +218,15 @@ export const SmartAccountModuleConsent = () => {
     setLoading(true);
     setError(null);
     try {
+      if (!smartAccountMatchesNetwork) {
+        setError(
+          t('smartAccountHub.wrongNetwork', {
+            accountChainId: account.smartAccount?.chainId,
+            activeChainId: activeNetwork.chainId,
+          })
+        );
+        return;
+      }
       if (action === 'uninstall' && !targetModuleIsValidator) {
         setError(t('smartAccountHub.moduleUninstallUnsupported'));
         return;
@@ -289,6 +309,7 @@ export const SmartAccountModuleConsent = () => {
     account?.id,
     accounts,
     action,
+    activeNetwork.chainId,
     controllerEmitter,
     eventName,
     handleWalletLockedError,
@@ -301,6 +322,7 @@ export const SmartAccountModuleConsent = () => {
     t,
     targetModule?.id,
     targetModuleIsValidator,
+    smartAccountMatchesNetwork,
   ]);
 
   return (

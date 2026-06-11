@@ -957,6 +957,7 @@
     "threshold": "必要な承認数",
     "uninstall": "アンインストール",
     "uninstallDescription": "これにより、スマートアカウントからオンチェーンでモジュールが削除されます。後で再インストールできます。",
-    "uninstallTitle": "モジュールをアンインストールしますか?"
+    "uninstallTitle": "モジュールをアンインストールしますか?",
+    "wrongNetwork": "このスマートアカウントはチェーン {{accountChainId}} に属しています。モジュールを変更する前に、現在のチェーン {{activeChainId}} から切り替えてください。"
   }
 }

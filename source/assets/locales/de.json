@@ -957,6 +957,7 @@
     "threshold": "Erforderliche Genehmigungen",
     "uninstall": "Deinstallieren",
     "uninstallDescription": "Dies entfernt das Modul on-chain von Ihrem Smart Account. Sie können es später erneut installieren.",
-    "uninstallTitle": "Modul deinstallieren?"
+    "uninstallTitle": "Modul deinstallieren?",
+    "wrongNetwork": "Dieser Smart Account gehört zu Chain {{accountChainId}}. Wechseln Sie von der aktiven Chain {{activeChainId}} zurück, bevor Sie Module ändern."
   }
 }

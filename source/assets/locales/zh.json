@@ -957,6 +957,7 @@
     "threshold": "所需批准数",
     "uninstall": "卸载",
     "uninstallDescription": "这会在链上从您的智能账户移除此模块。您可以稍后重新安装。",
-    "uninstallTitle": "卸载模块？"
+    "uninstallTitle": "卸载模块？",
+    "wrongNetwork": "此智能账户属于链 {{accountChainId}}。更改模块前，请从当前活动链 {{activeChainId}} 切换回对应链。"
   }
 }

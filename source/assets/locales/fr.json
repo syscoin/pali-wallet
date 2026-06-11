@@ -957,6 +957,7 @@
     "threshold": "Approbations requises",
     "uninstall": "Désinstaller",
     "uninstallDescription": "Cela supprime le module on-chain de votre compte intelligent. Vous pourrez le réinstaller plus tard.",
-    "uninstallTitle": "Désinstaller le module ?"
+    "uninstallTitle": "Désinstaller le module ?",
+    "wrongNetwork": "Ce compte intelligent appartient à la chain {{accountChainId}}. Revenez depuis la chain active {{activeChainId}} avant de modifier les modules."
   }
 }

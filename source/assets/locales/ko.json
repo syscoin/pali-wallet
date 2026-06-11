@@ -957,6 +957,7 @@
     "threshold": "필요한 승인 수",
     "uninstall": "제거",
     "uninstallDescription": "스마트 계정에서 모듈을 온체인으로 제거합니다. 나중에 다시 설치할 수 있습니다.",
-    "uninstallTitle": "모듈을 제거하시겠습니까?"
+    "uninstallTitle": "모듈을 제거하시겠습니까?",
+    "wrongNetwork": "이 스마트 계정은 체인 {{accountChainId}}에 속합니다. 모듈을 변경하기 전에 현재 활성 체인 {{activeChainId}}에서 다시 전환하세요."
   }
 }

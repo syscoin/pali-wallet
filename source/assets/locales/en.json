@@ -957,6 +957,7 @@
     "threshold": "Required approvals",
     "uninstall": "Uninstall",
     "uninstallDescription": "This removes the module from your smart account on-chain. You can reinstall it later.",
-    "uninstallTitle": "Uninstall module?"
+    "uninstallTitle": "Uninstall module?",
+    "wrongNetwork": "This smart account belongs to chain {{accountChainId}}. Switch back from the active chain {{activeChainId}} before changing modules."
   }
 }

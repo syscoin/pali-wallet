@@ -957,6 +957,7 @@
     "threshold": "Требуемые подтверждения",
     "uninstall": "Удалить",
     "uninstallDescription": "Это удалит модуль из вашего смарт-аккаунта on-chain. Вы сможете установить его снова позже.",
-    "uninstallTitle": "Удалить модуль?"
+    "uninstallTitle": "Удалить модуль?",
+    "wrongNetwork": "Этот смарт-аккаунт принадлежит chain {{accountChainId}}. Вернитесь с активной chain {{activeChainId}}, прежде чем изменять модули."
   }
 }
