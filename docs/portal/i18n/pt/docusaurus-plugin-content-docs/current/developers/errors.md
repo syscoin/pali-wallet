@@ -37,6 +37,8 @@ try {
 | `4200` | Método sem suporte. |
 | `4900` | Provider desconectado. |
 | `4901` | Provider desconectado da chain solicitada. |
-| `5730` | Id de bundle EIP-5792 desconhecido em `wallet_getCallsStatus`. |
+| `5710` | A chain do bundle EIP-5792 não tem RPC configurado na wallet (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
+| `5720` | Id de bundle EIP-5792 duplicado fornecido pela dapp em `wallet_sendCalls`. |
+| `5730` | Id de bundle EIP-5792 desconhecido em `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Veja [Códigos de erro](../reference/error-codes.md) para a referência mais longa.

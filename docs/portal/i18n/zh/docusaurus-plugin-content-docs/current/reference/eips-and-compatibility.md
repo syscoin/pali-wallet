@@ -30,6 +30,6 @@ Pali 为 UTXO/Syscoin 流程增加了 `window.pali`。这些方法不是 Ethereu
 ## 兼容性注意事项
 
 - 扩展 provider 不支持 EVM 订阅。
-- `wallet_getCallsStatus` 和 `wallet_showCallsStatus` 是兼容性 stub。
+- `wallet_getCallsStatus` 和 `wallet_showCallsStatus` 按 EIP-5792 实现。
 - EOA `wallet_sendCalls` 执行是顺序执行，不是真正的链上原子性。
 - UTXO 和 EVM 网络家族通过 provider 表面和钱包状态分离。

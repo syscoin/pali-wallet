@@ -31,8 +31,8 @@ title: メソッド一覧
 | `wallet_prepareSmartAccount` | EVM | passkeyスマートアカウントを作成してデプロイします。 | はい |
 | `wallet_sendCalls` | EVM | EIP-5792バッチリクエストを送信します。 | はい |
 | `wallet_getCapabilities` | EVM | アカウントcapabilitiesを読み取ります。 | いいえ |
-| `wallet_getCallsStatus` | EVM | 互換性stub。不明なidsはエラーになります。 | いいえ |
-| `wallet_showCallsStatus` | EVM | 互換性stub。`null`を返します。 | いいえ |
+| `wallet_getCallsStatus` | EVM | 送信済みbatchをEIP-5792ステータス + receiptsに解決します。 | いいえ |
+| `wallet_showCallsStatus` | EVM | バッチのステータスをウォレットのポップアップに表示します。 | はい |
 
 ## EVMメソッド
 

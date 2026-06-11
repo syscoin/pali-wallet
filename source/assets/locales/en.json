@@ -403,7 +403,12 @@
     "missingTokenId": "Missing Token ID",
     "smartAccountSignatureError": "Your smart account rejected the signature. Re-approve with your active authenticator and try again.",
     "amountRequired": "Amount is required",
-    "addressRequired": "Recipient address is required"
+    "addressRequired": "Recipient address is required",
+    "batchStatus": "Batch status",
+    "status": "Status",
+    "reverted": "Reverted",
+    "partiallyReverted": "Partially reverted",
+    "receipts": "Receipts"
   },
   "settings": {
     "bgError": "Background Error",

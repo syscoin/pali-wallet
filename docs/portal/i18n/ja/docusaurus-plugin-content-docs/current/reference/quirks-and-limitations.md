@@ -23,8 +23,8 @@ title: 癖と制限
 
 - `wallet_sendCalls`は実装されています。
 - `wallet_getCapabilities`は実装されています。
-- `wallet_getCallsStatus`は未サポートのステータスlookupに対して不明なbundle idを返します。
-- `wallet_showCallsStatus`はno-op互換メソッドです。
+- `wallet_getCallsStatus`は実装済みです。不明なbundle idはエラー`5730`で失敗します。
+- `wallet_showCallsStatus`は実装済みで、バッチのステータスをウォレットのポップアップに表示します。
 
 ## アトミック性
 

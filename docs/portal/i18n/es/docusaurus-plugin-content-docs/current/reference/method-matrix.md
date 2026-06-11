@@ -31,8 +31,8 @@ Esta referencia resume los métodos públicos orientados a dapps documentados de
 | `wallet_prepareSmartAccount` | EVM | Crear y desplegar una cuenta inteligente passkey. | Sí |
 | `wallet_sendCalls` | EVM | Enviar una solicitud por lotes EIP-5792. | Sí |
 | `wallet_getCapabilities` | EVM | Leer capacidades de cuenta. | No |
-| `wallet_getCallsStatus` | EVM | Stub de compatibilidad; ids desconocidos dan error. | No |
-| `wallet_showCallsStatus` | EVM | Stub de compatibilidad; devuelve `null`. | No |
+| `wallet_getCallsStatus` | EVM | Resuelve un batch enviado en estado EIP-5792 + receipts. | No |
+| `wallet_showCallsStatus` | EVM | Muestra el estado del batch en un popup de la wallet. | Sí |
 
 ## Métodos EVM
 

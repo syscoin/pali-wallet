@@ -41,7 +41,9 @@ Pali utilise JSON-RPC, EIP-1193, EIP-1474 et des erreurs propres au portefeuille
 | --- | --- |
 | `4101` | La méthode n'est disponible que pour une autre famille de chaînes, comme EVM uniquement ou UTXO uniquement. |
 | `4874` | La méthode ne prend pas en charge les hardware wallets. |
-| `5730` | Identifiant de bundle inconnu pour `wallet_getCallsStatus`. |
+| `5710` | La chaîne du bundle n'a pas de RPC configuré dans le wallet (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
+| `5720` | Identifiant de bundle dupliqué fourni par la dapp dans `wallet_sendCalls`. |
+| `5730` | Identifiant de bundle inconnu pour `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 ## Bonnes pratiques
 

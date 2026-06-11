@@ -131,6 +131,7 @@ import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
+import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
   CancellablePromises,
@@ -204,6 +205,17 @@ class MainController {
     this.persistentProviders.set(url, provider);
     this.persistentProviderAbortControllers.set(url, abortController);
     return provider;
+  }
+
+  // Read-only provider for an arbitrary configured EVM chain. Used by
+  // EIP-5792 status resolution, which must query the bundle's original
+  // chain even after the user switches the active network. Null when the
+  // chain is not configured in the wallet.
+  public getEvmProviderForChain(chainId: number): CustomJsonRpcProvider | null {
+    const { networks } = store.getState().vaultGlobal;
+    const network = networks?.ethereum?.[chainId];
+    if (!network?.url) return null;
+    return this.getOrCreatePersistentProvider(network.url);
   }
 
   // Resolve the configured Ethereum mainnet provider (cached)
@@ -4588,6 +4600,24 @@ class MainController {
    */
   public async getRecommendedNonceForBatch(address: string): Promise<number> {
     return this.getRecommendedEvmNonce(address);
+  }
+
+  /**
+   * Persist an EIP-5792 bundle record for a dapp-provided wallet_sendCalls id
+   * so wallet_getCallsStatus / wallet_showCallsStatus can resolve it later.
+   * Called by the SendCalls popup after the batch has been broadcast.
+   */
+  public async recordSendCallsBundle(
+    host: string,
+    id: string,
+    bundle: {
+      atomic: boolean;
+      chainId: number;
+      smartAccount: boolean;
+      txHashes: string[];
+    }
+  ): Promise<void> {
+    return recordSendCallsBundle(host, id, bundle);
   }
 
   /**

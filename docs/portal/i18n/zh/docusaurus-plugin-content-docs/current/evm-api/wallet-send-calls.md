@@ -53,4 +53,4 @@ const result = await window.ethereum.request({
 
 ## 状态方法
 
-`wallet_getCallsStatus` 和 `wallet_showCallsStatus` 为兼容性而存在，但未实现持久化 bundle 状态。将即时 `wallet_sendCalls` 结果和交易哈希视为有用输出。
+`wallet_getCallsStatus` 和 `wallet_showCallsStatus` 按 EIP-5792 实现。`wallet_getCallsStatus` 返回带链上 receipts 的标准状态对象（`100` 待处理、`200` 已确认、`500` 已回滚、`600` 部分回滚）；`wallet_showCallsStatus` 打开一个只读的 Pali 弹窗显示相同信息。`wallet_sendCalls` 中 dapp 提供的 `id` 会被遵循并原样返回。未知的 bundle id 以错误 `5730` 失败；dapp 提供的重复 id 以 `5720` 失败。

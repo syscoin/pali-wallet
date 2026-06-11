@@ -31,8 +31,8 @@ This reference summarizes the public dapp-facing methods documented from Pali's 
 | `wallet_prepareSmartAccount` | EVM | Create, deploy, and connect a Pali smart account. | Yes |
 | `wallet_sendCalls` | EVM | Send an EIP-5792 batch request. | Yes |
 | `wallet_getCapabilities` | EVM | Read account capabilities. | No |
-| `wallet_getCallsStatus` | EVM | Compatibility stub; unknown ids error. | No |
-| `wallet_showCallsStatus` | EVM | Compatibility stub; returns `null`. | No |
+| `wallet_getCallsStatus` | EVM | Resolve a sent batch into EIP-5792 status + receipts. | No |
+| `wallet_showCallsStatus` | EVM | Show batch status in a wallet popup. | Yes |
 
 ## EVM methods
 

@@ -37,6 +37,8 @@ try {
 | `4200` | 지원되지 않는 method입니다. |
 | `4900` | Provider가 disconnected 상태입니다. |
 | `4901` | Provider가 요청된 chain에서 disconnected 상태입니다. |
-| `5730` | `wallet_getCallsStatus`의 알 수 없는 EIP-5792 bundle id입니다. |
+| `5710` | EIP-5792 bundle의 체인에 대한 RPC가 지갑에 설정되어 있지 않습니다 (`wallet_getCallsStatus` / `wallet_showCallsStatus`). |
+| `5720` | `wallet_sendCalls`에서 dapp이 제공한 EIP-5792 bundle id가 중복되었습니다. |
+| `5730` | `wallet_getCallsStatus` / `wallet_showCallsStatus`의 알 수 없는 EIP-5792 bundle id입니다. |
 
 더 긴 reference는 [Error codes](../reference/error-codes.md)를 참조하세요.

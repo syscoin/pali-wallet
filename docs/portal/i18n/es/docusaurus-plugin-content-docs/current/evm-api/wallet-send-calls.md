@@ -53,4 +53,4 @@ Para cuentas EVM regulares, Pali presenta las llamadas y envía las llamadas sel
 
 ## Métodos de estado
 
-`wallet_getCallsStatus` y `wallet_showCallsStatus` están presentes por compatibilidad, pero el estado persistente de bundles no está implementado. Trata el resultado inmediato de `wallet_sendCalls` y el hash de transacción como la salida útil.
+`wallet_getCallsStatus` y `wallet_showCallsStatus` están implementados según EIP-5792. `wallet_getCallsStatus` devuelve el objeto de estado estándar (`100` pendiente, `200` confirmado, `500` revertido, `600` parcialmente revertido) con receipts on-chain; `wallet_showCallsStatus` abre un popup de Pali de solo lectura con la misma información. Los `id` proporcionados por la dapp en `wallet_sendCalls` se respetan y se devuelven. Los ids de bundle desconocidos fallan con el error `5730`; los ids duplicados de la dapp, con `5720`.

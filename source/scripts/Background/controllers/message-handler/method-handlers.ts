@@ -10,6 +10,13 @@ import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 import { requestCoordinator } from './request-pipeline';
+import {
+  generateWalletBundleId,
+  isValidAppProvidedBundleId,
+  releaseSendCallsBundleReservation,
+  reserveSendCallsBundle,
+  resolveCallsStatus,
+} from './sendCallsBundles';
 import { IEnhancedRequestContext, MethodHandlerType } from './types';
 
 // Cache for provider state methods
@@ -175,6 +182,92 @@ export class WalletMethodHandler implements IMethodHandler {
             })
           );
         }
+
+        // EIP-5792: when the dapp supplies its own bundle id the wallet must
+        // respect it, return it, and reject duplicates (error 5720).
+        if (
+          sendCallsRequest.id !== undefined &&
+          !isValidAppProvidedBundleId(sendCallsRequest.id)
+        ) {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams(
+              'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
+            )
+          );
+        }
+
+        // Reserve the bundle id atomically before opening the approval popup
+        // so concurrent wallet_sendCalls requests reusing the same id are
+        // rejected (5720) instead of racing the post-broadcast record.
+        const bundleId: string =
+          sendCallsRequest.id ?? generateWalletBundleId();
+        const reserved = await reserveSendCallsBundle(host, bundleId, {
+          atomic:
+            Boolean(smartAccountAtomicSupported) ||
+            sendCallsRequest.atomicRequired === true,
+          chainId: activeNetwork?.chainId,
+          smartAccount: Boolean(smartAccountAtomicSupported),
+        });
+        if (!reserved) {
+          throw cleanErrorStack(
+            ethErrors.provider.custom({
+              code: 5720,
+              message:
+                'There is already a bundle submitted with this id (Duplicate ID).',
+            })
+          );
+        }
+
+        try {
+          return await requestCoordinator.coordinatePopupRequest(
+            context,
+            () =>
+              popupPromise({
+                host,
+                route: methodConfig.popupRoute,
+                eventName: methodConfig.popupEventName,
+                data: { ...sendCallsRequest, bundleId },
+              }),
+            methodConfig.popupRoute! // Explicit route parameter
+          );
+        } catch (error) {
+          // The request never broadcast (rejected/failed): free the id so the
+          // dapp can retry with it. Finalized bundles are never deleted here.
+          await releaseSendCallsBundleReservation(host, bundleId);
+          throw error;
+        }
+      }
+
+      // EIP-5792 wallet_showCallsStatus: validate the bundle id (5730 for
+      // unknown ids), then show a read-only status popup. The method itself
+      // returns nothing for known ids.
+      if (methodName === 'showCallsStatus') {
+        if (!params || params.length < 1 || typeof params[0] !== 'string') {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams(
+              'showCallsStatus requires a call bundle ID'
+            )
+          );
+        }
+        const callsStatus = await resolveCallsStatus(
+          (bundleChainId: number) =>
+            wallet?.getEvmProviderForChain(bundleChainId) ?? null,
+          host,
+          params[0]
+        );
+        return requestCoordinator
+          .coordinatePopupRequest(
+            context,
+            () =>
+              popupPromise({
+                host,
+                route: methodConfig.popupRoute,
+                eventName: methodConfig.popupEventName,
+                data: { callsStatus },
+              }),
+            methodConfig.popupRoute! // Explicit route parameter
+          )
+          .then(() => null);
       }
 
       const popupData = this.getPopupData(methodName, params, host);
@@ -425,10 +518,12 @@ export class WalletMethodHandler implements IMethodHandler {
             );
           }
 
-          // Since we don't store batch data, always return unknown bundle
-          const error = new Error('Unknown bundle id');
-          (error as any).code = 5730;
-          throw cleanErrorStack(error);
+          return resolveCallsStatus(
+            (bundleChainId: number) =>
+              wallet?.getEvmProviderForChain(bundleChainId) ?? null,
+            host,
+            params[0]
+          );
 
         case 'getCapabilities':
           // Smart accounts execute wallet_sendCalls as a single ERC-7579 batch,
@@ -448,17 +543,6 @@ export class WalletMethodHandler implements IMethodHandler {
           };
 
           return capabilities;
-
-        case 'showCallsStatus':
-          if (!params || params.length < 1 || typeof params[0] !== 'string') {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams(
-                'showCallsStatus requires a call bundle ID'
-              )
-            );
-          }
-          // Simply return null as per spec - no UI is shown
-          return null;
 
         default:
           throw cleanErrorStack(ethErrors.rpc.methodNotFound());
@@ -512,9 +596,6 @@ export class WalletMethodHandler implements IMethodHandler {
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
-      case 'sendCalls':
-        // Parse the sendCalls parameters
-        return params?.[0] || {};
       case 'prepareSmartAccount':
         return {
           host,

@@ -23,6 +23,11 @@ import {
 
 interface ISendCallsData {
   atomicRequired: boolean;
+  // Bundle id reserved by the background handler before this popup opened
+  // (the app-provided id when the dapp supplied one, otherwise a random
+  // wallet-minted id). Returned to the dapp as-is and finalized in the
+  // bundle registry with the broadcast tx hashes.
+  bundleId: string;
   calls: Array<{
     capabilities?: Record<string, any>;
     data?: string;
@@ -32,6 +37,8 @@ interface ISendCallsData {
   capabilities?: Record<string, any>;
   chainId: string;
   from?: string;
+  // Original EIP-5792 app-provided bundle id field from the request.
+  id?: string;
   version: string;
 }
 
@@ -247,25 +254,121 @@ export const SendCalls = () => {
     [effectiveSelectedCalls, transactionStatuses]
   );
 
+  // Persist broadcast tx hashes (and any pre-broadcast failure) incrementally
+  // so a partially broadcast non-atomic batch still resolves in
+  // wallet_getCallsStatus / wallet_showCallsStatus — as partially reverted
+  // (600) or offchain failure (400) — even if a later call errors or the
+  // popup is closed mid-flight. The registry record is an idempotent
+  // overwrite; the final all-success pass rewrites it with failed: false.
+  const lastRecordedBundleRef = React.useRef<string>('');
+  useEffect(() => {
+    if (!transactionStatuses || !callsData.bundleId) return;
+    const smartAccount = requestSmartAccount.supportsAtomicBatch;
+    const txHashes = Array.from(
+      new Set(
+        transactionStatuses
+          .map((status) => status?.txHash)
+          .filter((hash): hash is string => Boolean(hash))
+      )
+    );
+    const failed = transactionStatuses.some(
+      (status) => status?.status === 'error'
+    );
+    // Nothing broadcast and nothing failed yet: keep the pending reservation.
+    if (txHashes.length === 0 && !failed) return;
+    const bundleDescriptor = {
+      atomic: smartAccount ? true : callsData.atomicRequired,
+      chainId: activeNetwork.chainId,
+      failed,
+      smartAccount,
+      txHashes,
+    };
+    const serialized = JSON.stringify(bundleDescriptor);
+    if (serialized === lastRecordedBundleRef.current) return;
+    lastRecordedBundleRef.current = serialized;
+    controllerEmitter(
+      ['wallet', 'recordSendCallsBundle'],
+      [host, callsData.bundleId, bundleDescriptor]
+    ).catch((error) => {
+      // Allow a later snapshot to retry the write.
+      lastRecordedBundleRef.current = '';
+      console.error('Failed to record sendCalls bundle progress', error);
+    });
+  }, [
+    activeNetwork.chainId,
+    callsData.atomicRequired,
+    callsData.bundleId,
+    controllerEmitter,
+    host,
+    requestSmartAccount.supportsAtomicBatch,
+    transactionStatuses,
+  ]);
+
   // Watch for when all transactions are completed and dispatch response
   useEffect(() => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
       setConfirmed(true);
 
+      // Finalize the bundle reserved by the background handler with the
+      // broadcast tx hashes so wallet_getCallsStatus / wallet_showCallsStatus
+      // can resolve receipts. The smart account path executes every call in a
+      // single atomic user operation (one hash); the EOA path broadcasts one
+      // transaction per call.
+      const smartAccount = requestSmartAccount.supportsAtomicBatch;
+      const txHashes = Array.from(
+        new Set(
+          transactionStatuses
+            .map((status) => status?.txHash)
+            .filter((hash): hash is string => Boolean(hash))
+        )
+      );
+      const bundleDescriptor = {
+        atomic: smartAccount ? true : callsData.atomicRequired,
+        chainId: activeNetwork.chainId,
+        failed: false,
+        smartAccount,
+        txHashes,
+      };
+      const id = callsData.bundleId || `0x${uuidv4().replace(/-/g, '')}`;
+
       const response = {
-        id: `0x${uuidv4().replace(/-/g, '')}`,
+        id,
         capabilities: {},
       };
 
       // Close window after a short delay
-      setTimeout(() => {
+      setTimeout(async () => {
+        if (txHashes.length > 0) {
+          try {
+            await controllerEmitter(
+              ['wallet', 'recordSendCallsBundle'],
+              [host, id, bundleDescriptor]
+            );
+          } catch (error) {
+            // The reservation stays pending; status lookups for this id will
+            // report 100 (pending) instead of the real receipts. The batch
+            // itself already executed, so still resolve the dapp.
+            console.error('Failed to record sendCalls bundle id', error);
+          }
+        }
         clearNavigationState();
         // Dispatch event right before closing
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
     }
-  }, [allTransactionsSuccessful, confirmed, transactionStatuses, eventName]);
+  }, [
+    activeNetwork.chainId,
+    allTransactionsSuccessful,
+    callsData.atomicRequired,
+    callsData.bundleId,
+    confirmed,
+    controllerEmitter,
+    eventName,
+    host,
+    requestSmartAccount.supportsAtomicBatch,
+    transactionStatuses,
+  ]);
 
   const handleApprove = async () => {
     try {

@@ -403,7 +403,12 @@
     "missingTokenId": "ID do token ausente",
     "smartAccountSignatureError": "Sua conta inteligente rejeitou a assinatura. Aprove novamente com seu autenticador ativo e tente de novo.",
     "amountRequired": "O valor é obrigatório",
-    "addressRequired": "O endereço do destinatário é obrigatório"
+    "addressRequired": "O endereço do destinatário é obrigatório",
+    "batchStatus": "Status do lote",
+    "status": "Status",
+    "reverted": "Revertido",
+    "partiallyReverted": "Parcialmente revertido",
+    "receipts": "Recibos"
   },
   "settings": {
     "bgError": "Erro em segundo plano",

@@ -23,8 +23,8 @@ title: Quirk 및 제한 사항
 
 - `wallet_sendCalls`가 구현되어 있습니다.
 - `wallet_getCapabilities`가 구현되어 있습니다.
-- `wallet_getCallsStatus`는 unsupported status lookup에 대해 unknown bundle id를 반환합니다.
-- `wallet_showCallsStatus`는 no-op compatibility method입니다.
+- `wallet_getCallsStatus`는 구현되어 있습니다. 알 수 없는 bundle id는 오류 `5730`으로 실패합니다.
+- `wallet_showCallsStatus`는 구현되어 있으며 배치 상태를 지갑 팝업으로 표시합니다.
 
 ## Atomicity
 

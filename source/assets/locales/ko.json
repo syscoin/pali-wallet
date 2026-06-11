@@ -403,7 +403,12 @@
     "missingTokenId": "토큰 ID 없음",
     "smartAccountSignatureError": "스마트 계정이 서명을 거부했습니다. 활성 인증기로 다시 승인한 후 다시 시도하세요.",
     "amountRequired": "금액을 입력하세요",
-    "addressRequired": "받는 주소를 입력하세요"
+    "addressRequired": "받는 주소를 입력하세요",
+    "batchStatus": "배치 상태",
+    "status": "상태",
+    "reverted": "리버트됨",
+    "partiallyReverted": "부분 리버트됨",
+    "receipts": "영수증"
   },
   "settings": {
     "bgError": "백그라운드 오류",
