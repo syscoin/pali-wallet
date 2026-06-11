@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { getInfrastructureState } from '../harness/chain';
+import { getInfrastructureState, provider } from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
 
@@ -174,6 +174,48 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
           .or(wallet.page.getByRole('button', { name: /register account/i }))
           .first()
       ).toBeVisible({ timeout: 60_000 });
+    });
+
+    await wallet.step(
+      'register account through 4337 initCode flow',
+      async () => {
+        // "Register account" submits a no-op UserOperation whose initCode
+        // deploys the account through EntryPoint.senderCreator() against the
+        // gated factory; the gas payer prefunds the counterfactual address
+        // first. Deployed accounts (re-run) skip this step.
+        const registerButton = wallet.page
+          .getByRole('button', { name: /register account/i })
+          .first();
+        const alreadyDeployed = !(await registerButton
+          .isVisible({ timeout: 5_000 })
+          .catch(() => false));
+        if (alreadyDeployed) {
+          wallet.finding({
+            detail: 'Smart account already deployed; skipped registration',
+            severity: 'info',
+            step: 'register account through 4337 initCode flow',
+          });
+          return;
+        }
+        await registerButton.click();
+        // Deployment confirms on-chain before the card flips to the hydrated
+        // "Current approval method" state.
+        await expect(
+          wallet.page.getByText(/current approval method/i).first()
+        ).toBeVisible({ timeout: E2E_CONFIG.slowActionTimeoutMs });
+      }
+    );
+
+    await wallet.step('verify smart account code on-chain', async () => {
+      const code = await provider.getCode(smartAccountAddress);
+      if (code === '0x') {
+        wallet.finding({
+          detail: `Smart account ${smartAccountAddress} has no code after registration`,
+          severity: 'bug',
+          step: 'verify smart account code on-chain',
+        });
+      }
+      expect(code).not.toBe('0x');
     });
 
     await wallet.step('activity panel renders for smart account', async () => {

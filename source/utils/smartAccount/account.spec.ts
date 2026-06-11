@@ -22,6 +22,9 @@ import {
   getPaliSmartAccountDeploymentSalt,
   getPaliSmartAccountDescriptor,
   getSmartAccountAuthHash,
+  getSmartAccountUserOpRequiredPrefund,
+  encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
   withSmartAccountPaymasterData,
 } from './account';
 import { toPaliSmartAccount } from './adapter';
@@ -71,6 +74,25 @@ describe('ERC-7579 smart account helpers', () => {
       ...op,
       paymasterAndData: '0xpaymaster',
     });
+  });
+
+  it('computes the EntryPoint prefund from packed userOp gas fields', () => {
+    const userOperation = {
+      accountGasLimits: encodeSmartAccountGasLimits({
+        callGasLimit: 250_000,
+        verificationGasLimit: 1_100_000,
+      }),
+      gasFees: encodeSmartAccountGasFees({
+        maxFeePerGas: 2_500_000_000,
+        maxPriorityFeePerGas: 1_000_000_000,
+      }),
+      preVerificationGas: '50000',
+    };
+
+    expect(getSmartAccountUserOpRequiredPrefund(userOperation).toString()).toBe(
+      // (1_100_000 + 250_000 + 50_000) * 2.5 gwei
+      (BigInt(1_400_000) * BigInt(2_500_000_000)).toString()
+    );
   });
 
   it('encodes ECDSA threshold config', () => {
