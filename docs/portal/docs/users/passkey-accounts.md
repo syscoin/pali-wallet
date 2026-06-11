@@ -30,6 +30,16 @@ Pali supports three validator styles:
 - **ECDSA:** configured EVM owner addresses approve account actions.
 - **Composite:** child validators are combined under a threshold, such as passkey or ECDSA.
 
+Think of validators as the answer to "who can approve actions for this account?" — and the useful part is that the answer can change without changing your account:
+
+- **Any one of my sign-ins** (1-of-N): approve with whichever passkey or key is handy.
+- **A few of us together** (t-of-N): a quorum of people or devices must agree, ideal for shared funds.
+- **All of us together** (N-of-N): every configured sign-in must approve, for the most sensitive accounts.
+
+Policies can even contain other policies, so a team can express things like "the lead's key plus any two desk passkeys." Your address, balances, and history stay exactly the same when the policy changes — and because signing is modular, future signature types (including post-quantum ones) can be adopted on the same account later.
+
+Guardians are intentionally **not** part of this list. A guardian can never approve a transaction; their only power is to start a slow, visible recovery if you lose access. That separation protects you from lost access without giving anyone day-to-day control.
+
 Pali can use a shared wallet passkey profile or create a separate passkey credential for an account. Shared passkeys are convenient for users who want one wallet-controlled passkey. Separate passkeys can help isolate credentials per service or policy.
 
 ## Deployment

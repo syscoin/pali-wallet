@@ -33,7 +33,9 @@ Validators are the account's authorization boundary:
 
 - A P-256 WebAuthn validator means the passkey proof authorizes actions.
 - An ECDSA validator means the configured owner addresses authorize actions.
-- A composite validator can combine child validators under a threshold.
+- A composite validator can combine child validators under a threshold — 1-of-N, t-of-N, or N-of-N — and children can themselves be composites, so hierarchical policies are possible.
+
+When designing a composite policy, document the threshold rationale: 1-of-N optimizes availability, N-of-N optimizes assurance, and t-of-N balances both. Validators are replaceable modules, so the policy (and even the signature scheme — including future post-quantum validators) can be upgraded later without changing the account address. Guardians are an executor-role module and stay independent of whichever validator policy is active.
 
 Installing a malicious validator is equivalent to giving that validator control of the account. Dapps that request module installation or validator replacement must be reviewed carefully by the user.
 

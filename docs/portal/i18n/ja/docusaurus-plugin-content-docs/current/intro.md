@@ -9,6 +9,8 @@ EVM dapps向けに、PaliはEIP-1193リクエスト、EIP-6963ディスカバリ
 
 Paliは、機関や高度なdapps向けのpasskeyスマートアカウントもサポートします。dappはPaliに対して、WebAuthnに裏付けられたスマートアカウントの作成とデプロイ、作成時のスポンサーpolicy付与、その後の`wallet_sendCalls`によるアトミックバッチ実行を要求できます。既存passkeyアカウントの復元はPali内で処理されます。
 
+Pali v4は、速度と柔軟な署名権限を軸にウォレットを再構築しました。EVMとUTXOの両ネットワークでRPCをバッチ化して大幅に高速なUIを実現し、スマートアカウントはERC-7579 / ERC-4337標準に準拠します。さらに、validator（署名できる役割）とguardian（復元できる役割）が、同じ安定したアカウントアドレス上で互いに独立し、アップグレード可能な役割として動作するモジュール式の認可モデルを採用しています。全体像は[Paliとは](./start-here/what-is-pali.md)を参照してください。
+
 ## 進む道を選ぶ
 
 - **ユーザー**は[Getting started](./users/getting-started.md)から始めてください。

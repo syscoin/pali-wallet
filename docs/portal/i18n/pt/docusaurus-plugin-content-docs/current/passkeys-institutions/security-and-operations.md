@@ -16,6 +16,10 @@ A chain deve ter a factory e os módulos da Pali configurados. Validadores passk
 - Mantenha financiada a conta que paga gas.
 - Monitore implantações falhas, instalações de módulos falhas e recoveries expiradas.
 
+Um validador composite pode combinar validadores filhos sob um threshold — 1-of-N, t-of-N ou N-of-N — e os filhos podem ser eles próprios composites, então políticas hierárquicas são possíveis.
+
+Ao desenhar uma política composta, documente a justificativa do threshold: 1-of-N otimiza disponibilidade, N-of-N otimiza garantia e t-of-N equilibra os dois. Validadores são módulos substituíveis, então a política (e até o esquema de assinatura — incluindo futuros validadores pós-quânticos) pode ser atualizada depois sem mudar o endereço da conta. Guardiões são um módulo com papel de executor e permanecem independentes de qualquer que seja a política de validador ativa.
+
 ## Recovery
 
 Guardian recovery é substituição atrasada de validador. A Pali usa um salt novo por tentativa e o módulo permite apenas uma recovery ativa por conta. Não é uma backdoor custodial: requer guardiões configurados e assinaturas válidas.

@@ -17,6 +17,29 @@ Las cuentas inteligentes de Pali son cuentas de contrato que Pali puede crear, c
 
 La cuenta se despliega primero con un validador ECDSA controlado por la wallet. Si la dapp pidió passkey u otro validador soportado, Pali instala el validador solicitado y elimina el bootstrap validator con una ejecución de la cuenta.
 
+## Dos roles: los validadores firman, los guardianes recuperan
+
+ERC-7579 separa los roles de los módulos, y Pali aprovecha deliberadamente esa separación:
+
+- **Los validadores** son la autoridad de firma. Un validador decide si una aprobación dada (prueba de passkey, firma ECDSA, resultado de una política composite) autoriza una acción de la cuenta. Solo los validadores pueden aprobar transacciones.
+- **Los ejecutores** agregan comportamiento de cuenta que no es una firma. El módulo de guardian recovery de Pali es un ejecutor: los guardianes no pueden firmar ni mover fondos, solo pueden programar un reemplazo con timelock del validador activo.
+
+Mantener estos roles separados es lo que hace que la recuperación sea segura de recomendar. Comprometer a un guardián no le da a un atacante poder de firma — le da un intento de recuperación demorado, visible y cancelable.
+
+## Políticas de firma composite
+
+El validador composite combina validadores hijos bajo un threshold, lo que convierte una cuenta en un motor de políticas:
+
+- **1-of-N** — cualquiera de varios autenticadores puede aprobar. Conveniente para cuentas personales con un passkey en cada dispositivo.
+- **t-of-N** — debe aprobar un quórum. La forma natural para tesorerías compartidas, mesas de trading y cuentas controladas por equipos.
+- **N-of-N** — todos los validadores configurados deben aprobar. Cuentas de máxima garantía.
+
+Los composites pueden anidarse: un hijo de un composite puede ser a su vez un composite, de modo que las políticas jerárquicas — por ejemplo, "la clave del CFO Y (2 cualesquiera de 3 passkeys de la mesa)" — son expresables sin contratos personalizados. Guardian recovery permanece independiente de la política de validadores que esté activa.
+
+## Agilidad de validadores y preparación post-cuántica
+
+Como la autorización vive en módulos reemplazables, la cuenta no está casada con ningún esquema de firma. Hoy Pali incluye ECDSA (el predeterminado controlado por la wallet), passkeys P-256 WebAuthn y el validador composite. Cuando se desplieguen nuevos tipos de validador — incluidos esquemas de firma post-cuánticos — se instalarán en la misma cuenta con la misma dirección. En ese punto, la autorización por transacción puede ejecutarse sin ningún ECDSA involucrado. Los fondos, el historial y las integraciones nunca se mueven; solo evoluciona la autoridad de firma.
+
 ## Para instituciones y equipos
 
 Las instituciones deberían tratar estas cuentas como infraestructura de cuenta, no solo como login con passkey. Usen passkeys para onboarding más sencillo, ECDSA o validadores compuestos para controles de equipo o hardware wallet, guardian recovery para reemplazo con demora, y cuentas de gas financiadas para despliegue y ejecución. Documenten quién controla cada validador, quiénes son los guardianes y qué significa la demora de recuperación.

@@ -17,6 +17,20 @@ La mayoría de las billeteras de navegador exponen solo un proveedor EVM. Pali e
 
 Esto permite que una dapp construya experiencias que atraviesan cadenas basadas en cuentas y basadas en UTXO sin pedir a los usuarios que instalen billeteras diferentes.
 
+## Qué hay de nuevo en Pali v4
+
+Pali v4 es una modernización desde cero de la billetera en torno a tres ideas: velocidad, estándares y autoridad de firma flexible.
+
+- **Más rápida en todas partes.** Pali agrupa el tráfico RPC por lotes en redes EVM y UTXO, de modo que los saldos, el historial y los datos de comisiones se cargan en muchos menos viajes de ida y vuelta. El resultado es una billetera que se siente instantánea en lugar de ocupada.
+- **Cuentas inteligentes basadas en estándares.** Las cuentas inteligentes de Pali siguen el modelo de módulos ERC-7579 con codificación de ejecución estilo ERC-4337. Nada en la cuenta es un lock-in propietario: los validadores, los ejecutores y el comportamiento de la cuenta siguen especificaciones públicas.
+- **La autorización está separada de la cuenta.** Quién puede firmar es una decisión de módulos, no una propiedad grabada en la dirección. Hoy eso significa claves ECDSA propiedad de la wallet y passkeys P-256 WebAuthn. Mañana puede significar nuevos tipos de validador — incluidos esquemas de firma post-cuánticos — instalados en la misma cuenta con la misma dirección, sin ningún ECDSA involucrado en la autorización de cada transacción.
+- **Políticas de firma componibles.** Un validador composite combina validadores hijos bajo un threshold: 1-of-N para conveniencia, t-of-N para control compartido, N-of-N para máxima garantía. Los composites pueden anidarse, de modo que las políticas pueden ser jerárquicas.
+- **Los guardianes protegen contra la pérdida de acceso.** Guardian recovery es un módulo separado con rol de ejecutor (según ERC-7579), deliberadamente distinto de los validadores. Los guardianes no pueden firmar transacciones; solo pueden programar un reemplazo de validador con timelock. Agrega o elimina guardianes en cualquier momento mientras la cuenta esté sana.
+
+## Hacia dónde va Pali
+
+La dirección de Pali es **autoridad de firma dinámica y flexible para frontends cripto**. Cualquier frontend — una dapp, un exchange, un panel institucional, un servicio embebido — debería poder pedir a la billetera exactamente la política de firma que el trabajo requiere: un passkey para un onboarding sin fricción, un composite t-of-N para una tesorería compartida, un guardián respaldado por hardware para la recuperación, o un tipo de validador futuro que aún no existe. La dirección de la cuenta se mantiene estable mientras la autoridad detrás de ella evoluciona.
+
 ## Compatibilidad de un vistazo
 
 | Capacidad | Superficie admitida |

@@ -11,6 +11,16 @@ Smart accounts da Pali são contas EVM de contrato controladas por módulos. Um 
 - Validadores composite para cogestão.
 - Ações em lote e guardian recovery.
 
+Pense nos validadores como a resposta à pergunta "quem pode aprovar ações desta conta?" — e a parte útil é que a resposta pode mudar sem mudar a sua conta:
+
+- **Qualquer um dos meus logins** (1-of-N): aprove com o passkey ou a chave que estiver à mão.
+- **Alguns de nós juntos** (t-of-N): um quórum de pessoas ou dispositivos precisa concordar, ideal para fundos compartilhados.
+- **Todos nós juntos** (N-of-N): todo login configurado precisa aprovar, para as contas mais sensíveis.
+
+As políticas podem até conter outras políticas, então uma equipe pode expressar coisas como "a chave do líder mais quaisquer dois passkeys do desk". Seu endereço, seus saldos e seu histórico permanecem exatamente os mesmos quando a política muda — e como a assinatura é modular, tipos de assinatura futuros (incluindo pós-quânticos) podem ser adotados na mesma conta mais tarde.
+
+Guardiões intencionalmente **não** fazem parte desta lista. Um guardião nunca pode aprovar uma transação; seu único poder é iniciar uma recuperação lenta e visível se você perder o acesso. Essa separação protege você contra a perda de acesso sem dar a ninguém o controle do dia a dia.
+
 ## Implantação
 
 A Pali deriva o endereço de forma determinística, implanta pela factory e salva metadados duráveis. A implantação começa com um bootstrap validator ECDSA da carteira; depois a Pali instala o validador solicitado se ele for diferente.

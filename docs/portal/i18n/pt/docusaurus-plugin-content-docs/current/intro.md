@@ -9,6 +9,8 @@ Para dapps EVM, a Pali expõe um provider `window.ethereum` compatível com Meta
 
 A Pali também oferece suporte a smart accounts com passkey para instituições e dapps avançadas. Uma dapp pode pedir à Pali para criar e implantar uma smart account apoiada por WebAuthn, anexar uma política de módulos durante a criação e depois executar lotes atômicos por meio de `wallet_sendCalls`. A recuperação de contas com passkey existentes é gerenciada na Pali.
 
+A Pali v4 reconstrói a carteira em torno de velocidade e autoridade de assinatura flexível: RPC em lote nas redes EVM e UTXO para uma UI dramaticamente mais rápida, smart accounts que seguem os padrões ERC-7579 / ERC-4337, e um modelo de autorização modular em que validadores (quem pode assinar) e guardiões (quem pode recuperar) são papéis independentes e atualizáveis no mesmo endereço de conta estável. Veja [O que é a Pali?](./start-here/what-is-pali.md) para o panorama completo.
+
 ## Escolha seu caminho
 
 - **Usuários** devem começar por [Primeiros passos](./users/getting-started.md).

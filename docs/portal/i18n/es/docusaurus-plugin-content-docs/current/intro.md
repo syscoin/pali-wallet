@@ -9,6 +9,8 @@ Para dapps EVM, Pali expone un proveedor `window.ethereum` compatible con MetaMa
 
 Pali también admite cuentas inteligentes passkey para instituciones y dapps avanzadas. Una dapp puede pedir a Pali que cree o recupere una cuenta inteligente respaldada por WebAuthn, adjuntar una política de módulos y luego ejecutar lotes atómicos mediante `wallet_sendCalls`.
 
+Pali v4 reconstruye la billetera en torno a la velocidad y a una autoridad de firma flexible: RPC por lotes en redes EVM y UTXO para una UI dramáticamente más rápida, cuentas inteligentes que siguen los estándares ERC-7579 / ERC-4337, y un modelo de autorización modular donde los validadores (quienes pueden firmar) y los guardianes (quienes pueden recuperar) son roles independientes y actualizables sobre la misma dirección de cuenta estable. Consulta [¿Qué es Pali?](./start-here/what-is-pali.md) para ver el panorama completo.
+
 ## Elige tu camino
 
 - **Usuarios** deben comenzar con [Primeros pasos](./users/getting-started.md).
