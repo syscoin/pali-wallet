@@ -393,6 +393,13 @@ export class WalletMethodHandler implements IMethodHandler {
             );
           }
           const smartAccountMetadata = account.smartAccount;
+          if (smartAccountMetadata.chainId !== activeNetwork.chainId) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidRequest(
+                `Smart account modules are only available on chain ${smartAccountMetadata.chainId}. Switch back from chain ${activeNetwork.chainId} to inspect this account.`
+              )
+            );
+          }
           return {
             address: account.address,
             chainId: `0x${activeNetwork.chainId.toString(16)}`,
