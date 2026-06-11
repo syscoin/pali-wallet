@@ -28,6 +28,18 @@ const commonMasks = (): Locator[] => [
 const settle = async (ms = 1200) => {
   await wallet.page.waitForLoadState('networkidle').catch(() => undefined);
   await wallet.page.waitForTimeout(ms);
+  // Hash routing keeps one document alive across screens, so a scroll
+  // container can carry scroll offset from a previous test into the next
+  // capture. Pin every baseline to scroll-top for determinism.
+  await wallet.page
+    .evaluate(() => {
+      window.scrollTo(0, 0);
+      document
+        .querySelectorAll('*')
+        .forEach((el) => el.scrollTop > 0 && (el.scrollTop = 0));
+    })
+    .catch(() => undefined);
+  await wallet.page.waitForTimeout(150);
 };
 
 test.describe('visual baselines', () => {
