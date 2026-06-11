@@ -97,6 +97,17 @@ export const SmartAccountModuleConsent = () => {
 
   const isSmartAccount = Boolean(account?.isSmartAccount);
 
+  const refreshMetadata = useCallback(async () => {
+    if (!account?.isSmartAccount) return null;
+    const hydrated = (await controllerEmitter(
+      ['wallet', 'hydrateSmartAccount'],
+      [account.id],
+      300000
+    )) as ISmartAccountMetadata;
+    setMetadata(hydrated);
+    return hydrated;
+  }, [account?.id, account?.isSmartAccount, controllerEmitter]);
+
   const installedModules = metadata?.installedModules || [];
   const targetModule = installedModules.find((module) =>
     sameAddress(module.address, moduleAddress || undefined)
@@ -161,7 +172,14 @@ export const SmartAccountModuleConsent = () => {
     return () => {
       cancelled = true;
     };
-  }, [account?.id, account?.isSmartAccount, action, moduleAddress]);
+  }, [
+    account?.id,
+    account?.isSmartAccount,
+    action,
+    controllerEmitter,
+    moduleAddress,
+    t,
+  ]);
 
   const preflightFailureMessage = useMemo(() => {
     if (!preflight || preflight.ok) return null;
@@ -237,6 +255,8 @@ export const SmartAccountModuleConsent = () => {
         );
       }
 
+      await refreshMetadata();
+
       dispatchBackgroundEvent(`${eventName}.${host}`, {
         action,
         address: moduleAddress,
@@ -269,6 +289,7 @@ export const SmartAccountModuleConsent = () => {
     initData,
     metadata,
     moduleAddress,
+    refreshMetadata,
     request.name,
     t,
     targetModule?.id,
