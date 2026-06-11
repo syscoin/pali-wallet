@@ -16,6 +16,7 @@ import {
 import { dispatchBackgroundEvent } from 'utils/browser';
 import {
   encodeInstallValidatorModuleCall,
+  encodeRotateValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
@@ -116,6 +117,11 @@ export const SmartAccountModuleConsent = () => {
   const targetModule = installedModules.find((module) =>
     sameAddress(module.address, moduleAddress || undefined)
   ) as SmartAccountInstalledModule | undefined;
+  const activeValidator = installedModules.find(
+    (module) =>
+      module.type === 'validator' &&
+      sameAddress(metadata?.auth?.validator, module.address)
+  );
   const targetModuleIsValidator = targetModule?.type === 'validator';
   const isActiveValidator = sameAddress(
     metadata?.auth?.validator,
@@ -250,6 +256,10 @@ export const SmartAccountModuleConsent = () => {
         setError(t('smartAccountHub.cannotRemoveActiveValidator'));
         return;
       }
+      if (action === 'install' && !activeValidator?.data) {
+        setError(t('smartAccountHub.noActiveValidator'));
+        return;
+      }
       const authenticatorContexts = getSmartAccountLocalOwnerContexts({
         accounts: accounts as any,
         controllerEmitter: controllerEmitter as any,
@@ -267,6 +277,18 @@ export const SmartAccountModuleConsent = () => {
             target: account.address,
             value: '0x0',
           },
+          ...(action === 'install' && activeValidator?.data
+            ? [
+                {
+                  data: encodeRotateValidatorModuleCall(
+                    activeValidator.address,
+                    activeValidator.data
+                  ),
+                  target: account.address,
+                  value: '0x0',
+                },
+              ]
+            : []),
         ],
         skipRapidPolling: true,
         smartAccount: metadata,
@@ -328,6 +350,8 @@ export const SmartAccountModuleConsent = () => {
     account?.id,
     accounts,
     action,
+    activeValidator?.address,
+    activeValidator?.data,
     activeNetwork.chainId,
     controllerEmitter,
     eventName,

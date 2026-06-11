@@ -86,6 +86,37 @@ const INITIAL_CUSTOM_INSTALL: CustomInstallState = {
   step: 'form',
 };
 
+const buildCustomValidatorInstallExecutions = ({
+  accountAddress,
+  activeValidatorAddress,
+  activeValidatorData,
+  customInitData,
+  customValidatorAddress,
+}: {
+  accountAddress: string;
+  activeValidatorAddress: string;
+  activeValidatorData: string;
+  customInitData: string;
+  customValidatorAddress: string;
+}) => [
+  {
+    data: encodeInstallValidatorModuleCall(
+      customValidatorAddress,
+      customInitData
+    ),
+    target: accountAddress,
+    value: '0x0',
+  },
+  {
+    data: encodeRotateValidatorModuleCall(
+      activeValidatorAddress,
+      activeValidatorData
+    ),
+    target: accountAddress,
+    value: '0x0',
+  },
+];
+
 const SmartAccountHub = () => {
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
@@ -293,17 +324,23 @@ const SmartAccountHub = () => {
     if (!customInstall || !account?.address || !customInstall.acknowledged) {
       return;
     }
+    if (!activeValidator?.data) {
+      alert.error(t('smartAccountHub.noActiveValidator'));
+      return;
+    }
     const address = getAddress(customInstall.address.trim());
     const initData = customInstall.initData || '0x';
     setBusyKey('custom:install');
     try {
-      await submitExecutions([
-        {
-          data: encodeInstallValidatorModuleCall(address, initData),
-          target: account.address,
-          value: '0x0',
-        },
-      ]);
+      await submitExecutions(
+        buildCustomValidatorInstallExecutions({
+          accountAddress: account.address,
+          activeValidatorAddress: activeValidator.address,
+          activeValidatorData: activeValidator.data,
+          customInitData: initData,
+          customValidatorAddress: address,
+        })
+      );
       await controllerEmitter(
         ['wallet', 'addSmartAccountCustomModule'],
         [
@@ -338,6 +375,7 @@ const SmartAccountHub = () => {
     account?.address,
     account?.id,
     alert,
+    activeValidator,
     controllerEmitter,
     customInstall,
     refreshMetadata,
