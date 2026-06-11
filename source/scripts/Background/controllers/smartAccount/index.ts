@@ -33,6 +33,7 @@ import {
   getConfiguredAuthenticatorAddress,
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
+  getSmartAccountUserOpRequiredPrefund,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
@@ -584,29 +585,31 @@ class SmartAccountController {
           'Stored smart account authenticator does not match the deterministic account address.'
         );
       }
-      const { factoryData: deploymentCalldata } =
-        await smartAccount.getFactoryArgs();
-      const gasPayer = await this.getWalletGasPayerAccount();
+      // The factory gates createAccount on EntryPoint.senderCreator(), so
+      // explicit registration is a no-op UserOp whose initCode deploys the
+      // account through the canonical ERC-4337 path. The op is signed in the
+      // background with the account's local ECDSA owners (fresh accounts
+      // always carry the ECDSA bootstrap validator); other validator kinds
+      // deploy lazily with their first UI-signed execution.
       this.pendingDeploymentAddresses.add(accountAddress);
       let response: IEvmTransactionResponse;
       try {
-        response = await this.deps.sendAndSaveEthTransaction(
-          {
-            data: deploymentCalldata,
-            to: factoryAddress,
-            value: '0x0',
-          },
-          false,
-          { id: gasPayer.id, type: gasPayer.type },
-          {
-            smartAccountDeployment: true,
-            smartAccountAddress: accountAddress,
-            smartAccountAuthenticator:
-              metadata.auth.module || metadata.auth.scheme,
-          },
-          { clearNavigation: false, persist: true }
+        const prepared = await this.prepareSmartAccountExecutions(
+          [{ data: '0x', target: accountAddress, value: '0x0' }],
+          params.accountId
         );
-        await response.wait();
+        const signature = await this.signActionHashWithLocalEcdsaOwners(
+          metadata,
+          prepared.actionHash
+        );
+        response = await this.submitSmartAccountExecution({
+          accountId: params.accountId,
+          executions: prepared.executions,
+          signature,
+          skipRapidPolling: true,
+          userOperation: prepared.userOperation,
+          waitForConfirmation: true,
+        });
       } finally {
         this.pendingDeploymentAddresses.delete(accountAddress);
       }
@@ -770,10 +773,20 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
 
-    const [balance, feeData] = await Promise.all([
+    const entryPoint = new Contract(
+      PALI_ENTRYPOINT_V09_ADDRESS,
+      PALI_ENTRYPOINT_V09_ABI,
+      provider
+    );
+    const [nativeBalance, entryPointDeposit, feeData] = await Promise.all([
       provider.getBalance(active.account.address),
+      entryPoint.balanceOf(active.account.address) as Promise<BigNumber>,
       provider.getFeeData(),
     ]);
+    // The EntryPoint draws prefunds from the account's deposit before its
+    // native balance, and refunds unused prefund (e.g. from the deployment
+    // op) back to the deposit -- both are spendable for userOp gas.
+    const balance = nativeBalance.add(entryPointDeposit);
     const maxFeePerGas = BigNumber.from(
       feeData.maxFeePerGas || feeData.gasPrice || 0
     );
@@ -1008,6 +1021,20 @@ class SmartAccountController {
     );
 
     try {
+      // Funded first-UserOp deployment: an op carrying initCode validates
+      // (and pays its EntryPoint prefund) before anything executes, so the
+      // counterfactual account must already cover the prefund. Top up the
+      // shortfall from the gas payer first.
+      if (
+        signedUserOperation.initCode &&
+        signedUserOperation.initCode !== '0x'
+      ) {
+        await this.ensureSmartAccountDeploymentPrefund(
+          active.account.address,
+          signedUserOperation,
+          gasPayer
+        );
+      }
       const response = await this.deps.sendAndSaveEthTransaction(
         { data: callData, to: PALI_ENTRYPOINT_V09_ADDRESS, value: '0x0' },
         false,
@@ -1045,6 +1072,52 @@ class SmartAccountController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Ensures the (counterfactual) smart account can pay the EntryPoint
+   * prefund for a deployment userOp. Counts both the account's native
+   * balance and its existing EntryPoint deposit; any shortfall is topped
+   * up with a plain transfer from the gas payer. Unused prefund is
+   * credited back to the account's EntryPoint deposit after the op.
+   */
+  private async ensureSmartAccountDeploymentPrefund(
+    accountAddress: string,
+    userOperation: SmartAccountPackedUserOperation,
+    gasPayer: { address: string; id: number; type: PaliKeyringAccountType }
+  ): Promise<void> {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const entryPoint = new Contract(
+      PALI_ENTRYPOINT_V09_ADDRESS,
+      PALI_ENTRYPOINT_V09_ABI,
+      provider
+    );
+    const [balance, deposit] = await Promise.all([
+      provider.getBalance(accountAddress),
+      entryPoint.balanceOf(accountAddress) as Promise<BigNumber>,
+    ]);
+    const required = getSmartAccountUserOpRequiredPrefund(userOperation);
+    const shortfall = required.sub(balance).sub(deposit);
+    if (shortfall.lte(0)) {
+      return;
+    }
+    const response = await this.deps.sendAndSaveEthTransaction(
+      {
+        to: getAddress(accountAddress),
+        value: shortfall.toHexString(),
+      },
+      false,
+      { id: gasPayer.id, type: gasPayer.type },
+      {
+        smartAccountAddress: getAddress(accountAddress),
+        smartAccountDeploymentPrefund: true,
+      },
+      { clearNavigation: false, persist: true, skipRapidPolling: true }
+    );
+    await response.wait();
   }
 
   private getLocalNativeExecutionRecipients(
@@ -1388,6 +1461,51 @@ class SmartAccountController {
         );
       })
     );
+  }
+
+  /**
+   * Signs a userOp action hash with the account's configured local ECDSA
+   * owners (threshold-many), mirroring the UI ecdsa authenticator driver's
+   * signature encoding. Used for background-signed ops such as the explicit
+   * registration no-op; non-ECDSA validators must sign through the UI.
+   */
+  private async signActionHashWithLocalEcdsaOwners(
+    metadata: ISmartAccountMetadata,
+    actionHash: string
+  ): Promise<string> {
+    const moduleId = metadata.auth?.module || metadata.auth?.scheme;
+    if (moduleId !== 'ecdsa' || !metadata.auth?.data) {
+      throw new Error(
+        'Smart account registration requires an interactive signature for this validator. Submit any transaction from the account to deploy it.'
+      );
+    }
+    const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
+      ['address[]', 'uint64'],
+      metadata.auth.data
+    ) as [string[], { toString: () => string }];
+    const owners = decodedOwners.map((owner) => getAddress(owner));
+    const threshold = Math.max(1, Number(decodedThreshold.toString()) || 1);
+    const localOwners = owners.filter((owner) =>
+      this.findLocalSigningAccount(owner)
+    );
+    if (localOwners.length < threshold) {
+      throw new Error(
+        'Smart account registration requires the configured ECDSA owner keys in this wallet.'
+      );
+    }
+    const signatures = await Promise.all(
+      localOwners
+        .slice(0, threshold)
+        .map((owner) =>
+          this.deps.signEthWithAccount(
+            [owner, actionHash],
+            this.getLocalSigningAccount(owner)
+          )
+        )
+    );
+    return threshold === 1
+      ? signatures[0]
+      : defaultAbiCoder.encode(['bytes[]'], [signatures]);
   }
 
   private findLocalSigningAccount(address: string): {

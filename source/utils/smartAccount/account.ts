@@ -1,7 +1,7 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
 import { BigNumber } from '@ethersproject/bignumber';
-import { hexConcat, hexZeroPad } from '@ethersproject/bytes';
+import { hexConcat, hexDataSlice, hexZeroPad } from '@ethersproject/bytes';
 import { keccak256 } from '@ethersproject/keccak256';
 
 import type {
@@ -321,6 +321,34 @@ export const encodeSmartAccountGasFees = ({
     hexZeroPad(BigNumber.from(maxPriorityFeePerGas).toHexString(), 16),
     hexZeroPad(BigNumber.from(maxFeePerGas).toHexString(), 16),
   ]);
+
+/**
+ * Required EntryPoint prefund for a self-funded (no paymaster) packed userOp:
+ * maxFeePerGas * (verificationGasLimit + callGasLimit + preVerificationGas).
+ * The account (balance + EntryPoint deposit) must cover this during the
+ * validation phase; any unused portion is credited back to the account's
+ * EntryPoint deposit after execution.
+ */
+export const getSmartAccountUserOpRequiredPrefund = (
+  userOperation: Pick<
+    SmartAccountPackedUserOperation,
+    'accountGasLimits' | 'gasFees' | 'preVerificationGas'
+  >
+): BigNumber => {
+  const verificationGasLimit = BigNumber.from(
+    hexDataSlice(userOperation.accountGasLimits, 0, 16)
+  );
+  const callGasLimit = BigNumber.from(
+    hexDataSlice(userOperation.accountGasLimits, 16, 32)
+  );
+  const maxFeePerGas = BigNumber.from(
+    hexDataSlice(userOperation.gasFees, 16, 32)
+  );
+  return verificationGasLimit
+    .add(callGasLimit)
+    .add(BigNumber.from(userOperation.preVerificationGas))
+    .mul(maxFeePerGas);
+};
 
 export const buildSmartAccountUserOperation = ({
   accountGasLimits = encodeSmartAccountGasLimits({

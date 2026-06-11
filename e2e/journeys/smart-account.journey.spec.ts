@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { getInfrastructureState } from '../harness/chain';
+import { getInfrastructureState, provider } from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
 
@@ -119,6 +119,104 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
       () => wallet.getActiveAccountAddress()
     );
     wallet.summary.addAddress('smartAccount', smartAccountAddress);
+
+    await wallet.step(
+      'policy page reachable from manage accounts',
+      async () => {
+        await wallet.gotoRoute('#/settings/manage-accounts');
+        const smartAccountRow = wallet.page
+          .locator('li', { hasText: /Smart Account/ })
+          .first();
+        await expect(smartAccountRow).toBeVisible({ timeout: 30_000 });
+        // First icon button on the row is the edit pencil.
+        await smartAccountRow.locator('button').first().click();
+        await expect(wallet.page).toHaveURL(/settings\/edit-account/, {
+          timeout: 30_000,
+        });
+        await wallet.page
+          .getByRole('button', { name: /smart account settings/i })
+          .first()
+          .click();
+        await expect(wallet.page).toHaveURL(/smart-account-policy/, {
+          timeout: 30_000,
+        });
+      }
+    );
+
+    await wallet.step('policy page shows approval method card', async () => {
+      // A freshly created smart account is counterfactual (not deployed), so
+      // the card shows the "Register account" CTA; deployed accounts show the
+      // hydrated "Current approval method" with the active validator label.
+      const card = wallet.page
+        .getByText(/current approval method/i)
+        .or(wallet.page.getByText(/register account/i))
+        .first();
+      await expect(card).toBeVisible({ timeout: 60_000 });
+      const deployed = await wallet.page
+        .getByText(/current approval method/i)
+        .first()
+        .isVisible();
+      if (deployed) {
+        // Hydration resolves the active validator label (Pali wallet for the
+        // default ECDSA anchor).
+        await expect(
+          wallet.page.getByText(/pali wallet|passkey/i).first()
+        ).toBeVisible({ timeout: 60_000 });
+      }
+    });
+
+    await wallet.step('policy page shows modules or register CTA', async () => {
+      // Deployed accounts list the module cards ("Sign-in and recovery");
+      // counterfactual accounts show the Register CTA instead.
+      await expect(
+        wallet.page
+          .getByText(/sign-in and recovery/i)
+          .or(wallet.page.getByRole('button', { name: /register account/i }))
+          .first()
+      ).toBeVisible({ timeout: 60_000 });
+    });
+
+    await wallet.step(
+      'register account through 4337 initCode flow',
+      async () => {
+        // "Register account" submits a no-op UserOperation whose initCode
+        // deploys the account through EntryPoint.senderCreator() against the
+        // gated factory; the gas payer prefunds the counterfactual address
+        // first. Deployed accounts (re-run) skip this step.
+        const registerButton = wallet.page
+          .getByRole('button', { name: /register account/i })
+          .first();
+        const alreadyDeployed = !(await registerButton
+          .isVisible({ timeout: 5_000 })
+          .catch(() => false));
+        if (alreadyDeployed) {
+          wallet.finding({
+            detail: 'Smart account already deployed; skipped registration',
+            severity: 'info',
+            step: 'register account through 4337 initCode flow',
+          });
+          return;
+        }
+        await registerButton.click();
+        // Deployment confirms on-chain before the card flips to the hydrated
+        // "Current approval method" state.
+        await expect(
+          wallet.page.getByText(/current approval method/i).first()
+        ).toBeVisible({ timeout: E2E_CONFIG.slowActionTimeoutMs });
+      }
+    );
+
+    await wallet.step('verify smart account code on-chain', async () => {
+      const code = await provider.getCode(smartAccountAddress);
+      if (code === '0x') {
+        wallet.finding({
+          detail: `Smart account ${smartAccountAddress} has no code after registration`,
+          severity: 'bug',
+          step: 'verify smart account code on-chain',
+        });
+      }
+      expect(code).not.toBe('0x');
+    });
 
     await wallet.step('activity panel renders for smart account', async () => {
       await wallet.gotoRoute('#/home');
