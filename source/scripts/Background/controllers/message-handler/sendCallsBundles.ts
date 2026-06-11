@@ -115,13 +115,16 @@ const unknownBundleError = () => {
   return cleanErrorStack(error);
 };
 
-// Resolves an id to its batch descriptor: wallet-minted ids decode directly,
-// app-provided ids come from the per-host registry. Null when unknown.
+// Resolves an id to its batch descriptor: app-provided ids come from the
+// per-host registry and take precedence; wallet-minted ids decode directly.
+// (sendCalls additionally rejects app-provided ids that match the wallet's
+// encoded layout, so the two namespaces cannot collide; the lookup order
+// here is defense in depth.) Null when unknown.
 export const resolveSendCallsBundleDescriptor = async (
   host: string,
   id: string
 ): Promise<ISendCallsBatchDescriptor | null> =>
-  decodeSendCallsBatchId(id) || (await getStoredSendCallsBundle(host, id));
+  (await getStoredSendCallsBundle(host, id)) || decodeSendCallsBatchId(id);
 
 // The outer EntryPoint.handleOps transaction can mine successfully even when
 // the inner user operation reverted, so for smart-account batches the

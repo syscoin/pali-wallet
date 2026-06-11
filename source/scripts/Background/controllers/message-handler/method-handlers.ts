@@ -7,6 +7,7 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
+import { decodeSendCallsBatchId } from 'utils/sendCallsBatch';
 
 import { popupPromise } from './popup-promise';
 import { requestCoordinator } from './request-pipeline';
@@ -189,6 +190,18 @@ export class WalletMethodHandler implements IMethodHandler {
               ethErrors.rpc.invalidParams(
                 'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
               )
+            );
+          }
+          // Ids matching Pali's self-describing wallet-minted layout are
+          // reserved: accepting one (e.g. an id returned by an earlier
+          // wallet_sendCalls) would shadow that bundle in status lookups.
+          if (decodeSendCallsBatchId(sendCallsRequest.id) !== null) {
+            throw cleanErrorStack(
+              ethErrors.provider.custom({
+                code: 5720,
+                message:
+                  'There is already a bundle submitted with this id (Duplicate ID).',
+              })
             );
           }
           const existingBundle = await getStoredSendCallsBundle(
