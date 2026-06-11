@@ -28,10 +28,10 @@ jobs:
       - name: Build extension
         run: yarn build:chrome
       - name: Run visual baselines
-        # --update-snapshots=missing: brand-new screens write their baseline
-        # (uploaded below for committing) without failing the job; any
-        # *changed* screen still fails. Commit the generated linux baselines
-        # under e2e/visual/__screenshots__/ to enforce them.
+        # Linux baselines are committed under e2e/visual/__screenshots__/linux/.
+        # A screen without a committed baseline FAILS the job but writes the
+        # generated baseline into the artifact below: download it, commit the
+        # new linux png(s), and re-run. Changed screens fail with a diff.
         run: yarn e2e:visual --update-snapshots=missing
       - name: Upload visual artifacts (diffs + new baselines)
         if: always()
