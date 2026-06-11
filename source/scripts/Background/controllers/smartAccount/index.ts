@@ -770,15 +770,15 @@ class SmartAccountController {
     accountId: number;
     address: string;
   }): Promise<CustomValidatorPreflightResult> {
-    const active = this.getSmartAccountById(params.accountId);
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
     }
+    const metadata = await this.hydrateSmartAccount(params.accountId);
     return preflightCustomValidatorInstall(provider, {
       address: params.address,
-      chainId: active.metadata.chainId,
-      metadata: active.metadata,
+      chainId: metadata.chainId,
+      metadata,
     });
   }
 
