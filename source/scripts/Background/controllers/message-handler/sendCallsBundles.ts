@@ -2,8 +2,8 @@ import { ethErrors } from 'helpers/errors';
 
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
+  CALLS_STATUS_PENDING,
   computeCallsStatusCode,
-  decodeSendCallsBatchId,
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
 import {
@@ -14,14 +14,15 @@ import {
 // ---------------------------------------------------------------------------
 // EIP-5792 bundle registry + status resolution.
 //
-// Wallet-minted bundle ids are self-describing (see utils/sendCallsBatch) and
-// need no storage. This registry only tracks bundles whose id was supplied by
-// the dapp in wallet_sendCalls: the spec requires the wallet to respect and
-// return app-provided ids (and reject duplicates with error 5720), and such
-// ids cannot carry the transaction hashes because they are chosen before
-// execution. Records are persisted in chrome.storage.local so lookups survive
-// MV3 service-worker restarts, scoped per host (the spec scopes id uniqueness
-// per sender per app).
+// The per-host registry is the single source of truth for bundle ids: only
+// ids that wallet_sendCalls actually issued (wallet-minted random ids or
+// validated app-provided ids) resolve in wallet_getCallsStatus /
+// wallet_showCallsStatus; anything else is the spec 5730 unknown-bundle
+// error. Ids are reserved atomically before the approval popup opens (so
+// concurrent duplicate app-provided ids are rejected with 5720) and updated
+// with the transaction hashes after broadcast. Records are persisted in
+// chrome.storage.local so they survive MV3 service-worker restarts, scoped
+// per host (the spec scopes id uniqueness per sender per app).
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'pali-sendcalls-bundles';
@@ -32,7 +33,22 @@ const MAX_BUNDLE_ID_CHARS = 8194;
 
 interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
   createdAt: number;
+  // True while the id is reserved but the batch has not been broadcast yet.
+  pending?: boolean;
 }
+
+// All store mutations run through this queue: the background service worker
+// is the only writer, so serializing read-modify-write cycles makes
+// reserve/record/release atomic with respect to each other.
+let storeQueue: Promise<unknown> = Promise.resolve();
+const withStoreLock = <T>(fn: () => Promise<T>): Promise<T> => {
+  const run = storeQueue.then(fn, fn);
+  storeQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+};
 
 type TBundleStore = {
   [host: string]: { [id: string]: IStoredSendCallsBundle };
@@ -71,6 +87,17 @@ export const isValidAppProvidedBundleId = (id: unknown): id is string =>
   /^0x[0-9a-fA-F]+$/.test(id) &&
   id.length <= MAX_BUNDLE_ID_CHARS;
 
+// Wallet-minted bundle ids are 32 random bytes: unguessable and carrying no
+// information, so a dapp cannot fabricate an id this wallet never issued nor
+// correlate ids across apps.
+export const generateWalletBundleId = (): string => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return `0x${Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`;
+};
+
 export const getStoredSendCallsBundle = async (
   host: string,
   id: string
@@ -88,26 +115,79 @@ export const getStoredSendCallsBundle = async (
   };
 };
 
-export const recordSendCallsBundle = async (
+const evictAndWrite = async (
+  storeData: TBundleStore,
   host: string,
-  id: string,
-  descriptor: ISendCallsBatchDescriptor
+  hostBundles: { [id: string]: IStoredSendCallsBundle },
+  now: number
 ): Promise<void> => {
-  const storeData = await readBundleStore();
-  const now = Date.now();
-  const hostBundles = storeData[host] || {};
-
-  hostBundles[id] = { ...descriptor, createdAt: now };
-
   // Evict expired entries, then the oldest beyond the per-host cap.
   const entries = Object.entries(hostBundles).filter(
     ([, bundle]) => now - bundle.createdAt <= BUNDLE_TTL_MS
   );
   entries.sort(([, a], [, b]) => b.createdAt - a.createdAt);
   storeData[host] = Object.fromEntries(entries.slice(0, MAX_BUNDLES_PER_HOST));
-
   await writeBundleStore(storeData);
 };
+
+// Atomically reserves a bundle id before the approval popup opens. Returns
+// false when the id is already taken for this host (reserved or completed),
+// which the caller maps to the spec 5720 duplicate-id error.
+export const reserveSendCallsBundle = (
+  host: string,
+  id: string,
+  descriptor: Omit<ISendCallsBatchDescriptor, 'txHashes'>
+): Promise<boolean> =>
+  withStoreLock(async () => {
+    const storeData = await readBundleStore();
+    const now = Date.now();
+    const hostBundles = storeData[host] || {};
+    const existing = hostBundles[id];
+    if (existing && now - existing.createdAt <= BUNDLE_TTL_MS) {
+      return false;
+    }
+    hostBundles[id] = {
+      ...descriptor,
+      txHashes: [],
+      createdAt: now,
+      pending: true,
+    };
+    await evictAndWrite(storeData, host, hostBundles, now);
+    return true;
+  });
+
+// Finalizes a reservation with the broadcast transaction hashes (also used
+// by the SendCalls popup through MainController.recordSendCallsBundle).
+export const recordSendCallsBundle = (
+  host: string,
+  id: string,
+  descriptor: ISendCallsBatchDescriptor
+): Promise<void> =>
+  withStoreLock(async () => {
+    const storeData = await readBundleStore();
+    const now = Date.now();
+    const hostBundles = storeData[host] || {};
+    const createdAt = hostBundles[id]?.createdAt ?? now;
+    hostBundles[id] = { ...descriptor, createdAt, pending: false };
+    await evictAndWrite(storeData, host, hostBundles, now);
+  });
+
+// Drops a reservation whose request failed before broadcast (user rejection,
+// popup error). Only removes records that never received transaction hashes
+// so a finalized bundle can never be deleted by a late cleanup.
+export const releaseSendCallsBundleReservation = (
+  host: string,
+  id: string
+): Promise<void> =>
+  withStoreLock(async () => {
+    const storeData = await readBundleStore();
+    const bundle = storeData[host]?.[id];
+    if (!bundle || !bundle.pending || bundle.txHashes.length > 0) {
+      return;
+    }
+    delete storeData[host][id];
+    await writeBundleStore(storeData);
+  });
 
 const unknownBundleError = () => {
   const error = new Error('Unknown bundle id');
@@ -115,16 +195,13 @@ const unknownBundleError = () => {
   return cleanErrorStack(error);
 };
 
-// Resolves an id to its batch descriptor: app-provided ids come from the
-// per-host registry and take precedence; wallet-minted ids decode directly.
-// (sendCalls additionally rejects app-provided ids that match the wallet's
-// encoded layout, so the two namespaces cannot collide; the lookup order
-// here is defense in depth.) Null when unknown.
-export const resolveSendCallsBundleDescriptor = async (
+// Resolves an id to its batch descriptor from the per-host registry: only
+// ids this wallet actually issued to the host resolve. Null when unknown.
+export const resolveSendCallsBundleDescriptor = (
   host: string,
   id: string
 ): Promise<ISendCallsBatchDescriptor | null> =>
-  (await getStoredSendCallsBundle(host, id)) || decodeSendCallsBatchId(id);
+  getStoredSendCallsBundle(host, id);
 
 // The outer EntryPoint.handleOps transaction can mine successfully even when
 // the inner user operation reverted, so for smart-account batches the
@@ -173,6 +250,17 @@ export const resolveCallsStatus = async (
   const descriptor = await resolveSendCallsBundleDescriptor(host, id);
   if (!descriptor) {
     throw unknownBundleError();
+  }
+
+  // Reserved but not broadcast yet (approval popup still open): pending.
+  if (descriptor.txHashes.length === 0) {
+    return {
+      version: '2.0.0',
+      id,
+      chainId: `0x${descriptor.chainId.toString(16)}`,
+      atomic: descriptor.atomic,
+      status: CALLS_STATUS_PENDING,
+    };
   }
 
   const provider = getProviderForChain(descriptor.chainId);

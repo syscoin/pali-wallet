@@ -16,7 +16,6 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { getMethodName } from 'utils/commonMethodSignatures';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
-import { encodeSendCallsBatchId } from 'utils/sendCallsBatch';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
@@ -24,6 +23,11 @@ import {
 
 interface ISendCallsData {
   atomicRequired: boolean;
+  // Bundle id reserved by the background handler before this popup opened
+  // (the app-provided id when the dapp supplied one, otherwise a random
+  // wallet-minted id). Returned to the dapp as-is and finalized in the
+  // bundle registry with the broadcast tx hashes.
+  bundleId: string;
   calls: Array<{
     capabilities?: Record<string, any>;
     data?: string;
@@ -33,8 +37,7 @@ interface ISendCallsData {
   capabilities?: Record<string, any>;
   chainId: string;
   from?: string;
-  // Optional EIP-5792 app-provided bundle id (validated by the background
-  // handler before the popup opens; must be respected and returned as-is).
+  // Original EIP-5792 app-provided bundle id field from the request.
   id?: string;
   version: string;
 }
@@ -256,10 +259,11 @@ export const SendCalls = () => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
       setConfirmed(true);
 
-      // Encode the mined transaction hashes into the EIP-5792 bundle id so
-      // wallet_getCallsStatus can resolve receipts statelessly. The smart
-      // account path executes every call in a single atomic user operation
-      // (one hash); the EOA path broadcasts one transaction per call.
+      // Finalize the bundle reserved by the background handler with the
+      // broadcast tx hashes so wallet_getCallsStatus / wallet_showCallsStatus
+      // can resolve receipts. The smart account path executes every call in a
+      // single atomic user operation (one hash); the EOA path broadcasts one
+      // transaction per call.
       const smartAccount = requestSmartAccount.supportsAtomicBatch;
       const txHashes = Array.from(
         new Set(
@@ -274,16 +278,7 @@ export const SendCalls = () => {
         smartAccount,
         txHashes,
       };
-      // EIP-5792: an app-provided id must be respected and returned as-is.
-      // It cannot encode the tx hashes (it was chosen before execution), so
-      // the bundle is recorded in the background registry instead.
-      const appProvidedId =
-        typeof callsData.id === 'string' && callsData.id ? callsData.id : null;
-      const id =
-        appProvidedId ??
-        (txHashes.length > 0
-          ? encodeSendCallsBatchId(bundleDescriptor)
-          : `0x${uuidv4().replace(/-/g, '')}`);
+      const id = callsData.bundleId || `0x${uuidv4().replace(/-/g, '')}`;
 
       const response = {
         id,
@@ -292,15 +287,16 @@ export const SendCalls = () => {
 
       // Close window after a short delay
       setTimeout(async () => {
-        if (appProvidedId && txHashes.length > 0) {
+        if (txHashes.length > 0) {
           try {
             await controllerEmitter(
               ['wallet', 'recordSendCallsBundle'],
-              [host, appProvidedId, bundleDescriptor]
+              [host, id, bundleDescriptor]
             );
           } catch (error) {
-            // Status lookups for this id will report unknown bundle (5730);
-            // the batch itself already executed, so still resolve the dapp.
+            // The reservation stays pending; status lookups for this id will
+            // report 100 (pending) instead of the real receipts. The batch
+            // itself already executed, so still resolve the dapp.
             console.error('Failed to record sendCalls bundle id', error);
           }
         }
@@ -314,7 +310,7 @@ export const SendCalls = () => {
     activeNetwork.chainId,
     allTransactionsSuccessful,
     callsData.atomicRequired,
-    callsData.id,
+    callsData.bundleId,
     confirmed,
     controllerEmitter,
     eventName,

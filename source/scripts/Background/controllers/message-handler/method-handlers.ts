@@ -7,13 +7,14 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
-import { decodeSendCallsBatchId } from 'utils/sendCallsBatch';
 
 import { popupPromise } from './popup-promise';
 import { requestCoordinator } from './request-pipeline';
 import {
-  getStoredSendCallsBundle,
+  generateWalletBundleId,
   isValidAppProvidedBundleId,
+  releaseSendCallsBundleReservation,
+  reserveSendCallsBundle,
   resolveCallsStatus,
 } from './sendCallsBundles';
 import { IEnhancedRequestContext, MethodHandlerType } from './types';
@@ -184,39 +185,56 @@ export class WalletMethodHandler implements IMethodHandler {
 
         // EIP-5792: when the dapp supplies its own bundle id the wallet must
         // respect it, return it, and reject duplicates (error 5720).
-        if (sendCallsRequest.id !== undefined) {
-          if (!isValidAppProvidedBundleId(sendCallsRequest.id)) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams(
-                'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
-              )
-            );
-          }
-          // Ids matching Pali's self-describing wallet-minted layout are
-          // reserved: accepting one (e.g. an id returned by an earlier
-          // wallet_sendCalls) would shadow that bundle in status lookups.
-          if (decodeSendCallsBatchId(sendCallsRequest.id) !== null) {
-            throw cleanErrorStack(
-              ethErrors.provider.custom({
-                code: 5720,
-                message:
-                  'There is already a bundle submitted with this id (Duplicate ID).',
-              })
-            );
-          }
-          const existingBundle = await getStoredSendCallsBundle(
-            host,
-            sendCallsRequest.id
+        if (
+          sendCallsRequest.id !== undefined &&
+          !isValidAppProvidedBundleId(sendCallsRequest.id)
+        ) {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams(
+              'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
+            )
           );
-          if (existingBundle) {
-            throw cleanErrorStack(
-              ethErrors.provider.custom({
-                code: 5720,
-                message:
-                  'There is already a bundle submitted with this id (Duplicate ID).',
-              })
-            );
-          }
+        }
+
+        // Reserve the bundle id atomically before opening the approval popup
+        // so concurrent wallet_sendCalls requests reusing the same id are
+        // rejected (5720) instead of racing the post-broadcast record.
+        const bundleId: string =
+          sendCallsRequest.id ?? generateWalletBundleId();
+        const reserved = await reserveSendCallsBundle(host, bundleId, {
+          atomic:
+            Boolean(smartAccountAtomicSupported) ||
+            sendCallsRequest.atomicRequired === true,
+          chainId: activeNetwork?.chainId,
+          smartAccount: Boolean(smartAccountAtomicSupported),
+        });
+        if (!reserved) {
+          throw cleanErrorStack(
+            ethErrors.provider.custom({
+              code: 5720,
+              message:
+                'There is already a bundle submitted with this id (Duplicate ID).',
+            })
+          );
+        }
+
+        try {
+          return await requestCoordinator.coordinatePopupRequest(
+            context,
+            () =>
+              popupPromise({
+                host,
+                route: methodConfig.popupRoute,
+                eventName: methodConfig.popupEventName,
+                data: { ...sendCallsRequest, bundleId },
+              }),
+            methodConfig.popupRoute! // Explicit route parameter
+          );
+        } catch (error) {
+          // The request never broadcast (rejected/failed): free the id so the
+          // dapp can retry with it. Finalized bundles are never deleted here.
+          await releaseSendCallsBundleReservation(host, bundleId);
+          throw error;
         }
       }
 
@@ -578,9 +596,6 @@ export class WalletMethodHandler implements IMethodHandler {
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
-      case 'sendCalls':
-        // Parse the sendCalls parameters
-        return params?.[0] || {};
       case 'prepareSmartAccount':
         return {
           host,
