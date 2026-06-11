@@ -2,13 +2,13 @@
 title: Batched execution
 ---
 
-Pali smart accounts support batched execution through `wallet_sendCalls`. This lets the user approve multiple calls with one wallet review and one account authorization. Depending on the active validator, that authorization may be a passkey proof, an ECDSA signature, or a composite policy.
+Pali smart accounts support batched execution through `wallet_sendCalls`. This lets the user approve multiple calls with one wallet review and one smart-account authorization. Depending on the active validator, that authorization may be a passkey proof, an ECDSA signature, or a composite policy.
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/send-calls-passkey-batch.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/send-calls-passkey-batch.png" alt="Pali wallet_sendCalls passkey batch review with decoded calldata" />
+  <a className="pali-media-link" href="/img/screens/send-calls-smart-account-batch.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/send-calls-smart-account-batch.png" alt="Pali wallet_sendCalls smart-account batch review with decoded calldata" />
 </a>
-  <figcaption>Pali reviews the full smart-account batch and decodes common token calls before one account approval.</figcaption>
+  <figcaption>Pali reviews the full smart-account batch and decodes common token calls before one smart-account authorization.</figcaption>
 </figure>
 
 ## Example: approve and transferFrom
@@ -52,13 +52,13 @@ When `atomicRequired` is true, the user should approve or reject the full batch.
 
 ## Gas payment
 
-The current Pali flow submits smart-account executions with a wallet gas payer. Dapps should not assume remote gas sponsorship is available unless a future wallet capability explicitly reports one.
+The current Pali flow submits smart-account executions with a wallet gas payer. Dapps should plan for wallet-paid gas instead of presenting the flow as gasless.
 
 ## Unsupported call type
 
 Smart-account `wallet_sendCalls` does not support contract deployment calls expressed as empty target transactions. Deploy contracts separately or use a target contract call.
 
 <figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-batch-sendcalls-video.png" src="/video/passkey-batch-sendcalls.mp4" title="Passkey wallet_sendCalls batch flow"></video>
-  <figcaption>Smart-account batch execution flow: branded intro, decoded calls, one account approval, transaction result.</figcaption>
+  <video controls poster="/img/screens/smart-account-batch-sendcalls-video.png" src="/video/smart-account-batch-sendcalls.mp4" title="Smart-account wallet_sendCalls batch flow"></video>
+  <figcaption>Smart-account batch execution flow: branded intro, decoded calls, validator authorization, transaction result.</figcaption>
 </figure>

@@ -1,5 +1,5 @@
 ---
-title: Smart accounts and passkeys
+title: Smart accounts and validators
 ---
 
 Pali smart accounts are EVM contract accounts that can be controlled by modules. A passkey is one supported way to control a smart account. Instead of signing every action with a normal EOA private key, the user can approve actions with the browser or operating system passkey UI.
@@ -8,7 +8,7 @@ Behind the scenes, WebAuthn passkeys use P-256 signatures. Pali's passkey valida
 
 ## Why use a smart account?
 
-- Passkey UX for everyday approvals.
+- Modular approval methods for everyday use.
 - Wallet-owned ECDSA control when a normal wallet key should own the account.
 - Co-managed policies through composite validators.
 - Batch execution with a single user approval.
@@ -18,10 +18,10 @@ Behind the scenes, WebAuthn passkeys use P-256 signatures. Pali's passkey valida
 ## Passkeys, ECDSA, and co-managed accounts
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/settings-passkey-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-passkey-create.png" alt="Pali settings screen for creating a smart account" />
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-create.png" alt="Pali settings screen for creating a smart account" />
 </a>
-  <figcaption>Users can create smart accounts from Settings as well as from dapp requests.</figcaption>
+  <figcaption>Users can create modular smart accounts from Settings or from dapp requests, then choose the validator that controls approvals.</figcaption>
 </figure>
 
 Pali supports three validator styles:
@@ -57,10 +57,10 @@ Other compatible EVM chains can use the same contracts. When the active network 
 ## Recovery
 
 <figure>
-  <a className="pali-media-link" href="/img/screens/settings-passkey-policy.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-passkey-policy.png" alt="Pali smart-account policy settings screen" />
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
 </a>
-  <figcaption>The smart-account policy screen shows installed modules, validator details, guardian recovery, and passkey backup status where available.</figcaption>
+  <figcaption>The smart-account policy screen shows installed modules, active validator details, guardian recovery, and module management.</figcaption>
 </figure>
 
 If local wallet state is deleted or Pali is installed on a new device, deterministic Pali smart accounts can be reconstructed from wallet metadata and chain configuration. Accounts with passkey validators still need access to the relevant passkey credential to approve actions.

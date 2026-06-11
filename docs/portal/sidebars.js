@@ -63,7 +63,7 @@ const sidebars = {
       items: [
         'passkeys-institutions/overview',
         'passkeys-institutions/create-recover',
-        'passkeys-institutions/sponsor-services',
+        'passkeys-institutions/gas-funding',
         'passkeys-institutions/batched-execution',
         'passkeys-institutions/security-and-operations',
       ],

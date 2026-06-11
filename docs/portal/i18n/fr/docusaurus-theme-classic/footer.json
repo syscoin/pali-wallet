@@ -41,6 +41,6 @@
   },
   "link.item.label.Gas and Funding": {
     "message": "Gas et financement",
-    "description": "The label of footer link with label=Gas and Funding linking to /docs/passkeys-institutions/sponsor-services"
+    "description": "The label of footer link with label=Gas and Funding linking to /docs/passkeys-institutions/gas-funding"
   }
 }

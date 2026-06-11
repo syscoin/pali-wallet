@@ -35,13 +35,13 @@ const featureCards = [
   },
   {
     title: translate({
-      id: 'homepage.feature.passkeys.title',
+      id: 'homepage.feature.smartAccounts.title',
       message: 'Smart accounts',
     }),
     description: translate({
-      id: 'homepage.feature.passkeys.description',
+      id: 'homepage.feature.smartAccounts.description',
       message:
-        'Create modular accounts, use passkey or ECDSA validators, configure guardian recovery, and submit atomic batches.',
+        'Create modular accounts, choose validators, configure guardian recovery, manage modules, and submit atomic batches.',
     }),
     to: '/docs/passkeys-institutions/overview',
   },
@@ -179,7 +179,7 @@ export default function Home() {
                 <p>
                   <Translate id="homepage.flow.request.description">
                     Send EVM transactions, sign typed data, sign UTXO PSBTs, or
-                    create Pali smart accounts with passkey or ECDSA validators.
+                    create Pali smart accounts with configurable validators.
                   </Translate>
                 </p>
               </div>

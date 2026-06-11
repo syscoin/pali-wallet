@@ -23,7 +23,7 @@ Today, Pali's configured test deployment is `zkTanenbaum` (`57057`). Treat zkSYS
 
 Pali smart accounts are counterfactual while Pali prepares creation. Pali stores durable metadata locally and deploys the account through the configured factory. Account creation needs a wallet gas payer with enough native token for deployment and any immediate module replacement.
 
-The current flow does not rely on remote gas sponsorship. Pali deploys with a wallet-owned bootstrap validator, then installs the requested validator through an account execution when needed.
+The current flow uses wallet-paid gas. Pali deploys with a wallet-owned bootstrap validator, then installs the requested validator through an account execution when needed.
 
 The factory can compute the account address before deployment. This is useful for display and funding UX. Production integrations should treat the account as usable after Pali returns success from `wallet_prepareSmartAccount`.
 

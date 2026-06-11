@@ -109,6 +109,6 @@ If a dapp calls `wallet_prepareSmartAccount` before the active chain has the req
 The user sees the requesting site, account label, requested authenticator, and any external ECDSA owner addresses before approving. The browser or OS shows the WebAuthn prompt when Pali needs a new passkey credential. Pali shows deployment, module installation, and confirmation progress before the smart account is connected to the dapp.
 
 <figure className="pali-video-card">
-  <video controls poster="/img/screens/passkey-dapp-onboarding-video.png" src="/video/passkey-dapp-onboarding.mp4" title="Passkey dapp onboarding flow"></video>
-  <figcaption>Smart-account onboarding flow: branded intro, dapp request, passkey prompt when needed, and Pali account approval.</figcaption>
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Smart-account onboarding flow: branded intro, dapp request, validator setup when needed, and Pali account approval.</figcaption>
 </figure>
