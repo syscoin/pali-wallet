@@ -17,7 +17,7 @@ const sidebars = {
       items: [
         'users/getting-started',
         'users/evm-and-utxo-modes',
-        'users/passkey-accounts',
+        'users/smart-account-validators',
         'users/recovery-and-backups',
         'users/privacy-and-safety',
         'users/upgrade-from-v1',

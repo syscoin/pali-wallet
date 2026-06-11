@@ -23,11 +23,11 @@ Dapps should avoid saying "gasless" for the current flow. Better wording is:
 - "You will approve the account action, and Pali will submit it on-chain."
 - "Keep a small amount of native token available for deployment and recovery."
 
-## Future gas payment capabilities
+## ERC-4337 and future gas payment capabilities
 
-The smart-account design does not prevent future paymaster or relay support. Those features should be exposed as explicit wallet capabilities and should be described separately from validator authorization.
+Pali smart accounts already use ERC-4337-style `UserOperation`s through Pali's EntryPoint v0.9 path. That architecture keeps authorization, bundling, and gas payment separate: validators approve the account action, while the account, a gas payer, or a paymaster can cover execution costs depending on the supported submission path.
 
-For now, do not pass legacy gas-payer or paymaster objects to `wallet_prepareSmartAccount`. The current creation request is based on account label and authenticator/module configuration.
+The current wallet-facing flow self-bundles through a local funded gas payer, even though the underlying `UserOperation` format has a `paymasterAndData` field. Dapps should not pass gas-payer or paymaster objects to `wallet_prepareSmartAccount` until Pali exposes paymaster support as an explicit wallet capability. The current creation request is based on account label and authenticator/module configuration.
 
 ## Institution guidance
 
