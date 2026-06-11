@@ -157,6 +157,26 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupRoute &&
       methodConfig.popupEventName
     ) {
+      if (methodName === 'sendCalls') {
+        const sendCallsRequest = params?.[0] || {};
+        const smartAccountAtomicSupported =
+          account?.isSmartAccount &&
+          account.smartAccount?.chainId === activeNetwork?.chainId;
+
+        if (
+          sendCallsRequest.atomicRequired === true &&
+          !smartAccountAtomicSupported
+        ) {
+          throw cleanErrorStack(
+            ethErrors.provider.custom({
+              code: 5700,
+              message:
+                'Atomic wallet_sendCalls requires an active smart account on the selected chain.',
+            })
+          );
+        }
+      }
+
       const popupData = this.getPopupData(methodName, params, host);
       return requestCoordinator.coordinatePopupRequest(
         context,

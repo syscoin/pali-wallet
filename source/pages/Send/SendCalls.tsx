@@ -272,9 +272,17 @@ export const SendCalls = () => {
       setLoading(true);
       setConfirmed(false); // Reset confirmed state for each attempt
 
+      if (
+        callsData.atomicRequired &&
+        !requestSmartAccount.supportsAtomicBatch
+      ) {
+        setLoading(false);
+        alert.error(t('send.atomicNotSupportedDescription'));
+        return;
+      }
+
       // Filter calls based on selection AND exclude already successful transactions.
-      // Even atomic batches may be executed sequentially for non-smart accounts,
-      // so retry attempts must not resubmit calls that already succeeded.
+      // Retry attempts must not resubmit calls that already succeeded.
       const shouldSubmitCall = (_: unknown, index: number) =>
         (callsData.atomicRequired || effectiveSelectedCalls[index]) &&
         (!transactionStatuses?.[index] ||
