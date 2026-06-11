@@ -1,5 +1,6 @@
 import {
   CALLS_STATUS_CONFIRMED,
+  CALLS_STATUS_OFFCHAIN_FAILURE,
   CALLS_STATUS_PARTIALLY_REVERTED,
   CALLS_STATUS_PENDING,
   CALLS_STATUS_REVERTED,
@@ -15,6 +16,28 @@ describe('computeCallsStatusCode', () => {
         receiptStatuses: [],
       })
     ).toBe(CALLS_STATUS_PENDING);
+  });
+
+  it('reports offchain failure when nothing broadcast and the batch failed', () => {
+    expect(
+      computeCallsStatusCode({
+        atomic: false,
+        smartAccount: false,
+        receiptStatuses: [],
+        someCallsFailedToBroadcast: true,
+      })
+    ).toBe(CALLS_STATUS_OFFCHAIN_FAILURE);
+  });
+
+  it('reports partial revert when broadcast txs succeeded but some calls never broadcast', () => {
+    expect(
+      computeCallsStatusCode({
+        atomic: false,
+        smartAccount: false,
+        receiptStatuses: ['0x1'],
+        someCallsFailedToBroadcast: true,
+      })
+    ).toBe(CALLS_STATUS_PARTIALLY_REVERTED);
   });
 
   it('is pending while any tx is unmined', () => {

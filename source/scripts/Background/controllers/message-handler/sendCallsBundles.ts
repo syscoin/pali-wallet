@@ -2,7 +2,6 @@ import { ethErrors } from 'helpers/errors';
 
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
-  CALLS_STATUS_PENDING,
   computeCallsStatusCode,
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
@@ -110,6 +109,7 @@ export const getStoredSendCallsBundle = async (
   return {
     atomic: bundle.atomic,
     chainId: bundle.chainId,
+    failed: bundle.failed,
     smartAccount: bundle.smartAccount,
     txHashes: bundle.txHashes,
   };
@@ -252,14 +252,20 @@ export const resolveCallsStatus = async (
     throw unknownBundleError();
   }
 
-  // Reserved but not broadcast yet (approval popup still open): pending.
+  // No broadcast hashes: still pending while the approval popup is open, or
+  // an offchain failure when the batch terminally failed before broadcast.
   if (descriptor.txHashes.length === 0) {
     return {
       version: '2.0.0',
       id,
       chainId: `0x${descriptor.chainId.toString(16)}`,
       atomic: descriptor.atomic,
-      status: CALLS_STATUS_PENDING,
+      status: computeCallsStatusCode({
+        atomic: descriptor.atomic,
+        receiptStatuses: [],
+        smartAccount: descriptor.smartAccount,
+        someCallsFailedToBroadcast: descriptor.failed,
+      }),
     };
   }
 
@@ -301,6 +307,7 @@ export const resolveCallsStatus = async (
     atomic: descriptor.atomic,
     receiptStatuses,
     smartAccount: descriptor.smartAccount,
+    someCallsFailedToBroadcast: descriptor.failed,
     smartAccountInnerSuccess,
   });
 

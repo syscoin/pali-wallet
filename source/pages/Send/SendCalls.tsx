@@ -254,6 +254,56 @@ export const SendCalls = () => {
     [effectiveSelectedCalls, transactionStatuses]
   );
 
+  // Persist broadcast tx hashes (and any pre-broadcast failure) incrementally
+  // so a partially broadcast non-atomic batch still resolves in
+  // wallet_getCallsStatus / wallet_showCallsStatus — as partially reverted
+  // (600) or offchain failure (400) — even if a later call errors or the
+  // popup is closed mid-flight. The registry record is an idempotent
+  // overwrite; the final all-success pass rewrites it with failed: false.
+  const lastRecordedBundleRef = React.useRef<string>('');
+  useEffect(() => {
+    if (!transactionStatuses || !callsData.bundleId) return;
+    const smartAccount = requestSmartAccount.supportsAtomicBatch;
+    const txHashes = Array.from(
+      new Set(
+        transactionStatuses
+          .map((status) => status?.txHash)
+          .filter((hash): hash is string => Boolean(hash))
+      )
+    );
+    const failed = transactionStatuses.some(
+      (status) => status?.status === 'error'
+    );
+    // Nothing broadcast and nothing failed yet: keep the pending reservation.
+    if (txHashes.length === 0 && !failed) return;
+    const bundleDescriptor = {
+      atomic: smartAccount ? true : callsData.atomicRequired,
+      chainId: activeNetwork.chainId,
+      failed,
+      smartAccount,
+      txHashes,
+    };
+    const serialized = JSON.stringify(bundleDescriptor);
+    if (serialized === lastRecordedBundleRef.current) return;
+    lastRecordedBundleRef.current = serialized;
+    controllerEmitter(
+      ['wallet', 'recordSendCallsBundle'],
+      [host, callsData.bundleId, bundleDescriptor]
+    ).catch((error) => {
+      // Allow a later snapshot to retry the write.
+      lastRecordedBundleRef.current = '';
+      console.error('Failed to record sendCalls bundle progress', error);
+    });
+  }, [
+    activeNetwork.chainId,
+    callsData.atomicRequired,
+    callsData.bundleId,
+    controllerEmitter,
+    host,
+    requestSmartAccount.supportsAtomicBatch,
+    transactionStatuses,
+  ]);
+
   // Watch for when all transactions are completed and dispatch response
   useEffect(() => {
     if (allTransactionsSuccessful && !confirmed && transactionStatuses) {
@@ -275,6 +325,7 @@ export const SendCalls = () => {
       const bundleDescriptor = {
         atomic: smartAccount ? true : callsData.atomicRequired,
         chainId: activeNetwork.chainId,
+        failed: false,
         smartAccount,
         txHashes,
       };
