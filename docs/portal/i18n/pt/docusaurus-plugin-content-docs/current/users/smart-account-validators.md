@@ -28,3 +28,5 @@ A Pali deriva o endereço de forma determinística, implanta pela factory e salv
 ## Guardian recovery
 
 Guardian recovery não é instantânea. Um guardião assina uma intenção, o módulo a agenda com atraso, e depois qualquer pessoa pode finalizar a substituição do validador. A Pali usa um salt novo por tentativa e permite apenas uma recovery ativa por conta.
+
+On-chain, um guardião não se limita a uma chave normal: as aprovações de guardiões são verificadas com ECDSA ou ERC-1271, então um guardião também pode ser uma conta de contrato implantada — incluindo outra smart account cuja própria política seja um validador composite, personalizado ou pós-quântico. O caminho de recuperação herda então o esquema de assinatura desse guardião. As telas atuais de guardiões da Pali coletam aprovações baseadas em chaves; fluxos para guardiões de conta de contrato podem ser adicionados depois, porque o módulo implantado já os suporta.

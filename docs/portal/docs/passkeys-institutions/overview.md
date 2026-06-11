@@ -47,6 +47,8 @@ Composites can nest: a child of a composite can itself be a composite, so hierar
 
 Because authorization lives in replaceable modules, the account is not married to any signature scheme. Today Pali ships ECDSA (the wallet-owned default), P-256 WebAuthn passkeys, and the composite validator. When new validator types are deployed — including post-quantum signature schemes — they install onto the same account at the same address. At that point per-transaction authorization can run with no ECDSA in the loop at all. Funds, history, and integrations never move; only the signing authority evolves.
 
+The same agility extends to recovery. The guardian recovery module verifies approvals through standard signature checking — plain ECDSA for normal addresses, ERC-1271 for contract accounts — so a guardian can itself be a smart account governed by a composite, custom, or post-quantum validator. A deployed contract-account guardian makes the recovery path inherit that account's signature scheme, which is how both signing **and** recovery can eventually run with no classical-ECDSA dependency. Pali's current guardian UX collects key-based approvals; contract-account guardian flows can be added in the wallet later because the on-chain module already supports them.
+
 ## Why passkeys matter
 
 Passkeys use WebAuthn. Most platform passkeys sign with ES256, which is ECDSA over the P-256 curve. A normal EVM EOA uses secp256k1, so a passkey is not a normal Ethereum private key.

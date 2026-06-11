@@ -27,4 +27,6 @@ Pali deriva la dirección de forma determinista, despliega mediante la factory y
 
 ## Guardian recovery
 
-Guardian recovery no es instantáneo. Un guardian firma una intención, el módulo la programa con delay, y después cualquiera puede finalizar el reemplazo del validador. Pali usa una sal nueva por intento y solo permite una recovery activa por cuenta.
+La guardian recovery n'est pas instantanée. Un gardien signe une intention, le module la planifie avec un délai, puis n'importe qui peut finaliser le remplacement du validateur. Pali utilise un sel nouveau à chaque tentative et n'autorise qu'une seule récupération active par compte.
+
+On-chain, un gardien ne se limite pas à une clé normale : les approbations des gardiens sont vérifiées via ECDSA ou ERC-1271, donc un gardien peut aussi être un compte de contrat déployé — y compris un autre compte intelligent dont la propre politique est un validateur composite, personnalisé ou post-quantique. Le chemin de récupération hérite alors du schéma de signature de ce gardien. Les écrans actuels des gardiens de Pali collectent des approbations basées sur des clés ; les flux pour gardiens de type compte de contrat pourront être ajoutés plus tard, car le module déployé les prend déjà en charge.

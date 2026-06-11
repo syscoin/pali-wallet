@@ -16,7 +16,7 @@ A multi-wallet discovery standard that lets dapps discover providers without rel
 
 ## Guardian recovery
 
-A delayed smart-account recovery module. Guardians sign a recovery intent, the module schedules it with a timelock, and finalization replaces the account's validator after the delay.
+A delayed smart-account recovery module. Guardians sign a recovery intent, the module schedules it with a timelock, and finalization replaces the account's validator after the delay. Guardian approvals are verified with ECDSA or ERC-1271, so a guardian can be a normal address or a deployed contract account (including another smart account with a composite, custom, or post-quantum validator).
 
 ## Pali smart account
 

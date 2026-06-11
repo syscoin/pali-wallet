@@ -38,6 +38,8 @@ composite는 중첩될 수 있습니다. composite의 자식이 그 자체로 co
 
 인가가 교체 가능한 module 안에 있기 때문에 계정은 특정 signature scheme에 묶이지 않습니다. 현재 Pali는 ECDSA(지갑 소유 기본값), P-256 WebAuthn passkey, composite validator를 제공합니다. post-quantum 서명 방식을 포함한 새로운 validator 유형이 배포되면 같은 주소의 같은 계정에 설치됩니다. 그 시점부터는 트랜잭션별 인가를 ECDSA가 전혀 관여하지 않는 방식으로 실행할 수 있습니다. 자금, 내역, 통합은 전혀 이동하지 않으며 서명 권한만 진화합니다.
 
+같은 민첩성은 recovery에도 적용됩니다. guardian recovery module은 표준 서명 검증으로 승인을 확인합니다. 일반 주소에는 순수 ECDSA, contract account에는 ERC-1271을 사용하므로, guardian 자체가 composite·custom·post-quantum validator로 관리되는 스마트 계정일 수도 있습니다. 배포된 contract account guardian을 쓰면 recovery 경로가 그 계정의 signature scheme을 상속합니다. 그래서 서명과 **recovery 모두** 궁극적으로 고전 ECDSA 의존 없이 운영될 수 있습니다. 현재 Pali의 guardian UX는 키 기반 승인을 수집하지만, on-chain module이 이미 지원하므로 contract account guardian 플로우는 나중에 지갑에 추가할 수 있습니다.
+
 ## 기관과 팀을 위해
 
 기관은 Pali 스마트 계정을 단순한 passkey login이 아니라 account infrastructure로 다뤄야 합니다. Passkey는 쉬운 onboarding에, ECDSA 또는 composite validator는 팀이나 hardware wallet control에, guardian recovery는 delay가 있는 교체 경로에 적합합니다. Deployment와 execution을 위해 gas payer 계정도 funded 상태여야 합니다.

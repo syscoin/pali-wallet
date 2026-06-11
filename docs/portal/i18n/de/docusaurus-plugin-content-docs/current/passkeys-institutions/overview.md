@@ -38,6 +38,8 @@ Composites können verschachtelt werden: Ein Kind eines Composite kann selbst ei
 
 Weil die Autorisierung in austauschbaren Modulen liegt, ist das Konto an kein Signaturverfahren gebunden. Heute liefert Pali ECDSA (den wallet-eigenen Standard), P-256 WebAuthn-Passkeys und den Composite-Validator. Wenn neue Validator-Typen deployed werden — einschließlich Post-Quanten-Signaturverfahren — werden sie auf demselben Konto an derselben Adresse installiert. Ab diesem Punkt kann die Autorisierung pro Transaktion ganz ohne ECDSA laufen. Gelder, Verlauf und Integrationen ziehen nie um; nur die Signaturautorität entwickelt sich weiter.
 
+Dieselbe Agilität gilt für die Wiederherstellung. Das Guardian-Recovery-Modul prüft Freigaben über Standard-Signaturprüfung — einfaches ECDSA für normale Adressen, ERC-1271 für Contract-Konten — sodass ein Guardian selbst ein Smart Account sein kann, der von einem Composite-, Custom- oder Post-Quanten-Validator kontrolliert wird. Ein deployter Contract-Account-Guardian lässt den Recovery-Pfad das Signaturverfahren dieses Kontos erben — so können sowohl Signieren **als auch** Recovery irgendwann ohne klassische ECDSA-Abhängigkeit laufen. Palis aktuelle Guardian-UX sammelt schlüsselbasierte Freigaben; Flows für Contract-Account-Guardians können später in der Wallet ergänzt werden, weil das On-Chain-Modul sie bereits unterstützt.
+
 ## Für Institutionen und Teams
 
 Institutionen sollten Pali Smart Accounts als Kontoinfrastruktur behandeln, nicht nur als Passkey-Login. Nutzt Passkeys für einfaches Onboarding, ECDSA oder Composite-Validatoren für Team- oder Hardware-Wallet-Kontrolle, Guardian-Recovery für verzögerten Ersatz und finanzierte Gas-Payer für Deployment und Ausführung.

@@ -69,7 +69,11 @@ One passkey credential can control multiple smart accounts. Pali separates the p
 
 ## Guardian recovery
 
-Pali uses self-custodial recovery guardians for smart-account recovery. A guardian is a backup EVM wallet, imported account, or hardware wallet that the user controls separately from the active validator. While the account is healthy, the user can add or remove guardians and update the recovery wait period from the policy screen.
+Pali uses self-custodial recovery guardians for smart-account recovery. A guardian is an EVM address the user controls separately from the active validator — typically a backup EVM wallet, imported account, or hardware wallet, but on-chain a guardian can be **any account that can prove a signature**, including a contract account. While the account is healthy, the user can add or remove guardians and update the recovery wait period from the policy screen.
+
+The recovery module verifies guardian approvals with standard signature checking: a plain ECDSA signature for normal addresses, or an ERC-1271 contract-signature check when the guardian address is itself a contract. That means a guardian can be another smart account — including one whose own signing policy is a composite, a custom validator, or a future post-quantum validator. The recovery path then inherits whatever signature scheme the guardian account enforces, so recovery security is not limited to classic ECDSA keys.
+
+One current caveat: Pali's guardian screens today collect approvals from key-based guardians (wallet, imported, or hardware accounts). Contract-account guardians are fully supported by the deployed recovery module, but producing their ERC-1271 approval is not yet a guided Pali flow — and a contract guardian must already be deployed on-chain to answer signature checks. The flexibility is built into the account model now, so these guardian types can light up in the wallet without redeploying or changing the account.
 
 Guardian recovery is not instant. Starting recovery creates a replacement recovery target, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then operate the account with the replacement validator.
 
