@@ -6,19 +6,14 @@ import React, {
   useEffect,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RiUserReceivedLine } from 'react-icons/ri/';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
+import { RiUserReceivedLine } from 'components/Icon/Icon';
 import { LockIconSvg, PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import {
-  IconButton,
-  Icon,
-  NeutralButton,
-  ConfirmationModal,
-} from 'components/index';
+import { Button, ConfirmationModal, Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -317,9 +312,15 @@ const ManageAccountsView = React.memo(() => {
         )}
       </ul>
       <div className="w-full px-4 absolute bottom-12 md:static">
-        <NeutralButton type="button" fullWidth onClick={handleClose}>
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
+          type="button"
+          fullWidth
+          onClick={handleClose}
+        >
           {t('buttons.close')}
-        </NeutralButton>
+        </Button>
       </div>
 
       {/* Confirmation Modal */}

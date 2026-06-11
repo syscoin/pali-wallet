@@ -54,7 +54,10 @@ export const DetailsView = () => {
         </div>
       ) : (
         <>
-          <ul className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto">
+          <ul
+            id="details-view-content"
+            className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto"
+          >
             {isNft ? (
               <NftsDetails nftData={nftData} />
             ) : isAsset ? (

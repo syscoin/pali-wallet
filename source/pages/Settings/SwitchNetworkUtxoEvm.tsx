@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ChainIcon } from 'components/ChainIcon';
-import { PrimaryButton, SecondaryButton } from 'components/index';
+import { Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -49,9 +49,13 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
           {t('header.thereWasAnError')}
         </p>
         <div className="mt-4">
-          <SecondaryButton type="button" onClick={() => window.close()}>
+          <Button
+            variant="secondary"
+            type="button"
+            onClick={() => window.close()}
+          >
             {t('buttons.close')}
-          </SecondaryButton>
+          </Button>
         </div>
       </div>
     );
@@ -142,22 +146,24 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
         </div>
 
         <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={window.close}
             disabled={loading}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="submit"
             disabled={confirmed || loading}
             loading={loading}
             onClick={onSubmit}
           >
             {t('buttons.change')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </>

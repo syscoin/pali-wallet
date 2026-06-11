@@ -34,6 +34,7 @@ export const getAvailablePaliModules = (chainId: number) =>
       capability: entry.capability,
       displayName: entry.displayName,
       id: entry.id,
+      kind: entry.kind,
       moduleType: entry.moduleType,
       supported: Boolean(address),
     };

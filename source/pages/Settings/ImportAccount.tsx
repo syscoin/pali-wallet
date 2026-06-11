@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { NeutralButton } from 'components/index';
+import { Button } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -246,7 +246,9 @@ const ImportAccountView = () => {
         </Form>
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             loading={isImporting}
             onClick={handleImportAccount}
@@ -254,7 +256,7 @@ const ImportAccountView = () => {
             disabled={watchOnly ? !validIdentifier : !validPrivateKey}
           >
             {t('buttons.import')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </>

@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
-import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
+import { Button, Fee, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -998,9 +998,15 @@ export const SendSys = () => {
         </div>
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
-          <NeutralButton type="submit" fullWidth loading={isLoading}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="submit"
+            fullWidth
+            loading={isLoading}
+          >
             {t('buttons.next')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </div>

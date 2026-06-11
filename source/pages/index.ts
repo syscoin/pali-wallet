@@ -6,6 +6,7 @@ export * from './SeedConfirm';
 export * from './Receive';
 export * from './Send';
 export * from './Settings';
+export * from './SmartAccount';
 export * from './Start';
 export * from './Transactions';
 export * from './Tokens';

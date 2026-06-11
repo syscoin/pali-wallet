@@ -1,12 +1,14 @@
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { Fragment, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
-import { FiCopy as CopyIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { NeutralButton } from 'components/index';
+import {
+  FiExternalLink as ExternalLinkIcon,
+  FiCopy as CopyIcon,
+} from 'components/Icon/Icon';
+import { Button } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -641,13 +643,15 @@ export const SyscoinAssetDetails = ({
 
       {/* Close button - Fixed at bottom */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">
-        <NeutralButton
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
           onClick={() => navigateBack(navigate, location)}
           type="button"
           fullWidth={true}
         >
           {t('buttons.close')}
-        </NeutralButton>
+        </Button>
       </div>
     </div>
   );

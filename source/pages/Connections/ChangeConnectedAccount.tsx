@@ -4,12 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
-import {
-  SecondaryButton,
-  PrimaryButton,
-  Icon,
-  Tooltip,
-} from 'components/index';
+import { Button, Icon, Tooltip } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -336,22 +331,24 @@ export const ChangeConnectedAccount = () => {
       {/* Fixed button container at bottom */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={handleReject}
             disabled={isChanging}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="button"
             onClick={handleAccept}
             loading={isChanging}
             disabled={isChanging}
           >
             {t('connections.switchAccount')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>

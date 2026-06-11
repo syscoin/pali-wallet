@@ -3,7 +3,7 @@ import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { NeutralButton, Modal } from 'components/index';
+import { Button, Modal } from 'components/index';
 import {
   ICustomApprovedAllowanceAmount,
   IIsEditedAllowanceModalProps,
@@ -142,9 +142,14 @@ export const EditApprovedAllowanceValueModal = (
                   </div>
 
                   <div className="flex items-center justify-center">
-                    <NeutralButton type="submit" id="confirm_btn">
+                    <Button
+                      variant="neutral"
+                      className="text-sm text-brand-royalblue"
+                      type="submit"
+                      id="confirm_btn"
+                    >
                       {t('buttons.save')}
-                    </NeutralButton>
+                    </Button>
                   </div>
                 </Radio.Group>
               </Form.Item>

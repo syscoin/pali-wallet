@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { LoadingSvg } from 'components/Icon/Icon';
-import { ConfirmationModal, Icon, NeutralButton } from 'components/index';
+import { Button, ConfirmationModal, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -1519,7 +1519,9 @@ const SmartAccountPolicy = () => {
 
           {isUndeployedSmartAccount && (
             <div className="mt-4">
-              <NeutralButton
+              <Button
+                variant="neutral"
+                className="text-sm text-brand-royalblue"
                 type="button"
                 disabled={loading}
                 loading={loading}
@@ -1527,7 +1529,7 @@ const SmartAccountPolicy = () => {
                 fullWidth
               >
                 {t('settings.registerSmartAccount')}
-              </NeutralButton>
+              </Button>
             </div>
           )}
         </div>

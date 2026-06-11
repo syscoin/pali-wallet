@@ -189,7 +189,10 @@ export const TransactionsPanel = () => {
     <>
       {isLoading && !hasTransactions && TransactionSkeleton}
       {!isLoading && !hasTransactions && (
-        <div className="w-full mt-8 text-white bg-brand-blue600">
+        <div
+          id="activity-panel-empty"
+          className="w-full mt-8 text-white bg-brand-blue600"
+        >
           {NoTransactionsComponent}
           {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
@@ -197,7 +200,10 @@ export const TransactionsPanel = () => {
       )}
 
       {hasTransactions && (
-        <div className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600">
+        <div
+          id="activity-panel-list"
+          className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600"
+        >
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (

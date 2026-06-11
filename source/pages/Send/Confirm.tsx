@@ -60,8 +60,10 @@ import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
 
-const SMART_ACCOUNT_USER_OP_GAS_RESERVE = BigNumber.from(2_050_000);
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
+// Safety fallback if the controller reserve lookup fails; matches the
+// estimator's worst case for a deployed single-validator account.
+const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
 
 export const SendConfirm = () => {
   const { controllerEmitter } = useController();
@@ -547,8 +549,28 @@ export const SendConfirm = () => {
                   return;
                 }
 
+                // Reserve the estimator's worst-case gas units for this
+                // account's validator profile (replaces the old flat 2.05M
+                // which over-reserved Max-sends by 10-20x).
+                let gasUnitsReserve = SMART_ACCOUNT_FALLBACK_GAS_RESERVE;
+                try {
+                  const gasStatus = (await controllerEmitter(
+                    ['wallet', 'getSmartAccountNativeGasStatus'],
+                    [{ accountId: activeAccountMeta.id }]
+                  )) as { gasUnitsReserve?: string };
+                  if (gasStatus?.gasUnitsReserve) {
+                    gasUnitsReserve = BigNumber.from(gasStatus.gasUnitsReserve);
+                  }
+                } catch (reserveError) {
+                  logError(
+                    'error getting smart account gas reserve',
+                    'Transaction',
+                    reserveError
+                  );
+                }
+
                 amountWei = balanceWei
-                  .sub(SMART_ACCOUNT_USER_OP_GAS_RESERVE.mul(gasPriceWei))
+                  .sub(gasUnitsReserve.mul(gasPriceWei))
                   .sub(SMART_ACCOUNT_MAX_SEND_BUFFER_WEI);
 
                 if (amountWei.lte(0)) {

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import { LockIconSvg } from 'components/Icon/Icon';
-import { Icon, NeutralButton } from 'components/index';
+import { Button, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
@@ -215,9 +215,15 @@ const EditAccountView = () => {
             isSmartAccount ? 'static' : 'absolute bottom-12 md:static'
           }`}
         >
-          <NeutralButton type="submit" fullWidth loading={loading}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="submit"
+            fullWidth
+            loading={loading}
+          >
             {t('buttons.save')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </>

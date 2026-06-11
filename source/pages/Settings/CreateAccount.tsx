@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Card, Icon, NeutralButton } from 'components/index';
+import { Button, Card, Icon } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -166,7 +166,9 @@ const CreateAccount = () => {
           )}
 
           <div className="w-full px-4 absolute bottom-12 md:static">
-            <NeutralButton
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue"
               type="submit"
               disabled={loading}
               loading={loading}
@@ -174,7 +176,7 @@ const CreateAccount = () => {
               fullWidth
             >
               {t('buttons.create')}
-            </NeutralButton>
+            </Button>
           </div>
         </Form>
       )}

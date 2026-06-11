@@ -16,7 +16,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
-import { NeutralButton, Tooltip, Icon } from 'components/index';
+import { Button, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -1906,13 +1906,15 @@ export const SendEth = () => {
           )}
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
             loading={!selectedAsset && isCalculatingGas}
           >
             {t('buttons.next')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </div>

@@ -5,13 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
-  ErrorModal,
-  PrimaryButton,
-  SecondaryButton,
-  IconButton,
-  Icon,
-  WarningModal,
+  Button,
   DeviceWaitingBanner,
+  ErrorModal,
+  Icon,
+  IconButton,
+  WarningModal,
 } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -1456,22 +1455,24 @@ const EthSign: React.FC<ISign> = () => {
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             <div className="flex gap-3 justify-center">
-              <SecondaryButton
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={loading}
                 onClick={window.close}
               >
                 {t('buttons.cancel')}
-              </SecondaryButton>
+              </Button>
 
-              <PrimaryButton
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={confirmed}
                 loading={loading}
                 onClick={onSubmit}
               >
                 {t('buttons.confirm')}
-              </PrimaryButton>
+              </Button>
             </div>
           </div>
         </div>

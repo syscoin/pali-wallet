@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { PrimaryButton, SecondaryButton, Fee as FeeFC } from 'components/index';
+import { Button, Fee as FeeFC } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
@@ -78,11 +78,13 @@ const Fee: React.FC<IFee> = ({ onFinish }) => {
         </p>
 
         <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
-          <SecondaryButton type="button" onClick={window.close}>
+          <Button variant="secondary" type="button" onClick={window.close}>
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton type="submit">{t('buttons.next')}</PrimaryButton>
+          <Button variant="primary" type="submit">
+            {t('buttons.next')}
+          </Button>
         </div>
       </Form>
     </div>

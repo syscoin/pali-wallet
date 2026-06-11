@@ -1,11 +1,13 @@
-import { LoadingOutlined } from '@ant-design/icons';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
-import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { ChainIcon } from 'components/ChainIcon';
+import {
+  FiExternalLink as ExternalLinkIcon,
+  RiFileCopyLine as CopyIcon,
+} from 'components/Icon/Icon';
+import { LoadingOutlined } from 'components/Icon/Icon';
 import { Icon } from 'components/Icon/Icon';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';

@@ -120,6 +120,62 @@ test('smart account: infra deploy, account creation, policy, activity', async ()
     );
     wallet.summary.addAddress('smartAccount', smartAccountAddress);
 
+    await wallet.step(
+      'policy page reachable from manage accounts',
+      async () => {
+        await wallet.gotoRoute('#/settings/manage-accounts');
+        const smartAccountRow = wallet.page
+          .locator('li', { hasText: /Smart Account/ })
+          .first();
+        await expect(smartAccountRow).toBeVisible({ timeout: 30_000 });
+        // First icon button on the row is the edit pencil.
+        await smartAccountRow.locator('button').first().click();
+        await expect(wallet.page).toHaveURL(/settings\/edit-account/, {
+          timeout: 30_000,
+        });
+        await wallet.page
+          .getByRole('button', { name: /smart account settings/i })
+          .first()
+          .click();
+        await expect(wallet.page).toHaveURL(/smart-account-policy/, {
+          timeout: 30_000,
+        });
+      }
+    );
+
+    await wallet.step('policy page shows approval method card', async () => {
+      // A freshly created smart account is counterfactual (not deployed), so
+      // the card shows the "Register account" CTA; deployed accounts show the
+      // hydrated "Current approval method" with the active validator label.
+      const card = wallet.page
+        .getByText(/current approval method/i)
+        .or(wallet.page.getByText(/register account/i))
+        .first();
+      await expect(card).toBeVisible({ timeout: 60_000 });
+      const deployed = await wallet.page
+        .getByText(/current approval method/i)
+        .first()
+        .isVisible();
+      if (deployed) {
+        // Hydration resolves the active validator label (Pali wallet for the
+        // default ECDSA anchor).
+        await expect(
+          wallet.page.getByText(/pali wallet|passkey/i).first()
+        ).toBeVisible({ timeout: 60_000 });
+      }
+    });
+
+    await wallet.step('policy page shows modules or register CTA', async () => {
+      // Deployed accounts list the module cards ("Sign-in and recovery");
+      // counterfactual accounts show the Register CTA instead.
+      await expect(
+        wallet.page
+          .getByText(/sign-in and recovery/i)
+          .or(wallet.page.getByRole('button', { name: /register account/i }))
+          .first()
+      ).toBeVisible({ timeout: 60_000 });
+    });
+
     await wallet.step('activity panel renders for smart account', async () => {
       await wallet.gotoRoute('#/home');
       await wallet.page.locator('#activity-btn').click();

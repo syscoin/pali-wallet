@@ -1,8 +1,10 @@
 import React, { Fragment, useState, useCallback, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiDownload as ImportIcon } from 'react-icons/fi';
-import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 
+import {
+  FiDownload as ImportIcon,
+  RiShareForward2Line as DetailsIcon,
+} from 'components/Icon/Icon';
 import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';

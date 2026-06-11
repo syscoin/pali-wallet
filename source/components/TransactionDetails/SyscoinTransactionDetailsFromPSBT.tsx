@@ -1,15 +1,15 @@
+import { Typography } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
+
 import {
   WarningOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   DownOutlined,
   RightOutlined,
-} from '@ant-design/icons';
-import { Typography } from 'antd';
-import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
-
+} from 'components/Icon/Icon';
 import { Tooltip, IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';

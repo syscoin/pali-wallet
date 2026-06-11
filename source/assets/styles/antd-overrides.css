@@ -1,0 +1,540 @@
+/* ============================================================
+   Legacy antd overrides: custom-input-password.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-input-password .ant-input {
+  position: relative !important;
+  width: 280px;
+  border-radius: 100px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #07152a !important;
+  color: #808795;
+  font-family: Poppins;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  padding: 11px 86px 11px 20px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-input-password,
+#forget_password,
+#phraseview_password {
+  width: 352px;
+}
+
+.custom-input-password,
+#create-password {
+  width: 300px;
+}
+
+.custom-input-password .anticon-eye-invisible,
+.custom-input-password .anticon-eye {
+  content: url('../all_assets/notVisibleEye.svg');
+  position: absolute;
+  top: 49%;
+  right: 20px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: #a2a5ab;
+  font-size: 14px;
+  line-height: 14px;
+  margin: 0 !important;
+}
+
+.custom-input-password .anticon-eye-visible,
+.custom-input-password .anticon-eye {
+  content: url('../all_assets/visibleEye.svg');
+  position: absolute;
+  top: 49%;
+  right: 20px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: #a2a5ab;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-input-password .ant-input-suffix .anticon-close-circle {
+  content: url('../all_assets/errorIcon.svg');
+  position: absolute;
+  top: 49%;
+  right: 42px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-input-password .ant-input-suffix .anticon-check-circle {
+  content: url('../all_assets/successIcon.svg');
+  position: absolute;
+  top: 49%;
+  right: 42px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-input-normal.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-input-normal.ant-input,
+.custom-input-normal .ant-input {
+  position: relative !important;
+  width: 353px;
+  height: 40px;
+  border-radius: 100px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: #07152a !important;
+  color: #808795;
+  font-family: Poppins;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  padding: 11px 45px 11px 20px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-input-normal.smartAccount-input,
+.custom-input-normal.smartAccount-input .ant-input {
+  width: 100% !important;
+  min-width: 0;
+  border-radius: 100px !important;
+}
+
+.custom-input-normal.smartAccount-input.ant-input-affix-wrapper {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.custom-input-normal.smartAccount-input .ant-input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.custom-input-normal .ant-input-suffix .anticon-close-circle {
+  display: inline-block;
+  position: absolute;
+  content: url('../all_assets/errorIcon.svg');
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+  top: 52%;
+  right: 23px;
+  transform: translateY(-50%);
+}
+
+.custom-input-normal .ant-input-suffix .anticon-check-circle {
+  display: inline-block;
+  position: absolute;
+  content: url('../all_assets/successIcon.svg');
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+  top: 51%;
+  right: 23px;
+  transform: translateY(-50%);
+}
+
+.custom-input-normal .ant-input-suffix .anticon-loading {
+  position: absolute;
+  top: 35%;
+  right: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-input-search.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-input-search .ant-input {
+  position: relative !important;
+  width: 100%;
+  height: 40px;
+  border-radius: 100px !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: #07152a !important;
+  color: #808795;
+  font-family: Poppins;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  padding: 11px 86px 11px 20px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-input-search #create-password {
+  width: 352px;
+}
+
+.custom-input-search .anticon-eye-invisible,
+.custom-input-search .anticon-eye {
+  position: absolute;
+  top: 49%;
+  right: 20px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  color: #a2a5ab;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-input-search .ant-input-suffix .anticon-close-circle svg {
+  display: none;
+}
+
+.custom-input-search .ant-input-suffix .anticon-close-circle {
+  position: absolute;
+  top: 53%;
+  right: 13px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  background-color: #d70000;
+  padding: 2px 4px;
+  border-radius: 100px;
+}
+.custom-input-search .ant-input-suffix .anticon-close-circle::before {
+  display: inline-block;
+  position: relative;
+  bottom: -3px;
+  content: url('../all_assets/errorIconWhite.svg');
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+}
+
+.custom-input-search .ant-input-suffix .anticon-close-circle::after {
+  display: inline-block;
+  content: 'Not trusted';
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  padding-left: 4px;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+}
+
+.custom-input-search .ant-input-suffix .anticon-check-circle svg {
+  display: none;
+}
+
+.custom-input-search .ant-input-suffix .anticon-check-circle {
+  position: absolute;
+  top: 53%;
+  right: 13px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  background-color: #8ec100;
+  padding: 2px 4px;
+  border-radius: 100px;
+}
+
+.custom-input-search .ant-input-suffix .anticon-check-circle::before {
+  display: inline-block;
+  position: relative;
+  bottom: -3px;
+  content: url('../all_assets/successIconWhite.svg');
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+}
+
+.custom-input-search .ant-input-suffix .anticon-check-circle::after {
+  display: inline-block;
+  content: 'Trusted';
+  font-family: 'Poppins', sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  padding-left: 4px;
+  font-weight: 400;
+  line-height: normal;
+  color: #fff;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-form-inputs-styles.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+/* success */
+.ant-form-item-has-success .anticon-check-circle svg {
+  display: none;
+}
+
+.ant-form-item-has-success .anticon-check-circle::before {
+  content: ' ';
+  display: inline-block;
+  background: transparent url('../all_assets/input_success_icon.svg') center /
+    16px 16px no-repeat;
+  width: 16px;
+  height: 16px;
+}
+
+/* error */
+.ant-form-item-has-error .anticon-close-circle svg {
+  display: none;
+}
+
+.ant-form-item-has-error .anticon-close-circle::before {
+  content: '';
+  display: inline-block;
+  background: transparent url('../all_assets/input_error_icon.svg') center /
+    16px 16px no-repeat;
+  width: 16px;
+  height: 16px;
+}
+
+/* inputs border colors */
+
+.ant-input-affix-wrapper .ant-input {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* input with full width */
+#assetGuid,
+#assetSymbol,
+#contractAddress,
+#assetDecimals {
+  width: 100% !important;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-autolock-input.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-autolock-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 73px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+.custom-edit-input .ant-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 20px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+.custom-edit-input .ant-input-suffix .anticon-close-circle {
+  content: url('../all_assets/errorIcon.svg');
+  position: absolute;
+  top: 55%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-edit-input .ant-input-suffix .anticon-check-circle {
+  content: url('../all_assets/successIcon.svg');
+  position: absolute;
+  top: 53%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-gas-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 20px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #162742;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-receive-input.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-receive-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a;
+  font-size: 12px;
+  padding: 12px 55px 12px 15px;
+}
+
+.custom-receive-input .ant-input-suffix .anticon-close-circle {
+  content: url('../all_assets/errorIcon.svg');
+  position: absolute;
+  top: 55%;
+  right: 80px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-receive-input .ant-input-suffix .anticon-check-circle {
+  content: url('../all_assets/successIcon.svg');
+  position: absolute;
+  top: 53%;
+  right: 40px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-import-token-input.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.custom-import-input .ant-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 12px 55px 12px 15px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+.custom-import-input .ant-input-suffix .anticon-close-circle {
+  content: url('../all_assets/errorIcon.svg');
+  position: absolute;
+  top: 55%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-import-input .ant-input-suffix .anticon-check-circle {
+  content: url('../all_assets/successIcon.svg');
+  position: absolute;
+  top: 53%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-import-input .ant-input-suffix .anticon-loading {
+  position: absolute;
+  top: 40%;
+  right: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+/* ============================================================
+   Legacy antd overrides: custom-send-utxo-input.css
+   (verbatim merge -- collapse step; rules retired in Phase 4)
+   ============================================================ */
+.sender-custom-input .ant-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 45px 11px 20px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+#with-max-button,
+.sender-custom-input .ant-input {
+  width: 244px;
+  padding: 10px 70px;
+}
+
+#fee-input,
+.sender-custom-input .ant-input {
+  width: 352px;
+  color: #fff !important;
+  padding: 11px 45px 11px 20px;
+}
+
+/* Make the wrapper divs position relative for absolute positioning context */
+.sender-custom-input,
+.value-custom-input {
+  position: relative;
+}
+
+/* Position validation icons inside sender-custom-input wrapper */
+.sender-custom-input .ant-form-item-feedback-icon {
+  position: absolute !important;
+  right: 20px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Position validation icons inside value-custom-input wrapper */
+.value-custom-input .ant-form-item-feedback-icon {
+  position: absolute !important;
+  right: 20px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.value-custom-input .ant-input {
+  display: flex;
+  width: 244px;
+  height: 40px;
+  padding: 11px 45px 11px 20px;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+

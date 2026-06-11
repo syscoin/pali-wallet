@@ -361,10 +361,36 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
   },
 };
 
+// Generic arm for bring-your-own validators: Pali cannot produce these
+// signatures natively, so every action routes through the external-signature
+// flow with full context (module address, label, init data).
+const customDriver: SmartAccountAuthenticatorDriver<
+  Extract<SmartAccountValidatorModule, { id: 'custom' }>
+> = {
+  createExternalSignatureRequest: (context) =>
+    externalSignatureRequest(
+      context,
+      `Sign this smart account action hash with the external "${context.validator.config.name}" validator, then submit the signature.`,
+      {
+        actionHash: context.actionHash,
+        moduleAddress: context.validator.address,
+        moduleName: context.validator.config.name,
+        moduleType: context.validator.config.moduleType,
+      }
+    ),
+  id: 'custom',
+  signActionHash: async (context) => {
+    throw new SmartAccountExternalSignatureRequired(
+      customDriver.createExternalSignatureRequest(context)
+    );
+  },
+};
+
 const authenticatorDrivers = [
   p256WebAuthnDriver,
   ecdsaDriver,
   compositeDriver,
+  customDriver,
 ] as const;
 
 const getAuthenticatorDriver = <T extends SmartAccountValidatorModule>(

@@ -3,7 +3,7 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { PrimaryButton, SecondaryButton } from 'components/index';
+import { Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { INetwork } from 'types/network';
@@ -508,15 +508,17 @@ const CustomRPCExternal = () => {
       {/* Fixed button container at bottom of viewport */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={window.close}
             disabled={loading || switchingNetwork}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="submit"
             disabled={confirmed || loading || switchingNetwork}
             loading={loading || switchingNetwork}
@@ -525,7 +527,7 @@ const CustomRPCExternal = () => {
             {switchingNetwork
               ? t('settings.switchingNetwork')
               : t('buttons.addNetwork')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,9 +1,9 @@
 import { Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
+import { FiExternalLink as ExternalLinkIcon } from 'components/Icon/Icon';
 import { Card, CopyCard, ValidatedPasswordInput } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';

@@ -6,21 +6,14 @@ import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
+import { AntdProvider } from 'components/AntdProvider';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import { clearNavigationState } from 'utils/navigationState';
 import 'assets/styles/index.css';
-import 'assets/styles/custom-input-password.css';
-import 'assets/styles/custom-input-normal.css';
-import 'assets/styles/custom-input-search.css';
-import 'assets/styles/custom-input-normal.css';
+import 'assets/styles/antd-overrides.css';
 import 'assets/styles/custom-checkbox.css';
-import 'assets/styles/custom-form-inputs-styles.css';
-import 'assets/styles/custom-autolock-input.css';
-import 'assets/styles/custom-receive-input.css';
-import 'assets/styles/custom-import-token-input.css';
 import 'assets/fonts/index.css';
-import 'assets/styles/custom-send-utxo-input.css';
 
 // Initialize i18n for external pages
 import 'utils/i18n';
@@ -87,8 +80,10 @@ if (externalRootElement) {
       root.render(
         <React.StrictMode>
           <Provider store={store}>
-            <External />
-            <ToastContainer {...toastOptions} />
+            <AntdProvider>
+              <External />
+              <ToastContainer {...toastOptions} />
+            </AntdProvider>
           </Provider>
         </React.StrictMode>
       );
