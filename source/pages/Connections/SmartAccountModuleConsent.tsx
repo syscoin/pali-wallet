@@ -11,7 +11,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 import {
   ISmartAccountMetadata,
-  SmartAccountValidatorModule,
+  SmartAccountInstalledModule,
 } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import {
@@ -111,7 +111,8 @@ export const SmartAccountModuleConsent = () => {
   const installedModules = metadata?.installedModules || [];
   const targetModule = installedModules.find((module) =>
     sameAddress(module.address, moduleAddress || undefined)
-  ) as SmartAccountValidatorModule | undefined;
+  ) as SmartAccountInstalledModule | undefined;
+  const targetModuleIsValidator = targetModule?.type === 'validator';
   const isActiveValidator = sameAddress(
     metadata?.auth?.validator,
     moduleAddress || undefined
@@ -126,6 +127,8 @@ export const SmartAccountModuleConsent = () => {
     ? t('smartAccountHub.invalidInitData')
     : action === 'uninstall' && metadata && !targetModule
     ? t('smartAccountHub.moduleNotInstalled')
+    : action === 'uninstall' && targetModule && !targetModuleIsValidator
+    ? t('smartAccountHub.moduleUninstallUnsupported')
     : action === 'uninstall' && isActiveValidator
     ? t('smartAccountHub.cannotRemoveActiveValidator')
     : null;
@@ -196,7 +199,7 @@ export const SmartAccountModuleConsent = () => {
     !checking &&
     !loading &&
     (action === 'uninstall'
-      ? Boolean(targetModule)
+      ? Boolean(targetModuleIsValidator)
       : Boolean(preflight?.ok) && acknowledged);
 
   const approve = useCallback(async () => {
@@ -204,6 +207,10 @@ export const SmartAccountModuleConsent = () => {
     setLoading(true);
     setError(null);
     try {
+      if (action === 'uninstall' && !targetModuleIsValidator) {
+        setError(t('smartAccountHub.moduleUninstallUnsupported'));
+        return;
+      }
       const authenticatorContexts = getSmartAccountLocalOwnerContexts({
         accounts: accounts as any,
         controllerEmitter: controllerEmitter as any,
@@ -293,6 +300,7 @@ export const SmartAccountModuleConsent = () => {
     request.name,
     t,
     targetModule?.id,
+    targetModuleIsValidator,
   ]);
 
   return (

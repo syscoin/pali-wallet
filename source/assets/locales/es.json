@@ -941,6 +941,7 @@
     "moduleInstalled": "Module installed",
     "moduleName": "Name",
     "moduleNotInstalled": "This module is not installed on your smart account.",
+    "moduleUninstallUnsupported": "This dapp request can only remove validator modules. Manage executor modules from the smart account hub.",
     "moduleUninstalled": "Module uninstalled",
     "noActiveValidator": "No active validator",
     "noModules": "No modules installed yet.",
