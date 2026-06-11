@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
-import { DefaultModal, NeutralButton } from 'components/index';
+import { Button, DefaultModal } from 'components/index';
 import { changeLanguage } from 'utils/i18n';
 import { navigateBack } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
@@ -146,8 +146,6 @@ const Languages = () => {
         name="language-form"
         id="language-form"
         onFinish={onSubmit}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
         <div className="flex flex-col gap-y-6">
@@ -256,9 +254,15 @@ const Languages = () => {
         </div>
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton type="submit" fullWidth disabled={!hasUnsavedChanges}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="submit"
+            fullWidth
+            disabled={!hasUnsavedChanges}
+          >
             Save
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </>

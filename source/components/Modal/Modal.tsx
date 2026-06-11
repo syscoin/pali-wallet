@@ -1,11 +1,18 @@
-import { Dialog } from '@headlessui/react';
 import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ImWarning } from 'react-icons/im';
-import { MdBugReport } from 'react-icons/md';
 
-import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
+import { Button } from '..';
 import CheckIcon from 'assets/all_assets/check_icon.svg';
+import {
+  CenterPanel,
+  CenterTitle,
+  DialogPrimitive,
+} from 'components/Dialog/Dialog';
+import { ImWarning, MdBugReport } from 'components/Icon/Icon';
+
+// Centered modal variants, rebuilt as declarative compositions over the
+// Dialog primitive (components/Dialog). The legacy `Modal` wrapper is kept
+// for call sites that compose their own panel.
 
 interface IModal {
   children: ReactNode;
@@ -42,36 +49,14 @@ export const Modal = ({
   onClose,
   show = true,
 }: IModal) => (
-  <Dialog
-    as="div"
-    className={`fixed z-[100] inset-0 overflow-y-auto ${className}`}
-    open={Boolean(show)}
-    onClose={() => {
-      if (onClose) onClose();
-    }}
+  <DialogPrimitive
+    presentation="center"
+    className={className}
+    onClose={onClose}
+    show={show}
   >
-    <div
-      className={`fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 ${
-        show ? 'opacity-100' : 'opacity-0'
-      } transition-opacity duration-200 ease-in-out`}
-    />
-
-    <div className="px-4 min-h-screen text-center">
-      <Dialog.Overlay className="fixed inset-0" />
-
-      <span className="inline-block align-middle h-screen" aria-hidden="true">
-        &#8203;
-      </span>
-
-      <div
-        className={`transition-transform duration-200 ${
-          show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-        }`}
-      >
-        {children}
-      </div>
-    </div>
-  </Dialog>
+    {children}
+  </DialogPrimitive>
 );
 
 export const DefaultModal = ({
@@ -82,60 +67,25 @@ export const DefaultModal = ({
   title = '',
 }: IDefaultModal) => (
   <Modal show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
-      <Dialog.Title
-        as="h3"
-        className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
-      >
-        {title}
-      </Dialog.Title>
+    <CenterPanel>
+      <CenterTitle>{title}</CenterTitle>
 
       <div className="mt-2">
         <p className="text-white text-sm">{description}</p>
       </div>
 
       <div className="flex items-center justify-center mt-4">
-        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
-          {buttonText}
-        </NeutralButton>
-      </div>
-    </div>
-  </Modal>
-);
-
-export const NewDefaultModal = ({
-  buttonText = 'OK',
-  description = '',
-  onClose,
-  show,
-  title = '',
-}: IDefaultModal) => (
-  <Modal show={show} onClose={onClose}>
-    <div
-      className="inline-block absolute left-0 bottom-0 align-middle w-full max-w-md text-center font-poppins bg-bkg-blue200 shadow-xl overflow-hidden transform transition-all"
-      style={{ borderRadius: '50px 50px 0px 0px', padding: '0px 0px 48px 0px' }}
-    >
-      <Dialog.Title
-        as="h3"
-        className="px-2.5 py-5 bg-bkg-blackAlpha uppercase text-brand-white text-base font-semibold leading-6"
-      >
-        {title}
-      </Dialog.Title>
-
-      <div className="flex items-center flex-col justify-center px-6 mt-7 gap-7">
-        <p className="text-white text-sm">{description}</p>
-
-        <NeutralButton
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
           type="button"
           onClick={onClose}
           id="got-it-btn"
-          fullWidth={true}
-          extraStyles="text-brand-blue text-base font-poppins"
         >
           {buttonText}
-        </NeutralButton>
+        </Button>
       </div>
-    </div>
+    </CenterPanel>
   </Modal>
 );
 
@@ -148,13 +98,8 @@ export const WarningModal = ({
   title = '',
 }: IWarningModal) => (
   <Modal show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
-      <Dialog.Title
-        as="h3"
-        className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
-      >
-        {title}
-      </Dialog.Title>
+    <CenterPanel>
+      <CenterTitle>{title}</CenterTitle>
 
       <div className="mt-2">
         <p className="text-white text-sm">{description}</p>
@@ -167,11 +112,17 @@ export const WarningModal = ({
       )}
 
       <div className="flex items-center justify-center mt-4">
-        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+        <Button
+          variant="neutral"
+          className="text-sm text-brand-royalblue"
+          type="button"
+          onClick={onClose}
+          id="got-it-btn"
+        >
           {buttonText}
-        </NeutralButton>
+        </Button>
       </div>
-    </div>
+    </CenterPanel>
   </Modal>
 );
 
@@ -188,13 +139,8 @@ export const ConfirmationModal = ({
   const { t } = useTranslation();
   return (
     <Modal show={show} onClose={onClose}>
-      <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
-        <Dialog.Title
-          as="h3"
-          className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
-        >
-          {title}
-        </Dialog.Title>
+      <CenterPanel>
+        <CenterTitle>{title}</CenterTitle>
 
         <div className="mt-2">
           <p className="text-white text-sm">{description}</p>
@@ -202,19 +148,27 @@ export const ConfirmationModal = ({
         </div>
 
         <div className="flex items-center justify-center mt-4 gap-4">
-          <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="button"
+            onClick={onClose}
+            id="cancel-btn"
+          >
             {t('buttons.cancel')}
-          </NeutralButton>
-          <NeutralButton
+          </Button>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             onClick={onClick}
-            id="got-it-btn"
+            id="confirm-btn"
             loading={isButtonLoading}
           >
             {buttonText}
-          </NeutralButton>
+          </Button>
         </div>
-      </div>
+      </CenterPanel>
     </Modal>
   );
 };
@@ -239,12 +193,9 @@ export const ErrorModal = ({
           className="py-6 border-b border-dashed"
           style={{ borderColor: 'rgba(255,255,255,.5)' }}
         >
-          <Dialog.Title
-            as="h3"
-            className="text-brand-white text-base font-medium leading-6"
-          >
+          <h3 className="text-brand-white text-base font-medium leading-6">
             {title.toUpperCase()}
-          </Dialog.Title>
+          </h3>
         </div>
 
         <div className="pb-3 px-5 w-full">
@@ -279,7 +230,8 @@ export const ErrorModal = ({
           </div>
 
           <div className="flex gap-x-1.5 items-center justify-between">
-            <SecondaryButton
+            <Button
+              variant="secondary"
               type="button"
               onClick={() =>
                 window.open(
@@ -289,12 +241,12 @@ export const ErrorModal = ({
             >
               <MdBugReport size={20} />
               Report
-            </SecondaryButton>
+            </Button>
 
-            <PrimaryButton type="button" onClick={onClose}>
+            <Button variant="primary" type="button" onClick={onClose}>
               <img src={CheckIcon} alt="Check icon" />
               {buttonText}
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       </div>

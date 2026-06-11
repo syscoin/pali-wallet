@@ -11,11 +11,11 @@
   "homepage.feature.utxo.description": {
     "message": "window.pali로 Syscoin UTXO 계정, PSBT 서명, 변경 주소, xpub 인식 상태, SPT 자산, Bitcoin 스타일 통합을 사용합니다."
   },
-  "homepage.feature.passkeys.title": {
+  "homepage.feature.smartAccounts.title": {
     "message": "스마트 계정"
   },
-  "homepage.feature.passkeys.description": {
-    "message": "모듈형 계정을 만들고, passkey 또는 ECDSA validator를 사용하며, guardian recovery와 atomic batch를 구성합니다."
+  "homepage.feature.smartAccounts.description": {
+    "message": "모듈형 계정을 만들고, validator를 선택하며, guardian recovery와 module을 관리하고 atomic batch를 전송합니다."
   },
   "homepage.hero.eyebrow": {
     "message": "Pali Wallet 문서"
@@ -57,7 +57,7 @@
     "message": "작업 요청"
   },
   "homepage.flow.request.description": {
-    "message": "EVM transaction, typed data signing, UTXO PSBT signing 또는 passkey/ECDSA validator가 있는 Pali 스마트 계정을 생성합니다."
+    "message": "EVM transaction, typed data signing, UTXO PSBT signing 또는 configurable validator가 있는 Pali 스마트 계정을 생성합니다."
   },
   "theme.ErrorPageContent.title": {
     "message": "페이지에 오류가 발생하였습니다.",

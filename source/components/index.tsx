@@ -1,6 +1,9 @@
+export * from './AddressText';
+export * from './AntdProvider';
 export * from './Button';
 export * from './Container';
 export * from './Cards';
+export * from './Dialog';
 export * from './Fullscreen';
 export * from './Header';
 export * from './Icon';
@@ -14,7 +17,6 @@ export * from './Loading';
 export * from './FiatComponent';
 export * from './Fee';
 
-export * from './Modal';
 export * from './Loader/SkeletonLoader';
 export * from './WalletErrorBoundary';
 

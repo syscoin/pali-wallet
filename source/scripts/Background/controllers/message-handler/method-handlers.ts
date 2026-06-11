@@ -157,6 +157,26 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupRoute &&
       methodConfig.popupEventName
     ) {
+      if (methodName === 'sendCalls') {
+        const sendCallsRequest = params?.[0] || {};
+        const smartAccountAtomicSupported =
+          account?.isSmartAccount &&
+          account.smartAccount?.chainId === activeNetwork?.chainId;
+
+        if (
+          sendCallsRequest.atomicRequired === true &&
+          !smartAccountAtomicSupported
+        ) {
+          throw cleanErrorStack(
+            ethErrors.provider.custom({
+              code: 5700,
+              message:
+                'Atomic wallet_sendCalls requires an active smart account on the selected chain.',
+            })
+          );
+        }
+      }
+
       const popupData = this.getPopupData(methodName, params, host);
       return requestCoordinator.coordinatePopupRequest(
         context,
@@ -363,6 +383,39 @@ export class WalletMethodHandler implements IMethodHandler {
           }
           return wallet.getSysAssetMetadata(params[0], params[1]);
 
+        case 'getSmartAccountModules': {
+          // Read-only module inventory for the connected smart account.
+          if (!account?.isSmartAccount || !account.smartAccount) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidRequest(
+                'The connected account is not a smart account'
+              )
+            );
+          }
+          const smartAccountMetadata = account.smartAccount;
+          if (smartAccountMetadata.chainId !== activeNetwork.chainId) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidRequest(
+                `Smart account modules are only available on chain ${smartAccountMetadata.chainId}. Switch back from chain ${activeNetwork.chainId} to inspect this account.`
+              )
+            );
+          }
+          return {
+            address: account.address,
+            chainId: `0x${activeNetwork.chainId.toString(16)}`,
+            deployed: Boolean(smartAccountMetadata.isDeployed),
+            installed: (smartAccountMetadata.installedModules || []).map(
+              (module: any) => ({
+                address: module.address,
+                id: module.id,
+                moduleType: module.type === 'validator' ? 1 : 2,
+                name: module.id === 'custom' ? module.config?.name : undefined,
+              })
+            ),
+            activeValidator: smartAccountMetadata.auth?.validator || null,
+          };
+        }
+
         case 'getCallsStatus':
           if (!params || params.length < 1 || typeof params[0] !== 'string') {
             throw cleanErrorStack(
@@ -466,6 +519,18 @@ export class WalletMethodHandler implements IMethodHandler {
         return {
           host,
           request: params?.[0] || {},
+        };
+      case 'requestSmartAccountModuleInstall':
+        return {
+          action: 'install',
+          host,
+          module: params?.[0] || {},
+        };
+      case 'requestSmartAccountModuleUninstall':
+        return {
+          action: 'uninstall',
+          host,
+          module: params?.[0] || {},
         };
       default:
         return {};

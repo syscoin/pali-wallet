@@ -12,7 +12,7 @@ import { useLocation } from 'react-router-dom';
 
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
-import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
+import { Button, Fee, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -695,20 +695,18 @@ export const SendSys = () => {
         validateMessages={{ default: '' }}
         form={form}
         id="send-form"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={{
           RBF: true,
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full pb-20 md:pb-0"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full pb-20 md:pb-0"
         onValuesChange={handleFormValuesChange}
       >
         <div className="sender-custom-input">
           <Form.Item
             name="receiver"
-            className="md:w-full md:max-w-md"
+            className="w-full md:max-w-md"
             hasFeedback
             rules={[
               {
@@ -741,7 +739,7 @@ export const SendSys = () => {
             />
           </Form.Item>
         </div>
-        <div className="flex gap-2 w-full items-center">
+        <div className="flex gap-2 w-full items-start">
           <div className="flex md:max-w-md">
             {
               <Form.Item
@@ -757,7 +755,7 @@ export const SendSys = () => {
                 <Menu>
                   {({ open }) => (
                     <div className="relative inline-block text-left">
-                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                         <p className="w-full uppercase text-white text-xs font-normal">
                           {String(
                             selectedAsset?.symbol
@@ -845,11 +843,11 @@ export const SendSys = () => {
             }
           </div>
 
-          <div className="flex md:w-96 relative">
+          <div className="flex flex-1 min-w-0 relative">
             <div className="value-custom-input w-full relative">
               <span
                 onClick={handleMaxButton}
-                className="absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
+                className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
               >
                 MAX
               </span>
@@ -860,7 +858,9 @@ export const SendSys = () => {
                 rules={[
                   {
                     required: true,
-                    message: t('send.amountRequired'),
+                    // Message comes from the validator below; a message here
+                    // would render twice for empty values.
+                    message: '',
                   },
                   () => ({
                     async validator(_, value) {
@@ -998,9 +998,15 @@ export const SendSys = () => {
         </div>
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
-          <NeutralButton type="submit" fullWidth loading={isLoading}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="submit"
+            fullWidth
+            loading={isLoading}
+          >
             {t('buttons.next')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </div>

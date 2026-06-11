@@ -22,10 +22,13 @@ export const launchExtension = async (
     );
   }
 
+  // Unique suffix so a relaunch (e.g. Playwright restarting the worker after
+  // a failed test re-runs beforeAll) never inherits vault state from the
+  // previous launch's profile.
   const profileDir = path.join(
     E2E_CONFIG.artifactsDir,
     'profiles',
-    profileName
+    `${profileName}-${Date.now()}`
   );
   fs.mkdirSync(profileDir, { recursive: true });
 

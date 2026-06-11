@@ -43,6 +43,7 @@ export enum MethodRoute {
   SignPsbt = 'tx/sign-psbt',
   SignTx = 'tx/sign',
   SmartAccount = 'smart-account',
+  SmartAccountModules = 'smart-account-modules',
   SwitchEthChain = 'switch-EthChain',
   SwitchNetwork = 'switch-network',
   SwitchUtxoEvm = 'switch-UtxoEvm',

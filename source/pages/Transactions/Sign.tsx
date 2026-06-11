@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import {
-  PrimaryButton,
-  SecondaryButton,
-  ErrorModal,
-  DeviceWaitingBanner,
-} from 'components/index';
+import { Button, DeviceWaitingBanner, ErrorModal } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -219,7 +214,8 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             <div className="flex gap-3 justify-center">
-              <SecondaryButton
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={loading}
                 onClick={async () => {
@@ -236,16 +232,17 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 }}
               >
                 {t('buttons.cancel')}
-              </SecondaryButton>
+              </Button>
 
-              <PrimaryButton
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={confirmed}
                 loading={loading}
                 onClick={onSubmit}
               >
                 {signOnly ? t('buttons.sign') : t('buttons.confirm')}
-              </PrimaryButton>
+              </Button>
             </div>
           </div>
         </div>

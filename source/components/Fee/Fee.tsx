@@ -157,7 +157,7 @@ export const Fee = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 md:w-96">
+    <div className="flex flex-col gap-2 w-full">
       <div className="flex">
         <div className="sender-custom-input w-full">
           <Form.Item
@@ -180,7 +180,10 @@ export const Fee = ({
 
                   const validation = validateFeeRate(numValue);
                   if (validation && validation.level === 'error') {
-                    return Promise.reject(new Error(validation.message));
+                    // Message rendered by the styled warning card below;
+                    // empty reject keeps the error border without a
+                    // duplicate explain line.
+                    return Promise.reject('');
                   }
 
                   // Warnings don't block submission, just show in console/UI
@@ -200,6 +203,19 @@ export const Fee = ({
                   id="fee-input"
                   type="number"
                   placeholder={getPlaceholder()}
+                  suffix={(() => {
+                    const feeToEstimate = currentFee || recommend;
+                    if (!feeToEstimate) return null;
+                    const numValue = parseFloat(String(feeToEstimate));
+                    if (isNaN(numValue)) return null;
+                    const estimatedFiat = getEstimatedFiatCost(numValue);
+                    if (!estimatedFiat) return null;
+                    return (
+                      <span className="text-xs text-brand-gray200 whitespace-nowrap">
+                        ~ {estimatedFiat} est.
+                      </span>
+                    );
+                  })()}
                   value={form.getFieldValue('fee') ?? (recommend || '')}
                   onChange={(event) => {
                     const newValue = event.target.value;
@@ -230,27 +246,6 @@ export const Fee = ({
                     />
                   </Tooltip>
                 )}
-
-                {/* Estimated fiat cost display */}
-                {(() => {
-                  const feeToEstimate = currentFee || recommend;
-                  if (!feeToEstimate) return null;
-
-                  const numValue = parseFloat(String(feeToEstimate));
-                  if (isNaN(numValue)) return null;
-
-                  const estimatedFiat = getEstimatedFiatCost(numValue);
-                  if (!estimatedFiat) return null;
-
-                  return (
-                    <p className="flex absolute right-[15%] top-[32%] text-xs flex-col items-center justify-center p-0 max-w-xs text-center text-brand-gray200 sm:w-full md:my-4">
-                      <span>
-                        {'~ '}
-                        {estimatedFiat} est.
-                      </span>
-                    </p>
-                  );
-                })()}
               </div>
 
               {/* Fee rate warning display */}

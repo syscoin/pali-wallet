@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { NeutralButton } from 'components/index';
+import { Button } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -103,19 +103,17 @@ const ImportAccountView = () => {
         {t('settings.importAccountsWont')}
       </p>
 
-      <div className="flex flex-col items-center justify-center">
+      <div className="flex flex-col items-center justify-center w-full">
         <Form
           validateMessages={{ default: '' }}
-          className="flex flex-col gap-2 text-center md:w-full mb-10"
+          className="flex flex-col gap-2 text-center w-full mb-10"
           name="newaccount"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
           autoComplete="off"
           form={form}
         >
           <Form.Item
             name="label"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               {
@@ -178,7 +176,7 @@ const ImportAccountView = () => {
           </div>
           <Form.Item
             name="privKey"
-            className="md:w-full"
+            className="w-full"
             hasFeedback
             rules={[
               { required: true, message: '' },
@@ -246,7 +244,9 @@ const ImportAccountView = () => {
         </Form>
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             loading={isImporting}
             onClick={handleImportAccount}
@@ -254,7 +254,7 @@ const ImportAccountView = () => {
             disabled={watchOnly ? !validIdentifier : !validPrivateKey}
           >
             {t('buttons.import')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </>

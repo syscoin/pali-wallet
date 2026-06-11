@@ -6,12 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
-import {
-  PrimaryButton,
-  SecondaryButton,
-  Icon,
-  Tooltip,
-} from 'components/index';
+import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -277,9 +272,17 @@ export const SendCalls = () => {
       setLoading(true);
       setConfirmed(false); // Reset confirmed state for each attempt
 
+      if (
+        callsData.atomicRequired &&
+        !requestSmartAccount.supportsAtomicBatch
+      ) {
+        setLoading(false);
+        alert.error(t('send.atomicNotSupportedDescription'));
+        return;
+      }
+
       // Filter calls based on selection AND exclude already successful transactions.
-      // Even atomic batches may be executed sequentially for non-smart accounts,
-      // so retry attempts must not resubmit calls that already succeeded.
+      // Retry attempts must not resubmit calls that already succeeded.
       const shouldSubmitCall = (_: unknown, index: number) =>
         (callsData.atomicRequired || effectiveSelectedCalls[index]) &&
         (!transactionStatuses?.[index] ||
@@ -689,9 +692,9 @@ export const SendCalls = () => {
               {t('send.noCallsProvidedDescription')}
             </p>
             <div className="flex gap-3 justify-center">
-              <SecondaryButton type="button" onClick={handleReject}>
+              <Button variant="secondary" type="button" onClick={handleReject}>
                 {t('buttons.close')}
-              </SecondaryButton>
+              </Button>
             </div>
           </div>
         </div>
@@ -981,14 +984,16 @@ export const SendCalls = () => {
           </div>
         )}
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             onClick={handleReject}
             disabled={loading}
           >
             {confirmed ? t('buttons.close') : t('buttons.reject')}
-          </SecondaryButton>
-          <PrimaryButton
+          </Button>
+          <Button
+            variant="primary"
             type="button"
             onClick={handleApprove}
             disabled={loading || confirmed || !hasUnsuccessfulSelected}
@@ -1001,7 +1006,7 @@ export const SendCalls = () => {
               : confirmed
               ? t('send.complete')
               : t('send.sign')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>

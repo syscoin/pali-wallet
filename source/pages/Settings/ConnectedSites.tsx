@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { EditIconSvg } from 'components/Icon/Icon';
-import { Icon, IconButton, NeutralButton } from 'components/index';
+import { Button, Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
@@ -190,13 +190,15 @@ const ConnectedSites = () => {
         )}
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             fullWidth
             onClick={() => navigateBack(navigate, location)}
           >
             {t('buttons.close')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </>

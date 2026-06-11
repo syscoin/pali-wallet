@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { NeutralButton } from 'components/index';
+import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -100,13 +100,15 @@ export const Receive = () => {
           </div>
 
           <div className="relative w-[96%] mt-6" id="copy-address-receive-btn">
-            <NeutralButton
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue"
               type="button"
               fullWidth={true}
               onClick={() => copyText(activeAccount.address)}
             >
               <span className="text-xs">{t('buttons.copy')}</span>
-            </NeutralButton>
+            </Button>
           </div>
         </div>
       ) : hasTimedOut ? (
@@ -114,9 +116,14 @@ export const Receive = () => {
           <p className="text-sm text-brand-gray200 text-center">
             {t('receive.addressUnavailable')}
           </p>
-          <NeutralButton type="button" onClick={() => navigate('/home')}>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
+            type="button"
+            onClick={() => navigate('/home')}
+          >
             <span className="text-xs">{t('receive.retry')}</span>
-          </NeutralButton>
+          </Button>
         </div>
       ) : (
         <div className="flex items-center justify-center h-80">

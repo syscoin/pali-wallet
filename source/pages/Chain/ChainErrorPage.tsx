@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { NeutralButton } from 'components/Button';
+import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
@@ -343,15 +343,19 @@ export const ChainErrorPage = () => {
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             onClick={handleConnectToAnotherRpc}
             disabled={isRetrying}
             fullWidth
           >
             {t('chainError.goToAnotherNetwork')}
-          </NeutralButton>
-          <NeutralButton
+          </Button>
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="button"
             onClick={handleRetryToConnect}
             disabled={isRetrying}
@@ -359,7 +363,7 @@ export const ChainErrorPage = () => {
             fullWidth
           >
             {t('buttons.retryConnect')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </div>

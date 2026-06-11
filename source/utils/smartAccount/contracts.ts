@@ -29,8 +29,26 @@ export type PaliModuleRegistryEntry = {
   capability?: 'p256-precompile';
   displayName: string;
   id: PaliAuthenticatorModuleId;
+  kind: 'builtin';
   moduleType: number;
 };
+
+/**
+ * Bring-your-own module descriptor: a user- or dapp-supplied ERC-7579 module
+ * identified by address rather than a builtin registry id. Persisted in
+ * `ISmartAccountMetadata.installedModules` (id: 'custom') after install.
+ */
+export type PaliCustomModuleDescriptor = {
+  address: string;
+  initData?: string;
+  kind: 'custom';
+  moduleType: number;
+  name: string;
+};
+
+export type PaliModuleDescriptor =
+  | PaliCustomModuleDescriptor
+  | PaliModuleRegistryEntry;
 
 export const PALI_ERC7579_FACTORY_ADDRESSES: Partial<Record<number, string>> =
   {};
@@ -56,24 +74,28 @@ export const PALI_MODULE_REGISTRY: PaliModuleRegistryEntry[] = [
     capability: 'p256-precompile',
     displayName: 'Passkey',
     id: 'p256-webauthn',
+    kind: 'builtin',
     moduleType: ERC7579_MODULE_TYPE_VALIDATOR,
   },
   {
     addresses: PALI_ECDSA_VALIDATOR_ADDRESSES,
     displayName: 'ECDSA',
     id: 'ecdsa',
+    kind: 'builtin',
     moduleType: ERC7579_MODULE_TYPE_VALIDATOR,
   },
   {
     addresses: PALI_COMPOSITE_VALIDATOR_ADDRESSES,
     displayName: 'Composite policy',
     id: 'composite',
+    kind: 'builtin',
     moduleType: ERC7579_MODULE_TYPE_VALIDATOR,
   },
   {
     addresses: PALI_GUARDIAN_RECOVERY_MODULE_ADDRESSES,
     displayName: 'Guardian recovery',
     id: 'guardian-recovery',
+    kind: 'builtin',
     moduleType: ERC7579_MODULE_TYPE_EXECUTOR,
   },
 ];
@@ -164,8 +186,17 @@ export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'function scheduleRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata,(address guardian,bytes signature)[] approvals) returns (bytes32 operationId)',
 ] as const;
 
+/**
+ * Generic (non-throwing) lookup: returns undefined for ids outside the
+ * builtin registry (e.g. 'custom' modules identified by address).
+ */
+export const findPaliModuleRegistryEntry = (
+  id: string
+): PaliModuleRegistryEntry | undefined =>
+  PALI_MODULE_REGISTRY.find((module) => module.id === id);
+
 export const getPaliModuleRegistryEntry = (id: PaliAuthenticatorModuleId) => {
-  const entry = PALI_MODULE_REGISTRY.find((module) => module.id === id);
+  const entry = findPaliModuleRegistryEntry(id);
   if (!entry) {
     throw new Error(`Unknown Pali ERC-7579 module: ${id}`);
   }

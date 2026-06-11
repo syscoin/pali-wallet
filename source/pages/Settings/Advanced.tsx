@@ -6,10 +6,10 @@ import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
+  Button,
   Card,
-  DefaultModal,
-  NeutralButton,
   ConfirmationModal,
+  DefaultModal,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -251,14 +251,16 @@ const Advanced = () => {
               )}
               {infrastructureStatus?.create2Deployer.deployed &&
                 missingInfrastructure.length > 0 && (
-                  <NeutralButton
+                  <Button
+                    variant="neutral"
+                    className="text-sm text-brand-royalblue"
                     type="button"
                     loading={loadingInfrastructure}
                     disabled={loadingInfrastructure}
                     onClick={deployInfrastructure}
                   >
                     {t('settings.deploySmartAccountInfrastructure')}
-                  </NeutralButton>
+                  </Button>
                 )}
             </div>
           </Card>
@@ -285,12 +287,10 @@ const Advanced = () => {
 
       <Form
         validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center text-center"
+        className="flex flex-col gap-8 items-center justify-center text-center w-full"
         name="autolock"
         id="autolock"
         onFinish={onSubmit}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
         {ADVANCED_SETTINGS.map((propName: string, index: number) => (
@@ -407,14 +407,16 @@ const Advanced = () => {
         ))}
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             type="submit"
             loading={loading}
             fullWidth
             disabled={!hasUnsavedChanges}
           >
             {t('buttons.save')}
-          </NeutralButton>
+          </Button>
         </div>
       </Form>
     </>

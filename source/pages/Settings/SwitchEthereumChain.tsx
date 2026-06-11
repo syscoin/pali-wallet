@@ -2,10 +2,9 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { SecondButton } from 'components/Button/Button';
+import { Button } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
-import { PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -117,24 +116,40 @@ const SwitchChain: React.FC = () => {
         </div>
 
         <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
-          <SecondButton
+          <Button
+            variant="ghost"
             type="button"
             onClick={window.close}
-            action={true}
             disabled={loading}
+            icon={
+              <Icon
+                name="close"
+                wrapperClassname="mb-0.5"
+                className="text-brand-white font-bold"
+              />
+            }
           >
             {t('buttons.reject')}
-          </SecondButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="submit"
             disabled={confirmed || loading}
             loading={loading}
             onClick={onSubmit}
-            action={true}
+            icon={
+              <Icon
+                name="check-outlined"
+                wrapperClassname="mb-0.5"
+                className={
+                  confirmed || loading ? 'text-disabled' : 'text-brand-white'
+                }
+              />
+            }
           >
             {t('buttons.confirm')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </>

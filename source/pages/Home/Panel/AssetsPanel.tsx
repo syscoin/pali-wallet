@@ -1,9 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 
+import { CgImport as ImportIcon } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';

@@ -58,6 +58,6 @@ const signature = await window.ethereum.request({
 
 Pali는 signing popup을 표시하기 전에 typed data structure를 검증합니다. dapp은 canonical EIP-712 JSON을 사용하고 wallet-specific parsing quirk에 의존하지 않아야 합니다.
 
-## Passkey 계정 및 signing
+## 스마트 계정 및 signing
 
-Pali smart account는 WebAuthn-backed smart account logic을 통해 transaction과 signing flow를 승인할 수 있습니다. 사용자는 여전히 Pali와 platform passkey prompt를 통해 승인합니다.
+Pali smart account는 active validator module을 통해 transaction과 signing flow를 승인합니다. 사용자는 여전히 Pali에서 승인합니다. Validator가 passkey 기반이면 browser 또는 OS도 WebAuthn prompt를 표시합니다.

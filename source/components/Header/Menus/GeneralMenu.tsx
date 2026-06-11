@@ -190,6 +190,31 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                         const returnContext = createNavigationContext('/home');
                         navigateWithContext(
                           navigate,
+                          '/home/smart-account',
+                          {},
+                          returnContext
+                        );
+                      }}
+                      className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
+                    >
+                      <Icon
+                        name="wallet"
+                        className="text-brand-white"
+                        size={16}
+                      />
+
+                      <span id="smart-account-hub-btn">
+                        {t('smartAccountHub.menuEntry')}
+                      </span>
+                    </li>
+                  </Menu.Item>
+
+                  <Menu.Item>
+                    <li
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
                           '/settings/seed',
                           {},
                           returnContext

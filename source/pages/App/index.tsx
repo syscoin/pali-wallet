@@ -5,15 +5,8 @@ import 'assets/fonts/index.css';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Non-critical styles - still loaded but lower priority
-import 'assets/styles/custom-input-password.css';
-import 'assets/styles/custom-input-normal.css';
-import 'assets/styles/custom-input-search.css';
+import 'assets/styles/antd-overrides.css';
 import 'assets/styles/custom-checkbox.css';
-import 'assets/styles/custom-form-inputs-styles.css';
-import 'assets/styles/custom-autolock-input.css';
-import 'assets/styles/custom-receive-input.css';
-import 'assets/styles/custom-import-token-input.css';
-import 'assets/styles/custom-send-utxo-input.css';
 
 // Import React and dependencies statically to enable webpack optimization
 import React from 'react';
@@ -21,6 +14,7 @@ import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 
+import { AntdProvider } from 'components/AntdProvider';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -141,8 +135,10 @@ if (window.__PALI_OFFSCREEN__) {
 
           return (
             <Provider store={store}>
-              <App />
-              <ToastContainer {...toastOptions} />
+              <AntdProvider>
+                <App />
+                <ToastContainer {...toastOptions} />
+              </AntdProvider>
             </Provider>
           );
         };

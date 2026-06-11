@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { Modal, PrimaryButton, SecondaryButton } from 'components/index';
+import { Button, Modal } from 'components/index';
 
 interface IValidationModalProps {
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -37,17 +37,22 @@ export const ValidationModal = (props: IValidationModalProps) => {
 
           <div className="flex flex-col gap-7 items-center justify-center w-full">
             <div className="flex items-center justify-between w-full md:max-w-2xl">
-              <SecondaryButton type="button" onClick={() => setIsOpen(false)}>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setIsOpen(false)}
+              >
                 {t('buttons.cancel')}
-              </SecondaryButton>
+              </Button>
 
-              <PrimaryButton
+              <Button
+                variant="primary"
                 type="button"
                 width="40"
                 onClick={() => navigate('/import')}
               >
                 {t('buttons.import')}
-              </PrimaryButton>
+              </Button>
             </div>
           </div>
         </div>

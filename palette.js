@@ -113,4 +113,49 @@ module.exports = {
   extraColors: {
     red: '#D70000',
   },
+
+  // --- Semantic tokens -------------------------------------------------------
+  // Purpose-named aliases over the raw palette above. New code should prefer
+  // these; raw brand/bkg entries stay for the legacy call sites until the
+  // migration sweep retires them. Values are aliases, not new colors, so
+  // adopting a token is always pixel-identical.
+
+  // Backgrounds, ordered by elevation.
+  surface: {
+    base: '#07152A', // page background (bkg-1 / brand-blue800)
+    raised: '#111E33', // raised sections (bkg-2 / brand-blue700)
+    elevated: '#162742', // cards, panels (bkg-3 / brand-blue600)
+    overlay: '#1E365C', // menus, popovers (bkg-4 / brand-blue500)
+    deep: '#061120', // recessed wells (bkg-6)
+    card: 'rgba(255, 255, 255, 0.06)', // alpha card fill (whiteAlpha100)
+    cardHover: 'rgba(255, 255, 255, 0.08)', // alpha card hover (whiteAlpha200)
+  },
+
+  // Foregrounds.
+  content: {
+    primary: '#FFFFFF',
+    secondary: '#F5F5F5', // brand-graylight
+    muted: '#A2A5AB', // brand-gray200
+    faint: '#808795', // brand-gray300
+    accent: '#4CA1CF', // links, active states (brand-blue200)
+  },
+
+  // Interactive accents.
+  accent: {
+    primary: '#4CA1CF', // button.primary
+    primaryHover: '#4D76B8', // button.primaryhover / brand-royalblue
+    secondary: '#FF3E91', // button.secondary / brand-pink200
+    secondaryHover: '#CB2C70', // button.secondaryhover / brand-deepPink
+    royal: '#4D76B8',
+  },
+
+  // Status feedback.
+  status: {
+    success: '#079C31',
+    successHover: '#0bbf3e',
+    warning: '#FF9900',
+    info: '#FE9B07', // brand-yellowInfo
+    error: '#AF0404',
+    errorBright: '#D70000',
+  },
 };

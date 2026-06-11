@@ -78,7 +78,7 @@ const Unlock: React.FC<{
   return (
     <>
       <Form
-        className="flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+        className="flex flex-col gap-6 items-center justify-center w-full max-w-md text-center"
         name="basic"
         onFinish={onSubmit}
         autoComplete="off"
@@ -86,7 +86,7 @@ const Unlock: React.FC<{
       >
         <Form.Item
           name="password"
-          className="w-full flex justify-center"
+          className="w-full"
           validateStatus={errorMessage ? 'error' : undefined}
           hasFeedback={!!errorMessage}
           help={errorMessage}

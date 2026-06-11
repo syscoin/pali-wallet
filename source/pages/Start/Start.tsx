@@ -102,7 +102,7 @@ export const Start = (props: any) => {
         </h1>
       </div>
 
-      <div className="relative z-10">
+      <div className="relative z-10 flex flex-col items-center w-full max-w-md px-6">
         {isFirstStep ? (
           <GetStarted />
         ) : (

@@ -71,6 +71,24 @@ module.exports = {
       backgroundImage: {
         primary:
           'linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0)), linear-gradient(30deg, rgba(255, 62, 145, 0.8) 20%, #4d76b8 50%)',
+        // Named gradient tokens; prefer these over inline linear-gradient()
+        // styles and the legacy .bg-token-gradient/.bg-gradient CSS classes.
+        'gradient-header':
+          'linear-gradient(90deg, rgba(40,79,148,1) 25.72%, rgba(254,0,119,1) 141.55%)',
+        'gradient-token-card':
+          'linear-gradient(109.86deg, #284f94 25.72%, #fe0077 141.55%)',
+        'gradient-page':
+          'linear-gradient(180deg, #1e365c 0.67%, #061120 19.78%)',
+        'gradient-panel': 'linear-gradient(145deg, #1E365C 0%, #162742 100%)',
+      },
+      // Purpose-named radius tokens (additive; tailwind defaults untouched).
+      // field = inputs/buttons, card = panels, sheet = bottom sheets,
+      // pill = fully rounded chips/buttons.
+      borderRadius: {
+        field: '0.5rem',
+        card: '1rem',
+        sheet: '1.25rem',
+        pill: '9999px',
       },
       fontFamily: {
         poppins: 'Poppins',

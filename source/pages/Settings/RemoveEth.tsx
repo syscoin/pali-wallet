@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import metamaskIcon from 'assets/all_assets/metamask.svg';
-import { DefaultModal, NeutralButton, Icon } from 'components/index';
+import { Button, DefaultModal, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { navigateBack } from 'utils/navigationState';
@@ -148,14 +148,16 @@ const RemoveEthView = () => {
         )}
 
         <div className="w-full px-4 absolute bottom-12 md:static">
-          <NeutralButton
+          <Button
+            variant="neutral"
+            className="text-sm text-brand-royalblue"
             onClick={() => navigateBack(navigate, location)}
             type="button"
             fullWidth={true}
             loading={loading}
           >
             {t('buttons.close')}
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </>

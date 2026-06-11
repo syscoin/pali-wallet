@@ -2679,10 +2679,37 @@ class MainController {
     accountId: number;
   }): Promise<{
     balance: string;
+    gasUnitsReserve: string;
     hasNativeGas: boolean;
     requiredBalance: string;
   }> {
     return this.smartAccount.getSmartAccountNativeGasStatus(params);
+  }
+
+  public async preflightSmartAccountCustomValidator(params: {
+    accountId: number;
+    address: string;
+  }) {
+    return this.smartAccount.preflightSmartAccountCustomValidator(params);
+  }
+
+  public async addSmartAccountCustomModule(params: {
+    accountId: number;
+    record: {
+      address: string;
+      initData?: string;
+      moduleType: number;
+      name: string;
+    };
+  }): Promise<ISmartAccountMetadata> {
+    return this.smartAccount.addSmartAccountCustomModule(params);
+  }
+
+  public async removeSmartAccountCustomModule(params: {
+    accountId: number;
+    address: string;
+  }): Promise<ISmartAccountMetadata> {
+    return this.smartAccount.removeSmartAccountCustomModule(params);
   }
 
   public assertSmartAccountSupported(): Promise<boolean> {

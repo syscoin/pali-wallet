@@ -9,6 +9,8 @@ Für EVM-dapps stellt Pali einen MetaMask-kompatiblen `window.ethereum`-Provider
 
 Pali unterstützt außerdem Passkey Smart Accounts für Institutionen und fortgeschrittene dapps. Eine dapp kann Pali auffordern, einen durch WebAuthn gestützten Smart Account zu erstellen oder wiederherzustellen, eine Sponsor-Policy anzuhängen und später atomare Batches über `wallet_sendCalls` auszuführen.
 
+Was Pali anders macht, ist die Kombination: eine Erweiterung für EVM- und Syscoin-UTXO-Flows, schnelle Lesewege mit Multicall3- und RPC-Batch-Fallbacks, normale Konten und modulare Smart Accounts, MetaMask-kompatible Standards für dapps und ein selbstverwahrtes Sicherheitsmodell, bei dem Signatur, Wiederherstellung und Account-Policy durch Benutzerfreigaben und On-Chain-Module statt durch einen Pali-Server erzwungen werden. Siehe [Was ist Pali?](./start-here/what-is-pali.md) für das Gesamtbild.
+
 ## Wählen Sie Ihren Weg
 
 - **Benutzer** sollten mit [Erste Schritte](./users/getting-started.md) beginnen.

@@ -17,6 +17,31 @@ Les comptes intelligents Pali sont des comptes de contrat que Pali peut créer, 
 
 La cuenta se despliega primero con un validador ECDSA controlado por la wallet. Si la dapp pidió passkey u otro validador soportado, Pali instala el validador solicitado y elimina el bootstrap validator con una ejecución de la cuenta.
 
+## Deux rôles : les validateurs signent, les gardiens récupèrent
+
+ERC-7579 sépare les rôles des modules, et Pali s'appuie délibérément sur cette séparation :
+
+- **Les validateurs** sont l'autorité de signature. Un validateur décide si une approbation donnée (preuve de passkey, signature ECDSA, résultat d'une politique composite) autorise une action du compte. Seuls les validateurs peuvent approuver des transactions.
+- **Les exécuteurs** ajoutent au compte des comportements qui ne sont pas une signature. Le module de récupération par gardiens de Pali est un exécuteur : les gardiens ne peuvent ni signer ni déplacer des fonds, ils peuvent seulement programmer un remplacement du validateur actif soumis à un délai.
+
+Garder ces rôles séparés est ce qui rend la récupération sûre à recommander. La compromission d'un gardien ne donne pas à un attaquant le pouvoir de signer — elle lui donne une tentative de récupération retardée, visible et annulable.
+
+## Politiques de signature composites
+
+Le validateur composite combine des validateurs enfants sous un seuil, ce qui transforme un compte en moteur de politiques :
+
+- **1-of-N** — n'importe lequel de plusieurs authentificateurs peut approuver. Pratique pour les comptes personnels avec un passkey sur chaque appareil.
+- **t-of-N** — un quorum doit approuver. La forme naturelle pour les trésoreries partagées, les desks et les comptes contrôlés par une équipe.
+- **N-of-N** — chaque validateur configuré doit approuver. Pour les comptes à assurance maximale.
+
+Les composites peuvent s'imbriquer : un enfant d'un composite peut lui-même être un composite, donc des politiques hiérarchiques — par exemple « la clé du CFO ET (2 quelconques des 3 passkeys du desk) » — sont exprimables sans contrats personnalisés. La récupération par gardiens reste indépendante de la politique de validateurs active.
+
+## Agilité des validateurs et préparation post-quantique
+
+Parce que l'autorisation vit dans des modules remplaçables, le compte n'est marié à aucun schéma de signature. Aujourd'hui, Pali fournit ECDSA (le validateur par défaut détenu par le portefeuille), les passkeys P-256 WebAuthn et le validateur composite. Quand de nouveaux types de validateurs seront déployés — y compris des schémas de signature post-quantiques — ils s'installeront sur le même compte à la même adresse. À ce stade, l'autorisation de chaque transaction peut fonctionner sans aucun ECDSA dans la boucle. Les fonds, l'historique et les intégrations ne bougent jamais ; seule l'autorité de signature évolue.
+
+La même agilité s'étend à la récupération. Le module de guardian recovery vérifie les approbations via une vérification de signature standard — ECDSA simple pour les adresses normales, ERC-1271 pour les comptes de contrat — de sorte qu'un gardien peut lui-même être un compte intelligent gouverné par un validateur composite, personnalisé ou post-quantique. Un gardien de type compte de contrat déployé fait hériter au chemin de récupération le schéma de signature de ce compte ; c'est ainsi que la signature **et** la récupération pourront un jour fonctionner sans aucune dépendance à l'ECDSA classique. L'UX actuelle des gardiens de Pali collecte des approbations basées sur des clés ; les flux pour gardiens de type compte de contrat pourront être ajoutés plus tard au portefeuille, car le module on-chain les prend déjà en charge.
+
 ## Pour les institutions et les équipes
 
 Las instituciones deberían tratar estas cuentas como infraestructura de cuenta, no solo como login con passkey. Usen passkeys para onboarding más sencillo, ECDSA o validadores compuestos para controles de equipo o hardware wallet, guardian recovery para reemplazo con demora, y cuentas de gas financiadas para despliegue y ejecución. Documenten quién controla cada validador, quiénes son los guardianes y qué significa la demora de recuperación.

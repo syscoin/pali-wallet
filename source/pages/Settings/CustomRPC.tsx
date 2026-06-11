@@ -10,12 +10,7 @@ import { useLocation } from 'react-router-dom';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
-import {
-  Tooltip,
-  NeutralButton,
-  PrimaryButton,
-  SecondaryButton,
-} from 'components/index';
+import { Button, Tooltip } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1019,12 +1014,10 @@ const CustomRPCView = () => {
         key="custom-rpc-form"
         id="rpc"
         name="rpc"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
         initialValues={initialValues}
         onFinish={onSubmit}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center text-center"
+        className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
         {!state?.isEditing && (
           <>
@@ -1065,7 +1058,7 @@ const CustomRPCView = () => {
             </Form.Item>
             <Form.Item
               name="label"
-              className="md:w-full"
+              className="w-full"
               hasFeedback
               rules={[
                 {
@@ -1153,7 +1146,7 @@ const CustomRPCView = () => {
         )}
         <Form.Item
           name="url"
-          className="md:w-full"
+          className="w-full"
           hasFeedback
           rules={[
             {
@@ -1200,7 +1193,7 @@ const CustomRPCView = () => {
         <Form.Item
           name="chainId"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: !isSyscoinRpc && !state?.isEditing,
@@ -1250,7 +1243,7 @@ const CustomRPCView = () => {
         <Form.Item
           name="symbol"
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           rules={[
             {
               required: true,
@@ -1270,7 +1263,7 @@ const CustomRPCView = () => {
         </Form.Item>
         <Form.Item
           hasFeedback
-          className="md:w-full"
+          className="w-full"
           name="explorer"
           rules={[
             {
@@ -1299,7 +1292,7 @@ const CustomRPCView = () => {
           />
         </Form.Item>
         {!isSyscoinRpc && (
-          <div className="md:w-full">
+          <div className="w-full">
             <div className="flex items-center gap-2 mb-2">
               <label className="text-sm text-white font-medium">
                 {t('settings.blockExplorerApiUrl')}
@@ -1315,7 +1308,7 @@ const CustomRPCView = () => {
             </div>
             <Form.Item
               hasFeedback
-              className="md:w-full mb-6"
+              className="w-full mb-6"
               name="apiUrl"
               rules={[
                 {
@@ -1350,30 +1343,34 @@ const CustomRPCView = () => {
         <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50 min-h-[76px]">
           {state?.isEditing ? (
             <div className="flex gap-3 justify-center">
-              <SecondaryButton
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => navigateBack(navigate, location)}
               >
                 {t('buttons.cancel')}
-              </SecondaryButton>
-              <PrimaryButton
+              </Button>
+              <Button
+                variant="primary"
                 type="submit"
                 disabled={loading || testingRpcs}
                 loading={loading || testingRpcs}
               >
                 {t('buttons.save')}
-              </PrimaryButton>
+              </Button>
             </div>
           ) : (
             <div className="flex gap-3 justify-center">
-              <NeutralButton
+              <Button
+                variant="neutral"
+                className="text-sm text-brand-royalblue"
                 type="submit"
                 disabled={loading || testingRpcs}
                 loading={loading || testingRpcs}
                 fullWidth
               >
                 {t('buttons.save')}
-              </NeutralButton>
+              </Button>
             </div>
           )}
         </div>

@@ -1,18 +1,12 @@
-import { LockFilled } from '@ant-design/icons';
 import { toSvg } from 'jdenticon';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { LazyAccountBalance } from 'components/AccountBalance';
+import { LockFilled } from 'components/Icon/Icon';
 import { LoadingSvg, LockIconSvg } from 'components/Icon/Icon';
-import {
-  PrimaryButton,
-  SecondaryButton,
-  Icon,
-  IconButton,
-  Tooltip,
-} from 'components/index';
+import { Button, Icon, IconButton, Tooltip } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -279,22 +273,24 @@ const Decrypt: React.FC<ISign> = () => {
       {/* Fixed button container at bottom */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         <div className="flex gap-3 justify-center">
-          <SecondaryButton
+          <Button
+            variant="secondary"
             type="button"
             disabled={loading}
             onClick={window.close}
           >
             {t('buttons.cancel')}
-          </SecondaryButton>
+          </Button>
 
-          <PrimaryButton
+          <Button
+            variant="primary"
             type="submit"
             disabled={confirmed}
             loading={loading}
             onClick={onSubmit}
           >
             {t('buttons.confirm')}
-          </PrimaryButton>
+          </Button>
         </div>
       </div>
     </div>
