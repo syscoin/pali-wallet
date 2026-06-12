@@ -146,6 +146,11 @@ export const isGuardianRecoveryAlreadyScheduledError = (
   getErrorText(error).includes('0x684d1639') ||
   getErrorText(error).includes('PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED');
 
+/** RecoveryExpired(bytes32) from the guardian recovery module. */
+export const isGuardianRecoveryExpiredError = (error: unknown): boolean =>
+  getErrorText(error).includes('0x80ba2533') ||
+  getErrorText(error).includes('PALI_GUARDIAN_RECOVERY_EXPIRED');
+
 /** AA24: the userOp signature was rejected by the account's validator. */
 export const isSmartAccountSignatureError = (error: unknown): boolean => {
   const message = getErrorText(error);

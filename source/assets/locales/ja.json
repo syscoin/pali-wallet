@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "このアカウントには保留中の復元がすでにあります。可能であればそれを完了するか、期限切れになるのを待ってから新しい復元を開始してください。",
     "smartAccountGuardianRecoveryFinalized": "復元が完了し、このアカウントを使用できます。",
     "smartAccountGuardianRecoveryFinalizeFailed": "復元を完了できませんでした。",
+    "smartAccountGuardianRecoveryExpired": "この復元リクエストは完了前に期限切れになりました。もう一度復元を開始してください。",
     "invalidAddress": "無効なアドレスです"
   },
   "start": {

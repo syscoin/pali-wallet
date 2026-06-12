@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "此账户已有待处理的恢复。如果仍然可以，请完成它；否则请等待其过期后再开始新的恢复。",
     "smartAccountGuardianRecoveryFinalized": "恢复已完成，此账户已可使用。",
     "smartAccountGuardianRecoveryFinalizeFailed": "完成恢复失败。",
+    "smartAccountGuardianRecoveryExpired": "此恢复请求在完成前已过期。请重新开始恢复。",
     "invalidAddress": "无效地址"
   },
   "start": {

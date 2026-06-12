@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "Für dieses Konto steht bereits eine Wiederherstellung aus. Schließen Sie sie ab, falls noch möglich, oder warten Sie, bis sie abläuft, bevor Sie eine neue starten.",
     "smartAccountGuardianRecoveryFinalized": "Wiederherstellung abgeschlossen und dieses Konto ist bereit.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Wiederherstellung konnte nicht abgeschlossen werden.",
+    "smartAccountGuardianRecoveryExpired": "Diese Wiederherstellungsanfrage ist abgelaufen, bevor sie abgeschlossen wurde. Starten Sie die Wiederherstellung erneut.",
     "invalidAddress": "Ungültige Adresse"
   },
   "start": {

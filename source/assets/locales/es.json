@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "Ya hay una recuperación pendiente para esta cuenta. Finalícela si aún puede, o espere a que expire antes de iniciar una nueva.",
     "smartAccountGuardianRecoveryFinalized": "Recuperación finalizada y esta cuenta está lista.",
     "smartAccountGuardianRecoveryFinalizeFailed": "No se pudo finalizar la recuperación.",
+    "smartAccountGuardianRecoveryExpired": "Esta solicitud de recuperación expiró antes de finalizarse. Inicie la recuperación de nuevo.",
     "invalidAddress": "Dirección inválida"
   },
   "start": {

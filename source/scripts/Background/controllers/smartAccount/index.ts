@@ -146,6 +146,9 @@ const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
 const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
   'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
 const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR = '0x684d1639';
+// RecoveryExpired(bytes32) on the guardian recovery module.
+const GUARDIAN_RECOVERY_EXPIRED_ERROR = 'PALI_GUARDIAN_RECOVERY_EXPIRED';
+const GUARDIAN_RECOVERY_EXPIRED_SELECTOR = '0x80ba2533';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
 const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
@@ -220,6 +223,9 @@ const hasGuardianRecoveryNotReadyRevert = (error: unknown): boolean =>
 
 const hasGuardianRecoveryAlreadyScheduledRevert = (error: unknown): boolean =>
   getErrorText(error).includes(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR);
+
+const hasGuardianRecoveryExpiredRevert = (error: unknown): boolean =>
+  getErrorText(error).includes(GUARDIAN_RECOVERY_EXPIRED_SELECTOR);
 
 const getEntryPointFailedOpReason = (error: unknown): string => {
   const message = getErrorText(error);
@@ -1472,6 +1478,9 @@ class SmartAccountController {
     } catch (error) {
       if (hasGuardianRecoveryNotReadyRevert(error)) {
         throw new Error(GUARDIAN_RECOVERY_NOT_READY_ERROR);
+      }
+      if (hasGuardianRecoveryExpiredRevert(error)) {
+        throw new Error(GUARDIAN_RECOVERY_EXPIRED_ERROR);
       }
       if (hasNativeGasFailure(error)) {
         throw new Error(NATIVE_GAS_REQUIRED_ERROR);
