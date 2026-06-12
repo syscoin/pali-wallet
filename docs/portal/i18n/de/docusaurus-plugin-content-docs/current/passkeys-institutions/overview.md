@@ -60,3 +60,19 @@ const account = await window.ethereum.request({
 Pali Smart Accounts funktionieren auf kompatiblen EVM-Chains, auf denen die Pali Factory und Module an den von Pali erwarteten Adressen existieren. Das ist nicht auf von Pali betriebene Chains beschränkt: Wenn die aktive Chain den kanonischen CREATE2-Deployer bereitstellt, kann Pali die fehlende Smart-Account-Einrichtung direkt in der Wallet deployen. Öffnen Sie Pali Settings, gehen Sie zu Advanced und nutzen Sie bei **Smart account setup** den Deploy-Button.
 
 Passkey-Validatoren benötigen P-256 WebAuthn-Verifikation. Viele moderne EVM-Umgebungen stellen dies über ein P-256/passkey precompile bereit; prüft die Chain-Unterstützung trotzdem vor dem produktiven Einsatz.
+
+## Benutzerkontrolle
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>Nach der Wallet-Prüfung übernimmt der Browser oder das Betriebssystem die WebAuthn-Passkey-Erstellung, wenn der gewählte Validator passkey-basiert ist.</figcaption>
+</figure>
+
+Der Nutzer sieht vor der Freigabe die anfragende Website, das Konto-Label, den angeforderten Authenticator und etwaige externe ECDSA-Owner-Adressen. Der Browser oder das Betriebssystem zeigt den WebAuthn-Prompt, wenn Pali eine neue Passkey-Credential benötigt. Pali zeigt Deployment, Modulinstallation und Bestätigungsfortschritt an, bevor der Smart Account mit der Dapp verbunden wird.
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Dapp-initiiertes Onboarding: Anfrage prüfen, bestätigen, und der Smart Account ist einsatzbereit.</figcaption>
+</figure>

@@ -4,6 +4,13 @@ title: スマートアカウントとpasskeys
 
 Paliスマートアカウントはモジュールで制御されるEVM contract accountです。Passkeyはサポートされる制御方法の1つで、ECDSAやcomposite policyも利用できます。
 
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-create.png" alt="Pali settings screen for creating a smart account" />
+</a>
+  <figcaption>ユーザーは設定画面またはdappのリクエストからモジュール式スマートアカウントを作成し、承認を制御するvalidatorを選択できます。</figcaption>
+</figure>
+
 validatorは「このアカウントのアクションを誰が承認できるか？」への答えだと考えてください。重要なのは、アカウントを変えずにその答えを変更できることです。
 
 - **自分のサインインのどれか1つ**（1-of-N）: 手元にあるpasskeyやキーのどれでも承認できます。
@@ -17,3 +24,10 @@ guardianは意図的にこのリストに**含まれていません**。guardian
 Passkey承認、チームowner、batch action、guardian recoveryに役立ちます。Paliはfactoryでdeterministicにdeployし、永続メタデータを保存します。Guardian recoveryは即時ではありません。guardianがintentに署名し、モジュールがdelay付きでscheduleし、その後validatorを置き換えられます。
 
 オンチェーンでは、guardianは通常の鍵に限定されません。guardianの承認はECDSAまたはERC-1271で検証されるため、guardianはデプロイ済みのコントラクトアカウントでも構いません。たとえば、composite・カスタム・ポスト量子validatorをpolicyに持つ別のスマートアカウントもguardianにできます。その場合、recovery経路はそのguardianの署名方式を継承します。現在のPaliのguardian画面は鍵ベースの承認を収集しますが、デプロイ済みモジュールが既に対応しているため、コントラクトアカウントguardianのフローは後から追加できます。
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
+</a>
+  <figcaption>スマートアカウントのpolicy画面には、インストール済みモジュール、アクティブvalidatorの詳細、guardian recovery、モジュール管理が表示されます。</figcaption>
+</figure>

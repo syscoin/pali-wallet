@@ -60,3 +60,19 @@ const account = await window.ethereum.request({
 Смарт-аккаунты Pali работают в совместимых EVM-сетях, где factory и модули Pali существуют по адресам, которые ожидает Pali. Это не ограничено сетями, которые разворачивает Pali: если активная сеть предоставляет canonical CREATE2 deployer, Pali может развернуть недостающую настройку смарт-аккаунта прямо из кошелька. Откройте Pali Settings, перейдите в Advanced и используйте кнопку Deploy в **Smart account setup**.
 
 Passkey-валидаторам нужна поддержка P-256 WebAuthn verification. Многие современные EVM-среды предоставляют ее через P-256/passkey precompile, но интеграторам следует проверить поддержку сети перед использованием passkey-валидаторов.
+
+## Контроль пользователя
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>После проверки в кошельке браузер или операционная система выполняет создание WebAuthn passkey, если выбранный валидатор основан на passkey.</figcaption>
+</figure>
+
+Перед подтверждением пользователь видит запрашивающий сайт, метку аккаунта, запрошенный authenticator и любые внешние адреса ECDSA owners. Браузер или операционная система показывает WebAuthn-запрос, когда Pali нужна новая passkey credential. Pali показывает прогресс деплоя, установки модулей и подтверждения, прежде чем смарт-аккаунт будет подключен к dapp.
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Onboarding, инициированный dapp: проверьте запрос, подтвердите — и смарт-аккаунт готов.</figcaption>
+</figure>

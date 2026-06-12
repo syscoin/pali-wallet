@@ -3,7 +3,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { DropdownArrowSvg } from 'components/Icon/Icon';
+import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -597,20 +597,23 @@ export const PrepareSmartAccount = () => {
             </p>
           </div>
 
-          {requestedAuthenticator.id !== 'ecdsa' && (
-            <Card type="info">
-              <p className="text-left text-sm font-normal text-brand-yellowInfo">
-                {t('connections.prepareSmartAccountInstallHint')}
-              </p>
-            </Card>
-          )}
-
-          {createsWalletPasskey && (
-            <Card type="info">
-              <p className="text-left text-sm font-normal text-brand-yellowInfo">
-                {t('connections.prepareSmartAccountPasskeyHint')}
-              </p>
-            </Card>
+          {(requestedAuthenticator.id !== 'ecdsa' || createsWalletPasskey) && (
+            <div className="flex items-start gap-3 rounded-lg bg-alpha-whiteAlpha100 p-4 text-left">
+              <Icon
+                name="Info"
+                isSvg
+                className="mt-0.5 flex-shrink-0"
+                size={16}
+              />
+              <div className="space-y-1.5 text-xs text-brand-graylight">
+                {requestedAuthenticator.id !== 'ecdsa' && (
+                  <p>{t('connections.prepareSmartAccountInstallHint')}</p>
+                )}
+                {createsWalletPasskey && (
+                  <p>{t('connections.prepareSmartAccountPasskeyHint')}</p>
+                )}
+              </div>
+            </div>
           )}
 
           {hasExternalEcdsaOwners && (
@@ -677,18 +680,17 @@ export const PrepareSmartAccount = () => {
 
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
         {creationStep !== 'idle' && (
-          <div className="mb-3">
-            <Card type="info">
-              <p className="text-left text-sm font-normal text-brand-yellowInfo">
-                {creationStep === 'credential'
-                  ? t('connections.prepareSmartAccountStepCredential')
-                  : creationStep === 'deploying'
-                  ? t('connections.prepareSmartAccountStepDeploying')
-                  : creationStep === 'installing'
-                  ? t('connections.prepareSmartAccountStepInstalling')
-                  : t('connections.prepareSmartAccountStepSaving')}
-              </p>
-            </Card>
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <LoadingSvg className="h-4 w-4 flex-shrink-0 animate-spin text-brand-royalblue" />
+            <p className="text-xs text-brand-graylight">
+              {creationStep === 'credential'
+                ? t('connections.prepareSmartAccountStepCredential')
+                : creationStep === 'deploying'
+                ? t('connections.prepareSmartAccountStepDeploying')
+                : creationStep === 'installing'
+                ? t('connections.prepareSmartAccountStepInstalling')
+                : t('connections.prepareSmartAccountStepSaving')}
+            </p>
           </div>
         )}
         <div className="flex justify-center gap-3">

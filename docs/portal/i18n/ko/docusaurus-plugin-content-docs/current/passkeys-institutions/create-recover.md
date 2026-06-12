@@ -13,4 +13,18 @@ title: 스마트 계정 생성과 복구
 
 ## Recovery
 
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-recover.png" alt="Pali settings screen for recovering smart accounts" />
+</a>
+  <figcaption>복구 화면에서는 Pali가 만든 계정을 재구성하거나 guardian recovery로 활성 validator를 교체하여 스마트 계정 접근을 복원할 수 있습니다.</figcaption>
+</figure>
+
 Recovery는 installed module에 따라 달라집니다. Deterministic account는 wallet anchor, chain, index, factory로 재구성할 수 있습니다. Passkey validator는 관련 WebAuthn credential이 필요합니다. Guardian recovery는 configured delay 이후 active validator를 교체할 수 있습니다.
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-assert.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-assert.png" alt="Browser or operating system passkey assertion prompt" />
+</a>
+  <figcaption>복구와 실행에는 해당 passkey credential의 WebAuthn assertion이 필요합니다.</figcaption>
+</figure>

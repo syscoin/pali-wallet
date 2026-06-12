@@ -4,6 +4,13 @@ title: Smart Accounts und Passkeys
 
 Pali Smart Accounts sind EVM-Contract-Konten, die durch Module kontrolliert werden. Ein Passkey ist eine unterstützte Kontrollform; ECDSA und Composite-Policies sind ebenfalls möglich.
 
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-create.png" alt="Pali settings screen for creating a smart account" />
+</a>
+  <figcaption>Nutzer können modulare Smart Accounts über die Einstellungen oder per Dapp-Anfrage erstellen und dann den Validator wählen, der Freigaben kontrolliert.</figcaption>
+</figure>
+
 Validatoren beantworten die Frage „Wer darf Aktionen für dieses Konto freigeben?“ — und das Nützliche daran ist, dass sich die Antwort ändern kann, ohne dass sich Ihr Konto ändert:
 
 - **Eine beliebige meiner Anmeldungen** (1-of-N): Freigabe mit dem Passkey oder Schlüssel, der gerade zur Hand ist.
@@ -17,3 +24,10 @@ Guardians stehen bewusst **nicht** auf dieser Liste. Ein Guardian kann niemals e
 Pali Smart Accounts sind nützlich für Passkey-Freigaben, Team-Owner, Batch-Aktionen und Guardian-Recovery. Pali deployed deterministisch über die Factory und speichert dauerhafte Metadaten. Guardian-Recovery ist nicht sofort: Ein Guardian signiert eine Absicht, das Modul plant sie mit Delay, und danach kann der Validator ersetzt werden.
 
 On-chain ist ein Guardian nicht auf einen normalen Schlüssel beschränkt: Guardian-Freigaben werden per ECDSA oder ERC-1271 geprüft, sodass ein Guardian auch ein deploytes Contract-Konto sein kann — einschließlich eines weiteren Smart Accounts, dessen eigene Policy ein Composite-, Custom- oder Post-Quanten-Validator ist. Der Recovery-Pfad erbt dann das Signaturverfahren dieses Guardians. Palis aktuelle Guardian-Oberfläche sammelt schlüsselbasierte Freigaben; Flows für Contract-Account-Guardians können später ergänzt werden, da das deployte Modul sie bereits unterstützt.
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
+</a>
+  <figcaption>Der Policy-Bildschirm des Smart Accounts zeigt installierte Module, Details zum aktiven Validator, Guardian-Recovery und Modulverwaltung.</figcaption>
+</figure>

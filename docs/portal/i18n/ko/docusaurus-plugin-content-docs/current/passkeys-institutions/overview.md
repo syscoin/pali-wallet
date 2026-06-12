@@ -60,3 +60,19 @@ const account = await window.ethereum.request({
 Pali 스마트 계정은 Pali가 기대하는 주소에 Pali factory와 module이 존재하는 호환 EVM 체인에서 사용할 수 있습니다. 이는 Pali가 운영하는 체인으로 제한되지 않습니다. 활성 체인이 canonical CREATE2 deployer를 제공하면 Pali가 누락된 스마트 계정 설정을 지갑 안에서 배포할 수 있습니다. Pali Settings를 열고 Advanced로 이동한 뒤 **Smart account setup**의 Deploy 버튼을 사용하세요.
 
 Passkey validator에는 P-256 WebAuthn 검증 지원이 필요합니다. 많은 최신 EVM 환경은 P-256/passkey precompile로 이를 제공하지만, passkey validator에 의존하기 전에 체인 지원을 확인해야 합니다.
+
+## 사용자 제어
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>지갑 검토 후 선택한 validator가 passkey 기반이면 브라우저 또는 운영체제가 WebAuthn passkey 생성을 처리합니다.</figcaption>
+</figure>
+
+사용자는 승인 전에 요청한 사이트, 계정 라벨, 요청된 authenticator, 외부 ECDSA owner 주소를 확인할 수 있습니다. Pali가 새 passkey credential이 필요하면 브라우저 또는 운영체제가 WebAuthn 프롬프트를 표시합니다. 스마트 계정이 dapp에 연결되기 전에 Pali는 배포, 모듈 설치, 확인 진행 상황을 보여줍니다.
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Dapp에서 시작하는 온보딩: 요청을 검토하고 확인하면 스마트 계정이 바로 사용 가능해집니다.</figcaption>
+</figure>

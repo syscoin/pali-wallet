@@ -13,9 +13,10 @@ UTXO 应用应仔细构造交易，通过 Pali 请求签名，并且只在用户
         <img className="pali-capture-card__icon" src="/img/logo.svg" alt="" aria-hidden="true" />
         <span>Pali Wallet</span>
       </div>
-      <p className="pali-capture-card__title">PSBT 签名审核</p>
-      <p className="pali-capture-card__subtitle">包含高级交易详情的 UTXO 签名确认。</p>
-      <p className="pali-capture-card__hint">在预览区域内滚动，以查看 outputs、inputs、大小、weight 和 lock time。</p>
+      <p className="pali-capture-card__chip">UTXO • Syscoin</p>
+      <p className="pali-capture-card__title">PSBT Sign Review</p>
+      <p className="pali-capture-card__subtitle">UTXO signing confirmation</p>
+      <p className="pali-capture-card__hint">Scroll inside the preview to inspect outputs, inputs, size, weight, and lock time.</p>
     </div>
     <div className="pali-capture-card__scroll">
       <img src="/img/screens/psbt-sign-review.png" alt="Pali PSBT 签名审核界面" />

@@ -9,11 +9,19 @@ export type LaunchedExtension = {
   extensionId: string;
 };
 
+export type LaunchOptions = {
+  // Render at a higher device pixel ratio for crisp docs screenshots.
+  deviceScaleFactor?: number;
+  videoSize?: { height: number; width: number };
+  viewport?: { height: number; width: number };
+};
+
 // Launches a fresh Chromium profile with the built extension loaded. Each run
 // gets its own profile under the artifacts dir so runs are reproducible and
 // never inherit vault state from a previous loop iteration.
 export const launchExtension = async (
-  profileName: string
+  profileName: string,
+  options: LaunchOptions = {}
 ): Promise<LaunchedExtension> => {
   const manifest = path.join(E2E_CONFIG.extensionPath, 'manifest.json');
   if (!fs.existsSync(manifest)) {
@@ -41,14 +49,16 @@ export const launchExtension = async (
     args.unshift('--headless=new');
   }
 
+  const viewport = options.viewport ?? { height: 800, width: 600 };
   const context = await chromium.launchPersistentContext(profileDir, {
     args,
+    deviceScaleFactor: options.deviceScaleFactor,
     headless: false,
     recordVideo: {
       dir: path.join(E2E_CONFIG.artifactsDir, 'videos'),
-      size: { height: 800, width: 600 },
+      size: options.videoSize ?? viewport,
     },
-    viewport: { height: 800, width: 600 },
+    viewport,
   });
 
   let [background] = context.serviceWorkers();
