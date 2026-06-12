@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "復元を開始しました。待機期間後に戻って、新しい承認方法の設定を完了してください。",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "復元ガーディアンのウォレットにネイティブガスを追加してから、もう一度お試しください。復元開始は、そのガーディアンウォレットからオンチェーン取引を送信します。",
     "smartAccountGuardianRecoveryStartFailed": "復元を開始できませんでした。",
+    "smartAccountGuardianRecoveryAlreadyStarted": "このアカウントには保留中の復元がすでにあります。可能であればそれを完了するか、期限切れになるのを待ってから新しい復元を開始してください。",
     "smartAccountGuardianRecoveryFinalized": "復元が完了し、このアカウントを使用できます。",
     "smartAccountGuardianRecoveryFinalizeFailed": "復元を完了できませんでした。",
     "invalidAddress": "無効なアドレスです"

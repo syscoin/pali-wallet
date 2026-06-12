@@ -88,8 +88,8 @@ const variantClasses: Record<
 > = {
   primary: {
     statics:
-      'cursor-pointer border-2 border-button-primary bg-button-primary text-brand-white',
-    enabled: `${enabledMotion} hover:bg-button-primaryhover hover:shadow-lg`,
+      'border-2 border-button-primary bg-button-primary text-brand-white',
+    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:shadow-lg`,
     disabled: disabledMotion,
   },
   secondary: {
@@ -104,8 +104,8 @@ const variantClasses: Record<
     disabled: disabledMotion,
   },
   ghost: {
-    statics: 'cursor-pointer border-2 border-button-primary text-brand-white',
-    enabled: `${enabledMotion} hover:bg-button-primaryhover hover:shadow-lg`,
+    statics: 'border-2 border-button-primary text-brand-white',
+    enabled: `${enabledMotion} cursor-pointer hover:bg-button-primaryhover hover:shadow-lg`,
     disabled: disabledMotion,
   },
   danger: {

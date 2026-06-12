@@ -139,6 +139,13 @@ export const isGuardianRecoveryNotReadyError = (error: unknown): boolean =>
   getErrorText(error).includes('0x201b632a') ||
   getErrorText(error).includes('PALI_GUARDIAN_RECOVERY_NOT_READY');
 
+/** RecoveryAlreadyScheduled(bytes32) from the guardian recovery module. */
+export const isGuardianRecoveryAlreadyScheduledError = (
+  error: unknown
+): boolean =>
+  getErrorText(error).includes('0x684d1639') ||
+  getErrorText(error).includes('PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED');
+
 /** AA24: the userOp signature was rejected by the account's validator. */
 export const isSmartAccountSignatureError = (error: unknown): boolean => {
   const message = getErrorText(error);

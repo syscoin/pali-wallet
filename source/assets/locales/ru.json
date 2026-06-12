@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "Восстановление запущено. Вернитесь после периода ожидания, чтобы завершить настройку нового способа подтверждения.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "Добавьте нативный газ на кошелек guardian для восстановления и попробуйте снова. Запуск восстановления отправляет ончейн-транзакцию с этого кошелька guardian.",
     "smartAccountGuardianRecoveryStartFailed": "Не удалось начать восстановление.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "Для этого аккаунта уже есть ожидающее восстановление. Завершите его, если можете, или дождитесь его истечения, прежде чем начинать новое.",
     "smartAccountGuardianRecoveryFinalized": "Восстановление завершено, аккаунт готов.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Не удалось завершить восстановление.",
     "invalidAddress": "Недействительный адрес"
