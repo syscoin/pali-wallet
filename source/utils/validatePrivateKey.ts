@@ -1,8 +1,14 @@
-import { Wallet } from '@ethersproject/wallet';
-
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
 import { INetwork } from 'types/network';
+
+// secp256k1 group order (N). `new Wallet(key)` accepts any 32-byte hex key
+// except multiples of N; since 2^256 < 2N the only such values are 0 and N.
+// Validating with string checks avoids pulling @ethersproject/wallet (and its
+// elliptic/bn.js/aes-js deps, ~170KB) into the UI bundle.
+const SECP256K1_ORDER_HEX =
+  'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141';
+const ZERO_KEY_HEX = '0'.repeat(64);
 
 export const validatePrivateKeyValue = async (
   privKey: string,
@@ -18,15 +24,12 @@ export const validatePrivateKeyValue = async (
       return false;
     }
 
-    try {
-      // Normalize the private key by adding '0x' prefix if missing
-      const normalizedKey =
-        privKey.slice(0, 2) === '0x' ? privKey : `0x${privKey}`;
-      new Wallet(normalizedKey);
-      return true;
-    } catch (error) {
-      return false;
-    }
+    // Normalize the private key by removing the '0x' prefix if present
+    const hex = (
+      privKey.slice(0, 2) === '0x' ? privKey.slice(2) : privKey
+    ).toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(hex)) return false;
+    return hex !== ZERO_KEY_HEX && hex !== SECP256K1_ORDER_HEX;
   }
 
   if (isBitcoinBased) {

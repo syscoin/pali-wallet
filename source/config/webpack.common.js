@@ -6,7 +6,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
-const { DefinePlugin, ProvidePlugin } = require('webpack');
+const { DefinePlugin, IgnorePlugin, ProvidePlugin } = require('webpack');
 
 const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
@@ -51,6 +51,13 @@ module.exports = {
       types: resolve(__dirname, '../../source/types'),
       utils: resolve(__dirname, '../../source/utils'),
       helpers: resolve(__dirname, '../../source/helpers'),
+      // Drop Ledger's embedded ERC-20 signature dataset (~130KB); it is only
+      // the offline fallback - resolveTransaction fetches the live list from
+      // the Ledger CDN by default. See stub for details.
+      '@ledgerhq/cryptoassets-evm-signatures/data/evm/index$': resolve(
+        __dirname,
+        'stubs/ledger-erc20-signatures.js'
+      ),
       // Ensure consistent process resolution across all modules
       'process/browser.js': require.resolve('process/browser.js'),
       'process/browser': require.resolve('process/browser.js'),
@@ -70,7 +77,7 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.(jpg|png|svg|xlsx|xls|csv)$/i,
+        test: /\.(jpg|png|svg|webp|xlsx|xls|csv)$/i,
         type: 'asset/resource',
         generator: {
           filename: 'assets/all_assets/[name][ext]',
@@ -78,7 +85,7 @@ module.exports = {
         exclude: /node_modules/,
       },
       {
-        test: /\.(ttf)$/,
+        test: /\.(ttf|woff2)$/,
         type: 'asset/resource',
         generator: {
           filename: 'assets/fonts/[name][ext]',
@@ -144,6 +151,14 @@ module.exports = {
     new ProvidePlugin({
       Buffer: ['buffer', 'Buffer'],
       process: 'process/browser.js',
+    }),
+    // bip39 loads every wordlist inside try/catch specifically so bundlers can
+    // drop the ones they don't need. We only support English mnemonics; with
+    // only english.json present bip39 sets it as the default wordlist.
+    // Saves ~265KB of JSON in the background bundle.
+    new IgnorePlugin({
+      resourceRegExp: /^\.\/wordlists\/(?!english\.json)/,
+      contextRegExp: /bip39[/\\]src$/,
     }),
     new NodePolyfillPlugin({
       excludeAliases: ['console'],
