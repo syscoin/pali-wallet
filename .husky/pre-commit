@@ -1,9 +1,10 @@
 #!/bin/sh
 . "$(dirname "$0")/_/husky.sh"
 
-# Load nvm if it exists
+# Load nvm if it exists and switch to the version pinned in .nvmrc
+# (sourcing nvm alone activates the machine's default alias, which may be
+# older than the engines requirement).
 export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" && nvm use
 
-# Now yarn should be able to find node
 yarn lint-staged
