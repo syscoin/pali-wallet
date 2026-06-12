@@ -53,6 +53,7 @@ import type {
 import {
   getSmartAccountActionErrorMessage,
   isGuardianRecoveryAlreadyScheduledError,
+  isGuardianRecoveryExpiredError,
   isGuardianRecoveryNotReadyError,
   isNativeGasError,
   isSmartAccountPrefundError,
@@ -1268,6 +1269,18 @@ const SmartAccountPolicy = () => {
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
+        if (isGuardianRecoveryExpiredError(error)) {
+          // The scheduled operation expired on-chain and can never be
+          // executed. Drop it from local state (keeping the replacement
+          // credential so a retry reuses the already-created passkey) so
+          // the user can start a fresh recovery.
+          storeGuardianReplacementCredential({
+            ...activeGuardianReplacement,
+            recoveryOperation: undefined,
+          });
+          alert.error(t('settings.smartAccountGuardianRecoveryExpired'));
+          return;
+        }
         const errorMessage = isGuardianRecoveryNotReadyError(error)
           ? activeGuardianReplacement.recoveryOperation.readyAt * 1000 <=
             Date.now()

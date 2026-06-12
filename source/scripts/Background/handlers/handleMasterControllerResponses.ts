@@ -12,6 +12,8 @@ const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
   'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
 const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
 const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
+const GUARDIAN_RECOVERY_EXPIRED_SELECTOR = '0x80ba2533';
+const GUARDIAN_RECOVERY_EXPIRED_ERROR = 'PALI_GUARDIAN_RECOVERY_EXPIRED';
 
 const stringifyControllerError = (error: unknown): string => {
   if (!error || typeof error !== 'object') {
@@ -82,6 +84,9 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   }
   if (errorText.includes(GUARDIAN_RECOVERY_NOT_READY_SELECTOR)) {
     return GUARDIAN_RECOVERY_NOT_READY_ERROR;
+  }
+  if (errorText.includes(GUARDIAN_RECOVERY_EXPIRED_SELECTOR)) {
+    return GUARDIAN_RECOVERY_EXPIRED_ERROR;
   }
 
   return extractErrorMessage(error, 'Unknown error');

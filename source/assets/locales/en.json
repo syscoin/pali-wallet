@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "A recovery is already pending for this account. Finish it if you still can, or wait for it to expire before starting a new one.",
     "smartAccountGuardianRecoveryFinalized": "Recovery finished and this account is ready.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Failed to finish recovery.",
+    "smartAccountGuardianRecoveryExpired": "This recovery request expired before it was finished. Start recovery again.",
     "invalidAddress": "Invalid address"
   },
   "start": {

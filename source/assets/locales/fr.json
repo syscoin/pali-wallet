@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "Une récupération est déjà en attente pour ce compte. Terminez-la si vous le pouvez encore, ou attendez son expiration avant d'en lancer une nouvelle.",
     "smartAccountGuardianRecoveryFinalized": "Récupération terminée et ce compte est prêt.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Impossible de terminer la récupération.",
+    "smartAccountGuardianRecoveryExpired": "Cette demande de récupération a expiré avant d'être terminée. Relancez la récupération.",
     "invalidAddress": "Adresse invalide"
   },
   "start": {

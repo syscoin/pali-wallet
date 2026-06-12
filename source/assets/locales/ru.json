@@ -636,6 +636,7 @@
     "smartAccountGuardianRecoveryAlreadyStarted": "Для этого аккаунта уже есть ожидающее восстановление. Завершите его, если можете, или дождитесь его истечения, прежде чем начинать новое.",
     "smartAccountGuardianRecoveryFinalized": "Восстановление завершено, аккаунт готов.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Не удалось завершить восстановление.",
+    "smartAccountGuardianRecoveryExpired": "Срок этого запроса на восстановление истёк до его завершения. Начните восстановление заново.",
     "invalidAddress": "Недействительный адрес"
   },
   "start": {
