@@ -246,5 +246,13 @@
 }
 
 .theme-doc-markdown .pali-video-card video {
+  /* Posters are landscape cards (1408x832) while the recordings are portrait
+     (400x620). Lock the element to the poster aspect so the player keeps its
+     fitted size during playback and the video letterboxes inside it. */
+  aspect-ratio: 1408 / 832;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(47, 107, 255, 0.25), transparent 18rem),
+    #060e20;
   margin: 0;
+  object-fit: contain;
 }
