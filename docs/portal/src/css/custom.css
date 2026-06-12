@@ -83,17 +83,18 @@
 
 .theme-doc-markdown .pali-capture-card {
   background:
-    radial-gradient(circle at 90% 0%, rgba(47, 107, 255, 0.32), transparent 17rem),
-    radial-gradient(circle at -8% 100%, rgba(47, 107, 255, 0.7), transparent 16rem),
-    #0d1c32;
-  border: 1px solid rgba(76, 134, 255, 0.85);
-  border-radius: 34px;
-  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.24);
+    radial-gradient(560px 420px at 86% 12%, rgba(47, 107, 255, 0.16), transparent 65%),
+    radial-gradient(420px 380px at 10% 95%, rgba(255, 62, 145, 0.1), transparent 65%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012) 38%),
+    #0a1426;
+  border: 1px solid rgba(125, 165, 255, 0.22);
+  border-radius: 32px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   display: grid;
   gap: 2rem;
   grid-template-columns: minmax(16rem, 1fr) minmax(18rem, 26rem);
   overflow: hidden;
-  padding: 2rem;
+  padding: 2.5rem;
 }
 
 .theme-doc-markdown .pali-capture-card__copy {
@@ -102,54 +103,78 @@
 
 .theme-doc-markdown .pali-capture-card__brand {
   align-items: center;
-  color: #7ea6ff;
+  color: #9db8e8;
   display: flex;
   font-size: 1.2rem;
+  font-weight: 600;
   gap: 1rem;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
 }
 
 .theme-doc-markdown .pali-capture-card__icon {
   background: transparent;
   border: 0;
-  border-radius: 24px;
+  border-radius: 20px;
   box-shadow: none;
   display: block;
+  filter: drop-shadow(0 14px 34px rgba(47, 107, 255, 0.45));
   flex: 0 0 auto;
-  height: 5.5rem;
+  height: 4.5rem;
   margin: 0;
   object-fit: contain;
-  width: 5.5rem;
+  width: 4.5rem;
+}
+
+.theme-doc-markdown .pali-capture-card__chip {
+  background: rgba(76, 161, 207, 0.12);
+  border: 1px solid rgba(76, 161, 207, 0.45);
+  border-radius: 999px;
+  color: #7cc6ef;
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  margin: 0 0 1.25rem;
+  padding: 0.4rem 1rem;
+  text-transform: uppercase;
 }
 
 .theme-doc-markdown .pali-capture-card__title {
-  color: #fff;
+  color: #f6f8fd;
   font-size: clamp(2rem, 4vw, 3rem);
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.015em;
   line-height: 1.08;
   margin: 0 0 1rem;
 }
 
 .theme-doc-markdown .pali-capture-card__subtitle {
-  color: #c3cfe3;
+  background: linear-gradient(90deg, #6f9bff, #ff3e91);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
   font-size: 1.35rem;
+  font-weight: 600;
   line-height: 1.3;
   margin: 0;
+  width: fit-content;
 }
 
 .theme-doc-markdown .pali-capture-card__hint {
-  color: #9aaccc;
+  color: #8d9cb5;
   font-size: 0.98rem;
-  margin: 2rem 0 0;
+  line-height: 1.5;
+  margin: 1.6rem 0 0;
 }
 
 .theme-doc-markdown .pali-capture-card__scroll {
   align-self: center;
-  background: #071226;
-  border: 1px solid rgba(126, 166, 255, 0.35);
-  border-radius: 18px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  background:
+    linear-gradient(#0d1525, #0d1525) padding-box,
+    linear-gradient(160deg, rgba(125, 165, 255, 0.5), rgba(255, 62, 145, 0.35)) border-box;
+  border: 2px solid transparent;
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55), 0 0 60px rgba(47, 107, 255, 0.15);
   display: block;
   line-height: 0;
   margin: 0 auto;

@@ -64,3 +64,19 @@ Si no se pasa `authenticator`, Pali usa passkey por defecto.
 Les comptes intelligents Pali fonctionnent sur les chaînes EVM compatibles où la factory et les modules Pali existent aux adresses attendues par Pali. Ce n'est pas limité aux chaînes opérées par Pali : si la chaîne active expose le déployeur CREATE2 canonique, Pali peut déployer la configuration de compte intelligent manquante directement depuis le portefeuille. Ouvrez Pali Settings, allez dans Advanced, puis utilisez le bouton Deploy dans **Smart account setup**.
 
 Les validateurs passkey ont besoin de la vérification P-256 WebAuthn. Beaucoup d'environnements EVM modernes l'exposent via un precompile P-256/passkey, mais les intégrateurs doivent vérifier le support de la chaîne avant de dépendre des validateurs passkey.
+
+## Contrôle utilisateur
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>Après la vérification dans le portefeuille, le navigateur ou le système d'exploitation gère la création du passkey WebAuthn lorsque le validateur choisi est basé sur passkey.</figcaption>
+</figure>
+
+L'utilisateur voit le site demandeur, le label du compte, l'authenticator demandé et les éventuelles adresses d'owners ECDSA externes avant d'approuver. Le navigateur ou le système d'exploitation affiche l'invite WebAuthn lorsque Pali a besoin d'une nouvelle credential passkey. Pali affiche la progression du déploiement, de l'installation des modules et de la confirmation avant de connecter le compte intelligent à la dapp.
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Onboarding initié par la dapp : examinez la demande, confirmez, et le compte intelligent est prêt.</figcaption>
+</figure>

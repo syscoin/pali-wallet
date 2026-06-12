@@ -33,4 +33,18 @@ Los owners ECDSA locales se tratan como controlados por la wallet. Los owners ex
 
 ## Récupération
 
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-recover.png" alt="Pali settings screen for recovering smart accounts" />
+</a>
+  <figcaption>L'écran de récupération aide à restaurer l'accès au compte intelligent en reconstruisant les comptes créés par Pali ou en utilisant la guardian recovery pour remplacer le validateur actif.</figcaption>
+</figure>
+
 La recuperación depende de los módulos instalados. Las cuentas deterministas se pueden reconstruir desde el anchor de wallet, chain, índice y factory. Los validadores passkey requieren la credencial WebAuthn relevante. Guardian recovery puede reemplazar el validador activo después de la demora configurada.
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-assert.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-assert.png" alt="Browser or operating system passkey assertion prompt" />
+</a>
+  <figcaption>La récupération et l'exécution nécessitent une assertion WebAuthn de la credential passkey concernée.</figcaption>
+</figure>

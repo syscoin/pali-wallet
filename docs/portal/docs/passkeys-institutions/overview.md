@@ -112,5 +112,5 @@ The user sees the requesting site, account label, requested authenticator, and a
 
 <figure className="pali-video-card">
   <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
-  <figcaption>Smart-account onboarding flow: branded intro, dapp request, validator setup when needed, and Pali account approval.</figcaption>
+  <figcaption>Dapp-initiated onboarding: review the request, confirm, and the smart account is live.</figcaption>
 </figure>

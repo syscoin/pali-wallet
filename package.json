@@ -9,7 +9,7 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=20.19.0",
+    "node": ">=23.11.1",
     "yarn": ">=1.22.22"
   },
   "scripts": {
@@ -38,6 +38,8 @@
     "e2e:harness:headed": "PALI_E2E_HEADED=true playwright test --config e2e/playwright.config.ts",
     "e2e:visual": "playwright test --config e2e/playwright.visual.config.ts",
     "e2e:visual:update": "playwright test --config e2e/playwright.visual.config.ts --update-snapshots",
+    "docs:media:capture": "playwright test --config e2e/docs-media/playwright.config.ts",
+    "docs:media:compose": "node e2e/docs-media/compose.mjs",
     "postinstall": "patch-package",
     "test-all": "yarn lint && yarn test:unit",
     "analyze": "cross-env NODE_ENV=production webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json",

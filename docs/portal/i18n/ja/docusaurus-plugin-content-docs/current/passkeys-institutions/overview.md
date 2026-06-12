@@ -60,3 +60,19 @@ const account = await window.ethereum.request({
 Paliスマートアカウントは、Paliが参照するアドレスにPali factoryとmodulesが存在する互換EVMチェーンで利用できます。これはPaliが運用するチェーンに限定されません。アクティブなチェーンがcanonical CREATE2 deployerを提供している場合、Paliは不足しているスマートアカウント設定をウォレット内でデプロイできます。Pali Settingsを開き、Advancedに移動し、**Smart account setup** のDeployボタンを使ってください。
 
 Passkey validatorにはP-256 WebAuthn検証が必要です。多くの新しいEVM環境ではP-256/passkey precompileで提供されていますが、本番利用前にチェーン側のサポートを確認してください。
+
+## ユーザーによるコントロール
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>ウォレットでの確認後、選択したvalidatorがpasskeyベースの場合は、ブラウザまたはOSがWebAuthn passkeyの作成を処理します。</figcaption>
+</figure>
+
+ユーザーは承認前に、リクエスト元のサイト、アカウントのラベル、要求されたauthenticator、外部ECDSA ownerアドレスを確認できます。Paliが新しいpasskey credentialを必要とする場合は、ブラウザまたはOSがWebAuthnプロンプトを表示します。スマートアカウントがdappに接続される前に、Paliはデプロイ、モジュールのインストール、確認の進行状況を表示します。
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>Dapp起点のオンボーディング: リクエストを確認して承認すると、スマートアカウントが利用可能になります。</figcaption>
+</figure>

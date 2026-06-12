@@ -33,3 +33,4 @@ hardhat.log
 /playwright/.cache/
 user-data
 e2e/artifacts/
+e2e/docs-media/out/

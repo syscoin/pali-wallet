@@ -60,3 +60,19 @@ const account = await window.ethereum.request({
 Pali 智能账户可在 Pali 期望地址上已经存在 Pali factory 和模块的兼容 EVM 链上使用。这并不限于 Pali 运营的链：如果当前链提供 canonical CREATE2 deployer，Pali 可以直接在钱包内部署缺失的智能账户设置。打开 Pali Settings，进入 Advanced，并在 **Smart account setup** 中使用 Deploy 按钮。
 
 Passkey 验证器需要 P-256 WebAuthn 验证支持。许多现代 EVM 环境通过 P-256/passkey precompile 提供该能力，但集成方在依赖 passkey 验证器前仍应确认链上支持。
+
+## 用户控制
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/browser-passkey-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/browser-passkey-create.png" alt="Browser or operating system passkey creation sheet" />
+</a>
+  <figcaption>钱包审查后，如果所选验证器基于 passkey，浏览器或操作系统会处理 WebAuthn passkey 的创建。</figcaption>
+</figure>
+
+用户在批准前可以看到请求的站点、账户标签、请求的认证器以及任何外部 ECDSA owner 地址。当 Pali 需要新的 passkey 凭证时，浏览器或操作系统会显示 WebAuthn 提示。在智能账户连接到 dapp 之前，Pali 会显示部署、模块安装和确认进度。
+
+<figure className="pali-video-card">
+  <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
+  <figcaption>由 dapp 发起的引导：查看请求并确认，智能账户即刻可用。</figcaption>
+</figure>

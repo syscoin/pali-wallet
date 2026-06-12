@@ -60,5 +60,5 @@ Smart-account `wallet_sendCalls` does not support contract deployment calls expr
 
 <figure className="pali-video-card">
   <video controls poster="/img/screens/smart-account-batch-sendcalls-video.png" src="/video/smart-account-batch-sendcalls.mp4" title="Smart-account wallet_sendCalls batch flow"></video>
-  <figcaption>Smart-account batch execution flow: branded intro, decoded calls, validator authorization, transaction result.</figcaption>
+  <figcaption>One approval executes the whole batch atomically.</figcaption>
 </figure>

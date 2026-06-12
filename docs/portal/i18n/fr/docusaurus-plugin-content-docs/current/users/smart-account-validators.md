@@ -4,6 +4,13 @@ title: Comptes intelligents et passkeys
 
 Les comptes intelligents Pali sont des comptes de contrat EVM contrôlés par des modules. Un passkey est une manière prise en charge de les contrôler ; ils peuvent aussi utiliser ECDSA ou des politiques composites.
 
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-create.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-create.png" alt="Pali settings screen for creating a smart account" />
+</a>
+  <figcaption>Les utilisateurs peuvent créer des comptes intelligents modulaires depuis les Réglages ou via une demande de dapp, puis choisir le validateur qui contrôle les approbations.</figcaption>
+</figure>
+
 ## Pourquoi les utiliser
 
 - Aprobaciones con passkey para uso diario.
@@ -30,3 +37,10 @@ Pali deriva la dirección de forma determinista, despliega mediante la factory y
 La guardian recovery n'est pas instantanée. Un gardien signe une intention, le module la planifie avec un délai, puis n'importe qui peut finaliser le remplacement du validateur. Pali utilise un sel nouveau à chaque tentative et n'autorise qu'une seule récupération active par compte.
 
 On-chain, un gardien ne se limite pas à une clé normale : les approbations des gardiens sont vérifiées via ECDSA ou ERC-1271, donc un gardien peut aussi être un compte de contrat déployé — y compris un autre compte intelligent dont la propre politique est un validateur composite, personnalisé ou post-quantique. Le chemin de récupération hérite alors du schéma de signature de ce gardien. Les écrans actuels des gardiens de Pali collectent des approbations basées sur des clés ; les flux pour gardiens de type compte de contrat pourront être ajoutés plus tard, car le module déployé les prend déjà en charge.
+
+<figure>
+  <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
+  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
+</a>
+  <figcaption>L'écran de politique du compte intelligent affiche les modules installés, les détails du validateur actif, la guardian recovery et la gestion des modules.</figcaption>
+</figure>

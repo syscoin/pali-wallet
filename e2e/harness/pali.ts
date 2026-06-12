@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { E2E_CONFIG } from './config';
-import { launchExtension } from './launch';
+import { type LaunchOptions, launchExtension } from './launch';
 import { type Finding, JourneySummary } from './summary';
 
 // High-level driver for the Pali extension UI. Journeys compose these
@@ -29,9 +29,15 @@ export class PaliWallet {
     this.summary = summary;
   }
 
-  static async launch(journeyName: string): Promise<PaliWallet> {
+  static async launch(
+    journeyName: string,
+    options: LaunchOptions = {}
+  ): Promise<PaliWallet> {
     const summary = new JourneySummary(journeyName);
-    const { context, extensionId } = await launchExtension(journeyName);
+    const { context, extensionId } = await launchExtension(
+      journeyName,
+      options
+    );
     const page = context.pages()[0] || (await context.newPage());
     const wallet = new PaliWallet(context, extensionId, page, summary);
     await wallet.gotoRoute('#/');
