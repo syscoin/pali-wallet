@@ -55,7 +55,7 @@ const MainApp: FC = () => {
 
 // Component to show when external window is open
 const ExternalActiveMessage: FC = () => (
-  <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen login-animated-bg">
+  <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] justify-center min-w-full h-screen login-animated-bg">
     {/* Subtle twinkling particles */}
     <div className="particle-1"></div>
     <div className="particle-2"></div>
