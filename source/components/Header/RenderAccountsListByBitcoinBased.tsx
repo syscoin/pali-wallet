@@ -254,25 +254,21 @@ const RenderAccountsListByBitcoinBased =
               </button>
             </div>
 
-            {/* Right side: Badge + Checkmark */}
-            <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+            {/* Right side: badge (with inline active check to save space) */}
+            <div className="flex items-center flex-shrink-0 relative z-10">
               {isAccountSwitching(account.id, accountType) ? (
                 <LoadingSvg
                   className={`w-4 animate-spin h-4 ${badgeInfo.loadingColor}`}
                 />
               ) : (
-                <>
-                  <span
-                    className={`text-xs px-2 py-0.5 text-white ${badgeInfo.bgColor} rounded-full font-medium shadow-sm group-hover:shadow-md ${badgeInfo.hoverColor} transform group-hover:scale-105 transition-all duration-300`}
-                  >
-                    {badgeInfo.label}
-                  </span>
+                <span
+                  className={`flex items-center gap-1 text-xs px-2 py-0.5 text-white ${badgeInfo.bgColor} rounded-full font-medium shadow-sm group-hover:shadow-md ${badgeInfo.hoverColor} transform group-hover:scale-105 transition-all duration-300`}
+                >
                   {isAccountActive(account.id, accountType) && (
-                    <div className="transform group-hover:scale-110 transition-transform duration-300">
-                      <Icon name="check" className="w-4 h-4" color="#8EC100" />
-                    </div>
+                    <Icon name="check" className="w-3 h-3" />
                   )}
-                </>
+                  {badgeInfo.label}
+                </span>
               )}
             </div>
           </li>
