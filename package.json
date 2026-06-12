@@ -38,7 +38,7 @@
     "e2e:harness:headed": "PALI_E2E_HEADED=true playwright test --config e2e/playwright.config.ts",
     "e2e:visual": "playwright test --config e2e/playwright.visual.config.ts",
     "e2e:visual:update": "playwright test --config e2e/playwright.visual.config.ts --update-snapshots",
-    "docs:media:capture": "playwright test --config e2e/docs-media/playwright.config.ts",
+    "docs:media:capture": "playwright test --config e2e/docs-media/playwright.config.ts capture.spec.ts",
     "docs:media:compose": "node e2e/docs-media/compose.mjs",
     "postinstall": "patch-package",
     "test-all": "yarn lint && yarn test:unit",

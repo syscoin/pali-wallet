@@ -7,6 +7,11 @@ import path from 'path';
 // portal (docs/portal/static).
 //
 // Run with: yarn docs:media:capture  (then yarn docs:media:compose)
+//
+// The debug specs (debug-fund, debug-webauthn) are sanity checks, not part
+// of the capture run; the yarn script filters to capture.spec.ts. Run them
+// explicitly when needed:
+//   npx playwright test --config e2e/docs-media/playwright.config.ts debug-fund
 export default defineConfig({
   forbidOnly: !!process.env.CI,
   fullyParallel: false,
