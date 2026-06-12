@@ -3072,10 +3072,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.28.tgz#05daaf0a9411febfe36d96a43f76767a5bcd5d03"
   integrity sha512-YN3qdoPNyFFdseO/iaUmr0gSWpKbVEPA6I9ePd8Sny2BhY11SsXkj1x+acL9RfmtsfZ7kh+tzo3//OOGCw+PLA==
 
-"@sidhujag/sysweb3-keyring@^1.0.592":
-  version "1.0.592"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.592.tgz#e199f61f1b66202534b0fce46f91325f5ebdcbdd"
-  integrity sha512-norTSwcy2hExjhpaeW1Pkv9JpNseiH13Nc5eS4rLqQaVnPtKRPiiahmFfS0zH5MyrIrjYLQqwswHJbk2WaIsSA==
+"@sidhujag/sysweb3-keyring@^1.0.593":
+  version "1.0.593"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.593.tgz#97b84b7dbd71f0aa662260cea9efd0ee30fa13eb"
+  integrity sha512-BbzYt3EBXyiSXOQPx7u2N2egUx1sCNBmXk8Nz5uR7CQSrNCy662n6xE67+2VhCND+VOHog/I5NJ3F+TozPRYWQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ethersproject/abstract-provider" "^5.8.0"

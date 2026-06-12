@@ -52,6 +52,7 @@ import type {
 } from 'utils/smartAccount';
 import {
   getSmartAccountActionErrorMessage,
+  isGuardianRecoveryAlreadyScheduledError,
   isGuardianRecoveryNotReadyError,
   isNativeGasError,
   isSmartAccountPrefundError,
@@ -1194,11 +1195,13 @@ const SmartAccountPolicy = () => {
         // Keep the stored replacement credential: it has no recovery
         // operation attached yet, so it does not block the UI, and a retry
         // reuses the already-created passkey instead of minting another.
-        const errorMessage = getSmartAccountActionErrorMessage(
-          error,
-          t('settings.smartAccountGuardianRecoveryStartFailed'),
-          t('settings.smartAccountGuardianRecoveryGuardianNeedsGas')
-        );
+        const errorMessage = isGuardianRecoveryAlreadyScheduledError(error)
+          ? t('settings.smartAccountGuardianRecoveryAlreadyStarted')
+          : getSmartAccountActionErrorMessage(
+              error,
+              t('settings.smartAccountGuardianRecoveryStartFailed'),
+              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas')
+            );
 
         alert.error(errorMessage);
       }

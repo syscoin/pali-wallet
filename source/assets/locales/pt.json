@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "Recuperação iniciada. Volte após o período de espera para terminar de configurar o novo método de aprovação.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "Adicione gas nativo à carteira guardiã de recuperação e tente novamente. Iniciar a recuperação envia uma transação on-chain dessa carteira guardiã.",
     "smartAccountGuardianRecoveryStartFailed": "Falha ao iniciar a recuperação.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "Já existe uma recuperação pendente para esta conta. Conclua-a se ainda puder, ou aguarde que expire antes de iniciar uma nova.",
     "smartAccountGuardianRecoveryFinalized": "Recuperação finalizada e esta conta está pronta.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Falha ao finalizar a recuperação.",
     "invalidAddress": "Endereço inválido"

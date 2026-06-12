@@ -142,6 +142,10 @@ type SmartAccountInfrastructureStatus = {
 
 const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
 const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
+// RecoveryAlreadyScheduled(bytes32) on the guardian recovery module.
+const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
+  'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
+const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR = '0x684d1639';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
 const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
@@ -213,6 +217,9 @@ const getErrorText = (error: unknown, depth = 0): string => {
 
 const hasGuardianRecoveryNotReadyRevert = (error: unknown): boolean =>
   getErrorText(error).includes(GUARDIAN_RECOVERY_NOT_READY_SELECTOR);
+
+const hasGuardianRecoveryAlreadyScheduledRevert = (error: unknown): boolean =>
+  getErrorText(error).includes(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR);
 
 const getEntryPointFailedOpReason = (error: unknown): string => {
   const message = getErrorText(error);
@@ -1390,26 +1397,36 @@ class SmartAccountController {
           approvals,
         ]
       );
-    const gasPayer = await this.getWalletGasPayerAccount(params.gasPayer, {
-      data: recoveryCallData,
-      to: recoveryModule,
-      value: '0x0',
-    });
-    const response = await this.deps.sendAndSaveEthTransaction(
-      { data: recoveryCallData, to: recoveryModule, value: '0x0' },
-      false,
-      gasPayer,
-      {
-        smartAccountGuardianRecovery: true,
-        smartAccountRecoveryAccount: account,
-      },
-      { clearNavigation: false, persist: true }
-    );
+    try {
+      const gasPayer = await this.getWalletGasPayerAccount(params.gasPayer, {
+        data: recoveryCallData,
+        to: recoveryModule,
+        value: '0x0',
+      });
+      const response = await this.deps.sendAndSaveEthTransaction(
+        { data: recoveryCallData, to: recoveryModule, value: '0x0' },
+        false,
+        gasPayer,
+        {
+          smartAccountGuardianRecovery: true,
+          smartAccountRecoveryAccount: account,
+        },
+        { clearNavigation: false, persist: true }
+      );
 
-    return {
-      operation: params.operation,
-      transaction: response,
-    };
+      return {
+        operation: params.operation,
+        transaction: response,
+      };
+    } catch (error) {
+      // Revert data does not survive the popup<->background message
+      // boundary (errors are flattened to their message), so map the
+      // module's custom error to a sentinel the UI can recognize.
+      if (hasGuardianRecoveryAlreadyScheduledRevert(error)) {
+        throw new Error(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR);
+      }
+      throw error;
+    }
   }
 
   public async finalizeSmartAccountGuardianRecovery(params: {

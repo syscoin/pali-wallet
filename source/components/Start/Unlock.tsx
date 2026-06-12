@@ -86,7 +86,7 @@ const Unlock: React.FC<{
       >
         <Form.Item
           name="password"
-          className="w-full"
+          className="w-[17.5rem]"
           validateStatus={errorMessage ? 'error' : undefined}
           hasFeedback={!!errorMessage}
           help={errorMessage}

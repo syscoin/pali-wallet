@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "恢复已开始。等待期结束后返回，完成新的批准方式设置。",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "请向恢复守护人钱包添加原生 gas，然后重试。开始恢复会从该守护人钱包发送一笔链上交易。",
     "smartAccountGuardianRecoveryStartFailed": "恢复启动失败。",
+    "smartAccountGuardianRecoveryAlreadyStarted": "此账户已有待处理的恢复。如果仍然可以，请完成它；否则请等待其过期后再开始新的恢复。",
     "smartAccountGuardianRecoveryFinalized": "恢复已完成，此账户已可使用。",
     "smartAccountGuardianRecoveryFinalizeFailed": "完成恢复失败。",
     "invalidAddress": "无效地址"

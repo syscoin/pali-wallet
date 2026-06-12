@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "Wiederherstellung gestartet. Kommen Sie nach der Wartezeit zurück, um die neue Genehmigungsmethode fertig einzurichten.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "Fügen Sie der Wiederherstellungs-Guardian-Wallet natives Gas hinzu und versuchen Sie es erneut. Der Start der Wiederherstellung sendet eine On-Chain-Transaktion von dieser Guardian-Wallet.",
     "smartAccountGuardianRecoveryStartFailed": "Wiederherstellung konnte nicht gestartet werden.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "Für dieses Konto steht bereits eine Wiederherstellung aus. Schließen Sie sie ab, falls noch möglich, oder warten Sie, bis sie abläuft, bevor Sie eine neue starten.",
     "smartAccountGuardianRecoveryFinalized": "Wiederherstellung abgeschlossen und dieses Konto ist bereit.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Wiederherstellung konnte nicht abgeschlossen werden.",
     "invalidAddress": "Ungültige Adresse"

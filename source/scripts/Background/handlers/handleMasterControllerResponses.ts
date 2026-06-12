@@ -4,6 +4,14 @@ import { extractErrorMessage } from 'utils/index';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
+// Guardian recovery module custom-error selectors. Revert data is dropped
+// when errors are flattened to a message string at this boundary, so map
+// known selectors to sentinels the UI error helpers recognize.
+const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR = '0x684d1639';
+const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
+  'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
+const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
+const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
 
 const stringifyControllerError = (error: unknown): string => {
   if (!error || typeof error !== 'object') {
@@ -68,6 +76,12 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
     errorText.includes(AA21_PREFUND_REASON_HEX)
   ) {
     return NATIVE_GAS_REQUIRED_ERROR;
+  }
+  if (errorText.includes(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR)) {
+    return GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR;
+  }
+  if (errorText.includes(GUARDIAN_RECOVERY_NOT_READY_SELECTOR)) {
+    return GUARDIAN_RECOVERY_NOT_READY_ERROR;
   }
 
   return extractErrorMessage(error, 'Unknown error');

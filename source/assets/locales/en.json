@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "Recovery started. Come back after the wait period to finish setting the new approval method.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "Add native gas to the recovery guardian wallet, then try again. Starting recovery sends an on-chain transaction from that guardian wallet.",
     "smartAccountGuardianRecoveryStartFailed": "Failed to start recovery.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "A recovery is already pending for this account. Finish it if you still can, or wait for it to expire before starting a new one.",
     "smartAccountGuardianRecoveryFinalized": "Recovery finished and this account is ready.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Failed to finish recovery.",
     "invalidAddress": "Invalid address"

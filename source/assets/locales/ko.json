@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "복구가 시작되었습니다. 대기 시간이 지난 뒤 돌아와 새 승인 방법 설정을 완료하세요.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "복구 가디언 지갑에 네이티브 가스를 추가한 뒤 다시 시도하세요. 복구 시작은 해당 가디언 지갑에서 온체인 트랜잭션을 보냅니다.",
     "smartAccountGuardianRecoveryStartFailed": "복구를 시작하지 못했습니다.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "이 계정에 대한 복구가 이미 대기 중입니다. 가능하면 완료하시고, 그렇지 않으면 만료될 때까지 기다린 후 새 복구를 시작하세요.",
     "smartAccountGuardianRecoveryFinalized": "복구가 완료되었고 이 계정을 사용할 수 있습니다.",
     "smartAccountGuardianRecoveryFinalizeFailed": "복구를 완료하지 못했습니다.",
     "invalidAddress": "유효하지 않은 주소입니다"

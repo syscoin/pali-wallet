@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
 import { Menu } from '@headlessui/react';
 import React, { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
@@ -12,6 +13,7 @@ import {
   LockIconSvg,
 } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { selectActiveAccountRef } from 'state/vault';
 import { KeyringAccountType } from 'types/network';
@@ -115,6 +117,10 @@ const RenderAccountsListByBitcoinBased =
       id: number;
       type: KeyringAccountType;
     } | null>(null);
+    const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+    const { t } = useTranslation();
+    const { alert } = useUtils();
 
     const accounts = useSelector((state: RootState) => state.vault.accounts);
     const activeNetwork = useSelector(
@@ -153,6 +159,19 @@ const RenderAccountsListByBitcoinBased =
       (accountId: number, accountType: KeyringAccountType) =>
         activeAccount.id === accountId && activeAccount.type === accountType,
       [activeAccount]
+    );
+
+    const handleCopyAddress = useCallback(
+      async (key: string, address: string) => {
+        await navigator.clipboard.writeText(address);
+        setCopiedKey(key);
+        alert.info(t('home.addressCopied'));
+        setTimeout(
+          () => setCopiedKey((current) => (current === key ? null : current)),
+          1500
+        );
+      },
+      [alert, t]
     );
 
     // Memoized account rendering to prevent recreation
@@ -204,13 +223,35 @@ const RenderAccountsListByBitcoinBased =
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
 
             {/* Left side: Icon + Account name */}
-            <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+            <div className="flex items-center gap-2 flex-1 min-w-0 pr-3 relative z-10">
               <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
                 {getAccountIcon(accountType, account)}
               </div>
               <span className="group-hover:text-white transition-colors duration-300 truncate">
                 {account.label} ({ellipsis(account.address, 4, 4)})
               </span>
+              <button
+                type="button"
+                title={t('buttons.copy')}
+                aria-label={t('buttons.copy')}
+                className="flex-shrink-0 p-1 -my-1 -ml-1 text-brand-gray300 hover:text-white opacity-70 hover:opacity-100 transition-all duration-200"
+                onPointerDown={(e) => {
+                  // The row switches accounts on pointer-down; keep copy
+                  // interactions from reaching it.
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyAddress(key, account.address);
+                }}
+              >
+                {copiedKey === key ? (
+                  <Icon name="check" className="w-3.5 h-3.5" color="#8EC100" />
+                ) : (
+                  <Icon name="copy" className="w-3.5 h-3.5" />
+                )}
+              </button>
             </div>
 
             {/* Right side: Badge + Checkmark */}
@@ -237,7 +278,14 @@ const RenderAccountsListByBitcoinBased =
           </li>
         );
       },
-      [isAccountSwitching, isAccountActive, handleAccountSwitch]
+      [
+        isAccountSwitching,
+        isAccountActive,
+        handleAccountSwitch,
+        handleCopyAddress,
+        copiedKey,
+        t,
+      ]
     );
 
     // Memoize the account list computation

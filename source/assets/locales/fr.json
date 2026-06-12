@@ -633,6 +633,7 @@
     "smartAccountGuardianRecoveryStarted": "Récupération lancée. Revenez après le délai d’attente pour finir de configurer le nouveau moyen d’approbation.",
     "smartAccountGuardianRecoveryGuardianNeedsGas": "Ajoutez du gas natif au wallet gardien de récupération, puis réessayez. Le démarrage de la récupération envoie une transaction on-chain depuis ce wallet gardien.",
     "smartAccountGuardianRecoveryStartFailed": "Impossible de lancer la récupération.",
+    "smartAccountGuardianRecoveryAlreadyStarted": "Une récupération est déjà en attente pour ce compte. Terminez-la si vous le pouvez encore, ou attendez son expiration avant d'en lancer une nouvelle.",
     "smartAccountGuardianRecoveryFinalized": "Récupération terminée et ce compte est prêt.",
     "smartAccountGuardianRecoveryFinalizeFailed": "Impossible de terminer la récupération.",
     "invalidAddress": "Adresse invalide"
