@@ -1022,14 +1022,23 @@ class SmartAccountController {
     const paymasterConfig = options.skipPaymaster
       ? undefined
       : getSmartAccountPaymasterConfig(activeNetwork);
-    const paymasterPreflight = paymasterConfig
-      ? await getSmartAccountPaymasterPreflight(
+    let paymasterPreflight: Awaited<
+      ReturnType<typeof getSmartAccountPaymasterPreflight>
+    >;
+    if (paymasterConfig) {
+      try {
+        paymasterPreflight = await getSmartAccountPaymasterPreflight(
           provider,
           unsignedUserOperation,
           paymasterConfig,
           code !== '0x'
-        )
-      : undefined;
+        );
+      } catch (error) {
+        if (paymasterConfig.mode === 'required') {
+          throw error;
+        }
+      }
+    }
     const canUsePaymaster = Boolean(paymasterPreflight?.canSponsor);
     if (paymasterConfig?.mode === 'required' && !canUsePaymaster) {
       throw new Error(
