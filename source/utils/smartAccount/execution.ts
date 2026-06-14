@@ -13,6 +13,7 @@ import type {
 } from 'types/network';
 
 import { getInstalledValidatorModule } from './modules';
+import { hasSmartAccountPaymaster } from './paymaster';
 import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
 
 type ControllerEmitter = (
@@ -556,23 +557,35 @@ export const signAndSubmitSmartAccountExecutions = async (
     });
     onAssertionResolved?.();
 
-    return controllerEmitter(
-      ['wallet', 'submitSmartAccountExecution'],
-      [
-        {
-          executionCalldata: prepared.executionCalldata,
-          executions: prepared.executions,
-          accountId,
-          mode: prepared.mode,
-          signature: signature.signature,
-          skipRapidPolling,
-          userOperation: prepared.userOperation,
-          validator: prepared.validator,
-          waitForConfirmation,
-        },
-      ],
-      300000
-    );
+    try {
+      return await controllerEmitter(
+        ['wallet', 'submitSmartAccountExecution'],
+        [
+          {
+            executionCalldata: prepared.executionCalldata,
+            executions: prepared.executions,
+            accountId,
+            mode: prepared.mode,
+            signature: signature.signature,
+            skipRapidPolling,
+            userOperation: prepared.userOperation,
+            validator: prepared.validator,
+            waitForConfirmation,
+          },
+        ],
+        300000
+      );
+    } catch (error) {
+      const usedOptionalPaymaster =
+        !skipPaymaster &&
+        hasSmartAccountPaymaster(prepared.userOperation) &&
+        prepared.paymasterApprovalSetup?.required !== true;
+
+      if (usedOptionalPaymaster) {
+        return prepareSignAndSubmit(useCachedMetadataOverride, true);
+      }
+      throw error;
+    }
   };
 
   try {

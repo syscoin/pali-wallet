@@ -288,13 +288,13 @@ describe('ERC-7579 smart account helpers', () => {
 
     expect(
       getSmartAccountPaymasterMaxTokenCost(userOperation, {
-        paymasterPostOpCost: 30_000,
+        paymasterPostOpCost: 35_000,
         paymasterPostOpGasLimit: 80_000,
         paymasterVerificationGasLimit: 120_000,
       }).toString()
     ).toBe(
-      // (200_000 + 250_000 + 50_000 + 120_000 + charged 30_000) * 2.5 gwei
-      (BigInt(650_000) * BigInt(2_500_000_000)).toString()
+      // (200_000 + 250_000 + 50_000 + 120_000 + charged 35_000) * 2.5 gwei
+      (BigInt(655_000) * BigInt(2_500_000_000)).toString()
     );
   });
 
