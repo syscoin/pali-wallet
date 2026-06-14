@@ -39,6 +39,7 @@ export type SubmitSmartAccountExecutionsParams = {
     setup: SmartAccountPaymasterApprovalSetup
   ) => boolean | Promise<boolean>;
   onPrepared?: () => void;
+  skipPaymaster?: boolean;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   useCachedMetadata?: boolean;
@@ -489,6 +490,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     onPaymasterApprovalConfirmed,
     onPaymasterApprovalRequired,
     onPrepared,
+    skipPaymaster,
     skipRapidPolling,
     smartAccount,
     useCachedMetadata,
@@ -531,6 +533,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         controllerEmitter,
         enablePaymasterApprovalSetup: false,
         executions: [prepared.paymasterApprovalSetup.execution],
+        skipPaymaster: true,
         skipRapidPolling: true,
         smartAccount: prepared.smartAccount || smartAccount,
         useCachedMetadata: useCachedMetadataOverride,
@@ -568,10 +571,10 @@ export const signAndSubmitSmartAccountExecutions = async (
   };
 
   try {
-    return await prepareSignAndSubmit(useCachedMetadata);
+    return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
   } catch (error) {
     if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
-      return prepareSignAndSubmit(false);
+      return prepareSignAndSubmit(false, skipPaymaster);
     }
     throw error;
   }

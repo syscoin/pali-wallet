@@ -1040,7 +1040,11 @@ class SmartAccountController {
       }
     }
     const canUsePaymaster = Boolean(paymasterPreflight?.canSponsor);
-    if (paymasterConfig?.mode === 'required' && !canUsePaymaster) {
+    if (
+      paymasterConfig?.mode === 'required' &&
+      !canUsePaymaster &&
+      !paymasterPreflight?.canApprove
+    ) {
       throw new Error(
         'Smart account paymaster is required but the account has insufficient token balance or allowance'
       );

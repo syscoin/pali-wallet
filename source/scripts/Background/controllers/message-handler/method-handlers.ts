@@ -7,7 +7,6 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
-import { getSmartAccountPaymasterCapability } from 'utils/smartAccount';
 
 import { popupPromise } from './popup-promise';
 import { requestCoordinator } from './request-pipeline';
@@ -533,9 +532,6 @@ export class WalletMethodHandler implements IMethodHandler {
           const smartAccountAtomicSupported =
             account?.isSmartAccount &&
             account.smartAccount?.chainId === activeNetwork.chainId;
-          const paymasterCapability = smartAccountAtomicSupported
-            ? getSmartAccountPaymasterCapability(activeNetwork)
-            : undefined;
           const capabilities = {
             [chainId]: {
               atomic: {
@@ -543,9 +539,6 @@ export class WalletMethodHandler implements IMethodHandler {
                   ? 'supported'
                   : 'unsupported',
               },
-              ...(paymasterCapability
-                ? { paymasterService: paymasterCapability }
-                : {}),
             },
           };
 
