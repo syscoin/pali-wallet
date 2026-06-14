@@ -184,14 +184,19 @@ export const getSmartAccountPaymasterMaxTokenCost = (
   >,
   config: Pick<
     SmartAccountPaymasterConfig,
-    'paymasterPostOpGasLimit' | 'paymasterVerificationGasLimit'
+    | 'paymasterPostOpCost'
+    | 'paymasterPostOpGasLimit'
+    | 'paymasterVerificationGasLimit'
   >
 ): BigNumber => {
   const maxFeePerGas = BigNumber.from(
     hexDataSlice(userOperation.gasFees, 16, 32)
   );
+  const chargedPostOpGas = BigNumber.from(
+    config.paymasterPostOpCost ?? config.paymasterPostOpGasLimit
+  );
   const paymasterGas = BigNumber.from(config.paymasterVerificationGasLimit).add(
-    BigNumber.from(config.paymasterPostOpGasLimit)
+    chargedPostOpGas
   );
 
   return getSmartAccountUserOpRequiredPrefund(userOperation).add(

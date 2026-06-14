@@ -524,24 +524,26 @@ export const signAndSubmitSmartAccountExecutions = async (
         prepared.paymasterApprovalSetup
       );
       if (!approved) {
-        throw new Error('zkSYS gas approval was not authorized');
+        if (prepared.paymasterApprovalSetup.required) {
+          throw new Error('zkSYS gas approval was not authorized');
+        }
+      } else {
+        await signAndSubmitSmartAccountExecutions({
+          accountId,
+          authenticatorContexts,
+          controllerEmitter,
+          enablePaymasterApprovalSetup: false,
+          executions: [prepared.paymasterApprovalSetup.execution],
+          skipPaymaster: true,
+          skipRapidPolling: true,
+          smartAccount: prepared.smartAccount || smartAccount,
+          useCachedMetadata: useCachedMetadataOverride,
+          waitForConfirmation: true,
+        });
+        onPaymasterApprovalConfirmed?.();
+
+        return prepareSignAndSubmit(useCachedMetadataOverride, false);
       }
-
-      await signAndSubmitSmartAccountExecutions({
-        accountId,
-        authenticatorContexts,
-        controllerEmitter,
-        enablePaymasterApprovalSetup: false,
-        executions: [prepared.paymasterApprovalSetup.execution],
-        skipPaymaster: true,
-        skipRapidPolling: true,
-        smartAccount: prepared.smartAccount || smartAccount,
-        useCachedMetadata: useCachedMetadataOverride,
-        waitForConfirmation: true,
-      });
-      onPaymasterApprovalConfirmed?.();
-
-      return prepareSignAndSubmit(useCachedMetadataOverride, false);
     }
     if (prepared.paymasterApprovalSetup?.required) {
       throw new Error('zkSYS gas approval is required before this operation');

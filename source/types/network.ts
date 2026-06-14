@@ -28,6 +28,7 @@ export interface INetwork {
     };
     mode?: 'optional' | 'required';
     paymasterData?: string;
+    paymasterPostOpCost?: number | string;
     paymasterPostOpGasLimit: number | string;
     paymasterVerificationGasLimit: number | string;
   };
