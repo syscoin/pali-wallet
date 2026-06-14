@@ -101,7 +101,7 @@ export const ZKSYS_TANENBAUM_TESTNET_NETWORK_57057 = {
       symbol: 'zkSYS',
     },
     mode: 'optional',
-    paymasterPostOpGasLimit: 30_000,
+    paymasterPostOpGasLimit: 80_000,
     paymasterVerificationGasLimit: 120_000,
   },
 } as INetwork;

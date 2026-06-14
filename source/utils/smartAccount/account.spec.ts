@@ -97,7 +97,7 @@ describe('ERC-7579 smart account helpers', () => {
         },
         mode: 'required',
         paymasterData: '0xabcdef',
-        paymasterPostOpGasLimit: 30_000,
+        paymasterPostOpGasLimit: 80_000,
         paymasterVerificationGasLimit: 120_000,
       },
     });
@@ -115,7 +115,7 @@ describe('ERC-7579 smart account helpers', () => {
         userOperation,
       })
     ).toBe(
-      '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000007530abcdef'
+      '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000013880abcdef'
     );
     expect(
       getSmartAccountPaymasterCapability({ smartAccountPaymaster: config! })
@@ -142,7 +142,7 @@ describe('ERC-7579 smart account helpers', () => {
       {
         address: '0x2222222222222222222222222222222222222222',
         paymasterData: '0x',
-        paymasterPostOpGasLimit: 30_000,
+        paymasterPostOpGasLimit: 80_000,
         paymasterVerificationGasLimit: 120_000,
       },
       {
@@ -154,7 +154,7 @@ describe('ERC-7579 smart account helpers', () => {
     expect(sponsored).toEqual({
       ...userOperation,
       paymasterAndData:
-        '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000007530',
+        '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000013880',
     });
     expect(sponsored.signature).toBe('0x');
   });
@@ -244,7 +244,7 @@ describe('ERC-7579 smart account helpers', () => {
         smartAccountPaymaster: {
           address: '0x2222222222222222222222222222222222222222',
           paymasterData: 'not-hex',
-          paymasterPostOpGasLimit: 30_000,
+          paymasterPostOpGasLimit: 80_000,
           paymasterVerificationGasLimit: 120_000,
         },
       })
@@ -288,12 +288,12 @@ describe('ERC-7579 smart account helpers', () => {
 
     expect(
       getSmartAccountPaymasterMaxTokenCost(userOperation, {
-        paymasterPostOpGasLimit: 30_000,
+        paymasterPostOpGasLimit: 80_000,
         paymasterVerificationGasLimit: 120_000,
       }).toString()
     ).toBe(
-      // (200_000 + 250_000 + 50_000 + 120_000 + 30_000) * 2.5 gwei
-      (BigInt(650_000) * BigInt(2_500_000_000)).toString()
+      // (200_000 + 250_000 + 50_000 + 120_000 + 80_000) * 2.5 gwei
+      (BigInt(700_000) * BigInt(2_500_000_000)).toString()
     );
   });
 
@@ -314,7 +314,7 @@ describe('ERC-7579 smart account helpers', () => {
             address: '0x3333333333333333333333333333333333333333',
             symbol: 'zkSYS',
           },
-          paymasterPostOpGasLimit: 30_000,
+          paymasterPostOpGasLimit: 80_000,
           paymasterVerificationGasLimit: 120_000,
         },
         false
@@ -330,7 +330,7 @@ describe('ERC-7579 smart account helpers', () => {
           address: '0x3333333333333333333333333333333333333333',
           symbol: 'zkSYS',
         },
-        paymasterPostOpGasLimit: 30_000,
+        paymasterPostOpGasLimit: 80_000,
         paymasterVerificationGasLimit: 120_000,
       },
       BigNumber.from(123)
