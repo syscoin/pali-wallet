@@ -2794,6 +2794,7 @@ class MainController {
         value: string;
       };
       paymaster: string;
+      required: boolean;
       requiredAllowance: string;
       token: {
         address: string;

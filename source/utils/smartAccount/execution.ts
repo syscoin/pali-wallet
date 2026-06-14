@@ -543,6 +543,9 @@ export const signAndSubmitSmartAccountExecutions = async (
 
       return prepareSignAndSubmit(useCachedMetadataOverride, false);
     }
+    if (prepared.paymasterApprovalSetup?.required) {
+      throw new Error('zkSYS gas approval is required before this operation');
+    }
 
     const signature = await signSmartAccountActionHash({
       actionHash: prepared.actionHash,

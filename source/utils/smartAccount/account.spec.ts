@@ -278,6 +278,7 @@ describe('ERC-7579 smart account helpers', () => {
         value: '0x0',
       },
       paymaster: '0x2222222222222222222222222222222222222222',
+      required: false,
       requiredAllowance: '123',
       token: {
         address: '0x3333333333333333333333333333333333333333',

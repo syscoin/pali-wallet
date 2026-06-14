@@ -50,6 +50,7 @@ export type SmartAccountPaymasterApprovalSetup = {
     value: string;
   };
   paymaster: string;
+  required: boolean;
   requiredAllowance: string;
   token: {
     address: string;
@@ -238,6 +239,7 @@ export const buildSmartAccountPaymasterApprovalSetup = (
       value: '0x0',
     },
     paymaster: config.address,
+    required: config.mode === 'required',
     requiredAllowance: requiredAllowance.toString(),
     token: {
       address: getAddress(config.feeToken.address),
