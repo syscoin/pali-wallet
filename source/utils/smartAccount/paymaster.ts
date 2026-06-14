@@ -77,6 +77,9 @@ const ERC20_PAYMASTER_PREFLIGHT_ABI = [
   'function balanceOf(address account) view returns (uint256)',
 ];
 
+const ERC20_TRANSFER_SELECTOR = '0xa9059cbb';
+const ERC20_TRANSFER_FROM_SELECTOR = '0x23b872dd';
+
 const erc20PaymasterPreflightInterface = new Interface(
   ERC20_PAYMASTER_PREFLIGHT_ABI
 );
@@ -148,6 +151,31 @@ export const hasSmartAccountPaymaster = (
   Boolean(
     userOperation.paymasterAndData && userOperation.paymasterAndData !== '0x'
   );
+
+export const hasSmartAccountFeeTokenTransfer = (
+  executions: Array<{ data?: string; target: string }>,
+  config: Pick<SmartAccountPaymasterConfig, 'feeToken'>
+): boolean => {
+  if (!config.feeToken?.address) {
+    return false;
+  }
+
+  const feeTokenAddress = getAddress(config.feeToken.address);
+  return executions.some((execution) => {
+    if (getAddress(execution.target) !== feeTokenAddress) {
+      return false;
+    }
+    if (!execution.data || !isHexString(execution.data)) {
+      return false;
+    }
+
+    const selector = hexDataSlice(execution.data, 0, 4);
+    return (
+      selector === ERC20_TRANSFER_SELECTOR ||
+      selector === ERC20_TRANSFER_FROM_SELECTOR
+    );
+  });
+};
 
 export const getSmartAccountPaymasterMaxTokenCost = (
   userOperation: Pick<

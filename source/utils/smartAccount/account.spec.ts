@@ -44,6 +44,7 @@ import {
   getSmartAccountPaymasterCapability,
   getSmartAccountPaymasterConfig,
   getSmartAccountPaymasterMaxTokenCost,
+  hasSmartAccountFeeTokenTransfer,
 } from './paymaster';
 
 describe('ERC-7579 smart account helpers', () => {
@@ -171,6 +172,70 @@ describe('ERC-7579 smart account helpers', () => {
         } as any,
       })
     ).toBeUndefined();
+  });
+
+  it('detects fee-token transfers that should not be paymaster sponsored', () => {
+    const feeToken = '0x3333333333333333333333333333333333333333';
+    const config = {
+      feeToken: {
+        address: feeToken,
+        symbol: 'zkSYS',
+      },
+    };
+    const transferData = hexConcat([
+      '0xa9059cbb',
+      defaultAbiCoder.encode(
+        ['address', 'uint256'],
+        ['0x4444444444444444444444444444444444444444', 123]
+      ),
+    ]);
+    const transferFromData = hexConcat([
+      '0x23b872dd',
+      defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [
+          '0x5555555555555555555555555555555555555555',
+          '0x4444444444444444444444444444444444444444',
+          123,
+        ]
+      ),
+    ]);
+
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: transferData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: transferFromData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+  });
+
+  it('does not treat fee-token approvals as balance-spending transfers', () => {
+    const feeToken = '0x3333333333333333333333333333333333333333';
+    const approveData = hexConcat([
+      '0x095ea7b3',
+      defaultAbiCoder.encode(
+        ['address', 'uint256'],
+        ['0x2222222222222222222222222222222222222222', 123]
+      ),
+    ]);
+
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: approveData, target: feeToken }],
+        {
+          feeToken: {
+            address: feeToken,
+            symbol: 'zkSYS',
+          },
+        }
+      )
+    ).toBe(false);
   });
 
   it('rejects malformed local paymaster data before signing', () => {

@@ -43,6 +43,7 @@ import {
   getSmartAccountPaymasterConfig,
   applySmartAccountPaymaster,
   buildSmartAccountPaymasterApprovalSetup,
+  hasSmartAccountFeeTokenTransfer,
   getSmartAccountPaymasterPreflight,
   hasSmartAccountPaymaster,
   PaliAuthConfig,
@@ -1022,26 +1023,36 @@ class SmartAccountController {
     const paymasterConfig = options.skipPaymaster
       ? undefined
       : getSmartAccountPaymasterConfig(activeNetwork);
+    const transfersFeeToken =
+      paymasterConfig &&
+      hasSmartAccountFeeTokenTransfer(params, paymasterConfig);
+    if (transfersFeeToken && paymasterConfig.mode === 'required') {
+      throw new Error(
+        'Smart account paymaster cannot sponsor fee-token transfers'
+      );
+    }
+    const usePaymasterConfig =
+      paymasterConfig && !transfersFeeToken ? paymasterConfig : undefined;
     let paymasterPreflight: Awaited<
       ReturnType<typeof getSmartAccountPaymasterPreflight>
     >;
-    if (paymasterConfig) {
+    if (usePaymasterConfig) {
       try {
         paymasterPreflight = await getSmartAccountPaymasterPreflight(
           provider,
           unsignedUserOperation,
-          paymasterConfig,
+          usePaymasterConfig,
           code !== '0x'
         );
       } catch (error) {
-        if (paymasterConfig.mode === 'required') {
+        if (usePaymasterConfig.mode === 'required') {
           throw error;
         }
       }
     }
     const canUsePaymaster = Boolean(paymasterPreflight?.canSponsor);
     if (
-      paymasterConfig?.mode === 'required' &&
+      usePaymasterConfig?.mode === 'required' &&
       !canUsePaymaster &&
       !paymasterPreflight?.canApprove
     ) {
@@ -1050,11 +1061,15 @@ class SmartAccountController {
       );
     }
     const userOperation =
-      paymasterConfig && canUsePaymaster
-        ? applySmartAccountPaymaster(unsignedUserOperation, paymasterConfig, {
-            chainId: activeNetwork.chainId,
-            entryPoint: PALI_ENTRYPOINT_V09_ADDRESS,
-          })
+      usePaymasterConfig && canUsePaymaster
+        ? applySmartAccountPaymaster(
+            unsignedUserOperation,
+            usePaymasterConfig,
+            {
+              chainId: activeNetwork.chainId,
+              entryPoint: PALI_ENTRYPOINT_V09_ADDRESS,
+            }
+          )
         : unsignedUserOperation;
     const actionHash = await entryPoint.getUserOpHash(userOperation);
 
@@ -1070,9 +1085,9 @@ class SmartAccountController {
       executions,
       mode: prepared.mode,
       paymasterApprovalSetup:
-        paymasterConfig && paymasterPreflight?.canApprove
+        usePaymasterConfig && paymasterPreflight?.canApprove
           ? buildSmartAccountPaymasterApprovalSetup(
-              paymasterConfig,
+              usePaymasterConfig,
               paymasterPreflight.required
             )
           : undefined,
