@@ -40,6 +40,11 @@ import {
   getSmartAccountGasUnitsReserve,
   getSmartAccountUserOpRequiredPrefund,
   getSmartAccountValidatorProfile,
+  getSmartAccountPaymasterConfig,
+  applySmartAccountPaymaster,
+  buildSmartAccountPaymasterApprovalSetup,
+  getSmartAccountPaymasterPreflight,
+  hasSmartAccountPaymaster,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
@@ -909,10 +914,11 @@ class SmartAccountController {
   public async prepareSmartAccountExecutions(
     params: Array<{ data?: string; target: string; value: string }>,
     accountId?: number,
-    options: { useCachedMetadata?: boolean } = {}
+    options: { skipPaymaster?: boolean; useCachedMetadata?: boolean } = {}
   ) {
     await this.assertSmartAccountExecutionTargetsAllowed(params);
 
+    const { activeNetwork } = store.getState().vault;
     const useCachedMetadata = options.useCachedMetadata !== false;
     let active = useCachedMetadata
       ? Number.isInteger(accountId)
@@ -1000,7 +1006,7 @@ class SmartAccountController {
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
     });
-    const userOperation = buildSmartAccountUserOperation({
+    const unsignedUserOperation = buildSmartAccountUserOperation({
       accountGasLimits: encodeSmartAccountGasLimits({
         callGasLimit: gasEstimate.callGasLimit,
         verificationGasLimit: gasEstimate.verificationGasLimit,
@@ -1013,6 +1019,30 @@ class SmartAccountController {
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
     });
+    const paymasterConfig = options.skipPaymaster
+      ? undefined
+      : getSmartAccountPaymasterConfig(activeNetwork);
+    const paymasterPreflight = paymasterConfig
+      ? await getSmartAccountPaymasterPreflight(
+          provider,
+          unsignedUserOperation,
+          paymasterConfig,
+          code !== '0x'
+        )
+      : undefined;
+    const canUsePaymaster = Boolean(paymasterPreflight?.canSponsor);
+    if (paymasterConfig?.mode === 'required' && !canUsePaymaster) {
+      throw new Error(
+        'Smart account paymaster is required but the account has insufficient token balance or allowance'
+      );
+    }
+    const userOperation =
+      paymasterConfig && canUsePaymaster
+        ? applySmartAccountPaymaster(unsignedUserOperation, paymasterConfig, {
+            chainId: activeNetwork.chainId,
+            entryPoint: PALI_ENTRYPOINT_V09_ADDRESS,
+          })
+        : unsignedUserOperation;
     const actionHash = await entryPoint.getUserOpHash(userOperation);
 
     const executions = prepared.executions.map((execution) => ({
@@ -1026,6 +1056,13 @@ class SmartAccountController {
       executionCalldata: prepared.executionCalldata,
       executions,
       mode: prepared.mode,
+      paymasterApprovalSetup:
+        paymasterConfig && paymasterPreflight?.canApprove
+          ? buildSmartAccountPaymasterApprovalSetup(
+              paymasterConfig,
+              paymasterPreflight.required
+            )
+          : undefined,
       smartAccount: active.metadata,
       userOperation,
       validator,
@@ -1128,13 +1165,14 @@ class SmartAccountController {
     );
 
     try {
-      // Funded first-UserOp deployment: an op carrying initCode validates
-      // (and pays its EntryPoint prefund) before anything executes, so the
-      // counterfactual account must already cover the prefund. Top up the
-      // shortfall from the gas payer first.
+      // Self-funded first-UserOp deployment: an op carrying initCode validates
+      // before anything executes, so the counterfactual account must already
+      // cover the EntryPoint prefund. Paymaster-sponsored ops charge the
+      // paymaster deposit instead and do not need this account top-up.
       if (
         signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x'
+        signedUserOperation.initCode !== '0x' &&
+        !hasSmartAccountPaymaster(signedUserOperation)
       ) {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,

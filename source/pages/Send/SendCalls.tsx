@@ -181,6 +181,9 @@ export const SendCalls = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
+    'approving' | 'idle' | 'ready'
+  >('idle');
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [selectedCalls, setSelectedCalls] = useState<boolean[]>([]);
   const [processingIndex, setProcessingIndex] = useState<number>(-1);
@@ -504,6 +507,18 @@ export const SendCalls = () => {
             }),
             controllerEmitter,
             executions: smartAccountCalls,
+            onPaymasterApprovalConfirmed: () =>
+              setPaymasterSetupStatus('ready'),
+            onPaymasterApprovalRequired: (setup) => {
+              const tokenSymbol = setup.token.symbol || 'zkSYS';
+              const approved = window.confirm(
+                t('send.paymasterApprovalPrompt', { token: tokenSymbol })
+              );
+              if (approved) {
+                setPaymasterSetupStatus('approving');
+              }
+              return approved;
+            },
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
                 setTransactionStatuses((prev) => {
@@ -1058,6 +1073,13 @@ export const SendCalls = () => {
         {/* Progress indicator */}
         {loading && transactionStatuses && (
           <div className="mb-3 px-4">
+            {paymasterSetupStatus !== 'idle' && (
+              <p className="text-center text-brand-blue200 text-xs mb-2">
+                {paymasterSetupStatus === 'approving'
+                  ? t('send.paymasterApprovalApproving')
+                  : t('send.paymasterApprovalReadyCalls')}
+              </p>
+            )}
             <div className="flex items-center justify-between text-xs text-brand-gray200 mb-1">
               <span>{t('send.progress')}</span>
               <span>

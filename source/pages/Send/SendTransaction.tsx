@@ -130,6 +130,9 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
+    'approving' | 'idle' | 'ready'
+  >('idle');
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -411,6 +414,18 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
+            onPaymasterApprovalConfirmed: () =>
+              setPaymasterSetupStatus('ready'),
+            onPaymasterApprovalRequired: (setup) => {
+              const tokenSymbol = setup.token.symbol || 'zkSYS';
+              const approved = window.confirm(
+                t('send.paymasterApprovalPrompt', { token: tokenSymbol })
+              );
+              if (approved) {
+                setPaymasterSetupStatus('approving');
+              }
+              return approved;
+            },
             smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {
@@ -1146,6 +1161,13 @@ export const SendTransaction = () => {
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}
+              </p>
+            )}
+            {paymasterSetupStatus !== 'idle' && (
+              <p className="text-center text-brand-blue200 text-xs mb-2">
+                {paymasterSetupStatus === 'approving'
+                  ? t('send.paymasterApprovalApproving')
+                  : t('send.paymasterApprovalReadyTransaction')}
               </p>
             )}
             <div className="flex gap-3 justify-center">

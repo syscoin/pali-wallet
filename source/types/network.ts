@@ -20,6 +20,17 @@ export interface INetwork {
   kind: INetworkType;
   label: string;
   slip44: number;
+  smartAccountPaymaster?: {
+    address: string;
+    feeToken?: {
+      address?: string;
+      symbol: string;
+    };
+    mode?: 'optional' | 'required';
+    paymasterData?: string;
+    paymasterPostOpGasLimit: number | string;
+    paymasterVerificationGasLimit: number | string;
+  };
   url: string;
 }
 

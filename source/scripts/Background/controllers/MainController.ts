@@ -2770,7 +2770,7 @@ class MainController {
       value: string;
     }>,
     accountId?: number,
-    options?: { useCachedMetadata?: boolean }
+    options?: { skipPaymaster?: boolean; useCachedMetadata?: boolean }
   ): Promise<{
     actionHash: string;
     execution: {
@@ -2787,6 +2787,19 @@ class MainController {
       value: string;
     }>;
     mode: string;
+    paymasterApprovalSetup?: {
+      execution: {
+        data: string;
+        target: string;
+        value: string;
+      };
+      paymaster: string;
+      requiredAllowance: string;
+      token: {
+        address: string;
+        symbol?: string;
+      };
+    };
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {

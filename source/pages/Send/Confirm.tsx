@@ -90,6 +90,9 @@ export const SendConfirm = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
+    'approving' | 'idle' | 'ready'
+  >('idle');
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
@@ -372,6 +375,17 @@ export const SendConfirm = () => {
           }),
           controllerEmitter,
           executions: [{ target, value, data }],
+          onPaymasterApprovalConfirmed: () => setPaymasterSetupStatus('ready'),
+          onPaymasterApprovalRequired: (setup) => {
+            const tokenSymbol = setup.token.symbol || 'zkSYS';
+            const approved = window.confirm(
+              t('send.paymasterApprovalPrompt', { token: tokenSymbol })
+            );
+            if (approved) {
+              setPaymasterSetupStatus('approving');
+            }
+            return approved;
+          },
           smartAccount: activeAccount.smartAccount,
         });
       };
@@ -2002,6 +2016,13 @@ export const SendConfirm = () => {
           )}
 
           <DeviceWaitingBanner account={activeAccount} show={loading} />
+          {paymasterSetupStatus !== 'idle' && (
+            <p className="text-center text-brand-blue200 text-xs mb-2">
+              {paymasterSetupStatus === 'approving'
+                ? t('send.paymasterApprovalApproving')
+                : t('send.paymasterApprovalReadyTransaction')}
+            </p>
+          )}
 
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
