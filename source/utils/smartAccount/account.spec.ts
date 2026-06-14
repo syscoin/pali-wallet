@@ -189,6 +189,7 @@ describe('ERC-7579 smart account helpers', () => {
         ['0x4444444444444444444444444444444444444444', 123]
       ),
     ]);
+    const uppercaseTransferData = `0x${transferData.slice(2).toUpperCase()}`;
     const transferFromData = hexConcat([
       '0x23b872dd',
       defaultAbiCoder.encode(
@@ -210,6 +211,12 @@ describe('ERC-7579 smart account helpers', () => {
     expect(
       hasSmartAccountFeeTokenTransfer(
         [{ data: transferFromData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: uppercaseTransferData, target: feeToken }],
         config
       )
     ).toBe(true);

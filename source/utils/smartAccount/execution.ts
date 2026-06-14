@@ -579,7 +579,7 @@ export const signAndSubmitSmartAccountExecutions = async (
       const usedOptionalPaymaster =
         !skipPaymaster &&
         hasSmartAccountPaymaster(prepared.userOperation) &&
-        prepared.paymasterApprovalSetup?.required !== true;
+        prepared.paymasterRequired !== true;
 
       if (usedOptionalPaymaster) {
         return prepareSignAndSubmit(useCachedMetadataOverride, true);

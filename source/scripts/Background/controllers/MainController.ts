@@ -2801,6 +2801,7 @@ class MainController {
         symbol?: string;
       };
     };
+    paymasterRequired?: boolean;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {

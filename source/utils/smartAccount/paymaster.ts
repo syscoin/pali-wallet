@@ -169,7 +169,7 @@ export const hasSmartAccountFeeTokenTransfer = (
       return false;
     }
 
-    const selector = hexDataSlice(execution.data, 0, 4);
+    const selector = hexDataSlice(execution.data, 0, 4).toLowerCase();
     return (
       selector === ERC20_TRANSFER_SELECTOR ||
       selector === ERC20_TRANSFER_FROM_SELECTOR

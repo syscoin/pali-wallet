@@ -1084,6 +1084,7 @@ class SmartAccountController {
       executionCalldata: prepared.executionCalldata,
       executions,
       mode: prepared.mode,
+      paymasterRequired: usePaymasterConfig?.mode === 'required',
       paymasterApprovalSetup:
         usePaymasterConfig && paymasterPreflight?.canApprove
           ? buildSmartAccountPaymasterApprovalSetup(
