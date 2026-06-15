@@ -25,8 +25,6 @@ export const getKnownTokenLogo = (
   }
 
   switch (symbol?.toUpperCase()) {
-    case 'ZKSYS':
-      return ZkSysIcon;
     case 'SYSX':
     case 'SYS':
       return 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
