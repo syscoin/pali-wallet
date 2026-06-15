@@ -59,6 +59,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 // Safety fallback if the controller reserve lookup fails; matches the
@@ -93,6 +94,8 @@ export const SendConfirm = () => {
   const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
     'approving' | 'idle' | 'ready'
   >('idle');
+  const { paymasterApprovalModal, requestPaymasterApproval } =
+    usePaymasterApprovalModal();
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
@@ -376,11 +379,8 @@ export const SendConfirm = () => {
           controllerEmitter,
           executions: [{ target, value, data }],
           onPaymasterApprovalConfirmed: () => setPaymasterSetupStatus('ready'),
-          onPaymasterApprovalRequired: (setup) => {
-            const tokenSymbol = setup.token.symbol || 'zkSYS';
-            const approved = window.confirm(
-              t('send.paymasterApprovalPrompt', { token: tokenSymbol })
-            );
+          onPaymasterApprovalRequired: async (setup) => {
+            const approved = await requestPaymasterApproval(setup);
             if (approved) {
               setPaymasterSetupStatus('approving');
             }
@@ -2016,6 +2016,7 @@ export const SendConfirm = () => {
           )}
 
           <DeviceWaitingBanner account={activeAccount} show={loading} />
+          {paymasterApprovalModal}
           {paymasterSetupStatus !== 'idle' && (
             <p className="text-center text-brand-blue200 text-xs mb-2">
               {paymasterSetupStatus === 'approving'

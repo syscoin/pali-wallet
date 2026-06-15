@@ -116,6 +116,7 @@ import type {
   SmartAccountPackedUserOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
+import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
   getTransactionBlockInfo,
@@ -3414,8 +3415,13 @@ class MainController {
         throw new Error('Invalid token contract or token not found');
       }
 
-      // Use CoinGecko image if available, otherwise fall back to provided image or Pali logo
+      const knownTokenLogo =
+        getKnownTokenLogo(tokenDetails.symbol, tokenDetails.contractAddress) ||
+        getKnownTokenLogo(asset.symbol, asset.address);
+
+      // Use known local logos first, then CoinGecko/provided image, then Pali logo
       const tokenLogo =
+        knownTokenLogo ||
         tokenDetails.image?.large ||
         tokenDetails.image?.small ||
         tokenDetails.image?.thumb ||
