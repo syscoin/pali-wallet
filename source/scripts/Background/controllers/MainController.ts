@@ -116,6 +116,7 @@ import type {
   SmartAccountPackedUserOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
+import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
   getTransactionBlockInfo,
@@ -2770,7 +2771,7 @@ class MainController {
       value: string;
     }>,
     accountId?: number,
-    options?: { useCachedMetadata?: boolean }
+    options?: { skipPaymaster?: boolean; useCachedMetadata?: boolean }
   ): Promise<{
     actionHash: string;
     execution: {
@@ -2787,6 +2788,21 @@ class MainController {
       value: string;
     }>;
     mode: string;
+    paymasterApprovalSetup?: {
+      execution: {
+        data: string;
+        target: string;
+        value: string;
+      };
+      paymaster: string;
+      required: boolean;
+      requiredAllowance: string;
+      token: {
+        address: string;
+        symbol?: string;
+      };
+    };
+    paymasterRequired?: boolean;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {
@@ -3399,8 +3415,13 @@ class MainController {
         throw new Error('Invalid token contract or token not found');
       }
 
-      // Use CoinGecko image if available, otherwise fall back to provided image or Pali logo
+      const knownTokenLogo =
+        getKnownTokenLogo(tokenDetails.symbol, tokenDetails.contractAddress) ||
+        getKnownTokenLogo(asset.symbol, asset.address);
+
+      // Use known local logos first, then CoinGecko/provided image, then Pali logo
       const tokenLogo =
+        knownTokenLogo ||
         tokenDetails.image?.large ||
         tokenDetails.image?.small ||
         tokenDetails.image?.thumb ||

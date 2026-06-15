@@ -59,6 +59,8 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
+import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 // Safety fallback if the controller reserve lookup fails; matches the
@@ -90,6 +92,11 @@ export const SendConfirm = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
+    'approving' | 'idle' | 'ready'
+  >('idle');
+  const { paymasterApprovalModal, requestPaymasterApproval } =
+    usePaymasterApprovalModal();
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
@@ -372,6 +379,14 @@ export const SendConfirm = () => {
           }),
           controllerEmitter,
           executions: [{ target, value, data }],
+          onPaymasterApprovalConfirmed: () => setPaymasterSetupStatus('ready'),
+          onPaymasterApprovalRequired: async (setup) => {
+            const approved = await requestPaymasterApproval(setup);
+            if (approved) {
+              setPaymasterSetupStatus('approving');
+            }
+            return approved;
+          },
           smartAccount: activeAccount.smartAccount,
         });
       };
@@ -2002,6 +2017,11 @@ export const SendConfirm = () => {
           )}
 
           <DeviceWaitingBanner account={activeAccount} show={loading} />
+          {paymasterApprovalModal}
+          <PaymasterSetupStatusBanner
+            context="transaction"
+            status={paymasterSetupStatus}
+          />
 
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button

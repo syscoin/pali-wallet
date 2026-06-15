@@ -55,6 +55,8 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
+import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 export const SendTransaction = () => {
   const { controllerEmitter } = useController();
@@ -130,6 +132,11 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
+    'approving' | 'idle' | 'ready'
+  >('idle');
+  const { paymasterApprovalModal, requestPaymasterApproval } =
+    usePaymasterApprovalModal();
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -411,6 +418,15 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
+            onPaymasterApprovalConfirmed: () =>
+              setPaymasterSetupStatus('ready'),
+            onPaymasterApprovalRequired: async (setup) => {
+              const approved = await requestPaymasterApproval(setup);
+              if (approved) {
+                setPaymasterSetupStatus('approving');
+              }
+              return approved;
+            },
             smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {
@@ -1143,6 +1159,11 @@ export const SendTransaction = () => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
+            {paymasterApprovalModal}
+            <PaymasterSetupStatusBanner
+              context="transaction"
+              status={paymasterSetupStatus}
+            />
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}

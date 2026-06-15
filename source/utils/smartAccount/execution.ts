@@ -13,6 +13,8 @@ import type {
 } from 'types/network';
 
 import { getInstalledValidatorModule } from './modules';
+import { hasSmartAccountPaymaster } from './paymaster';
+import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
 
 type ControllerEmitter = (
   methods: string[],
@@ -30,9 +32,15 @@ export type SubmitSmartAccountExecutionsParams = {
   accountId?: number;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
+  enablePaymasterApprovalSetup?: boolean;
   executions: SmartAccountExecutionIntent[];
   onAssertionResolved?: () => void;
+  onPaymasterApprovalConfirmed?: () => void;
+  onPaymasterApprovalRequired?: (
+    setup: SmartAccountPaymasterApprovalSetup
+  ) => boolean | Promise<boolean>;
   onPrepared?: () => void;
+  skipPaymaster?: boolean;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   useCachedMetadata?: boolean;
@@ -477,21 +485,70 @@ export const signAndSubmitSmartAccountExecutions = async (
     accountId,
     authenticatorContexts,
     controllerEmitter,
+    enablePaymasterApprovalSetup = true,
     executions,
     onAssertionResolved,
+    onPaymasterApprovalConfirmed,
+    onPaymasterApprovalRequired,
     onPrepared,
+    skipPaymaster,
     skipRapidPolling,
     smartAccount,
     useCachedMetadata,
     waitForConfirmation,
   } = params;
-  const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
+  const prepareSignAndSubmit = async (
+    useCachedMetadataOverride?: boolean,
+    skipPaymaster = false
+  ) => {
     const prepared = (await controllerEmitter(
       ['wallet', 'prepareSmartAccountExecutions'],
-      [executions, accountId, { useCachedMetadata: useCachedMetadataOverride }],
+      [
+        executions,
+        accountId,
+        {
+          skipPaymaster,
+          useCachedMetadata: useCachedMetadataOverride,
+        },
+      ],
       300000
     )) as any;
     onPrepared?.();
+
+    if (
+      enablePaymasterApprovalSetup &&
+      !skipPaymaster &&
+      prepared.paymasterApprovalSetup &&
+      onPaymasterApprovalRequired
+    ) {
+      const approved = await onPaymasterApprovalRequired(
+        prepared.paymasterApprovalSetup
+      );
+      if (!approved) {
+        if (prepared.paymasterApprovalSetup.required) {
+          throw new Error('zkSYS gas approval was not authorized');
+        }
+      } else {
+        await signAndSubmitSmartAccountExecutions({
+          accountId,
+          authenticatorContexts,
+          controllerEmitter,
+          enablePaymasterApprovalSetup: false,
+          executions: [prepared.paymasterApprovalSetup.execution],
+          skipPaymaster: true,
+          skipRapidPolling: true,
+          smartAccount: prepared.smartAccount || smartAccount,
+          useCachedMetadata: useCachedMetadataOverride,
+          waitForConfirmation: true,
+        });
+        onPaymasterApprovalConfirmed?.();
+
+        return prepareSignAndSubmit(useCachedMetadataOverride, false);
+      }
+    }
+    if (prepared.paymasterApprovalSetup?.required) {
+      throw new Error('zkSYS gas approval is required before this operation');
+    }
 
     const signature = await signSmartAccountActionHash({
       actionHash: prepared.actionHash,
@@ -500,30 +557,42 @@ export const signAndSubmitSmartAccountExecutions = async (
     });
     onAssertionResolved?.();
 
-    return controllerEmitter(
-      ['wallet', 'submitSmartAccountExecution'],
-      [
-        {
-          executionCalldata: prepared.executionCalldata,
-          executions: prepared.executions,
-          accountId,
-          mode: prepared.mode,
-          signature: signature.signature,
-          skipRapidPolling,
-          userOperation: prepared.userOperation,
-          validator: prepared.validator,
-          waitForConfirmation,
-        },
-      ],
-      300000
-    );
+    try {
+      return await controllerEmitter(
+        ['wallet', 'submitSmartAccountExecution'],
+        [
+          {
+            executionCalldata: prepared.executionCalldata,
+            executions: prepared.executions,
+            accountId,
+            mode: prepared.mode,
+            signature: signature.signature,
+            skipRapidPolling,
+            userOperation: prepared.userOperation,
+            validator: prepared.validator,
+            waitForConfirmation,
+          },
+        ],
+        300000
+      );
+    } catch (error) {
+      const usedOptionalPaymaster =
+        !skipPaymaster &&
+        hasSmartAccountPaymaster(prepared.userOperation) &&
+        prepared.paymasterRequired !== true;
+
+      if (usedOptionalPaymaster) {
+        return prepareSignAndSubmit(useCachedMetadataOverride, true);
+      }
+      throw error;
+    }
   };
 
   try {
-    return await prepareSignAndSubmit(useCachedMetadata);
+    return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
   } catch (error) {
     if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
-      return prepareSignAndSubmit(false);
+      return prepareSignAndSubmit(false, skipPaymaster);
     }
     throw error;
   }

@@ -6,6 +6,7 @@ jest.unmock('@ethersproject/keccak256');
 jest.unmock('@ethersproject/strings');
 
 import { defaultAbiCoder } from '@ethersproject/abi';
+import { BigNumber } from '@ethersproject/bignumber';
 import { hexConcat } from '@ethersproject/bytes';
 import { keccak256 } from '@ethersproject/keccak256';
 
@@ -35,6 +36,16 @@ import {
   paliSmartAccountFactoryInterface,
 } from './contracts';
 import { encodeSmartAccountAuthenticatorSignature } from './execution';
+import {
+  applySmartAccountPaymaster,
+  buildSmartAccountPaymasterAndData,
+  buildSmartAccountPaymasterApprovalSetup,
+  canApplySmartAccountPaymaster,
+  getSmartAccountPaymasterCapability,
+  getSmartAccountPaymasterConfig,
+  getSmartAccountPaymasterMaxTokenCost,
+  hasSmartAccountFeeTokenTransfer,
+} from './paymaster';
 
 describe('ERC-7579 smart account helpers', () => {
   const auth = {
@@ -76,6 +87,177 @@ describe('ERC-7579 smart account helpers', () => {
     });
   });
 
+  it('encodes ERC-4337 paymasterAndData from network paymaster config', () => {
+    const config = getSmartAccountPaymasterConfig({
+      smartAccountPaymaster: {
+        address: '0x2222222222222222222222222222222222222222',
+        feeToken: {
+          address: '0x3333333333333333333333333333333333333333',
+          symbol: 'zkSYS',
+        },
+        mode: 'required',
+        paymasterData: '0xabcdef',
+        paymasterPostOpGasLimit: 80_000,
+        paymasterVerificationGasLimit: 120_000,
+      },
+    });
+    const userOperation = buildSmartAccountUserOperation({
+      callData: '0x1234',
+      nonce: '1',
+      sender: '0x1111111111111111111111111111111111111111',
+    });
+
+    expect(config).toBeDefined();
+    expect(
+      buildSmartAccountPaymasterAndData(config!, {
+        chainId: 57057,
+        entryPoint: '0x4444444444444444444444444444444444444444',
+        userOperation,
+      })
+    ).toBe(
+      '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000013880abcdef'
+    );
+    expect(
+      getSmartAccountPaymasterCapability({ smartAccountPaymaster: config! })
+    ).toEqual({
+      feeToken: {
+        address: '0x3333333333333333333333333333333333333333',
+        symbol: 'zkSYS',
+      },
+      mode: 'required',
+      paymaster: '0x2222222222222222222222222222222222222222',
+      status: 'supported',
+    });
+  });
+
+  it('applies configured paymaster data before the UserOperation is signed', () => {
+    const userOperation = buildSmartAccountUserOperation({
+      callData: '0x1234',
+      nonce: '1',
+      sender: '0x1111111111111111111111111111111111111111',
+      signature: '0x',
+    });
+    const sponsored = applySmartAccountPaymaster(
+      userOperation,
+      {
+        address: '0x2222222222222222222222222222222222222222',
+        paymasterData: '0x',
+        paymasterPostOpGasLimit: 80_000,
+        paymasterVerificationGasLimit: 120_000,
+      },
+      {
+        chainId: 57057,
+        entryPoint: '0x4444444444444444444444444444444444444444',
+      }
+    );
+
+    expect(sponsored).toEqual({
+      ...userOperation,
+      paymasterAndData:
+        '0x22222222222222222222222222222222222222220000000000000000000000000001d4c000000000000000000000000000013880',
+    });
+    expect(sponsored.signature).toBe('0x');
+  });
+
+  it('keeps paymaster sponsorship disabled when no network config exists', () => {
+    expect(getSmartAccountPaymasterConfig({})).toBeUndefined();
+    expect(getSmartAccountPaymasterCapability({})).toBeUndefined();
+  });
+
+  it('keeps paymaster sponsorship disabled when gas limits are missing', () => {
+    expect(
+      getSmartAccountPaymasterConfig({
+        smartAccountPaymaster: {
+          address: '0x2222222222222222222222222222222222222222',
+        } as any,
+      })
+    ).toBeUndefined();
+  });
+
+  it('detects fee-token transfers that should not be paymaster sponsored', () => {
+    const feeToken = '0x3333333333333333333333333333333333333333';
+    const config = {
+      feeToken: {
+        address: feeToken,
+        symbol: 'zkSYS',
+      },
+    };
+    const transferData = hexConcat([
+      '0xa9059cbb',
+      defaultAbiCoder.encode(
+        ['address', 'uint256'],
+        ['0x4444444444444444444444444444444444444444', 123]
+      ),
+    ]);
+    const uppercaseTransferData = `0x${transferData.slice(2).toUpperCase()}`;
+    const transferFromData = hexConcat([
+      '0x23b872dd',
+      defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [
+          '0x5555555555555555555555555555555555555555',
+          '0x4444444444444444444444444444444444444444',
+          123,
+        ]
+      ),
+    ]);
+
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: transferData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: transferFromData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: uppercaseTransferData, target: feeToken }],
+        config
+      )
+    ).toBe(true);
+  });
+
+  it('does not treat fee-token approvals as balance-spending transfers', () => {
+    const feeToken = '0x3333333333333333333333333333333333333333';
+    const approveData = hexConcat([
+      '0x095ea7b3',
+      defaultAbiCoder.encode(
+        ['address', 'uint256'],
+        ['0x2222222222222222222222222222222222222222', 123]
+      ),
+    ]);
+
+    expect(
+      hasSmartAccountFeeTokenTransfer(
+        [{ data: approveData, target: feeToken }],
+        {
+          feeToken: {
+            address: feeToken,
+            symbol: 'zkSYS',
+          },
+        }
+      )
+    ).toBe(false);
+  });
+
+  it('rejects malformed local paymaster data before signing', () => {
+    expect(() =>
+      getSmartAccountPaymasterConfig({
+        smartAccountPaymaster: {
+          address: '0x2222222222222222222222222222222222222222',
+          paymasterData: 'not-hex',
+          paymasterPostOpGasLimit: 80_000,
+          paymasterVerificationGasLimit: 120_000,
+        },
+      })
+    ).toThrow('Smart account paymaster data must be hex encoded');
+  });
+
   it('computes the EntryPoint prefund from packed userOp gas fields', () => {
     const userOperation = {
       accountGasLimits: encodeSmartAccountGasLimits({
@@ -93,6 +275,89 @@ describe('ERC-7579 smart account helpers', () => {
       // (1_100_000 + 250_000 + 50_000) * 2.5 gwei
       (BigInt(1_400_000) * BigInt(2_500_000_000)).toString()
     );
+  });
+
+  it('includes paymaster gas when computing the ERC-20 paymaster precharge', () => {
+    const userOperation = buildSmartAccountUserOperation({
+      accountGasLimits: encodeSmartAccountGasLimits({
+        callGasLimit: 250_000,
+        verificationGasLimit: 200_000,
+      }),
+      callData: '0x1234',
+      gasFees: encodeSmartAccountGasFees({
+        maxFeePerGas: 2_500_000_000,
+        maxPriorityFeePerGas: 1_000_000_000,
+      }),
+      nonce: '1',
+      preVerificationGas: '50000',
+      sender: '0x1111111111111111111111111111111111111111',
+    });
+
+    expect(
+      getSmartAccountPaymasterMaxTokenCost(userOperation, {
+        paymasterPostOpCost: 35_000,
+        paymasterPostOpGasLimit: 80_000,
+        paymasterVerificationGasLimit: 120_000,
+      }).toString()
+    ).toBe(
+      // (200_000 + 250_000 + 50_000 + 120_000 + charged 35_000) * 2.5 gwei
+      (BigInt(655_000) * BigInt(2_500_000_000)).toString()
+    );
+  });
+
+  it('does not use an ERC-20 paymaster before the smart account is deployed', async () => {
+    const userOperation = buildSmartAccountUserOperation({
+      callData: '0x1234',
+      nonce: '1',
+      sender: '0x1111111111111111111111111111111111111111',
+    });
+
+    await expect(
+      canApplySmartAccountPaymaster(
+        {} as any,
+        userOperation,
+        {
+          address: '0x2222222222222222222222222222222222222222',
+          feeToken: {
+            address: '0x3333333333333333333333333333333333333333',
+            symbol: 'zkSYS',
+          },
+          paymasterPostOpGasLimit: 80_000,
+          paymasterVerificationGasLimit: 120_000,
+        },
+        false
+      )
+    ).resolves.toBe(false);
+  });
+
+  it('builds a max ERC-20 approval setup for the configured paymaster', () => {
+    const setup = buildSmartAccountPaymasterApprovalSetup(
+      {
+        address: '0x2222222222222222222222222222222222222222',
+        feeToken: {
+          address: '0x3333333333333333333333333333333333333333',
+          symbol: 'zkSYS',
+        },
+        paymasterPostOpGasLimit: 80_000,
+        paymasterVerificationGasLimit: 120_000,
+      },
+      BigNumber.from(123)
+    );
+
+    expect(setup).toEqual({
+      execution: {
+        data: '0x095ea7b30000000000000000000000002222222222222222222222222222222222222222ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+        target: '0x3333333333333333333333333333333333333333',
+        value: '0x0',
+      },
+      paymaster: '0x2222222222222222222222222222222222222222',
+      required: false,
+      requiredAllowance: '123',
+      token: {
+        address: '0x3333333333333333333333333333333333333333',
+        symbol: 'zkSYS',
+      },
+    });
   });
 
   it('encodes ECDSA threshold config', () => {

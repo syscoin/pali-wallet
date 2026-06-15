@@ -1,4 +1,39 @@
 import PaliLogo from 'assets/all_assets/favicon-32.png';
+import ZkSysIcon from 'assets/all_assets/zksys-icon.svg';
+import { PALI_NETWORKS_STATE } from 'utils/constants';
+
+const CONFIGURED_ZKSYS_TOKEN_ADDRESSES = new Set(
+  Object.values(PALI_NETWORKS_STATE.ethereum)
+    .map((network) => network.smartAccountPaymaster?.feeToken?.address)
+    .filter(Boolean)
+    .map((address) => address!.toLowerCase())
+);
+
+export const getKnownTokenLogo = (
+  symbol?: string,
+  contractAddress?: string
+): string | null => {
+  if (
+    contractAddress &&
+    CONFIGURED_ZKSYS_TOKEN_ADDRESSES.has(contractAddress.toLowerCase())
+  ) {
+    return ZkSysIcon;
+  }
+
+  if (contractAddress) {
+    return null;
+  }
+
+  switch (symbol?.toUpperCase()) {
+    case 'SYSX':
+    case 'SYS':
+      return 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
+    case 'BTC':
+      return 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png';
+    default:
+      return null;
+  }
+};
 
 /**
  * Get token logo URL based on symbol
@@ -12,18 +47,7 @@ export const getTokenLogo = (
 ): string | null => {
   if (!symbol) return null;
 
-  const upperSymbol = symbol.toUpperCase();
-
-  // Special logos for known tokens
-  switch (upperSymbol) {
-    case 'SYSX':
-    case 'SYS':
-      return 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
-    case 'BTC':
-      return 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png';
-    default:
-      return includePaliLogo ? PaliLogo : null;
-  }
+  return getKnownTokenLogo(symbol) || (includePaliLogo ? PaliLogo : null);
 };
 
 /**

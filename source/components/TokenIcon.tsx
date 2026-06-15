@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
+import { getKnownTokenLogo } from 'utils/tokens';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
 // Add a simple LRU cap to prevent unbounded growth
@@ -57,10 +58,15 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     size = 24,
     symbol,
   }) => {
+    const knownLogo = getKnownTokenLogo(symbol, contractAddress);
+    const resolvedLogo = contractAddress
+      ? knownLogo || logo
+      : logo || knownLogo;
+
     // Create a unique cache key
     const getCacheKey = () => {
       // If we have a logo URL, use that as the key (most specific)
-      if (logo) return logo;
+      if (resolvedLogo) return resolvedLogo;
       // For EVM tokens, use contract address
       if (contractAddress) return contractAddress.toLowerCase();
       // For UTXO tokens, use asset GUID
@@ -104,7 +110,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       }
 
       // No logo URL provided, use fallback immediately
-      if (!logo) {
+      if (!resolvedLogo) {
         return {
           url: null,
           error: true,
@@ -127,13 +133,13 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
 
     useEffect(() => {
       // Skip if no logo URL or already cached
-      if (!logo || tokenImageCache.has(cacheKey)) {
+      if (!resolvedLogo || tokenImageCache.has(cacheKey)) {
         return;
       }
 
       // Skip if it's a Pali logo (already local)
-      if (logo === PaliLogo || logo === NFT_FALLBACK_IMAGE) {
-        setIconUrl(logo);
+      if (resolvedLogo === PaliLogo || resolvedLogo === NFT_FALLBACK_IMAGE) {
+        setIconUrl(resolvedLogo);
         setError(false);
         setIsLoading(false);
         // Don't cache local assets
@@ -158,7 +164,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
       // Create fetch promise for deduplication
       const fetchIcon = async (): Promise<string | null> => {
         try {
-          const response = await fetch(logo);
+          const response = await fetch(resolvedLogo);
           if (!response.ok) throw new Error('Failed to fetch');
 
           const blob = await response.blob();
@@ -171,9 +177,9 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
                 | undefined;
               if (oldestKey !== undefined) tokenImageCache.delete(oldestKey);
             }
-            tokenImageCache.set(cacheKey, logo);
+            tokenImageCache.set(cacheKey, resolvedLogo);
             tokenImageFailureTs.delete(cacheKey);
-            return logo;
+            return resolvedLogo;
           }
           const reader = new FileReader();
 
@@ -234,7 +240,7 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
           setIsLoading(false);
           pendingTokenRequests.delete(cacheKey); // Clean up
         });
-    }, [logo, cacheKey]);
+    }, [resolvedLogo, cacheKey]);
 
     // Check if we have a cached image to use immediately
     const cachedImage = tokenImageCache.get(cacheKey);
