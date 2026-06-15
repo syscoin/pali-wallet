@@ -59,6 +59,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
 import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
@@ -2017,13 +2018,10 @@ export const SendConfirm = () => {
 
           <DeviceWaitingBanner account={activeAccount} show={loading} />
           {paymasterApprovalModal}
-          {paymasterSetupStatus !== 'idle' && (
-            <p className="text-center text-brand-blue200 text-xs mb-2">
-              {paymasterSetupStatus === 'approving'
-                ? t('send.paymasterApprovalApproving')
-                : t('send.paymasterApprovalReadyTransaction')}
-            </p>
-          )}
+          <PaymasterSetupStatusBanner
+            context="transaction"
+            status={paymasterSetupStatus}
+          />
 
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button

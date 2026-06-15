@@ -21,6 +21,7 @@ import {
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
 
+import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
 import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 interface ISendCallsData {
@@ -1072,16 +1073,13 @@ export const SendCalls = () => {
       {/* Action buttons */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
         {paymasterApprovalModal}
+        <PaymasterSetupStatusBanner
+          context="calls"
+          status={paymasterSetupStatus}
+        />
         {/* Progress indicator */}
         {loading && transactionStatuses && (
           <div className="mb-3 px-4">
-            {paymasterSetupStatus !== 'idle' && (
-              <p className="text-center text-brand-blue200 text-xs mb-2">
-                {paymasterSetupStatus === 'approving'
-                  ? t('send.paymasterApprovalApproving')
-                  : t('send.paymasterApprovalReadyCalls')}
-              </p>
-            )}
             <div className="flex items-center justify-between text-xs text-brand-gray200 mb-1">
               <span>{t('send.progress')}</span>
               <span>

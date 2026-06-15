@@ -55,6 +55,7 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
 import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 export const SendTransaction = () => {
@@ -1159,16 +1160,13 @@ export const SendTransaction = () => {
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
             {paymasterApprovalModal}
+            <PaymasterSetupStatusBanner
+              context="transaction"
+              status={paymasterSetupStatus}
+            />
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}
-              </p>
-            )}
-            {paymasterSetupStatus !== 'idle' && (
-              <p className="text-center text-brand-blue200 text-xs mb-2">
-                {paymasterSetupStatus === 'approving'
-                  ? t('send.paymasterApprovalApproving')
-                  : t('send.paymasterApprovalReadyTransaction')}
               </p>
             )}
             <div className="flex gap-3 justify-center">
