@@ -29,7 +29,7 @@ import {
   getTransactionTypeLabel,
   getTransactionTypeDisplayLabel,
 } from 'utils/commonMethodSignatures';
-import { getTokenLogo } from 'utils/index';
+import { getKnownTokenLogo } from 'utils/index';
 import {
   getSmartAccountDisplayTransaction,
   getTransactionDisplayInfo,
@@ -259,14 +259,16 @@ const EvmTransactionItem = React.memo(
       let tokenIcon: React.ReactNode = null;
       if (displayInfo.isErc20Transfer && displayTx?.to && tokenMeta) {
         const symbol = tokenMeta?.tokenSymbol || tokenMeta?.symbol;
-        const logo = tokenMeta?.logo || getTokenLogo(symbol);
+        const logo =
+          tokenMeta?.logo ||
+          getKnownTokenLogo(symbol, tokenMeta.contractAddress);
         if (logo && symbol) {
           tokenIcon = (
             <Tooltip content={tokenMeta?.name || symbol}>
               <span className="inline-flex items-center justify-center">
                 <TokenIcon
                   logo={logo}
-                  assetGuid={tokenMeta.contractAddress}
+                  contractAddress={tokenMeta.contractAddress}
                   symbol={symbol}
                   size={14}
                   className="shrink-0 hover:scale-110 hover:shadow-md transition-transform duration-200"
