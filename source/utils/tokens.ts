@@ -20,6 +20,10 @@ export const getKnownTokenLogo = (
     return ZkSysIcon;
   }
 
+  if (contractAddress) {
+    return null;
+  }
+
   switch (symbol?.toUpperCase()) {
     case 'ZKSYS':
       return ZkSysIcon;
