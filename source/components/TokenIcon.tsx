@@ -59,7 +59,9 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     symbol,
   }) => {
     const knownLogo = getKnownTokenLogo(symbol, contractAddress);
-    const resolvedLogo = knownLogo || logo;
+    const resolvedLogo = contractAddress
+      ? knownLogo || logo
+      : logo || knownLogo;
 
     // Create a unique cache key
     const getCacheKey = () => {
