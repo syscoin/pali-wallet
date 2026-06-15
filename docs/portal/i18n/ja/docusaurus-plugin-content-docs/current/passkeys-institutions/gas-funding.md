@@ -3,3 +3,7 @@ title: ガスと資金
 ---
 
 スマートアカウントの承認とgas支払いは別です。validatorがactionを承認し、資金のあるwallet accountがnetwork feeを支払います。現在のPali flowではdeployment、module installation、`wallet_sendCalls`、guardian recoveryにwallet-paid gasを使います。将来のcapabilityが明示しない限り、dappはgasless flowを約束しないでください。
+
+## PaymasterによるzkSYS gas
+
+zkTanenbaumなど設定済みのnetworkでは、Paliは対象となるsmart account送信の実行コストをPali paymaster経由でzkSYSで支払えます。初回利用時にはzkSYSの一回限りのapprovalが必要になる場合があり、このsetup transactionにはまだnative gasが必要なことがあります。zkSYS sponsorshipがoptionalで、利用できない、拒否された、またはそのoperationに対して安全でない場合、Paliはnative gasにfallbackします。Dappはこれを完全なgasless flowではなく、利用可能な場合のzkSYS-paid smart-account gasとして説明してください。

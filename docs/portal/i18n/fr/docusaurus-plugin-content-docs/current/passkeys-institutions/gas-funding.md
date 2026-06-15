@@ -6,8 +6,12 @@ L’autorisation du compte intelligent et le paiement du gas sont séparés. Un 
 
 ## Modèle actuel
 
-El flujo actual usa gas pagado por la wallet: despliegue, instalación de módulos, `wallet_sendCalls` y guardian recovery se envían con una cuenta local financiada. No anuncies una experiencia gasless salvo que una capability futura lo indique explícitamente.
+Le flux actuel utilise du gas payé par le wallet : le déploiement, l’installation de modules, `wallet_sendCalls` et la guardian recovery sont envoyés par un compte local financé. N’annoncez pas une expérience gasless sauf si une capability future indique explicitement le sponsoring.
+
+## Gas zkSYS via paymaster
+
+Sur les réseaux configurés comme zkTanenbaum, Pali peut payer les envois de smart account éligibles en zkSYS via un paymaster Pali. La première utilisation peut nécessiter une approbation zkSYS unique ; cette transaction de configuration peut encore nécessiter du gas natif. Si le sponsoring zkSYS est optionnel et indisponible, refusé ou dangereux pour l’opération demandée, Pali revient au gas natif. Les dapps doivent présenter cela comme du gas de smart account payé en zkSYS lorsque disponible, pas comme un flux entièrement gasless.
 
 ## Conseils pour les dapps
 
-Explica que Pali creará una cuenta inteligente, que el usuario aprobará la acción y que puede necesitar native token para despliegue o recuperación. No pases objetos legacy de patrocinio a `wallet_prepareSmartAccount`; la solicitud actual usa label y configuración de authenticator/módulos.
+Expliquez que Pali créera un compte intelligent, que l’utilisateur approuvera l’action et qu’il peut avoir besoin de native token pour le déploiement ou la récupération. Ne transmettez pas d’objets legacy de sponsoring à `wallet_prepareSmartAccount` ; la demande actuelle utilise le label et la configuration de l’authenticator/des modules.

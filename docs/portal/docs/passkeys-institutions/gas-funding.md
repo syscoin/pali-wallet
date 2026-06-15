@@ -13,7 +13,15 @@ The current Pali smart-account flow uses wallet-paid gas:
 - `wallet_sendCalls` batches are authorized by the active smart-account validator and submitted as one transaction.
 - Guardian recovery start/finalize transactions are sent by a local gas payer or guardian account.
 
-This means a user can approve with a passkey, but the wallet still needs native gas on the active chain.
+This means a user can approve with a passkey, but the wallet usually still needs native gas on the active chain unless a configured paymaster flow is available.
+
+## zkSYS paymaster gas on configured networks
+
+On networks where Pali configures a smart-account paymaster, such as zkTanenbaum, eligible smart-account sends can pay execution costs in zkSYS instead of native gas. The paymaster is part of Pali's ERC-4337 smart-account submission path; it is not a generic dapp-provided `paymasterService` endpoint.
+
+The first use may require a one-time approval that lets the paymaster spend zkSYS from the smart account. That setup transaction is submitted separately and may still require native gas unless the account already has the approval in place. After approval, Pali can prefer zkSYS gas for wallet sends and dapp `wallet_sendCalls` when the operation is eligible.
+
+If zkSYS sponsorship is optional and unavailable, declined, or unsafe for the requested operation, Pali falls back to native gas. Dapps should describe this as "zkSYS-paid smart-account gas when available," not as a fully gasless flow.
 
 ## What dapps should tell users
 
@@ -27,7 +35,7 @@ Dapps should avoid saying "gasless" for the current flow. Better wording is:
 
 Pali smart accounts already use ERC-4337-style `UserOperation`s through Pali's EntryPoint v0.9 path. That architecture keeps authorization, bundling, and gas payment separate: validators approve the account action, while the account, a gas payer, or a paymaster can cover execution costs depending on the supported submission path.
 
-The current wallet-facing flow self-bundles through a local funded gas payer, even though the underlying `UserOperation` format has a `paymasterAndData` field. Dapps should not pass gas-payer or paymaster objects to `wallet_prepareSmartAccount` until Pali exposes paymaster support as an explicit wallet capability. The current creation request is based on account label and authenticator/module configuration.
+The current wallet-facing flow self-bundles through a local funded gas payer or a configured Pali paymaster, depending on the active network and operation. Dapps should not pass gas-payer or paymaster objects to `wallet_prepareSmartAccount`; the current creation request is based on account label and authenticator/module configuration.
 
 ## Institution guidance
 
