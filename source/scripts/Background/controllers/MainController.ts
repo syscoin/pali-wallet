@@ -2511,6 +2511,7 @@ class MainController {
     // Clean up notification manager to prevent memory leaks
     notificationManager.cleanup();
 
+    clearRuntimeSLHDSAStates();
     this.logout();
 
     // Stop auto-lock timer when wallet is locked
@@ -4696,12 +4697,16 @@ class MainController {
     params: SLHDSASignActionHashParams
   ): Promise<void> {
     const { activeAccount, accounts } = store.getState().vault;
-    if (activeAccount.type !== KeyringAccountType.SmartAccount) {
+    const targetAccountId = params.accountId ?? activeAccount.id;
+    if (
+      typeof params.accountId !== 'number' &&
+      activeAccount.type !== KeyringAccountType.SmartAccount
+    ) {
       throw new Error('SLH-DSA signing requires the active smart account');
     }
 
     const smartAccount = accounts[KeyringAccountType.SmartAccount]?.[
-      activeAccount.id
+      targetAccountId
     ] as any;
     const activeAuth = smartAccount?.smartAccount?.auth;
     const activeSLHDSAValidator =
@@ -4728,7 +4733,7 @@ class MainController {
     });
     if (!state) {
       const setupStatus = await getSLHDSASmartAccountSetupStatus({
-        accountId: activeAccount.id,
+        accountId: targetAccountId,
       });
       if (
         setupStatus?.config?.keyId &&

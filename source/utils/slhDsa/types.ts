@@ -3,6 +3,7 @@ import type { SLH_DSA_PARAMETER_SET } from './constants';
 export type SLHDSAParameterSet = typeof SLH_DSA_PARAMETER_SET;
 
 export type SLHDSASignActionHashParams = {
+  accountId?: number;
   actionHash: string;
   keyId: string;
   parameterSet: SLHDSAParameterSet;

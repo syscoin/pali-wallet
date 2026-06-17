@@ -144,6 +144,7 @@ type P256WebAuthnAuthenticatorRuntimeContext = {
 };
 
 export type SmartAccountSLHDSASigner = (params: {
+  accountId?: number;
   actionHash: string;
   keyId: string;
   parameterSet: 'SLH-DSA-SHA2-128-24';
@@ -289,6 +290,7 @@ export const getSmartAccountLocalOwnerContexts = ({
 export type SmartAccountAuthenticatorContext<
   T extends SmartAccountValidatorModule
 > = {
+  accountId?: number;
   actionHash: string;
   runtimeContext?: unknown;
   smartAccount: ISmartAccountMetadata;
@@ -442,11 +444,17 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
       }
     ),
   id: 'slh-dsa',
-  signActionHash: async ({ actionHash, runtimeContext, validator }) => {
+  signActionHash: async ({
+    accountId,
+    actionHash,
+    runtimeContext,
+    validator,
+  }) => {
     const slhDsaContext = runtimeContext as
       | SLHDSAAuthenticatorRuntimeContext
       | undefined;
     const signature = await slhDsaContext?.signActionHash?.({
+      accountId,
       actionHash,
       keyId: validator.config.keyId,
       parameterSet: validator.config.parameterSet,
@@ -551,6 +559,7 @@ const getAuthenticatorDriver = <T extends SmartAccountValidatorModule>(
 };
 
 export const getSmartAccountExternalSignatureRequest = (params: {
+  accountId?: number;
   actionHash: string;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   smartAccount: ISmartAccountMetadata;
@@ -558,6 +567,7 @@ export const getSmartAccountExternalSignatureRequest = (params: {
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
   return driver.createExternalSignatureRequest({
+    accountId: params.accountId,
     actionHash: params.actionHash,
     runtimeContext: params.authenticatorContexts?.[validator.id],
     smartAccount: params.smartAccount,
@@ -577,6 +587,7 @@ export type SmartAccountGasPolicy =
   | { type: 'self-funded' };
 
 export const signSmartAccountActionHash = async (params: {
+  accountId?: number;
   actionHash: string;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
@@ -589,6 +600,7 @@ export const signSmartAccountActionHash = async (params: {
   params.onAuthenticatorSigningStarted?.(validator.id);
   const signature = await driver
     .signActionHash({
+      accountId: params.accountId,
       actionHash: params.actionHash,
       runtimeContext: params.authenticatorContexts?.[validator.id],
       smartAccount: params.smartAccount,
@@ -702,6 +714,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     }
 
     const signature = await signSmartAccountActionHash({
+      accountId,
       actionHash: prepared.actionHash,
       authenticatorContexts,
       onAuthenticatorSigningResolved,

@@ -261,21 +261,17 @@ const normalizeEcdsaAuthenticator = ({
 
 const normalizeSLHDSAAuthenticator = ({
   chainId,
-  requested,
+  config,
 }: {
   chainId: number;
-  requested: { config?: any; id: string };
-}): PreparedAuthenticator | undefined => {
-  const { config } = requested;
-  if (
-    !config?.keyId ||
-    config?.parameterSet !== 'SLH-DSA-SHA2-128-24' ||
-    !config?.pkRoot ||
-    !config?.pkSeed
-  ) {
-    return undefined;
-  }
-
+  config: {
+    keyId: string;
+    parameterSet: 'SLH-DSA-SHA2-128-24';
+    pkRoot: string;
+    pkSeed: string;
+    signatureLimit?: number;
+  };
+}): PreparedAuthenticator => {
   const validator = getPaliModuleAddress(chainId, 'slh-dsa');
   const data = encodeSLHDSAValidatorInitData({
     pkRoot: config.pkRoot,
@@ -469,7 +465,14 @@ export const PrepareSmartAccount = () => {
         throw new Error(t('connections.smartAccountCompositeUnsupported'));
       }
 
-      const requested =
+      if (
+        requestedAuthenticator.id === 'slh-dsa' &&
+        requestedAuthenticator.config
+      ) {
+        throw new Error(t('connections.smartAccountPrepareFailed'));
+      }
+
+      let requested =
         requestedAuthenticator.id === 'p256-webauthn'
           ? await normalizeP256Authenticator({
               chainId: activeNetwork.chainId,
@@ -478,11 +481,6 @@ export const PrepareSmartAccount = () => {
             })
           : requestedAuthenticator.id === 'ecdsa'
           ? normalizeEcdsaAuthenticator({
-              chainId: activeNetwork.chainId,
-              requested: requestedAuthenticator,
-            })
-          : requestedAuthenticator.id === 'slh-dsa'
-          ? normalizeSLHDSAAuthenticator({
               chainId: activeNetwork.chainId,
               requested: requestedAuthenticator,
             })
@@ -510,6 +508,19 @@ export const PrepareSmartAccount = () => {
         [account.id, KeyringAccountType.SmartAccount, true]
       );
 
+      if (requestedAuthenticator.id === 'slh-dsa') {
+        setCreationStep('credential');
+        const config = (await controllerEmitter(
+          ['wallet', 'provisionSLHDSASmartAccountValidator'],
+          [{ accountId: account.id }],
+          600000
+        )) as Parameters<typeof normalizeSLHDSAAuthenticator>[0]['config'];
+        requested = normalizeSLHDSAAuthenticator({
+          chainId: activeNetwork.chainId,
+          config,
+        });
+      }
+
       if (!requested) {
         await controllerEmitter(
           ['dapp', 'connect'],
@@ -533,6 +544,7 @@ export const PrepareSmartAccount = () => {
         return;
       }
 
+      setCreationStep('deploying');
       await controllerEmitter(
         ['wallet', 'registerSmartAccountOnChain'],
         [{ accountId: account.id }],
