@@ -57,6 +57,8 @@ const moduleDisplayName = (
       return t('settings.passkeyAuthenticator');
     case 'ecdsa':
       return t('settings.ecdsaAuthenticator');
+    case 'slh-dsa':
+      return t('settings.slhDsaAuthenticator');
     case 'composite':
       return t('settings.compositeAuthenticator');
     case 'guardian-recovery':
@@ -667,6 +669,8 @@ const SmartAccountHub = () => {
                         ? t('settings.p256ModuleHint')
                         : module.id === 'guardian-recovery'
                         ? t('settings.smartAccountGuardianRecoveryDescription')
+                        : module.id === 'slh-dsa'
+                        ? t('settings.slhDsaModuleHint')
                         : t('settings.genericModuleHint')}
                     </span>
                   </div>

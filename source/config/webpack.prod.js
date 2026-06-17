@@ -14,6 +14,8 @@ const version = require('../../package.json').version;
 
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
 const environment = process.env.NODE_ENV;
+const preserveConsole =
+  environment === 'canary' || process.env.PALI_DEBUG_CONSOLE === 'true';
 
 module.exports = merge(common, {
   mode: 'production',
@@ -39,6 +41,7 @@ module.exports = merge(common, {
     minimizer: [
       new CssMinimizerPlugin(),
       new TerserPlugin({
+        exclude: /assets[\\/]slh-dsa[\\/]slhdsa-sha2-128-24\.js$/,
         parallel: true,
         terserOptions: {
           parse: {
@@ -49,14 +52,16 @@ module.exports = merge(common, {
             warnings: false,
             comparisons: false,
             inline: 2,
-            drop_console: true,
+            drop_console: !preserveConsole,
             drop_debugger: true,
-            pure_funcs: [
-              'console.log',
-              'console.info',
-              'console.debug',
-              'console.warn',
-            ],
+            pure_funcs: preserveConsole
+              ? []
+              : [
+                  'console.log',
+                  'console.info',
+                  'console.debug',
+                  'console.warn',
+                ],
           },
           mangle: {
             safari10: true,

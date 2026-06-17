@@ -27,6 +27,7 @@ module.exports = {
       'inject/handleWindowProperties.ts'
     ),
     contentScript: join(sourcePath, 'scripts/ContentScript', 'index.ts'),
+    slhDsaOffscreen: join(sourcePath, 'scripts/slhDsa', 'offscreen.ts'),
     app: join(sourcePath, 'pages/App', 'index.tsx'),
     external: join(sourcePath, 'pages/External', 'index.tsx'),
   },
@@ -178,7 +179,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'offscreen.html'),
       inject: 'body',
-      chunks: ['vendor'],
+      chunks: ['vendor', 'slhDsaOffscreen'],
       hash: true,
       filename: 'offscreen.html',
       minify: {
@@ -225,6 +226,13 @@ module.exports = {
         {
           from: 'source/assets/js',
           to: 'assets/js',
+          globOptions: {
+            ignore: [],
+          },
+        },
+        {
+          from: 'source/assets/slh-dsa',
+          to: 'assets/slh-dsa',
           globOptions: {
             ignore: [],
           },

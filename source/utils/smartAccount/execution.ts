@@ -1,6 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
-import { hexConcat } from '@ethersproject/bytes';
+import { hexConcat, isHexString } from '@ethersproject/bytes';
 
 import {
   getP256WebAuthnExternalSignatureMetadata,
@@ -11,6 +11,7 @@ import type {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
 import { getInstalledValidatorModule } from './modules';
 import { hasSmartAccountPaymaster } from './paymaster';
@@ -28,6 +29,61 @@ export type SmartAccountExecutionIntent = {
   value: string;
 };
 
+const smartAccountSubmitJobs = new Map<string, Promise<any>>();
+
+export type SmartAccountAuthenticatorSigningCallback = (
+  authenticator: SmartAccountValidatorModule['id']
+) => void;
+
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableStringify((value as any)[key])}`
+      )
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const sha256Hex = async (value: string) => {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const getSmartAccountSubmitJobKey = async ({
+  accountId,
+  executions,
+  smartAccount,
+}: {
+  accountId?: number;
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  sha256Hex(
+    stableStringify({
+      account: (smartAccount as any)?.address?.toLowerCase?.() ?? null,
+      accountId: accountId ?? null,
+      authValidator: smartAccount.auth?.validator?.toLowerCase?.() ?? null,
+      chainId: smartAccount.chainId,
+      executions: executions.map((execution) => ({
+        data: execution.data || '0x',
+        target: execution.target.toLowerCase(),
+        value: execution.value,
+      })),
+    })
+  );
+
 export type SubmitSmartAccountExecutionsParams = {
   accountId?: number;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
@@ -35,6 +91,8 @@ export type SubmitSmartAccountExecutionsParams = {
   enablePaymasterApprovalSetup?: boolean;
   executions: SmartAccountExecutionIntent[];
   onAssertionResolved?: () => void;
+  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
+  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   onPaymasterApprovalConfirmed?: () => void;
   onPaymasterApprovalRequired?: (
     setup: SmartAccountPaymasterApprovalSetup
@@ -83,6 +141,18 @@ type EcdsaAuthenticatorRuntimeContext = {
 
 type P256WebAuthnAuthenticatorRuntimeContext = {
   onBackupStatus?: (backupStatus: unknown) => Promise<void> | void;
+};
+
+export type SmartAccountSLHDSASigner = (params: {
+  actionHash: string;
+  keyId: string;
+  parameterSet: 'SLH-DSA-SHA2-128-24';
+  pkRoot: string;
+  pkSeed: string;
+}) => Promise<string>;
+
+type SLHDSAAuthenticatorRuntimeContext = {
+  signActionHash?: SmartAccountSLHDSASigner;
 };
 
 const stringifyError = (error: unknown): string => {
@@ -203,6 +273,14 @@ export const getSmartAccountLocalOwnerContexts = ({
           ['wallet', 'ethSignWithAccount'],
           [[owner.address, actionHash], { id: owner.id, type: owner.type }],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
+        ) as Promise<string>,
+    },
+    'slh-dsa': {
+      signActionHash: (params) =>
+        controllerEmitter(
+          ['wallet', 'signSLHDSAActionHash'],
+          [params],
+          600000
         ) as Promise<string>,
     },
   };
@@ -348,6 +426,57 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
   },
 };
 
+const slhDsaDriver: SmartAccountAuthenticatorDriver<
+  Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }>
+> = {
+  createExternalSignatureRequest: (context) =>
+    externalSignatureRequest(
+      context,
+      'Sign this smart account action hash with the configured SLH-DSA key, then submit the signature.',
+      {
+        actionHash: context.actionHash,
+        keyId: context.validator.config.keyId,
+        parameterSet: context.validator.config.parameterSet,
+        pkRoot: context.validator.config.pkRoot,
+        pkSeed: context.validator.config.pkSeed,
+      }
+    ),
+  id: 'slh-dsa',
+  signActionHash: async ({ actionHash, runtimeContext, validator }) => {
+    const slhDsaContext = runtimeContext as
+      | SLHDSAAuthenticatorRuntimeContext
+      | undefined;
+    const signature = await slhDsaContext?.signActionHash?.({
+      actionHash,
+      keyId: validator.config.keyId,
+      parameterSet: validator.config.parameterSet,
+      pkRoot: validator.config.pkRoot,
+      pkSeed: validator.config.pkSeed,
+    });
+
+    if (!signature) {
+      throw new SmartAccountExternalSignatureRequired(
+        slhDsaDriver.createExternalSignatureRequest({
+          actionHash,
+          smartAccount: {} as never,
+          validator,
+        })
+      );
+    }
+    if (
+      !isHexString(signature) ||
+      signature.length !== SLH_DSA_SIGNATURE_HEX_LENGTH
+    ) {
+      throw new Error('SLH-DSA signer returned an invalid signature');
+    }
+
+    return {
+      proof: signature,
+      signature,
+    };
+  },
+};
+
 const compositeDriver: SmartAccountAuthenticatorDriver<
   Extract<SmartAccountValidatorModule, { id: 'composite' }>
 > = {
@@ -397,6 +526,7 @@ const customDriver: SmartAccountAuthenticatorDriver<
 const authenticatorDrivers = [
   p256WebAuthnDriver,
   ecdsaDriver,
+  slhDsaDriver,
   compositeDriver,
   customDriver,
 ] as const;
@@ -449,17 +579,24 @@ export type SmartAccountGasPolicy =
 export const signSmartAccountActionHash = async (params: {
   actionHash: string;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
+  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
+  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   smartAccount: ISmartAccountMetadata;
 }): Promise<SmartAccountAuthenticatorSignature> => {
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
 
-  const signature = await driver.signActionHash({
-    actionHash: params.actionHash,
-    runtimeContext: params.authenticatorContexts?.[validator.id],
-    smartAccount: params.smartAccount,
-    validator,
-  });
+  params.onAuthenticatorSigningStarted?.(validator.id);
+  const signature = await driver
+    .signActionHash({
+      actionHash: params.actionHash,
+      runtimeContext: params.authenticatorContexts?.[validator.id],
+      smartAccount: params.smartAccount,
+      validator,
+    })
+    .finally(() => {
+      params.onAuthenticatorSigningResolved?.(validator.id);
+    });
 
   return {
     ...signature,
@@ -488,6 +625,8 @@ export const signAndSubmitSmartAccountExecutions = async (
     enablePaymasterApprovalSetup = true,
     executions,
     onAssertionResolved,
+    onAuthenticatorSigningResolved,
+    onAuthenticatorSigningStarted,
     onPaymasterApprovalConfirmed,
     onPaymasterApprovalRequired,
     onPrepared,
@@ -497,6 +636,16 @@ export const signAndSubmitSmartAccountExecutions = async (
     useCachedMetadata,
     waitForConfirmation,
   } = params;
+  const validatorForJob = getCurrentValidatorModule(smartAccount);
+  const shouldTrackJob = validatorForJob.id === 'slh-dsa';
+  const submitJobKey = shouldTrackJob
+    ? await getSmartAccountSubmitJobKey({
+        accountId,
+        executions,
+        smartAccount,
+      })
+    : '';
+
   const prepareSignAndSubmit = async (
     useCachedMetadataOverride?: boolean,
     skipPaymaster = false
@@ -535,6 +684,8 @@ export const signAndSubmitSmartAccountExecutions = async (
           controllerEmitter,
           enablePaymasterApprovalSetup: false,
           executions: [prepared.paymasterApprovalSetup.execution],
+          onAuthenticatorSigningResolved,
+          onAuthenticatorSigningStarted,
           skipPaymaster: true,
           skipRapidPolling: true,
           smartAccount: prepared.smartAccount || smartAccount,
@@ -553,12 +704,14 @@ export const signAndSubmitSmartAccountExecutions = async (
     const signature = await signSmartAccountActionHash({
       actionHash: prepared.actionHash,
       authenticatorContexts,
+      onAuthenticatorSigningResolved,
+      onAuthenticatorSigningStarted,
       smartAccount: prepared.smartAccount || smartAccount,
     });
     onAssertionResolved?.();
 
     try {
-      return await controllerEmitter(
+      const result = await controllerEmitter(
         ['wallet', 'submitSmartAccountExecution'],
         [
           {
@@ -575,6 +728,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         ],
         300000
       );
+      return result;
     } catch (error) {
       const usedOptionalPaymaster =
         !skipPaymaster &&
@@ -588,12 +742,31 @@ export const signAndSubmitSmartAccountExecutions = async (
     }
   };
 
-  try {
-    return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
-  } catch (error) {
-    if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
-      return prepareSignAndSubmit(false, skipPaymaster);
+  const run = async () => {
+    try {
+      return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
+    } catch (error) {
+      if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
+        return await prepareSignAndSubmit(false, skipPaymaster);
+      }
+      throw error;
     }
-    throw error;
+  };
+
+  if (!shouldTrackJob) {
+    return run();
+  }
+
+  const inFlightJob = smartAccountSubmitJobs.get(submitJobKey);
+  if (inFlightJob) {
+    return inFlightJob;
+  }
+
+  const job = run();
+  smartAccountSubmitJobs.set(submitJobKey, job);
+  try {
+    return await job;
+  } finally {
+    smartAccountSubmitJobs.delete(submitJobKey);
   }
 };

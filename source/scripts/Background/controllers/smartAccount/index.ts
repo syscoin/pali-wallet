@@ -18,12 +18,19 @@ import {
 } from 'types/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
+  getSLHDSAKeyId,
+  normalizeSLHDSAPublicKeyField,
+  SLH_DSA_PARAMETER_SET,
+} from 'utils/slhDsa';
+import {
   aggregateContractCalls,
   AggregateCallRequest,
   AggregateCallResult,
   clearMulticall3AddressCache,
+  buildHydratedSLHDSAAuthenticator,
   buildP256WebAuthnAuthenticator,
   buildHydratedP256WebAuthnAuthenticator,
+  buildSLHDSAAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
   buildSmartAccountUserOperation,
   encodeCompositeValidatorInitData,
@@ -61,6 +68,7 @@ import {
   paliEcdsaValidatorInterface,
   paliGuardianRecoveryModuleInterface,
   paliP256WebAuthnValidatorInterface,
+  paliSlhDsaValidatorInterface,
   paliSmartAccountInterface,
   SmartAccountExecution,
   SmartAccountPackedUserOperation,
@@ -115,6 +123,13 @@ export interface ISmartAccountControllerDependencies {
     params: string[],
     targetAccount: { id: number; type: PaliKeyringAccountType }
   ) => Promise<string>;
+  signSLHDSARecoveryTargetActionHash: (params: {
+    actionHash: string;
+    keyId: string;
+    parameterSet: 'SLH-DSA-SHA2-128-24';
+    pkRoot: string;
+    pkSeed: string;
+  }) => Promise<string>;
 }
 
 type GuardianRecoveryStatusForAccount = {
@@ -694,6 +709,12 @@ class SmartAccountController {
     switch (authenticator.id) {
       case 'p256-webauthn': {
         return buildP256WebAuthnAuthenticator({
+          chainId,
+          config: authenticator.config,
+        });
+      }
+      case 'slh-dsa': {
+        return buildSLHDSAAuthenticator({
           chainId,
           config: authenticator.config,
         });
@@ -1620,6 +1641,12 @@ class SmartAccountController {
       case 'p256-webauthn':
       case 'composite':
         return;
+      case 'slh-dsa':
+        await this.proveSLHDSARecoveryTargetOwnership(
+          target.auth.data,
+          operationHash
+        );
+        return;
       default:
         return;
     }
@@ -1648,6 +1675,30 @@ class SmartAccountController {
         );
       })
     );
+  }
+
+  private async proveSLHDSARecoveryTargetOwnership(
+    initData: string,
+    operationHash: string
+  ): Promise<void> {
+    const [authData] = defaultAbiCoder.decode(
+      ['tuple(bytes32 pkSeed,bytes32 pkRoot)'],
+      initData
+    ) as [{ pkRoot: string; pkSeed: string }];
+    const pkSeed = normalizeSLHDSAPublicKeyField(
+      authData.pkSeed || (authData as any)[0]
+    );
+    const pkRoot = normalizeSLHDSAPublicKeyField(
+      authData.pkRoot || (authData as any)[1]
+    );
+
+    await this.deps.signSLHDSARecoveryTargetActionHash({
+      actionHash: operationHash,
+      keyId: getSLHDSAKeyId({ pkRoot, pkSeed }),
+      parameterSet: SLH_DSA_PARAMETER_SET,
+      pkRoot,
+      pkSeed,
+    });
   }
 
   /**
@@ -1870,6 +1921,8 @@ class SmartAccountController {
       chainId,
       'composite'
     );
+    const slhDsaAddress = getConfiguredAuthenticatorAddress(chainId, 'slh-dsa');
+    const includeSlhDsa = Boolean(slhDsaAddress);
     const { activeNetwork } = store.getState().vault;
     const guardianModuleAddress = getConfiguredAuthenticatorAddress(
       activeNetwork.chainId,
@@ -1930,6 +1983,17 @@ class SmartAccountController {
         iface: paliCompositeValidatorInterface,
         target: compositeAddress,
       },
+      ...(includeSlhDsa
+        ? ([
+            isModuleInstalledCall(slhDsaAddress),
+            {
+              args: [account.address],
+              fn: 'authData',
+              iface: paliSlhDsaValidatorInterface,
+              target: slhDsaAddress,
+            },
+          ] as AggregateCallRequest[])
+        : []),
       {
         args: [],
         fn: 'activeValidator',
@@ -2045,10 +2109,34 @@ class SmartAccountController {
       });
     }
 
+    const activeValidatorResultIndex = 8 + (includeSlhDsa ? 2 : 0);
+    const guardianBaseIndex = activeValidatorResultIndex + 1;
+
+    if (includeSlhDsa) {
+      const [slhDsaInstalled] = this.requireAggregateResult(
+        results[8],
+        'slh-dsa isModuleInstalled'
+      );
+      if (slhDsaInstalled) {
+        const [authData] = this.requireAggregateResult(
+          results[9],
+          'slh-dsa authData'
+        ) as unknown as [any];
+        const pkSeed = authData.pkSeed || authData[0];
+        const pkRoot = authData.pkRoot || authData[1];
+        const built = buildHydratedSLHDSAAuthenticator({
+          chainId,
+          pkRoot,
+          pkSeed,
+        });
+        installedModules.push(...(built.metadata.installedModules || []));
+      }
+    }
+
     // Custom (bring-your-own) modules still installed on-chain. Failed
     // probes (e.g. module self-destructed) simply drop the module from the
     // installed list; the durable record remains for later re-probing.
-    const customBaseIndex = 9 + (includeGuardian ? 2 : 0);
+    const customBaseIndex = guardianBaseIndex + (includeGuardian ? 2 : 0);
     customRecords.forEach((record, index) => {
       const probe = results[customBaseIndex + index];
       const installed = probe?.success && Boolean(probe.result[0]);
@@ -2070,8 +2158,8 @@ class SmartAccountController {
     if (includeGuardian) {
       const guardianStatus = this.decodeGuardianRecoveryStatus(
         guardianModuleAddress,
-        results[9],
-        results[10]
+        results[guardianBaseIndex],
+        results[guardianBaseIndex + 1]
       );
       if (guardianStatus) {
         installedModules.push({
@@ -2095,7 +2183,10 @@ class SmartAccountController {
     }
 
     const activeValidatorAddress = getAddress(
-      this.requireAggregateResult(results[8], 'activeValidator')[0] as string
+      this.requireAggregateResult(
+        results[activeValidatorResultIndex],
+        'activeValidator'
+      )[0] as string
     );
     const activeValidator =
       activeValidatorAddress !== AddressZero

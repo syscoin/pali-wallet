@@ -17,7 +17,8 @@ export type PaliAuthenticatorModuleId =
   | 'composite'
   | 'ecdsa'
   | 'guardian-recovery'
-  | 'p256-webauthn';
+  | 'p256-webauthn'
+  | 'slh-dsa';
 
 export type PaliSmartAccountAuthenticatorId = Exclude<
   PaliAuthenticatorModuleId,
@@ -64,6 +65,9 @@ export const PALI_COMPOSITE_VALIDATOR_ADDRESSES: Partial<
   Record<number, string>
 > = {};
 
+export const PALI_SLH_DSA_VALIDATOR_ADDRESSES: Partial<Record<number, string>> =
+  {};
+
 export const PALI_GUARDIAN_RECOVERY_MODULE_ADDRESSES: Partial<
   Record<number, string>
 > = {};
@@ -81,6 +85,13 @@ export const PALI_MODULE_REGISTRY: PaliModuleRegistryEntry[] = [
     addresses: PALI_ECDSA_VALIDATOR_ADDRESSES,
     displayName: 'ECDSA',
     id: 'ecdsa',
+    kind: 'builtin',
+    moduleType: ERC7579_MODULE_TYPE_VALIDATOR,
+  },
+  {
+    addresses: PALI_SLH_DSA_VALIDATOR_ADDRESSES,
+    displayName: 'SLH-DSA',
+    id: 'slh-dsa',
     kind: 'builtin',
     moduleType: ERC7579_MODULE_TYPE_VALIDATOR,
   },
@@ -169,6 +180,16 @@ export const PALI_COMPOSITE_VALIDATOR_ABI = [
   'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
 ] as const;
 
+export const PALI_SLH_DSA_VALIDATOR_ABI = [
+  'function authData(address account) view returns ((bytes32 pkSeed,bytes32 pkRoot))',
+  'function isInitialized(address account) view returns (bool)',
+  'function isModuleType(uint256 moduleTypeId) view returns (bool)',
+  'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
+  'function onInstall(bytes data)',
+  'function onUninstall(bytes data)',
+  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
+] as const;
+
 export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'event RecoveryScheduled(address indexed account,bytes32 indexed operationId,uint48 executableAt)',
   'event RecoveryCanceled(address indexed account,bytes32 indexed operationId)',
@@ -209,7 +230,7 @@ export const getPaliModuleAddress = (
   id: PaliAuthenticatorModuleId
 ): string => {
   const entry = getPaliModuleRegistryEntry(id);
-  return entry.addresses[chainId] || PALI_MODULE_CANONICAL_ADDRESSES[id];
+  return entry.addresses[chainId] || PALI_MODULE_CANONICAL_ADDRESSES[id] || '';
 };
 
 export const getPaliSmartAccountFactoryAddress = (chainId: number): string =>
@@ -244,4 +265,7 @@ export const paliP256WebAuthnValidatorInterface = new Interface(
 );
 export const paliCompositeValidatorInterface = new Interface(
   PALI_COMPOSITE_VALIDATOR_ABI
+);
+export const paliSlhDsaValidatorInterface = new Interface(
+  PALI_SLH_DSA_VALIDATOR_ABI
 );

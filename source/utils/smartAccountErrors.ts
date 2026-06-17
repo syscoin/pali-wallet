@@ -162,6 +162,19 @@ export const isSmartAccountSignatureError = (error: unknown): boolean => {
   );
 };
 
+export const isSLHDSALocalSignerMissingError = (error: unknown): boolean => {
+  const message = getErrorText(error);
+  return (
+    message.includes('SLH-DSA key is not available in this unlocked session') ||
+    message.includes('SLH-DSA encrypted local signer state was not found') ||
+    message.includes('SLH-DSA local signer state could not be hydrated') ||
+    message.includes(
+      'local post-quantum signer does not match the active validator'
+    ) ||
+    message.includes('Regenerate the local signer')
+  );
+};
+
 /**
  * Raw RPC/revert payloads aren't user-presentable - used to decide
  * between showing the original message and a friendly fallback.
@@ -184,6 +197,9 @@ export const getSmartAccountActionErrorMessage = (
 ): string => {
   if (isSmartAccountPrefundError(error) || isNativeGasError(error)) {
     return gasMessage;
+  }
+  if (isSLHDSALocalSignerMissingError(error)) {
+    return "The local post-quantum signer is missing or does not match this account's active validator. Open Smart Account settings to regenerate missing local state, or use another approval method to rotate the validator to the prepared local key.";
   }
 
   const message = (error as any)?.message;

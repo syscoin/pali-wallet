@@ -108,7 +108,7 @@ const MV3_OPTIONS = {
   ],
   content_security_policy: {
     extension_pages:
-      "script-src 'self'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
   },
   author: 'Syscoin',
   minimum_chrome_version: '109',

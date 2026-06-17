@@ -24,15 +24,21 @@ import type { Provider } from '@ethersproject/providers';
 //                      signing. Unused verification gas is neither charged
 //                      nor penalized -- it only raises the required prefund
 //                      -- so the table holds conservative upper bounds.
-// preVerificationGas:  fixed 50k. Pali self-bundles (no public mempool), so
-//                      this only covers calldata + EntryPoint overhead.
+// preVerificationGas:  validator-aware calldata + EntryPoint overhead budget.
+//                      Pali self-bundles, but this still affects prefund.
 // ---------------------------------------------------------------------------
 
 /** v0.9 EntryPoint penalizes unused callGasLimit above this threshold. */
 export const SMART_ACCOUNT_PENALTY_GAS_THRESHOLD = 40_000;
 
-/** Fixed preVerificationGas for self-bundled ops. */
+/** Base preVerificationGas for self-bundled ops with compact signatures. */
 export const SMART_ACCOUNT_PRE_VERIFICATION_GAS = 50_000;
+
+/**
+ * SLH-DSA signatures are ~3.8 KB plus the validator prefix in calldata. This
+ * is inside the signed userOp hash, so budget it before signing.
+ */
+export const SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS = 130_000;
 
 // eth_estimateGas includes the 21k intrinsic transaction cost, which the
 // inner EntryPoint -> account call never pays.
@@ -59,11 +65,12 @@ export const SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT = 250_000;
  * Composite: per-child validation on top of a dispatch base (see below).
  */
 export const SMART_ACCOUNT_VERIFICATION_GAS_LIMITS: Record<
-  'ecdsa' | 'p256-webauthn',
+  'ecdsa' | 'p256-webauthn' | 'slh-dsa',
   number
 > = {
   ecdsa: 200_000,
   'p256-webauthn': 350_000,
+  'slh-dsa': 700_000,
 };
 
 export const SMART_ACCOUNT_COMPOSITE_VERIFICATION_BASE_GAS = 150_000;
@@ -79,7 +86,11 @@ export const SMART_ACCOUNT_VERIFICATION_GAS_FALLBACK = 600_000;
  */
 export const SMART_ACCOUNT_DEPLOYMENT_VERIFICATION_GAS = 900_000;
 
-export type SmartAccountValidatorKind = 'composite' | 'ecdsa' | 'p256-webauthn';
+export type SmartAccountValidatorKind =
+  | 'composite'
+  | 'ecdsa'
+  | 'p256-webauthn'
+  | 'slh-dsa';
 
 export type SmartAccountUserOpGasEstimate = {
   callGasLimit: number;
@@ -102,6 +113,7 @@ export const getSmartAccountVerificationGasLimit = ({
   switch (validatorKind) {
     case 'ecdsa':
     case 'p256-webauthn':
+    case 'slh-dsa':
       verification = SMART_ACCOUNT_VERIFICATION_GAS_LIMITS[validatorKind];
       break;
     case 'composite': {
@@ -120,6 +132,15 @@ export const getSmartAccountVerificationGasLimit = ({
   }
   return verification;
 };
+
+export const getSmartAccountPreVerificationGas = ({
+  validatorKind,
+}: {
+  validatorKind?: SmartAccountValidatorKind | string;
+}): number =>
+  validatorKind === 'slh-dsa'
+    ? SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
+    : SMART_ACCOUNT_PRE_VERIFICATION_GAS;
 
 /** Reads the active validator kind + composite arity out of the metadata. */
 export const getSmartAccountValidatorProfile = (
@@ -199,11 +220,13 @@ export const estimateSmartAccountUserOpGas = async (
     includesDeployment: !isDeployed,
     validatorKind,
   });
+  const preVerificationGas = getSmartAccountPreVerificationGas({
+    validatorKind,
+  });
   return {
     callGasLimit,
-    preVerificationGas: SMART_ACCOUNT_PRE_VERIFICATION_GAS,
-    totalGasUnits:
-      callGasLimit + verificationGasLimit + SMART_ACCOUNT_PRE_VERIFICATION_GAS,
+    preVerificationGas,
+    totalGasUnits: callGasLimit + verificationGasLimit + preVerificationGas,
     verificationGasLimit,
   };
 };
@@ -228,9 +251,10 @@ export const getSmartAccountGasUnitsReserve = (
     includesDeployment: !metadata.isDeployed,
     validatorKind,
   });
+  const preVerificationGas = getSmartAccountPreVerificationGas({
+    validatorKind,
+  });
   return BigNumber.from(
-    SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT +
-      verification +
-      SMART_ACCOUNT_PRE_VERIFICATION_GAS
+    SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT + verification + preVerificationGas
   );
 };

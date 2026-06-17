@@ -110,6 +110,25 @@ import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
+import {
+  clearSLHDSAXmssCacheInOffscreen,
+  clearRuntimeSLHDSAStates,
+  clearSLHDSAPublicPrecomputeCache,
+  clearSLHDSAXmssTreeCache,
+  clearSLHDSASmartAccountSetupStatus,
+  configureSLHDSASessionStateCrypto,
+  getSLHDSAPreparedSmartAccountSigner,
+  getSLHDSAStateStorageKey,
+  getSLHDSASmartAccountSetupStatus,
+  loadEncryptedSLHDSAState,
+  putRuntimeSLHDSAState,
+  provisionSLHDSASmartAccountValidator,
+  signSLHDSAActionHashLocal,
+  startSLHDSASmartAccountValidatorSetup,
+  type SLHDSASmartAccountSetupStatus,
+  type SLHDSAPreparedSmartAccountSigner,
+  type SLHDSASignActionHashParams,
+} from 'utils/slhDsa';
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
@@ -275,6 +294,10 @@ class MainController {
 
     // Clear vault cache
     vaultCache.clearCache();
+    await clearSLHDSAXmssCacheInOffscreen();
+    clearRuntimeSLHDSAStates();
+    await clearSLHDSAPublicPrecomputeCache();
+    await clearSLHDSAXmssTreeCache();
 
     // Clear all in-memory caches and session data
     if (this.transactionsManager) {
@@ -317,6 +340,8 @@ class MainController {
         (key) =>
           key.match(/^state-vault-\d+$/) ||
           key.startsWith('sysweb3-vault-') ||
+          key.startsWith('pali-slh-dsa-state:') ||
+          key.startsWith('pali-slh-dsa-precompute:') ||
           key === 'state' ||
           key.startsWith('state-')
       );
@@ -670,6 +695,8 @@ class MainController {
         this.saveWalletState(operation, isUserActivity, sync),
       signEthWithAccount: (params, targetAccount) =>
         this.ethSignWithAccount(params, targetAccount),
+      signSLHDSARecoveryTargetActionHash: (params) =>
+        this.signSLHDSARecoveryTargetActionHash(params),
       createSmartAccountRecord: (params) =>
         this.createSmartAccountRecord(params),
       sendAndSaveEthTransaction: (
@@ -1097,6 +1124,7 @@ class MainController {
 
   // Properly dispose of keyring instances to prevent memory leaks
   private disposeAllKeyrings(): void {
+    clearRuntimeSLHDSAStates();
     const disposalErrors: Array<{ error: any; slip44: number }> = [];
 
     this.keyrings.forEach((keyring, slip44) => {
@@ -4529,6 +4557,262 @@ class MainController {
     } finally {
       if (shouldUseTargetAccount) {
         keyring.setVaultStateGetter(() => store.getState().vault);
+      }
+    }
+  }
+
+  public async getSLHDSASmartAccountSetupStatus(params: {
+    accountId: number;
+  }): Promise<SLHDSASmartAccountSetupStatus | null> {
+    return getSLHDSASmartAccountSetupStatus(params);
+  }
+
+  public async getSLHDSAPreparedSmartAccountSigner(params: {
+    accountId: number;
+  }): Promise<SLHDSAPreparedSmartAccountSigner | null> {
+    return getSLHDSAPreparedSmartAccountSigner(params);
+  }
+
+  public async clearSLHDSASmartAccountSetupStatus(params: {
+    accountId: number;
+  }) {
+    await clearSLHDSASmartAccountSetupStatus(params);
+  }
+
+  public async hasSLHDSALocalSignerState(params: {
+    keyId: string;
+    pkRoot?: string;
+    pkSeed?: string;
+  }) {
+    this.configureSLHDSASessionStateCrypto();
+    try {
+      const state = await loadEncryptedSLHDSAState({
+        crypto: this.getSLHDSASessionStateCrypto(),
+        keyId: params.keyId,
+      });
+      const hasState =
+        Boolean(state?.secretKeyHex) &&
+        (!params.pkRoot ||
+          state?.pkRoot.toLowerCase() === params.pkRoot.toLowerCase()) &&
+        (!params.pkSeed ||
+          state?.pkSeed.toLowerCase() === params.pkSeed.toLowerCase());
+      return hasState;
+    } catch {
+      return false;
+    }
+  }
+
+  private getSLHDSASmartAccountDerivationContext(accountId: number) {
+    const smartAccount =
+      store.getState().vault.accounts[KeyringAccountType.SmartAccount]?.[
+        accountId
+      ];
+    if (!smartAccount?.isSmartAccount || !smartAccount.smartAccount) {
+      throw new Error('Smart account not found');
+    }
+
+    const accountIndex =
+      smartAccount.smartAccount.descriptor?.accountIndex ?? smartAccount.id;
+    return { accountIndex };
+  }
+
+  private async deriveSLHDSASetupSecretForAccount(params: {
+    accountIndex: number;
+  }): Promise<{
+    derivationLabel: string;
+    setupSecretHex: string;
+  }> {
+    const keyring = this.getActiveKeyring() as any;
+    if (typeof keyring.deriveSLHDSASetupSecretForAccount !== 'function') {
+      throw new Error(
+        'Current sysweb3-keyring build does not support SLH-DSA key derivation'
+      );
+    }
+    return keyring.deriveSLHDSASetupSecretForAccount(params);
+  }
+
+  private getSLHDSASessionStateCrypto() {
+    const getKeyring = () => {
+      const keyring = this.getActiveKeyring() as any;
+      if (
+        typeof keyring.encryptSLHDSASessionState !== 'function' ||
+        typeof keyring.decryptSLHDSASessionState !== 'function'
+      ) {
+        throw new Error(
+          'Current sysweb3-keyring build does not support SLH-DSA session state encryption'
+        );
+      }
+      return keyring;
+    };
+    return {
+      decrypt: (cipherText: string) =>
+        getKeyring().decryptSLHDSASessionState(cipherText),
+      encrypt: (plainText: string) =>
+        getKeyring().encryptSLHDSASessionState(plainText),
+    };
+  }
+
+  private configureSLHDSASessionStateCrypto() {
+    configureSLHDSASessionStateCrypto(this.getSLHDSASessionStateCrypto());
+  }
+
+  public async startSLHDSASmartAccountValidatorSetup(params: {
+    accountId: number;
+    force?: boolean;
+  }): Promise<SLHDSASmartAccountSetupStatus> {
+    this.configureSLHDSASessionStateCrypto();
+    const { accountIndex } = this.getSLHDSASmartAccountDerivationContext(
+      params.accountId
+    );
+    return startSLHDSASmartAccountValidatorSetup({
+      accountId: params.accountId,
+      accountIndex,
+      force: params.force,
+      getSetupSecret: () =>
+        this.deriveSLHDSASetupSecretForAccount({
+          accountIndex,
+        }),
+    });
+  }
+
+  public async provisionSLHDSASmartAccountValidator(params: {
+    accountId: number;
+  }): Promise<SLHDSASmartAccountSetupStatus['config']> {
+    this.configureSLHDSASessionStateCrypto();
+    const { accountIndex } = this.getSLHDSASmartAccountDerivationContext(
+      params.accountId
+    );
+    return provisionSLHDSASmartAccountValidator({
+      accountId: params.accountId,
+      accountIndex,
+      getSetupSecret: () =>
+        this.deriveSLHDSASetupSecretForAccount({
+          accountIndex,
+        }),
+    });
+  }
+
+  private async hydrateActiveSLHDSAStateForSigning(
+    params: SLHDSASignActionHashParams
+  ): Promise<void> {
+    const { activeAccount, accounts } = store.getState().vault;
+    if (activeAccount.type !== KeyringAccountType.SmartAccount) {
+      throw new Error('SLH-DSA signing requires the active smart account');
+    }
+
+    const smartAccount = accounts[KeyringAccountType.SmartAccount]?.[
+      activeAccount.id
+    ] as any;
+    const activeAuth = smartAccount?.smartAccount?.auth;
+    const activeSLHDSAValidator =
+      smartAccount?.smartAccount?.installedModules?.find(
+        (module: any) =>
+          module?.type === 'validator' &&
+          module?.id === 'slh-dsa' &&
+          module?.address?.toLowerCase() ===
+            activeAuth?.validator?.toLowerCase()
+      );
+    if (
+      !smartAccount?.isSmartAccount ||
+      (activeAuth?.module || activeAuth?.scheme) !== 'slh-dsa' ||
+      activeSLHDSAValidator?.config?.keyId !== params.keyId
+    ) {
+      throw new Error(
+        'Active smart account SLH-DSA metadata does not match the signing request'
+      );
+    }
+
+    const state = await loadEncryptedSLHDSAState({
+      crypto: this.getSLHDSASessionStateCrypto(),
+      keyId: params.keyId,
+    });
+    if (!state) {
+      const setupStatus = await getSLHDSASmartAccountSetupStatus({
+        accountId: activeAccount.id,
+      });
+      if (
+        setupStatus?.config?.keyId &&
+        setupStatus.config.keyId !== params.keyId
+      ) {
+        throw new Error(
+          `The local post-quantum signer does not match the active validator. Local signer key: ${setupStatus.config.keyId}. Active validator key: ${params.keyId}. Use another approval method to rotate the validator to the local signer key, or restore the original local signer state for the active validator key.`
+        );
+      }
+      throw new Error(
+        `SLH-DSA encrypted local signer state was not found at ${getSLHDSAStateStorageKey(
+          params.keyId
+        )}. Regenerate the local signer.`
+      );
+    }
+
+    putRuntimeSLHDSAState(state);
+  }
+
+  public async signSLHDSAActionHash(
+    params: SLHDSASignActionHashParams
+  ): Promise<string> {
+    this.configureSLHDSASessionStateCrypto();
+    try {
+      return await signSLHDSAActionHashLocal(params);
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      if (!message.includes('not available in this unlocked session')) {
+        throw error;
+      }
+      await this.hydrateActiveSLHDSAStateForSigning(params);
+      try {
+        return await signSLHDSAActionHashLocal(params);
+      } catch (retryError: any) {
+        if (
+          String(retryError?.message || retryError).includes(
+            'not available in this unlocked session'
+          )
+        ) {
+          throw new Error(
+            'SLH-DSA local signer state could not be hydrated from storage. Regenerate the local signer.'
+          );
+        }
+        throw retryError;
+      }
+    }
+  }
+
+  private async signSLHDSARecoveryTargetActionHash(
+    params: SLHDSASignActionHashParams
+  ): Promise<string> {
+    this.configureSLHDSASessionStateCrypto();
+    try {
+      return await signSLHDSAActionHashLocal(params);
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      if (!message.includes('not available in this unlocked session')) {
+        throw error;
+      }
+      const state = await loadEncryptedSLHDSAState({
+        crypto: this.getSLHDSASessionStateCrypto(),
+        keyId: params.keyId,
+      });
+      if (!state) {
+        throw new Error(
+          `SLH-DSA encrypted local signer state was not found at ${getSLHDSAStateStorageKey(
+            params.keyId
+          )}. Regenerate the local signer before using it as a recovery target.`
+        );
+      }
+      putRuntimeSLHDSAState(state);
+      try {
+        return await signSLHDSAActionHashLocal(params);
+      } catch (retryError: any) {
+        if (
+          String(retryError?.message || retryError).includes(
+            'not available in this unlocked session'
+          )
+        ) {
+          throw new Error(
+            'SLH-DSA local signer state could not be hydrated from storage. Regenerate the local signer before using it as a recovery target.'
+          );
+        }
+        throw retryError;
       }
     }
   }

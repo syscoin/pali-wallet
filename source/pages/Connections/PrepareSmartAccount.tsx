@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
+import { PqOperationStatus } from 'components/Loading';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -32,6 +33,7 @@ import {
   encodeEcdsaValidatorInitData,
   encodeInstallValidatorModuleCall,
   encodeRotateValidatorModuleCall,
+  encodeSLHDSAValidatorInitData,
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
   PaliSmartAccountAuthenticatorSetup,
@@ -74,6 +76,8 @@ const displayNameForAuthenticator = (
       return t('settings.passkeyAuthenticator');
     case 'ecdsa':
       return t('settings.ecdsaAuthenticator');
+    case 'slh-dsa':
+      return 'SLH-DSA';
     case 'composite':
       return t('settings.compositeAuthenticator');
     default:
@@ -255,6 +259,51 @@ const normalizeEcdsaAuthenticator = ({
   };
 };
 
+const normalizeSLHDSAAuthenticator = ({
+  chainId,
+  requested,
+}: {
+  chainId: number;
+  requested: { config?: any; id: string };
+}): PreparedAuthenticator | undefined => {
+  const { config } = requested;
+  if (
+    !config?.keyId ||
+    config?.parameterSet !== 'SLH-DSA-SHA2-128-24' ||
+    !config?.pkRoot ||
+    !config?.pkSeed
+  ) {
+    return undefined;
+  }
+
+  const validator = getPaliModuleAddress(chainId, 'slh-dsa');
+  const data = encodeSLHDSAValidatorInitData({
+    pkRoot: config.pkRoot,
+    pkSeed: config.pkSeed,
+  });
+
+  return {
+    auth: {
+      data,
+      module: 'slh-dsa',
+      validator,
+    },
+    module: {
+      address: getAddress(validator),
+      config: {
+        keyId: config.keyId,
+        parameterSet: 'SLH-DSA-SHA2-128-24',
+        pkRoot: config.pkRoot,
+        pkSeed: config.pkSeed,
+        signatureLimit: config.signatureLimit || 2 ** 24,
+      },
+      data,
+      id: 'slh-dsa',
+      type: 'validator',
+    },
+  };
+};
+
 export const PrepareSmartAccount = () => {
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -287,6 +336,7 @@ export const PrepareSmartAccount = () => {
     requestedAuthenticator.id,
     t
   );
+  const isRequestedSLHDSA = requestedAuthenticator.id === 'slh-dsa';
   const createsWalletPasskey =
     requestedAuthenticator.id === 'p256-webauthn' &&
     !hasP256Config(requestedAuthenticator.config);
@@ -428,6 +478,11 @@ export const PrepareSmartAccount = () => {
             })
           : requestedAuthenticator.id === 'ecdsa'
           ? normalizeEcdsaAuthenticator({
+              chainId: activeNetwork.chainId,
+              requested: requestedAuthenticator,
+            })
+          : requestedAuthenticator.id === 'slh-dsa'
+          ? normalizeSLHDSAAuthenticator({
               chainId: activeNetwork.chainId,
               requested: requestedAuthenticator,
             })
@@ -679,6 +734,12 @@ export const PrepareSmartAccount = () => {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
+        <PqOperationStatus
+          expectedSeconds={360}
+          show={loading && isRequestedSLHDSA && creationStep !== 'idle'}
+          title={t('settings.slhDsaSetupInProgress')}
+          warningSeconds={540}
+        />
         {creationStep !== 'idle' && (
           <div className="mb-3 flex items-center justify-center gap-2">
             <LoadingSvg className="h-4 w-4 flex-shrink-0 animate-spin text-brand-royalblue" />

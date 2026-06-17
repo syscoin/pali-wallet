@@ -12,7 +12,7 @@ import {
   IconButton,
   WarningModal,
 } from 'components/index';
-import { LoadingComponent } from 'components/Loading';
+import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -24,6 +24,7 @@ import { handleTransactionError } from 'utils/errorHandling';
 import { getNetworkChain } from 'utils/network';
 import {
   encodeSmartAccountAuthenticatorSignature,
+  getSmartAccountLocalOwnerContexts,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
 
@@ -52,6 +53,7 @@ const EthSign: React.FC<ISign> = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState<string>('Details');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isPqSigning, setIsPqSigning] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [blacklistWarning, setBlacklistWarning] = useState<{
     address?: string;
@@ -205,6 +207,20 @@ const EthSign: React.FC<ISign> = () => {
 
     const signature = await signSmartAccountActionHash({
       actionHash: hash,
+      authenticatorContexts: getSmartAccountLocalOwnerContexts({
+        accounts,
+        controllerEmitter,
+      }),
+      onAuthenticatorSigningResolved: (authenticator) => {
+        if (authenticator === 'slh-dsa') {
+          setIsPqSigning(false);
+        }
+      },
+      onAuthenticatorSigningStarted: (authenticator) => {
+        if (authenticator === 'slh-dsa') {
+          setIsPqSigning(true);
+        }
+      },
       smartAccount,
     });
 
@@ -218,6 +234,20 @@ const EthSign: React.FC<ISign> = () => {
 
     const signature = await signSmartAccountActionHash({
       actionHash: request.actionHash,
+      authenticatorContexts: getSmartAccountLocalOwnerContexts({
+        accounts,
+        controllerEmitter,
+      }),
+      onAuthenticatorSigningResolved: (authenticator) => {
+        if (authenticator === 'slh-dsa') {
+          setIsPqSigning(false);
+        }
+      },
+      onAuthenticatorSigningStarted: (authenticator) => {
+        if (authenticator === 'slh-dsa') {
+          setIsPqSigning(true);
+        }
+      },
       smartAccount,
     });
 
@@ -1454,6 +1484,13 @@ const EthSign: React.FC<ISign> = () => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
+            <PqSigningOverlay
+              expectedSeconds={90}
+              show={isPqSigning}
+              subtitle={t('settings.slhDsaSigningOverlayDescription')}
+              title={t('settings.slhDsaSigningInProgress')}
+              warningSeconds={180}
+            />
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"

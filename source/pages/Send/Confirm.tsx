@@ -27,6 +27,7 @@ import {
   IconButton,
   DeviceWaitingBanner,
 } from 'components/index';
+import { PqSigningOverlay } from 'components/Loading';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -92,6 +93,7 @@ export const SendConfirm = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isPqSigning, setIsPqSigning] = useState(false);
   const [paymasterSetupStatus, setPaymasterSetupStatus] = useState<
     'approving' | 'idle' | 'ready'
   >('idle');
@@ -372,23 +374,38 @@ export const SendConfirm = () => {
         value: string,
         data: string
       ) => {
-        await signAndSubmitSmartAccountExecutions({
-          authenticatorContexts: getSmartAccountLocalOwnerContexts({
-            accounts,
+        try {
+          await signAndSubmitSmartAccountExecutions({
+            authenticatorContexts: getSmartAccountLocalOwnerContexts({
+              accounts,
+              controllerEmitter,
+            }),
             controllerEmitter,
-          }),
-          controllerEmitter,
-          executions: [{ target, value, data }],
-          onPaymasterApprovalConfirmed: () => setPaymasterSetupStatus('ready'),
-          onPaymasterApprovalRequired: async (setup) => {
-            const approved = await requestPaymasterApproval(setup);
-            if (approved) {
-              setPaymasterSetupStatus('approving');
-            }
-            return approved;
-          },
-          smartAccount: activeAccount.smartAccount,
-        });
+            executions: [{ target, value, data }],
+            onAuthenticatorSigningResolved: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(false);
+              }
+            },
+            onAuthenticatorSigningStarted: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(true);
+              }
+            },
+            onPaymasterApprovalConfirmed: () =>
+              setPaymasterSetupStatus('ready'),
+            onPaymasterApprovalRequired: async (setup) => {
+              const approved = await requestPaymasterApproval(setup);
+              if (approved) {
+                setPaymasterSetupStatus('approving');
+              }
+              return approved;
+            },
+            smartAccount: activeAccount.smartAccount,
+          });
+        } finally {
+          setIsPqSigning(false);
+        }
       };
 
       const assertPasskeyTokenRecipientAllowed = async () => {
@@ -2017,6 +2034,13 @@ export const SendConfirm = () => {
           )}
 
           <DeviceWaitingBanner account={activeAccount} show={loading} />
+          <PqSigningOverlay
+            expectedSeconds={90}
+            show={isPqSigning}
+            subtitle={t('settings.slhDsaSigningOverlayDescription')}
+            title={t('settings.slhDsaSigningInProgress')}
+            warningSeconds={180}
+          />
           {paymasterApprovalModal}
           <PaymasterSetupStatusBanner
             context="transaction"

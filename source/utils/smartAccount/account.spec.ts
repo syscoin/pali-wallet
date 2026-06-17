@@ -11,14 +11,20 @@ import { hexConcat } from '@ethersproject/bytes';
 import { keccak256 } from '@ethersproject/keccak256';
 
 import { encodeP256WebAuthnAuthData } from '../passkey/account';
+import type { SmartAccountValidatorModule } from 'types/network';
 
 import {
   buildSmartAccountUserOperation,
+  buildSmartAccountValidatorSwitchPlan,
   ERC7579_MODE_BATCH_DEFAULT,
   ERC7579_MODE_SINGLE_DEFAULT,
   encodeBatchERC7579Execution,
   encodeEcdsaValidatorInitData,
   encodeERC7579Executions,
+  encodeInstallValidatorModuleCall,
+  encodeRotateValidatorModuleCall,
+  encodeSLHDSAValidatorInitData,
+  encodeUninstallValidatorModuleCall,
   getConfiguredAuthenticatorAddress,
   getPaliSmartAccountDeploymentSalt,
   getPaliSmartAccountDescriptor,
@@ -29,6 +35,7 @@ import {
   withSmartAccountPaymasterData,
 } from './account';
 import { toPaliSmartAccount } from './adapter';
+import { buildHydratedSLHDSAAuthenticator } from './authenticators';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   paliP256WebAuthnValidatorInterface,
@@ -72,6 +79,121 @@ describe('ERC-7579 smart account helpers', () => {
         )
       )
     );
+  });
+
+  describe('validator switch planner', () => {
+    const accountAddress = '0x9999999999999999999999999999999999999999';
+    const activeValidator: SmartAccountValidatorModule = {
+      address: '0x1111111111111111111111111111111111111111',
+      config: {
+        owners: ['0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+        threshold: 1,
+      },
+      data: '0xaaaa',
+      id: 'ecdsa',
+      type: 'validator',
+    };
+    const targetAuth = {
+      data: '0xbbbb',
+      module: 'slh-dsa',
+      validator: '0x2222222222222222222222222222222222222222',
+    } as const;
+    const targetValidator = (data = '0x1234'): SmartAccountValidatorModule => ({
+      address: targetAuth.validator,
+      config: {
+        keyId: 'test-key',
+        parameterSet: 'SLH-DSA-SHA2-128-24',
+        pkRoot:
+          '0x1111111111111111111111111111111111111111111111111111111111111111',
+        pkSeed:
+          '0x2222222222222222222222222222222222222222222222222222222222222222',
+        signatureLimit: 2 ** 24,
+      },
+      data,
+      id: 'slh-dsa',
+      type: 'validator',
+    });
+
+    it('does nothing when the active validator already has the target config', () => {
+      const plan = buildSmartAccountValidatorSwitchPlan({
+        accountAddress,
+        activeValidator: targetValidator(targetAuth.data),
+        installedValidators: [],
+        target: targetAuth,
+      });
+
+      expect(plan.executions).toEqual([]);
+    });
+
+    it('installs a fresh target validator and removes the previous active validator', () => {
+      const plan = buildSmartAccountValidatorSwitchPlan({
+        accountAddress,
+        activeValidator,
+        installedValidators: [activeValidator],
+        target: targetAuth,
+      });
+
+      expect(plan.executions).toEqual([
+        {
+          data: encodeInstallValidatorModuleCall(
+            targetAuth.validator,
+            targetAuth.data
+          ),
+          target: accountAddress,
+          value: '0x0',
+        },
+        {
+          data: encodeUninstallValidatorModuleCall(activeValidator.address),
+          target: accountAddress,
+          value: '0x0',
+        },
+      ]);
+    });
+
+    it('rotates an already-installed inactive target instead of installing it again', () => {
+      const plan = buildSmartAccountValidatorSwitchPlan({
+        accountAddress,
+        activeValidator,
+        installedValidators: [activeValidator, targetValidator()],
+        target: targetAuth,
+      });
+
+      expect(plan.executions).toEqual([
+        {
+          data: encodeRotateValidatorModuleCall(
+            targetAuth.validator,
+            targetAuth.data
+          ),
+          target: accountAddress,
+          value: '0x0',
+        },
+        {
+          data: encodeUninstallValidatorModuleCall(activeValidator.address),
+          target: accountAddress,
+          value: '0x0',
+        },
+      ]);
+    });
+
+    it('rotates the active validator when only its config changes', () => {
+      const plan = buildSmartAccountValidatorSwitchPlan({
+        accountAddress,
+        activeValidator: targetValidator(activeValidator.data),
+        installedValidators: [],
+        target: targetAuth,
+      });
+
+      expect(plan.executions).toEqual([
+        {
+          data: encodeRotateValidatorModuleCall(
+            targetAuth.validator,
+            targetAuth.data
+          ),
+          target: accountAddress,
+          value: '0x0',
+        },
+      ]);
+    });
   });
 
   it('attaches paymaster data to a packed smart-account UserOperation draft', () => {
@@ -371,6 +493,39 @@ describe('ERC-7579 smart account helpers', () => {
         ['address[]', 'uint64'],
         [['0x1111111111111111111111111111111111111111'], 1]
       )
+    );
+  });
+
+  it('encodes SLH-DSA public key config', () => {
+    const pkSeed =
+      '0x1111111111111111111111111111111100000000000000000000000000000000';
+    const pkRoot =
+      '0x2222222222222222222222222222222200000000000000000000000000000000';
+
+    expect(encodeSLHDSAValidatorInitData({ pkRoot, pkSeed })).toBe(
+      defaultAbiCoder.encode(
+        ['tuple(bytes32 pkSeed,bytes32 pkRoot)'],
+        [{ pkSeed, pkRoot }]
+      )
+    );
+  });
+
+  it('hydrates SLH-DSA metadata with the signer storage key id', () => {
+    const pkSeed =
+      '0x1111111111111111111111111111111100000000000000000000000000000000';
+    const pkRoot =
+      '0x2222222222222222222222222222222200000000000000000000000000000000';
+    const built = buildHydratedSLHDSAAuthenticator({
+      chainId: 57057,
+      pkRoot,
+      pkSeed,
+    });
+    const module = built.metadata.installedModules?.[0];
+
+    expect(module?.type).toBe('validator');
+    expect(module?.id).toBe('slh-dsa');
+    expect((module as any).config.keyId).toBe(
+      `SLH-DSA-SHA2-128-24:${pkSeed}:${pkRoot}`
     );
   });
 
