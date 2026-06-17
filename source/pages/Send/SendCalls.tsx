@@ -506,6 +506,8 @@ export const SendCalls = () => {
           }
 
           const response = (await signAndSubmitSmartAccountExecutions({
+            accountAddress: activeAccount.address,
+            accountId: activeAccount.id,
             authenticatorContexts: getSmartAccountLocalOwnerContexts({
               accounts,
               controllerEmitter,

@@ -376,6 +376,8 @@ export const SendConfirm = () => {
       ) => {
         try {
           await signAndSubmitSmartAccountExecutions({
+            accountAddress: activeAccount.address,
+            accountId: activeAccount.id,
             authenticatorContexts: getSmartAccountLocalOwnerContexts({
               accounts,
               controllerEmitter,

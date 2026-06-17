@@ -406,6 +406,8 @@ export const SendTransaction = () => {
               ).toHexString()
             : '0x0';
           response = await signAndSubmitSmartAccountExecutions({
+            accountAddress: activeAccount.address,
+            accountId: activeAccount.id,
             authenticatorContexts: getSmartAccountLocalOwnerContexts({
               accounts,
               controllerEmitter,

@@ -619,6 +619,7 @@ const SmartAccountPolicy = () => {
       useCachedMetadata?: boolean
     ) =>
       signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
@@ -709,6 +710,7 @@ const SmartAccountPolicy = () => {
 
     const switchPromise = (async () => {
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,

@@ -423,6 +423,7 @@ export const PrepareSmartAccount = () => {
       };
 
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         authenticatorContexts: {
           ecdsa: {
             localOwners: [

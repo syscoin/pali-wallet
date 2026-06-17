@@ -23,6 +23,7 @@ import type {
 } from './types';
 
 const runtimeStates = new Map<string, SLHDSAProvisionedState>();
+const signingQueues = new Map<string, Promise<void>>();
 let sessionStateCrypto: SLHDSASessionStateCrypto | null = null;
 
 export const configureSLHDSASessionStateCrypto = (
@@ -114,6 +115,7 @@ export const provisionRuntimeSLHDSAStateFromSetupSecret = async (params: {
 
 export const clearRuntimeSLHDSAStates = () => {
   runtimeStates.clear();
+  signingQueues.clear();
   sessionStateCrypto = null;
 };
 
@@ -128,7 +130,27 @@ const validateSignature = (signature: string) => {
   }
 };
 
-export const signSLHDSAActionHashLocal = async (
+const withSigningQueue = async <T>(
+  keyId: string,
+  task: () => Promise<T>
+): Promise<T> => {
+  const previous = signingQueues.get(keyId) || Promise.resolve();
+  const queued = previous.catch(() => undefined).then(task);
+  const stored = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  signingQueues.set(keyId, stored);
+  try {
+    return await queued;
+  } finally {
+    if (signingQueues.get(keyId) === stored) {
+      signingQueues.delete(keyId);
+    }
+  }
+};
+
+const signSLHDSAActionHashLocalUnlocked = async (
   params: SLHDSASignActionHashParams
 ) => {
   if (params.parameterSet !== SLH_DSA_PARAMETER_SET) {
@@ -183,3 +205,10 @@ export const signSLHDSAActionHashLocal = async (
 
   return signature;
 };
+
+export const signSLHDSAActionHashLocal = async (
+  params: SLHDSASignActionHashParams
+) =>
+  withSigningQueue(params.keyId, () =>
+    signSLHDSAActionHashLocalUnlocked(params)
+  );

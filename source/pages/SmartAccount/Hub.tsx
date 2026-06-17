@@ -210,6 +210,7 @@ const SmartAccountHub = () => {
     ) => {
       if (!account?.isSmartAccount || !metadata) return;
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,

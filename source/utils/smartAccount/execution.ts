@@ -66,17 +66,22 @@ const sha256Hex = async (value: string) => {
 };
 
 const getSmartAccountSubmitJobKey = async ({
+  accountAddress,
   accountId,
   executions,
   smartAccount,
 }: {
+  accountAddress?: string;
   accountId?: number;
   executions: SmartAccountExecutionIntent[];
   smartAccount: ISmartAccountMetadata;
 }) =>
   sha256Hex(
     stableStringify({
-      account: (smartAccount as any)?.address?.toLowerCase?.() ?? null,
+      account:
+        accountAddress?.toLowerCase?.() ||
+        (smartAccount as any)?.address?.toLowerCase?.() ||
+        null,
       accountId: accountId ?? null,
       authValidator: smartAccount.auth?.validator?.toLowerCase?.() ?? null,
       chainId: smartAccount.chainId,
@@ -89,17 +94,16 @@ const getSmartAccountSubmitJobKey = async ({
   );
 
 const isSmartAccountRotateValidatorExecution = ({
+  accountAddress,
   execution,
-  smartAccount,
 }: {
+  accountAddress?: string;
   execution: SmartAccountExecutionIntent;
-  smartAccount: ISmartAccountMetadata;
 }) => {
   try {
-    const smartAccountAddress = (smartAccount as any)?.address;
     return Boolean(
-      smartAccountAddress &&
-        getAddress(execution.target) === getAddress(smartAccountAddress) &&
+      accountAddress &&
+        getAddress(execution.target) === getAddress(accountAddress) &&
         hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() ===
           SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR
     );
@@ -109,18 +113,21 @@ const isSmartAccountRotateValidatorExecution = ({
 };
 
 const canUseReservedSLHDSASignature = ({
+  accountAddress,
   executions,
   smartAccount,
 }: {
+  accountAddress?: string;
   executions: SmartAccountExecutionIntent[];
   smartAccount: ISmartAccountMetadata;
 }) =>
   (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
   executions.some((execution) =>
-    isSmartAccountRotateValidatorExecution({ execution, smartAccount })
+    isSmartAccountRotateValidatorExecution({ accountAddress, execution })
   );
 
 export type SubmitSmartAccountExecutionsParams = {
+  accountAddress?: string;
   accountId?: number;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
@@ -673,6 +680,7 @@ export const signAndSubmitSmartAccountExecutions = async (
   params: SubmitSmartAccountExecutionsParams
 ) => {
   const {
+    accountAddress,
     accountId,
     authenticatorContexts,
     controllerEmitter,
@@ -695,6 +703,7 @@ export const signAndSubmitSmartAccountExecutions = async (
   const shouldTrackJob = validatorIdForJob === 'slh-dsa';
   const submitJobKey = shouldTrackJob
     ? await getSmartAccountSubmitJobKey({
+        accountAddress,
         accountId,
         executions,
         smartAccount,
@@ -734,6 +743,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         }
       } else {
         await signAndSubmitSmartAccountExecutions({
+          accountAddress,
           accountId,
           authenticatorContexts,
           controllerEmitter,
@@ -760,6 +770,7 @@ export const signAndSubmitSmartAccountExecutions = async (
       accountId,
       actionHash: prepared.actionHash,
       allowReservedSLHDSASignature: canUseReservedSLHDSASignature({
+        accountAddress,
         executions: prepared.executions,
         smartAccount: prepared.smartAccount || smartAccount,
       }),

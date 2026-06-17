@@ -266,6 +266,7 @@ export const SmartAccountModuleConsent = () => {
         controllerEmitter: controllerEmitter as any,
       });
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts,
         controllerEmitter,
