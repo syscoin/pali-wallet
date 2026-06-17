@@ -31,3 +31,10 @@ On-chain ist ein Guardian nicht auf einen normalen Schlüssel beschränkt: Guard
 </a>
   <figcaption>Der Policy-Bildschirm des Smart Accounts zeigt installierte Module, Details zum aktiven Validator, Guardian-Recovery und Modulverwaltung.</figcaption>
 </figure>
+
+## Standard-Referenzen
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

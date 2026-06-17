@@ -3,10 +3,16 @@ import { getAddress } from '@ethersproject/address';
 import type {
   ISmartAccountMetadata,
   SmartAccountP256WebAuthnConfig,
+  SmartAccountSLHDSAConfig,
 } from 'types/network';
 import { toP256PasskeyAuthConfig } from 'utils/passkey/account';
+import { SLH_DSA_SIGNATURE_LIMIT, getSLHDSAKeyId } from 'utils/slhDsa';
 
-import type { PaliAuthConfig } from './account';
+import {
+  encodeSLHDSAValidatorInitData,
+  getConfiguredAuthenticatorAddress,
+  type PaliAuthConfig,
+} from './account';
 
 export type SmartAccountAuthenticatorBuildResult = {
   auth: PaliAuthConfig;
@@ -57,5 +63,55 @@ export const buildHydratedP256WebAuthnAuthenticator = ({
       credentialIdHash,
       passkeyName: 'P-256 / WebAuthn',
       publicKey,
+    },
+  });
+
+export const buildSLHDSAAuthenticator = ({
+  chainId,
+  config,
+}: {
+  chainId: number;
+  config: SmartAccountSLHDSAConfig;
+}): SmartAccountAuthenticatorBuildResult => {
+  const validator = getConfiguredAuthenticatorAddress(chainId, 'slh-dsa');
+  const data = encodeSLHDSAValidatorInitData(config);
+
+  return {
+    auth: {
+      data,
+      module: 'slh-dsa',
+      validator,
+    },
+    metadata: {
+      installedModules: [
+        {
+          address: getAddress(validator),
+          config,
+          data,
+          id: 'slh-dsa',
+          type: 'validator',
+        },
+      ],
+    },
+  };
+};
+
+export const buildHydratedSLHDSAAuthenticator = ({
+  chainId,
+  pkRoot,
+  pkSeed,
+}: {
+  chainId: number;
+  pkRoot: string;
+  pkSeed: string;
+}): SmartAccountAuthenticatorBuildResult =>
+  buildSLHDSAAuthenticator({
+    chainId,
+    config: {
+      keyId: getSLHDSAKeyId({ pkRoot, pkSeed }),
+      parameterSet: 'SLH-DSA-SHA2-128-24',
+      pkRoot,
+      pkSeed,
+      signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
     },
   });

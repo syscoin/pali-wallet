@@ -103,6 +103,7 @@ export const isPaliSignableValidator = (
   switch (module.id) {
     case 'ecdsa':
     case 'p256-webauthn':
+    case 'slh-dsa':
       return true;
     case 'composite': {
       // A composite is signable when at least `threshold` children resolve

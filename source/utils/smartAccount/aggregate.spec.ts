@@ -6,6 +6,7 @@ jest.unmock('@ethersproject/keccak256');
 jest.unmock('@ethersproject/strings');
 
 import { Interface } from '@ethersproject/abi';
+import { hexZeroPad } from '@ethersproject/bytes';
 import { keccak256 } from '@ethersproject/keccak256';
 
 import {
@@ -16,6 +17,7 @@ import {
 import {
   PALI_INFRASTRUCTURE_BY_ID,
   PALI_INFRASTRUCTURE_CONTRACTS,
+  PALI_MODULE_CANONICAL_ADDRESSES,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
 } from './deployment';
 
@@ -266,5 +268,19 @@ describe('smart account RPC aggregation', () => {
       '0x0b2046aa018109118d518235014ac2c679dcbdff32c64705fdf50d048cd32d22'
     );
     expect(entry?.bytecodeHash).toBe(keccak256(initCode));
+  });
+
+  it('wires the SLH-DSA validator to the deterministic verifier', () => {
+    const verifier = PALI_INFRASTRUCTURE_BY_ID.slhDsaVerifier;
+    const validator = PALI_INFRASTRUCTURE_BY_ID.slhDsaValidator;
+    const initCode = `0x${validator.deployCalldata.slice(
+      2 + validator.salt.length - 2
+    )}`;
+
+    expect(initCode.endsWith(hexZeroPad(verifier.address, 32).slice(2))).toBe(
+      true
+    );
+    expect(validator.moduleId).toBe('slh-dsa');
+    expect(PALI_MODULE_CANONICAL_ADDRESSES['slh-dsa']).toBe(validator.address);
   });
 });

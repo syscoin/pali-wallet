@@ -57,8 +57,8 @@ export enum PasskeyBackupStatus {
 export interface ISmartAccountMetadata {
   auth?: {
     data: string;
-    module?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn';
-    scheme?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn';
+    module?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn' | 'slh-dsa';
+    scheme?: 'composite' | 'custom' | 'ecdsa' | 'p256-webauthn' | 'slh-dsa';
     validator: string;
   };
   availableModules?: Array<{
@@ -68,7 +68,8 @@ export interface ISmartAccountMetadata {
       | 'custom'
       | 'ecdsa'
       | 'guardian-recovery'
-      | 'p256-webauthn';
+      | 'p256-webauthn'
+      | 'slh-dsa';
     installed?: boolean;
     kind?: 'builtin' | 'custom';
     supported?: boolean;
@@ -114,6 +115,13 @@ export type SmartAccountValidatorModule =
       config: SmartAccountEcdsaConfig;
       data?: string;
       id: 'ecdsa';
+      type: 'validator';
+    }
+  | {
+      address: string;
+      config: SmartAccountSLHDSAConfig;
+      data?: string;
+      id: 'slh-dsa';
       type: 'validator';
     }
   | {
@@ -164,6 +172,14 @@ export type SmartAccountEcdsaConfig = {
 export type SmartAccountCompositeConfig = {
   childValidators: string[];
   threshold: number;
+};
+
+export type SmartAccountSLHDSAConfig = {
+  keyId: string;
+  parameterSet: 'SLH-DSA-SHA2-128-24';
+  pkRoot: string;
+  pkSeed: string;
+  signatureLimit: number;
 };
 
 export type SmartAccountGuardianRecoveryConfig = {

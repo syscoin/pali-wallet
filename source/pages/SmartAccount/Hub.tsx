@@ -57,6 +57,8 @@ const moduleDisplayName = (
       return t('settings.passkeyAuthenticator');
     case 'ecdsa':
       return t('settings.ecdsaAuthenticator');
+    case 'slh-dsa':
+      return t('settings.slhDsaAuthenticator');
     case 'composite':
       return t('settings.compositeAuthenticator');
     case 'guardian-recovery':
@@ -208,6 +210,7 @@ const SmartAccountHub = () => {
     ) => {
       if (!account?.isSmartAccount || !metadata) return;
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
@@ -255,7 +258,8 @@ const SmartAccountHub = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       } finally {
@@ -312,7 +316,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {
@@ -365,7 +370,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {
@@ -468,7 +474,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {
@@ -667,6 +674,8 @@ const SmartAccountHub = () => {
                         ? t('settings.p256ModuleHint')
                         : module.id === 'guardian-recovery'
                         ? t('settings.smartAccountGuardianRecoveryDescription')
+                        : module.id === 'slh-dsa'
+                        ? t('settings.slhDsaModuleHint')
                         : t('settings.genericModuleHint')}
                     </span>
                   </div>

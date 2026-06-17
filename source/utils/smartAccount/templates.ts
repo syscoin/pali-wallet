@@ -27,16 +27,22 @@ export type PaliModuleInstallTemplate = {
   }>;
 };
 
+export const isSLHDSAOffscreenSignerSupported = () =>
+  typeof TARGET_BROWSER === 'undefined' || TARGET_BROWSER === 'chrome';
+
 export const getAvailablePaliModules = (chainId: number) =>
   PALI_MODULE_REGISTRY.map((entry) => {
     const address = getPaliModuleAddress(chainId, entry.id);
+    const supported =
+      Boolean(address) &&
+      (entry.id !== 'slh-dsa' || isSLHDSAOffscreenSignerSupported());
     return {
       capability: entry.capability,
       displayName: entry.displayName,
       id: entry.id,
       kind: entry.kind,
       moduleType: entry.moduleType,
-      supported: Boolean(address),
+      supported,
     };
   });
 

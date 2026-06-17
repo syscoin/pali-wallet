@@ -1,12 +1,13 @@
 import { getAddress } from '@ethersproject/address';
 import { Form, Input } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon } from 'components/index';
+import { PqOperationStatus, PqSigningOverlay } from 'components/Loading';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -14,6 +15,7 @@ import {
   IPasskeyCredentialProfile,
   ISmartAccountMetadata,
   KeyringAccountType,
+  SmartAccountValidatorModule,
 } from 'types/network';
 import {
   bytesToHex,
@@ -29,17 +31,18 @@ import {
   signP256WebAuthnActionHash,
   toP256WebAuthnRecoveryTarget,
 } from 'utils/passkey';
+import { getSLHDSAKeyId, normalizeSLHDSAPublicKeyField } from 'utils/slhDsa';
 import {
   buildP256WebAuthnAuthenticator,
+  buildSLHDSAAuthenticator,
+  buildSmartAccountValidatorSwitchPlan,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
-  encodeInstallValidatorModuleCall,
-  encodeRotateValidatorModuleCall,
-  encodeUninstallValidatorModuleCall,
   ERC7579_MODULE_TYPE_EXECUTOR,
   encodeSmartAccountAuthenticatorSignature,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
+  getSmartAccountLocalOwnerContexts,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
@@ -48,7 +51,6 @@ import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountAuthenticatorBuildResult,
-  SmartAccountAuthenticatorRuntimeContexts,
 } from 'utils/smartAccount';
 import {
   getSmartAccountActionErrorMessage,
@@ -69,6 +71,8 @@ const moduleDisplayKey = (id: string) => {
       return 'settings.passkeyAuthenticator';
     case 'ecdsa':
       return 'settings.ecdsaAuthenticator';
+    case 'slh-dsa':
+      return 'settings.slhDsaAuthenticator';
     case 'composite':
       return 'settings.compositeAuthenticator';
     case 'guardian-recovery':
@@ -84,6 +88,9 @@ const moduleHintKey = (id: string, capability?: string) => {
   }
   if (id === 'guardian-recovery') {
     return 'settings.smartAccountGuardianRecoveryDescription';
+  }
+  if (id === 'slh-dsa') {
+    return 'settings.slhDsaModuleHint';
   }
   return 'settings.genericModuleHint';
 };
@@ -112,6 +119,29 @@ type GuardianReplacementCredential = {
     salt: string;
   };
   userHandle?: string;
+};
+
+type SLHDSASetupStatus = {
+  accountId: number;
+  canFinalize?: boolean;
+  config?: Parameters<typeof buildSLHDSAAuthenticator>[0]['config'];
+  error?: string;
+  phase?: 'key-derivation' | 'xmss-cache';
+  progress?: {
+    completed: number;
+    level: number;
+    total: number;
+  };
+  startedAt: number;
+  status: 'failed' | 'ready' | 'running';
+  updatedAt: number;
+};
+
+type SLHDSAPreparedSignerRecord = {
+  accountId: number;
+  config: NonNullable<SLHDSASetupStatus['config']>;
+  updatedAt: number;
+  version: 1;
 };
 
 const guardianReplacementAuthenticatorKey = (account: string) =>
@@ -165,12 +195,37 @@ const SmartAccountPolicy = () => {
   ] = useState(false);
   const [isPasskeyRecreateConfirmOpen, setIsPasskeyRecreateConfirmOpen] =
     useState(false);
+  const [isSLHDSASetupConfirmOpen, setIsSLHDSASetupConfirmOpen] =
+    useState(false);
+  const [slhDsaSetupStatus, setSlhDsaSetupStatus] =
+    useState<SLHDSASetupStatus | null>(null);
+  const [slhDsaSetupIntent, setSlhDsaSetupIntent] = useState<
+    'regenerate' | 'use'
+  >('use');
+  const [isSLHDSASigning, setIsSLHDSASigning] = useState(false);
+  const [shouldFinalizeSLHDSASetup, setShouldFinalizeSLHDSASetup] =
+    useState(false);
+  const [slhDsaActionStartedAt, setSlhDsaActionStartedAt] = useState<
+    number | undefined
+  >();
+  const slhDsaFinalizeRef = useRef(false);
+  const validatorSwitchRef = useRef<{
+    key: string;
+    promise: Promise<void>;
+  } | null>(null);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
     metadata?.installedModules?.map((module) => module.id) || []
   );
   const isUndeployedSmartAccount =
     Boolean(account?.isSmartAccount && metadata) && !metadata?.isDeployed;
+  const isSLHDSASetupRunning = slhDsaSetupStatus?.status === 'running';
+  const slhDsaOperationStartedAt = isSLHDSASetupRunning
+    ? slhDsaSetupStatus?.startedAt
+    : slhDsaActionStartedAt;
+  const slhDsaProgress = isSLHDSASetupRunning
+    ? slhDsaSetupStatus?.progress
+    : undefined;
   const installedGuardianRecovery = metadata?.installedModules?.find(
     (module) => module.id === 'guardian-recovery' && module.type === 'executor'
   );
@@ -288,6 +343,12 @@ const SmartAccountPolicy = () => {
       configuredGuardianAddress.toLowerCase() !==
         normalizedGuardianAddress.toLowerCase() ||
       configuredGuardianDelaySeconds !== guardianDelaySeconds);
+  const activeValidatorModule = metadata?.installedModules?.find(
+    (module) =>
+      module.type === 'validator' &&
+      metadata.auth?.validator?.toLowerCase() === module.address.toLowerCase()
+  );
+  const isActiveSLHDSAApproval = activeValidatorModule?.id === 'slh-dsa';
   const guardianActionLoading =
     loading || guardianLoading || guardianStatusLoading;
   const isReplacementAuthenticatorReady =
@@ -345,6 +406,45 @@ const SmartAccountPolicy = () => {
     setGuardianReplacementStorageVersion((version) => version + 1);
   };
 
+  const normalizeSLHDSAConfig = (
+    config: Parameters<typeof buildSLHDSAAuthenticator>[0]['config']
+  ) => {
+    const pkRoot = normalizeSLHDSAPublicKeyField(config.pkRoot);
+    const pkSeed = normalizeSLHDSAPublicKeyField(config.pkSeed);
+
+    return {
+      ...config,
+      keyId: getSLHDSAKeyId({ pkRoot, pkSeed }),
+      pkRoot,
+      pkSeed,
+    };
+  };
+
+  const getInstalledSLHDSAValidatorConfig = () => {
+    const installedSLHDSAValidator = metadata?.installedModules?.find(
+      (module) => module.type === 'validator' && module.id === 'slh-dsa'
+    );
+    if (installedSLHDSAValidator?.type !== 'validator') {
+      return null;
+    }
+    const config = installedSLHDSAValidator.config as Parameters<
+      typeof buildSLHDSAAuthenticator
+    >[0]['config'];
+    return normalizeSLHDSAConfig(config);
+  };
+
+  const getPreparedSLHDSAValidatorConfig = async () => {
+    if (!account?.isSmartAccount) {
+      return null;
+    }
+    const prepared = (await controllerEmitter(
+      ['wallet', 'getSLHDSAPreparedSmartAccountSigner'],
+      [{ accountId: account.id }],
+      300000
+    )) as SLHDSAPreparedSignerRecord | null;
+    return prepared?.config ? normalizeSLHDSAConfig(prepared.config) : null;
+  };
+
   const refreshMetadata = async () => {
     if (!account?.isSmartAccount) {
       return null;
@@ -369,6 +469,41 @@ const SmartAccountPolicy = () => {
       refreshMetadata().catch(() => undefined);
     }
   }, [account?.address, account?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!account?.isSmartAccount) {
+      setSlhDsaSetupStatus(null);
+      return () => undefined;
+    }
+
+    const loadStatus = async () => {
+      try {
+        const status = (await controllerEmitter(
+          ['wallet', 'getSLHDSASmartAccountSetupStatus'],
+          [{ accountId: account.id }],
+          300000
+        )) as SLHDSASetupStatus | null;
+        if (!cancelled) {
+          setSlhDsaSetupStatus(status);
+        }
+      } catch {
+        if (!cancelled) {
+          setSlhDsaSetupStatus(null);
+        }
+      }
+    };
+
+    loadStatus();
+    const interval = window.setInterval(loadStatus, 3000);
+
+    return () => {
+      cancelled = true;
+      if (interval) {
+        window.clearInterval(interval);
+      }
+    };
+  }, [account?.id, account?.isSmartAccount, controllerEmitter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -447,47 +582,26 @@ const SmartAccountPolicy = () => {
     pendingPaliWalletRecoveryAddress,
   ]);
 
-  const getLocalOwnerContexts =
-    (): SmartAccountAuthenticatorRuntimeContexts => {
-      const ownerTypes = [
-        KeyringAccountType.HDAccount,
-        KeyringAccountType.Imported,
-        KeyringAccountType.Ledger,
-        KeyringAccountType.Trezor,
-      ];
-      const localOwners = ownerTypes.flatMap((type) =>
-        Object.entries(accounts[type] || {}).flatMap(
-          ([id, walletAccount]: [string, any]) => {
-            try {
-              return [
-                {
-                  address: getAddress(walletAccount.address),
-                  id: Number(id),
-                  type,
-                },
-              ];
-            } catch {
-              return [];
-            }
-          }
-        )
-      );
+  const getLocalOwnerContexts = () =>
+    getSmartAccountLocalOwnerContexts({
+      accounts,
+      controllerEmitter,
+    });
+  const getLocalSmartAccountIdByAddress = (address: string): number => {
+    const normalizedAddress = address.toLowerCase();
+    const localSmartAccount = Object.values(
+      accounts[KeyringAccountType.SmartAccount] || {}
+    ).find(
+      (candidate: any) =>
+        candidate?.address?.toLowerCase?.() === normalizedAddress
+    ) as any;
 
-      return {
-        ecdsa: {
-          localOwners,
-          signActionHash: ({ actionHash, owner }) =>
-            controllerEmitter(
-              ['wallet', 'ethSignWithAccount'],
-              [[owner.address, actionHash], { id: owner.id, type: owner.type }],
-              owner.type === KeyringAccountType.Ledger ||
-                owner.type === KeyringAccountType.Trezor
-                ? 300000
-                : 10000
-            ) as Promise<string>,
-        },
-      };
-    };
+    if (typeof localSmartAccount?.id !== 'number') {
+      throw new Error('Local smart-account guardian was not found');
+    }
+
+    return localSmartAccount.id;
+  };
 
   const submitModuleExecutions = async (
     executions: Array<{ data: string; target: string; value: string }>,
@@ -505,10 +619,21 @@ const SmartAccountPolicy = () => {
       useCachedMetadata?: boolean
     ) =>
       signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
         executions,
+        onAuthenticatorSigningResolved: (authenticatorId) => {
+          if (authenticatorId === 'slh-dsa') {
+            setIsSLHDSASigning(false);
+          }
+        },
+        onAuthenticatorSigningStarted: (authenticatorId) => {
+          if (authenticatorId === 'slh-dsa') {
+            setIsSLHDSASigning(true);
+          }
+        },
         skipRapidPolling: true,
         smartAccount,
         useCachedMetadata,
@@ -516,26 +641,30 @@ const SmartAccountPolicy = () => {
       });
 
     try {
-      await submit(metadata, options.useCachedMetadata);
-    } catch (error) {
-      if (!isSmartAccountSignatureError(error)) {
-        throw error;
-      }
-      const hydrated = await refreshMetadata();
-      if (!hydrated) {
-        throw error;
-      }
       try {
-        await submit(hydrated, true);
-      } catch (retryError) {
-        if (isSmartAccountSignatureError(retryError)) {
-          throw new Error('PALI_SMART_ACCOUNT_SIGNATURE_ERROR');
+        await submit(metadata, options.useCachedMetadata);
+      } catch (error) {
+        if (!isSmartAccountSignatureError(error)) {
+          throw error;
         }
-        throw retryError;
+        const hydrated = await refreshMetadata();
+        if (!hydrated) {
+          throw error;
+        }
+        try {
+          await submit(hydrated, true);
+        } catch (retryError) {
+          if (isSmartAccountSignatureError(retryError)) {
+            throw new Error('PALI_SMART_ACCOUNT_SIGNATURE_ERROR');
+          }
+          throw retryError;
+        }
       }
-    }
-    if (options.refreshAfterSubmit !== false) {
-      await refreshMetadata();
+      if (options.refreshAfterSubmit !== false) {
+        await refreshMetadata();
+      }
+    } finally {
+      setIsSLHDSASigning(false);
     }
   };
 
@@ -554,55 +683,75 @@ const SmartAccountPolicy = () => {
       throw new Error(t('settings.noActiveAuthenticator'));
     }
 
-    const targetValidator = metadata.installedModules?.find(
-      (module) =>
-        module.type === 'validator' &&
-        module.address.toLowerCase() ===
-          authenticator.auth.validator.toLowerCase()
-    );
-    const sameValidatorModule =
-      activeValidator.address.toLowerCase() ===
-      authenticator.auth.validator.toLowerCase();
-    // An already-installed validator module must be re-keyed via the account's
-    // atomic rotateValidator (a plain uninstall of the active validator is
-    // rejected by the account, and installing an installed module reverts).
-    // Rotation also makes the module the active validator.
-    const installExecution = {
-      data: targetValidator
-        ? encodeRotateValidatorModuleCall(
-            authenticator.auth.validator,
-            authenticator.auth.data
-          )
-        : encodeInstallValidatorModuleCall(
-            authenticator.auth.validator,
-            authenticator.auth.data
-          ),
-      target: account.address,
-      value: '0x0',
-    };
-    const uninstallActiveExecution = {
-      data: encodeUninstallValidatorModuleCall(activeValidator.address),
-      target: account.address,
-      value: '0x0',
-    };
-    const executions = [
-      installExecution,
-      ...(!sameValidatorModule ? [uninstallActiveExecution] : []),
-    ];
-
-    await signAndSubmitSmartAccountExecutions({
-      accountId: account.id,
-      authenticatorContexts: getLocalOwnerContexts(),
-      controllerEmitter,
-      executions,
-      smartAccount: metadata,
-      skipRapidPolling: true,
-      useCachedMetadata: true,
-      waitForConfirmation: true,
+    const installedValidators =
+      (metadata.installedModules?.filter(
+        (module): module is SmartAccountValidatorModule =>
+          module.type === 'validator'
+      ) as SmartAccountValidatorModule[]) || [];
+    const plan = buildSmartAccountValidatorSwitchPlan({
+      accountAddress: account.address,
+      activeValidator,
+      installedValidators,
+      target: authenticator.auth,
     });
-    const hydrated = await refreshMetadata();
-    if (hydrated) {
-      setMetadata(hydrated);
+
+    if (plan.executions.length === 0) {
+      return;
+    }
+
+    const switchKey = [
+      account.address.toLowerCase(),
+      plan.targetValidator.toLowerCase(),
+      authenticator.auth.data,
+    ].join(':');
+    if (validatorSwitchRef.current?.key === switchKey) {
+      return validatorSwitchRef.current.promise;
+    }
+
+    const switchPromise = (async () => {
+      await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
+        accountId: account.id,
+        authenticatorContexts: getLocalOwnerContexts(),
+        controllerEmitter,
+        executions: plan.executions,
+        onAuthenticatorSigningResolved: (authenticatorId) => {
+          if (authenticatorId === 'slh-dsa') {
+            setIsSLHDSASigning(false);
+          }
+        },
+        onAuthenticatorSigningStarted: (authenticatorId) => {
+          if (authenticatorId === 'slh-dsa') {
+            setIsSLHDSASigning(true);
+          }
+        },
+        smartAccount: metadata,
+        skipRapidPolling: true,
+        useCachedMetadata: true,
+        waitForConfirmation: true,
+      });
+      const hydrated = await refreshMetadata();
+      if (hydrated) {
+        setMetadata(hydrated);
+        if (
+          hydrated.auth?.validator?.toLowerCase() !==
+          plan.targetValidator.toLowerCase()
+        ) {
+          throw new Error(t('settings.smartAccountAuthenticatorUpdateFailed'));
+        }
+      }
+    })();
+    validatorSwitchRef.current = {
+      key: switchKey,
+      promise: switchPromise,
+    };
+    try {
+      await switchPromise;
+    } finally {
+      if (validatorSwitchRef.current?.promise === switchPromise) {
+        validatorSwitchRef.current = null;
+      }
+      setIsSLHDSASigning(false);
     }
   };
 
@@ -642,7 +791,8 @@ const SmartAccountPolicy = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       }
@@ -812,7 +962,8 @@ const SmartAccountPolicy = () => {
             : getSmartAccountActionErrorMessage(
                 error,
                 t('send.cantCompleteTxs'),
-                t('send.insufficientFundsForGas')
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
               );
         alert.error(message);
       }
@@ -864,7 +1015,8 @@ const SmartAccountPolicy = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       }
@@ -873,6 +1025,186 @@ const SmartAccountPolicy = () => {
       setLoading(false);
     }
   };
+
+  const finalizeSLHDSASetup = async (
+    config: Parameters<typeof buildSLHDSAAuthenticator>[0]['config']
+  ) => {
+    if (!account?.isSmartAccount || !metadata) {
+      return;
+    }
+
+    const activeSLHDSAValidator = metadata.installedModules?.find(
+      (module) =>
+        module.type === 'validator' &&
+        module.id === 'slh-dsa' &&
+        metadata.auth?.validator?.toLowerCase() === module.address.toLowerCase()
+    );
+    if (activeSLHDSAValidator?.type === 'validator') {
+      const activeConfig = activeSLHDSAValidator.config as Parameters<
+        typeof buildSLHDSAAuthenticator
+      >[0]['config'];
+      if (
+        activeConfig.pkRoot.toLowerCase() !== config.pkRoot.toLowerCase() ||
+        activeConfig.pkSeed.toLowerCase() !== config.pkSeed.toLowerCase()
+      ) {
+        throw new Error(
+          'Prepared SLH-DSA key does not match the active validator'
+        );
+      }
+      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      return;
+    }
+
+    await replaceActiveValidator(
+      buildSLHDSAAuthenticator({
+        chainId: activeNetwork.chainId,
+        config,
+      })
+    );
+    await controllerEmitter(
+      ['wallet', 'clearSLHDSASmartAccountSetupStatus'],
+      [{ accountId: account.id }],
+      300000
+    );
+    setSlhDsaSetupStatus(null);
+    alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+  };
+
+  const setupSLHDSAAuthenticator = async () => {
+    if (!account?.isSmartAccount || !metadata) {
+      return;
+    }
+
+    setIsSLHDSASetupConfirmOpen(false);
+    setLoading(true);
+    setModuleActionKey('slh-dsa:use');
+    setSlhDsaActionStartedAt(Date.now());
+    try {
+      const forceRegenerate = slhDsaSetupIntent === 'regenerate';
+      const isActiveSLHDSAValidator = metadata.installedModules?.some(
+        (module) =>
+          module.type === 'validator' &&
+          module.id === 'slh-dsa' &&
+          metadata.auth?.validator?.toLowerCase() ===
+            module.address.toLowerCase()
+      );
+      if (!isActiveSLHDSAValidator) {
+        await assertSmartAccountHasAuthenticatorGas();
+      }
+      const hasLocalSLHDSAState = (
+        config: NonNullable<SLHDSASetupStatus['config']>
+      ) =>
+        controllerEmitter(
+          ['wallet', 'hasSLHDSALocalSignerState'],
+          [
+            {
+              keyId: config.keyId,
+              pkRoot: config.pkRoot,
+              pkSeed: config.pkSeed,
+            },
+          ],
+          300000
+        ) as Promise<boolean>;
+
+      const installedSLHDSAConfig = getInstalledSLHDSAValidatorConfig();
+      if (!forceRegenerate && installedSLHDSAConfig) {
+        if (await hasLocalSLHDSAState(installedSLHDSAConfig)) {
+          setShouldFinalizeSLHDSASetup(false);
+          await finalizeSLHDSASetup(installedSLHDSAConfig);
+          return;
+        }
+      }
+      const preparedSLHDSAConfig = await getPreparedSLHDSAValidatorConfig();
+      if (
+        !forceRegenerate &&
+        preparedSLHDSAConfig &&
+        (await hasLocalSLHDSAState(preparedSLHDSAConfig))
+      ) {
+        setShouldFinalizeSLHDSASetup(false);
+        await finalizeSLHDSASetup(preparedSLHDSAConfig);
+        return;
+      }
+
+      setShouldFinalizeSLHDSASetup(true);
+      const status = (await controllerEmitter(
+        ['wallet', 'startSLHDSASmartAccountValidatorSetup'],
+        [
+          {
+            accountId: account.id,
+            force:
+              forceRegenerate ||
+              Boolean(installedSLHDSAConfig || preparedSLHDSAConfig),
+          },
+        ],
+        300000
+      )) as SLHDSASetupStatus;
+      setSlhDsaSetupStatus(status);
+    } catch (error: any) {
+      setShouldFinalizeSLHDSASetup(false);
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        const message =
+          isSmartAccountPrefundError(error) || isNativeGasError(error)
+            ? t('settings.smartAccountNeedsGasForAuthenticatorUpdate')
+            : getSmartAccountActionErrorMessage(
+                error,
+                t('send.cantCompleteTxs'),
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
+              );
+        alert.error(message);
+      }
+    } finally {
+      setModuleActionKey('');
+      setSlhDsaActionStartedAt(undefined);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      slhDsaSetupStatus?.status !== 'ready' ||
+      !slhDsaSetupStatus.config ||
+      !slhDsaSetupStatus.canFinalize ||
+      !shouldFinalizeSLHDSASetup ||
+      slhDsaFinalizeRef.current ||
+      !account?.isSmartAccount ||
+      !metadata
+    ) {
+      return;
+    }
+
+    slhDsaFinalizeRef.current = true;
+    setLoading(true);
+    setModuleActionKey('slh-dsa:use');
+    setSlhDsaActionStartedAt(Date.now());
+    finalizeSLHDSASetup(slhDsaSetupStatus.config)
+      .catch((error: any) => {
+        const wasHandled = handleWalletLockedError(error);
+        if (!wasHandled) {
+          alert.error(
+            getSmartAccountActionErrorMessage(
+              error,
+              t('send.cantCompleteTxs'),
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
+            )
+          );
+        }
+      })
+      .finally(() => {
+        slhDsaFinalizeRef.current = false;
+        setShouldFinalizeSLHDSASetup(false);
+        setModuleActionKey('');
+        setSlhDsaActionStartedAt(undefined);
+        setLoading(false);
+      });
+  }, [
+    shouldFinalizeSLHDSASetup,
+    slhDsaSetupStatus?.status,
+    slhDsaSetupStatus?.updatedAt,
+    metadata,
+  ]);
 
   const installGuardianRecovery = async () => {
     setIsGuardianPolicyUpdateConfirmOpen(false);
@@ -1013,6 +1345,13 @@ const SmartAccountPolicy = () => {
           'settings.smartAccountRecoveryReplacementName',
           { account: shortAddress(smartAccountAddress) }
         );
+        const validator = getConfiguredAuthenticatorAddress(
+          activeNetwork.chainId,
+          'p256-webauthn'
+        );
+        if (!validator) {
+          throw new Error('P-256/WebAuthn validator is not configured');
+        }
         // Idempotent retry: a previous attempt may have minted a replacement
         // passkey and then failed before the recovery was submitted on-chain.
         // Reuse that credential instead of creating another one.
@@ -1063,6 +1402,7 @@ const SmartAccountPolicy = () => {
           >['config'];
           target = toP256WebAuthnRecoveryTarget({
             credentialIdHash: verifiedConfig.credentialIdHash,
+            validator,
             ...verifiedConfig.publicKey,
           });
           replacementCredential = verifiedReplacement;
@@ -1097,6 +1437,7 @@ const SmartAccountPolicy = () => {
           };
           target = toP256WebAuthnRecoveryTarget({
             credentialIdHash: newCredential.credentialIdHash,
+            validator,
             ...publicKey,
           });
           replacementCredential = {
@@ -1147,6 +1488,7 @@ const SmartAccountPolicy = () => {
               guardian,
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
+                  accountId: getLocalSmartAccountIdByAddress(guardian),
                   actionHash: preparedRecovery.operation.hash,
                   authenticatorContexts: getLocalOwnerContexts(),
                   smartAccount: preparedRecovery.smartGuardian,
@@ -1201,7 +1543,8 @@ const SmartAccountPolicy = () => {
           : getSmartAccountActionErrorMessage(
               error,
               t('settings.smartAccountGuardianRecoveryStartFailed'),
-              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas')
+              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas'),
+              t('settings.slhDsaLocalSignerMissing')
             );
 
         alert.error(errorMessage);
@@ -1293,7 +1636,8 @@ const SmartAccountPolicy = () => {
           : getSmartAccountActionErrorMessage(
               error,
               t('settings.smartAccountGuardianRecoveryFinalizeFailed'),
-              t('send.insufficientFundsForGas')
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
             );
 
         alert.error(errorMessage);
@@ -1336,6 +1680,13 @@ const SmartAccountPolicy = () => {
   ) {
     return (
       <div className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left">
+        <PqSigningOverlay
+          expectedSeconds={60}
+          show={isSLHDSASigning}
+          subtitle={t('settings.slhDsaSigningOverlayDescription')}
+          title={t('settings.slhDsaSigningInProgress')}
+          warningSeconds={90}
+        />
         <div className="flex w-full max-w-[352px] flex-col gap-4">
           <button
             type="button"
@@ -1479,6 +1830,13 @@ const SmartAccountPolicy = () => {
 
   return (
     <div className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left">
+      <PqSigningOverlay
+        expectedSeconds={60}
+        show={isSLHDSASigning}
+        subtitle={t('settings.slhDsaSigningOverlayDescription')}
+        title={t('settings.slhDsaSigningInProgress')}
+        warningSeconds={90}
+      />
       <div className="flex w-full max-w-[352px] flex-col gap-4">
         <div>
           <p className="text-lg font-semibold text-brand-white">
@@ -1530,6 +1888,51 @@ const SmartAccountPolicy = () => {
                   )}
                 </div>
               )}
+              {!isUndeployedSmartAccount && isActiveSLHDSAApproval && (
+                <div className="mt-3 space-y-3">
+                  <PqOperationStatus
+                    expectedSeconds={180}
+                    progressLabel={
+                      slhDsaProgress
+                        ? `XMSS level ${slhDsaProgress.level}/22.`
+                        : undefined
+                    }
+                    progressPercent={
+                      slhDsaProgress
+                        ? (slhDsaProgress.completed / slhDsaProgress.total) *
+                          100
+                        : undefined
+                    }
+                    show={
+                      moduleActionKey === 'slh-dsa:use' || isSLHDSASetupRunning
+                    }
+                    startedAt={slhDsaOperationStartedAt}
+                    title={t('settings.slhDsaSetupInProgress')}
+                    warningSeconds={360}
+                  />
+                  {slhDsaSetupStatus?.status === 'failed' &&
+                    slhDsaSetupStatus.error && (
+                      <p className="text-xs leading-5 text-warning-error">
+                        {slhDsaSetupStatus.error}
+                      </p>
+                    )}
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={loading || isSLHDSASetupRunning}
+                    onClick={() => {
+                      setSlhDsaSetupIntent('regenerate');
+                      setIsSLHDSASetupConfirmOpen(true);
+                    }}
+                  >
+                    {(moduleActionKey === 'slh-dsa:use' ||
+                      isSLHDSASetupRunning) && (
+                      <LoadingSvg className="h-4 w-4 animate-spin" />
+                    )}
+                    {t('settings.slhDsaRegenerateLocalSigner')}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1575,6 +1978,12 @@ const SmartAccountPolicy = () => {
                   module.supported &&
                   !isActiveValidator &&
                   Boolean(walletManagementAddress);
+                const canInstallSLHDSA =
+                  module.id === 'slh-dsa' &&
+                  module.supported &&
+                  !isActiveValidator;
+                const isCurrentSLHDSASetupRunning =
+                  module.id === 'slh-dsa' && isSLHDSASetupRunning;
                 const canManageGuardianRecovery =
                   module.id === 'guardian-recovery' && module.supported;
                 const paliWalletOwnerAddress =
@@ -1585,6 +1994,7 @@ const SmartAccountPolicy = () => {
                 const hasAction =
                   canInstallPaliWallet ||
                   canInstallPasskey ||
+                  canInstallSLHDSA ||
                   canManageGuardianRecovery;
                 if (isActiveValidator || !hasAction) {
                   return null;
@@ -1657,6 +2067,54 @@ const SmartAccountPolicy = () => {
                           )}
                           {t('settings.useSmartAccountValidator')}
                         </button>
+                      )}
+                      {canInstallSLHDSA && (
+                        <div className="space-y-3">
+                          <PqOperationStatus
+                            expectedSeconds={360}
+                            progressLabel={
+                              slhDsaProgress
+                                ? `XMSS level ${slhDsaProgress.level}/22.`
+                                : undefined
+                            }
+                            progressPercent={
+                              slhDsaProgress
+                                ? (slhDsaProgress.completed /
+                                    slhDsaProgress.total) *
+                                  100
+                                : undefined
+                            }
+                            show={
+                              moduleActionKey === `${module.id}:use` ||
+                              isCurrentSLHDSASetupRunning
+                            }
+                            startedAt={slhDsaOperationStartedAt}
+                            title={t('settings.slhDsaSetupInProgress')}
+                            warningSeconds={540}
+                          />
+                          {module.id === 'slh-dsa' &&
+                            slhDsaSetupStatus?.status === 'failed' &&
+                            slhDsaSetupStatus.error && (
+                              <p className="text-xs leading-5 text-warning-error">
+                                {slhDsaSetupStatus.error}
+                              </p>
+                            )}
+                          <button
+                            type="button"
+                            className="flex items-center justify-center gap-2 rounded-full border border-brand-blue500 bg-brand-blue500 bg-opacity-20 px-3 py-2 text-xs font-medium text-brand-blue100 transition-all duration-200 hover:border-brand-blue100 hover:bg-brand-blue500 hover:bg-opacity-40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={loading || isCurrentSLHDSASetupRunning}
+                            onClick={() => {
+                              setSlhDsaSetupIntent('use');
+                              setIsSLHDSASetupConfirmOpen(true);
+                            }}
+                          >
+                            {(moduleActionKey === `${module.id}:use` ||
+                              isCurrentSLHDSASetupRunning) && (
+                              <LoadingSvg className="h-4 w-4 animate-spin" />
+                            )}
+                            {t('settings.useSmartAccountValidator')}
+                          </button>
+                        </div>
                       )}
                       {canManageGuardianRecovery && (
                         <div className="w-full min-w-0 space-y-3 overflow-hidden">
@@ -1824,6 +2282,19 @@ const SmartAccountPolicy = () => {
           setupPasskeyAuthenticator({ forceCreateNew: true });
         }}
         onClose={() => setIsPasskeyRecreateConfirmOpen(false)}
+      />
+      <ConfirmationModal
+        show={isSLHDSASetupConfirmOpen}
+        title={t('settings.slhDsaAuthenticator')}
+        description={t(
+          slhDsaSetupIntent === 'regenerate'
+            ? 'settings.slhDsaRegenerateConfirmDescription'
+            : 'settings.slhDsaSetupConfirmDescription'
+        )}
+        buttonText={t('settings.useSmartAccountValidator')}
+        isButtonLoading={loading}
+        onClick={setupSLHDSAAuthenticator}
+        onClose={() => setIsSLHDSASetupConfirmOpen(false)}
       />
     </div>
   );

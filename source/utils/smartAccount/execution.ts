@@ -1,6 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
-import { hexConcat } from '@ethersproject/bytes';
+import { hexConcat, hexDataSlice, isHexString } from '@ethersproject/bytes';
 
 import {
   getP256WebAuthnExternalSignatureMetadata,
@@ -11,7 +11,12 @@ import type {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
+import {
+  ERC7579_MODULE_TYPE_VALIDATOR,
+  paliSmartAccountInterface,
+} from './contracts';
 import { getInstalledValidatorModule } from './modules';
 import { hasSmartAccountPaymaster } from './paymaster';
 import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
@@ -22,19 +27,260 @@ type ControllerEmitter = (
   timeout?: number
 ) => Promise<any>;
 
+const SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR =
+  paliSmartAccountInterface.getSighash('rotateValidator');
+const SMART_ACCOUNT_INSTALL_MODULE_SELECTOR =
+  paliSmartAccountInterface.getSighash('installModule');
+const SMART_ACCOUNT_UNINSTALL_MODULE_SELECTOR =
+  paliSmartAccountInterface.getSighash('uninstallModule');
+
 export type SmartAccountExecutionIntent = {
   data?: string;
   target: string;
   value: string;
 };
 
+const smartAccountSubmitJobs = new Map<string, Promise<any>>();
+
+export type SmartAccountAuthenticatorSigningCallback = (
+  authenticator: SmartAccountValidatorModule['id']
+) => void;
+
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableStringify((value as any)[key])}`
+      )
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const sha256Hex = async (value: string) => {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const getSmartAccountSubmitJobKey = async ({
+  accountAddress,
+  accountId,
+  executions,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  accountId?: number;
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  sha256Hex(
+    stableStringify({
+      account:
+        accountAddress?.toLowerCase?.() ||
+        (smartAccount as any)?.address?.toLowerCase?.() ||
+        null,
+      accountId: accountId ?? null,
+      authValidator: smartAccount.auth?.validator?.toLowerCase?.() ?? null,
+      chainId: smartAccount.chainId,
+      executions: executions.map((execution) => ({
+        data: execution.data || '0x',
+        target: execution.target.toLowerCase(),
+        value: execution.value,
+      })),
+    })
+  );
+
+const isSmartAccountRotateValidatorExecution = ({
+  accountAddress,
+  execution,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    if (
+      !accountAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR
+    ) {
+      return false;
+    }
+
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    const activeValidatorData = smartAccount.auth?.data || '0x';
+    if (!activeValidatorAddress) {
+      return false;
+    }
+
+    const [nextValidatorAddress, , nextValidatorData] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'rotateValidator',
+        execution.data || '0x'
+      );
+
+    return (
+      getAddress(nextValidatorAddress) !== getAddress(activeValidatorAddress) ||
+      String(nextValidatorData).toLowerCase() !==
+        String(activeValidatorData).toLowerCase()
+    );
+  } catch {
+    return false;
+  }
+};
+
+const getValidatorInstallFromExecution = ({
+  accountAddress,
+  execution,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    if (
+      !accountAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_INSTALL_MODULE_SELECTOR
+    ) {
+      return null;
+    }
+
+    const [moduleTypeId, moduleAddress, initData] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'installModule',
+        execution.data || '0x'
+      );
+    if (Number(moduleTypeId) !== ERC7579_MODULE_TYPE_VALIDATOR) {
+      return null;
+    }
+
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    const activeValidatorData = smartAccount.auth?.data || '0x';
+    if (
+      activeValidatorAddress &&
+      getAddress(moduleAddress) === getAddress(activeValidatorAddress) &&
+      String(initData).toLowerCase() ===
+        String(activeValidatorData).toLowerCase()
+    ) {
+      return null;
+    }
+
+    return {
+      initData: String(initData),
+      moduleAddress: getAddress(moduleAddress),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const isActiveValidatorUninstallExecution = ({
+  accountAddress,
+  execution,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    if (
+      !accountAddress ||
+      !activeValidatorAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_UNINSTALL_MODULE_SELECTOR
+    ) {
+      return false;
+    }
+
+    const [moduleTypeId, moduleAddress] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'uninstallModule',
+        execution.data || '0x'
+      );
+    return (
+      Number(moduleTypeId) === ERC7579_MODULE_TYPE_VALIDATOR &&
+      getAddress(moduleAddress) === getAddress(activeValidatorAddress)
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isSmartAccountInstallUninstallValidatorSwitch = ({
+  accountAddress,
+  executions,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  executions.some((execution) =>
+    getValidatorInstallFromExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
+  ) &&
+  executions.some((execution) =>
+    isActiveValidatorUninstallExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
+  );
+
+const canUseReservedSLHDSASignature = ({
+  accountAddress,
+  executions,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
+  (executions.some((execution) =>
+    isSmartAccountRotateValidatorExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
+  ) ||
+    isSmartAccountInstallUninstallValidatorSwitch({
+      accountAddress,
+      executions,
+      smartAccount,
+    }));
+
 export type SubmitSmartAccountExecutionsParams = {
+  accountAddress?: string;
   accountId?: number;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
   enablePaymasterApprovalSetup?: boolean;
   executions: SmartAccountExecutionIntent[];
   onAssertionResolved?: () => void;
+  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
+  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   onPaymasterApprovalConfirmed?: () => void;
   onPaymasterApprovalRequired?: (
     setup: SmartAccountPaymasterApprovalSetup
@@ -83,6 +329,20 @@ type EcdsaAuthenticatorRuntimeContext = {
 
 type P256WebAuthnAuthenticatorRuntimeContext = {
   onBackupStatus?: (backupStatus: unknown) => Promise<void> | void;
+};
+
+export type SmartAccountSLHDSASigner = (params: {
+  accountId?: number;
+  actionHash: string;
+  allowReservedSignature?: boolean;
+  keyId: string;
+  parameterSet: 'SLH-DSA-SHA2-128-24';
+  pkRoot: string;
+  pkSeed: string;
+}) => Promise<string>;
+
+type SLHDSAAuthenticatorRuntimeContext = {
+  signActionHash?: SmartAccountSLHDSASigner;
 };
 
 const stringifyError = (error: unknown): string => {
@@ -205,13 +465,23 @@ export const getSmartAccountLocalOwnerContexts = ({
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
         ) as Promise<string>,
     },
+    'slh-dsa': {
+      signActionHash: (params) =>
+        controllerEmitter(
+          ['wallet', 'signSLHDSAActionHash'],
+          [params],
+          600000
+        ) as Promise<string>,
+    },
   };
 };
 
 export type SmartAccountAuthenticatorContext<
   T extends SmartAccountValidatorModule
 > = {
+  accountId?: number;
   actionHash: string;
+  allowReservedSLHDSASignature?: boolean;
   runtimeContext?: unknown;
   smartAccount: ISmartAccountMetadata;
   validator: T;
@@ -348,6 +618,65 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
   },
 };
 
+const slhDsaDriver: SmartAccountAuthenticatorDriver<
+  Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }>
+> = {
+  createExternalSignatureRequest: (context) =>
+    externalSignatureRequest(
+      context,
+      'Sign this smart account action hash with the configured SLH-DSA key, then submit the signature.',
+      {
+        actionHash: context.actionHash,
+        keyId: context.validator.config.keyId,
+        parameterSet: context.validator.config.parameterSet,
+        pkRoot: context.validator.config.pkRoot,
+        pkSeed: context.validator.config.pkSeed,
+      }
+    ),
+  id: 'slh-dsa',
+  signActionHash: async ({
+    accountId,
+    allowReservedSLHDSASignature,
+    actionHash,
+    runtimeContext,
+    validator,
+  }) => {
+    const slhDsaContext = runtimeContext as
+      | SLHDSAAuthenticatorRuntimeContext
+      | undefined;
+    const signature = await slhDsaContext?.signActionHash?.({
+      accountId,
+      actionHash,
+      allowReservedSignature: allowReservedSLHDSASignature,
+      keyId: validator.config.keyId,
+      parameterSet: validator.config.parameterSet,
+      pkRoot: validator.config.pkRoot,
+      pkSeed: validator.config.pkSeed,
+    });
+
+    if (!signature) {
+      throw new SmartAccountExternalSignatureRequired(
+        slhDsaDriver.createExternalSignatureRequest({
+          actionHash,
+          smartAccount: {} as never,
+          validator,
+        })
+      );
+    }
+    if (
+      !isHexString(signature) ||
+      signature.length !== SLH_DSA_SIGNATURE_HEX_LENGTH
+    ) {
+      throw new Error('SLH-DSA signer returned an invalid signature');
+    }
+
+    return {
+      proof: signature,
+      signature,
+    };
+  },
+};
+
 const compositeDriver: SmartAccountAuthenticatorDriver<
   Extract<SmartAccountValidatorModule, { id: 'composite' }>
 > = {
@@ -397,6 +726,7 @@ const customDriver: SmartAccountAuthenticatorDriver<
 const authenticatorDrivers = [
   p256WebAuthnDriver,
   ecdsaDriver,
+  slhDsaDriver,
   compositeDriver,
   customDriver,
 ] as const;
@@ -421,6 +751,7 @@ const getAuthenticatorDriver = <T extends SmartAccountValidatorModule>(
 };
 
 export const getSmartAccountExternalSignatureRequest = (params: {
+  accountId?: number;
   actionHash: string;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   smartAccount: ISmartAccountMetadata;
@@ -428,6 +759,7 @@ export const getSmartAccountExternalSignatureRequest = (params: {
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
   return driver.createExternalSignatureRequest({
+    accountId: params.accountId,
     actionHash: params.actionHash,
     runtimeContext: params.authenticatorContexts?.[validator.id],
     smartAccount: params.smartAccount,
@@ -447,19 +779,30 @@ export type SmartAccountGasPolicy =
   | { type: 'self-funded' };
 
 export const signSmartAccountActionHash = async (params: {
+  accountId?: number;
   actionHash: string;
+  allowReservedSLHDSASignature?: boolean;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
+  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
+  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   smartAccount: ISmartAccountMetadata;
 }): Promise<SmartAccountAuthenticatorSignature> => {
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
 
-  const signature = await driver.signActionHash({
-    actionHash: params.actionHash,
-    runtimeContext: params.authenticatorContexts?.[validator.id],
-    smartAccount: params.smartAccount,
-    validator,
-  });
+  params.onAuthenticatorSigningStarted?.(validator.id);
+  const signature = await driver
+    .signActionHash({
+      accountId: params.accountId,
+      actionHash: params.actionHash,
+      allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
+      runtimeContext: params.authenticatorContexts?.[validator.id],
+      smartAccount: params.smartAccount,
+      validator,
+    })
+    .finally(() => {
+      params.onAuthenticatorSigningResolved?.(validator.id);
+    });
 
   return {
     ...signature,
@@ -482,12 +825,15 @@ export const signAndSubmitSmartAccountExecutions = async (
   params: SubmitSmartAccountExecutionsParams
 ) => {
   const {
+    accountAddress,
     accountId,
     authenticatorContexts,
     controllerEmitter,
     enablePaymasterApprovalSetup = true,
     executions,
     onAssertionResolved,
+    onAuthenticatorSigningResolved,
+    onAuthenticatorSigningStarted,
     onPaymasterApprovalConfirmed,
     onPaymasterApprovalRequired,
     onPrepared,
@@ -497,6 +843,18 @@ export const signAndSubmitSmartAccountExecutions = async (
     useCachedMetadata,
     waitForConfirmation,
   } = params;
+  const validatorIdForJob =
+    smartAccount.auth?.module || smartAccount.auth?.scheme;
+  const shouldTrackJob = validatorIdForJob === 'slh-dsa';
+  const submitJobKey = shouldTrackJob
+    ? await getSmartAccountSubmitJobKey({
+        accountAddress,
+        accountId,
+        executions,
+        smartAccount,
+      })
+    : '';
+
   const prepareSignAndSubmit = async (
     useCachedMetadataOverride?: boolean,
     skipPaymaster = false
@@ -530,11 +888,14 @@ export const signAndSubmitSmartAccountExecutions = async (
         }
       } else {
         await signAndSubmitSmartAccountExecutions({
+          accountAddress,
           accountId,
           authenticatorContexts,
           controllerEmitter,
           enablePaymasterApprovalSetup: false,
           executions: [prepared.paymasterApprovalSetup.execution],
+          onAuthenticatorSigningResolved,
+          onAuthenticatorSigningStarted,
           skipPaymaster: true,
           skipRapidPolling: true,
           smartAccount: prepared.smartAccount || smartAccount,
@@ -551,14 +912,22 @@ export const signAndSubmitSmartAccountExecutions = async (
     }
 
     const signature = await signSmartAccountActionHash({
+      accountId,
       actionHash: prepared.actionHash,
+      allowReservedSLHDSASignature: canUseReservedSLHDSASignature({
+        accountAddress,
+        executions: prepared.executions,
+        smartAccount: prepared.smartAccount || smartAccount,
+      }),
       authenticatorContexts,
+      onAuthenticatorSigningResolved,
+      onAuthenticatorSigningStarted,
       smartAccount: prepared.smartAccount || smartAccount,
     });
     onAssertionResolved?.();
 
     try {
-      return await controllerEmitter(
+      const result = await controllerEmitter(
         ['wallet', 'submitSmartAccountExecution'],
         [
           {
@@ -575,6 +944,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         ],
         300000
       );
+      return result;
     } catch (error) {
       const usedOptionalPaymaster =
         !skipPaymaster &&
@@ -588,12 +958,31 @@ export const signAndSubmitSmartAccountExecutions = async (
     }
   };
 
-  try {
-    return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
-  } catch (error) {
-    if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
-      return prepareSignAndSubmit(false, skipPaymaster);
+  const run = async () => {
+    try {
+      return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
+    } catch (error) {
+      if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
+        return await prepareSignAndSubmit(false, skipPaymaster);
+      }
+      throw error;
     }
-    throw error;
+  };
+
+  if (!shouldTrackJob) {
+    return run();
+  }
+
+  const inFlightJob = smartAccountSubmitJobs.get(submitJobKey);
+  if (inFlightJob) {
+    return inFlightJob;
+  }
+
+  const job = run();
+  smartAccountSubmitJobs.set(submitJobKey, job);
+  try {
+    return await job;
+  } finally {
+    smartAccountSubmitJobs.delete(submitJobKey);
   }
 };

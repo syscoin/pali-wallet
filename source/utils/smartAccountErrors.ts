@@ -162,6 +162,22 @@ export const isSmartAccountSignatureError = (error: unknown): boolean => {
   );
 };
 
+export const isSLHDSALocalSignerMissingError = (error: unknown): boolean => {
+  const message = getErrorText(error);
+  return (
+    message.includes('SLH-DSA key is not available in this unlocked session') ||
+    message.includes('SLH-DSA encrypted local signer state was not found') ||
+    message.includes('SLH-DSA local signer state could not be hydrated') ||
+    message.includes(
+      'local post-quantum signer does not match the active validator'
+    ) ||
+    message.includes(
+      'Prepared SLH-DSA key does not match the active validator'
+    ) ||
+    message.includes('Regenerate the local signer')
+  );
+};
+
 /**
  * Raw RPC/revert payloads aren't user-presentable - used to decide
  * between showing the original message and a friendly fallback.
@@ -180,10 +196,14 @@ export const isRawRpcRevertMessage = (message: string): boolean => {
 export const getSmartAccountActionErrorMessage = (
   error: unknown,
   fallback: string,
-  gasMessage: string
+  gasMessage: string,
+  slhDsaLocalSignerMessage = fallback
 ): string => {
   if (isSmartAccountPrefundError(error) || isNativeGasError(error)) {
     return gasMessage;
+  }
+  if (isSLHDSALocalSignerMissingError(error)) {
+    return slhDsaLocalSignerMessage;
   }
 
   const message = (error as any)?.message;

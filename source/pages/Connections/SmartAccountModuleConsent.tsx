@@ -190,7 +190,8 @@ export const SmartAccountModuleConsent = () => {
             getSmartAccountActionErrorMessage(
               err,
               t('send.cantCompleteTxs'),
-              t('send.insufficientFundsForGas')
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
             )
           );
         }
@@ -265,6 +266,7 @@ export const SmartAccountModuleConsent = () => {
         controllerEmitter: controllerEmitter as any,
       });
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         accountId: account.id,
         authenticatorContexts,
         controllerEmitter,
@@ -338,7 +340,8 @@ export const SmartAccountModuleConsent = () => {
           getSmartAccountActionErrorMessage(
             err,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       }

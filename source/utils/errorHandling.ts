@@ -2,6 +2,7 @@
 import { truncate } from 'utils/index';
 import {
   isNativeGasError,
+  isSLHDSALocalSignerMissingError,
   isSmartAccountPrefundError,
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
@@ -258,6 +259,11 @@ export const handleTransactionError = (
   // Handle blacklist errors with specific messages
   if (isBlacklistError(error)) {
     alert.error(error.message);
+    return true;
+  }
+
+  if (isSLHDSALocalSignerMissingError(error)) {
+    alert.error(t('settings.slhDsaLocalSignerMissing'));
     return true;
   }
 

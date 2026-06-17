@@ -31,3 +31,10 @@ Passkey承認、チームowner、batch action、guardian recoveryに役立ちま
 </a>
   <figcaption>スマートアカウントのpolicy画面には、インストール済みモジュール、アクティブvalidatorの詳細、guardian recovery、モジュール管理が表示されます。</figcaption>
 </figure>
+
+## 標準仕様の参考
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

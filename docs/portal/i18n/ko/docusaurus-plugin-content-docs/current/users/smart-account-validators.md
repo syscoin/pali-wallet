@@ -31,3 +31,10 @@ on-chain에서 guardian은 일반 키에 한정되지 않습니다. guardian 승
 </a>
   <figcaption>스마트 계정 policy 화면에는 설치된 모듈, 활성 validator 세부 정보, guardian recovery, 모듈 관리가 표시됩니다.</figcaption>
 </figure>
+
+## 표준 참고 자료
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

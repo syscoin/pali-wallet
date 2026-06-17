@@ -80,7 +80,7 @@ const CANARY_EXTENSION_KEY =
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '4.0.28',
+  version: '4.0.29',
   icons: {
     16: 'assets/all_assets/favicon-16.png',
     32: 'assets/all_assets/favicon-32.png',
@@ -108,7 +108,7 @@ const MV3_OPTIONS = {
   ],
   content_security_policy: {
     extension_pages:
-      "script-src 'self'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
+      "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:;",
   },
   author: 'Syscoin',
   minimum_chrome_version: '109',

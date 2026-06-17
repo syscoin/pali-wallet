@@ -110,3 +110,12 @@ Dapps can also request an ECDSA validator:
 ```
 
 If the requested ECDSA owner is not a local Pali account, Pali shows a warning and requires explicit acknowledgement before continuing.
+
+## Standards references
+
+Pali smart accounts are built around public smart-account standards:
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337) for UserOperation-style account execution.
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579) for validator and executor modules.
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271) for signatures from contract accounts.
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/) for passkey approvals.

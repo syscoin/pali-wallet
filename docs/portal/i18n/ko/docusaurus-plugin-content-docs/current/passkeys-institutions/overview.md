@@ -76,3 +76,10 @@ Passkey validator에는 P-256 WebAuthn 검증 지원이 필요합니다. 많은 
   <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
   <figcaption>Dapp에서 시작하는 온보딩: 요청을 검토하고 확인하면 스마트 계정이 바로 사용 가능해집니다.</figcaption>
 </figure>
+
+## 표준 참고 자료
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

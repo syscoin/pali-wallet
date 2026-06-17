@@ -44,3 +44,10 @@ On-chain, un gardien ne se limite pas à une clé normale : les approbations des
 </a>
   <figcaption>L'écran de politique du compte intelligent affiche les modules installés, les détails du validateur actif, la guardian recovery et la gestion des modules.</figcaption>
 </figure>
+
+## Références de standards
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

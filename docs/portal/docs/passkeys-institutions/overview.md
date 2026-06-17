@@ -114,3 +114,12 @@ The user sees the requesting site, account label, requested authenticator, and a
   <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
   <figcaption>Dapp-initiated onboarding: review the request, confirm, and the smart account is live.</figcaption>
 </figure>
+
+## Standards references
+
+Pali smart accounts follow the same standards family described above:
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337) for UserOperation-style account execution and gas/payment separation.
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579) for validator and executor module roles.
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271) for smart-account signatures and contract-account guardians.
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/) for browser/passkey assertions.

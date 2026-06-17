@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { DropdownArrowSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Button, Card, Icon } from 'components/index';
+import { PqOperationStatus } from 'components/Loading';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -28,12 +29,15 @@ import {
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
 import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
+import { SLH_DSA_SIGNATURE_LIMIT } from 'utils/slhDsa';
 import {
   encodeEcdsaValidatorInitData,
   encodeInstallValidatorModuleCall,
   encodeRotateValidatorModuleCall,
+  encodeSLHDSAValidatorInitData,
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
+  isSLHDSAOffscreenSignerSupported,
   PaliSmartAccountAuthenticatorSetup,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
@@ -74,6 +78,8 @@ const displayNameForAuthenticator = (
       return t('settings.passkeyAuthenticator');
     case 'ecdsa':
       return t('settings.ecdsaAuthenticator');
+    case 'slh-dsa':
+      return 'SLH-DSA';
     case 'composite':
       return t('settings.compositeAuthenticator');
     default:
@@ -255,6 +261,47 @@ const normalizeEcdsaAuthenticator = ({
   };
 };
 
+const normalizeSLHDSAAuthenticator = ({
+  chainId,
+  config,
+}: {
+  chainId: number;
+  config: {
+    keyId: string;
+    parameterSet: 'SLH-DSA-SHA2-128-24';
+    pkRoot: string;
+    pkSeed: string;
+    signatureLimit?: number;
+  };
+}): PreparedAuthenticator => {
+  const validator = getPaliModuleAddress(chainId, 'slh-dsa');
+  const data = encodeSLHDSAValidatorInitData({
+    pkRoot: config.pkRoot,
+    pkSeed: config.pkSeed,
+  });
+
+  return {
+    auth: {
+      data,
+      module: 'slh-dsa',
+      validator,
+    },
+    module: {
+      address: getAddress(validator),
+      config: {
+        keyId: config.keyId,
+        parameterSet: 'SLH-DSA-SHA2-128-24',
+        pkRoot: config.pkRoot,
+        pkSeed: config.pkSeed,
+        signatureLimit: config.signatureLimit || SLH_DSA_SIGNATURE_LIMIT,
+      },
+      data,
+      id: 'slh-dsa',
+      type: 'validator',
+    },
+  };
+};
+
 export const PrepareSmartAccount = () => {
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
@@ -287,6 +334,7 @@ export const PrepareSmartAccount = () => {
     requestedAuthenticator.id,
     t
   );
+  const isRequestedSLHDSA = requestedAuthenticator.id === 'slh-dsa';
   const createsWalletPasskey =
     requestedAuthenticator.id === 'p256-webauthn' &&
     !hasP256Config(requestedAuthenticator.config);
@@ -376,6 +424,7 @@ export const PrepareSmartAccount = () => {
       };
 
       await signAndSubmitSmartAccountExecutions({
+        accountAddress: account.address,
         authenticatorContexts: {
           ecdsa: {
             localOwners: [
@@ -419,7 +468,14 @@ export const PrepareSmartAccount = () => {
         throw new Error(t('connections.smartAccountCompositeUnsupported'));
       }
 
-      const requested =
+      if (
+        requestedAuthenticator.id === 'slh-dsa' &&
+        (requestedAuthenticator.config || !isSLHDSAOffscreenSignerSupported())
+      ) {
+        throw new Error(t('connections.smartAccountPrepareFailed'));
+      }
+
+      let requested =
         requestedAuthenticator.id === 'p256-webauthn'
           ? await normalizeP256Authenticator({
               chainId: activeNetwork.chainId,
@@ -455,6 +511,19 @@ export const PrepareSmartAccount = () => {
         [account.id, KeyringAccountType.SmartAccount, true]
       );
 
+      if (requestedAuthenticator.id === 'slh-dsa') {
+        setCreationStep('credential');
+        const config = (await controllerEmitter(
+          ['wallet', 'provisionSLHDSASmartAccountValidator'],
+          [{ accountId: account.id }],
+          600000
+        )) as Parameters<typeof normalizeSLHDSAAuthenticator>[0]['config'];
+        requested = normalizeSLHDSAAuthenticator({
+          chainId: activeNetwork.chainId,
+          config,
+        });
+      }
+
       if (!requested) {
         await controllerEmitter(
           ['dapp', 'connect'],
@@ -478,6 +547,7 @@ export const PrepareSmartAccount = () => {
         return;
       }
 
+      setCreationStep('deploying');
       await controllerEmitter(
         ['wallet', 'registerSmartAccountOnChain'],
         [{ accountId: account.id }],
@@ -679,6 +749,12 @@ export const PrepareSmartAccount = () => {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-brand-gray300 bg-bkg-3 px-4 py-3 shadow-lg">
+        <PqOperationStatus
+          expectedSeconds={360}
+          show={loading && isRequestedSLHDSA && creationStep !== 'idle'}
+          title={t('settings.slhDsaSetupInProgress')}
+          warningSeconds={540}
+        />
         {creationStep !== 'idle' && (
           <div className="mb-3 flex items-center justify-center gap-2">
             <LoadingSvg className="h-4 w-4 flex-shrink-0 animate-spin text-brand-royalblue" />

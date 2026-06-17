@@ -31,3 +31,10 @@ Guardians 刻意**不**在这个列表里。guardian 永远无法批准交易；
 </a>
   <figcaption>智能账户策略界面显示已安装的模块、当前验证器详情、guardian recovery 和模块管理。</figcaption>
 </figure>
+
+## 标准参考
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

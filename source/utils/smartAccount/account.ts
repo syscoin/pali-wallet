@@ -8,6 +8,8 @@ import type {
   ISmartAccountMetadata,
   KeyringAccountType,
   SmartAccountP256WebAuthnConfig,
+  SmartAccountSLHDSAConfig,
+  SmartAccountValidatorModule,
 } from 'types/network';
 
 import {
@@ -74,6 +76,8 @@ export type SmartAccountCompositeAuthenticatorConfig = {
   threshold?: number;
 };
 
+export type SmartAccountSLHDSAAuthenticatorConfig = SmartAccountSLHDSAConfig;
+
 export type SmartAccountAuthenticatorSetup =
   | {
       config: SmartAccountP256WebAuthnAuthenticatorConfig;
@@ -82,6 +86,10 @@ export type SmartAccountAuthenticatorSetup =
   | {
       config: SmartAccountEcdsaAuthenticatorConfig;
       id: 'ecdsa';
+    }
+  | {
+      config: SmartAccountSLHDSAAuthenticatorConfig;
+      id: 'slh-dsa';
     }
   | {
       config: SmartAccountCompositeAuthenticatorConfig;
@@ -114,6 +122,15 @@ export const encodeCompositeValidatorInitData = (
   defaultAbiCoder.encode(
     ['address[]', 'uint64'],
     [childValidators.map((validator) => getAddress(validator)), threshold]
+  );
+
+export const encodeSLHDSAValidatorInitData = ({
+  pkRoot,
+  pkSeed,
+}: Pick<SmartAccountSLHDSAConfig, 'pkRoot' | 'pkSeed'>) =>
+  defaultAbiCoder.encode(
+    ['tuple(bytes32 pkSeed,bytes32 pkRoot)'],
+    [{ pkRoot, pkSeed }]
   );
 
 export const encodeGuardianRecoveryInitData = ({
@@ -248,6 +265,73 @@ export const encodeRotateValidatorModuleCall = (
     deInitData,
     initData,
   ]);
+
+const sameAddress = (left?: string, right?: string) =>
+  Boolean(left && right) && left.toLowerCase() === right.toLowerCase();
+
+const sameHexData = (left?: string, right?: string) =>
+  (left || '0x').toLowerCase() === (right || '0x').toLowerCase();
+
+export type SmartAccountValidatorSwitchPlan = {
+  executions: SmartAccountExecution[];
+  targetValidator: string;
+};
+
+export const buildSmartAccountValidatorSwitchPlan = ({
+  accountAddress,
+  activeValidator,
+  installedValidators,
+  target,
+}: {
+  accountAddress: string;
+  activeValidator: SmartAccountValidatorModule;
+  installedValidators: SmartAccountValidatorModule[];
+  target: PaliAuthConfig;
+}): SmartAccountValidatorSwitchPlan => {
+  const targetValidator = getAddress(target.validator);
+  const activeValidatorAddress = getAddress(activeValidator.address);
+  const installedTarget = installedValidators.find((module) =>
+    sameAddress(module.address, targetValidator)
+  );
+
+  if (sameAddress(activeValidatorAddress, targetValidator)) {
+    return {
+      executions: sameHexData(activeValidator.data, target.data)
+        ? []
+        : [
+            {
+              data: encodeRotateValidatorModuleCall(
+                targetValidator,
+                target.data
+              ),
+              target: accountAddress,
+              value: '0x0',
+            },
+          ],
+      targetValidator,
+    };
+  }
+
+  const targetActivationExecution = {
+    data: installedTarget
+      ? encodeRotateValidatorModuleCall(targetValidator, target.data)
+      : encodeInstallValidatorModuleCall(targetValidator, target.data),
+    target: accountAddress,
+    value: '0x0',
+  };
+
+  return {
+    executions: [
+      targetActivationExecution,
+      {
+        data: encodeUninstallValidatorModuleCall(activeValidatorAddress),
+        target: accountAddress,
+        value: '0x0',
+      },
+    ],
+    targetValidator,
+  };
+};
 
 export const encodeInstallExecutorModuleCall = (
   moduleAddress: string,

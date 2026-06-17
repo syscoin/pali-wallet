@@ -44,3 +44,10 @@ On-chain, um guardião não se limita a uma chave normal: as aprovações de gua
 </a>
   <figcaption>A tela de política da smart account mostra os módulos instalados, os detalhes do validador ativo, guardian recovery e o gerenciamento de módulos.</figcaption>
 </figure>
+
+## Referências de padrões
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

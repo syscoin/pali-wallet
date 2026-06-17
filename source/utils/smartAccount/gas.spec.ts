@@ -13,6 +13,7 @@ import {
   estimateSmartAccountCallGasLimit,
   estimateSmartAccountUserOpGas,
   getSmartAccountGasUnitsReserve,
+  getSmartAccountPreVerificationGas,
   getSmartAccountValidatorProfile,
   getSmartAccountVerificationGasLimit,
   SMART_ACCOUNT_COMPOSITE_VERIFICATION_BASE_GAS,
@@ -21,6 +22,7 @@ import {
   SMART_ACCOUNT_DEPLOYMENT_VERIFICATION_GAS,
   SMART_ACCOUNT_PENALTY_GAS_THRESHOLD,
   SMART_ACCOUNT_PRE_VERIFICATION_GAS,
+  SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS,
   SMART_ACCOUNT_VERIFICATION_GAS_FALLBACK,
   SMART_ACCOUNT_VERIFICATION_GAS_LIMITS,
 } from './gas';
@@ -106,6 +108,9 @@ describe('getSmartAccountVerificationGasLimit', () => {
     expect(
       getSmartAccountVerificationGasLimit({ validatorKind: 'p256-webauthn' })
     ).toBe(SMART_ACCOUNT_VERIFICATION_GAS_LIMITS['p256-webauthn']);
+    expect(
+      getSmartAccountVerificationGasLimit({ validatorKind: 'slh-dsa' })
+    ).toBe(SMART_ACCOUNT_VERIFICATION_GAS_LIMITS['slh-dsa']);
   });
 
   it('scales composite with the child count', () => {
@@ -146,6 +151,17 @@ describe('getSmartAccountVerificationGasLimit', () => {
       SMART_ACCOUNT_VERIFICATION_GAS_LIMITS.ecdsa +
         SMART_ACCOUNT_DEPLOYMENT_VERIFICATION_GAS
     );
+  });
+});
+
+describe('getSmartAccountPreVerificationGas', () => {
+  it('uses a larger calldata budget for SLH-DSA signatures', () => {
+    expect(getSmartAccountPreVerificationGas({ validatorKind: 'ecdsa' })).toBe(
+      SMART_ACCOUNT_PRE_VERIFICATION_GAS
+    );
+    expect(
+      getSmartAccountPreVerificationGas({ validatorKind: 'slh-dsa' })
+    ).toBe(SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS);
   });
 });
 
@@ -197,6 +213,24 @@ describe('estimateSmartAccountUserOpGas', () => {
         estimate.preVerificationGas
     );
   });
+
+  it('uses the SLH-DSA preVerificationGas budget for PQ signatures', async () => {
+    const provider = providerWithEstimate(121_000);
+    const estimate = await estimateSmartAccountUserOpGas(provider, {
+      callData: CALL_DATA,
+      isDeployed: true,
+      sender: SENDER,
+      validatorKind: 'slh-dsa',
+    });
+    expect(estimate.preVerificationGas).toBe(
+      SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
+    );
+    expect(estimate.totalGasUnits).toBe(
+      estimate.callGasLimit +
+        estimate.verificationGasLimit +
+        SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
+    );
+  });
 });
 
 describe('getSmartAccountGasUnitsReserve', () => {
@@ -234,5 +268,20 @@ describe('getSmartAccountGasUnitsReserve', () => {
     expect(
       undeployed.sub(deployed).eq(SMART_ACCOUNT_DEPLOYMENT_VERIFICATION_GAS)
     ).toBe(true);
+  });
+
+  it('includes the larger SLH-DSA preVerificationGas in the reserve', () => {
+    const reserve = getSmartAccountGasUnitsReserve({
+      auth: { data: '0x', module: 'slh-dsa', validator: SENDER },
+      isDeployed: true,
+    });
+
+    expect(reserve).toEqual(
+      BigNumber.from(
+        SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT +
+          SMART_ACCOUNT_VERIFICATION_GAS_LIMITS['slh-dsa'] +
+          SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
+      )
+    );
   });
 });

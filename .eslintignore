@@ -8,3 +8,4 @@ tailwind.config.js
 jest.setup.js
 tests/e2e/driver/firefox.js
 tests/e2e/driver/chrome.js
+source/assets/slh-dsa/slhdsa-sha2-128-24.js
