@@ -587,6 +587,21 @@ const SmartAccountPolicy = () => {
       accounts,
       controllerEmitter,
     });
+  const getLocalSmartAccountIdByAddress = (address: string): number => {
+    const normalizedAddress = address.toLowerCase();
+    const localSmartAccount = Object.values(
+      accounts[KeyringAccountType.SmartAccount] || {}
+    ).find(
+      (candidate: any) =>
+        candidate?.address?.toLowerCase?.() === normalizedAddress
+    ) as any;
+
+    if (typeof localSmartAccount?.id !== 'number') {
+      throw new Error('Local smart-account guardian was not found');
+    }
+
+    return localSmartAccount.id;
+  };
 
   const submitModuleExecutions = async (
     executions: Array<{ data: string; target: string; value: string }>,
@@ -1471,6 +1486,7 @@ const SmartAccountPolicy = () => {
               guardian,
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
+                  accountId: getLocalSmartAccountIdByAddress(guardian),
                   actionHash: preparedRecovery.operation.hash,
                   authenticatorContexts: getLocalOwnerContexts(),
                   smartAccount: preparedRecovery.smartGuardian,
