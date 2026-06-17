@@ -27,6 +27,39 @@ const ensureOffscreenDocument = async () => {
   });
 };
 
+const getExistingOffscreenContexts = async () => {
+  if (
+    typeof chrome === 'undefined' ||
+    !chrome.runtime ||
+    !('getContexts' in chrome.runtime) ||
+    typeof chrome.runtime.getContexts !== 'function'
+  ) {
+    return [];
+  }
+
+  try {
+    return await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT' as any],
+    });
+  } catch {
+    return [];
+  }
+};
+
+const sendBestEffortOffscreenCleanupMessage = async (type: string) => {
+  const contexts = await getExistingOffscreenContexts();
+  if (contexts.length === 0) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ type });
+  } catch {
+    // Cleanup must not block wallet reset/forget flows in browsers without
+    // Chrome offscreen document support.
+  }
+};
+
 export const signSLHDSAInOffscreen = async (
   params: SLHDSASignActionHashParams & {
     secretKeyHex?: string;
@@ -85,35 +118,9 @@ export const prepareSLHDSAKeypairInOffscreen = async ({
 };
 
 export const clearSLHDSAXmssCacheInOffscreen = async (): Promise<void> => {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
-  });
-  if (contexts.length === 0) {
-    return;
-  }
-
-  const response = (await chrome.runtime.sendMessage({
-    type: 'PALI_SLH_DSA_CLEAR_XMSS_CACHE',
-  })) as SLHDSAOffscreenResponse | undefined;
-
-  if (response?.success === false) {
-    throw new Error(response.error);
-  }
+  await sendBestEffortOffscreenCleanupMessage('PALI_SLH_DSA_CLEAR_XMSS_CACHE');
 };
 
 export const cancelSLHDSAWorkerInOffscreen = async (): Promise<void> => {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
-  });
-  if (contexts.length === 0) {
-    return;
-  }
-
-  const response = (await chrome.runtime.sendMessage({
-    type: 'PALI_SLH_DSA_CANCEL_WORKER',
-  })) as SLHDSAOffscreenResponse | undefined;
-
-  if (response?.success === false) {
-    throw new Error(response.error);
-  }
+  await sendBestEffortOffscreenCleanupMessage('PALI_SLH_DSA_CANCEL_WORKER');
 };
