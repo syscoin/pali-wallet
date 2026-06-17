@@ -648,8 +648,9 @@ export const signAndSubmitSmartAccountExecutions = async (
     useCachedMetadata,
     waitForConfirmation,
   } = params;
-  const validatorForJob = getCurrentValidatorModule(smartAccount);
-  const shouldTrackJob = validatorForJob.id === 'slh-dsa';
+  const validatorIdForJob =
+    smartAccount.auth?.module || smartAccount.auth?.scheme;
+  const shouldTrackJob = validatorIdForJob === 'slh-dsa';
   const submitJobKey = shouldTrackJob
     ? await getSmartAccountSubmitJobKey({
         accountId,
