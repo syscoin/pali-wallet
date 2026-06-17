@@ -37,6 +37,7 @@ import {
   encodeSLHDSAValidatorInitData,
   encodeUninstallValidatorModuleCall,
   getPaliModuleAddress,
+  isSLHDSAOffscreenSignerSupported,
   PaliSmartAccountAuthenticatorSetup,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
@@ -469,7 +470,7 @@ export const PrepareSmartAccount = () => {
 
       if (
         requestedAuthenticator.id === 'slh-dsa' &&
-        requestedAuthenticator.config
+        (requestedAuthenticator.config || !isSLHDSAOffscreenSignerSupported())
       ) {
         throw new Error(t('connections.smartAccountPrepareFailed'));
       }

@@ -96,16 +96,38 @@ const getSmartAccountSubmitJobKey = async ({
 const isSmartAccountRotateValidatorExecution = ({
   accountAddress,
   execution,
+  smartAccount,
 }: {
   accountAddress?: string;
   execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
 }) => {
   try {
-    return Boolean(
-      accountAddress &&
-        getAddress(execution.target) === getAddress(accountAddress) &&
-        hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() ===
-          SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR
+    if (
+      !accountAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR
+    ) {
+      return false;
+    }
+
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    const activeValidatorData = smartAccount.auth?.data || '0x';
+    if (!activeValidatorAddress) {
+      return false;
+    }
+
+    const [nextValidatorAddress, , nextValidatorData] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'rotateValidator',
+        execution.data || '0x'
+      );
+
+    return (
+      getAddress(nextValidatorAddress) !== getAddress(activeValidatorAddress) ||
+      String(nextValidatorData).toLowerCase() !==
+        String(activeValidatorData).toLowerCase()
     );
   } catch {
     return false;
@@ -123,7 +145,11 @@ const canUseReservedSLHDSASignature = ({
 }) =>
   (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
   executions.some((execution) =>
-    isSmartAccountRotateValidatorExecution({ accountAddress, execution })
+    isSmartAccountRotateValidatorExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
   );
 
 export type SubmitSmartAccountExecutionsParams = {
