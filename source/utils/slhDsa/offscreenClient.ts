@@ -100,3 +100,20 @@ export const clearSLHDSAXmssCacheInOffscreen = async (): Promise<void> => {
     throw new Error(response.error);
   }
 };
+
+export const cancelSLHDSAWorkerInOffscreen = async (): Promise<void> => {
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
+  });
+  if (contexts.length === 0) {
+    return;
+  }
+
+  const response = (await chrome.runtime.sendMessage({
+    type: 'PALI_SLH_DSA_CANCEL_WORKER',
+  })) as SLHDSAOffscreenResponse | undefined;
+
+  if (response?.success === false) {
+    throw new Error(response.error);
+  }
+};

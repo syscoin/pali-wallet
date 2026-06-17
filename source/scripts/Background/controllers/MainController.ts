@@ -111,7 +111,7 @@ import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
-  clearSLHDSAXmssCacheInOffscreen,
+  cancelSLHDSAWorkerInOffscreen,
   clearRuntimeSLHDSAStates,
   clearSLHDSAPublicPrecomputeCache,
   clearSLHDSAXmssTreeCache,
@@ -294,7 +294,7 @@ class MainController {
 
     // Clear vault cache
     vaultCache.clearCache();
-    await clearSLHDSAXmssCacheInOffscreen();
+    await cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
     await clearSLHDSAPublicPrecomputeCache();
     await clearSLHDSAXmssTreeCache();
@@ -342,6 +342,8 @@ class MainController {
           key.startsWith('sysweb3-vault-') ||
           key.startsWith('pali-slh-dsa-state:') ||
           key.startsWith('pali-slh-dsa-precompute:') ||
+          key.startsWith('pali-slh-dsa-smart-account-setup:') ||
+          key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
           key === 'state' ||
           key.startsWith('state-')
       );

@@ -7,6 +7,8 @@ import type {
 let worker: Worker | null = null;
 let workerRequestQueue: Promise<SLHDSAWorkerResponse | void> =
   Promise.resolve();
+let workerRequestGeneration = 0;
+let rejectActiveWorkerRequest: ((error: Error) => void) | null = null;
 const lastPersistedSetupProgress = new Map<
   number,
   { percent: number; updatedAt: number }
@@ -71,11 +73,47 @@ const resetWorker = (activeWorker: Worker) => {
   }
 };
 
+const cancelWorkerRequests = () => {
+  workerRequestGeneration += 1;
+  const activeWorker = worker;
+  const rejectActive = rejectActiveWorkerRequest;
+
+  workerRequestQueue = Promise.resolve();
+  rejectActiveWorkerRequest = null;
+  if (rejectActive) {
+    rejectActive(new Error('SLH-DSA worker request cancelled'));
+  } else if (activeWorker) {
+    resetWorker(activeWorker);
+  }
+};
+
 const runWorkerRequest = (
   request: SLHDSAWorkerRequest
 ): Promise<SLHDSAWorkerResponse> =>
   new Promise((resolve, reject) => {
     const activeWorker = getWorker();
+    let settled = false;
+    const settle = (
+      result:
+        | { response: SLHDSAWorkerResponse; type: 'resolve' }
+        | { error: Error; type: 'reject' }
+    ) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      activeWorker.removeEventListener('message', onMessage);
+      if (rejectActiveWorkerRequest === rejectActive) {
+        rejectActiveWorkerRequest = null;
+      }
+      resetWorker(activeWorker);
+      if (result.type === 'resolve') {
+        resolve(result.response);
+      } else {
+        reject(result.error);
+      }
+    };
+    const rejectActive = (error: Error) => settle({ error, type: 'reject' });
     const onMessage = (event: MessageEvent<SLHDSAWorkerResponse>) => {
       if (event.data.id !== request.id) {
         return;
@@ -89,28 +127,35 @@ const runWorkerRequest = (
         );
         return;
       }
-      activeWorker.removeEventListener('message', onMessage);
-      resolve(event.data);
-      resetWorker(activeWorker);
+      settle({ response: event.data, type: 'resolve' });
     };
+    rejectActiveWorkerRequest = rejectActive;
     activeWorker.addEventListener('message', onMessage);
     activeWorker.onerror = (event) => {
-      activeWorker.removeEventListener('message', onMessage);
-      resetWorker(activeWorker);
-      reject(new Error(event.message));
+      settle({ error: new Error(event.message), type: 'reject' });
     };
     activeWorker.postMessage(request);
   });
 
 const postWorkerRequest = (request: SLHDSAWorkerRequest) => {
-  const queuedRequest = workerRequestQueue.then(() =>
-    runWorkerRequest(request)
-  );
+  const requestGeneration = workerRequestGeneration;
+  const queuedRequest = workerRequestQueue.then(() => {
+    if (requestGeneration !== workerRequestGeneration) {
+      throw new Error('SLH-DSA worker request cancelled');
+    }
+    return runWorkerRequest(request);
+  });
   workerRequestQueue = queuedRequest.catch(() => undefined);
   return queuedRequest;
 };
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'PALI_SLH_DSA_CANCEL_WORKER') {
+    cancelWorkerRequests();
+    sendResponse({ result: {}, success: true });
+    return false;
+  }
+
   if (
     message?.type !== 'PALI_SLH_DSA_SIGN' &&
     message?.type !== 'PALI_SLH_DSA_PREPARE_KEYPAIR' &&
