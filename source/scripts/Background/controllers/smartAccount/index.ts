@@ -2113,10 +2113,8 @@ class SmartAccountController {
     const guardianBaseIndex = activeValidatorResultIndex + 1;
 
     if (includeSlhDsa) {
-      const [slhDsaInstalled] = this.requireAggregateResult(
-        results[8],
-        'slh-dsa isModuleInstalled'
-      );
+      const slhDsaInstalled =
+        results[8]?.success && Boolean(results[8].result[0]);
       if (slhDsaInstalled) {
         const [authData] = this.requireAggregateResult(
           results[9],
