@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload full artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-e2e-artifacts-${{ github.run_id }}
           path: e2e/artifacts/
