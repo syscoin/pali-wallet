@@ -80,7 +80,7 @@ const CANARY_EXTENSION_KEY =
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '4.0.28',
+  version: '4.0.29',
   icons: {
     16: 'assets/all_assets/favicon-16.png',
     32: 'assets/all_assets/favicon-32.png',
