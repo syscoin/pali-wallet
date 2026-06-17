@@ -14,13 +14,14 @@ export type SLHDSAOffscreenResponse =
 
 let offscreenCreationPromise: Promise<void> | null = null;
 
+const canEnumerateOffscreenContexts = () =>
+  typeof chrome !== 'undefined' &&
+  Boolean(chrome.runtime) &&
+  'getContexts' in chrome.runtime &&
+  typeof chrome.runtime.getContexts === 'function';
+
 const getExistingOffscreenContexts = async () => {
-  if (
-    typeof chrome === 'undefined' ||
-    !chrome.runtime ||
-    !('getContexts' in chrome.runtime) ||
-    typeof chrome.runtime.getContexts !== 'function'
-  ) {
+  if (!canEnumerateOffscreenContexts()) {
     return [];
   }
 
@@ -66,9 +67,11 @@ const ensureOffscreenDocument = async () => {
 };
 
 const sendBestEffortOffscreenCleanupMessage = async (type: string) => {
-  const contexts = await getExistingOffscreenContexts();
-  if (contexts.length === 0) {
-    return;
+  if (canEnumerateOffscreenContexts()) {
+    const contexts = await getExistingOffscreenContexts();
+    if (contexts.length === 0) {
+      return;
+    }
   }
 
   try {

@@ -14,20 +14,11 @@ const lastPersistedSetupProgress = new Map<
   { percent: number; updatedAt: number }
 >();
 
-const getSLHDSASetupStorageKey = (accountId: number) =>
-  `pali-slh-dsa-smart-account-setup:${accountId}`;
-
 const updateSetupProgress = async (
   accountId: number | undefined,
   progress: Extract<SLHDSAWorkerResponse, { type: 'progress' }>['result']
 ) => {
   if (typeof accountId !== 'number') {
-    return;
-  }
-  const key = getSLHDSASetupStorageKey(accountId);
-  const current = await chrome.storage.local.get(key);
-  const existing = current[key];
-  if (!existing || existing.status !== 'running') {
     return;
   }
   const percent = Math.floor((progress.completed / progress.total) * 100);
@@ -45,18 +36,20 @@ const updateSetupProgress = async (
     percent,
     updatedAt: now,
   });
-  await chrome.storage.local.set({
-    [key]: {
-      ...existing,
-      phase: progress.phase,
+  try {
+    await chrome.runtime.sendMessage({
+      accountId,
       progress: {
         completed: progress.completed,
         level: progress.level,
+        phase: progress.phase,
         total: progress.total,
       },
-      updatedAt: now,
-    },
-  });
+      type: 'PALI_SLH_DSA_SETUP_PROGRESS',
+    });
+  } catch {
+    // Progress is best-effort; the terminal setup result still resolves.
+  }
 };
 
 const getWorker = () => {
