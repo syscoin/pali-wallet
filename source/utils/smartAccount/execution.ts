@@ -13,7 +13,10 @@ import type {
 } from 'types/network';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
-import { paliSmartAccountInterface } from './contracts';
+import {
+  ERC7579_MODULE_TYPE_VALIDATOR,
+  paliSmartAccountInterface,
+} from './contracts';
 import { getInstalledValidatorModule } from './modules';
 import { hasSmartAccountPaymaster } from './paymaster';
 import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
@@ -26,6 +29,10 @@ type ControllerEmitter = (
 
 const SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR =
   paliSmartAccountInterface.getSighash('rotateValidator');
+const SMART_ACCOUNT_INSTALL_MODULE_SELECTOR =
+  paliSmartAccountInterface.getSighash('installModule');
+const SMART_ACCOUNT_UNINSTALL_MODULE_SELECTOR =
+  paliSmartAccountInterface.getSighash('uninstallModule');
 
 export type SmartAccountExecutionIntent = {
   data?: string;
@@ -134,6 +141,113 @@ const isSmartAccountRotateValidatorExecution = ({
   }
 };
 
+const getValidatorInstallFromExecution = ({
+  accountAddress,
+  execution,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    if (
+      !accountAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_INSTALL_MODULE_SELECTOR
+    ) {
+      return null;
+    }
+
+    const [moduleTypeId, moduleAddress, initData] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'installModule',
+        execution.data || '0x'
+      );
+    if (Number(moduleTypeId) !== ERC7579_MODULE_TYPE_VALIDATOR) {
+      return null;
+    }
+
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    const activeValidatorData = smartAccount.auth?.data || '0x';
+    if (
+      activeValidatorAddress &&
+      getAddress(moduleAddress) === getAddress(activeValidatorAddress) &&
+      String(initData).toLowerCase() ===
+        String(activeValidatorData).toLowerCase()
+    ) {
+      return null;
+    }
+
+    return {
+      initData: String(initData),
+      moduleAddress: getAddress(moduleAddress),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const isActiveValidatorUninstallExecution = ({
+  accountAddress,
+  execution,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    const activeValidatorAddress = smartAccount.auth?.validator;
+    if (
+      !accountAddress ||
+      !activeValidatorAddress ||
+      getAddress(execution.target) !== getAddress(accountAddress) ||
+      hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() !==
+        SMART_ACCOUNT_UNINSTALL_MODULE_SELECTOR
+    ) {
+      return false;
+    }
+
+    const [moduleTypeId, moduleAddress] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'uninstallModule',
+        execution.data || '0x'
+      );
+    return (
+      Number(moduleTypeId) === ERC7579_MODULE_TYPE_VALIDATOR &&
+      getAddress(moduleAddress) === getAddress(activeValidatorAddress)
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isSmartAccountInstallUninstallValidatorSwitch = ({
+  accountAddress,
+  executions,
+  smartAccount,
+}: {
+  accountAddress?: string;
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  executions.some((execution) =>
+    getValidatorInstallFromExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
+  ) &&
+  executions.some((execution) =>
+    isActiveValidatorUninstallExecution({
+      accountAddress,
+      execution,
+      smartAccount,
+    })
+  );
+
 const canUseReservedSLHDSASignature = ({
   accountAddress,
   executions,
@@ -144,13 +258,18 @@ const canUseReservedSLHDSASignature = ({
   smartAccount: ISmartAccountMetadata;
 }) =>
   (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
-  executions.some((execution) =>
+  (executions.some((execution) =>
     isSmartAccountRotateValidatorExecution({
       accountAddress,
       execution,
       smartAccount,
     })
-  );
+  ) ||
+    isSmartAccountInstallUninstallValidatorSwitch({
+      accountAddress,
+      executions,
+      smartAccount,
+    }));
 
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
