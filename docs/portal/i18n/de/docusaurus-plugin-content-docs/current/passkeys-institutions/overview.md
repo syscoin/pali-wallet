@@ -76,3 +76,10 @@ Der Nutzer sieht vor der Freigabe die anfragende Website, das Konto-Label, den a
   <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
   <figcaption>Dapp-initiiertes Onboarding: Anfrage prüfen, bestätigen, und der Smart Account ist einsatzbereit.</figcaption>
 </figure>
+
+## Standard-Referenzen
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

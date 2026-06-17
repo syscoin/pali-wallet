@@ -5,6 +5,7 @@ export type SLHDSAParameterSet = typeof SLH_DSA_PARAMETER_SET;
 export type SLHDSASignActionHashParams = {
   accountId?: number;
   actionHash: string;
+  allowReservedSignature?: boolean;
   keyId: string;
   parameterSet: SLHDSAParameterSet;
   pkRoot: string;

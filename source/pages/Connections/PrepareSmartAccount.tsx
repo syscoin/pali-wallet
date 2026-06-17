@@ -29,6 +29,7 @@ import {
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
 import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
+import { SLH_DSA_SIGNATURE_LIMIT } from 'utils/slhDsa';
 import {
   encodeEcdsaValidatorInitData,
   encodeInstallValidatorModuleCall,
@@ -291,7 +292,7 @@ const normalizeSLHDSAAuthenticator = ({
         parameterSet: 'SLH-DSA-SHA2-128-24',
         pkRoot: config.pkRoot,
         pkSeed: config.pkSeed,
-        signatureLimit: config.signatureLimit || 2 ** 24,
+        signatureLimit: config.signatureLimit || SLH_DSA_SIGNATURE_LIMIT,
       },
       data,
       id: 'slh-dsa',

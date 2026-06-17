@@ -1,6 +1,6 @@
 import { defaultAbiCoder } from '@ethersproject/abi';
 import { getAddress } from '@ethersproject/address';
-import { hexConcat, isHexString } from '@ethersproject/bytes';
+import { hexConcat, hexDataSlice, isHexString } from '@ethersproject/bytes';
 
 import {
   getP256WebAuthnExternalSignatureMetadata,
@@ -13,6 +13,7 @@ import type {
 } from 'types/network';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
+import { paliSmartAccountInterface } from './contracts';
 import { getInstalledValidatorModule } from './modules';
 import { hasSmartAccountPaymaster } from './paymaster';
 import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
@@ -22,6 +23,9 @@ type ControllerEmitter = (
   payload?: any[],
   timeout?: number
 ) => Promise<any>;
+
+const SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR =
+  paliSmartAccountInterface.getSighash('rotateValidator');
 
 export type SmartAccountExecutionIntent = {
   data?: string;
@@ -82,6 +86,38 @@ const getSmartAccountSubmitJobKey = async ({
         value: execution.value,
       })),
     })
+  );
+
+const isSmartAccountRotateValidatorExecution = ({
+  execution,
+  smartAccount,
+}: {
+  execution: SmartAccountExecutionIntent;
+  smartAccount: ISmartAccountMetadata;
+}) => {
+  try {
+    const smartAccountAddress = (smartAccount as any)?.address;
+    return Boolean(
+      smartAccountAddress &&
+        getAddress(execution.target) === getAddress(smartAccountAddress) &&
+        hexDataSlice(execution.data || '0x', 0, 4).toLowerCase() ===
+          SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR
+    );
+  } catch {
+    return false;
+  }
+};
+
+const canUseReservedSLHDSASignature = ({
+  executions,
+  smartAccount,
+}: {
+  executions: SmartAccountExecutionIntent[];
+  smartAccount: ISmartAccountMetadata;
+}) =>
+  (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
+  executions.some((execution) =>
+    isSmartAccountRotateValidatorExecution({ execution, smartAccount })
   );
 
 export type SubmitSmartAccountExecutionsParams = {
@@ -146,6 +182,7 @@ type P256WebAuthnAuthenticatorRuntimeContext = {
 export type SmartAccountSLHDSASigner = (params: {
   accountId?: number;
   actionHash: string;
+  allowReservedSignature?: boolean;
   keyId: string;
   parameterSet: 'SLH-DSA-SHA2-128-24';
   pkRoot: string;
@@ -292,6 +329,7 @@ export type SmartAccountAuthenticatorContext<
 > = {
   accountId?: number;
   actionHash: string;
+  allowReservedSLHDSASignature?: boolean;
   runtimeContext?: unknown;
   smartAccount: ISmartAccountMetadata;
   validator: T;
@@ -446,6 +484,7 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
   id: 'slh-dsa',
   signActionHash: async ({
     accountId,
+    allowReservedSLHDSASignature,
     actionHash,
     runtimeContext,
     validator,
@@ -456,6 +495,7 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     const signature = await slhDsaContext?.signActionHash?.({
       accountId,
       actionHash,
+      allowReservedSignature: allowReservedSLHDSASignature,
       keyId: validator.config.keyId,
       parameterSet: validator.config.parameterSet,
       pkRoot: validator.config.pkRoot,
@@ -589,6 +629,7 @@ export type SmartAccountGasPolicy =
 export const signSmartAccountActionHash = async (params: {
   accountId?: number;
   actionHash: string;
+  allowReservedSLHDSASignature?: boolean;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
@@ -602,6 +643,7 @@ export const signSmartAccountActionHash = async (params: {
     .signActionHash({
       accountId: params.accountId,
       actionHash: params.actionHash,
+      allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
       runtimeContext: params.authenticatorContexts?.[validator.id],
       smartAccount: params.smartAccount,
       validator,
@@ -717,6 +759,10 @@ export const signAndSubmitSmartAccountExecutions = async (
     const signature = await signSmartAccountActionHash({
       accountId,
       actionHash: prepared.actionHash,
+      allowReservedSLHDSASignature: canUseReservedSLHDSASignature({
+        executions: prepared.executions,
+        smartAccount: prepared.smartAccount || smartAccount,
+      }),
       authenticatorContexts,
       onAuthenticatorSigningResolved,
       onAuthenticatorSigningStarted,

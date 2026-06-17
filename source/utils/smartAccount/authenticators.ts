@@ -6,7 +6,7 @@ import type {
   SmartAccountSLHDSAConfig,
 } from 'types/network';
 import { toP256PasskeyAuthConfig } from 'utils/passkey/account';
-import { getSLHDSAKeyId } from 'utils/slhDsa';
+import { SLH_DSA_SIGNATURE_LIMIT, getSLHDSAKeyId } from 'utils/slhDsa';
 
 import {
   encodeSLHDSAValidatorInitData,
@@ -112,6 +112,6 @@ export const buildHydratedSLHDSAAuthenticator = ({
       parameterSet: 'SLH-DSA-SHA2-128-24',
       pkRoot,
       pkSeed,
-      signatureLimit: 2 ** 24,
+      signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
     },
   });

@@ -76,3 +76,10 @@ Passkey 验证器需要 P-256 WebAuthn 验证支持。许多现代 EVM 环境通
   <video controls poster="/img/screens/smart-account-dapp-onboarding-video.png" src="/video/smart-account-dapp-onboarding.mp4" title="Smart-account dapp onboarding flow"></video>
   <figcaption>由 dapp 发起的引导：查看请求并确认，智能账户即刻可用。</figcaption>
 </figure>
+
+## 标准参考
+
+- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
+- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)

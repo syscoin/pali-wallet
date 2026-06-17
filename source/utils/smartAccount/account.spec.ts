@@ -12,6 +12,7 @@ import { keccak256 } from '@ethersproject/keccak256';
 
 import { encodeP256WebAuthnAuthData } from '../passkey/account';
 import type { SmartAccountValidatorModule } from 'types/network';
+import { SLH_DSA_SIGNATURE_LIMIT } from 'utils/slhDsa';
 
 import {
   buildSmartAccountUserOperation,
@@ -107,7 +108,7 @@ describe('ERC-7579 smart account helpers', () => {
           '0x1111111111111111111111111111111111111111111111111111111111111111',
         pkSeed:
           '0x2222222222222222222222222222222222222222222222222222222222222222',
-        signatureLimit: 2 ** 24,
+        signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
       },
       data,
       id: 'slh-dsa',

@@ -1,6 +1,7 @@
 import { isHexString } from '@ethersproject/bytes';
 
 import {
+  SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,
   SLH_DSA_PARAMETER_SET,
   SLH_DSA_SIGNATURE_LENGTH,
   SLH_DSA_SIGNATURE_HEX_LENGTH,
@@ -151,7 +152,13 @@ export const signSLHDSAActionHashLocal = async (
   ) {
     throw new Error('SLH-DSA key metadata does not match the active validator');
   }
-  if (state.signatureCount >= state.signatureLimit) {
+  const canUseReservedSignature =
+    params.allowReservedSignature &&
+    state.signatureCount < SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT;
+  if (
+    state.signatureCount >= state.signatureLimit &&
+    !canUseReservedSignature
+  ) {
     throw new Error('SLH-DSA signature limit reached; rotate this key');
   }
 
