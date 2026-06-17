@@ -39,9 +39,7 @@ const isOffscreenAlreadyExistsError = (error: unknown) =>
   );
 
 const ensureOffscreenDocument = async () => {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
-  });
+  const contexts = await getExistingOffscreenContexts();
   if (contexts.length > 0) {
     return;
   }
