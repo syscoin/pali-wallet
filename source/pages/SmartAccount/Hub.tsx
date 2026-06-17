@@ -257,7 +257,8 @@ const SmartAccountHub = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       } finally {
@@ -314,7 +315,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {
@@ -367,7 +369,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {
@@ -470,7 +473,8 @@ const SmartAccountHub = () => {
         getSmartAccountActionErrorMessage(
           error,
           t('send.cantCompleteTxs'),
-          t('send.insufficientFundsForGas')
+          t('send.insufficientFundsForGas'),
+          t('settings.slhDsaLocalSignerMissing')
         )
       );
     } finally {

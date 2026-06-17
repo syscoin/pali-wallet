@@ -171,6 +171,9 @@ export const isSLHDSALocalSignerMissingError = (error: unknown): boolean => {
     message.includes(
       'local post-quantum signer does not match the active validator'
     ) ||
+    message.includes(
+      'Prepared SLH-DSA key does not match the active validator'
+    ) ||
     message.includes('Regenerate the local signer')
   );
 };
@@ -193,13 +196,14 @@ export const isRawRpcRevertMessage = (message: string): boolean => {
 export const getSmartAccountActionErrorMessage = (
   error: unknown,
   fallback: string,
-  gasMessage: string
+  gasMessage: string,
+  slhDsaLocalSignerMessage = fallback
 ): string => {
   if (isSmartAccountPrefundError(error) || isNativeGasError(error)) {
     return gasMessage;
   }
   if (isSLHDSALocalSignerMissingError(error)) {
-    return "The local post-quantum signer is missing or does not match this account's active validator. Open Smart Account settings to regenerate missing local state, or use another approval method to rotate the validator to the prepared local key.";
+    return slhDsaLocalSignerMessage;
   }
 
   const message = (error as any)?.message;

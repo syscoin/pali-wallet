@@ -774,7 +774,8 @@ const SmartAccountPolicy = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       }
@@ -944,7 +945,8 @@ const SmartAccountPolicy = () => {
             : getSmartAccountActionErrorMessage(
                 error,
                 t('send.cantCompleteTxs'),
-                t('send.insufficientFundsForGas')
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
               );
         alert.error(message);
       }
@@ -996,7 +998,8 @@ const SmartAccountPolicy = () => {
           getSmartAccountActionErrorMessage(
             error,
             t('send.cantCompleteTxs'),
-            t('send.insufficientFundsForGas')
+            t('send.insufficientFundsForGas'),
+            t('settings.slhDsaLocalSignerMissing')
           )
         );
       }
@@ -1129,7 +1132,8 @@ const SmartAccountPolicy = () => {
             : getSmartAccountActionErrorMessage(
                 error,
                 t('send.cantCompleteTxs'),
-                t('send.insufficientFundsForGas')
+                t('send.insufficientFundsForGas'),
+                t('settings.slhDsaLocalSignerMissing')
               );
         alert.error(message);
       }
@@ -1165,7 +1169,8 @@ const SmartAccountPolicy = () => {
             getSmartAccountActionErrorMessage(
               error,
               t('send.cantCompleteTxs'),
-              t('send.insufficientFundsForGas')
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
             )
           );
         }
@@ -1520,7 +1525,8 @@ const SmartAccountPolicy = () => {
           : getSmartAccountActionErrorMessage(
               error,
               t('settings.smartAccountGuardianRecoveryStartFailed'),
-              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas')
+              t('settings.smartAccountGuardianRecoveryGuardianNeedsGas'),
+              t('settings.slhDsaLocalSignerMissing')
             );
 
         alert.error(errorMessage);
@@ -1612,7 +1618,8 @@ const SmartAccountPolicy = () => {
           : getSmartAccountActionErrorMessage(
               error,
               t('settings.smartAccountGuardianRecoveryFinalizeFailed'),
-              t('send.insufficientFundsForGas')
+              t('send.insufficientFundsForGas'),
+              t('settings.slhDsaLocalSignerMissing')
             );
 
         alert.error(errorMessage);
