@@ -2513,6 +2513,7 @@ class MainController {
     // Clean up notification manager to prevent memory leaks
     notificationManager.cleanup();
 
+    void cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
     this.logout();
 

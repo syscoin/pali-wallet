@@ -12,20 +12,7 @@ export type SLHDSAOffscreenResponse =
     }
   | { error: string; success: false };
 
-const ensureOffscreenDocument = async () => {
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
-  });
-  if (contexts.length > 0) {
-    return;
-  }
-
-  await chrome.offscreen.createDocument({
-    justification: 'Run local SLH-DSA signing without blocking the wallet UI',
-    reasons: ['DOM_SCRAPING' as any],
-    url: 'offscreen.html',
-  });
-};
+let offscreenCreationPromise: Promise<void> | null = null;
 
 const getExistingOffscreenContexts = async () => {
   if (
@@ -44,6 +31,40 @@ const getExistingOffscreenContexts = async () => {
   } catch {
     return [];
   }
+};
+
+const isOffscreenAlreadyExistsError = (error: unknown) =>
+  String(error instanceof Error ? error.message : error).includes(
+    'already exists'
+  );
+
+const ensureOffscreenDocument = async () => {
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT' as any],
+  });
+  if (contexts.length > 0) {
+    return;
+  }
+
+  if (!offscreenCreationPromise) {
+    offscreenCreationPromise = chrome.offscreen
+      .createDocument({
+        justification:
+          'Run local SLH-DSA signing without blocking the wallet UI',
+        reasons: ['DOM_SCRAPING' as any],
+        url: 'offscreen.html',
+      })
+      .catch((error) => {
+        if (!isOffscreenAlreadyExistsError(error)) {
+          throw error;
+        }
+      })
+      .finally(() => {
+        offscreenCreationPromise = null;
+      });
+  }
+
+  await offscreenCreationPromise;
 };
 
 const sendBestEffortOffscreenCleanupMessage = async (type: string) => {
