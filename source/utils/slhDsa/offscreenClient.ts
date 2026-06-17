@@ -34,10 +34,16 @@ const getExistingOffscreenContexts = async () => {
   }
 };
 
-const isOffscreenAlreadyExistsError = (error: unknown) =>
-  String(error instanceof Error ? error.message : error).includes(
-    'already exists'
+const isOffscreenAlreadyExistsError = (error: unknown) => {
+  const message = String(
+    error instanceof Error ? error.message : error
+  ).toLowerCase();
+
+  return (
+    message.includes('already exists') ||
+    message.includes('only a single offscreen document')
   );
+};
 
 const ensureOffscreenDocument = async () => {
   const contexts = await getExistingOffscreenContexts();
