@@ -5,6 +5,8 @@ import type {
 } from 'utils/slhDsa';
 
 let worker: Worker | null = null;
+let workerRequestQueue: Promise<SLHDSAWorkerResponse | void> =
+  Promise.resolve();
 const lastPersistedSetupProgress = new Map<
   number,
   { percent: number; updatedAt: number }
@@ -69,7 +71,7 @@ const resetWorker = (activeWorker: Worker) => {
   }
 };
 
-const postWorkerRequest = (
+const runWorkerRequest = (
   request: SLHDSAWorkerRequest
 ): Promise<SLHDSAWorkerResponse> =>
   new Promise((resolve, reject) => {
@@ -99,6 +101,14 @@ const postWorkerRequest = (
     };
     activeWorker.postMessage(request);
   });
+
+const postWorkerRequest = (request: SLHDSAWorkerRequest) => {
+  const queuedRequest = workerRequestQueue.then(() =>
+    runWorkerRequest(request)
+  );
+  workerRequestQueue = queuedRequest.catch(() => undefined);
+  return queuedRequest;
+};
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (
