@@ -203,10 +203,7 @@ const normalizeP256Authenticator = async ({
     publicKey: passkeyProfile?.publicKey,
   };
   const validator = getPaliModuleAddress(chainId, 'p256-webauthn');
-  const data = encodeP256WebAuthnAuthData({
-    ...resolvedConfig.publicKey,
-    credentialIdHash: resolvedConfig.credentialIdHash,
-  });
+  const data = encodeP256WebAuthnAuthData(resolvedConfig.publicKey);
 
   return {
     auth: {

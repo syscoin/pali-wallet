@@ -2047,17 +2047,15 @@ class SmartAccountController {
         results[1],
         'p256 authData'
       ) as unknown as [any];
-      const credentialIdHash = authData.credentialIdHash || authData[2];
       const publicKey = {
-        originHash: authData.originHash || authData[4],
-        originLength: Number(authData.originLength || authData[5] || 0),
-        rpIdHash: authData.rpIdHash || authData[3],
+        originHash: authData.originHash || authData[3],
+        originLength: Number(authData.originLength || authData[4] || 0),
+        rpIdHash: authData.rpIdHash || authData[2],
         x: authData.publicKeyX || authData[0],
         y: authData.publicKeyY || authData[1],
       };
       const built = buildHydratedP256WebAuthnAuthenticator({
         chainId,
-        credentialIdHash,
         publicKey,
       });
       installedModules.push(...(built.metadata.installedModules || []));

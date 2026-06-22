@@ -1401,7 +1401,6 @@ const SmartAccountPolicy = () => {
             { id: 'p256-webauthn' }
           >['config'];
           target = toP256WebAuthnRecoveryTarget({
-            credentialIdHash: verifiedConfig.credentialIdHash,
             validator,
             ...verifiedConfig.publicKey,
           });
@@ -1436,7 +1435,6 @@ const SmartAccountPolicy = () => {
             },
           };
           target = toP256WebAuthnRecoveryTarget({
-            credentialIdHash: newCredential.credentialIdHash,
             validator,
             ...publicKey,
           });

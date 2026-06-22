@@ -153,7 +153,7 @@ export type SmartAccountExecutorModule = {
 export type SmartAccountP256WebAuthnConfig = {
   backupStatus?: PasskeyBackupStatus;
   credentialId?: string;
-  credentialIdHash: string;
+  credentialIdHash?: string;
   passkeyName?: string;
   publicKey: {
     originHash: string;

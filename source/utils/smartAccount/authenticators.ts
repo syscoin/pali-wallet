@@ -28,7 +28,6 @@ export const buildP256WebAuthnAuthenticator = ({
 }): SmartAccountAuthenticatorBuildResult => {
   const auth = toP256PasskeyAuthConfig({
     chainId,
-    credentialIdHash: config.credentialIdHash,
     publicKey: config.publicKey,
   });
 
@@ -50,17 +49,14 @@ export const buildP256WebAuthnAuthenticator = ({
 
 export const buildHydratedP256WebAuthnAuthenticator = ({
   chainId,
-  credentialIdHash,
   publicKey,
 }: {
   chainId: number;
-  credentialIdHash: string;
   publicKey: SmartAccountP256WebAuthnConfig['publicKey'];
 }): SmartAccountAuthenticatorBuildResult =>
   buildP256WebAuthnAuthenticator({
     chainId,
     config: {
-      credentialIdHash,
       passkeyName: 'P-256 / WebAuthn',
       publicKey,
     },
