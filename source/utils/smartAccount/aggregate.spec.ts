@@ -276,10 +276,14 @@ describe('smart account RPC aggregation', () => {
     const initCode = `0x${validator.deployCalldata.slice(
       2 + validator.salt.length - 2
     )}`;
+    const verifierCodeHash =
+      '31e33d9848db6a8821cf39adeb347aff047a308f52b04aee2a398e29fee8b628';
 
-    expect(initCode.endsWith(hexZeroPad(verifier.address, 32).slice(2))).toBe(
-      true
-    );
+    expect(
+      initCode.endsWith(
+        `${hexZeroPad(verifier.address, 32).slice(2)}${verifierCodeHash}`
+      )
+    ).toBe(true);
     expect(validator.moduleId).toBe('slh-dsa');
     expect(PALI_MODULE_CANONICAL_ADDRESSES['slh-dsa']).toBe(validator.address);
   });
