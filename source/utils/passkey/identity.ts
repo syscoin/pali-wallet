@@ -19,7 +19,6 @@ export const getPaliRecoveryTargetHash = (
   );
 
 export const toP256WebAuthnRecoveryTarget = (params: {
-  credentialIdHash: string;
   originHash: string;
   originLength: number;
   passkeyX?: string;
@@ -31,12 +30,11 @@ export const toP256WebAuthnRecoveryTarget = (params: {
 }): PaliRecoveryTarget => ({
   auth: {
     data: defaultAbiCoder.encode(
-      ['tuple(bytes32,bytes32,bytes32,bytes32,bytes32,uint256)'],
+      ['tuple(bytes32,bytes32,bytes32,bytes32,uint256)'],
       [
         [
           params.x || params.passkeyX,
           params.y || params.passkeyY,
-          params.credentialIdHash,
           params.rpIdHash,
           params.originHash,
           params.originLength,

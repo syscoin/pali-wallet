@@ -16,7 +16,6 @@ export type PaliP256WebAuthnAuthenticatorConfig =
   SmartAccountP256WebAuthnAuthenticatorConfig;
 
 export const encodeP256WebAuthnAuthData = (publicKey: {
-  credentialIdHash: string;
   originHash: string;
   originLength: number;
   rpIdHash: string;
@@ -24,12 +23,11 @@ export const encodeP256WebAuthnAuthData = (publicKey: {
   y: string;
 }) =>
   defaultAbiCoder.encode(
-    ['tuple(bytes32,bytes32,bytes32,bytes32,bytes32,uint256)'],
+    ['tuple(bytes32,bytes32,bytes32,bytes32,uint256)'],
     [
       [
         publicKey.x,
         publicKey.y,
-        publicKey.credentialIdHash,
         publicKey.rpIdHash,
         publicKey.originHash,
         publicKey.originLength,
@@ -39,7 +37,6 @@ export const encodeP256WebAuthnAuthData = (publicKey: {
 
 export const toP256PasskeyAuthConfig = (metadata: {
   chainId: number;
-  credentialIdHash: string;
   publicKey: {
     originHash: string;
     originLength: number;
@@ -50,7 +47,6 @@ export const toP256PasskeyAuthConfig = (metadata: {
 }): SmartAccountAuthConfig => ({
   data: encodeP256WebAuthnAuthData({
     ...metadata.publicKey,
-    credentialIdHash: metadata.credentialIdHash,
   }),
   module: 'p256-webauthn',
   validator: getPaliP256WebAuthnValidatorAddress(metadata.chainId),

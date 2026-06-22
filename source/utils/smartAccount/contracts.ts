@@ -165,7 +165,7 @@ export const PALI_P256_WEBAUTHN_VALIDATOR_ABI = [
   'function isValidSignatureWithSender(address sender,bytes32 hash,bytes signature) view returns (bytes4)',
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
-  'function authData(address account) view returns ((bytes32 publicKeyX,bytes32 publicKeyY,bytes32 credentialIdHash,bytes32 rpIdHash,bytes32 originHash,uint256 originLength))',
+  'function authData(address account) view returns ((bytes32 publicKeyX,bytes32 publicKeyY,bytes32 rpIdHash,bytes32 originHash,uint256 originLength))',
   'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
 ] as const;
 

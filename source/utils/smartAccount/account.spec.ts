@@ -58,8 +58,6 @@ import {
 describe('ERC-7579 smart account helpers', () => {
   const auth = {
     data: encodeP256WebAuthnAuthData({
-      credentialIdHash:
-        '0x0101010101010101010101010101010101010101010101010101010101010101',
       originHash:
         '0x0505050505050505050505050505050505050505050505050505050505050505',
       originLength: 23,
