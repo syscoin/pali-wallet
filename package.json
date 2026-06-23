@@ -5,7 +5,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/syscoin/pali_wallet.git"
+    "url": "git+https://github.com/syscoin/pali-wallet.git"
   },
   "license": "MIT",
   "engines": {
@@ -175,9 +175,9 @@
   },
   "main": "index.js",
   "bugs": {
-    "url": "https://github.com/syscoin/pali_wallet/issues"
+    "url": "https://github.com/syscoin/pali-wallet/issues"
   },
-  "homepage": "https://github.com/syscoin/pali_wallet#readme",
+  "homepage": "https://github.com/syscoin/pali-wallet#readme",
   "author": "Syscoin",
   "resolutions": {
     "node-fetch": "^2.7.0",

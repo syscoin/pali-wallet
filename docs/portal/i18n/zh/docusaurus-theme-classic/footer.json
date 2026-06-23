@@ -25,7 +25,7 @@
   },
   "link.item.label.Pali Wallet GitHub": {
     "message": "Pali Wallet GitHub",
-    "description": "The label of footer link with label=Pali Wallet GitHub linking to https://github.com/syscoin/pali_wallet"
+    "description": "The label of footer link with label=Pali Wallet GitHub linking to https://github.com/syscoin/pali-wallet"
   },
   "copyright": {
     "message": "Copyright © 2026 Syscoin. Built for Pali Wallet.",

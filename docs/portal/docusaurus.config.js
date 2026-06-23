@@ -79,7 +79,7 @@ const config = {
           routeBasePath: 'docs',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl:
-            'https://github.com/syscoin/pali_wallet/tree/master/docs/portal/',
+            'https://github.com/syscoin/pali-wallet/tree/master/docs/portal/',
         },
         blog: false,
         theme: {
@@ -133,7 +133,7 @@ const config = {
             position: 'left',
           },
           {
-            href: 'https://github.com/syscoin/pali_wallet',
+            href: 'https://github.com/syscoin/pali-wallet',
             label: 'GitHub',
             position: 'right',
           },
@@ -185,7 +185,7 @@ const config = {
               },
               {
                 label: 'Pali Wallet GitHub',
-                href: 'https://github.com/syscoin/pali_wallet',
+                href: 'https://github.com/syscoin/pali-wallet',
               },
             ],
           },

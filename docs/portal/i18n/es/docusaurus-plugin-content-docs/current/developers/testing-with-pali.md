@@ -28,7 +28,7 @@ yarn start
 ## Extensión Pali local
 
 ```bash
-git clone https://github.com/syscoin/pali_wallet.git
+git clone https://github.com/syscoin/pali-wallet.git
 cd pali_wallet
 yarn install
 yarn dev:chrome
