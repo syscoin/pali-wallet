@@ -54,7 +54,14 @@ test.describe('visual baselines', () => {
     const createSmartAccount = wallet.page
       .getByRole('button', { name: /create smart account/i })
       .first();
-    if (await createSmartAccount.isVisible().catch(() => false)) {
+    const smartAccountsUnavailable = await wallet.page
+      .getByText(/smart accounts are not ready on this network yet/i)
+      .isVisible()
+      .catch(() => false);
+    if (
+      !smartAccountsUnavailable &&
+      (await createSmartAccount.isVisible().catch(() => false))
+    ) {
       await createSmartAccount.click();
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
