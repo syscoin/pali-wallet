@@ -51,6 +51,7 @@ test.describe('visual baselines', () => {
     // Create the smart account up front so every account list below renders
     // the same set of rows regardless of test order.
     await wallet.gotoRoute('#/settings/account/new');
+    await settle(600);
     const createSmartAccount = wallet.page
       .getByRole('button', { name: /create smart account/i })
       .first();
