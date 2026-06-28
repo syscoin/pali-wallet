@@ -116,7 +116,7 @@ export const toPaliSmartAccount = async ({
       if (!provider) {
         throw new Error('Smart account factory requires a provider');
       }
-      return getPaliSmartAccountFactory(chainId, provider);
+      return getPaliSmartAccountFactory(chainId, provider, factoryAddress);
     })()) as PaliSmartAccountFactoryLike;
 
   const getFactoryArgs = async (): Promise<PaliSmartAccountFactoryArgs> => {
