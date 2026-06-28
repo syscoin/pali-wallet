@@ -168,15 +168,9 @@ export const estimateSmartAccountCallGasLimit = async (
   provider: Provider,
   {
     callData,
-    entryPointAddress = PALI_ENTRYPOINT_V09_ADDRESS,
     isDeployed,
     sender,
-  }: {
-    callData: string;
-    entryPointAddress?: string;
-    isDeployed: boolean;
-    sender: string;
-  }
+  }: { callData: string; isDeployed: boolean; sender: string }
 ): Promise<number> => {
   if (!isDeployed) {
     return SMART_ACCOUNT_DEFAULT_CALL_GAS_LIMIT;
@@ -184,7 +178,7 @@ export const estimateSmartAccountCallGasLimit = async (
   try {
     const estimate = await provider.estimateGas({
       data: callData,
-      from: entryPointAddress,
+      from: PALI_ENTRYPOINT_V09_ADDRESS,
       to: sender,
     });
     const inner = Math.max(estimate.toNumber() - TX_INTRINSIC_GAS, 0);
@@ -205,14 +199,12 @@ export const estimateSmartAccountUserOpGas = async (
   {
     callData,
     childValidatorCount = 0,
-    entryPointAddress,
     isDeployed,
     sender,
     validatorKind,
   }: {
     callData: string;
     childValidatorCount?: number;
-    entryPointAddress?: string;
     isDeployed: boolean;
     sender: string;
     validatorKind?: SmartAccountValidatorKind | string;
@@ -220,7 +212,6 @@ export const estimateSmartAccountUserOpGas = async (
 ): Promise<SmartAccountUserOpGasEstimate> => {
   const callGasLimit = await estimateSmartAccountCallGasLimit(provider, {
     callData,
-    entryPointAddress,
     isDeployed,
     sender,
   });

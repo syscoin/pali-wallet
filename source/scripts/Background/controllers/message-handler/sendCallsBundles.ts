@@ -6,7 +6,7 @@ import {
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
 import {
-  PALI_ENTRYPOINT_V09_ADDRESSES,
+  PALI_ENTRYPOINT_V09_ADDRESS,
   paliEntryPointInterface,
 } from 'utils/smartAccount';
 
@@ -212,15 +212,13 @@ const aggregateUserOperationSuccess = (
 ): boolean | undefined => {
   const userOpEventTopic =
     paliEntryPointInterface.getEventTopic('UserOperationEvent');
-  const entryPoints = new Set(
-    PALI_ENTRYPOINT_V09_ADDRESSES.map((address) => address.toLowerCase())
-  );
+  const entryPoint = PALI_ENTRYPOINT_V09_ADDRESS.toLowerCase();
   let found = false;
   let allSucceeded = true;
   for (const receipt of receipts) {
     for (const log of receipt?.logs || []) {
       if (
-        !entryPoints.has(String(log.address || '').toLowerCase()) ||
+        String(log.address || '').toLowerCase() !== entryPoint ||
         log.topics?.[0] !== userOpEventTopic
       ) {
         continue;

@@ -41,7 +41,6 @@ import {
   CustomValidatorPreflightResult,
   estimateSmartAccountUserOpGas,
   getConfiguredAuthenticatorAddress,
-  getPaliEntryPointAddressForFactory,
   preflightCustomValidatorInstall,
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
@@ -64,6 +63,7 @@ import {
   PALI_INFRASTRUCTURE_CONTRACTS,
   PaliInfrastructureContractId,
   PALI_ENTRYPOINT_V09_ABI,
+  PALI_ENTRYPOINT_V09_ADDRESS,
   paliCompositeValidatorInterface,
   paliEcdsaValidatorInterface,
   paliGuardianRecoveryModuleInterface,
@@ -484,8 +484,6 @@ class SmartAccountController {
     const factoryAddress = getPaliSmartAccountFactoryAddress(
       activeNetwork.chainId
     );
-    const entryPointAddress =
-      getPaliEntryPointAddressForFactory(factoryAddress);
     const descriptor = this.deriveSmartAccountDescriptor(
       params.accountIndex ??
         this.getNextRecoverableAccountIndex(activeNetwork.chainId)
@@ -498,7 +496,6 @@ class SmartAccountController {
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
-      entryPointAddress,
       factoryAddress,
       isDeployed: false,
     };
@@ -560,8 +557,7 @@ class SmartAccountController {
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
-      entryPointAddress: descriptor.entryPointAddress,
-      factoryAddress: descriptor.factoryAddress,
+      factoryAddress: getPaliSmartAccountFactoryAddress(activeNetwork.chainId),
       isDeployed: false,
     };
     return {
@@ -788,50 +784,8 @@ class SmartAccountController {
       accountVersion: PALI_SMART_ACCOUNT_VERSION,
       anchor: this.getWalletRecoveryAnchor(activeNetwork.chainId),
       chainId: activeNetwork.chainId,
-      entryPointAddress: getPaliEntryPointAddressForFactory(factoryAddress),
       factoryAddress,
     });
-  }
-
-  private async getSmartAccountEntryPointAddress(
-    metadata: ISmartAccountMetadata,
-    accountAddress?: string,
-    provider?: any
-  ): Promise<string> {
-    if (metadata.entryPointAddress) {
-      return getAddress(metadata.entryPointAddress);
-    }
-    if (metadata.descriptor?.entryPointAddress) {
-      return getAddress(metadata.descriptor.entryPointAddress);
-    }
-    const factoryAddress =
-      metadata.factoryAddress || metadata.descriptor?.factoryAddress;
-    const factoryEntryPoint =
-      getPaliEntryPointAddressForFactory(factoryAddress);
-    if (
-      factoryAddress ||
-      !metadata.isDeployed ||
-      !accountAddress ||
-      !provider
-    ) {
-      return getAddress(factoryEntryPoint);
-    }
-
-    try {
-      const code = await provider.getCode(accountAddress);
-      if (code && code !== '0x') {
-        const accountContract = new Contract(
-          accountAddress,
-          paliSmartAccountInterface,
-          provider
-        );
-        return getAddress(await accountContract.entryPoint());
-      }
-    } catch {
-      // Fall back to the current canonical EntryPoint when legacy metadata is
-      // incomplete and the deployed account cannot be probed.
-    }
-    return getAddress(factoryEntryPoint);
   }
 
   public async hydrateSmartAccount(
@@ -938,13 +892,8 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
 
-    const entryPointAddress = await this.getSmartAccountEntryPointAddress(
-      active.metadata,
-      active.account.address,
-      provider
-    );
     const entryPoint = new Contract(
-      entryPointAddress,
+      PALI_ENTRYPOINT_V09_ADDRESS,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
@@ -1045,13 +994,8 @@ class SmartAccountController {
     const prepared = smartAccount.encodeExecutions(params);
     const validator = auth.validator;
     const nonceKey = smartAccount.getNonceKey();
-    const entryPointAddress = await this.getSmartAccountEntryPointAddress(
-      active.metadata,
-      active.account.address,
-      provider
-    );
     const entryPoint = new Contract(
-      entryPointAddress,
+      PALI_ENTRYPOINT_V09_ADDRESS,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
@@ -1080,7 +1024,6 @@ class SmartAccountController {
     const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
       callData,
       childValidatorCount: validatorProfile.childValidatorCount,
-      entryPointAddress,
       isDeployed: code !== '0x',
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
@@ -1145,7 +1088,7 @@ class SmartAccountController {
             usePaymasterConfig,
             {
               chainId: activeNetwork.chainId,
-              entryPoint: entryPointAddress,
+              entryPoint: PALI_ENTRYPOINT_V09_ADDRESS,
             }
           )
         : unsignedUserOperation;
@@ -1255,13 +1198,10 @@ class SmartAccountController {
     const gasPayer = await this.getWalletGasPayerAccount(
       active.metadata.deploymentGasPayer
     );
-    const provider = this.ethereumTransaction?.web3Provider;
-    const entryPointAddress = await this.getSmartAccountEntryPointAddress(
-      active.metadata,
-      active.account.address,
-      provider
+    const entryPoint = new Contract(
+      PALI_ENTRYPOINT_V09_ADDRESS,
+      PALI_ENTRYPOINT_V09_ABI
     );
-    const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
     const signedUserOperation: SmartAccountPackedUserOperation = {
       ...params.userOperation,
       signature: params.signature,
@@ -1287,12 +1227,11 @@ class SmartAccountController {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,
           signedUserOperation,
-          entryPointAddress,
           gasPayer
         );
       }
       const response = await this.deps.sendAndSaveEthTransaction(
-        { data: callData, to: entryPointAddress, value: '0x0' },
+        { data: callData, to: PALI_ENTRYPOINT_V09_ADDRESS, value: '0x0' },
         false,
         { id: gasPayer.id, type: gasPayer.type },
         {
@@ -1340,7 +1279,6 @@ class SmartAccountController {
   private async ensureSmartAccountDeploymentPrefund(
     accountAddress: string,
     userOperation: SmartAccountPackedUserOperation,
-    entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType }
   ): Promise<void> {
     const provider = this.ethereumTransaction?.web3Provider;
@@ -1348,7 +1286,7 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
     const entryPoint = new Contract(
-      entryPointAddress,
+      PALI_ENTRYPOINT_V09_ADDRESS,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
