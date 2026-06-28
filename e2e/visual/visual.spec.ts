@@ -59,11 +59,21 @@ test.describe('visual baselines', () => {
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
-      await expect(okButton).toBeVisible({
-        timeout: E2E_CONFIG.slowActionTimeoutMs,
-      });
-      await okButton.click();
-      await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
+      const outcome = await Promise.race([
+        okButton
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'dialog' as const),
+        wallet.page
+          .waitForURL(/#\/home/, { timeout: E2E_CONFIG.slowActionTimeoutMs })
+          .then(() => 'home' as const),
+      ]);
+      if (outcome === 'dialog') {
+        await okButton.click();
+        await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
+      }
       // Smart-account creation lands with the new account active; switch
       // back to Account 1 so home/send baselines use the HD account.
       await wallet.ensureOnHome();
