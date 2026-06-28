@@ -54,6 +54,11 @@ export type PaliModuleDescriptor =
 export const PALI_ERC7579_FACTORY_ADDRESSES: Partial<Record<number, string>> =
   {};
 
+export const PALI_LEGACY_ENTRYPOINT_V09_ADDRESS =
+  '0x433709009B8330FDa32311DF1C2AFA402eD8D009';
+export const PALI_LEGACY_ERC7579_FACTORY_ADDRESS =
+  '0xE7f975a6141BC3e411e93F66b3FB1C6Fb266Ab38';
+
 export const PALI_ECDSA_VALIDATOR_ADDRESSES: Partial<Record<number, string>> =
   {};
 
@@ -139,6 +144,16 @@ export const PALI_SMART_ACCOUNT_ABI = [
 ] as const;
 
 export const PALI_ENTRYPOINT_V09_ADDRESS = PALI_CANONICAL_ENTRYPOINT_ADDRESS;
+export const PALI_ENTRYPOINT_V09_ADDRESSES = [
+  PALI_ENTRYPOINT_V09_ADDRESS,
+  PALI_LEGACY_ENTRYPOINT_V09_ADDRESS,
+];
+
+const PALI_FACTORY_ENTRYPOINT_ADDRESSES: Record<string, string> = {
+  [PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()]: PALI_ENTRYPOINT_V09_ADDRESS,
+  [PALI_LEGACY_ERC7579_FACTORY_ADDRESS.toLowerCase()]:
+    PALI_LEGACY_ENTRYPOINT_V09_ADDRESS,
+};
 
 export const PALI_ENTRYPOINT_V09_ABI = [
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
@@ -235,6 +250,14 @@ export const getPaliModuleAddress = (
 
 export const getPaliSmartAccountFactoryAddress = (chainId: number): string =>
   PALI_ERC7579_FACTORY_ADDRESSES[chainId] || PALI_CANONICAL_FACTORY_ADDRESS;
+
+export const getPaliEntryPointAddressForFactory = (
+  factoryAddress?: string
+): string =>
+  factoryAddress
+    ? PALI_FACTORY_ENTRYPOINT_ADDRESSES[factoryAddress.toLowerCase()] ||
+      PALI_ENTRYPOINT_V09_ADDRESS
+    : PALI_ENTRYPOINT_V09_ADDRESS;
 
 export const getPaliP256WebAuthnValidatorAddress = (chainId: number): string =>
   getPaliModuleAddress(chainId, 'p256-webauthn');

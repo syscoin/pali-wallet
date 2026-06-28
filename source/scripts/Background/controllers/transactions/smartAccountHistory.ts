@@ -7,7 +7,7 @@ import { setAccountPropertyByIdAndType } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import type { KeyringAccountType } from 'types/network';
 import {
-  PALI_ENTRYPOINT_V09_ADDRESS,
+  getPaliEntryPointAddressForFactory,
   paliEntryPointInterface,
 } from 'utils/smartAccount';
 
@@ -38,6 +38,14 @@ const MAX_BACKFILL_CHUNKS_PER_POLL = 10;
 type ScannedAccount = {
   address: string;
   id: number;
+  smartAccount?: {
+    descriptor?: {
+      entryPointAddress?: string;
+      factoryAddress?: string;
+    };
+    entryPointAddress?: string;
+    factoryAddress?: string;
+  };
   smartAccountUserOpScanByChainId?: Record<number, number>;
 };
 
@@ -112,6 +120,18 @@ const refreshExistingConfirmations = (
       ...tx,
       confirmations: Math.max(0, latestBlock - Number(tx.blockNumber)),
     }));
+};
+
+const getAccountEntryPointAddresses = (account: ScannedAccount): string[] => {
+  const metadata = account.smartAccount;
+  const entryPointAddress =
+    metadata?.entryPointAddress || metadata?.descriptor?.entryPointAddress;
+  if (entryPointAddress) {
+    return [entryPointAddress];
+  }
+  const factoryAddress =
+    metadata?.factoryAddress || metadata?.descriptor?.factoryAddress;
+  return [getPaliEntryPointAddressForFactory(factoryAddress)];
 };
 
 // Always target the account whose logs were scanned: a poll can still be in
@@ -210,48 +230,60 @@ export const fetchSmartAccountUserOpTransactions = async (
   const cursor = Number(account.smartAccountUserOpScanByChainId?.[chainId]);
   const hasCursor = Number.isFinite(cursor) && cursor > 0;
   const fromBlock = hasCursor ? Math.max(0, cursor - REORG_SAFETY_BLOCKS) : 0;
-  const filter = {
-    address: PALI_ENTRYPOINT_V09_ADDRESS,
+  const baseFilter = {
     fromBlock,
     toBlock: latestBlock,
     topics: [USER_OP_EVENT_TOPIC, null, hexZeroPad(account.address, 32)],
   };
+  const filters = getAccountEntryPointAddresses(account).map((address) => ({
+    ...baseFilter,
+    address,
+  }));
 
   let logs;
   // Highest block contiguously covered from `fromBlock`; only this can be
   // persisted as the cursor without leaving gaps.
   let coveredToBlock = latestBlock;
   try {
-    logs = await provider.getLogs(filter);
+    logs = (
+      await Promise.all(filters.map((filter) => provider.getLogs(filter)))
+    ).flat();
   } catch {
     // Range-capped RPC: backfill in bounded chunks from the intended start
     // so older history is eventually indexed (partial contiguous progress
     // is persisted via the cursor), then peek at the tip window so fresh
     // activity is visible immediately while the backfill catches up.
-    const chunked = await scanLogsInChunks(
-      provider,
-      filter,
-      fromBlock,
-      latestBlock
+    const chunkedResults = await Promise.all(
+      filters.map((filter) =>
+        scanLogsInChunks(provider, filter, fromBlock, latestBlock)
+      )
     );
-    if (!chunked) {
+    if (chunkedResults.some((chunked) => !chunked)) {
       console.warn(
         '[smartAccountHistory] eth_getLogs failed, keeping local history only'
       );
       return refreshedExisting;
     }
-    logs = chunked.logs;
-    coveredToBlock = chunked.coveredToBlock;
+    logs = chunkedResults.flatMap((chunked) => chunked?.logs || []);
+    coveredToBlock = Math.min(
+      ...chunkedResults.map((chunked) => chunked?.coveredToBlock || fromBlock)
+    );
     if (coveredToBlock < latestBlock) {
       const tipFromBlock = Math.max(
         coveredToBlock + 1,
         latestBlock - FALLBACK_SCAN_BLOCKS
       );
       try {
-        const tipLogs = await provider.getLogs({
-          ...filter,
-          fromBlock: tipFromBlock,
-        });
+        const tipLogs = (
+          await Promise.all(
+            filters.map((filter) =>
+              provider.getLogs({
+                ...filter,
+                fromBlock: tipFromBlock,
+              })
+            )
+          )
+        ).flat();
         logs = [...logs, ...tipLogs];
       } catch {
         // Best effort only; the backfill cursor reaches these blocks later.

@@ -91,8 +91,10 @@ export interface ISmartAccountMetadata {
     anchorHash: string;
     chainId: number;
     deploymentSalt: string;
+    entryPointAddress?: string;
     factoryAddress: string;
   };
+  entryPointAddress?: string;
   factoryAddress?: string;
   installedModules?: SmartAccountInstalledModule[];
   isDeployed: boolean;

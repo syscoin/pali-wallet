@@ -106,6 +106,7 @@ export type PaliSmartAccountDescriptor = {
   anchorHash: string;
   chainId: number;
   deploymentSalt: string;
+  entryPointAddress?: string;
   factoryAddress: string;
 };
 
@@ -532,27 +533,35 @@ export const getPaliSmartAccountDescriptor = ({
   accountVersion,
   anchor,
   chainId,
+  entryPointAddress,
   factoryAddress,
 }: {
   accountIndex: number;
   accountVersion: string;
   anchor: string;
   chainId: number;
+  entryPointAddress?: string;
   factoryAddress: string;
-}): PaliSmartAccountDescriptor => ({
-  accountIndex,
-  accountVersion,
-  anchor,
-  anchorHash: keccak256(defaultAbiCoder.encode(['string'], [anchor])),
-  chainId,
-  deploymentSalt: getPaliSmartAccountDeploymentSalt({
+}): PaliSmartAccountDescriptor => {
+  const descriptor: PaliSmartAccountDescriptor = {
     accountIndex,
+    accountVersion,
     anchor,
+    anchorHash: keccak256(defaultAbiCoder.encode(['string'], [anchor])),
     chainId,
-    factoryAddress,
-  }),
-  factoryAddress: getAddress(factoryAddress),
-});
+    deploymentSalt: getPaliSmartAccountDeploymentSalt({
+      accountIndex,
+      anchor,
+      chainId,
+      factoryAddress,
+    }),
+    factoryAddress: getAddress(factoryAddress),
+  };
+  if (entryPointAddress) {
+    descriptor.entryPointAddress = getAddress(entryPointAddress);
+  }
+  return descriptor;
+};
 
 export const getConfiguredAuthenticatorAddress = (
   chainId: number,
