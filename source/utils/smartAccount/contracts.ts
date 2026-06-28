@@ -264,9 +264,13 @@ export const getPaliP256WebAuthnValidatorAddress = (chainId: number): string =>
 
 export const getPaliSmartAccountFactory = (
   chainId: number,
-  provider: Provider,
-  factoryAddress = getPaliSmartAccountFactoryAddress(chainId)
-): Contract => new Contract(factoryAddress, PALI_ERC7579_FACTORY_ABI, provider);
+  provider: Provider
+): Contract =>
+  new Contract(
+    getPaliSmartAccountFactoryAddress(chainId),
+    PALI_ERC7579_FACTORY_ABI,
+    provider
+  );
 
 export const paliSmartAccountFactoryInterface = new Interface(
   PALI_ERC7579_FACTORY_ABI
