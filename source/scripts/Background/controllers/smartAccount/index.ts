@@ -150,6 +150,7 @@ type SmartAccountInfrastructureStatus = {
     address: string;
     deployed: boolean;
     displayName: string;
+    externallyDeployed: boolean;
     id: PaliInfrastructureContractId;
     optional: boolean;
   }>;
@@ -386,6 +387,7 @@ class SmartAccountController {
         address: contract.address,
         deployed: isDeployed,
         displayName: contract.displayName,
+        externallyDeployed: Boolean(contract.externallyDeployed),
         id: contract.id,
         initialized,
         optional: Boolean(contract.optional),
@@ -445,6 +447,11 @@ class SmartAccountController {
     for (const contract of infrastructureContracts) {
       if (!status.missing.includes(contract.id)) {
         continue;
+      }
+      if (contract.externallyDeployed || !contract.deployCalldata) {
+        throw new Error(
+          `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
+        );
       }
       const response = await this.deps.sendAndSaveEthTransaction(
         {

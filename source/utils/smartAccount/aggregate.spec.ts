@@ -262,10 +262,14 @@ describe('smart account RPC aggregation', () => {
     );
     expect(entry).toBeDefined();
     expect(entry?.optional).toBe(true);
+    const deployCalldata = entry?.deployCalldata;
+    if (!deployCalldata) {
+      throw new Error('Multicall3 deploy calldata is required');
+    }
     // CREATE2 deploy payload is salt ++ initCode through the canonical
     // deterministic-deployment proxy.
-    expect(entry?.deployCalldata.startsWith(entry?.salt as string)).toBe(true);
-    const initCode = `0x${entry?.deployCalldata.slice(
+    expect(deployCalldata.startsWith(entry?.salt as string)).toBe(true);
+    const initCode = `0x${deployCalldata.slice(
       2 + (entry?.salt.length as number) - 2
     )}`;
     // Pins the embedded bytecode to the official pre-signed Multicall3
@@ -286,6 +290,9 @@ describe('smart account RPC aggregation', () => {
     expect(getPaliCanonicalEntryPointAddress(57057)).toBe(
       PALI_ZKSYS_ENTRYPOINT_ADDRESS
     );
+    expect(standard.entryPoint.deployCalldata).toBeDefined();
+    expect(zksys.entryPoint.deployCalldata).toBeUndefined();
+    expect(zksys.entryPoint.externallyDeployed).toBe(true);
     expect(standard.entryPoint.address).not.toBe(zksys.entryPoint.address);
     expect(standard.accountImplementation.address).not.toBe(
       zksys.accountImplementation.address
@@ -305,9 +312,11 @@ describe('smart account RPC aggregation', () => {
   it('wires the SLH-DSA validator to the deterministic verifier', () => {
     const verifier = PALI_INFRASTRUCTURE_BY_ID.slhDsaVerifier;
     const validator = PALI_INFRASTRUCTURE_BY_ID.slhDsaValidator;
-    const initCode = `0x${validator.deployCalldata.slice(
-      2 + validator.salt.length - 2
-    )}`;
+    const deployCalldata = validator.deployCalldata;
+    if (!deployCalldata) {
+      throw new Error('SLH-DSA validator deploy calldata is required');
+    }
+    const initCode = `0x${deployCalldata.slice(2 + validator.salt.length - 2)}`;
     const verifierCodeHash =
       '31e33d9848db6a8821cf39adeb347aff047a308f52b04aee2a398e29fee8b628';
 
