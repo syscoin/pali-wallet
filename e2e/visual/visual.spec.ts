@@ -14,6 +14,7 @@ import { PaliWallet } from '../harness/pali';
 const SELF_ADDRESS = '0xfFC854565ff83a49d3302821c0AD23822ca1A50C';
 
 let wallet: PaliWallet;
+let smartAccountCreated = false;
 
 // Matches any "money-looking" number (balances, fiat, fees) anywhere on the
 // page. The text engine resolves to the innermost matching elements.
@@ -92,6 +93,7 @@ test.describe('visual baselines', () => {
         await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
       }
       if (outcome !== 'unavailable') {
+        smartAccountCreated = true;
         // Smart-account creation lands with the new account active; switch
         // back to Account 1 so home/send baselines use the HD account.
         await wallet.ensureOnHome();
@@ -119,6 +121,7 @@ test.describe('visual baselines', () => {
   });
 
   test('settings menu', async () => {
+    test.skip(!smartAccountCreated, 'smart account was not created');
     await wallet.ensureOnHome();
     await wallet.page.locator('#general-settings-button').click();
     await settle(600);
@@ -219,6 +222,7 @@ test.describe('visual baselines', () => {
   });
 
   test('manage accounts', async () => {
+    test.skip(!smartAccountCreated, 'smart account was not created');
     await wallet.gotoRoute('#/settings/manage-accounts');
     await expect(wallet.page.getByText(/^Account 1 \(/).first()).toBeVisible({
       timeout: 30_000,
