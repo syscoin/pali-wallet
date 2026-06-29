@@ -14,6 +14,7 @@ import { PaliWallet } from '../harness/pali';
 const SELF_ADDRESS = '0xfFC854565ff83a49d3302821c0AD23822ca1A50C';
 
 let wallet: PaliWallet;
+let smartAccountCreated = false;
 
 // Matches any "money-looking" number (balances, fiat, fees) anywhere on the
 // page. The text engine resolves to the innermost matching elements.
@@ -51,28 +52,58 @@ test.describe('visual baselines', () => {
     // Create the smart account up front so every account list below renders
     // the same set of rows regardless of test order.
     await wallet.gotoRoute('#/settings/account/new');
+    await settle(600);
     const createSmartAccount = wallet.page
       .getByRole('button', { name: /create smart account/i })
       .first();
-    if (await createSmartAccount.isVisible().catch(() => false)) {
+    const smartAccountsUnavailable = await wallet.page
+      .getByText(/smart accounts are not ready on this network yet/i)
+      .isVisible()
+      .catch(() => false);
+    if (
+      !smartAccountsUnavailable &&
+      (await createSmartAccount.isVisible().catch(() => false))
+    ) {
       await createSmartAccount.click();
+      const unavailableMessage = wallet.page.getByText(
+        /smart accounts are not ready on this network yet/i
+      );
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
-      await expect(okButton).toBeVisible({
-        timeout: E2E_CONFIG.slowActionTimeoutMs,
-      });
-      await okButton.click();
-      await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
-      // Smart-account creation lands with the new account active; switch
-      // back to Account 1 so home/send baselines use the HD account.
-      await wallet.ensureOnHome();
-      await wallet.page.locator('#general-settings-button').click();
-      await wallet.page
-        .getByText(/^Account 1 \(/)
-        .first()
-        .click();
-      await wallet.page.waitForTimeout(2500);
+      const outcome = await Promise.race([
+        unavailableMessage
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'unavailable' as const),
+        okButton
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'dialog' as const),
+        wallet.page
+          .waitForURL(/#\/home/, { timeout: E2E_CONFIG.slowActionTimeoutMs })
+          .then(() => 'home' as const),
+      ]);
+      if (outcome === 'dialog') {
+        await okButton.click();
+        await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
+      }
+      if (outcome !== 'unavailable') {
+        smartAccountCreated = true;
+        // Smart-account creation lands with the new account active; switch
+        // back to Account 1 so home/send baselines use the HD account.
+        await wallet.ensureOnHome();
+        await wallet.page.locator('#general-settings-button').click();
+        await wallet.page
+          .getByText(/^Account 1 \(/)
+          .first()
+          .click();
+        await wallet.page.waitForTimeout(2500);
+      }
     }
     await wallet.ensureOnHome();
   });
@@ -90,6 +121,7 @@ test.describe('visual baselines', () => {
   });
 
   test('settings menu', async () => {
+    test.skip(!smartAccountCreated, 'smart account was not created');
     await wallet.ensureOnHome();
     await wallet.page.locator('#general-settings-button').click();
     await settle(600);
@@ -190,6 +222,7 @@ test.describe('visual baselines', () => {
   });
 
   test('manage accounts', async () => {
+    test.skip(!smartAccountCreated, 'smart account was not created');
     await wallet.gotoRoute('#/settings/manage-accounts');
     await expect(wallet.page.getByText(/^Account 1 \(/).first()).toBeVisible({
       timeout: 30_000,

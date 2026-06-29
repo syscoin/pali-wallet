@@ -7,7 +7,7 @@ import { setAccountPropertyByIdAndType } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import type { KeyringAccountType } from 'types/network';
 import {
-  PALI_ENTRYPOINT_V09_ADDRESS,
+  getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from 'utils/smartAccount';
 
@@ -211,7 +211,7 @@ export const fetchSmartAccountUserOpTransactions = async (
   const hasCursor = Number.isFinite(cursor) && cursor > 0;
   const fromBlock = hasCursor ? Math.max(0, cursor - REORG_SAFETY_BLOCKS) : 0;
   const filter = {
-    address: PALI_ENTRYPOINT_V09_ADDRESS,
+    address: getPaliEntryPointAddress(chainId),
     fromBlock,
     toBlock: latestBlock,
     topics: [USER_OP_EVENT_TOPIC, null, hexZeroPad(account.address, 32)],

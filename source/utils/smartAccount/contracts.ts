@@ -3,8 +3,9 @@ import { Contract } from '@ethersproject/contracts';
 
 import {
   PALI_CANONICAL_ENTRYPOINT_ADDRESS,
-  PALI_CANONICAL_FACTORY_ADDRESS,
   PALI_MODULE_CANONICAL_ADDRESSES,
+  getPaliCanonicalEntryPointAddress,
+  getPaliCanonicalFactoryAddress,
 } from './deployment';
 import type { Provider } from '@ethersproject/providers';
 
@@ -140,6 +141,9 @@ export const PALI_SMART_ACCOUNT_ABI = [
 
 export const PALI_ENTRYPOINT_V09_ADDRESS = PALI_CANONICAL_ENTRYPOINT_ADDRESS;
 
+export const getPaliEntryPointAddress = (chainId?: number): string =>
+  getPaliCanonicalEntryPointAddress(chainId);
+
 export const PALI_ENTRYPOINT_V09_ABI = [
   'event UserOperationEvent(bytes32 indexed userOpHash,address indexed sender,address indexed paymaster,uint256 nonce,bool success,uint256 actualGasCost,uint256 actualGasUsed)',
   'function balanceOf(address account) view returns (uint256)',
@@ -234,7 +238,8 @@ export const getPaliModuleAddress = (
 };
 
 export const getPaliSmartAccountFactoryAddress = (chainId: number): string =>
-  PALI_ERC7579_FACTORY_ADDRESSES[chainId] || PALI_CANONICAL_FACTORY_ADDRESS;
+  PALI_ERC7579_FACTORY_ADDRESSES[chainId] ||
+  getPaliCanonicalFactoryAddress(chainId);
 
 export const getPaliP256WebAuthnValidatorAddress = (chainId: number): string =>
   getPaliModuleAddress(chainId, 'p256-webauthn');

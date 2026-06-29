@@ -15,10 +15,16 @@ import {
   resolveMulticall3Address,
 } from './aggregate';
 import {
+  PALI_CANONICAL_ENTRYPOINT_ADDRESS,
   PALI_INFRASTRUCTURE_BY_ID,
   PALI_INFRASTRUCTURE_CONTRACTS,
   PALI_MODULE_CANONICAL_ADDRESSES,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
+  PALI_ZKSYS_ENTRYPOINT_ADDRESS,
+  getPaliCanonicalEntryPointAddress,
+  getPaliCanonicalFactoryAddress,
+  getPaliInfrastructureById,
+  getPaliInfrastructureContracts,
 } from './deployment';
 
 const TEST_INTERFACE = new Interface([
@@ -256,10 +262,14 @@ describe('smart account RPC aggregation', () => {
     );
     expect(entry).toBeDefined();
     expect(entry?.optional).toBe(true);
+    const deployCalldata = entry?.deployCalldata;
+    if (!deployCalldata) {
+      throw new Error('Multicall3 deploy calldata is required');
+    }
     // CREATE2 deploy payload is salt ++ initCode through the canonical
     // deterministic-deployment proxy.
-    expect(entry?.deployCalldata.startsWith(entry?.salt as string)).toBe(true);
-    const initCode = `0x${entry?.deployCalldata.slice(
+    expect(deployCalldata.startsWith(entry?.salt as string)).toBe(true);
+    const initCode = `0x${deployCalldata.slice(
       2 + (entry?.salt.length as number) - 2
     )}`;
     // Pins the embedded bytecode to the official pre-signed Multicall3
@@ -270,12 +280,43 @@ describe('smart account RPC aggregation', () => {
     expect(entry?.bytecodeHash).toBe(keccak256(initCode));
   });
 
+  it('uses the standard EntryPoint profile by default and Syscoin profile only on zkSYS', () => {
+    const standard = getPaliInfrastructureById(1);
+    const zksys = getPaliInfrastructureById(57057);
+
+    expect(getPaliCanonicalEntryPointAddress(1)).toBe(
+      PALI_CANONICAL_ENTRYPOINT_ADDRESS
+    );
+    expect(getPaliCanonicalEntryPointAddress(57057)).toBe(
+      PALI_ZKSYS_ENTRYPOINT_ADDRESS
+    );
+    expect(standard.entryPoint.deployCalldata).toBeDefined();
+    expect(zksys.entryPoint.deployCalldata).toBeUndefined();
+    expect(zksys.entryPoint.externallyDeployed).toBe(true);
+    expect(standard.entryPoint.address).not.toBe(zksys.entryPoint.address);
+    expect(standard.accountImplementation.address).not.toBe(
+      zksys.accountImplementation.address
+    );
+    expect(getPaliCanonicalFactoryAddress(1)).not.toBe(
+      getPaliCanonicalFactoryAddress(57057)
+    );
+    expect(standard.ecdsaValidator.address).toBe(zksys.ecdsaValidator.address);
+    expect(getPaliInfrastructureContracts(1)).toBe(
+      PALI_INFRASTRUCTURE_CONTRACTS
+    );
+    expect(getPaliInfrastructureContracts(57057)).not.toBe(
+      PALI_INFRASTRUCTURE_CONTRACTS
+    );
+  });
+
   it('wires the SLH-DSA validator to the deterministic verifier', () => {
     const verifier = PALI_INFRASTRUCTURE_BY_ID.slhDsaVerifier;
     const validator = PALI_INFRASTRUCTURE_BY_ID.slhDsaValidator;
-    const initCode = `0x${validator.deployCalldata.slice(
-      2 + validator.salt.length - 2
-    )}`;
+    const deployCalldata = validator.deployCalldata;
+    if (!deployCalldata) {
+      throw new Error('SLH-DSA validator deploy calldata is required');
+    }
+    const initCode = `0x${deployCalldata.slice(2 + validator.salt.length - 2)}`;
     const verifierCodeHash =
       '31e33d9848db6a8821cf39adeb347aff047a308f52b04aee2a398e29fee8b628';
 

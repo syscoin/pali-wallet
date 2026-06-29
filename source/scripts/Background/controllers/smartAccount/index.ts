@@ -60,10 +60,10 @@ import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   PALI_CREATE2_DEPLOYER_ADDRESS,
   PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
-  PALI_INFRASTRUCTURE_CONTRACTS,
+  getPaliInfrastructureContracts,
   PaliInfrastructureContractId,
   PALI_ENTRYPOINT_V09_ABI,
-  PALI_ENTRYPOINT_V09_ADDRESS,
+  getPaliEntryPointAddress,
   paliCompositeValidatorInterface,
   paliEcdsaValidatorInterface,
   paliGuardianRecoveryModuleInterface,
@@ -150,6 +150,7 @@ type SmartAccountInfrastructureStatus = {
     address: string;
     deployed: boolean;
     displayName: string;
+    externallyDeployed: boolean;
     id: PaliInfrastructureContractId;
     optional: boolean;
   }>;
@@ -356,9 +357,12 @@ class SmartAccountController {
     // One batched eth_getCode round trip for the CREATE2 deployer plus every
     // infrastructure contract (falls back to parallel single calls when the
     // RPC rejects batches).
+    const infrastructureContracts = getPaliInfrastructureContracts(
+      activeNetwork.chainId
+    );
     const probeAddresses = [
       PALI_CREATE2_DEPLOYER_ADDRESS,
-      ...PALI_INFRASTRUCTURE_CONTRACTS.map((contract) => contract.address),
+      ...infrastructureContracts.map((contract) => contract.address),
     ];
     let codes: string[];
     try {
@@ -375,7 +379,7 @@ class SmartAccountController {
       );
     }
     const create2Code = codes[0];
-    const contracts = PALI_INFRASTRUCTURE_CONTRACTS.map((contract, index) => {
+    const contracts = infrastructureContracts.map((contract, index) => {
       const code = codes[index + 1];
       const isDeployed = Boolean(code) && code !== '0x';
       const initialized = contract.id !== 'factory' || isDeployed;
@@ -383,6 +387,7 @@ class SmartAccountController {
         address: contract.address,
         deployed: isDeployed,
         displayName: contract.displayName,
+        externallyDeployed: Boolean(contract.externallyDeployed),
         id: contract.id,
         initialized,
         optional: Boolean(contract.optional),
@@ -436,9 +441,17 @@ class SmartAccountController {
       .filter((contract) => contract.deployed)
       .map((contract) => contract.id);
 
-    for (const contract of PALI_INFRASTRUCTURE_CONTRACTS) {
+    const infrastructureContracts = getPaliInfrastructureContracts(
+      status.chainId
+    );
+    for (const contract of infrastructureContracts) {
       if (!status.missing.includes(contract.id)) {
         continue;
+      }
+      if (contract.externallyDeployed || !contract.deployCalldata) {
+        throw new Error(
+          `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
+        );
       }
       const response = await this.deps.sendAndSaveEthTransaction(
         {
@@ -892,8 +905,9 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
 
+    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(
-      PALI_ENTRYPOINT_V09_ADDRESS,
+      entryPointAddress,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
@@ -994,8 +1008,9 @@ class SmartAccountController {
     const prepared = smartAccount.encodeExecutions(params);
     const validator = auth.validator;
     const nonceKey = smartAccount.getNonceKey();
+    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(
-      PALI_ENTRYPOINT_V09_ADDRESS,
+      entryPointAddress,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
@@ -1024,6 +1039,7 @@ class SmartAccountController {
     const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
       callData,
       childValidatorCount: validatorProfile.childValidatorCount,
+      entryPointAddress,
       isDeployed: code !== '0x',
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
@@ -1088,7 +1104,7 @@ class SmartAccountController {
             usePaymasterConfig,
             {
               chainId: activeNetwork.chainId,
-              entryPoint: PALI_ENTRYPOINT_V09_ADDRESS,
+              entryPoint: entryPointAddress,
             }
           )
         : unsignedUserOperation;
@@ -1198,10 +1214,8 @@ class SmartAccountController {
     const gasPayer = await this.getWalletGasPayerAccount(
       active.metadata.deploymentGasPayer
     );
-    const entryPoint = new Contract(
-      PALI_ENTRYPOINT_V09_ADDRESS,
-      PALI_ENTRYPOINT_V09_ABI
-    );
+    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
+    const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
     const signedUserOperation: SmartAccountPackedUserOperation = {
       ...params.userOperation,
       signature: params.signature,
@@ -1227,11 +1241,12 @@ class SmartAccountController {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,
           signedUserOperation,
+          entryPointAddress,
           gasPayer
         );
       }
       const response = await this.deps.sendAndSaveEthTransaction(
-        { data: callData, to: PALI_ENTRYPOINT_V09_ADDRESS, value: '0x0' },
+        { data: callData, to: entryPointAddress, value: '0x0' },
         false,
         { id: gasPayer.id, type: gasPayer.type },
         {
@@ -1279,6 +1294,7 @@ class SmartAccountController {
   private async ensureSmartAccountDeploymentPrefund(
     accountAddress: string,
     userOperation: SmartAccountPackedUserOperation,
+    entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType }
   ): Promise<void> {
     const provider = this.ethereumTransaction?.web3Provider;
@@ -1286,7 +1302,7 @@ class SmartAccountController {
       throw new Error('Web3 provider not available');
     }
     const entryPoint = new Contract(
-      PALI_ENTRYPOINT_V09_ADDRESS,
+      entryPointAddress,
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
