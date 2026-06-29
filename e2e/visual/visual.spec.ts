@@ -64,10 +64,19 @@ test.describe('visual baselines', () => {
       (await createSmartAccount.isVisible().catch(() => false))
     ) {
       await createSmartAccount.click();
+      const unavailableMessage = wallet.page.getByText(
+        /smart accounts are not ready on this network yet/i
+      );
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
       const outcome = await Promise.race([
+        unavailableMessage
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'unavailable' as const),
         okButton
           .waitFor({
             state: 'visible',
@@ -82,15 +91,17 @@ test.describe('visual baselines', () => {
         await okButton.click();
         await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
       }
-      // Smart-account creation lands with the new account active; switch
-      // back to Account 1 so home/send baselines use the HD account.
-      await wallet.ensureOnHome();
-      await wallet.page.locator('#general-settings-button').click();
-      await wallet.page
-        .getByText(/^Account 1 \(/)
-        .first()
-        .click();
-      await wallet.page.waitForTimeout(2500);
+      if (outcome !== 'unavailable') {
+        // Smart-account creation lands with the new account active; switch
+        // back to Account 1 so home/send baselines use the HD account.
+        await wallet.ensureOnHome();
+        await wallet.page.locator('#general-settings-button').click();
+        await wallet.page
+          .getByText(/^Account 1 \(/)
+          .first()
+          .click();
+        await wallet.page.waitForTimeout(2500);
+      }
     }
     await wallet.ensureOnHome();
   });
