@@ -15,10 +15,16 @@ import {
   resolveMulticall3Address,
 } from './aggregate';
 import {
+  PALI_CANONICAL_ENTRYPOINT_ADDRESS,
   PALI_INFRASTRUCTURE_BY_ID,
   PALI_INFRASTRUCTURE_CONTRACTS,
   PALI_MODULE_CANONICAL_ADDRESSES,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
+  PALI_ZKSYS_ENTRYPOINT_ADDRESS,
+  getPaliCanonicalEntryPointAddress,
+  getPaliCanonicalFactoryAddress,
+  getPaliInfrastructureById,
+  getPaliInfrastructureContracts,
 } from './deployment';
 
 const TEST_INTERFACE = new Interface([
@@ -268,6 +274,32 @@ describe('smart account RPC aggregation', () => {
       '0x0b2046aa018109118d518235014ac2c679dcbdff32c64705fdf50d048cd32d22'
     );
     expect(entry?.bytecodeHash).toBe(keccak256(initCode));
+  });
+
+  it('uses the standard EntryPoint profile by default and Syscoin profile only on zkSYS', () => {
+    const standard = getPaliInfrastructureById(1);
+    const zksys = getPaliInfrastructureById(57057);
+
+    expect(getPaliCanonicalEntryPointAddress(1)).toBe(
+      PALI_CANONICAL_ENTRYPOINT_ADDRESS
+    );
+    expect(getPaliCanonicalEntryPointAddress(57057)).toBe(
+      PALI_ZKSYS_ENTRYPOINT_ADDRESS
+    );
+    expect(standard.entryPoint.address).not.toBe(zksys.entryPoint.address);
+    expect(standard.accountImplementation.address).not.toBe(
+      zksys.accountImplementation.address
+    );
+    expect(getPaliCanonicalFactoryAddress(1)).not.toBe(
+      getPaliCanonicalFactoryAddress(57057)
+    );
+    expect(standard.ecdsaValidator.address).toBe(zksys.ecdsaValidator.address);
+    expect(getPaliInfrastructureContracts(1)).toBe(
+      PALI_INFRASTRUCTURE_CONTRACTS
+    );
+    expect(getPaliInfrastructureContracts(57057)).not.toBe(
+      PALI_INFRASTRUCTURE_CONTRACTS
+    );
   });
 
   it('wires the SLH-DSA validator to the deterministic verifier', () => {

@@ -6,7 +6,7 @@ import {
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
 import {
-  PALI_ENTRYPOINT_V09_ADDRESS,
+  getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from 'utils/smartAccount';
 
@@ -208,11 +208,12 @@ export const resolveSendCallsBundleDescriptor = (
 // UserOperationEvent.success flag is the source of truth. Returns undefined
 // when no UserOperationEvent was found in any receipt.
 const aggregateUserOperationSuccess = (
-  receipts: any[]
+  receipts: any[],
+  chainId: number
 ): boolean | undefined => {
   const userOpEventTopic =
     paliEntryPointInterface.getEventTopic('UserOperationEvent');
-  const entryPoint = PALI_ENTRYPOINT_V09_ADDRESS.toLowerCase();
+  const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
   let found = false;
   let allSucceeded = true;
   for (const receipt of receipts) {
@@ -290,7 +291,10 @@ export const resolveCallsStatus = async (
 
   let smartAccountInnerSuccess: boolean | undefined;
   if (descriptor.smartAccount) {
-    smartAccountInnerSuccess = aggregateUserOperationSuccess(receipts);
+    smartAccountInnerSuccess = aggregateUserOperationSuccess(
+      receipts,
+      descriptor.chainId
+    );
     if (
       smartAccountInnerSuccess === undefined &&
       receipts.every((receipt) => receipt !== null)
