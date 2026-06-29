@@ -1,7 +1,7 @@
 import { JsonRpcProvider } from '@ethersproject/providers';
 
 import {
-  PALI_INFRASTRUCTURE_CONTRACTS,
+  getPaliInfrastructureContracts,
   type PaliInfrastructureContract,
 } from '../../source/utils/smartAccount/deployment';
 
@@ -33,7 +33,8 @@ const withRetries = async <T>(
 };
 
 export const getInfrastructureContracts =
-  (): readonly PaliInfrastructureContract[] => PALI_INFRASTRUCTURE_CONTRACTS;
+  (): readonly PaliInfrastructureContract[] =>
+    getPaliInfrastructureContracts(E2E_CONFIG.chainId);
 
 export type InfraDeploymentState = {
   contract: PaliInfrastructureContract;
@@ -44,7 +45,7 @@ export const getInfrastructureState = async (): Promise<
   InfraDeploymentState[]
 > =>
   Promise.all(
-    PALI_INFRASTRUCTURE_CONTRACTS.map(async (contract) => {
+    getInfrastructureContracts().map(async (contract) => {
       const code = await withRetries(() => provider.getCode(contract.address));
       return { contract, deployed: code !== '0x' && code.length > 2 };
     })
