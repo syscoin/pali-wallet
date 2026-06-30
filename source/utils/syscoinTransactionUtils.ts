@@ -204,7 +204,7 @@ export const getSyscoinIntentAmount = (
       value !== undefined
         ? parseFloat(
             formatSyscoinValue(
-              value.toString(),
+              getAbsoluteRawTransferValue(transfer).toString(),
               typeof transfer?.decimals === 'number' ? transfer.decimals : 8
             )
           )

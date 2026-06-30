@@ -12,7 +12,7 @@ describe('getSyscoinIntentAmount', () => {
         },
         {
           assetGuid: 'zero-decimal-asset',
-          value: '50',
+          value: '-50',
           decimals: 0,
           symbol: 'ZERO',
         },
