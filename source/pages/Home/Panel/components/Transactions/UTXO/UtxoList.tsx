@@ -32,6 +32,8 @@ import {
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+const SERVER_PAGE_SIZE = 30;
+
 const getSummaryAccountDelta = (tx: any): string | null => {
   if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
     return null;
@@ -455,9 +457,15 @@ export const UtxoTransactionsList = ({
   useEffect(() => {
     setExtraTransactions([]);
     setNextPage(2);
-    setHasMoreServer(true);
+    setHasMoreServer(userTransactions.length >= SERVER_PAGE_SIZE);
     setVisibleCount(50);
-  }, [currentAccount?.address, currentAccount?.xpub, chainId, networkUrl]);
+  }, [
+    currentAccount?.address,
+    currentAccount?.xpub,
+    chainId,
+    networkUrl,
+    userTransactions.length,
+  ]);
 
   return (
     <>
@@ -484,13 +492,26 @@ export const UtxoTransactionsList = ({
                       throw new Error('Missing account identifier');
                     const res = (await controllerEmitter(
                       ['wallet', 'getSysTransactionsPage'],
-                      [accountKey, networkUrl, nextPage, 30]
+                      [accountKey, networkUrl, nextPage, SERVER_PAGE_SIZE]
                     )) as any[];
                     const newTxs = Array.isArray(res) ? res : [];
-                    if (newTxs.length > 0) {
-                      setExtraTransactions((prev) => [...prev, ...newTxs]);
+                    const knownTxids = new Set(
+                      [...userTransactions, ...extraTransactions]
+                        .map((tx) => tx.txid)
+                        .filter(Boolean)
+                    );
+                    const uniqueNewTxs = newTxs.filter(
+                      (tx) => tx?.txid && !knownTxids.has(tx.txid)
+                    );
+
+                    if (uniqueNewTxs.length > 0) {
+                      setExtraTransactions((prev) => [
+                        ...prev,
+                        ...uniqueNewTxs,
+                      ]);
                       setNextPage((p) => p + 1);
-                      if (newTxs.length < 30) setHasMoreServer(false);
+                      if (newTxs.length < SERVER_PAGE_SIZE)
+                        setHasMoreServer(false);
                     } else {
                       setHasMoreServer(false);
                     }

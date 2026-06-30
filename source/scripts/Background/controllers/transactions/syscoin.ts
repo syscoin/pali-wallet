@@ -41,7 +41,10 @@ const getHistoryRequestOptions = (
 
 const buildActivitySnapshot = (accountData: any): IAccountActivitySnapshot => ({
   balance: String(accountData?.balance ?? ''),
-  txs: Number(accountData?.txs ?? 0),
+  // XPUB `details=basic` may expose the per-address aggregate count while
+  // history details expose deduplicated wallet transactions. Compare the stable
+  // aggregate when Blockbook provides it.
+  txs: Number(accountData?.addrTxCount ?? accountData?.txs ?? 0),
   unconfirmedBalance: String(accountData?.unconfirmedBalance ?? ''),
   unconfirmedTxs: Number(accountData?.unconfirmedTxs ?? 0),
 });
