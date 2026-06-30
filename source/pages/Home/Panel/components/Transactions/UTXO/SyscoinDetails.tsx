@@ -310,20 +310,18 @@ export const SyscoinTransactionDetails = ({
 
         {/* Display transaction amount */}
         {(() => {
-          // Priority 1: Use assetInfo-based calculation with single clear intent
-          if (hasAssetInfo) {
-            const intent = getSyscoinIntentAmount(rawTransaction);
+          // Priority 1: Use SPT intent from compact summaries or full vin/vout data.
+          const intent = getSyscoinIntentAmount(rawTransaction);
 
-            if (intent) {
-              const decimals = intent.decimals ?? 8;
-              const symbol = intent.symbol ?? 'SYSX';
+          if (intent) {
+            const decimals = intent.decimals ?? 8;
+            const symbol = intent.symbol ?? 'SYSX';
 
-              return (
-                <p className="text-white text-base">
-                  {formatDisplayValue(intent.amount, decimals)} {symbol}
-                </p>
-              );
-            }
+            return (
+              <p className="text-white text-base">
+                {formatDisplayValue(intent.amount, decimals)} {symbol}
+              </p>
+            );
           }
 
           // Priority 2: For regular SYS transactions without asset transfers
