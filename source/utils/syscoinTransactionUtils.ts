@@ -175,7 +175,12 @@ const parseAssetValue = (assetInfo: IAssetInfo, decimals?: number): number => {
  */
 export const getSyscoinIntentAmount = (
   transaction: ITransactionInfoUtxo
-): { amount: number; decimals?: number; symbol?: string } | null => {
+): {
+  amount: number;
+  assetGuid?: string;
+  decimals?: number;
+  symbol?: string;
+} | null => {
   if (!transaction) {
     return null;
   }
@@ -207,6 +212,7 @@ export const getSyscoinIntentAmount = (
     if (amount > 0) {
       return {
         amount,
+        assetGuid: transfer?.token || transfer?.assetGuid,
         decimals: transfer?.decimals,
         symbol: transfer?.symbol,
       };
@@ -272,6 +278,7 @@ export const getSyscoinIntentAmount = (
       const dec = decimalsByGuid.get(guid);
       return {
         amount: parseAssetValue(opReturn.assetInfo, dec),
+        assetGuid: guid,
         decimals: dec,
         symbol: symbolByGuid.get(guid),
       };
@@ -310,6 +317,7 @@ export const getSyscoinIntentAmount = (
         // Net amount already in decimal units; carry decimals if known
         return {
           amount: outputAmount - inputAmount,
+          assetGuid: guid,
           decimals: decimalsByGuid.get(guid),
           symbol: symbolByGuid.get(guid),
         };
@@ -368,6 +376,7 @@ export const getSyscoinIntentAmount = (
     const dec = decimalsByGuid.get(bestGuid);
     return {
       amount: Math.abs(bestNet),
+      assetGuid: bestGuid,
       decimals: dec,
       symbol: symbolByGuid.get(bestGuid),
     };

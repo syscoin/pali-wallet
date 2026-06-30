@@ -5,11 +5,13 @@ describe('getSyscoinIntentAmount', () => {
     const intent = getSyscoinIntentAmount({
       accountAssetTransfers: [
         {
+          assetGuid: 'eight-decimal-asset',
           value: '100000000',
           decimals: 8,
           symbol: 'EIGHT',
         },
         {
+          assetGuid: 'zero-decimal-asset',
           value: '50',
           decimals: 0,
           symbol: 'ZERO',
@@ -20,6 +22,7 @@ describe('getSyscoinIntentAmount', () => {
 
     expect(intent).toEqual({
       amount: 50,
+      assetGuid: 'zero-decimal-asset',
       decimals: 0,
       symbol: 'ZERO',
     });

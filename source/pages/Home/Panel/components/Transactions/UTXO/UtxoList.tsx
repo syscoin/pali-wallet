@@ -88,10 +88,13 @@ const UtxoTransactionsListComponentBase = ({
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
+  const intent = getSyscoinIntentAmount(tx);
 
   // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
   // then vout/vin assetInfo) so we can show the imported asset's icon
   const txAssetGuid = useMemo(() => {
+    if (intent?.assetGuid) return String(intent.assetGuid);
+
     const transfers = Array.isArray((tx as any)?.tokenTransfers)
       ? (tx as any).tokenTransfers
       : [];
@@ -110,7 +113,7 @@ const UtxoTransactionsListComponentBase = ({
       }
     }
     return null;
-  }, [tx]);
+  }, [intent?.assetGuid, tx]);
 
   const sptAssetInfo = useMemo(() => {
     if (!txAssetGuid) return null;
@@ -128,7 +131,6 @@ const UtxoTransactionsListComponentBase = ({
   // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
   let sptAmountDisplay: string | null = null;
   let sysAmountDisplay: string | null = null;
-  const intent = getSyscoinIntentAmount(tx);
   if (intent) {
     const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
     const symbol = intent.symbol ?? (sptAssetInfo as any)?.symbol ?? 'SYSX';
