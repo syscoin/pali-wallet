@@ -56,7 +56,7 @@ describe('SysTransactionController rapid polling', () => {
     vaultState = buildVaultState([]);
   });
 
-  it('regular polling always performs the full details=txs fetch', async () => {
+  it('regular polling always performs the txsummary history fetch', async () => {
     // Use a unique xpub per test: the activity snapshot map is module-level
     const xpub = 'zpub-regular-poll';
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
@@ -68,17 +68,172 @@ describe('SysTransactionController rapid polling', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
-  it('rapid polling skips the full fetch when the basic summary is unchanged', async () => {
+  it('falls back to txslight when txsummary is unavailable', async () => {
+    const fallbackUrl = `${URL}txsummary-unsupported/`;
+    const xpub = 'zpub-txsummary-fallback';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(
+      xpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      fallbackUrl,
+      xpub,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      fallbackUrl,
+      xpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
+
+    const secondXpub = 'zpub-txsummary-fallback-cached';
+    const secondResult = await controller.pollingSysTransactions(
+      secondXpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      fallbackUrl,
+      secondXpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(secondResult.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
+  it('falls back when txsummary returns account data without transactions', async () => {
+    const fallbackUrl = `${URL}txsummary-basic-only/`;
+    const xpub = 'zpub-txsummary-basic-only';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({
+        balance: '100000000',
+        unconfirmedBalance: '0',
+        txs: 1,
+        unconfirmedTxs: 0,
+      })
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(
+      xpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      fallbackUrl,
+      xpub,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      fallbackUrl,
+      xpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
+  it('falls back when txsummary omits unconfirmed-only transactions', async () => {
+    const fallbackUrl = `${URL}txsummary-unconfirmed-basic-only/`;
+    const xpub = 'zpub-txsummary-unconfirmed-basic-only';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({
+        balance: '0',
+        unconfirmedBalance: '100000000',
+        txs: 0,
+        unconfirmedTxs: 1,
+      })
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(
+      xpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      fallbackUrl,
+      xpub,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      fallbackUrl,
+      xpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
+  it('propagates failures once history uses cached txslight fallback', async () => {
+    const fallbackUrl = `${URL}txsummary-unsupported-reject/`;
+    const xpub = 'zpub-txsummary-fallback-reject';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    await controller.pollingSysTransactions(xpub, fallbackUrl, false);
+
+    const txslightError = new Error('txslight unavailable');
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockRejectedValueOnce(txslightError);
+
+    await expect(
+      controller.pollingSysTransactions(
+        'zpub-txsummary-fallback-reject-second',
+        fallbackUrl,
+        false
+      )
+    ).rejects.toThrow('txslight unavailable');
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      fallbackUrl,
+      'zpub-txsummary-fallback-reject-second',
+      'details=txslight&pageSize=30',
+      true
+    );
+  });
+
+  it('rapid polling skips the history fetch when the basic summary is unchanged', async () => {
     const xpub = 'zpub-rapid-unchanged';
     const controller = SysTransactionController();
 
-    // Seed the activity snapshot with a full fetch
+    // Seed the activity snapshot with a history fetch
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
     await controller.pollingSysTransactions(xpub, URL, false);
 
@@ -107,7 +262,7 @@ describe('SysTransactionController rapid polling', () => {
     expect(result).toEqual(localTxs);
   });
 
-  it('rapid polling performs the full fetch when the summary changed', async () => {
+  it('rapid polling performs the history fetch when the summary changed', async () => {
     const xpub = 'zpub-rapid-changed';
     const controller = SysTransactionController();
 
@@ -153,13 +308,13 @@ describe('SysTransactionController rapid polling', () => {
       2,
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
     expect(result.some((tx: any) => tx.txid === 'tx2')).toBe(true);
   });
 
-  it('rapid polling without a prior snapshot goes straight to the full fetch', async () => {
+  it('rapid polling without a prior snapshot goes straight to the history fetch', async () => {
     const xpub = 'zpub-rapid-no-snapshot';
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
 
@@ -170,12 +325,12 @@ describe('SysTransactionController rapid polling', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
   });
 
-  it('rapid polling falls back to the full fetch when the basic probe fails', async () => {
+  it('rapid polling falls back to the history fetch when the basic probe fails', async () => {
     const xpub = 'zpub-rapid-probe-fail';
     const controller = SysTransactionController();
 

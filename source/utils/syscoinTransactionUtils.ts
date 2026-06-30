@@ -1,3 +1,5 @@
+import { BigNumber } from '@ethersproject/bignumber';
+
 import {
   IAssetInfo,
   ITransactionInfoUtxo,
@@ -7,6 +9,62 @@ import {
 
 import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';
+
+export const formatSyscoinConfirmationETA = (transaction: {
+  confirmationETASeconds?: number;
+}): string | null => {
+  const seconds = Number(transaction?.confirmationETASeconds ?? 0);
+
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)} sec`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hr`;
+  }
+
+  const days = Math.ceil(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+};
+
+const getTransferDecimals = (transfer: any) =>
+  typeof transfer?.decimals === 'number' && transfer.decimals >= 0
+    ? Math.floor(transfer.decimals)
+    : 8;
+
+const getAbsoluteRawTransferValue = (transfer: any) => {
+  try {
+    const value = String(transfer?.value ?? '0');
+    return BigNumber.from(value.startsWith('-') ? value.slice(1) : value);
+  } catch {
+    return BigNumber.from(0);
+  }
+};
+
+const compareNormalizedTransferValues = (a: any, b: any) => {
+  const aDecimals = getTransferDecimals(a);
+  const bDecimals = getTransferDecimals(b);
+  const aValue = getAbsoluteRawTransferValue(a).mul(
+    BigNumber.from(10).pow(bDecimals)
+  );
+  const bValue = getAbsoluteRawTransferValue(b).mul(
+    BigNumber.from(10).pow(aDecimals)
+  );
+
+  if (aValue.gt(bValue)) return 1;
+  if (aValue.lt(bValue)) return -1;
+  return 0;
+};
 
 /**
  * Normalizes Syscoin transaction types from various formats into a consistent format
@@ -117,7 +175,12 @@ const parseAssetValue = (assetInfo: IAssetInfo, decimals?: number): number => {
  */
 export const getSyscoinIntentAmount = (
   transaction: ITransactionInfoUtxo
-): { amount: number; decimals?: number; symbol?: string } | null => {
+): {
+  amount: number;
+  assetGuid?: string;
+  decimals?: number;
+  symbol?: string;
+} | null => {
   if (!transaction) {
     return null;
   }
@@ -125,6 +188,36 @@ export const getSyscoinIntentAmount = (
   // Determine transaction type - support both decoded and raw formats
   const txType = transaction.tokenType;
   const normalizedType = normalizeSyscoinTransactionType(txType);
+  const accountTransfers = Array.isArray(
+    (transaction as any).accountAssetTransfers
+  )
+    ? (transaction as any).accountAssetTransfers
+    : [];
+  if (accountTransfers.length > 0) {
+    const transfer = accountTransfers.reduce((selected, current) =>
+      compareNormalizedTransferValues(current, selected) > 0
+        ? current
+        : selected
+    );
+    const value = transfer?.value;
+    const amount =
+      value !== undefined
+        ? parseFloat(
+            formatSyscoinValue(
+              getAbsoluteRawTransferValue(transfer).toString(),
+              typeof transfer?.decimals === 'number' ? transfer.decimals : 8
+            )
+          )
+        : 0;
+    if (amount > 0) {
+      return {
+        amount,
+        assetGuid: transfer?.token || transfer?.assetGuid,
+        decimals: transfer?.decimals,
+        symbol: transfer?.symbol,
+      };
+    }
+  }
 
   // Modern format with vin/vout containing assetInfo (or raw transaction)
   // Normalize to arrays to guard against API variants that return objects or singletons
@@ -185,6 +278,7 @@ export const getSyscoinIntentAmount = (
       const dec = decimalsByGuid.get(guid);
       return {
         amount: parseAssetValue(opReturn.assetInfo, dec),
+        assetGuid: guid,
         decimals: dec,
         symbol: symbolByGuid.get(guid),
       };
@@ -223,6 +317,7 @@ export const getSyscoinIntentAmount = (
         // Net amount already in decimal units; carry decimals if known
         return {
           amount: outputAmount - inputAmount,
+          assetGuid: guid,
           decimals: decimalsByGuid.get(guid),
           symbol: symbolByGuid.get(guid),
         };
@@ -281,6 +376,7 @@ export const getSyscoinIntentAmount = (
     const dec = decimalsByGuid.get(bestGuid);
     return {
       amount: Math.abs(bestNet),
+      assetGuid: bestGuid,
       decimals: dec,
       symbol: symbolByGuid.get(bestGuid),
     };

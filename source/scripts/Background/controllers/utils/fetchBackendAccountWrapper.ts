@@ -5,6 +5,7 @@ const requestCache = new Map<
   string,
   {
     abortController?: AbortController;
+    details: string;
     detailsLevel: number;
     promise: Promise<any>;
     scopeKey: string;
@@ -36,18 +37,21 @@ const DETAILS_LEVEL_RANK: Record<string, number> = {
   tokens: 2,
   tokenBalances: 3,
   txids: 4,
-  txslight: 5,
-  txs: 6,
+  txsummary: 5,
+  txslight: 6,
+  txs: 7,
 };
 
 const BASIC_LEVEL = DETAILS_LEVEL_RANK.basic;
 
-const parseDetailsLevel = (requestOptions: string): number => {
+const parseDetails = (requestOptions: string): string => {
   const match = /(?:^|&)details=([^&]*)/.exec(requestOptions);
   // Blockbook defaults to txids when details is omitted
-  if (!match) return DETAILS_LEVEL_RANK.txids;
-  return DETAILS_LEVEL_RANK[match[1]] ?? 0;
+  return match ? match[1] : 'txids';
 };
+
+const parseDetailsLevel = (requestOptions: string): number =>
+  DETAILS_LEVEL_RANK[parseDetails(requestOptions)] ?? 0;
 
 // Scope key identifies the account being queried, regardless of detail options
 const createScopeKey = (
@@ -89,6 +93,7 @@ export const fetchBackendAccountCached = async (
 
   const scopeKey = createScopeKey(networkUrl, xpubOrAddress, isXpub);
   const cacheKey = createRequestKey(scopeKey, requestOptions);
+  const details = parseDetails(requestOptions);
   const detailsLevel = parseDetailsLevel(requestOptions);
 
   // Check if we have an in-flight request for the same parameters
@@ -104,7 +109,11 @@ export const fetchBackendAccountCached = async (
   // Blockbook response includes, so any in-flight request for this account works.
   if (detailsLevel === BASIC_LEVEL) {
     for (const entry of requestCache.values()) {
-      if (entry.scopeKey === scopeKey && entry.detailsLevel >= BASIC_LEVEL) {
+      if (
+        entry.scopeKey === scopeKey &&
+        entry.detailsLevel >= BASIC_LEVEL &&
+        entry.details !== 'txsummary'
+      ) {
         console.log(
           `[fetchBackendAccountWrapper] Satisfying basic request from in-flight higher-level request for ${scopeKey}`
         );
@@ -143,6 +152,7 @@ export const fetchBackendAccountCached = async (
     promise: requestPromise,
     timestamp: Date.now(),
     abortController,
+    details,
     detailsLevel,
     scopeKey,
   });

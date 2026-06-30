@@ -1,4 +1,5 @@
-import React, { Fragment, useEffect, useState, memo } from 'react';
+import { BigNumber } from '@ethersproject/bignumber';
+import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -7,6 +8,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
@@ -18,6 +20,7 @@ import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  formatSyscoinConfirmationETA,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -31,6 +34,105 @@ const CopyIcon = memo(() => (
 ));
 CopyIcon.displayName = 'CopyIcon';
 
+const txDetailsCache = new Map<
+  string,
+  { data: ISysTransaction; timestamp: number }
+>();
+const CACHE_TTL = 5 * 60 * 1000;
+
+const mergeAccountOwnershipFlags = (
+  accountEntries: any[] | undefined,
+  fullEntries: any[] | undefined
+) => {
+  if (!Array.isArray(accountEntries) || !Array.isArray(fullEntries)) {
+    return fullEntries;
+  }
+
+  return fullEntries.map((entry, index) => {
+    const accountEntry = accountEntries[index];
+
+    if (entry?.isOwn !== undefined || accountEntry?.isOwn === undefined) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      isOwn: accountEntry.isOwn,
+    };
+  });
+};
+
+const selectFresherStatusTransaction = (
+  accountTransaction: ISysTransaction,
+  fullTransaction: ISysTransaction
+) => {
+  const accountConfirmations = Number(accountTransaction.confirmations ?? -1);
+  const fullConfirmations = Number(fullTransaction.confirmations ?? -1);
+
+  return accountConfirmations > fullConfirmations
+    ? accountTransaction
+    : fullTransaction;
+};
+
+const mergeAccountSummaryWithFullTransaction = (
+  accountTransaction: ISysTransaction,
+  fullTransaction: ISysTransaction
+): ISysTransaction => {
+  const statusTransaction = selectFresherStatusTransaction(
+    accountTransaction,
+    fullTransaction
+  );
+
+  return {
+    ...fullTransaction,
+    accountAssetTransfers: accountTransaction.accountAssetTransfers,
+    addressValueIn: accountTransaction.addressValueIn,
+    addressValueOut: accountTransaction.addressValueOut,
+    blockHash: statusTransaction.blockHash ?? fullTransaction.blockHash,
+    blockHeight: statusTransaction.blockHeight ?? fullTransaction.blockHeight,
+    blockTime: statusTransaction.blockTime ?? fullTransaction.blockTime,
+    confirmations:
+      statusTransaction.confirmations ?? fullTransaction.confirmations,
+    confirmationETABlocks:
+      fullTransaction.confirmationETABlocks ??
+      accountTransaction.confirmationETABlocks,
+    confirmationETASeconds:
+      fullTransaction.confirmationETASeconds ??
+      accountTransaction.confirmationETASeconds,
+    direction: accountTransaction.direction,
+    vin: mergeAccountOwnershipFlags(
+      accountTransaction.vin,
+      fullTransaction.vin
+    ) as ISysTransaction['vin'],
+    vout: mergeAccountOwnershipFlags(
+      accountTransaction.vout,
+      fullTransaction.vout
+    ) as ISysTransaction['vout'],
+  };
+};
+
+const getSummaryAccountDelta = (transaction: any): string | null => {
+  if (
+    transaction?.addressValueIn === undefined &&
+    transaction?.addressValueOut === undefined
+  ) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(transaction?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(
+      String(transaction?.addressValueOut ?? '0')
+    );
+    const delta = valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut)
+      : valueOut.sub(valueIn);
+    return delta.gt(0) ? delta.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 interface ISyscoinTransactionDetailsProps {
   hash: string;
   tx: ISysTransaction;
@@ -41,15 +143,75 @@ export const SyscoinTransactionDetails = ({
   tx,
 }: ISyscoinTransactionDetailsProps) => {
   const {
-    activeNetwork: { currency },
+    activeNetwork: { currency, url: networkUrl },
   } = useSelector((state: RootState) => state.vault);
+  const { controllerEmitter } = useController();
   const { getTxType, getTxStatus } = useTransactionsListConfig();
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [rawTransaction] = useState<any>(tx);
+  const [enhancedTransaction, setEnhancedTransaction] =
+    useState<ISysTransaction | null>(null);
+  const fetchingRef = useRef(false);
   const [, copy] = useCopyClipboard();
+  const matchingEnhancedTransaction =
+    enhancedTransaction?.txid === hash ? enhancedTransaction : null;
+  const rawTransaction: any = matchingEnhancedTransaction || tx;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchTransactionDetails = async () => {
+      if (!hash || !networkUrl) return;
+
+      setEnhancedTransaction(null);
+
+      const cacheKey = `${networkUrl}::${hash}`;
+      const cached = txDetailsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        if (!cancelled) {
+          setEnhancedTransaction(
+            mergeAccountSummaryWithFullTransaction(tx, cached.data)
+          );
+        }
+        return;
+      }
+
+      if (fetchingRef.current) return;
+
+      fetchingRef.current = true;
+      try {
+        const fullTransaction = (await controllerEmitter(
+          ['wallet', 'getSysTransactionFromBlockbook'],
+          [hash, networkUrl]
+        )) as ISysTransaction | null;
+
+        if (!cancelled && fullTransaction?.txid === hash) {
+          const mergedTransaction = mergeAccountSummaryWithFullTransaction(
+            tx,
+            fullTransaction
+          );
+          txDetailsCache.set(cacheKey, {
+            data: fullTransaction,
+            timestamp: Date.now(),
+          });
+          setEnhancedTransaction(mergedTransaction);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Syscoin transaction details:', error);
+      } finally {
+        fetchingRef.current = false;
+      }
+    };
+
+    fetchTransactionDetails();
+
+    return () => {
+      cancelled = true;
+      fetchingRef.current = false;
+    };
+  }, [hash, networkUrl]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -89,7 +251,7 @@ export const SyscoinTransactionDetails = ({
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let txValue: number = 0;
+  let txValue: number | string = 0;
 
   useEffect(() => {
     if (rawTransaction) {
@@ -145,10 +307,14 @@ export const SyscoinTransactionDetails = ({
   const txSource =
     rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
   if (txSource) {
-    txValue = (txSource as any)?.vout?.[0]?.value || 0;
+    txValue =
+      getSummaryAccountDelta(txSource) || txSource?.vout?.[0]?.value || 0;
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
-    isTxSent = false;
+    isTxSent = (txSource as any)?.direction === 'sent';
+    const confirmationETA = !isConfirmed
+      ? formatSyscoinConfirmationETA(txSource as any)
+      : null;
     const vinAddresses = (txSource as any).vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
@@ -164,6 +330,14 @@ export const SyscoinTransactionDetails = ({
       canCopy: vinAddresses.length > 0,
     };
     formattedTransaction.push(voutFormattedValue);
+
+    if (confirmationETA) {
+      formattedTransaction.push({
+        value: confirmationETA,
+        label: 'Estimated Confirmation',
+        canCopy: false,
+      });
+    }
 
     for (const [key, value] of Object.entries(txSource as any)) {
       const formattedKey = camelCaseToText(key);
@@ -217,20 +391,18 @@ export const SyscoinTransactionDetails = ({
 
         {/* Display transaction amount */}
         {(() => {
-          // Priority 1: Use assetInfo-based calculation with single clear intent
-          if (hasAssetInfo) {
-            const intent = getSyscoinIntentAmount(rawTransaction);
+          // Priority 1: Use SPT intent from compact summaries or full vin/vout data.
+          const intent = getSyscoinIntentAmount(rawTransaction);
 
-            if (intent) {
-              const decimals = intent.decimals ?? 8;
-              const symbol = intent.symbol ?? 'SYSX';
+          if (intent) {
+            const decimals = intent.decimals ?? 8;
+            const symbol = intent.symbol ?? 'SYSX';
 
-              return (
-                <p className="text-white text-base">
-                  {formatDisplayValue(intent.amount, decimals)} {symbol}
-                </p>
-              );
-            }
+            return (
+              <p className="text-white text-base">
+                {formatDisplayValue(intent.amount, decimals)} {symbol}
+              </p>
+            );
           }
 
           // Priority 2: For regular SYS transactions without asset transfers
@@ -249,6 +421,9 @@ export const SyscoinTransactionDetails = ({
           // Heuristic RBF detection from input sequences:
           // If any input sequence is < 0xfffffffe, opt-in RBF is enabled
           const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+          const hasSequenceData =
+            Array.isArray(rawTransaction?.vin) &&
+            rawTransaction.vin.some((v: any) => typeof v.sequence === 'number');
           const rbfEnabled = Array.isArray(rawTransaction?.vin)
             ? rawTransaction.vin.some(
                 (v: any) =>
@@ -258,17 +433,42 @@ export const SyscoinTransactionDetails = ({
             : false;
 
           const showZdagConfirmed =
-            isSptTx && !rbfEnabled && !isTxCanceled && !isConfirmed;
+            isSptTx &&
+            hasSequenceData &&
+            !rbfEnabled &&
+            !isTxCanceled &&
+            !isConfirmed;
+          const confirmationETA = !isConfirmed
+            ? formatSyscoinConfirmationETA(rawTransaction)
+            : null;
 
           if (showZdagConfirmed) {
             return (
-              <p className="text-xs font-normal text-brand-green">
-                Z-DAG confirmed
-              </p>
+              <Tooltip
+                content={
+                  confirmationETA
+                    ? `Estimated block confirmation: ${confirmationETA}`
+                    : null
+                }
+              >
+                <p className="text-xs font-normal text-brand-green">
+                  Z-DAG confirmed
+                </p>
+              </Tooltip>
             );
           }
 
-          return getTxStatus(isTxCanceled, isConfirmed);
+          return (
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated confirmation: ${confirmationETA}`
+                  : null
+              }
+            >
+              {getTxStatus(isTxCanceled, isConfirmed)}
+            </Tooltip>
+          );
         })()}
       </div>
 

@@ -1,3 +1,4 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -26,8 +27,27 @@ import { ellipsis } from 'utils/index';
 import {
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  formatSyscoinConfirmationETA,
+  normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+const getSummaryAccountDelta = (tx: any): string | null => {
+  if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(tx?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(String(tx?.addressValueOut ?? '0'));
+    const delta = valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut)
+      : valueOut.sub(valueIn);
+    return delta.gt(0) ? delta.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 const UtxoTransactionsListComponentBase = ({
   userTransactions,
@@ -50,6 +70,9 @@ const UtxoTransactionsListComponentBase = ({
 
   // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
   const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+  const hasSequenceData =
+    Array.isArray(tx?.vin) &&
+    tx.vin.some((v: any) => typeof v.sequence === 'number');
   const rbfEnabled = Array.isArray(tx?.vin)
     ? tx.vin.some(
         (v: any) =>
@@ -57,19 +80,32 @@ const UtxoTransactionsListComponentBase = ({
       )
     : false;
   const isSptTx = Boolean(tx?.tokenType);
-  const isZdagConfirmed = isSptTx && !rbfEnabled && !isConfirmed;
+  const isZdagConfirmed =
+    isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
+  const confirmationETA = !isConfirmed
+    ? formatSyscoinConfirmationETA(tx)
+    : null;
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
+  const intent = getSyscoinIntentAmount(tx);
 
   // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
   // then vout/vin assetInfo) so we can show the imported asset's icon
   const txAssetGuid = useMemo(() => {
+    if (intent?.assetGuid) return String(intent.assetGuid);
+
     const transfers = Array.isArray((tx as any)?.tokenTransfers)
       ? (tx as any).tokenTransfers
       : [];
     const fromTransfer = transfers[0]?.token || transfers[0]?.assetGuid;
     if (fromTransfer) return String(fromTransfer);
+    const accountTransfers = Array.isArray((tx as any)?.accountAssetTransfers)
+      ? (tx as any).accountAssetTransfers
+      : [];
+    const fromAccountTransfer =
+      accountTransfers[0]?.token || accountTransfers[0]?.assetGuid;
+    if (fromAccountTransfer) return String(fromAccountTransfer);
     for (const list of [tx?.vout, tx?.vin]) {
       if (!Array.isArray(list)) continue;
       for (const item of list as any[]) {
@@ -77,7 +113,7 @@ const UtxoTransactionsListComponentBase = ({
       }
     }
     return null;
-  }, [tx]);
+  }, [intent?.assetGuid, tx]);
 
   const sptAssetInfo = useMemo(() => {
     if (!txAssetGuid) return null;
@@ -95,7 +131,6 @@ const UtxoTransactionsListComponentBase = ({
   // Compute compact display for SPT and native SYS amounts (intent-based for SPT; vout[0] for SYS)
   let sptAmountDisplay: string | null = null;
   let sysAmountDisplay: string | null = null;
-  const intent = getSyscoinIntentAmount(tx);
   if (intent) {
     const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
     const symbol = intent.symbol ?? (sptAssetInfo as any)?.symbol ?? 'SYSX';
@@ -103,15 +138,43 @@ const UtxoTransactionsListComponentBase = ({
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
   // Determine direction using only vin: if any input is ours, we are sending
+  const summaryDirection = (tx as any)?.direction;
   const anyVinOwn = Array.isArray(tx?.vin)
     ? tx.vin.some((v: any) => v?.isOwn === true)
     : false;
-  const isSentByUs = anyVinOwn;
+  const isSentByUs =
+    summaryDirection === 'sent' ||
+    (summaryDirection !== 'received' && anyVinOwn);
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
+  const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
+  const isSptSentByUs =
+    normalizedTokenType === 'assetallocationburntosyscoin' ||
+    normalizedTokenType === 'assetallocationburntoethereum'
+      ? true
+      : normalizedTokenType === 'syscoinburntoallocation' ||
+        normalizedTokenType === 'assetallocationmint'
+      ? false
+      : isSentByUs;
+  const sptSignChar = isSptSentByUs ? '-' : '+';
+  const sptSignClass = isSptSentByUs
+    ? 'text-warning-error'
+    : 'text-brand-green';
   // Native SYS amount: prefer output to our address for watch-only single-address accounts
   // Fallback to first vout when no match (legacy behavior)
-  if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
+  if (
+    !intent &&
+    ((tx as any)?.addressValueIn || (tx as any)?.addressValueOut)
+  ) {
+    const summaryValue = getSummaryAccountDelta(tx);
+    if (summaryValue) {
+      const baseSymbol = activeNetwork?.currency
+        ? String(activeNetwork.currency).toUpperCase()
+        : '';
+      const decimalValue = parseFloat(formatSyscoinValue(summaryValue));
+      sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
+    }
+  } else if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
     const candidateVout =
       tx.vout.find((v: any) => v?.isOwn === true) || tx.vout[0];
 
@@ -159,28 +222,51 @@ const UtxoTransactionsListComponentBase = ({
         </div>
         <div>
           {isZdagConfirmed ? (
-            <div
-              className="group inline-flex items-center gap-1 text-xs font-normal cursor-default"
-              title="Z-DAG"
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated block confirmation: ${confirmationETA}`
+                  : null
+              }
             >
-              <Icon
-                name="thunderbolt"
-                className="text-brand-royalbluemedium transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:rotate-6 group-hover:scale-110"
-                size={12}
-              />
-              <span className="text-brand-green">Z-DAG</span>
-              <Icon
-                name="check"
-                className="text-brand-green transition-transform duration-200 group-hover:translate-y-0.5 group-hover:scale-110"
-                size={12}
-              />
-            </div>
+              <div
+                className="group inline-flex items-center gap-1 text-xs font-normal cursor-default"
+                title="Z-DAG"
+              >
+                <Icon
+                  name="thunderbolt"
+                  className="text-brand-royalbluemedium transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:rotate-6 group-hover:scale-110"
+                  size={12}
+                />
+                <span className="text-brand-green">Z-DAG</span>
+                <Icon
+                  name="check"
+                  className="text-brand-green transition-transform duration-200 group-hover:translate-y-0.5 group-hover:scale-110"
+                  size={12}
+                />
+              </div>
+            </Tooltip>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
               {isSentByUs ? t('send.sent') : t('send.received')}
             </p>
           ) : (
-            getTxStatus(false, isConfirmed)
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated confirmation: ${confirmationETA}`
+                  : null
+              }
+            >
+              <div className="flex flex-col items-start">
+                {getTxStatus(false, isConfirmed)}
+                {confirmationETA && (
+                  <p className="text-[10px] font-normal text-brand-gray300">
+                    ~ {confirmationETA}
+                  </p>
+                )}
+              </div>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -203,7 +289,7 @@ const UtxoTransactionsListComponentBase = ({
             className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
             title={sptAmountDisplay}
           >
-            <span className={`${signClass}`}>{signChar}</span>
+            <span className={`${sptSignClass}`}>{sptSignChar}</span>
             {(sptAssetInfo?.image ||
               (sptAssetInfo?.symbol && getTokenLogo(sptAssetInfo.symbol))) && (
               <Tooltip content={sptAssetInfo?.name || sptAssetInfo?.symbol}>
@@ -247,10 +333,7 @@ const UtxoTransactionsListComponentBase = ({
 };
 
 export const UtxoTransactionsListComponent = React.memo(
-  UtxoTransactionsListComponentBase,
-  (prev, next) =>
-    prev.tx.txid === next.tx.txid &&
-    prev.tx.confirmations === next.tx.confirmations
+  UtxoTransactionsListComponentBase
 );
 
 export const UtxoTransactionsList = ({

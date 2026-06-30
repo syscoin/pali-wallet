@@ -1,4 +1,5 @@
 import clone from 'lodash/clone';
+import * as sys from 'syscoinjs-lib';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
@@ -7,9 +8,9 @@ import { TransactionsType } from 'state/vault/types';
 import { ISysTransaction, ISysTransactionsController } from './types';
 import { treatAndSortTransactions } from './utils';
 
-// Snapshot of the Blockbook account summary captured at the last full
-// `details=txs` fetch. Used by rapid polling to detect whether anything
-// changed via a cheap `details=basic` probe before paying for a full fetch.
+// Snapshot of the Blockbook account summary captured at the last history fetch.
+// Used by rapid polling to detect whether anything changed via a cheap
+// `details=basic` probe before paying for transaction history.
 interface IAccountActivitySnapshot {
   balance: string;
   txs: number;
@@ -19,9 +20,24 @@ interface IAccountActivitySnapshot {
 
 const MAX_SNAPSHOT_ENTRIES = 20;
 const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
+const txSummaryUnsupportedBackends = new Set<string>();
 
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
+
+const getHistoryRequestOptions = (
+  networkUrl: string,
+  _xpubOrAddress: string,
+  page?: number,
+  pageSize = 30
+) => {
+  const details = txSummaryUnsupportedBackends.has(networkUrl)
+    ? 'txslight'
+    : 'txsummary';
+  const pageOption = page !== undefined ? `&page=${page}` : '';
+
+  return `details=${details}${pageOption}&pageSize=${pageSize}`;
+};
 
 const buildActivitySnapshot = (accountData: any): IAccountActivitySnapshot => ({
   balance: String(accountData?.balance ?? ''),
@@ -56,18 +72,84 @@ const storeActivitySnapshot = (
   accountActivitySnapshots.set(key, snapshot);
 };
 
-const SysTransactionController = (): ISysTransactionsController => {
-  const getInitialUserTransactionsByXpub = async (
-    xpubOrAddress: string,
-    networkUrl: string
-  ): Promise<ISysTransaction[]> => {
-    const requestOptions = 'details=txs&pageSize=30';
+const isUnsupportedTxSummaryResponse = (
+  accountData: any,
+  requestOptions: string
+) =>
+  requestOptions.includes('details=txsummary') &&
+  accountData &&
+  !Array.isArray(accountData.transactions) &&
+  (Number(accountData.txs ?? 0) > 0 ||
+    Number(accountData.unconfirmedTxs ?? 0) > 0);
 
-    const accountData = await fetchBackendAccountCached(
+const fetchAccountHistory = async (
+  networkUrl: string,
+  xpubOrAddress: string,
+  requestOptions: string
+) => {
+  let accountData: any = null;
+
+  try {
+    accountData = await fetchBackendAccountCached(
       networkUrl,
       xpubOrAddress,
       requestOptions,
       true
+    );
+  } catch (error) {
+    if (!requestOptions.includes('details=txsummary')) {
+      throw error;
+    }
+
+    console.warn(
+      '[SysTransactionController] txsummary history fetch failed, falling back:',
+      error
+    );
+  }
+
+  if (
+    accountData &&
+    !isUnsupportedTxSummaryResponse(accountData, requestOptions)
+  ) {
+    return accountData;
+  }
+  if (!requestOptions.includes('details=txsummary')) return accountData;
+
+  txSummaryUnsupportedBackends.add(networkUrl);
+  const fallbackOptions = requestOptions.replace(
+    'details=txsummary',
+    'details=txslight'
+  );
+  if (fallbackOptions === requestOptions) return accountData;
+
+  return fetchBackendAccountCached(
+    networkUrl,
+    xpubOrAddress,
+    fallbackOptions,
+    true
+  );
+};
+
+const SysTransactionController = (): ISysTransactionsController => {
+  const fetchTransactionDetailsFromBlockbook = async (
+    txid: string,
+    networkUrl: string
+  ): Promise<ISysTransaction | null> => {
+    if (!txid || !networkUrl) return null;
+
+    const transaction = await sys.utils.fetchBackendRawTx(networkUrl, txid);
+
+    return transaction || null;
+  };
+
+  const getInitialUserTransactionsByXpub = async (
+    xpubOrAddress: string,
+    networkUrl: string
+  ): Promise<ISysTransaction[]> => {
+    const accountData = await fetchAccountHistory(
+      networkUrl,
+      xpubOrAddress,
+      getHistoryRequestOptions(networkUrl, xpubOrAddress)
     );
 
     // Record the account summary so rapid polling can detect changes cheaply
@@ -100,10 +182,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     ) as ISysTransaction[];
 
     // Rapid polling (post-send confirmation checks) probes the cheap
-    // `details=basic` summary first and only pays for the full
-    // `details=txs` fetch when the account actually changed since the
-    // last full fetch. The basic probe shares the same request the
-    // balance controller fires in the same cycle (deduplicated).
+    // `details=basic` summary first and only fetches transaction history
+    // when the account actually changed since the last history fetch. The
+    // basic probe shares the same request the balance controller fires in
+    // the same cycle (deduplicated).
     if (isRapidPolling) {
       const snapshotKey = getSnapshotKey(networkUrl, xpubOrAddress);
       const previousSnapshot = accountActivitySnapshots.get(snapshotKey);
@@ -125,9 +207,9 @@ const SysTransactionController = (): ISysTransactionsController => {
               : [];
           }
         } catch (error) {
-          // Probe failed - fall through to the full fetch below
+          // Probe failed - fall through to the history fetch below
           console.warn(
-            '[SysTransactionController] Rapid poll basic probe failed, falling back to full fetch:',
+            '[SysTransactionController] Rapid poll basic probe failed, falling back to history fetch:',
             error
           );
         }
@@ -174,12 +256,16 @@ const SysTransactionController = (): ISysTransactionsController => {
     page: number,
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
-    const requestOptions = `details=txs&page=${page}&pageSize=${pageSize}`;
-    const accountData = await fetchBackendAccountCached(
+    const requestOptions = getHistoryRequestOptions(
       networkUrl,
       xpubOrAddress,
-      requestOptions,
-      true
+      page,
+      pageSize
+    );
+    const accountData = await fetchAccountHistory(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions
     );
     const transactions = (accountData as any)?.transactions as
       | ISysTransaction[]
@@ -188,6 +274,7 @@ const SysTransactionController = (): ISysTransactionsController => {
   };
 
   return {
+    fetchTransactionDetailsFromBlockbook,
     getInitialUserTransactionsByXpub,
     pollingSysTransactions,
     fetchTransactionsPageFromBlockbook,

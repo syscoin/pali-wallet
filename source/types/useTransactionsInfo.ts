@@ -29,9 +29,14 @@ export type ITransactionVin = {
 };
 
 export interface ITransactionInfoUtxo {
+  accountAssetTransfers?: any[];
+  addressValueIn?: string;
+  addressValueOut?: string;
   blockHash: string;
   blockHeight: number;
   blockTime: number;
+  confirmationETABlocks?: number;
+  confirmationETASeconds?: number;
   confirmations: number;
   // Array of token transfer details
   direction?: 'sent' | 'received';

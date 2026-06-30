@@ -154,9 +154,14 @@ export interface IEvmTransactionsController {
 //------------------------- SYS TYPES / INTERFACES -------------------------//
 
 export interface ISysTransaction {
+  accountAssetTransfers?: any[];
+  addressValueIn?: string;
+  addressValueOut?: string;
   blockHash: string;
   blockHeight: number;
   blockTime: number;
+  confirmationETABlocks?: number;
+  confirmationETASeconds?: number;
   confirmations: number;
   // Array of token transfer details
   direction?: 'sent' | 'received';
@@ -192,6 +197,10 @@ export interface ISysTransaction {
 }
 
 export interface ISysTransactionsController {
+  fetchTransactionDetailsFromBlockbook: (
+    txid: string,
+    networkUrl: string
+  ) => Promise<ISysTransaction | null>;
   fetchTransactionsPageFromBlockbook: (
     xpub: string,
     networkUrl: string,

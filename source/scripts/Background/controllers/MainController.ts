@@ -6472,6 +6472,16 @@ class MainController {
   }
 
   /**
+   * Fetch individual UTXO transaction details from Blockbook by txid.
+   */
+  public async getSysTransactionFromBlockbook(txid: string, url: string) {
+    return this.transactionsManager.sys.fetchTransactionDetailsFromBlockbook(
+      txid,
+      url
+    );
+  }
+
+  /**
    * Helper function to safely convert hex values and BigNumber objects to numbers or strings
    */
   private convertHexValue(
