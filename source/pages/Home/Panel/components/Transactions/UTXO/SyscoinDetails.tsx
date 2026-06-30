@@ -38,6 +38,17 @@ const txDetailsCache = new Map<
 >();
 const CACHE_TTL = 5 * 60 * 1000;
 
+const mergeAccountSummaryWithFullTransaction = (
+  accountTransaction: ISysTransaction,
+  fullTransaction: ISysTransaction
+): ISysTransaction => ({
+  ...fullTransaction,
+  accountAssetTransfers: accountTransaction.accountAssetTransfers,
+  addressValueIn: accountTransaction.addressValueIn,
+  addressValueOut: accountTransaction.addressValueOut,
+  direction: accountTransaction.direction,
+});
+
 interface ISyscoinTransactionDetailsProps {
   hash: string;
   tx: ISysTransaction;
@@ -69,7 +80,9 @@ export const SyscoinTransactionDetails = ({
       const cacheKey = `${networkUrl}::${hash}`;
       const cached = txDetailsCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        setEnhancedTransaction(cached.data);
+        setEnhancedTransaction(
+          mergeAccountSummaryWithFullTransaction(tx, cached.data)
+        );
         return;
       }
 
@@ -83,11 +96,15 @@ export const SyscoinTransactionDetails = ({
         )) as ISysTransaction | null;
 
         if (fullTransaction?.txid) {
+          const mergedTransaction = mergeAccountSummaryWithFullTransaction(
+            tx,
+            fullTransaction
+          );
           txDetailsCache.set(cacheKey, {
             data: fullTransaction,
             timestamp: Date.now(),
           });
-          setEnhancedTransaction(fullTransaction);
+          setEnhancedTransaction(mergedTransaction);
         }
       } catch (error) {
         console.error('Failed to fetch Syscoin transaction details:', error);

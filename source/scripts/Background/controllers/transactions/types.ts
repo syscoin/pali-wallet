@@ -154,6 +154,9 @@ export interface IEvmTransactionsController {
 //------------------------- SYS TYPES / INTERFACES -------------------------//
 
 export interface ISysTransaction {
+  accountAssetTransfers?: any[];
+  addressValueIn?: string;
+  addressValueOut?: string;
   blockHash: string;
   blockHeight: number;
   blockTime: number;
