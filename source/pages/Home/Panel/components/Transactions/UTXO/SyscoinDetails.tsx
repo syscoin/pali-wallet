@@ -61,29 +61,48 @@ const mergeAccountOwnershipFlags = (
   });
 };
 
+const selectFresherStatusTransaction = (
+  accountTransaction: ISysTransaction,
+  fullTransaction: ISysTransaction
+) => {
+  const accountConfirmations = Number(accountTransaction.confirmations ?? -1);
+  const fullConfirmations = Number(fullTransaction.confirmations ?? -1);
+
+  return accountConfirmations > fullConfirmations
+    ? accountTransaction
+    : fullTransaction;
+};
+
 const mergeAccountSummaryWithFullTransaction = (
   accountTransaction: ISysTransaction,
   fullTransaction: ISysTransaction
-): ISysTransaction => ({
-  ...fullTransaction,
-  accountAssetTransfers: accountTransaction.accountAssetTransfers,
-  addressValueIn: accountTransaction.addressValueIn,
-  addressValueOut: accountTransaction.addressValueOut,
-  blockHash: accountTransaction.blockHash ?? fullTransaction.blockHash,
-  blockHeight: accountTransaction.blockHeight ?? fullTransaction.blockHeight,
-  blockTime: accountTransaction.blockTime ?? fullTransaction.blockTime,
-  confirmations:
-    accountTransaction.confirmations ?? fullTransaction.confirmations,
-  direction: accountTransaction.direction,
-  vin: mergeAccountOwnershipFlags(
-    accountTransaction.vin,
-    fullTransaction.vin
-  ) as ISysTransaction['vin'],
-  vout: mergeAccountOwnershipFlags(
-    accountTransaction.vout,
-    fullTransaction.vout
-  ) as ISysTransaction['vout'],
-});
+): ISysTransaction => {
+  const statusTransaction = selectFresherStatusTransaction(
+    accountTransaction,
+    fullTransaction
+  );
+
+  return {
+    ...fullTransaction,
+    accountAssetTransfers: accountTransaction.accountAssetTransfers,
+    addressValueIn: accountTransaction.addressValueIn,
+    addressValueOut: accountTransaction.addressValueOut,
+    blockHash: statusTransaction.blockHash ?? fullTransaction.blockHash,
+    blockHeight: statusTransaction.blockHeight ?? fullTransaction.blockHeight,
+    blockTime: statusTransaction.blockTime ?? fullTransaction.blockTime,
+    confirmations:
+      statusTransaction.confirmations ?? fullTransaction.confirmations,
+    direction: accountTransaction.direction,
+    vin: mergeAccountOwnershipFlags(
+      accountTransaction.vin,
+      fullTransaction.vin
+    ) as ISysTransaction['vin'],
+    vout: mergeAccountOwnershipFlags(
+      accountTransaction.vout,
+      fullTransaction.vout
+    ) as ISysTransaction['vout'],
+  };
+};
 
 const getSummaryAccountDelta = (transaction: any): string | null => {
   if (
