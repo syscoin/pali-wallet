@@ -36,8 +36,9 @@ const DETAILS_LEVEL_RANK: Record<string, number> = {
   tokens: 2,
   tokenBalances: 3,
   txids: 4,
-  txslight: 5,
-  txs: 6,
+  txsummary: 5,
+  txslight: 6,
+  txs: 7,
 };
 
 const BASIC_LEVEL = DETAILS_LEVEL_RANK.basic;
