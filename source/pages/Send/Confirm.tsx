@@ -4,6 +4,7 @@ import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -67,6 +68,8 @@ const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 // Safety fallback if the controller reserve lookup fails; matches the
 // estimator's worst case for a deployed single-validator account.
 const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
+// sysweb3-keyring enforces this floor for native EVM sends.
+const MIN_EVM_SEND_GAS_LIMIT = BigNumber.from(65_000);
 
 export const SendConfirm = () => {
   const { controllerEmitter } = useController();
@@ -249,6 +252,59 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
 
+  const getNativeEvmGasLimit = useCallback(async (): Promise<BigNumber> => {
+    const defaultGasLimit = BigNumber.from(
+      basicTxValues?.defaultGasLimit || 42000
+    );
+    const fallbackGasLimit = defaultGasLimit.lt(MIN_EVM_SEND_GAS_LIMIT)
+      ? MIN_EVM_SEND_GAS_LIMIT
+      : defaultGasLimit;
+
+    if (
+      !basicTxValues ||
+      basicTxValues.token ||
+      basicTxValues.transactionType !== TransactionType.NATIVE_ETH
+    ) {
+      return fallbackGasLimit;
+    }
+
+    const rawTo = String(basicTxValues.receivingAddress || '');
+    const to = resolvedToAddress || rawTo;
+    if (!to || to.toLowerCase().endsWith('.eth')) {
+      return fallbackGasLimit;
+    }
+
+    let value = BigNumber.from(0);
+    try {
+      value = parseUnits(String(basicTxValues.amount || '0'), 'ether');
+    } catch (error) {
+      logError('error parsing native EVM amount', 'Transaction', error);
+      return fallbackGasLimit;
+    }
+
+    try {
+      const estimatedGasLimit = (await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+        [
+          {
+            data: '0x',
+            from: basicTxValues.sender,
+            to,
+            value: value.toHexString(),
+          },
+        ]
+      )) as any;
+
+      const gasLimit = BigNumber.from(estimatedGasLimit);
+      return gasLimit.lt(MIN_EVM_SEND_GAS_LIMIT)
+        ? MIN_EVM_SEND_GAS_LIMIT
+        : gasLimit;
+    } catch (error) {
+      logError('error estimating native EVM gas limit', 'Transaction', error);
+      return fallbackGasLimit;
+    }
+  }, [basicTxValues, controllerEmitter, resolvedToAddress]);
+
   const getFormattedFee = (currentFee: number | string | undefined) => {
     if (feeCalculationError) {
       return t('buttons.error');
@@ -304,11 +360,10 @@ export const SendConfirm = () => {
           'getRecommendedGasPrice',
         ]).then((gas) => BigNumber.from(gas).toString());
 
-    // Always use a valid gas limit - custom, default from tx type, or fallback
-    const gasLimit =
-      customFee.isCustom && customFee.gasLimit > 0
-        ? customFee.gasLimit
-        : basicTxValues?.defaultGasLimit || 42000;
+    // Always use a valid gas limit - custom, estimated native send, or fallback.
+    const gasLimit = validateCustomGasLimit
+      ? customFee.gasLimit
+      : (await getNativeEvmGasLimit()).toNumber();
 
     const initialFee = { ...INITIAL_FEE, gasLimit };
 
@@ -645,10 +700,8 @@ export const SendConfirm = () => {
           ]) as ITxState;
 
           let value = parseUnits(String(basicTxValues.amount), 'ether');
-          // sysweb3-keyring enforces a minimum gasLimit of 65,000 for EVM tx validation.
           // For MAX sends we must use the same minimum, otherwise MAX value deduction
           // can overshoot once the tx is bumped at send time.
-          const MIN_EVM_SEND_GAS_LIMIT = BigNumber.from('65000');
           let maxSendGasLimit: BigNumber | null = null;
           const floorToDecimals = (num: string | number, decimals: number) => {
             const s = String(num);
@@ -1226,41 +1279,57 @@ export const SendConfirm = () => {
 
     // If we have cached gas data from SendEth, use it immediately
     if (cachedGasData && !customFee.isCustom) {
-      const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
+      try {
+        const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
 
-      // Convert hex strings back to BigNumbers (they were serialized for navigation)
-      const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
-      const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
+        // Convert hex strings back to BigNumbers (they were serialized for navigation)
+        const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
+        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
 
-      // Guard against invalid zero values from cache
-      if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
-        const gasLimit = basicTxValues.defaultGasLimit || 42000;
-        const initialFeeDetails = {
-          maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
-          baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
-          maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
-          gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
-        };
+        // Guard against invalid zero values from cache
+        if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
+          const setCachedGasFeeDetails = async () => {
+            const gasLimit = (await getNativeEvmGasLimit()).toNumber();
+            const initialFeeDetails = {
+              maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
+              baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
+              maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
+              gasLimit,
+            };
 
-        const formattedTxObject = {
-          from: basicTxValues.sender,
-          to: basicTxValues.receivingAddress,
-          chainId: activeNetwork.chainId,
-          maxFeePerGas: maxFeeBN,
-          maxPriorityFeePerGas: maxPriorityBN,
-        };
+            const formattedTxObject = {
+              from: basicTxValues.sender,
+              to: basicTxValues.receivingAddress,
+              chainId: activeNetwork.chainId,
+              maxFeePerGas: maxFeeBN,
+              maxPriorityFeePerGas: maxPriorityBN,
+            };
 
-        setTxObjectState(formattedTxObject);
-        setFee(initialFeeDetails as any);
+            setTxObjectState(formattedTxObject);
+            setFee(initialFeeDetails as any);
 
-        // Cache the result
-        setFeeCalculationCache(
-          (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
+            // Cache the result
+            setFeeCalculationCache(
+              (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
+            );
+          };
+
+          setCachedGasFeeDetails().catch((error) => {
+            logError(
+              'error applying cached native EVM fee data',
+              'Transaction',
+              error
+            );
+          });
+          return; // Skip fee-rate recalculation
+        }
+      } catch (error) {
+        logError(
+          'error reading cached native EVM fee data',
+          'Transaction',
+          error
         );
-
-        return; // Skip recalculation
       }
-      // If cached values were invalid, fall through to recompute
     }
 
     // Debounce fee calculation to prevent rapid successive calls
@@ -1283,11 +1352,15 @@ export const SendConfirm = () => {
           throw new Error('Invalid fee data (zeros)');
         }
 
+        const gasLimit = validateCustomGasLimit
+          ? customFee.gasLimit
+          : (await getNativeEvmGasLimit()).toNumber();
+
         const initialFeeDetails = {
           maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
           baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
           maxPriorityFeePerGas: parseFloat(formatGweiValue(maxPriorityBN)),
-          gasLimit: basicTxValues.defaultGasLimit || 42000, // Always use appropriate default gas limit
+          gasLimit,
         };
 
         const formattedTxObject = {
@@ -1300,15 +1373,9 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        // Use custom gas limit, or default from transaction type, always have a value
-        const getGasLimit =
-          customFee.isCustom && customFee.gasLimit > 0
-            ? customFee.gasLimit
-            : basicTxValues.defaultGasLimit || 42000;
-
         const finalFeeDetails = {
           ...initialFeeDetails,
-          gasLimit: getGasLimit,
+          gasLimit,
         };
 
         setFee(finalFeeDetails as any);
@@ -1350,6 +1417,9 @@ export const SendConfirm = () => {
     isEIP1559Compatible,
     activeNetwork.chainId,
     customFee.isCustom,
+    customFee.gasLimit,
+    validateCustomGasLimit,
+    getNativeEvmGasLimit,
     isCalculatingFees,
     cachedGasData,
     feeCalculationError, // Added feeCalculationError to dependencies

@@ -316,7 +316,9 @@ const SysAssetsControler = (): ISysAssetsController => {
     networkUrl: string,
     networkChainId: number
   ): Promise<ISysTokensAssetReponse[]> => {
-    const requestOptions = 'details=tokenBalances&tokens=nonzero';
+    // Refresh persisted/imported assets from all used SPT entries so zero-balance
+    // tokens still keep their historical sent/received counters.
+    const requestOptions = 'details=tokenBalances&tokens=used';
 
     const accountData = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
