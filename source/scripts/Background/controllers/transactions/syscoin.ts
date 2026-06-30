@@ -79,7 +79,8 @@ const isUnsupportedTxSummaryResponse = (
   requestOptions.includes('details=txsummary') &&
   accountData &&
   !Array.isArray(accountData.transactions) &&
-  Number(accountData.txs ?? 0) > 0;
+  (Number(accountData.txs ?? 0) > 0 ||
+    Number(accountData.unconfirmedTxs ?? 0) > 0);
 
 const fetchAccountHistory = async (
   networkUrl: string,

@@ -162,6 +162,43 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
+  it('falls back when txsummary omits unconfirmed-only transactions', async () => {
+    const fallbackUrl = `${URL}txsummary-unconfirmed-basic-only/`;
+    const xpub = 'zpub-txsummary-unconfirmed-basic-only';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({
+        balance: '0',
+        unconfirmedBalance: '100000000',
+        txs: 0,
+        unconfirmedTxs: 1,
+      })
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(
+      xpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      fallbackUrl,
+      xpub,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      fallbackUrl,
+      xpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
   it('propagates failures once history uses cached txslight fallback', async () => {
     const fallbackUrl = `${URL}txsummary-unsupported-reject/`;
     const xpub = 'zpub-txsummary-fallback-reject';
