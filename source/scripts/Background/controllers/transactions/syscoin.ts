@@ -25,20 +25,14 @@ const txSummaryUnsupportedBackends = new Set<string>();
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
 
-const isExtendedPublicKey = (xpubOrAddress: string) =>
-  /^(xpub|ypub|zpub|tpub|upub|vpub)/i.test(xpubOrAddress);
-
-const getSupportedHistoryDetails = (xpubOrAddress: string) =>
-  isExtendedPublicKey(xpubOrAddress) ? 'txs' : 'txslight';
-
 const getHistoryRequestOptions = (
   networkUrl: string,
-  xpubOrAddress: string,
+  _xpubOrAddress: string,
   page?: number,
   pageSize = 30
 ) => {
   const details = txSummaryUnsupportedBackends.has(networkUrl)
-    ? getSupportedHistoryDetails(xpubOrAddress)
+    ? 'txslight'
     : 'txsummary';
   const pageOption = page !== undefined ? `&page=${page}` : '';
 
@@ -103,10 +97,9 @@ const fetchAccountHistory = async (
   if (!requestOptions.includes('details=txsummary')) return accountData;
 
   txSummaryUnsupportedBackends.add(networkUrl);
-  const fallbackDetails = getSupportedHistoryDetails(xpubOrAddress);
   const fallbackOptions = requestOptions.replace(
     'details=txsummary',
-    `details=${fallbackDetails}`
+    'details=txslight'
   );
   if (fallbackOptions === requestOptions) return accountData;
 
