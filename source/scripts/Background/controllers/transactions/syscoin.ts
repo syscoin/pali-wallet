@@ -96,6 +96,10 @@ const fetchAccountHistory = async (
       true
     );
   } catch (error) {
+    if (!requestOptions.includes('details=txsummary')) {
+      throw error;
+    }
+
     console.warn(
       '[SysTransactionController] txsummary history fetch failed, falling back:',
       error

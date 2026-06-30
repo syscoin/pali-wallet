@@ -162,6 +162,36 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
+  it('propagates failures once history uses cached txslight fallback', async () => {
+    const fallbackUrl = `${URL}txsummary-unsupported-reject/`;
+    const xpub = 'zpub-txsummary-fallback-reject';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    await controller.pollingSysTransactions(xpub, fallbackUrl, false);
+
+    const txslightError = new Error('txslight unavailable');
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockRejectedValueOnce(txslightError);
+
+    await expect(
+      controller.pollingSysTransactions(
+        'zpub-txsummary-fallback-reject-second',
+        fallbackUrl,
+        false
+      )
+    ).rejects.toThrow('txslight unavailable');
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      fallbackUrl,
+      'zpub-txsummary-fallback-reject-second',
+      'details=txslight&pageSize=30',
+      true
+    );
+  });
+
   it('rapid polling skips the history fetch when the basic summary is unchanged', async () => {
     const xpub = 'zpub-rapid-unchanged';
     const controller = SysTransactionController();
