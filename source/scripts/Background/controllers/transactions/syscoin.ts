@@ -18,15 +18,32 @@ interface IAccountActivitySnapshot {
   unconfirmedTxs: number;
 }
 
-const SYSCOIN_HISTORY_REQUEST_OPTIONS = 'details=txsummary&pageSize=30';
 const MAX_SNAPSHOT_ENTRIES = 20;
 const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
+const txSummaryUnsupportedBackends = new Set<string>();
 
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
 
 const isExtendedPublicKey = (xpubOrAddress: string) =>
   /^(xpub|ypub|zpub|tpub|upub|vpub)/i.test(xpubOrAddress);
+
+const getSupportedHistoryDetails = (xpubOrAddress: string) =>
+  isExtendedPublicKey(xpubOrAddress) ? 'txs' : 'txslight';
+
+const getHistoryRequestOptions = (
+  networkUrl: string,
+  xpubOrAddress: string,
+  page?: number,
+  pageSize = 30
+) => {
+  const details = txSummaryUnsupportedBackends.has(networkUrl)
+    ? getSupportedHistoryDetails(xpubOrAddress)
+    : 'txsummary';
+  const pageOption = page !== undefined ? `&page=${page}` : '';
+
+  return `details=${details}${pageOption}&pageSize=${pageSize}`;
+};
 
 const buildActivitySnapshot = (accountData: any): IAccountActivitySnapshot => ({
   balance: String(accountData?.balance ?? ''),
@@ -83,10 +100,10 @@ const fetchAccountHistory = async (
   }
 
   if (accountData) return accountData;
+  if (!requestOptions.includes('details=txsummary')) return accountData;
 
-  const fallbackDetails = isExtendedPublicKey(xpubOrAddress)
-    ? 'txs'
-    : 'txslight';
+  txSummaryUnsupportedBackends.add(networkUrl);
+  const fallbackDetails = getSupportedHistoryDetails(xpubOrAddress);
   const fallbackOptions = requestOptions.replace(
     'details=txsummary',
     `details=${fallbackDetails}`
@@ -120,7 +137,7 @@ const SysTransactionController = (): ISysTransactionsController => {
     const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      SYSCOIN_HISTORY_REQUEST_OPTIONS
+      getHistoryRequestOptions(networkUrl, xpubOrAddress)
     );
 
     // Record the account summary so rapid polling can detect changes cheaply
@@ -227,7 +244,12 @@ const SysTransactionController = (): ISysTransactionsController => {
     page: number,
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
-    const requestOptions = `details=txsummary&page=${page}&pageSize=${pageSize}`;
+    const requestOptions = getHistoryRequestOptions(
+      networkUrl,
+      xpubOrAddress,
+      page,
+      pageSize
+    );
     const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
