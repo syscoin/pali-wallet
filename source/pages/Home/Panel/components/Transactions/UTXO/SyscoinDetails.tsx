@@ -93,6 +93,12 @@ const mergeAccountSummaryWithFullTransaction = (
     blockTime: statusTransaction.blockTime ?? fullTransaction.blockTime,
     confirmations:
       statusTransaction.confirmations ?? fullTransaction.confirmations,
+    confirmationETABlocks:
+      fullTransaction.confirmationETABlocks ??
+      accountTransaction.confirmationETABlocks,
+    confirmationETASeconds:
+      fullTransaction.confirmationETASeconds ??
+      accountTransaction.confirmationETASeconds,
     direction: accountTransaction.direction,
     vin: mergeAccountOwnershipFlags(
       accountTransaction.vin,
