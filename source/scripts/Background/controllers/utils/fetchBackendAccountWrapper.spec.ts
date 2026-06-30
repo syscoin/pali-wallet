@@ -85,6 +85,38 @@ describe('fetchBackendAccountCached', () => {
     expect(basicResult.balance).toBe('5');
   });
 
+  it('does not satisfy a basic request from an in-flight txsummary request', async () => {
+    const summaryD = deferred();
+    const basicD = deferred();
+    fetchBackendAccountMock
+      .mockReturnValueOnce(summaryD.promise)
+      .mockReturnValueOnce(basicD.promise);
+
+    const summaryPromise = fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    const basicPromise = fetchBackendAccountCached(
+      URL,
+      XPUB,
+      'details=basic&pageSize=0',
+      true
+    );
+
+    expect(fetchBackendAccountMock).toHaveBeenCalledTimes(2);
+
+    summaryD.resolve(null);
+    basicD.resolve({ balance: '5', txs: 2 });
+    const [summaryResult, basicResult] = await Promise.all([
+      summaryPromise,
+      basicPromise,
+    ]);
+    expect(summaryResult).toBeNull();
+    expect(basicResult).toEqual({ balance: '5', txs: 2 });
+  });
+
   it('does NOT upgrade a basic in-flight request to satisfy a txs request', async () => {
     const basicD = deferred();
     const txsD = deferred();
