@@ -94,18 +94,26 @@ export const SyscoinTransactionDetails = ({
     useState<ISysTransaction | null>(null);
   const fetchingRef = useRef(false);
   const [, copy] = useCopyClipboard();
-  const rawTransaction: any = enhancedTransaction || tx;
+  const matchingEnhancedTransaction =
+    enhancedTransaction?.txid === hash ? enhancedTransaction : null;
+  const rawTransaction: any = matchingEnhancedTransaction || tx;
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchTransactionDetails = async () => {
       if (!hash || !networkUrl) return;
+
+      setEnhancedTransaction(null);
 
       const cacheKey = `${networkUrl}::${hash}`;
       const cached = txDetailsCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        setEnhancedTransaction(
-          mergeAccountSummaryWithFullTransaction(tx, cached.data)
-        );
+        if (!cancelled) {
+          setEnhancedTransaction(
+            mergeAccountSummaryWithFullTransaction(tx, cached.data)
+          );
+        }
         return;
       }
 
@@ -118,7 +126,7 @@ export const SyscoinTransactionDetails = ({
           [hash, networkUrl]
         )) as ISysTransaction | null;
 
-        if (fullTransaction?.txid) {
+        if (!cancelled && fullTransaction?.txid === hash) {
           const mergedTransaction = mergeAccountSummaryWithFullTransaction(
             tx,
             fullTransaction
@@ -139,6 +147,7 @@ export const SyscoinTransactionDetails = ({
     fetchTransactionDetails();
 
     return () => {
+      cancelled = true;
       fetchingRef.current = false;
     };
   }, [hash, networkUrl]);
