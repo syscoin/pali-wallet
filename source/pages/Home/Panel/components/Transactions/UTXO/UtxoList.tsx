@@ -331,10 +331,7 @@ const UtxoTransactionsListComponentBase = ({
 };
 
 export const UtxoTransactionsListComponent = React.memo(
-  UtxoTransactionsListComponentBase,
-  (prev, next) =>
-    prev.tx.txid === next.tx.txid &&
-    prev.tx.confirmations === next.tx.confirmations
+  UtxoTransactionsListComponentBase
 );
 
 export const UtxoTransactionsList = ({
