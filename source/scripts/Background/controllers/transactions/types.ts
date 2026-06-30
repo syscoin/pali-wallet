@@ -160,6 +160,8 @@ export interface ISysTransaction {
   blockHash: string;
   blockHeight: number;
   blockTime: number;
+  confirmationETABlocks?: number;
+  confirmationETASeconds?: number;
   confirmations: number;
   // Array of token transfer details
   direction?: 'sent' | 'received';

@@ -4,6 +4,7 @@ export const UtxoTxDetailsLabelsToKeep = [
   'To',
   'Block Hash',
   'Confirmations',
+  'Estimated Confirmation',
   'Block Time',
   'Fees',
 ];

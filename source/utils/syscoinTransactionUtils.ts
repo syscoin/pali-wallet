@@ -10,6 +10,33 @@ import {
 import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';
 
+export const formatSyscoinConfirmationETA = (transaction: {
+  confirmationETASeconds?: number;
+}): string | null => {
+  const seconds = Number(transaction?.confirmationETASeconds ?? 0);
+
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return null;
+  }
+
+  if (seconds < 60) {
+    return `${Math.ceil(seconds)} sec`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hr`;
+  }
+
+  const days = Math.ceil(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+};
+
 /**
  * Normalizes Syscoin transaction types from various formats into a consistent format
  * Handles:

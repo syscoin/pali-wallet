@@ -27,6 +27,7 @@ import { ellipsis } from 'utils/index';
 import {
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
@@ -81,6 +82,9 @@ const UtxoTransactionsListComponentBase = ({
   const isSptTx = Boolean(tx?.tokenType);
   const isZdagConfirmed =
     isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
+  const confirmationETA = !isConfirmed
+    ? formatSyscoinConfirmationETA(tx)
+    : null;
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
@@ -216,28 +220,51 @@ const UtxoTransactionsListComponentBase = ({
         </div>
         <div>
           {isZdagConfirmed ? (
-            <div
-              className="group inline-flex items-center gap-1 text-xs font-normal cursor-default"
-              title="Z-DAG"
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated block confirmation: ${confirmationETA}`
+                  : null
+              }
             >
-              <Icon
-                name="thunderbolt"
-                className="text-brand-royalbluemedium transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:rotate-6 group-hover:scale-110"
-                size={12}
-              />
-              <span className="text-brand-green">Z-DAG</span>
-              <Icon
-                name="check"
-                className="text-brand-green transition-transform duration-200 group-hover:translate-y-0.5 group-hover:scale-110"
-                size={12}
-              />
-            </div>
+              <div
+                className="group inline-flex items-center gap-1 text-xs font-normal cursor-default"
+                title="Z-DAG"
+              >
+                <Icon
+                  name="thunderbolt"
+                  className="text-brand-royalbluemedium transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:rotate-6 group-hover:scale-110"
+                  size={12}
+                />
+                <span className="text-brand-green">Z-DAG</span>
+                <Icon
+                  name="check"
+                  className="text-brand-green transition-transform duration-200 group-hover:translate-y-0.5 group-hover:scale-110"
+                  size={12}
+                />
+              </div>
+            </Tooltip>
           ) : isConfirmed ? (
             <p className="text-xs font-normal text-brand-green">
               {isSentByUs ? t('send.sent') : t('send.received')}
             </p>
           ) : (
-            getTxStatus(false, isConfirmed)
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated confirmation: ${confirmationETA}`
+                  : null
+              }
+            >
+              <div className="flex flex-col items-start">
+                {getTxStatus(false, isConfirmed)}
+                {confirmationETA && (
+                  <p className="text-[10px] font-normal text-brand-gray300">
+                    ~ {confirmationETA}
+                  </p>
+                )}
+              </div>
+            </Tooltip>
           )}
         </div>
       </div>

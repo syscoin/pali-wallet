@@ -20,6 +20,7 @@ import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  formatSyscoinConfirmationETA,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -305,6 +306,9 @@ export const SyscoinTransactionDetails = ({
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
     isTxSent = (txSource as any)?.direction === 'sent';
+    const confirmationETA = !isConfirmed
+      ? formatSyscoinConfirmationETA(txSource as any)
+      : null;
     const vinAddresses = (txSource as any).vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
@@ -320,6 +324,14 @@ export const SyscoinTransactionDetails = ({
       canCopy: vinAddresses.length > 0,
     };
     formattedTransaction.push(voutFormattedValue);
+
+    if (confirmationETA) {
+      formattedTransaction.push({
+        value: confirmationETA,
+        label: 'Estimated Confirmation',
+        canCopy: false,
+      });
+    }
 
     for (const [key, value] of Object.entries(txSource as any)) {
       const formattedKey = camelCaseToText(key);
@@ -420,16 +432,37 @@ export const SyscoinTransactionDetails = ({
             !rbfEnabled &&
             !isTxCanceled &&
             !isConfirmed;
+          const confirmationETA = !isConfirmed
+            ? formatSyscoinConfirmationETA(rawTransaction)
+            : null;
 
           if (showZdagConfirmed) {
             return (
-              <p className="text-xs font-normal text-brand-green">
-                Z-DAG confirmed
-              </p>
+              <Tooltip
+                content={
+                  confirmationETA
+                    ? `Estimated block confirmation: ${confirmationETA}`
+                    : null
+                }
+              >
+                <p className="text-xs font-normal text-brand-green">
+                  Z-DAG confirmed
+                </p>
+              </Tooltip>
             );
           }
 
-          return getTxStatus(isTxCanceled, isConfirmed);
+          return (
+            <Tooltip
+              content={
+                confirmationETA
+                  ? `Estimated confirmation: ${confirmationETA}`
+                  : null
+              }
+            >
+              {getTxStatus(isTxCanceled, isConfirmed)}
+            </Tooltip>
+          );
         })()}
       </div>
 
