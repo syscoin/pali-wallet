@@ -192,6 +192,10 @@ export interface ISysTransaction {
 }
 
 export interface ISysTransactionsController {
+  fetchTransactionDetailsFromBlockbook: (
+    txid: string,
+    networkUrl: string
+  ) => Promise<ISysTransaction | null>;
   fetchTransactionsPageFromBlockbook: (
     xpub: string,
     networkUrl: string,

@@ -70,6 +70,12 @@ const UtxoTransactionsListComponentBase = ({
       : [];
     const fromTransfer = transfers[0]?.token || transfers[0]?.assetGuid;
     if (fromTransfer) return String(fromTransfer);
+    const accountTransfers = Array.isArray((tx as any)?.accountAssetTransfers)
+      ? (tx as any).accountAssetTransfers
+      : [];
+    const fromAccountTransfer =
+      accountTransfers[0]?.token || accountTransfers[0]?.assetGuid;
+    if (fromAccountTransfer) return String(fromAccountTransfer);
     for (const list of [tx?.vout, tx?.vin]) {
       if (!Array.isArray(list)) continue;
       for (const item of list as any[]) {
@@ -103,15 +109,33 @@ const UtxoTransactionsListComponentBase = ({
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
   // Determine direction using only vin: if any input is ours, we are sending
+  const summaryDirection = (tx as any)?.direction;
   const anyVinOwn = Array.isArray(tx?.vin)
     ? tx.vin.some((v: any) => v?.isOwn === true)
     : false;
-  const isSentByUs = anyVinOwn;
+  const isSentByUs =
+    summaryDirection === 'sent' ||
+    (summaryDirection !== 'received' && anyVinOwn);
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
   // Native SYS amount: prefer output to our address for watch-only single-address accounts
   // Fallback to first vout when no match (legacy behavior)
-  if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
+  if (
+    !intent &&
+    ((tx as any)?.addressValueIn || (tx as any)?.addressValueOut)
+  ) {
+    const summaryValue = isSentByUs
+      ? (tx as any).addressValueIn
+      : (tx as any).addressValueOut;
+    const value = Number(summaryValue || 0);
+    if (!isNaN(value) && value > 0) {
+      const baseSymbol = activeNetwork?.currency
+        ? String(activeNetwork.currency).toUpperCase()
+        : '';
+      const decimalValue = parseFloat(formatSyscoinValue(value));
+      sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
+    }
+  } else if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {
     const candidateVout =
       tx.vout.find((v: any) => v?.isOwn === true) || tx.vout[0];
 

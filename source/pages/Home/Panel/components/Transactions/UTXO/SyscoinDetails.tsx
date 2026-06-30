@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, memo } from 'react';
+import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -7,6 +7,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
@@ -31,6 +32,12 @@ const CopyIcon = memo(() => (
 ));
 CopyIcon.displayName = 'CopyIcon';
 
+const txDetailsCache = new Map<
+  string,
+  { data: ISysTransaction; timestamp: number }
+>();
+const CACHE_TTL = 5 * 60 * 1000;
+
 interface ISyscoinTransactionDetailsProps {
   hash: string;
   tx: ISysTransaction;
@@ -41,15 +48,60 @@ export const SyscoinTransactionDetails = ({
   tx,
 }: ISyscoinTransactionDetailsProps) => {
   const {
-    activeNetwork: { currency },
+    activeNetwork: { currency, url: networkUrl },
   } = useSelector((state: RootState) => state.vault);
+  const { controllerEmitter } = useController();
   const { getTxType, getTxStatus } = useTransactionsListConfig();
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [rawTransaction] = useState<any>(tx);
+  const [enhancedTransaction, setEnhancedTransaction] =
+    useState<ISysTransaction | null>(null);
+  const fetchingRef = useRef(false);
   const [, copy] = useCopyClipboard();
+  const rawTransaction: any = enhancedTransaction || tx;
+
+  useEffect(() => {
+    const fetchTransactionDetails = async () => {
+      if (!hash || !networkUrl) return;
+
+      const cacheKey = `${networkUrl}::${hash}`;
+      const cached = txDetailsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        setEnhancedTransaction(cached.data);
+        return;
+      }
+
+      if (fetchingRef.current) return;
+
+      fetchingRef.current = true;
+      try {
+        const fullTransaction = (await controllerEmitter(
+          ['wallet', 'getSysTransactionFromBlockbook'],
+          [hash, networkUrl]
+        )) as ISysTransaction | null;
+
+        if (fullTransaction?.txid) {
+          txDetailsCache.set(cacheKey, {
+            data: fullTransaction,
+            timestamp: Date.now(),
+          });
+          setEnhancedTransaction(fullTransaction);
+        }
+      } catch (error) {
+        console.error('Failed to fetch Syscoin transaction details:', error);
+      } finally {
+        fetchingRef.current = false;
+      }
+    };
+
+    fetchTransactionDetails();
+
+    return () => {
+      fetchingRef.current = false;
+    };
+  }, [hash, networkUrl]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -145,10 +197,13 @@ export const SyscoinTransactionDetails = ({
   const txSource =
     rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
   if (txSource) {
-    txValue = (txSource as any)?.vout?.[0]?.value || 0;
+    txValue =
+      (txSource as any)?.addressValueOut ||
+      (txSource as any)?.vout?.[0]?.value ||
+      0;
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
-    isTxSent = false;
+    isTxSent = (txSource as any)?.direction === 'sent';
     const vinAddresses = (txSource as any).vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),

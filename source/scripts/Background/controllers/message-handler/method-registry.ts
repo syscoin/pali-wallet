@@ -328,6 +328,18 @@ export const METHOD_REGISTRY: MethodRegistry = {
     hasPopup: false,
   },
 
+  wallet_getSysTransactionFromBlockbook: {
+    name: 'wallet_getSysTransactionFromBlockbook',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkPreference: NetworkPreference.UTXO,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+
   wallet_sendCalls: {
     name: 'wallet_sendCalls',
     handlerType: MethodHandlerType.Wallet,

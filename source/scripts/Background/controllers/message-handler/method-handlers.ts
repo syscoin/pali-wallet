@@ -476,6 +476,16 @@ export class WalletMethodHandler implements IMethodHandler {
           }
           return wallet.getSysAssetMetadata(params[0], params[1]);
 
+        case 'getSysTransactionFromBlockbook':
+          if (!params || params.length < 2) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams(
+                'getSysTransactionFromBlockbook requires txid and networkUrl parameters'
+              )
+            );
+          }
+          return wallet.getSysTransactionFromBlockbook(params[0], params[1]);
+
         case 'getSmartAccountModules': {
           // Read-only module inventory for the connected smart account.
           if (!account?.isSmartAccount || !account.smartAccount) {

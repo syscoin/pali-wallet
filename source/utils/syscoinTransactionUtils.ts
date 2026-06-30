@@ -125,6 +125,31 @@ export const getSyscoinIntentAmount = (
   // Determine transaction type - support both decoded and raw formats
   const txType = transaction.tokenType;
   const normalizedType = normalizeSyscoinTransactionType(txType);
+  const accountTransfers = Array.isArray(
+    (transaction as any).accountAssetTransfers
+  )
+    ? (transaction as any).accountAssetTransfers
+    : [];
+  if (accountTransfers.length > 0) {
+    const transfer = accountTransfers[0];
+    const value = transfer?.value;
+    const amount =
+      value !== undefined
+        ? parseFloat(
+            formatSyscoinValue(
+              value.toString(),
+              typeof transfer?.decimals === 'number' ? transfer.decimals : 8
+            )
+          )
+        : 0;
+    if (amount > 0) {
+      return {
+        amount,
+        decimals: transfer?.decimals,
+        symbol: transfer?.symbol,
+      };
+    }
+  }
 
   // Modern format with vin/vout containing assetInfo (or raw transaction)
   // Normalize to arrays to guard against API variants that return objects or singletons

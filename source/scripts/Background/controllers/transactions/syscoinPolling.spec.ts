@@ -56,7 +56,7 @@ describe('SysTransactionController rapid polling', () => {
     vaultState = buildVaultState([]);
   });
 
-  it('regular polling always performs the full details=txs fetch', async () => {
+  it('regular polling always performs the txsummary history fetch', async () => {
     // Use a unique xpub per test: the activity snapshot map is module-level
     const xpub = 'zpub-regular-poll';
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
@@ -68,17 +68,17 @@ describe('SysTransactionController rapid polling', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
-  it('rapid polling skips the full fetch when the basic summary is unchanged', async () => {
+  it('rapid polling skips the history fetch when the basic summary is unchanged', async () => {
     const xpub = 'zpub-rapid-unchanged';
     const controller = SysTransactionController();
 
-    // Seed the activity snapshot with a full fetch
+    // Seed the activity snapshot with a history fetch
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
     await controller.pollingSysTransactions(xpub, URL, false);
 
@@ -107,7 +107,7 @@ describe('SysTransactionController rapid polling', () => {
     expect(result).toEqual(localTxs);
   });
 
-  it('rapid polling performs the full fetch when the summary changed', async () => {
+  it('rapid polling performs the history fetch when the summary changed', async () => {
     const xpub = 'zpub-rapid-changed';
     const controller = SysTransactionController();
 
@@ -153,13 +153,13 @@ describe('SysTransactionController rapid polling', () => {
       2,
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
     expect(result.some((tx: any) => tx.txid === 'tx2')).toBe(true);
   });
 
-  it('rapid polling without a prior snapshot goes straight to the full fetch', async () => {
+  it('rapid polling without a prior snapshot goes straight to the history fetch', async () => {
     const xpub = 'zpub-rapid-no-snapshot';
     fetchBackendAccountCachedMock.mockResolvedValueOnce(txsResponse());
 
@@ -170,12 +170,12 @@ describe('SysTransactionController rapid polling', () => {
     expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
       URL,
       xpub,
-      'details=txs&pageSize=30',
+      'details=txsummary&pageSize=30',
       true
     );
   });
 
-  it('rapid polling falls back to the full fetch when the basic probe fails', async () => {
+  it('rapid polling falls back to the history fetch when the basic probe fails', async () => {
     const xpub = 'zpub-rapid-probe-fail';
     const controller = SysTransactionController();
 

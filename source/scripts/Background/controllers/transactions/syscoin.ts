@@ -1,4 +1,5 @@
 import clone from 'lodash/clone';
+import * as sys from 'syscoinjs-lib';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
@@ -7,9 +8,9 @@ import { TransactionsType } from 'state/vault/types';
 import { ISysTransaction, ISysTransactionsController } from './types';
 import { treatAndSortTransactions } from './utils';
 
-// Snapshot of the Blockbook account summary captured at the last full
-// `details=txs` fetch. Used by rapid polling to detect whether anything
-// changed via a cheap `details=basic` probe before paying for a full fetch.
+// Snapshot of the Blockbook account summary captured at the last history fetch.
+// Used by rapid polling to detect whether anything changed via a cheap
+// `details=basic` probe before paying for transaction history.
 interface IAccountActivitySnapshot {
   balance: string;
   txs: number;
@@ -17,6 +18,7 @@ interface IAccountActivitySnapshot {
   unconfirmedTxs: number;
 }
 
+const SYSCOIN_HISTORY_REQUEST_OPTIONS = 'details=txsummary&pageSize=30';
 const MAX_SNAPSHOT_ENTRIES = 20;
 const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
 
@@ -57,16 +59,25 @@ const storeActivitySnapshot = (
 };
 
 const SysTransactionController = (): ISysTransactionsController => {
+  const fetchTransactionDetailsFromBlockbook = async (
+    txid: string,
+    networkUrl: string
+  ): Promise<ISysTransaction | null> => {
+    if (!txid || !networkUrl) return null;
+
+    const transaction = await sys.utils.fetchBackendRawTx(networkUrl, txid);
+
+    return transaction || null;
+  };
+
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
-    const requestOptions = 'details=txs&pageSize=30';
-
     const accountData = await fetchBackendAccountCached(
       networkUrl,
       xpubOrAddress,
-      requestOptions,
+      SYSCOIN_HISTORY_REQUEST_OPTIONS,
       true
     );
 
@@ -100,10 +111,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     ) as ISysTransaction[];
 
     // Rapid polling (post-send confirmation checks) probes the cheap
-    // `details=basic` summary first and only pays for the full
-    // `details=txs` fetch when the account actually changed since the
-    // last full fetch. The basic probe shares the same request the
-    // balance controller fires in the same cycle (deduplicated).
+    // `details=basic` summary first and only fetches transaction history
+    // when the account actually changed since the last history fetch. The
+    // basic probe shares the same request the balance controller fires in
+    // the same cycle (deduplicated).
     if (isRapidPolling) {
       const snapshotKey = getSnapshotKey(networkUrl, xpubOrAddress);
       const previousSnapshot = accountActivitySnapshots.get(snapshotKey);
@@ -125,9 +136,9 @@ const SysTransactionController = (): ISysTransactionsController => {
               : [];
           }
         } catch (error) {
-          // Probe failed - fall through to the full fetch below
+          // Probe failed - fall through to the history fetch below
           console.warn(
-            '[SysTransactionController] Rapid poll basic probe failed, falling back to full fetch:',
+            '[SysTransactionController] Rapid poll basic probe failed, falling back to history fetch:',
             error
           );
         }
@@ -174,7 +185,7 @@ const SysTransactionController = (): ISysTransactionsController => {
     page: number,
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
-    const requestOptions = `details=txs&page=${page}&pageSize=${pageSize}`;
+    const requestOptions = `details=txsummary&page=${page}&pageSize=${pageSize}`;
     const accountData = await fetchBackendAccountCached(
       networkUrl,
       xpubOrAddress,
@@ -188,6 +199,7 @@ const SysTransactionController = (): ISysTransactionsController => {
   };
 
   return {
+    fetchTransactionDetailsFromBlockbook,
     getInitialUserTransactionsByXpub,
     pollingSysTransactions,
     fetchTransactionsPageFromBlockbook,

@@ -29,6 +29,9 @@ export type ITransactionVin = {
 };
 
 export interface ITransactionInfoUtxo {
+  accountAssetTransfers?: any[];
+  addressValueIn?: string;
+  addressValueOut?: string;
   blockHash: string;
   blockHeight: number;
   blockTime: number;
