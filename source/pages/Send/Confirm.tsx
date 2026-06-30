@@ -207,6 +207,7 @@ export const SendConfirm = () => {
     const cacheKey = JSON.stringify({
       sender: basicTxValues.sender,
       receivingAddress: basicTxValues.receivingAddress,
+      resolvedToAddress,
       chainId: activeNetwork.chainId,
       isEIP1559Compatible,
       amount: basicTxValues.amount,
@@ -1208,6 +1209,7 @@ export const SendConfirm = () => {
     const cacheKey = JSON.stringify({
       sender: basicTxValues.sender,
       receivingAddress: basicTxValues.receivingAddress,
+      resolvedToAddress,
       chainId: activeNetwork.chainId,
       isEIP1559Compatible,
       amount: basicTxValues.amount,
@@ -1289,6 +1291,8 @@ export const SendConfirm = () => {
         // Guard against invalid zero values from cache
         if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
           const setCachedGasFeeDetails = async () => {
+            setIsCalculatingFees(true);
+            setFeeCalculationError(null);
             const gasLimit = (await getNativeEvmGasLimit()).toNumber();
             const initialFeeDetails = {
               maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
@@ -1314,13 +1318,17 @@ export const SendConfirm = () => {
             );
           };
 
-          setCachedGasFeeDetails().catch((error) => {
-            logError(
-              'error applying cached native EVM fee data',
-              'Transaction',
-              error
-            );
-          });
+          setCachedGasFeeDetails()
+            .catch((error) => {
+              logError(
+                'error applying cached native EVM fee data',
+                'Transaction',
+                error
+              );
+            })
+            .finally(() => {
+              setIsCalculatingFees(false);
+            });
           return; // Skip fee-rate recalculation
         }
       } catch (error) {
@@ -1416,6 +1424,7 @@ export const SendConfirm = () => {
     isBitcoinBased,
     isEIP1559Compatible,
     activeNetwork.chainId,
+    resolvedToAddress,
     customFee.isCustom,
     customFee.gasLimit,
     validateCustomGasLimit,
