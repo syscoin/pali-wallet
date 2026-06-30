@@ -384,6 +384,9 @@ export const SyscoinTransactionDetails = ({
           // Heuristic RBF detection from input sequences:
           // If any input sequence is < 0xfffffffe, opt-in RBF is enabled
           const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+          const hasSequenceData =
+            Array.isArray(rawTransaction?.vin) &&
+            rawTransaction.vin.some((v: any) => typeof v.sequence === 'number');
           const rbfEnabled = Array.isArray(rawTransaction?.vin)
             ? rawTransaction.vin.some(
                 (v: any) =>
@@ -393,7 +396,11 @@ export const SyscoinTransactionDetails = ({
             : false;
 
           const showZdagConfirmed =
-            isSptTx && !rbfEnabled && !isTxCanceled && !isConfirmed;
+            isSptTx &&
+            hasSequenceData &&
+            !rbfEnabled &&
+            !isTxCanceled &&
+            !isConfirmed;
 
           if (showZdagConfirmed) {
             return (
