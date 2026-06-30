@@ -37,6 +37,35 @@ export const formatSyscoinConfirmationETA = (transaction: {
   return `${days} day${days === 1 ? '' : 's'}`;
 };
 
+const getTransferDecimals = (transfer: any) =>
+  typeof transfer?.decimals === 'number' && transfer.decimals >= 0
+    ? Math.floor(transfer.decimals)
+    : 8;
+
+const getAbsoluteRawTransferValue = (transfer: any) => {
+  try {
+    const value = String(transfer?.value ?? '0');
+    return BigNumber.from(value.startsWith('-') ? value.slice(1) : value);
+  } catch {
+    return BigNumber.from(0);
+  }
+};
+
+const compareNormalizedTransferValues = (a: any, b: any) => {
+  const aDecimals = getTransferDecimals(a);
+  const bDecimals = getTransferDecimals(b);
+  const aValue = getAbsoluteRawTransferValue(a).mul(
+    BigNumber.from(10).pow(bDecimals)
+  );
+  const bValue = getAbsoluteRawTransferValue(b).mul(
+    BigNumber.from(10).pow(aDecimals)
+  );
+
+  if (aValue.gt(bValue)) return 1;
+  if (aValue.lt(bValue)) return -1;
+  return 0;
+};
+
 /**
  * Normalizes Syscoin transaction types from various formats into a consistent format
  * Handles:
@@ -160,11 +189,11 @@ export const getSyscoinIntentAmount = (
     ? (transaction as any).accountAssetTransfers
     : [];
   if (accountTransfers.length > 0) {
-    const transfer = accountTransfers.reduce((selected, current) => {
-      const selectedValue = BigNumber.from(String(selected?.value ?? '0'));
-      const currentValue = BigNumber.from(String(current?.value ?? '0'));
-      return currentValue.gt(selectedValue) ? current : selected;
-    });
+    const transfer = accountTransfers.reduce((selected, current) =>
+      compareNormalizedTransferValues(current, selected) > 0
+        ? current
+        : selected
+    );
     const value = transfer?.value;
     const amount =
       value !== undefined
