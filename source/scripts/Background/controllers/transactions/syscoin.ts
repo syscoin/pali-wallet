@@ -25,6 +25,9 @@ const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
 
+const isExtendedPublicKey = (xpubOrAddress: string) =>
+  /^(xpub|ypub|zpub|tpub|upub|vpub)/i.test(xpubOrAddress);
+
 const buildActivitySnapshot = (accountData: any): IAccountActivitySnapshot => ({
   balance: String(accountData?.balance ?? ''),
   txs: Number(accountData?.txs ?? 0),
@@ -74,16 +77,19 @@ const fetchAccountHistory = async (
     );
   } catch (error) {
     console.warn(
-      '[SysTransactionController] txsummary history fetch failed, falling back to txslight:',
+      '[SysTransactionController] txsummary history fetch failed, falling back:',
       error
     );
   }
 
   if (accountData) return accountData;
 
+  const fallbackDetails = isExtendedPublicKey(xpubOrAddress)
+    ? 'txs'
+    : 'txslight';
   const fallbackOptions = requestOptions.replace(
     'details=txsummary',
-    'details=txslight'
+    `details=${fallbackDetails}`
   );
   if (fallbackOptions === requestOptions) return accountData;
 

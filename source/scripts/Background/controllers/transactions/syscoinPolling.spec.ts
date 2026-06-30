@@ -74,7 +74,7 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
-  it('falls back to txslight when txsummary history is unavailable', async () => {
+  it('falls back to txs for xpub history when txsummary is unavailable', async () => {
     const xpub = 'zpub-txsummary-fallback';
     fetchBackendAccountCachedMock
       .mockResolvedValueOnce(null)
@@ -95,7 +95,7 @@ describe('SysTransactionController rapid polling', () => {
       2,
       URL,
       xpub,
-      'details=txslight&pageSize=30',
+      'details=txs&pageSize=30',
       true
     );
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
