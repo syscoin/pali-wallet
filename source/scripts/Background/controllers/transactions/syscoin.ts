@@ -72,6 +72,15 @@ const storeActivitySnapshot = (
   accountActivitySnapshots.set(key, snapshot);
 };
 
+const isUnsupportedTxSummaryResponse = (
+  accountData: any,
+  requestOptions: string
+) =>
+  requestOptions.includes('details=txsummary') &&
+  accountData &&
+  !Array.isArray(accountData.transactions) &&
+  Number(accountData.txs ?? 0) > 0;
+
 const fetchAccountHistory = async (
   networkUrl: string,
   xpubOrAddress: string,
@@ -93,7 +102,12 @@ const fetchAccountHistory = async (
     );
   }
 
-  if (accountData) return accountData;
+  if (
+    accountData &&
+    !isUnsupportedTxSummaryResponse(accountData, requestOptions)
+  ) {
+    return accountData;
+  }
   if (!requestOptions.includes('details=txsummary')) return accountData;
 
   txSummaryUnsupportedBackends.add(networkUrl);

@@ -125,6 +125,43 @@ describe('SysTransactionController rapid polling', () => {
     expect(secondResult.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
+  it('falls back when txsummary returns account data without transactions', async () => {
+    const fallbackUrl = `${URL}txsummary-basic-only/`;
+    const xpub = 'zpub-txsummary-basic-only';
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({
+        balance: '100000000',
+        unconfirmedBalance: '0',
+        txs: 1,
+        unconfirmedTxs: 0,
+      })
+      .mockResolvedValueOnce(txsResponse());
+
+    const controller = SysTransactionController();
+    const result = await controller.pollingSysTransactions(
+      xpub,
+      fallbackUrl,
+      false
+    );
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(2);
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      1,
+      fallbackUrl,
+      xpub,
+      'details=txsummary&pageSize=30',
+      true
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenNthCalledWith(
+      2,
+      fallbackUrl,
+      xpub,
+      'details=txslight&pageSize=30',
+      true
+    );
+    expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
+  });
+
   it('rapid polling skips the history fetch when the basic summary is unchanged', async () => {
     const xpub = 'zpub-rapid-unchanged';
     const controller = SysTransactionController();
