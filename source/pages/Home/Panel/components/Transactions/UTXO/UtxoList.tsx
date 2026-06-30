@@ -69,6 +69,9 @@ const UtxoTransactionsListComponentBase = ({
 
   // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
   const MAX_SEQ_MINUS_ONE = 0xfffffffe;
+  const hasSequenceData =
+    Array.isArray(tx?.vin) &&
+    tx.vin.some((v: any) => typeof v.sequence === 'number');
   const rbfEnabled = Array.isArray(tx?.vin)
     ? tx.vin.some(
         (v: any) =>
@@ -76,7 +79,8 @@ const UtxoTransactionsListComponentBase = ({
       )
     : false;
   const isSptTx = Boolean(tx?.tokenType);
-  const isZdagConfirmed = isSptTx && !rbfEnabled && !isConfirmed;
+  const isZdagConfirmed =
+    isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
 
   // Get SPT transaction styling - always returns a style (has default fallback)
   const sptInfo = getSyscoinTransactionTypeStyle(tx.tokenType);
