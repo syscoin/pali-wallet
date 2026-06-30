@@ -359,6 +359,10 @@ export const UtxoTransactionsList = ({
   const [extraTransactions, setExtraTransactions] = useState<
     ITransactionInfoUtxo[]
   >([]);
+  const baseTransactionsKey = useMemo(
+    () => userTransactions.map((tx) => tx.txid).join('|'),
+    [userTransactions]
+  );
   const combined = useMemo(() => {
     if (!extraTransactions.length) return userTransactions;
     const seen = new Set<string>();
@@ -465,6 +469,7 @@ export const UtxoTransactionsList = ({
     chainId,
     networkUrl,
     userTransactions.length,
+    baseTransactionsKey,
   ]);
 
   return (
@@ -512,8 +517,6 @@ export const UtxoTransactionsList = ({
                       setNextPage((p) => p + 1);
                       if (newTxs.length < SERVER_PAGE_SIZE)
                         setHasMoreServer(false);
-                    } else if (newTxs.length >= SERVER_PAGE_SIZE) {
-                      setNextPage((p) => p + 1);
                     } else {
                       setHasMoreServer(false);
                     }
