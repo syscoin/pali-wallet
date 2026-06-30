@@ -39,6 +39,28 @@ const txDetailsCache = new Map<
 >();
 const CACHE_TTL = 5 * 60 * 1000;
 
+const mergeAccountOwnershipFlags = (
+  accountEntries: any[] | undefined,
+  fullEntries: any[] | undefined
+) => {
+  if (!Array.isArray(accountEntries) || !Array.isArray(fullEntries)) {
+    return fullEntries;
+  }
+
+  return fullEntries.map((entry, index) => {
+    const accountEntry = accountEntries[index];
+
+    if (entry?.isOwn !== undefined || accountEntry?.isOwn === undefined) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      isOwn: accountEntry.isOwn,
+    };
+  });
+};
+
 const mergeAccountSummaryWithFullTransaction = (
   accountTransaction: ISysTransaction,
   fullTransaction: ISysTransaction
@@ -53,6 +75,14 @@ const mergeAccountSummaryWithFullTransaction = (
   confirmations:
     accountTransaction.confirmations ?? fullTransaction.confirmations,
   direction: accountTransaction.direction,
+  vin: mergeAccountOwnershipFlags(
+    accountTransaction.vin,
+    fullTransaction.vin
+  ) as ISysTransaction['vin'],
+  vout: mergeAccountOwnershipFlags(
+    accountTransaction.vout,
+    fullTransaction.vout
+  ) as ISysTransaction['vout'],
 });
 
 const getSummaryAccountDelta = (transaction: any): string | null => {
