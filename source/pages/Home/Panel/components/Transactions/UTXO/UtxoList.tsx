@@ -512,6 +512,8 @@ export const UtxoTransactionsList = ({
                       setNextPage((p) => p + 1);
                       if (newTxs.length < SERVER_PAGE_SIZE)
                         setHasMoreServer(false);
+                    } else if (newTxs.length >= SERVER_PAGE_SIZE) {
+                      setNextPage((p) => p + 1);
                     } else {
                       setHasMoreServer(false);
                     }
