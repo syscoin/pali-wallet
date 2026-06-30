@@ -47,6 +47,11 @@ const mergeAccountSummaryWithFullTransaction = (
   accountAssetTransfers: accountTransaction.accountAssetTransfers,
   addressValueIn: accountTransaction.addressValueIn,
   addressValueOut: accountTransaction.addressValueOut,
+  blockHash: accountTransaction.blockHash ?? fullTransaction.blockHash,
+  blockHeight: accountTransaction.blockHeight ?? fullTransaction.blockHeight,
+  blockTime: accountTransaction.blockTime ?? fullTransaction.blockTime,
+  confirmations:
+    accountTransaction.confirmations ?? fullTransaction.confirmations,
   direction: accountTransaction.direction,
 });
 
