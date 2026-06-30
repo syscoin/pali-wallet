@@ -1,3 +1,4 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -28,6 +29,23 @@ import {
   getSyscoinIntentAmount,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+const getSummaryAccountDelta = (tx: any): string | null => {
+  if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(tx?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(String(tx?.addressValueOut ?? '0'));
+    const delta = valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut)
+      : valueOut.sub(valueIn);
+    return delta.gt(0) ? delta.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 const UtxoTransactionsListComponentBase = ({
   userTransactions,
@@ -124,15 +142,12 @@ const UtxoTransactionsListComponentBase = ({
     !intent &&
     ((tx as any)?.addressValueIn || (tx as any)?.addressValueOut)
   ) {
-    const summaryValue = isSentByUs
-      ? (tx as any).addressValueIn
-      : (tx as any).addressValueOut;
-    const value = Number(summaryValue || 0);
-    if (!isNaN(value) && value > 0) {
+    const summaryValue = getSummaryAccountDelta(tx);
+    if (summaryValue) {
       const baseSymbol = activeNetwork?.currency
         ? String(activeNetwork.currency).toUpperCase()
         : '';
-      const decimalValue = parseFloat(formatSyscoinValue(value));
+      const decimalValue = parseFloat(formatSyscoinValue(summaryValue));
       sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
     }
   } else if (!intent && Array.isArray(tx?.vout) && tx.vout.length > 0) {

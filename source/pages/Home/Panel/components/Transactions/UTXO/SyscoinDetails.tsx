@@ -1,3 +1,4 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -48,6 +49,28 @@ const mergeAccountSummaryWithFullTransaction = (
   addressValueOut: accountTransaction.addressValueOut,
   direction: accountTransaction.direction,
 });
+
+const getSummaryAccountDelta = (transaction: any): string | null => {
+  if (
+    transaction?.addressValueIn === undefined &&
+    transaction?.addressValueOut === undefined
+  ) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(transaction?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(
+      String(transaction?.addressValueOut ?? '0')
+    );
+    const delta = valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut)
+      : valueOut.sub(valueIn);
+    return delta.gt(0) ? delta.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
@@ -158,7 +181,7 @@ export const SyscoinTransactionDetails = ({
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let txValue: number = 0;
+  let txValue: number | string = 0;
 
   useEffect(() => {
     if (rawTransaction) {
@@ -215,9 +238,7 @@ export const SyscoinTransactionDetails = ({
     rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
   if (txSource) {
     txValue =
-      (txSource as any)?.addressValueOut ||
-      (txSource as any)?.vout?.[0]?.value ||
-      0;
+      getSummaryAccountDelta(txSource) || txSource?.vout?.[0]?.value || 0;
     isTxCanceled = Boolean((txSource as any)?.isCanceled);
     isConfirmed = isTransactionInBlock(txSource as any);
     isTxSent = (txSource as any)?.direction === 'sent';

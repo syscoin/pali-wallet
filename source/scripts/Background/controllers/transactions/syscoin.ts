@@ -58,6 +58,43 @@ const storeActivitySnapshot = (
   accountActivitySnapshots.set(key, snapshot);
 };
 
+const fetchAccountHistory = async (
+  networkUrl: string,
+  xpubOrAddress: string,
+  requestOptions: string
+) => {
+  let accountData: any = null;
+
+  try {
+    accountData = await fetchBackendAccountCached(
+      networkUrl,
+      xpubOrAddress,
+      requestOptions,
+      true
+    );
+  } catch (error) {
+    console.warn(
+      '[SysTransactionController] txsummary history fetch failed, falling back to txslight:',
+      error
+    );
+  }
+
+  if (accountData) return accountData;
+
+  const fallbackOptions = requestOptions.replace(
+    'details=txsummary',
+    'details=txslight'
+  );
+  if (fallbackOptions === requestOptions) return accountData;
+
+  return fetchBackendAccountCached(
+    networkUrl,
+    xpubOrAddress,
+    fallbackOptions,
+    true
+  );
+};
+
 const SysTransactionController = (): ISysTransactionsController => {
   const fetchTransactionDetailsFromBlockbook = async (
     txid: string,
@@ -74,11 +111,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     xpubOrAddress: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
-    const accountData = await fetchBackendAccountCached(
+    const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      SYSCOIN_HISTORY_REQUEST_OPTIONS,
-      true
+      SYSCOIN_HISTORY_REQUEST_OPTIONS
     );
 
     // Record the account summary so rapid polling can detect changes cheaply
@@ -186,11 +222,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     pageSize: number = 30
   ): Promise<ISysTransaction[]> => {
     const requestOptions = `details=txsummary&page=${page}&pageSize=${pageSize}`;
-    const accountData = await fetchBackendAccountCached(
+    const accountData = await fetchAccountHistory(
       networkUrl,
       xpubOrAddress,
-      requestOptions,
-      true
+      requestOptions
     );
     const transactions = (accountData as any)?.transactions as
       | ISysTransaction[]
