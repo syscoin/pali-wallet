@@ -27,6 +27,7 @@ import { ellipsis } from 'utils/index';
 import {
   getSyscoinTransactionTypeStyle,
   getSyscoinIntentAmount,
+  normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -136,6 +137,19 @@ const UtxoTransactionsListComponentBase = ({
     (summaryDirection !== 'received' && anyVinOwn);
   const signChar = isSentByUs ? '-' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
+  const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
+  const isSptSentByUs =
+    normalizedTokenType === 'assetallocationburntosyscoin' ||
+    normalizedTokenType === 'assetallocationburntoethereum'
+      ? true
+      : normalizedTokenType === 'syscoinburntoallocation' ||
+        normalizedTokenType === 'assetallocationmint'
+      ? false
+      : isSentByUs;
+  const sptSignChar = isSptSentByUs ? '-' : '+';
+  const sptSignClass = isSptSentByUs
+    ? 'text-warning-error'
+    : 'text-brand-green';
   // Native SYS amount: prefer output to our address for watch-only single-address accounts
   // Fallback to first vout when no match (legacy behavior)
   if (
@@ -242,7 +256,7 @@ const UtxoTransactionsListComponentBase = ({
             className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
             title={sptAmountDisplay}
           >
-            <span className={`${signClass}`}>{signChar}</span>
+            <span className={`${sptSignClass}`}>{sptSignChar}</span>
             {(sptAssetInfo?.image ||
               (sptAssetInfo?.symbol && getTokenLogo(sptAssetInfo.symbol))) && (
               <Tooltip content={sptAssetInfo?.name || sptAssetInfo?.symbol}>
