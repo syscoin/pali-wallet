@@ -278,6 +278,13 @@ export const SendConfirm = () => {
       return fallbackGasLimit;
     }
 
+    // MAX sends start from full balance, which can make estimateGas fail on RPCs
+    // that enforce gas cost + value <= balance before execution. Estimate with a
+    // representative nonzero value; the actual send path still subtracts gas later.
+    if (basicTxValues.isMax && value.gt(0)) {
+      value = BigNumber.from(1);
+    }
+
     try {
       const estimatedGasLimit = (await controllerEmitter(
         ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
