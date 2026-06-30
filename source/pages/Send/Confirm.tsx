@@ -65,6 +65,8 @@ import { PaymasterSetupStatusBanner } from './PaymasterSetupStatusBanner';
 import { usePaymasterApprovalModal } from './usePaymasterApprovalModal';
 
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
+const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
+const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
 // Safety fallback if the controller reserve lookup fails; matches the
 // estimator's worst case for a deployed single-validator account.
 const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
@@ -251,59 +253,96 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
 
-  const getNativeEvmGasLimit = useCallback(async (): Promise<BigNumber> => {
-    const fallbackGasLimit = BigNumber.from(
-      basicTxValues?.defaultGasLimit || 42000
-    );
+  const getNativeEvmGasLimit = useCallback(
+    async (maxSendFeeRateWei?: BigNumber): Promise<BigNumber> => {
+      const fallbackGasLimit = BigNumber.from(
+        basicTxValues?.defaultGasLimit || 42000
+      );
 
-    if (
-      !basicTxValues ||
-      basicTxValues.token ||
-      basicTxValues.transactionType !== TransactionType.NATIVE_ETH
-    ) {
-      return fallbackGasLimit;
-    }
+      if (
+        !basicTxValues ||
+        basicTxValues.token ||
+        basicTxValues.transactionType !== TransactionType.NATIVE_ETH
+      ) {
+        return fallbackGasLimit;
+      }
 
-    const rawTo = String(basicTxValues.receivingAddress || '');
-    const to = resolvedToAddress || rawTo;
-    if (!to || to.toLowerCase().endsWith('.eth')) {
-      return fallbackGasLimit;
-    }
+      const rawTo = String(basicTxValues.receivingAddress || '');
+      const to = resolvedToAddress || rawTo;
+      if (!to || to.toLowerCase().endsWith('.eth')) {
+        return fallbackGasLimit;
+      }
 
-    let value = BigNumber.from(0);
-    try {
-      value = parseUnits(String(basicTxValues.amount || '0'), 'ether');
-    } catch (error) {
-      logError('error parsing native EVM amount', 'Transaction', error);
-      return fallbackGasLimit;
-    }
+      let value = BigNumber.from(0);
+      try {
+        value = parseUnits(String(basicTxValues.amount || '0'), 'ether');
+      } catch (error) {
+        logError('error parsing native EVM amount', 'Transaction', error);
+        return fallbackGasLimit;
+      }
 
-    // MAX sends start from full balance, which can make estimateGas fail on RPCs
-    // that enforce gas cost + value <= balance before execution. Estimate with a
-    // representative nonzero value; the actual send path still subtracts gas later.
-    if (basicTxValues.isMax && value.gt(0)) {
-      value = BigNumber.from(1);
-    }
+      const getSpendableMaxValue = (gasLimit: BigNumber) => {
+        if (!maxSendFeeRateWei || maxSendFeeRateWei.lte(0)) {
+          return null;
+        }
 
-    try {
-      const estimatedGasLimit = (await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-        [
-          {
-            data: '0x',
-            from: basicTxValues.sender,
-            to,
-            value: value.toHexString(),
-          },
-        ]
-      )) as any;
+        const reserve = gasLimit
+          .mul(maxSendFeeRateWei)
+          .add(NATIVE_EVM_MAX_SEND_BUFFER_WEI);
 
-      return BigNumber.from(estimatedGasLimit);
-    } catch (error) {
-      logError('error estimating native EVM gas limit', 'Transaction', error);
-      return fallbackGasLimit;
-    }
-  }, [basicTxValues, controllerEmitter, resolvedToAddress]);
+        return value.gt(reserve) ? value.sub(reserve) : null;
+      };
+
+      let estimateValue = value;
+      if (basicTxValues.isMax && value.gt(0)) {
+        estimateValue =
+          getSpendableMaxValue(NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE) ||
+          BigNumber.from(1);
+      }
+
+      const estimateGas = async (estimateWithValue: BigNumber) => {
+        const estimatedGasLimit = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+          [
+            {
+              data: '0x',
+              from: basicTxValues.sender,
+              to,
+              value: estimateWithValue.toHexString(),
+            },
+          ]
+        )) as any;
+
+        return BigNumber.from(estimatedGasLimit);
+      };
+
+      try {
+        let estimatedGasLimit = await estimateGas(estimateValue);
+
+        if (basicTxValues.isMax && value.gt(0) && maxSendFeeRateWei) {
+          for (let i = 0; i < 2; i += 1) {
+            const refinedValue = getSpendableMaxValue(estimatedGasLimit);
+            if (!refinedValue || refinedValue.eq(estimateValue)) {
+              break;
+            }
+
+            estimateValue = refinedValue;
+            const refinedGasLimit = await estimateGas(estimateValue);
+            if (refinedGasLimit.eq(estimatedGasLimit)) {
+              break;
+            }
+            estimatedGasLimit = refinedGasLimit;
+          }
+        }
+
+        return estimatedGasLimit;
+      } catch (error) {
+        logError('error estimating native EVM gas limit', 'Transaction', error);
+        return fallbackGasLimit;
+      }
+    },
+    [basicTxValues, controllerEmitter, resolvedToAddress]
+  );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {
     if (feeCalculationError) {
@@ -363,7 +402,9 @@ export const SendConfirm = () => {
     // Always use a valid gas limit - custom, estimated native send, or fallback.
     const gasLimit = validateCustomGasLimit
       ? customFee.gasLimit
-      : (await getNativeEvmGasLimit()).toNumber();
+      : (
+          await getNativeEvmGasLimit(BigNumber.from(correctGasPrice))
+        ).toNumber();
 
     const initialFee = { ...INITIAL_FEE, gasLimit };
 
@@ -730,7 +771,7 @@ export const SendConfirm = () => {
               // between estimation and execution. We intentionally send slightly less than MAX.
               // Keep this as a small *absolute* reserve (not a %), since these extra costs are
               // typically additive rather than proportional to L2 execution gas.
-              const maxSendBufferWei = parseUnits('0.000001', 'ether'); // 0.000001 native
+              const maxSendBufferWei = NATIVE_EVM_MAX_SEND_BUFFER_WEI;
 
               if (isEIP1559Compatible) {
                 // EIP-1559 transaction
@@ -1289,7 +1330,7 @@ export const SendConfirm = () => {
           const setCachedGasFeeDetails = async () => {
             setIsCalculatingFees(true);
             setFeeCalculationError(null);
-            const gasLimit = (await getNativeEvmGasLimit()).toNumber();
+            const gasLimit = (await getNativeEvmGasLimit(maxFeeBN)).toNumber();
             const initialFeeDetails = {
               maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
               baseFee: parseFloat(formatGweiValue(maxFeeBN.sub(maxPriorityBN))),
@@ -1358,7 +1399,7 @@ export const SendConfirm = () => {
 
         const gasLimit = validateCustomGasLimit
           ? customFee.gasLimit
-          : (await getNativeEvmGasLimit()).toNumber();
+          : (await getNativeEvmGasLimit(maxFeeBN)).toNumber();
 
         const initialFeeDetails = {
           maxFeePerGas: parseFloat(formatGweiValue(maxFeeBN)),
