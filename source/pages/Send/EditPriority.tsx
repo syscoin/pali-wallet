@@ -219,7 +219,17 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         }, 0);
       }
     }
-  }, [showModal, customFee.isCustom, defaultGasLimit]); // Only run when modal visibility changes
+  }, [
+    showModal,
+    customFee.isCustom,
+    defaultGasLimit,
+    fee?.gasLimit,
+    gasPrice,
+    isSendLegacyTransaction,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    priority,
+  ]);
 
   // Update form values when priority changes
   React.useEffect(() => {
