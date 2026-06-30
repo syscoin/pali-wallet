@@ -262,6 +262,50 @@ describe('SysTransactionController rapid polling', () => {
     expect(result).toEqual(localTxs);
   });
 
+  it('rapid polling compares addrTxCount when txsummary deduplicates xpub transactions', async () => {
+    const xpub = 'zpub-rapid-xpub-deduped-count';
+    const controller = SysTransactionController();
+
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(
+      txsResponse({
+        txs: 9,
+        addrTxCount: 10,
+        transactions: [
+          {
+            txid: 'tx1',
+            confirmations: 10,
+            blockTime: 1700000000,
+            value: '100000000',
+          },
+        ],
+      })
+    );
+    await controller.pollingSysTransactions(xpub, URL, false);
+
+    const localTxs = [{ txid: 'tx1', confirmations: 10 }];
+    vaultState = buildVaultState(localTxs);
+
+    fetchBackendAccountCachedMock.mockClear();
+    fetchBackendAccountCachedMock.mockResolvedValueOnce({
+      balance: '100000000',
+      unconfirmedBalance: '0',
+      txs: 10,
+      addrTxCount: 10,
+      unconfirmedTxs: 0,
+    });
+
+    const result = await controller.pollingSysTransactions(xpub, URL, true);
+
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledWith(
+      URL,
+      xpub,
+      'details=basic&pageSize=0',
+      true
+    );
+    expect(result).toEqual(localTxs);
+  });
+
   it('rapid polling performs the history fetch when the summary changed', async () => {
     const xpub = 'zpub-rapid-changed';
     const controller = SysTransactionController();
