@@ -68,8 +68,6 @@ const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 // Safety fallback if the controller reserve lookup fails; matches the
 // estimator's worst case for a deployed single-validator account.
 const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
-// sysweb3-keyring enforces this floor for native EVM sends.
-const MIN_EVM_SEND_GAS_LIMIT = BigNumber.from(65_000);
 
 export const SendConfirm = () => {
   const { controllerEmitter } = useController();
@@ -254,12 +252,9 @@ export const SendConfirm = () => {
   );
 
   const getNativeEvmGasLimit = useCallback(async (): Promise<BigNumber> => {
-    const defaultGasLimit = BigNumber.from(
+    const fallbackGasLimit = BigNumber.from(
       basicTxValues?.defaultGasLimit || 42000
     );
-    const fallbackGasLimit = defaultGasLimit.lt(MIN_EVM_SEND_GAS_LIMIT)
-      ? MIN_EVM_SEND_GAS_LIMIT
-      : defaultGasLimit;
 
     if (
       !basicTxValues ||
@@ -296,10 +291,7 @@ export const SendConfirm = () => {
         ]
       )) as any;
 
-      const gasLimit = BigNumber.from(estimatedGasLimit);
-      return gasLimit.lt(MIN_EVM_SEND_GAS_LIMIT)
-        ? MIN_EVM_SEND_GAS_LIMIT
-        : gasLimit;
+      return BigNumber.from(estimatedGasLimit);
     } catch (error) {
       logError('error estimating native EVM gas limit', 'Transaction', error);
       return fallbackGasLimit;
@@ -724,10 +716,7 @@ export const SendConfirm = () => {
               const gasLimitCandidate = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
-              const gasLimit = gasLimitCandidate.lt(MIN_EVM_SEND_GAS_LIMIT)
-                ? MIN_EVM_SEND_GAS_LIMIT
-                : gasLimitCandidate;
-              maxSendGasLimit = gasLimit;
+              maxSendGasLimit = gasLimitCandidate;
 
               // Add a conservative fixed buffer for MAX sends.
               // Some networks can require additional intrinsic costs or see small fee variance
@@ -744,12 +733,12 @@ export const SendConfirm = () => {
                     : safeToFixed(fee.maxFeePerGas),
                   9
                 );
-                const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
+                const maxGasFeeWei = maxSendGasLimit.mul(maxFeePerGasWei);
                 value = value.sub(maxGasFeeWei).sub(maxSendBufferWei);
               } else {
                 // Legacy transaction
                 const gasPriceWei = BigNumber.from(gasPrice);
-                const gasFeeWei = gasLimit.mul(gasPriceWei);
+                const gasFeeWei = maxSendGasLimit.mul(gasPriceWei);
                 value = value.sub(gasFeeWei).sub(maxSendBufferWei);
               }
 
