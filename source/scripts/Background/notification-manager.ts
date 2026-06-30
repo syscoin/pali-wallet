@@ -1,3 +1,4 @@
+import { BigNumber } from '@ethersproject/bignumber';
 import { formatUnits } from '@ethersproject/units';
 
 import { INetwork } from 'types/network';
@@ -21,6 +22,24 @@ import {
 } from 'utils/syscoinTransactionUtils';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+const getSummaryAccountDelta = (tx: any): string | null => {
+  if (tx?.addressValueIn === undefined && tx?.addressValueOut === undefined) {
+    return null;
+  }
+
+  try {
+    const valueIn = BigNumber.from(String(tx?.addressValueIn ?? '0'));
+    const valueOut = BigNumber.from(String(tx?.addressValueOut ?? '0'));
+    const delta = valueIn.gte(valueOut)
+      ? valueIn.sub(valueOut)
+      : valueOut.sub(valueIn);
+    return delta.gt(0) ? delta.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 class NotificationManager {
   constructor() {
     // Set up notification click handlers
@@ -151,7 +170,11 @@ class NotificationManager {
     }
 
     // If we still don't have a proper value but have basic transaction info, use it
-    if ((!value || value === '0') && tx.value) {
+    const summaryValue = getSummaryAccountDelta(tx);
+    if ((!value || value === '0') && summaryValue) {
+      const formattedValue = formatSyscoinValue(summaryValue, decimals);
+      value = parseFloat(formattedValue).toString();
+    } else if ((!value || value === '0') && tx.value) {
       // tx.value is in raw satoshis, so we need to format it properly
       const formattedValue = formatSyscoinValue(tx.value.toString(), decimals);
       value = parseFloat(formattedValue).toString();

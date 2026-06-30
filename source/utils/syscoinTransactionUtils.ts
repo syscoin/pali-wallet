@@ -1,3 +1,5 @@
+import { BigNumber } from '@ethersproject/bignumber';
+
 import {
   IAssetInfo,
   ITransactionInfoUtxo,
@@ -131,7 +133,11 @@ export const getSyscoinIntentAmount = (
     ? (transaction as any).accountAssetTransfers
     : [];
   if (accountTransfers.length > 0) {
-    const transfer = accountTransfers[0];
+    const transfer = accountTransfers.reduce((selected, current) => {
+      const selectedValue = BigNumber.from(String(selected?.value ?? '0'));
+      const currentValue = BigNumber.from(String(current?.value ?? '0'));
+      return currentValue.gt(selectedValue) ? current : selected;
+    });
     const value = transfer?.value;
     const amount =
       value !== undefined
