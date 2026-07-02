@@ -94,17 +94,6 @@ export const ZKSYS_TANENBAUM_TESTNET_NETWORK_57057 = {
   apiUrl: 'https://explorer-zk.tanenbaum.io/api',
   explorer: 'https://explorer-zk.tanenbaum.io',
   coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
-  smartAccountPaymaster: {
-    address: '0x2958e61ba07e04f14ef3Af9D0f1c6E0691d58277',
-    feeToken: {
-      address: '0x6EBb170f69D886916D9ee9E585CE39E626CbC35d',
-      symbol: 'zkSYS',
-    },
-    mode: 'optional',
-    paymasterPostOpCost: 35_000,
-    paymasterPostOpGasLimit: 80_000,
-    paymasterVerificationGasLimit: 120_000,
-  },
 } as INetwork;
 
 export const SYSCOIN_MAINNET_NETWORK = {

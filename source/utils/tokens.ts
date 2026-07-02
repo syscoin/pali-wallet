@@ -1,12 +1,12 @@
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import ZkSysIcon from 'assets/all_assets/zksys-icon.svg';
-import { PALI_NETWORKS_STATE } from 'utils/constants';
 
+// Canonical zkSYS ERC-20 token addresses per chain (governance token; gas
+// payment in zkSYS is handled natively by the chain's gas tank).
 const CONFIGURED_ZKSYS_TOKEN_ADDRESSES = new Set(
-  Object.values(PALI_NETWORKS_STATE.ethereum)
-    .map((network) => network.smartAccountPaymaster?.feeToken?.address)
-    .filter(Boolean)
-    .map((address) => address!.toLowerCase())
+  ['0x6EBb170f69D886916D9ee9E585CE39E626CbC35d'].map((address) =>
+    address.toLowerCase()
+  )
 );
 
 export const getKnownTokenLogo = (

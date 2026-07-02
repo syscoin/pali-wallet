@@ -472,14 +472,6 @@ export const buildSmartAccountUserOperation = ({
   signature,
 });
 
-export const withSmartAccountPaymasterData = (
-  userOperation: SmartAccountPackedUserOperation,
-  paymasterAndData: string
-): SmartAccountPackedUserOperation => ({
-  ...userOperation,
-  paymasterAndData,
-});
-
 export const selectSmartAccountDeploymentGasPayer = (
   accounts: Record<string, Record<number, any>>,
   metadata: ISmartAccountMetadata,
