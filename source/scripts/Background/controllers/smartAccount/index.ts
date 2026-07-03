@@ -36,7 +36,6 @@ import {
   encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
-  encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
   CustomValidatorPreflightResult,
   estimateSmartAccountUserOpGas,
@@ -45,12 +44,15 @@ import {
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
   getSmartAccountGasUnitsReserve,
+  getSmartAccountUserOpGasFees,
   getSmartAccountUserOpRequiredPrefund,
   getSmartAccountValidatorProfile,
+  getZkSysGasTankAddress,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
   PaliSmartAccountAuthenticatorSetup,
+  SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
   PALI_CREATE2_DEPLOYER_ADDRESS,
   PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
@@ -66,6 +68,7 @@ import {
   paliSmartAccountInterface,
   SmartAccountExecution,
   SmartAccountPackedUserOperation,
+  SmartAccountUserOpGasEstimate,
   getAvailablePaliModules,
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
@@ -171,6 +174,12 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
+const ZKSYS_GAS_TANK_ABI = [
+  'function creditOf(address account) view returns (uint256)',
+] as const;
+// Conservative cover for outer transaction overhead not represented by the
+// inner UserOp gas limits.
+const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
 
 const randomBytes32Hex = () => {
   const bytes = new Uint8Array(32);
@@ -651,6 +660,7 @@ class SmartAccountController {
         response = await this.submitSmartAccountExecution({
           accountId: params.accountId,
           executions: prepared.executions,
+          gasPayer: prepared.gasPayer,
           signature,
           skipRapidPolling: true,
           userOperation: prepared.userOperation,
@@ -891,6 +901,7 @@ class SmartAccountController {
     balance: string;
     gasUnitsReserve: string;
     hasNativeGas: boolean;
+    hasZkSysGasTankGas: boolean;
     requiredBalance: string;
   }> {
     const active = this.getSmartAccountById(params.accountId);
@@ -921,10 +932,28 @@ class SmartAccountController {
     // limits the userOp builder will sign for a simple execution.
     const gasUnitsReserve = getSmartAccountGasUnitsReserve(active.metadata);
     const requiredBalance = gasUnitsReserve.mul(maxFeePerGas);
+    const primaryGasPayer = this.getWalletGasPayerCandidates(
+      active.metadata.deploymentGasPayer
+    )[0];
+    const statusGasEstimate = {
+      callGasLimit: 0,
+      preVerificationGas: 0,
+      totalGasUnits: gasUnitsReserve.toNumber(),
+      verificationGasLimit: 0,
+    };
+    const hasZkSysGasTankGas = primaryGasPayer
+      ? await this.canUseZkSysGasTankForSmartAccountTx({
+          chainId: active.metadata.chainId,
+          gasEstimate: statusGasEstimate,
+          gasPayerAddress: primaryGasPayer.address,
+          maxFeePerGas,
+        })
+      : false;
 
     return {
       balance: balance.toString(),
       gasUnitsReserve: gasUnitsReserve.toString(),
+      hasZkSysGasTankGas,
       hasNativeGas: maxFeePerGas.isZero()
         ? !balance.isZero()
         : balance.gte(requiredBalance),
@@ -1021,10 +1050,6 @@ class SmartAccountController {
     ).toString();
     const callData = smartAccount.encodeCalls(params);
     const feeData = await provider.getFeeData();
-    const gasFees = encodeSmartAccountGasFees({
-      maxFeePerGas: (feeData.maxFeePerGas || feeData.gasPrice || 0).toString(),
-      maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
-    });
     // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
     // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
     // the per-validator table (limits are inside the signed hash).
@@ -1036,6 +1061,29 @@ class SmartAccountController {
       isDeployed: code !== '0x',
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
+    });
+    const maxFeePerGas = BigNumber.from(
+      feeData.maxFeePerGas || feeData.gasPrice || 0
+    );
+    const gasPayer = await this.getWalletGasPayerAccount(
+      active.metadata.deploymentGasPayer,
+      undefined,
+      {
+        chainId: active.metadata.chainId,
+        gasEstimate,
+        maxFeePerGas,
+      }
+    );
+    const useZkSysGasTank = await this.canUseZkSysGasTankForSmartAccountTx({
+      chainId: active.metadata.chainId,
+      gasEstimate,
+      gasPayerAddress: gasPayer.address,
+      maxFeePerGas,
+    });
+    const gasFees = getSmartAccountUserOpGasFees({
+      maxFeePerGas: maxFeePerGas.toString(),
+      maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
+      useZkSysGasTank,
     });
     const unsignedUserOperation = buildSmartAccountUserOperation({
       accountGasLimits: encodeSmartAccountGasLimits({
@@ -1050,8 +1098,8 @@ class SmartAccountController {
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
     });
-    // zkSYS gas payment is native to the chain (bootloader-level gas tank),
-    // so user operations are always self-funded; there is no paymaster.
+    // In verified tank mode, the outer transaction pays at the bootloader
+    // layer, so the inner UserOp must not reimburse the submitter in SYS.
     const userOperation = unsignedUserOperation;
     const actionHash = await entryPoint.getUserOpHash(userOperation);
 
@@ -1065,6 +1113,7 @@ class SmartAccountController {
       execution: executions[0],
       executionCalldata: prepared.executionCalldata,
       executions,
+      gasPayer,
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,
@@ -1125,6 +1174,11 @@ class SmartAccountController {
     accountId?: number;
     executionCalldata?: string;
     executions?: SmartAccountExecution[];
+    gasPayer?: {
+      address: string;
+      id: number;
+      type: PaliKeyringAccountType;
+    };
     mode?: string;
     signature: string;
     skipRapidPolling?: boolean;
@@ -1149,7 +1203,10 @@ class SmartAccountController {
       );
     }
     const gasPayer = await this.getWalletGasPayerAccount(
-      active.metadata.deploymentGasPayer
+      params.gasPayer || active.metadata.deploymentGasPayer,
+      undefined,
+      undefined,
+      { requirePreferred: Boolean(params.gasPayer) }
     );
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
@@ -1166,12 +1223,29 @@ class SmartAccountController {
     );
 
     try {
+      const requiredPrefund =
+        getSmartAccountUserOpRequiredPrefund(signedUserOperation);
+      const usesZkSysGasTank =
+        Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
+        signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
+      if (usesZkSysGasTank) {
+        await this.assertZkSysGasTankCoversTransaction({
+          chainId: active.metadata.chainId,
+          gasPayerAddress: gasPayer.address,
+          transaction: {
+            data: callData,
+            to: entryPointAddress,
+            value: '0x0',
+          },
+        });
+      }
       // Self-funded first-UserOp deployment: an op carrying initCode validates
       // before anything executes, so the counterfactual account must already
       // cover the EntryPoint prefund.
       if (
         signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x'
+        signedUserOperation.initCode !== '0x' &&
+        !requiredPrefund.isZero()
       ) {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,
@@ -1216,6 +1290,77 @@ class SmartAccountController {
         throw new Error(SMART_ACCOUNT_SIGNATURE_ERROR);
       }
       throw error;
+    }
+  }
+
+  private async canUseZkSysGasTankForSmartAccountTx({
+    chainId,
+    gasEstimate,
+    gasPayerAddress,
+    maxFeePerGas,
+  }: {
+    chainId: number;
+    gasEstimate: SmartAccountUserOpGasEstimate;
+    gasPayerAddress: string;
+    maxFeePerGas: BigNumber;
+  }): Promise<boolean> {
+    if (maxFeePerGas.isZero()) {
+      return false;
+    }
+    const tankAddress = getZkSysGasTankAddress(chainId);
+    if (!tankAddress) {
+      return false;
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      return false;
+    }
+    try {
+      const tank = new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider);
+      const credit = (await tank.creditOf(gasPayerAddress)) as BigNumber;
+      const requiredCredit = BigNumber.from(
+        gasEstimate.totalGasUnits + SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
+      ).mul(maxFeePerGas);
+      return credit.gte(requiredCredit);
+    } catch {
+      return false;
+    }
+  }
+
+  private async assertZkSysGasTankCoversTransaction({
+    chainId,
+    gasPayerAddress,
+    transaction,
+  }: {
+    chainId: number;
+    gasPayerAddress: string;
+    transaction: { data?: string; to: string; value?: string };
+  }): Promise<void> {
+    const provider = this.ethereumTransaction?.web3Provider;
+    const tankAddress = getZkSysGasTankAddress(chainId);
+    if (!provider || !tankAddress) {
+      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+    }
+    const [feeData, gasLimit, credit] = await Promise.all([
+      provider.getFeeData(),
+      provider.estimateGas({
+        data: transaction.data || '0x',
+        from: gasPayerAddress,
+        to: transaction.to,
+        value: transaction.value || '0x0',
+      }),
+      new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
+        gasPayerAddress
+      ) as Promise<BigNumber>,
+    ]);
+    const maxFeePerGas = BigNumber.from(
+      feeData.maxFeePerGas || feeData.gasPrice || 0
+    );
+    const requiredCredit = gasLimit
+      .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
+      .mul(maxFeePerGas);
+    if (credit.lt(requiredCredit)) {
+      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
     }
   }
 
@@ -2419,66 +2564,20 @@ class SmartAccountController {
       data?: string;
       to: string;
       value?: string;
-    }
+    },
+    tankPayment?: {
+      chainId: number;
+      gasEstimate: SmartAccountUserOpGasEstimate;
+      maxFeePerGas: BigNumber;
+    },
+    options: { requirePreferred?: boolean } = {}
   ): Promise<{
     address: string;
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const { accounts, activeAccount } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
-    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
-    if (
-      preferred?.type &&
-      preferred.type !== PaliKeyringAccountType.SmartAccount
-    ) {
-      candidates.push({ id: preferred.id, type: preferred.type });
-    }
-    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
-      candidates.push({ id: activeAccount.id, type: activeAccount.type });
-    }
-    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
-    candidates.push(
-      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
-        (id) => ({
-          id: Number(id),
-          type: PaliKeyringAccountType.Imported,
-        })
-      )
-    );
-
-    const seen = new Set<string>();
-    const gasPayers: Array<{
-      account: any;
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }> = [];
-
-    for (const candidate of candidates) {
-      const candidateKey = `${candidate.type}:${candidate.id}`;
-      if (seen.has(candidateKey)) {
-        continue;
-      }
-      seen.add(candidateKey);
-      const account = accounts[candidate.type]?.[candidate.id];
-      if (account?.address) {
-        if (
-          preferred &&
-          candidate.id === preferred.id &&
-          candidate.type === preferred.type &&
-          getAddress(account.address) !== getAddress(preferred.address)
-        ) {
-          continue;
-        }
-        gasPayers.push({
-          account,
-          address: getAddress(account.address),
-          id: candidate.id,
-          type: candidate.type,
-        });
-      }
-    }
+    const gasPayers = this.getWalletGasPayerCandidates(preferred);
 
     const toGasPayer = ({
       address,
@@ -2490,7 +2589,39 @@ class SmartAccountController {
       type: PaliKeyringAccountType;
     }) => ({ address, id, type });
 
+    if (options.requirePreferred) {
+      const selected = gasPayers[0];
+      if (
+        !preferred ||
+        !selected ||
+        selected.id !== preferred.id ||
+        selected.type !== preferred.type ||
+        getAddress(selected.address) !== getAddress(preferred.address)
+      ) {
+        throw new Error(
+          'The selected gas payer is no longer available for this smart-account transaction'
+        );
+      }
+      return toGasPayer(selected);
+    }
+
     if (provider) {
+      if (tankPayment) {
+        const tankCandidates = gasPayers.slice(0, 1);
+        for (const candidate of tankCandidates) {
+          if (
+            await this.canUseZkSysGasTankForSmartAccountTx({
+              chainId: tankPayment.chainId,
+              gasEstimate: tankPayment.gasEstimate,
+              gasPayerAddress: candidate.address,
+              maxFeePerGas: tankPayment.maxFeePerGas,
+            })
+          ) {
+            return toGasPayer(candidate);
+          }
+        }
+      }
+
       if (transaction) {
         // Shared lookups hoisted out of the candidate loop: one fee-data call
         // and one batched balance fetch instead of repeating both per
@@ -2559,6 +2690,72 @@ class SmartAccountController {
     throw new Error(
       'A local EVM account is required to submit ERC-4337 operations'
     );
+  }
+
+  private getWalletGasPayerCandidates(preferred?: {
+    address: string;
+    id: number;
+    type: PaliKeyringAccountType;
+  }): Array<{
+    account: any;
+    address: string;
+    id: number;
+    type: PaliKeyringAccountType;
+  }> {
+    const { accounts, activeAccount } = store.getState().vault;
+    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
+    if (
+      preferred?.type &&
+      preferred.type !== PaliKeyringAccountType.SmartAccount
+    ) {
+      candidates.push({ id: preferred.id, type: preferred.type });
+    }
+    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
+      candidates.push({ id: activeAccount.id, type: activeAccount.type });
+    }
+    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
+    candidates.push(
+      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
+        (id) => ({
+          id: Number(id),
+          type: PaliKeyringAccountType.Imported,
+        })
+      )
+    );
+
+    const seen = new Set<string>();
+    const gasPayers: Array<{
+      account: any;
+      address: string;
+      id: number;
+      type: PaliKeyringAccountType;
+    }> = [];
+
+    for (const candidate of candidates) {
+      const candidateKey = `${candidate.type}:${candidate.id}`;
+      if (seen.has(candidateKey)) {
+        continue;
+      }
+      seen.add(candidateKey);
+      const account = accounts[candidate.type]?.[candidate.id];
+      if (account?.address) {
+        if (
+          preferred &&
+          candidate.id === preferred.id &&
+          candidate.type === preferred.type &&
+          getAddress(account.address) !== getAddress(preferred.address)
+        ) {
+          continue;
+        }
+        gasPayers.push({
+          account,
+          address: getAddress(account.address),
+          id: candidate.id,
+          type: candidate.type,
+        });
+      }
+    }
+    return gasPayers;
   }
 
   private async getNativeBalances(

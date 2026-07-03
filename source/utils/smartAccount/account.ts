@@ -406,6 +406,27 @@ export const encodeSmartAccountGasFees = ({
     hexZeroPad(BigNumber.from(maxFeePerGas).toHexString(), 16),
   ]);
 
+export const SMART_ACCOUNT_ZERO_GAS_FEES = encodeSmartAccountGasFees({
+  maxFeePerGas: 0,
+  maxPriorityFeePerGas: 0,
+});
+
+export const getSmartAccountUserOpGasFees = ({
+  maxFeePerGas,
+  maxPriorityFeePerGas,
+  useZkSysGasTank,
+}: {
+  maxFeePerGas: string | number;
+  maxPriorityFeePerGas: string | number;
+  useZkSysGasTank?: boolean;
+}) =>
+  useZkSysGasTank
+    ? SMART_ACCOUNT_ZERO_GAS_FEES
+    : encodeSmartAccountGasFees({
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      });
+
 /**
  * Required EntryPoint prefund for a self-funded (no paymaster) packed userOp:
  * maxFeePerGas * (verificationGasLimit + callGasLimit + preVerificationGas).

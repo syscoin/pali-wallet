@@ -764,9 +764,9 @@ const SmartAccountPolicy = () => {
       ['wallet', 'getSmartAccountNativeGasStatus'],
       [{ accountId: account.id }],
       300000
-    )) as { hasNativeGas: boolean };
+    )) as { hasNativeGas: boolean; hasZkSysGasTankGas?: boolean };
 
-    if (!gasStatus.hasNativeGas) {
+    if (!gasStatus.hasNativeGas && !gasStatus.hasZkSysGasTankGas) {
       throw new Error('PALI_NATIVE_GAS_REQUIRED');
     }
   };

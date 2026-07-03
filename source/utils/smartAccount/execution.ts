@@ -873,6 +873,7 @@ export const signAndSubmitSmartAccountExecutions = async (
           executionCalldata: prepared.executionCalldata,
           executions: prepared.executions,
           accountId,
+          gasPayer: prepared.gasPayer,
           mode: prepared.mode,
           signature: signature.signature,
           skipRapidPolling,
