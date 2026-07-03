@@ -1203,7 +1203,10 @@ class SmartAccountController {
       );
     }
     const gasPayer = await this.getWalletGasPayerAccount(
-      params.gasPayer || active.metadata.deploymentGasPayer
+      params.gasPayer || active.metadata.deploymentGasPayer,
+      undefined,
+      undefined,
+      { requirePreferred: Boolean(params.gasPayer) }
     );
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
@@ -2566,7 +2569,8 @@ class SmartAccountController {
       chainId: number;
       gasEstimate: SmartAccountUserOpGasEstimate;
       maxFeePerGas: BigNumber;
-    }
+    },
+    options: { requirePreferred?: boolean } = {}
   ): Promise<{
     address: string;
     id: number;
@@ -2584,6 +2588,22 @@ class SmartAccountController {
       id: number;
       type: PaliKeyringAccountType;
     }) => ({ address, id, type });
+
+    if (options.requirePreferred) {
+      const selected = gasPayers[0];
+      if (
+        !preferred ||
+        !selected ||
+        selected.id !== preferred.id ||
+        selected.type !== preferred.type ||
+        getAddress(selected.address) !== getAddress(preferred.address)
+      ) {
+        throw new Error(
+          'The selected gas payer is no longer available for this smart-account transaction'
+        );
+      }
+      return toGasPayer(selected);
+    }
 
     if (provider) {
       if (tankPayment) {
