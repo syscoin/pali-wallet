@@ -1065,21 +1065,25 @@ class SmartAccountController {
     const maxFeePerGas = BigNumber.from(
       feeData.maxFeePerGas || feeData.gasPrice || 0
     );
-    const gasPayer = await this.getWalletGasPayerAccount(
-      active.metadata.deploymentGasPayer,
-      undefined,
-      {
-        chainId: active.metadata.chainId,
-        gasEstimate,
-        maxFeePerGas,
-      }
-    );
-    const useZkSysGasTank = await this.canUseZkSysGasTankForSmartAccountTx({
-      chainId: active.metadata.chainId,
-      gasEstimate,
-      gasPayerAddress: gasPayer.address,
-      maxFeePerGas,
-    });
+    const primaryGasPayer = this.getWalletGasPayerCandidates(
+      active.metadata.deploymentGasPayer
+    )[0];
+    const primaryGasPayerUsesTank = primaryGasPayer
+      ? await this.canUseZkSysGasTankForSmartAccountTx({
+          chainId: active.metadata.chainId,
+          gasEstimate,
+          gasPayerAddress: primaryGasPayer.address,
+          maxFeePerGas,
+        })
+      : false;
+    const gasPayer = primaryGasPayerUsesTank
+      ? {
+          address: primaryGasPayer.address,
+          id: primaryGasPayer.id,
+          type: primaryGasPayer.type,
+        }
+      : await this.getWalletGasPayerAccount(active.metadata.deploymentGasPayer);
+    const useZkSysGasTank = primaryGasPayerUsesTank;
     const gasFees = getSmartAccountUserOpGasFees({
       maxFeePerGas: maxFeePerGas.toString(),
       maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
@@ -1204,7 +1208,6 @@ class SmartAccountController {
     }
     const gasPayer = await this.getWalletGasPayerAccount(
       params.gasPayer || active.metadata.deploymentGasPayer,
-      undefined,
       undefined,
       { requirePreferred: Boolean(params.gasPayer) }
     );
@@ -2565,11 +2568,6 @@ class SmartAccountController {
       to: string;
       value?: string;
     },
-    tankPayment?: {
-      chainId: number;
-      gasEstimate: SmartAccountUserOpGasEstimate;
-      maxFeePerGas: BigNumber;
-    },
     options: { requirePreferred?: boolean } = {}
   ): Promise<{
     address: string;
@@ -2606,22 +2604,6 @@ class SmartAccountController {
     }
 
     if (provider) {
-      if (tankPayment) {
-        const tankCandidates = gasPayers.slice(0, 1);
-        for (const candidate of tankCandidates) {
-          if (
-            await this.canUseZkSysGasTankForSmartAccountTx({
-              chainId: tankPayment.chainId,
-              gasEstimate: tankPayment.gasEstimate,
-              gasPayerAddress: candidate.address,
-              maxFeePerGas: tankPayment.maxFeePerGas,
-            })
-          ) {
-            return toGasPayer(candidate);
-          }
-        }
-      }
-
       if (transaction) {
         // Shared lookups hoisted out of the candidate loop: one fee-data call
         // and one batched balance fetch instead of repeating both per
