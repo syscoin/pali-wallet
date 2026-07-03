@@ -36,7 +36,6 @@ import {
   encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
-  encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
   CustomValidatorPreflightResult,
   estimateSmartAccountUserOpGas,
@@ -45,12 +44,15 @@ import {
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
   getSmartAccountGasUnitsReserve,
+  getSmartAccountUserOpGasFees,
   getSmartAccountUserOpRequiredPrefund,
   getSmartAccountValidatorProfile,
+  getZkSysGasTankAddress,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
   PaliSmartAccountAuthenticatorSetup,
+  SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
   PALI_CREATE2_DEPLOYER_ADDRESS,
   PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
@@ -66,6 +68,7 @@ import {
   paliSmartAccountInterface,
   SmartAccountExecution,
   SmartAccountPackedUserOperation,
+  SmartAccountUserOpGasEstimate,
   getAvailablePaliModules,
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
@@ -171,6 +174,12 @@ const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
+const ZKSYS_GAS_TANK_ABI = [
+  'function creditOf(address account) view returns (uint256)',
+] as const;
+// Conservative cover for outer transaction overhead not represented by the
+// inner UserOp gas limits.
+const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
 
 const randomBytes32Hex = () => {
   const bytes = new Uint8Array(32);
@@ -1021,10 +1030,6 @@ class SmartAccountController {
     ).toString();
     const callData = smartAccount.encodeCalls(params);
     const feeData = await provider.getFeeData();
-    const gasFees = encodeSmartAccountGasFees({
-      maxFeePerGas: (feeData.maxFeePerGas || feeData.gasPrice || 0).toString(),
-      maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
-    });
     // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
     // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
     // the per-validator table (limits are inside the signed hash).
@@ -1036,6 +1041,23 @@ class SmartAccountController {
       isDeployed: code !== '0x',
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
+    });
+    const maxFeePerGas = BigNumber.from(
+      feeData.maxFeePerGas || feeData.gasPrice || 0
+    );
+    const gasPayer = await this.getWalletGasPayerAccount(
+      active.metadata.deploymentGasPayer
+    );
+    const useZkSysGasTank = await this.canUseZkSysGasTankForSmartAccountTx({
+      chainId: active.metadata.chainId,
+      gasEstimate,
+      gasPayerAddress: gasPayer.address,
+      maxFeePerGas,
+    });
+    const gasFees = getSmartAccountUserOpGasFees({
+      maxFeePerGas: maxFeePerGas.toString(),
+      maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
+      useZkSysGasTank,
     });
     const unsignedUserOperation = buildSmartAccountUserOperation({
       accountGasLimits: encodeSmartAccountGasLimits({
@@ -1050,8 +1072,8 @@ class SmartAccountController {
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
     });
-    // zkSYS gas payment is native to the chain (bootloader-level gas tank),
-    // so user operations are always self-funded; there is no paymaster.
+    // In verified tank mode, the outer transaction pays at the bootloader
+    // layer, so the inner UserOp must not reimburse the submitter in SYS.
     const userOperation = unsignedUserOperation;
     const actionHash = await entryPoint.getUserOpHash(userOperation);
 
@@ -1166,12 +1188,29 @@ class SmartAccountController {
     );
 
     try {
+      const requiredPrefund =
+        getSmartAccountUserOpRequiredPrefund(signedUserOperation);
+      const usesZkSysGasTank =
+        Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
+        signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
+      if (usesZkSysGasTank) {
+        await this.assertZkSysGasTankCoversTransaction({
+          chainId: active.metadata.chainId,
+          gasPayerAddress: gasPayer.address,
+          transaction: {
+            data: callData,
+            to: entryPointAddress,
+            value: '0x0',
+          },
+        });
+      }
       // Self-funded first-UserOp deployment: an op carrying initCode validates
       // before anything executes, so the counterfactual account must already
       // cover the EntryPoint prefund.
       if (
         signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x'
+        signedUserOperation.initCode !== '0x' &&
+        !requiredPrefund.isZero()
       ) {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,
@@ -1216,6 +1255,77 @@ class SmartAccountController {
         throw new Error(SMART_ACCOUNT_SIGNATURE_ERROR);
       }
       throw error;
+    }
+  }
+
+  private async canUseZkSysGasTankForSmartAccountTx({
+    chainId,
+    gasEstimate,
+    gasPayerAddress,
+    maxFeePerGas,
+  }: {
+    chainId: number;
+    gasEstimate: SmartAccountUserOpGasEstimate;
+    gasPayerAddress: string;
+    maxFeePerGas: BigNumber;
+  }): Promise<boolean> {
+    if (maxFeePerGas.isZero()) {
+      return false;
+    }
+    const tankAddress = getZkSysGasTankAddress(chainId);
+    if (!tankAddress) {
+      return false;
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      return false;
+    }
+    try {
+      const tank = new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider);
+      const credit = (await tank.creditOf(gasPayerAddress)) as BigNumber;
+      const requiredCredit = BigNumber.from(
+        gasEstimate.totalGasUnits + SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
+      ).mul(maxFeePerGas);
+      return credit.gte(requiredCredit);
+    } catch {
+      return false;
+    }
+  }
+
+  private async assertZkSysGasTankCoversTransaction({
+    chainId,
+    gasPayerAddress,
+    transaction,
+  }: {
+    chainId: number;
+    gasPayerAddress: string;
+    transaction: { data?: string; to: string; value?: string };
+  }): Promise<void> {
+    const provider = this.ethereumTransaction?.web3Provider;
+    const tankAddress = getZkSysGasTankAddress(chainId);
+    if (!provider || !tankAddress) {
+      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
+    }
+    const [feeData, gasLimit, credit] = await Promise.all([
+      provider.getFeeData(),
+      provider.estimateGas({
+        data: transaction.data || '0x',
+        from: gasPayerAddress,
+        to: transaction.to,
+        value: transaction.value || '0x0',
+      }),
+      new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
+        gasPayerAddress
+      ) as Promise<BigNumber>,
+    ]);
+    const maxFeePerGas = BigNumber.from(
+      feeData.maxFeePerGas || feeData.gasPrice || 0
+    );
+    const requiredCredit = gasLimit
+      .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
+      .mul(maxFeePerGas);
+    if (credit.lt(requiredCredit)) {
+      throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
     }
   }
 

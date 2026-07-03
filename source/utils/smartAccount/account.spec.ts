@@ -29,9 +29,11 @@ import {
   getPaliSmartAccountDeploymentSalt,
   getPaliSmartAccountDescriptor,
   getSmartAccountAuthHash,
+  getSmartAccountUserOpGasFees,
   getSmartAccountUserOpRequiredPrefund,
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
+  SMART_ACCOUNT_ZERO_GAS_FEES,
 } from './account';
 import { toPaliSmartAccount } from './adapter';
 import { buildHydratedSLHDSAAuthenticator } from './authenticators';
@@ -199,6 +201,42 @@ describe('ERC-7579 smart account helpers', () => {
     expect(getSmartAccountUserOpRequiredPrefund(userOperation).toString()).toBe(
       // (1_100_000 + 250_000 + 50_000) * 2.5 gwei
       (BigInt(1_400_000) * BigInt(2_500_000_000)).toString()
+    );
+  });
+
+  it('zeros EntryPoint gas fees only for verified gas-tank mode', () => {
+    const gasFees = getSmartAccountUserOpGasFees({
+      maxFeePerGas: 2_500_000_000,
+      maxPriorityFeePerGas: 1_000_000_000,
+      useZkSysGasTank: true,
+    });
+    const userOperation = {
+      accountGasLimits: encodeSmartAccountGasLimits({
+        callGasLimit: 250_000,
+        verificationGasLimit: 1_100_000,
+      }),
+      gasFees,
+      preVerificationGas: '50000',
+    };
+
+    expect(gasFees).toBe(SMART_ACCOUNT_ZERO_GAS_FEES);
+    expect(getSmartAccountUserOpRequiredPrefund(userOperation).isZero()).toBe(
+      true
+    );
+  });
+
+  it('keeps EntryPoint gas fees outside gas-tank mode', () => {
+    expect(
+      getSmartAccountUserOpGasFees({
+        maxFeePerGas: 2_500_000_000,
+        maxPriorityFeePerGas: 1_000_000_000,
+        useZkSysGasTank: false,
+      })
+    ).toBe(
+      encodeSmartAccountGasFees({
+        maxFeePerGas: 2_500_000_000,
+        maxPriorityFeePerGas: 1_000_000_000,
+      })
     );
   });
 
