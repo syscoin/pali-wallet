@@ -932,31 +932,23 @@ class SmartAccountController {
     // limits the userOp builder will sign for a simple execution.
     const gasUnitsReserve = getSmartAccountGasUnitsReserve(active.metadata);
     const requiredBalance = gasUnitsReserve.mul(maxFeePerGas);
-    const gasPayer = await this.getWalletGasPayerAccount(
-      active.metadata.deploymentGasPayer,
-      undefined,
-      {
-        chainId: active.metadata.chainId,
-        gasEstimate: {
-          callGasLimit: 0,
-          preVerificationGas: 0,
-          totalGasUnits: gasUnitsReserve.toNumber(),
-          verificationGasLimit: 0,
-        },
-        maxFeePerGas,
-      }
-    );
-    const hasZkSysGasTankGas = await this.canUseZkSysGasTankForSmartAccountTx({
-      chainId: active.metadata.chainId,
-      gasEstimate: {
-        callGasLimit: 0,
-        preVerificationGas: 0,
-        totalGasUnits: gasUnitsReserve.toNumber(),
-        verificationGasLimit: 0,
-      },
-      gasPayerAddress: gasPayer.address,
-      maxFeePerGas,
-    });
+    const primaryGasPayer = this.getWalletGasPayerCandidates(
+      active.metadata.deploymentGasPayer
+    )[0];
+    const statusGasEstimate = {
+      callGasLimit: 0,
+      preVerificationGas: 0,
+      totalGasUnits: gasUnitsReserve.toNumber(),
+      verificationGasLimit: 0,
+    };
+    const hasZkSysGasTankGas = primaryGasPayer
+      ? await this.canUseZkSysGasTankForSmartAccountTx({
+          chainId: active.metadata.chainId,
+          gasEstimate: statusGasEstimate,
+          gasPayerAddress: primaryGasPayer.address,
+          maxFeePerGas,
+        })
+      : false;
 
     return {
       balance: balance.toString(),
@@ -2580,60 +2572,8 @@ class SmartAccountController {
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const { accounts, activeAccount } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
-    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
-    if (
-      preferred?.type &&
-      preferred.type !== PaliKeyringAccountType.SmartAccount
-    ) {
-      candidates.push({ id: preferred.id, type: preferred.type });
-    }
-    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
-      candidates.push({ id: activeAccount.id, type: activeAccount.type });
-    }
-    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
-    candidates.push(
-      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
-        (id) => ({
-          id: Number(id),
-          type: PaliKeyringAccountType.Imported,
-        })
-      )
-    );
-
-    const seen = new Set<string>();
-    const gasPayers: Array<{
-      account: any;
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }> = [];
-
-    for (const candidate of candidates) {
-      const candidateKey = `${candidate.type}:${candidate.id}`;
-      if (seen.has(candidateKey)) {
-        continue;
-      }
-      seen.add(candidateKey);
-      const account = accounts[candidate.type]?.[candidate.id];
-      if (account?.address) {
-        if (
-          preferred &&
-          candidate.id === preferred.id &&
-          candidate.type === preferred.type &&
-          getAddress(account.address) !== getAddress(preferred.address)
-        ) {
-          continue;
-        }
-        gasPayers.push({
-          account,
-          address: getAddress(account.address),
-          id: candidate.id,
-          type: candidate.type,
-        });
-      }
-    }
+    const gasPayers = this.getWalletGasPayerCandidates(preferred);
 
     const toGasPayer = ({
       address,
@@ -2730,6 +2670,72 @@ class SmartAccountController {
     throw new Error(
       'A local EVM account is required to submit ERC-4337 operations'
     );
+  }
+
+  private getWalletGasPayerCandidates(preferred?: {
+    address: string;
+    id: number;
+    type: PaliKeyringAccountType;
+  }): Array<{
+    account: any;
+    address: string;
+    id: number;
+    type: PaliKeyringAccountType;
+  }> {
+    const { accounts, activeAccount } = store.getState().vault;
+    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
+    if (
+      preferred?.type &&
+      preferred.type !== PaliKeyringAccountType.SmartAccount
+    ) {
+      candidates.push({ id: preferred.id, type: preferred.type });
+    }
+    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
+      candidates.push({ id: activeAccount.id, type: activeAccount.type });
+    }
+    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
+    candidates.push(
+      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
+        (id) => ({
+          id: Number(id),
+          type: PaliKeyringAccountType.Imported,
+        })
+      )
+    );
+
+    const seen = new Set<string>();
+    const gasPayers: Array<{
+      account: any;
+      address: string;
+      id: number;
+      type: PaliKeyringAccountType;
+    }> = [];
+
+    for (const candidate of candidates) {
+      const candidateKey = `${candidate.type}:${candidate.id}`;
+      if (seen.has(candidateKey)) {
+        continue;
+      }
+      seen.add(candidateKey);
+      const account = accounts[candidate.type]?.[candidate.id];
+      if (account?.address) {
+        if (
+          preferred &&
+          candidate.id === preferred.id &&
+          candidate.type === preferred.type &&
+          getAddress(account.address) !== getAddress(preferred.address)
+        ) {
+          continue;
+        }
+        gasPayers.push({
+          account,
+          address: getAddress(account.address),
+          id: candidate.id,
+          type: candidate.type,
+        });
+      }
+    }
+    return gasPayers;
   }
 
   private async getNativeBalances(
