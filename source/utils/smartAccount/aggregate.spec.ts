@@ -20,7 +20,6 @@ import {
   PALI_INFRASTRUCTURE_CONTRACTS,
   PALI_MODULE_CANONICAL_ADDRESSES,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
-  PALI_ZKSYS_ENTRYPOINT_ADDRESS,
   getPaliCanonicalEntryPointAddress,
   getPaliCanonicalFactoryAddress,
   getPaliInfrastructureById,
@@ -280,7 +279,7 @@ describe('smart account RPC aggregation', () => {
     expect(entry?.bytecodeHash).toBe(keccak256(initCode));
   });
 
-  it('uses the standard EntryPoint profile by default and Syscoin profile only on zkSYS', () => {
+  it('uses the same canonical EntryPoint profile on every chain', () => {
     const standard = getPaliInfrastructureById(1);
     const zksys = getPaliInfrastructureById(57057);
 
@@ -288,23 +287,21 @@ describe('smart account RPC aggregation', () => {
       PALI_CANONICAL_ENTRYPOINT_ADDRESS
     );
     expect(getPaliCanonicalEntryPointAddress(57057)).toBe(
-      PALI_ZKSYS_ENTRYPOINT_ADDRESS
+      PALI_CANONICAL_ENTRYPOINT_ADDRESS
     );
     expect(standard.entryPoint.deployCalldata).toBeDefined();
-    expect(zksys.entryPoint.deployCalldata).toBeUndefined();
-    expect(zksys.entryPoint.externallyDeployed).toBe(true);
-    expect(standard.entryPoint.address).not.toBe(zksys.entryPoint.address);
-    expect(standard.accountImplementation.address).not.toBe(
-      zksys.accountImplementation.address
+    expect(zksys.entryPoint.address).toBe(standard.entryPoint.address);
+    expect(zksys.accountImplementation.address).toBe(
+      standard.accountImplementation.address
     );
-    expect(getPaliCanonicalFactoryAddress(1)).not.toBe(
-      getPaliCanonicalFactoryAddress(57057)
+    expect(getPaliCanonicalFactoryAddress(57057)).toBe(
+      getPaliCanonicalFactoryAddress(1)
     );
     expect(standard.ecdsaValidator.address).toBe(zksys.ecdsaValidator.address);
     expect(getPaliInfrastructureContracts(1)).toBe(
       PALI_INFRASTRUCTURE_CONTRACTS
     );
-    expect(getPaliInfrastructureContracts(57057)).not.toBe(
+    expect(getPaliInfrastructureContracts(57057)).toBe(
       PALI_INFRASTRUCTURE_CONTRACTS
     );
   });

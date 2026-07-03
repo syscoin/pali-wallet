@@ -18,8 +18,6 @@ import {
   paliSmartAccountInterface,
 } from './contracts';
 import { getInstalledValidatorModule } from './modules';
-import { hasSmartAccountPaymaster } from './paymaster';
-import type { SmartAccountPaymasterApprovalSetup } from './paymaster';
 
 type ControllerEmitter = (
   methods: string[],
@@ -276,17 +274,11 @@ export type SubmitSmartAccountExecutionsParams = {
   accountId?: number;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
-  enablePaymasterApprovalSetup?: boolean;
   executions: SmartAccountExecutionIntent[];
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
-  onPaymasterApprovalConfirmed?: () => void;
-  onPaymasterApprovalRequired?: (
-    setup: SmartAccountPaymasterApprovalSetup
-  ) => boolean | Promise<boolean>;
   onPrepared?: () => void;
-  skipPaymaster?: boolean;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   useCachedMetadata?: boolean;
@@ -767,16 +759,10 @@ export const getSmartAccountExternalSignatureRequest = (params: {
   });
 };
 
-// 4337/paymaster gas abstraction is intentionally not an authenticator.
-// Authenticators prove authorization for the account action; bundlers/paymasters
-// choose how that authorized action is submitted and paid for.
-export type SmartAccountGasPolicy =
-  | {
-      paymasterData?: string;
-      paymasterService?: string;
-      type: 'erc4337-paymaster';
-    }
-  | { type: 'self-funded' };
+// Gas abstraction is intentionally not an authenticator. Authenticators prove
+// authorization for the account action; how that action is paid for is decided
+// by the chain (e.g. zkSYS gas is native via the bootloader gas tank).
+export type SmartAccountGasPolicy = { type: 'self-funded' };
 
 export const signSmartAccountActionHash = async (params: {
   accountId?: number;
@@ -829,15 +815,11 @@ export const signAndSubmitSmartAccountExecutions = async (
     accountId,
     authenticatorContexts,
     controllerEmitter,
-    enablePaymasterApprovalSetup = true,
     executions,
     onAssertionResolved,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
-    onPaymasterApprovalConfirmed,
-    onPaymasterApprovalRequired,
     onPrepared,
-    skipPaymaster,
     skipRapidPolling,
     smartAccount,
     useCachedMetadata,
@@ -855,61 +837,19 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     : '';
 
-  const prepareSignAndSubmit = async (
-    useCachedMetadataOverride?: boolean,
-    skipPaymaster = false
-  ) => {
+  const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
     const prepared = (await controllerEmitter(
       ['wallet', 'prepareSmartAccountExecutions'],
       [
         executions,
         accountId,
         {
-          skipPaymaster,
           useCachedMetadata: useCachedMetadataOverride,
         },
       ],
       300000
     )) as any;
     onPrepared?.();
-
-    if (
-      enablePaymasterApprovalSetup &&
-      !skipPaymaster &&
-      prepared.paymasterApprovalSetup &&
-      onPaymasterApprovalRequired
-    ) {
-      const approved = await onPaymasterApprovalRequired(
-        prepared.paymasterApprovalSetup
-      );
-      if (!approved) {
-        if (prepared.paymasterApprovalSetup.required) {
-          throw new Error('zkSYS gas approval was not authorized');
-        }
-      } else {
-        await signAndSubmitSmartAccountExecutions({
-          accountAddress,
-          accountId,
-          authenticatorContexts,
-          controllerEmitter,
-          enablePaymasterApprovalSetup: false,
-          executions: [prepared.paymasterApprovalSetup.execution],
-          onAuthenticatorSigningResolved,
-          onAuthenticatorSigningStarted,
-          skipPaymaster: true,
-          skipRapidPolling: true,
-          smartAccount: prepared.smartAccount || smartAccount,
-          useCachedMetadata: useCachedMetadataOverride,
-          waitForConfirmation: true,
-        });
-        onPaymasterApprovalConfirmed?.();
-
-        return prepareSignAndSubmit(useCachedMetadataOverride, false);
-      }
-    }
-    if (prepared.paymasterApprovalSetup?.required) {
-      throw new Error('zkSYS gas approval is required before this operation');
-    }
 
     const signature = await signSmartAccountActionHash({
       accountId,
@@ -926,44 +866,31 @@ export const signAndSubmitSmartAccountExecutions = async (
     });
     onAssertionResolved?.();
 
-    try {
-      const result = await controllerEmitter(
-        ['wallet', 'submitSmartAccountExecution'],
-        [
-          {
-            executionCalldata: prepared.executionCalldata,
-            executions: prepared.executions,
-            accountId,
-            mode: prepared.mode,
-            signature: signature.signature,
-            skipRapidPolling,
-            userOperation: prepared.userOperation,
-            validator: prepared.validator,
-            waitForConfirmation,
-          },
-        ],
-        300000
-      );
-      return result;
-    } catch (error) {
-      const usedOptionalPaymaster =
-        !skipPaymaster &&
-        hasSmartAccountPaymaster(prepared.userOperation) &&
-        prepared.paymasterRequired !== true;
-
-      if (usedOptionalPaymaster) {
-        return prepareSignAndSubmit(useCachedMetadataOverride, true);
-      }
-      throw error;
-    }
+    return controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      [
+        {
+          executionCalldata: prepared.executionCalldata,
+          executions: prepared.executions,
+          accountId,
+          mode: prepared.mode,
+          signature: signature.signature,
+          skipRapidPolling,
+          userOperation: prepared.userOperation,
+          validator: prepared.validator,
+          waitForConfirmation,
+        },
+      ],
+      300000
+    );
   };
 
   const run = async () => {
     try {
-      return await prepareSignAndSubmit(useCachedMetadata, skipPaymaster);
+      return await prepareSignAndSubmit(useCachedMetadata);
     } catch (error) {
       if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
-        return await prepareSignAndSubmit(false, skipPaymaster);
+        return await prepareSignAndSubmit(false);
       }
       throw error;
     }

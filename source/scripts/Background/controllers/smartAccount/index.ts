@@ -47,12 +47,6 @@ import {
   getSmartAccountGasUnitsReserve,
   getSmartAccountUserOpRequiredPrefund,
   getSmartAccountValidatorProfile,
-  getSmartAccountPaymasterConfig,
-  applySmartAccountPaymaster,
-  buildSmartAccountPaymasterApprovalSetup,
-  hasSmartAccountFeeTokenTransfer,
-  getSmartAccountPaymasterPreflight,
-  hasSmartAccountPaymaster,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
@@ -950,11 +944,10 @@ class SmartAccountController {
   public async prepareSmartAccountExecutions(
     params: Array<{ data?: string; target: string; value: string }>,
     accountId?: number,
-    options: { skipPaymaster?: boolean; useCachedMetadata?: boolean } = {}
+    options: { useCachedMetadata?: boolean } = {}
   ) {
     await this.assertSmartAccountExecutionTargetsAllowed(params);
 
-    const { activeNetwork } = store.getState().vault;
     const useCachedMetadata = options.useCachedMetadata !== false;
     let active = useCachedMetadata
       ? Number.isInteger(accountId)
@@ -1057,57 +1050,9 @@ class SmartAccountController {
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
     });
-    const paymasterConfig = options.skipPaymaster
-      ? undefined
-      : getSmartAccountPaymasterConfig(activeNetwork);
-    const transfersFeeToken =
-      paymasterConfig &&
-      hasSmartAccountFeeTokenTransfer(params, paymasterConfig);
-    if (transfersFeeToken && paymasterConfig.mode === 'required') {
-      throw new Error(
-        'Smart account paymaster cannot sponsor fee-token transfers'
-      );
-    }
-    const usePaymasterConfig =
-      paymasterConfig && !transfersFeeToken ? paymasterConfig : undefined;
-    let paymasterPreflight: Awaited<
-      ReturnType<typeof getSmartAccountPaymasterPreflight>
-    >;
-    if (usePaymasterConfig) {
-      try {
-        paymasterPreflight = await getSmartAccountPaymasterPreflight(
-          provider,
-          unsignedUserOperation,
-          usePaymasterConfig,
-          code !== '0x'
-        );
-      } catch (error) {
-        if (usePaymasterConfig.mode === 'required') {
-          throw error;
-        }
-      }
-    }
-    const canUsePaymaster = Boolean(paymasterPreflight?.canSponsor);
-    if (
-      usePaymasterConfig?.mode === 'required' &&
-      !canUsePaymaster &&
-      !paymasterPreflight?.canApprove
-    ) {
-      throw new Error(
-        'Smart account paymaster is required but the account has insufficient token balance or allowance'
-      );
-    }
-    const userOperation =
-      usePaymasterConfig && canUsePaymaster
-        ? applySmartAccountPaymaster(
-            unsignedUserOperation,
-            usePaymasterConfig,
-            {
-              chainId: activeNetwork.chainId,
-              entryPoint: entryPointAddress,
-            }
-          )
-        : unsignedUserOperation;
+    // zkSYS gas payment is native to the chain (bootloader-level gas tank),
+    // so user operations are always self-funded; there is no paymaster.
+    const userOperation = unsignedUserOperation;
     const actionHash = await entryPoint.getUserOpHash(userOperation);
 
     const executions = prepared.executions.map((execution) => ({
@@ -1121,14 +1066,6 @@ class SmartAccountController {
       executionCalldata: prepared.executionCalldata,
       executions,
       mode: prepared.mode,
-      paymasterRequired: usePaymasterConfig?.mode === 'required',
-      paymasterApprovalSetup:
-        usePaymasterConfig && paymasterPreflight?.canApprove
-          ? buildSmartAccountPaymasterApprovalSetup(
-              usePaymasterConfig,
-              paymasterPreflight.required
-            )
-          : undefined,
       smartAccount: active.metadata,
       userOperation,
       validator,
@@ -1231,12 +1168,10 @@ class SmartAccountController {
     try {
       // Self-funded first-UserOp deployment: an op carrying initCode validates
       // before anything executes, so the counterfactual account must already
-      // cover the EntryPoint prefund. Paymaster-sponsored ops charge the
-      // paymaster deposit instead and do not need this account top-up.
+      // cover the EntryPoint prefund.
       if (
         signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x' &&
-        !hasSmartAccountPaymaster(signedUserOperation)
+        signedUserOperation.initCode !== '0x'
       ) {
         await this.ensureSmartAccountDeploymentPrefund(
           active.account.address,

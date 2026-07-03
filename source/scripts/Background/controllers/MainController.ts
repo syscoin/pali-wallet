@@ -2803,7 +2803,7 @@ class MainController {
       value: string;
     }>,
     accountId?: number,
-    options?: { skipPaymaster?: boolean; useCachedMetadata?: boolean }
+    options?: { useCachedMetadata?: boolean }
   ): Promise<{
     actionHash: string;
     execution: {
@@ -2820,21 +2820,6 @@ class MainController {
       value: string;
     }>;
     mode: string;
-    paymasterApprovalSetup?: {
-      execution: {
-        data: string;
-        target: string;
-        value: string;
-      };
-      paymaster: string;
-      required: boolean;
-      requiredAllowance: string;
-      token: {
-        address: string;
-        symbol?: string;
-      };
-    };
-    paymasterRequired?: boolean;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {

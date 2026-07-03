@@ -8,6 +8,5 @@ export * from './deployment';
 export * from './execution';
 export * from './gas';
 export * from './modules';
-export * from './paymaster';
 export * from './recovery';
 export * from './templates';
