@@ -2726,6 +2726,7 @@ class MainController {
     balance: string;
     gasUnitsReserve: string;
     hasNativeGas: boolean;
+    hasZkSysGasTankGas: boolean;
     requiredBalance: string;
   }> {
     return this.smartAccount.getSmartAccountNativeGasStatus(params);
@@ -2789,6 +2790,11 @@ class MainController {
       target: string;
       value: string;
     }>;
+    gasPayer: {
+      address: string;
+      id: number;
+      type: KeyringAccountType;
+    };
     mode: string;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
@@ -2819,6 +2825,11 @@ class MainController {
       target: string;
       value: string;
     }>;
+    gasPayer: {
+      address: string;
+      id: number;
+      type: KeyringAccountType;
+    };
     mode: string;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
@@ -2839,6 +2850,11 @@ class MainController {
       target: string;
       value: string;
     }>;
+    gasPayer?: {
+      address: string;
+      id: number;
+      type: KeyringAccountType;
+    };
     mode?: string;
     signature: string;
     userOperation?: SmartAccountPackedUserOperation;

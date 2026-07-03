@@ -660,6 +660,7 @@ class SmartAccountController {
         response = await this.submitSmartAccountExecution({
           accountId: params.accountId,
           executions: prepared.executions,
+          gasPayer: prepared.gasPayer,
           signature,
           skipRapidPolling: true,
           userOperation: prepared.userOperation,
@@ -900,6 +901,7 @@ class SmartAccountController {
     balance: string;
     gasUnitsReserve: string;
     hasNativeGas: boolean;
+    hasZkSysGasTankGas: boolean;
     requiredBalance: string;
   }> {
     const active = this.getSmartAccountById(params.accountId);
@@ -930,10 +932,36 @@ class SmartAccountController {
     // limits the userOp builder will sign for a simple execution.
     const gasUnitsReserve = getSmartAccountGasUnitsReserve(active.metadata);
     const requiredBalance = gasUnitsReserve.mul(maxFeePerGas);
+    const gasPayer = await this.getWalletGasPayerAccount(
+      active.metadata.deploymentGasPayer,
+      undefined,
+      {
+        chainId: active.metadata.chainId,
+        gasEstimate: {
+          callGasLimit: 0,
+          preVerificationGas: 0,
+          totalGasUnits: gasUnitsReserve.toNumber(),
+          verificationGasLimit: 0,
+        },
+        maxFeePerGas,
+      }
+    );
+    const hasZkSysGasTankGas = await this.canUseZkSysGasTankForSmartAccountTx({
+      chainId: active.metadata.chainId,
+      gasEstimate: {
+        callGasLimit: 0,
+        preVerificationGas: 0,
+        totalGasUnits: gasUnitsReserve.toNumber(),
+        verificationGasLimit: 0,
+      },
+      gasPayerAddress: gasPayer.address,
+      maxFeePerGas,
+    });
 
     return {
       balance: balance.toString(),
       gasUnitsReserve: gasUnitsReserve.toString(),
+      hasZkSysGasTankGas,
       hasNativeGas: maxFeePerGas.isZero()
         ? !balance.isZero()
         : balance.gte(requiredBalance),
@@ -1093,6 +1121,7 @@ class SmartAccountController {
       execution: executions[0],
       executionCalldata: prepared.executionCalldata,
       executions,
+      gasPayer,
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,
@@ -1153,6 +1182,11 @@ class SmartAccountController {
     accountId?: number;
     executionCalldata?: string;
     executions?: SmartAccountExecution[];
+    gasPayer?: {
+      address: string;
+      id: number;
+      type: PaliKeyringAccountType;
+    };
     mode?: string;
     signature: string;
     skipRapidPolling?: boolean;
@@ -1177,7 +1211,7 @@ class SmartAccountController {
       );
     }
     const gasPayer = await this.getWalletGasPayerAccount(
-      active.metadata.deploymentGasPayer
+      params.gasPayer || active.metadata.deploymentGasPayer
     );
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);

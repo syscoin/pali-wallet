@@ -554,8 +554,8 @@ export const PrepareSmartAccount = () => {
         ['wallet', 'getSmartAccountNativeGasStatus'],
         [{ accountId: account.id }],
         300000
-      )) as { hasNativeGas: boolean };
-      if (!gasStatus.hasNativeGas) {
+      )) as { hasNativeGas: boolean; hasZkSysGasTankGas?: boolean };
+      if (!gasStatus.hasNativeGas && !gasStatus.hasZkSysGasTankGas) {
         throw new Error('PALI_NATIVE_GAS_REQUIRED');
       }
 
