@@ -2647,7 +2647,8 @@ class SmartAccountController {
 
     if (provider) {
       if (tankPayment) {
-        for (const candidate of gasPayers) {
+        const tankCandidates = gasPayers.slice(0, 1);
+        for (const candidate of tankCandidates) {
           if (
             await this.canUseZkSysGasTankForSmartAccountTx({
               chainId: tankPayment.chainId,
