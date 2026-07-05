@@ -25,9 +25,9 @@ index 116cb5d..69172a9 100644
 +                const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas();
 +                const currentMaxFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxFeePerGas || 0);
 +                const currentPriorityFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxPriorityFeePerGas || 0);
-+                const currentMaxPriorityFeePerGas = currentPriorityFeePerGas.gt(currentGasPrice)
-+                    ? currentPriorityFeePerGas
-+                    : currentGasPrice;
++                const currentMaxPriorityFeePerGas = currentPriorityFeePerGas.isZero()
++                    ? currentGasPrice
++                    : currentPriorityFeePerGas;
                  if (!oldTxsGasValues.maxFeePerGas ||
 -                    oldTxsGasValues.maxFeePerGas.isZero()) {
 -                    // Fetch current network fee data for replacement
