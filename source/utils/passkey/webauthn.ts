@@ -1,7 +1,6 @@
-import { id as hashText } from '@ethersproject/hash';
-import { toUtf8Bytes } from '@ethersproject/strings';
-
 import { PasskeyBackupStatus } from 'types/network';
+import { id as hashText } from 'utils/ethersV6Compat';
+import { toUtf8Bytes } from 'utils/ethersV6Compat';
 
 import {
   base64UrlToBytes,

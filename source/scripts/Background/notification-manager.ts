@@ -1,7 +1,6 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatUnits } from '@ethersproject/units';
-
 import { INetwork } from 'types/network';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { formatUnits } from 'utils/ethersV6Compat';
 import {
   formatDisplayValue,
   formatSyscoinValue,

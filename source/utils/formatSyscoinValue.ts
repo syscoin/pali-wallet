@@ -1,5 +1,5 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatUnits } from '@ethersproject/units';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { formatUnits } from 'utils/ethersV6Compat';
 
 import {
   numberToIntegerString,

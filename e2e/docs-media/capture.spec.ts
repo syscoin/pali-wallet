@@ -1,4 +1,3 @@
-import { parseEther } from '@ethersproject/units';
 import {
   type CDPSession,
   type Locator,
@@ -11,6 +10,7 @@ import path from 'path';
 
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { parseEther } from 'utils/ethersV6Compat';
 
 import { DEMO_DAPP_URL, installDemoDapp } from './demoDapp';
 import { predictAndFundSmartAccounts } from './fundSmartAccounts';

@@ -66,6 +66,9 @@ export const ImportToken: React.FC = () => {
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
     number | null
   >(null);
+  const [verifiedTokenRawBalance, setVerifiedTokenRawBalance] = useState<
+    string | null
+  >(null);
 
   // Common state
   const [currentlyImporting, setCurrentlyImporting] = useState<string | null>(
@@ -234,6 +237,7 @@ export const ImportToken: React.FC = () => {
     async (tokenId: string) => {
       if (!customTokenDetails || !activeAccount.address || !tokenId.trim()) {
         setVerifiedTokenBalance(null);
+        setVerifiedTokenRawBalance(null);
         return;
       }
 
@@ -247,25 +251,34 @@ export const ImportToken: React.FC = () => {
         const result = (await controllerEmitter(
           ['wallet', 'verifyERC1155Ownership'],
           [customTokenDetails.contractAddress, activeAccount.address, [tokenId]]
-        )) as { balance: number; tokenId: string; verified: boolean }[];
+        )) as {
+          balance: number;
+          rawBalance?: string;
+          tokenId: string;
+          verified: boolean;
+        }[];
 
         if (result && result.length > 0) {
           const tokenInfo = result[0];
           if (tokenInfo.verified) {
             // Token ID format is valid - set balance even if it's 0
             setVerifiedTokenBalance(tokenInfo.balance);
+            setVerifiedTokenRawBalance(tokenInfo.rawBalance ?? null);
           } else {
             // Token ID format is invalid or contract call failed
             setVerifiedTokenBalance(-1);
+            setVerifiedTokenRawBalance(null);
           }
         } else {
           // No result - set to -1
           setVerifiedTokenBalance(-1);
+          setVerifiedTokenRawBalance(null);
         }
       } catch (error) {
         console.error('Error verifying token ID:', error);
         // Set to -1 to indicate error/invalid tokenId
         setVerifiedTokenBalance(-1);
+        setVerifiedTokenRawBalance(null);
       } finally {
         setIsVerifyingTokenId(false);
       }
@@ -426,6 +439,11 @@ export const ImportToken: React.FC = () => {
           logo: tokenLogo,
           tokenStandard: asset.tokenStandard || 'ERC-20',
           ...(asset.tokenStandard === 'ERC-1155' && tokenId ? { tokenId } : {}),
+          ...(asset.tokenStandard === 'ERC-1155' &&
+          activeTab === 'custom' &&
+          verifiedTokenRawBalance
+            ? { rawBalance: verifiedTokenRawBalance }
+            : {}),
         };
 
         await controllerEmitter(['wallet', 'saveTokenInfo'], [tokenToSave]);
@@ -448,6 +466,7 @@ export const ImportToken: React.FC = () => {
       alert,
       customTokenId,
       verifiedTokenBalance,
+      verifiedTokenRawBalance,
       currentlyImporting,
     ]
   );

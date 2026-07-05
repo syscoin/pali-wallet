@@ -1,9 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-import { BigNumber } from '@ethersproject/bignumber';
-import { hexConcat, hexDataSlice, hexZeroPad } from '@ethersproject/bytes';
-import { keccak256 } from '@ethersproject/keccak256';
-
 import type {
   ISmartAccountMetadata,
   KeyringAccountType,
@@ -11,6 +5,11 @@ import type {
   SmartAccountSLHDSAConfig,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { hexConcat, hexDataSlice, hexZeroPad } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
 
 import {
   ERC7579_MODULE_TYPE_EXECUTOR,

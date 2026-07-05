@@ -1,6 +1,3 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/strings');
-
 import { validatePasskeyClientDataJSON } from './validation';
 
 describe('P-256 WebAuthn validation utilities', () => {

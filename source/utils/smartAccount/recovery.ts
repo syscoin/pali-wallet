@@ -1,6 +1,6 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { id as hashText } from '@ethersproject/hash';
-import { keccak256 } from '@ethersproject/keccak256';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { id as hashText } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
 
 import {
   encodeERC7579Executions,

@@ -1,5 +1,7 @@
-import { getAddress } from '@ethersproject/address';
-import { hexConcat } from '@ethersproject/bytes';
+import { getAddress } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
+import type { Interface } from 'utils/ethersV6Compat';
+import type { Provider } from 'utils/ethersV6Compat';
 
 import {
   buildSmartAccountUserOperation,
@@ -13,18 +15,16 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts';
-import type { Interface } from '@ethersproject/abi';
-import type { Provider } from '@ethersproject/providers';
 
 type PaliSmartAccountFactoryLike = {
-  functions?: {
-    'getInitData(address,bytes)'?: (
-      validator: string,
-      initData: string
-    ) => Promise<[string]>;
-  };
-  getAddress: (salt: string, initCode: string) => Promise<string>;
-  getInitData: (validator: string, initData: string) => Promise<string>;
+  'getAddress(bytes32,bytes)': (
+    salt: string,
+    initCode: string
+  ) => Promise<string>;
+  'getInitData(address,bytes)': (
+    validator: string,
+    initData: string
+  ) => Promise<string>;
   interface: Pick<Interface, 'encodeFunctionData'>;
 };
 
@@ -91,16 +91,7 @@ const requireAuth = (auth?: PaliAuthConfig): PaliAuthConfig => {
 const getValidatorInitData = async (
   factory: PaliSmartAccountFactoryLike,
   auth: PaliAuthConfig
-) => {
-  const overloadedGetInitData =
-    factory.functions?.['getInitData(address,bytes)'];
-  if (overloadedGetInitData) {
-    const [initData] = await overloadedGetInitData(auth.validator, auth.data);
-    return initData;
-  }
-
-  return factory.getInitData(auth.validator, auth.data);
-};
+) => await factory['getInitData(address,bytes)'](auth.validator, auth.data);
 
 export const toPaliSmartAccount = async ({
   address,
@@ -141,7 +132,9 @@ export const toPaliSmartAccount = async ({
         accountFactory,
         deploymentAuth
       );
-      return getAddress(await accountFactory.getAddress(deploySalt, initCode));
+      return getAddress(
+        await accountFactory['getAddress(bytes32,bytes)'](deploySalt, initCode)
+      );
     })());
 
   const encodeExecutions = (calls: PaliSmartAccountCall[]) =>

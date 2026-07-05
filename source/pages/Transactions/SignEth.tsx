@@ -1,5 +1,3 @@
-import { arrayify, isHexString } from '@ethersproject/bytes';
-import { hashMessage, _TypedDataEncoder } from '@ethersproject/hash';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -21,6 +19,8 @@ import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
+import { hashMessage, _TypedDataEncoder } from 'utils/ethersV6Compat';
+import { arrayify, isHexString } from 'utils/ethersV6Compat';
 import { getNetworkChain } from 'utils/network';
 import {
   encodeSmartAccountAuthenticatorSignature,

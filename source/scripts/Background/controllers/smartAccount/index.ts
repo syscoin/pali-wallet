@@ -1,9 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-import { BigNumber } from '@ethersproject/bignumber';
-import { AddressZero } from '@ethersproject/constants';
-import { Contract } from '@ethersproject/contracts';
-
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -16,6 +10,11 @@ import {
   KeyringAccountType as PaliKeyringAccountType,
   SmartAccountCustomModuleRecord,
 } from 'types/network';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { AddressZero } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSLHDSAKeyId,
@@ -177,6 +176,7 @@ const HYDRATED_METADATA_TTL_MS = 30_000;
 const ZKSYS_GAS_TANK_ABI = [
   'function creditOf(address account) view returns (uint256)',
 ] as const;
+const toCompatBigNumber = (value: any): BigNumber => BigNumber.from(value);
 // Conservative cover for outer transaction overhead not represented by the
 // inner UserOp gas limits.
 const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
@@ -661,6 +661,7 @@ class SmartAccountController {
           accountId: params.accountId,
           executions: prepared.executions,
           gasPayer: prepared.gasPayer,
+          maxFeePerGas: prepared.maxFeePerGas,
           signature,
           skipRapidPolling: true,
           userOperation: prepared.userOperation,
@@ -916,15 +917,17 @@ class SmartAccountController {
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
-    const [nativeBalance, entryPointDeposit, feeData] = await Promise.all([
+    const [nativeBalance, rawEntryPointDeposit, feeData] = await Promise.all([
       provider.getBalance(active.account.address),
-      entryPoint.balanceOf(active.account.address) as Promise<BigNumber>,
+      entryPoint.balanceOf(active.account.address),
       provider.getFeeData(),
     ]);
     // The EntryPoint draws prefunds from the account's deposit before its
     // native balance, and refunds unused prefund (e.g. from the deployment
     // op) back to the deposit -- both are spendable for userOp gas.
-    const balance = nativeBalance.add(entryPointDeposit);
+    const balance = toCompatBigNumber(nativeBalance).add(
+      toCompatBigNumber(rawEntryPointDeposit)
+    );
     const maxFeePerGas = BigNumber.from(
       feeData.maxFeePerGas || feeData.gasPrice || 0
     );
@@ -1118,6 +1121,7 @@ class SmartAccountController {
       executionCalldata: prepared.executionCalldata,
       executions,
       gasPayer,
+      maxFeePerGas: maxFeePerGas.toString(),
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,
@@ -1183,6 +1187,7 @@ class SmartAccountController {
       id: number;
       type: PaliKeyringAccountType;
     };
+    maxFeePerGas?: string;
     mode?: string;
     signature: string;
     skipRapidPolling?: boolean;
@@ -1235,6 +1240,7 @@ class SmartAccountController {
         await this.assertZkSysGasTankCoversTransaction({
           chainId: active.metadata.chainId,
           gasPayerAddress: gasPayer.address,
+          maxFeePerGas: params.maxFeePerGas,
           transaction: {
             data: callData,
             to: entryPointAddress,
@@ -1320,7 +1326,7 @@ class SmartAccountController {
     }
     try {
       const tank = new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider);
-      const credit = (await tank.creditOf(gasPayerAddress)) as BigNumber;
+      const credit = toCompatBigNumber(await tank.creditOf(gasPayerAddress));
       const requiredCredit = BigNumber.from(
         gasEstimate.totalGasUnits + SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
       ).mul(maxFeePerGas);
@@ -1333,10 +1339,12 @@ class SmartAccountController {
   private async assertZkSysGasTankCoversTransaction({
     chainId,
     gasPayerAddress,
+    maxFeePerGas,
     transaction,
   }: {
     chainId: number;
     gasPayerAddress: string;
+    maxFeePerGas?: string;
     transaction: { data?: string; to: string; value?: string };
   }): Promise<void> {
     const provider = this.ethereumTransaction?.web3Provider;
@@ -1344,8 +1352,7 @@ class SmartAccountController {
     if (!provider || !tankAddress) {
       throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
     }
-    const [feeData, gasLimit, credit] = await Promise.all([
-      provider.getFeeData(),
+    const [gasLimit, rawCredit, feeData] = await Promise.all([
       provider.estimateGas({
         data: transaction.data || '0x',
         from: gasPayerAddress,
@@ -1354,14 +1361,16 @@ class SmartAccountController {
       }),
       new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
         gasPayerAddress
-      ) as Promise<BigNumber>,
+      ),
+      maxFeePerGas ? Promise.resolve(null) : provider.getFeeData(),
     ]);
-    const maxFeePerGas = BigNumber.from(
-      feeData.maxFeePerGas || feeData.gasPrice || 0
+    const credit = toCompatBigNumber(rawCredit);
+    const resolvedMaxFeePerGas = BigNumber.from(
+      maxFeePerGas || feeData?.maxFeePerGas || feeData?.gasPrice || 0
     );
     const requiredCredit = gasLimit
       .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
-      .mul(maxFeePerGas);
+      .mul(resolvedMaxFeePerGas);
     if (credit.lt(requiredCredit)) {
       throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
     }
@@ -1389,10 +1398,11 @@ class SmartAccountController {
       PALI_ENTRYPOINT_V09_ABI,
       provider
     );
-    const [balance, deposit] = await Promise.all([
+    const [balance, rawDeposit] = await Promise.all([
       provider.getBalance(accountAddress),
-      entryPoint.balanceOf(accountAddress) as Promise<BigNumber>,
+      entryPoint.balanceOf(accountAddress),
     ]);
+    const deposit = toCompatBigNumber(rawDeposit);
     const required = getSmartAccountUserOpRequiredPrefund(userOperation);
     const shortfall = required.sub(balance).sub(deposit);
     if (shortfall.lte(0)) {

@@ -1,6 +1,6 @@
-import { hexConcat, hexZeroPad } from '@ethersproject/bytes';
-import { keccak256 } from '@ethersproject/keccak256';
-import { toUtf8Bytes } from '@ethersproject/strings';
+import { hexConcat, hexZeroPad } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
+import { toUtf8Bytes } from 'utils/ethersV6Compat';
 
 import type { PaliAuthenticatorModuleId } from './contracts';
 

@@ -1,5 +1,3 @@
-import { Contract } from '@ethersproject/contracts';
-import { formatUnits } from '@ethersproject/units';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { IKeyringAccountState } from '@sidhujag/sysweb3-keyring';
 import { retryableFetch } from '@sidhujag/sysweb3-network';
@@ -23,6 +21,8 @@ import {
   ITokenSearchResult,
 } from 'types/tokens';
 import { isZeroBalance } from 'utils/balance';
+import { formatUnits } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
 
 import {
   discoverNftTokens,
@@ -31,6 +31,11 @@ import {
 } from './nft-utils';
 import { IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
+
+const toSafeNumber = (value: any, fallback = 0): number => {
+  const numeric = Number(value?.toString ? value.toString() : value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
 
 const EvmAssetsController = (): IEvmAssetsController => {
   // Cache for token price data
@@ -236,10 +241,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         contract.decimals(),
         contract.balanceOf(walletAddress),
       ]);
+      const safeDecimals = toSafeNumber(decimals, 18);
 
       // Calculate the formatted balance using BigNumber to avoid precision loss
       // formatUnits returns a string with full precision
-      const balanceString = formatUnits(balanceRaw, decimals);
+      const balanceString = formatUnits(balanceRaw, safeDecimals);
       // Store full precision balance, UI will format for display
       const balance = parseFloat(balanceString);
 
@@ -276,7 +282,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         symbol: cleanTokenSymbol(symbol).toUpperCase(),
         name: name || symbol, // Keep names intact - they can have spaces
         contractAddress,
-        decimals,
+        decimals: safeDecimals,
         balance, // Full precision balance
         chainId: store.getState().vault.activeNetwork.chainId,
         tokenStandard,
@@ -646,6 +652,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
                 updatedErc1155Assets.push({
                   ...asset,
                   balance: info.balance,
+                  rawBalance: info.rawBalance,
                 });
               } else {
                 console.warn(
@@ -767,11 +774,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
       contract.decimals(),
       contract.balanceOf(accountAddress),
     ]);
+    const safeDecimals = toSafeNumber(decimals, 18);
 
     return {
       name,
       symbol: cleanTokenSymbol(symbol),
-      decimals,
+      decimals: safeDecimals,
       balance: balance.toString(),
     };
   };
@@ -1255,7 +1263,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
     ownerAddress: string,
     tokenIds: string[],
     w3Provider: CustomJsonRpcProvider
-  ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> =>
+  ): Promise<
+    {
+      balance: number;
+      rawBalance?: string;
+      tokenId: string;
+      verified: boolean;
+    }[]
+  > =>
     verifyERC1155OwnershipHelper(
       contractAddress,
       ownerAddress,

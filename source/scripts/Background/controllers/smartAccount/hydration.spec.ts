@@ -1,13 +1,3 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/bignumber');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/constants');
-jest.unmock('@ethersproject/contracts');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {

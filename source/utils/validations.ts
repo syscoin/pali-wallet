@@ -1,10 +1,9 @@
 // Frontend-safe validation utilities
 // These are lightweight implementations that don't pull in sysweb3 dependencies
 
-import { isAddress } from '@ethersproject/address';
-import { Contract } from '@ethersproject/contracts';
-
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { isAddress } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
 
 /**
  * Validates Ethereum address format
@@ -43,7 +42,7 @@ export const isValidSYSAddress = async (
 
 /**
  * Get ERC20 ABI from backend service
- * Returns the full JSON ABI format needed for InputDataDecoder
+ * Returns the full JSON ABI format needed for ethers Interface decoding
  * @param controller - Optional controller instance for background context calls
  */
 export const getErc20Abi = async (controller?: any): Promise<any[]> => {
@@ -150,7 +149,7 @@ export const getContractType = async (
         );
         const balanceOf = await contractERC20.balanceOf(contractAddress);
 
-        if (typeof balanceOf === 'object') {
+        if (balanceOf !== null && balanceOf !== undefined) {
           return { type: 'ERC-20' };
         }
         throw new Error('ERC-20');

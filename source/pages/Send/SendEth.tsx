@@ -1,5 +1,3 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { parseEther, parseUnits, formatUnits } from '@ethersproject/units';
 import { Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { toSvg } from 'jdenticon';
@@ -27,6 +25,8 @@ import {
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
+import { parseEther, parseUnits, formatUnits } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
 import {
   getAssetBalance,
   ellipsis,

@@ -1,9 +1,3 @@
-import { getAddress } from '@ethersproject/address';
-import { Contract } from '@ethersproject/contracts';
-import { JsonRpcProvider } from '@ethersproject/providers';
-import { formatEther, parseEther } from '@ethersproject/units';
-import { Wallet } from '@ethersproject/wallet';
-
 import {
   encodeEcdsaValidatorInitData,
   getPaliSmartAccountDeploymentSalt,
@@ -14,6 +8,15 @@ import {
   PALI_ERC7579_FACTORY_ABI,
 } from '../../source/utils/smartAccount/contracts';
 import { E2E_CONFIG } from '../harness/config';
+import { getAddress } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
+import { JsonRpcProvider } from 'utils/ethersV6Compat';
+import {
+  formatEther,
+  parseEther,
+  toEthersBigNumberish,
+} from 'utils/ethersV6Compat';
+import { Wallet } from 'utils/ethersV6Compat';
 
 export type PredictedSmartAccount = {
   accountIndex: number;
@@ -39,7 +42,9 @@ export const predictAndFundSmartAccounts = async ({
 }): Promise<PredictedSmartAccount[]> => {
   const chainId = E2E_CONFIG.chainId;
   const provider = new JsonRpcProvider(E2E_CONFIG.rpcUrl, chainId);
-  const funder = Wallet.fromMnemonic(E2E_CONFIG.seedPhrase).connect(provider);
+  const funder = Wallet.fromPhrase(E2E_CONFIG.seedPhrase).connect(provider);
+  const minBalanceWei = toEthersBigNumberish(minBalance);
+  const topUpWei = toEthersBigNumberish(topUp);
 
   const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const factory = new Contract(
@@ -86,7 +91,7 @@ export const predictAndFundSmartAccounts = async ({
     // addresses need the deploy-gas reserve. Pali's prefund gate requires
     // gasUnitsReserve (~2M units for a composite deploy) * maxFeePerGas, so
     // at testnet spikes of ~100+ gwei the address needs ~0.5+ TSYS.
-    if (code === '0x' && balance.lt(minBalance)) {
+    if (code === '0x' && balance < minBalanceWei) {
       // This testnet RPC's eth_estimateGas returns an absurd (~48M) limit for
       // plain value transfers, which makes the auto-estimated maxFee exceed
       // the balance and aborts the send. Pin a sane limit so the funding tx
@@ -96,7 +101,7 @@ export const predictAndFundSmartAccounts = async ({
         gasLimit: 100_000,
         nonce,
         to: address,
-        value: topUp,
+        value: topUpWei,
       });
       nonce += 1;
       await tx.wait();

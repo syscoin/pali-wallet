@@ -1,7 +1,6 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { AddressZero } from '@ethersproject/constants';
-import { keccak256 } from '@ethersproject/keccak256';
-
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { AddressZero } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
 import { getSmartAccountAuthHash } from 'utils/smartAccount';
 import type { PaliRecoveryTarget } from 'utils/smartAccount';
 

@@ -1,4 +1,3 @@
-import { BigNumber } from '@ethersproject/bignumber';
 import {
   CustomJsonRpcProvider,
   IKeyringAccountState,
@@ -6,6 +5,7 @@ import {
 import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
 
 import { IAccountTransactions } from 'state/vault/types';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 //------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;

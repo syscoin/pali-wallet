@@ -1,11 +1,10 @@
-import { BigNumber } from '@ethersproject/bignumber';
-
 import {
   IAssetInfo,
   ITransactionInfoUtxo,
   ITransactionVin,
   ITransactionVout,
 } from 'types/useTransactionsInfo';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 import { formatSyscoinValue } from './formatSyscoinValue';
 import type { CSSProperties } from 'react';

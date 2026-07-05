@@ -1,6 +1,3 @@
-import { Interface } from '@ethersproject/abi';
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -40,6 +37,13 @@ import {
 } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
+import {
+  formatEther,
+  parseUnits,
+  toEthersBigNumberish,
+} from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { Interface } from 'utils/ethersV6Compat';
 import { formatGweiValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
@@ -540,14 +544,18 @@ export const SendConfirm = () => {
             );
             return erc20Interface.encodeFunctionData('transfer', [
               destinationTo,
-              amount,
+              toEthersBigNumberish(amount),
             ]);
           }
           case TransactionType.ERC721: {
             const erc721Interface = new Interface(await getErc721Abi());
             return erc721Interface.encodeFunctionData(
               'safeTransferFrom(address,address,uint256)',
-              [activeAccount.address, destinationTo, getValidatedTokenId()]
+              [
+                activeAccount.address,
+                destinationTo,
+                toEthersBigNumberish(getValidatedTokenId()),
+              ]
             );
           }
           case TransactionType.ERC1155: {
@@ -557,8 +565,10 @@ export const SendConfirm = () => {
               [
                 activeAccount.address,
                 destinationTo,
-                getValidatedTokenId(),
-                BigNumber.from(String(basicTxValues.amount)),
+                toEthersBigNumberish(getValidatedTokenId()),
+                toEthersBigNumberish(
+                  BigNumber.from(String(basicTxValues.amount))
+                ),
                 '0x',
               ]
             );

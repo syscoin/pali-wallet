@@ -1,4 +1,3 @@
-import { BigNumber } from '@ethersproject/bignumber';
 import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -11,6 +10,7 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import { BigNumber } from 'utils/ethersV6Compat';
 import {
   formatSyscoinValue,
   formatDisplayValue,
