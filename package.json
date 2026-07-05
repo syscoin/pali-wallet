@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "4.0.36",
+  "version": "4.0.37",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
@@ -69,9 +69,9 @@
     "@heroicons/react": "^1.0.6",
     "@reduxjs/toolkit": "^2.8.2",
     "@sidhujag/sysweb3-core": "^1.0.28",
-    "@sidhujag/sysweb3-keyring": "^1.0.598",
-    "@sidhujag/sysweb3-network": "^1.0.107",
-    "@sidhujag/sysweb3-utils": "^1.1.273",
+    "@sidhujag/sysweb3-keyring": "^1.0.606",
+    "@sidhujag/sysweb3-network": "^1.0.109",
+    "@sidhujag/sysweb3-utils": "^1.1.277",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.270",
     "@types/jest": "^29.5.0",
