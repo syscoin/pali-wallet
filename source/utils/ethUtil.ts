@@ -172,8 +172,23 @@ export const fetchFunctionSignature = async (
 const normalizeBytesValue = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : '0x';
 
+const normalizeDecodedValue = (value: any): any => {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeDecodedValue);
+  if (value && typeof value === 'object') {
+    if (value._isBigNumber) return value.toString();
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        normalizeDecodedValue(entry),
+      ])
+    );
+  }
+  return value;
+};
+
 const getParsedArg = (args: any, key: string, index: number) =>
-  args?.[key] ?? args?.[index];
+  normalizeDecodedValue(args?.[key] ?? args?.[index]);
 
 const parsedTransactionToDecodedTx = (parsed: any): IDecodedTx => {
   const fragment = parsed.functionFragment ?? parsed.fragment;
@@ -208,7 +223,7 @@ const decodeERC7579ExecutionPayload = (
     return {
       method,
       types: ['bytes32', 'address', 'uint256', 'bytes'],
-      inputs: [mode, target, value, data],
+      inputs: [mode, target, normalizeDecodedValue(value), data],
       names: ['mode', 'target', 'value', 'data'],
     };
   }
@@ -245,7 +260,7 @@ const decodeERC7579ExecutionPayload = (
     },
     {
       method,
-      inputs: [mode, executions.length],
+      inputs: [mode, normalizeDecodedValue(executions.length)],
       names: ['mode', 'executionCount'],
       types: ['bytes32', 'uint256'],
     }
@@ -348,10 +363,13 @@ export const decodeTransactionData = async (
             approvalInfo.approvalType === 'erc20-amount'
               ? [
                   approvalInfo.decodedData.spender,
-                  approvalInfo.decodedData.amount,
+                  normalizeDecodedValue(approvalInfo.decodedData.amount),
                 ]
               : approvalInfo.approvalType === 'erc721-single'
-              ? [approvalInfo.decodedData.to, approvalInfo.decodedData.tokenId]
+              ? [
+                  approvalInfo.decodedData.to,
+                  normalizeDecodedValue(approvalInfo.decodedData.tokenId),
+                ]
               : [
                   approvalInfo.decodedData.operator,
                   approvalInfo.decodedData.approved,

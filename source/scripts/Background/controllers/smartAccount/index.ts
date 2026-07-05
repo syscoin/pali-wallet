@@ -925,7 +925,9 @@ class SmartAccountController {
     // The EntryPoint draws prefunds from the account's deposit before its
     // native balance, and refunds unused prefund (e.g. from the deployment
     // op) back to the deposit -- both are spendable for userOp gas.
-    const balance = nativeBalance.add(toCompatBigNumber(rawEntryPointDeposit));
+    const balance = toCompatBigNumber(nativeBalance).add(
+      toCompatBigNumber(rawEntryPointDeposit)
+    );
     const maxFeePerGas = BigNumber.from(
       feeData.maxFeePerGas || feeData.gasPrice || 0
     );

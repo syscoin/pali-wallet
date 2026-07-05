@@ -17,14 +17,11 @@ import {
 } from './contracts';
 
 type PaliSmartAccountFactoryLike = {
-  functions?: {
-    'getInitData(address,bytes)'?: (
-      validator: string,
-      initData: string
-    ) => Promise<[string]>;
-  };
   getAddress: (salt: string, initCode: string) => Promise<string>;
-  getInitData: (validator: string, initData: string) => Promise<string>;
+  'getInitData(address,bytes)': (
+    validator: string,
+    initData: string
+  ) => Promise<string>;
   interface: Pick<Interface, 'encodeFunctionData'>;
 };
 
@@ -91,16 +88,7 @@ const requireAuth = (auth?: PaliAuthConfig): PaliAuthConfig => {
 const getValidatorInitData = async (
   factory: PaliSmartAccountFactoryLike,
   auth: PaliAuthConfig
-) => {
-  const overloadedGetInitData =
-    factory.functions?.['getInitData(address,bytes)'];
-  if (overloadedGetInitData) {
-    const [initData] = await overloadedGetInitData(auth.validator, auth.data);
-    return initData;
-  }
-
-  return factory.getInitData(auth.validator, auth.data);
-};
+) => await factory['getInitData(address,bytes)'](auth.validator, auth.data);
 
 export const toPaliSmartAccount = async ({
   address,
