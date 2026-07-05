@@ -237,6 +237,9 @@ export class BigNumberCompat {
 
 export { BigNumberCompat as BigNumber };
 
+export const toEthersBigNumberish = (value: BigNumberish | null | undefined) =>
+  toBigIntValue(value);
+
 export const parseUnits = (value: string, unit?: string | number) =>
   BigNumberCompat.from(ethersParseUnits(value, unit));
 

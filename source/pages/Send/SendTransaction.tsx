@@ -29,7 +29,11 @@ import { convertBigNumberToString } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { handleTransactionError } from 'utils/errorHandling';
-import { parseUnits, formatEther } from 'utils/ethersV6Compat';
+import {
+  parseUnits,
+  formatEther,
+  toEthersBigNumberish,
+} from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
@@ -368,7 +372,7 @@ export const SendTransaction = () => {
 
         const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
           'approve',
-          [decodedTxData?.inputs[0], parsedAmount]
+          [decodedTxData?.inputs[0], toEthersBigNumberish(parsedAmount)]
         );
 
         txToSend = { ...tx, data: encodedDataWithCustomValue };
