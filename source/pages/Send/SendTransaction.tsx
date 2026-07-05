@@ -46,6 +46,7 @@ import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
+  type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
@@ -384,6 +385,39 @@ export const SendTransaction = () => {
         const isPasskeyAccount = Boolean(
           activeAccount.isSmartAccount && activeAccount.smartAccount
         );
+        const getSmartAccountFeeOverrides = ():
+          | SmartAccountFeeOverrides
+          | undefined => {
+          if (isLegacyTransaction || !fee) {
+            return undefined;
+          }
+
+          const maxPriorityFeePerGas =
+            customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+              ? customFee.maxPriorityFeePerGas
+              : fee.maxPriorityFeePerGas;
+          const maxFeePerGas =
+            customFee.isCustom && customFee.maxFeePerGas > 0
+              ? customFee.maxFeePerGas
+              : fee.maxFeePerGas;
+
+          if (
+            !maxPriorityFeePerGas ||
+            maxPriorityFeePerGas <= 0 ||
+            !maxFeePerGas ||
+            maxFeePerGas <= 0
+          ) {
+            return undefined;
+          }
+
+          return {
+            maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
+            maxPriorityFeePerGas: parseUnits(
+              safeToFixed(maxPriorityFeePerGas),
+              9
+            ).toString(),
+          };
+        };
 
         if (isPasskeyAccount) {
           const candidateTo =
@@ -416,6 +450,7 @@ export const SendTransaction = () => {
                 data: validateTransactionDataValue(txToSend.data),
               },
             ],
+            feeOverrides: getSmartAccountFeeOverrides(),
             smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {

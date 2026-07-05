@@ -976,7 +976,13 @@ class SmartAccountController {
   public async prepareSmartAccountExecutions(
     params: Array<{ data?: string; target: string; value: string }>,
     accountId?: number,
-    options: { useCachedMetadata?: boolean } = {}
+    options: {
+      feeOverrides?: {
+        maxFeePerGas?: string;
+        maxPriorityFeePerGas?: string;
+      };
+      useCachedMetadata?: boolean;
+    } = {}
   ) {
     await this.assertSmartAccountExecutionTargetsAllowed(params);
 
@@ -1066,7 +1072,15 @@ class SmartAccountController {
       validatorKind: validatorProfile.validatorKind,
     });
     const maxFeePerGas = BigNumber.from(
-      feeData.maxFeePerGas || feeData.gasPrice || 0
+      options.feeOverrides?.maxFeePerGas ||
+        feeData.maxFeePerGas ||
+        feeData.gasPrice ||
+        0
+    );
+    const maxPriorityFeePerGas = BigNumber.from(
+      options.feeOverrides?.maxPriorityFeePerGas ||
+        feeData.maxPriorityFeePerGas ||
+        0
     );
     const primaryGasPayer = this.getWalletGasPayerCandidates(
       active.metadata.deploymentGasPayer
@@ -1089,7 +1103,7 @@ class SmartAccountController {
     const useZkSysGasTank = primaryGasPayerUsesTank;
     const gasFees = getSmartAccountUserOpGasFees({
       maxFeePerGas: maxFeePerGas.toString(),
-      maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas || 0).toString(),
+      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
       useZkSysGasTank,
     });
     const unsignedUserOperation = buildSmartAccountUserOperation({
@@ -1122,6 +1136,9 @@ class SmartAccountController {
       executions,
       gasPayer,
       maxFeePerGas: maxFeePerGas.toString(),
+      maxPriorityFeePerGas: maxPriorityFeePerGas.gt(0)
+        ? maxPriorityFeePerGas.toString()
+        : undefined,
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,
@@ -1188,6 +1205,7 @@ class SmartAccountController {
       type: PaliKeyringAccountType;
     };
     maxFeePerGas?: string;
+    maxPriorityFeePerGas?: string;
     mode?: string;
     signature: string;
     skipRapidPolling?: boolean;
@@ -1264,7 +1282,17 @@ class SmartAccountController {
         );
       }
       const response = await this.deps.sendAndSaveEthTransaction(
-        { data: callData, to: entryPointAddress, value: '0x0' },
+        {
+          data: callData,
+          ...(params.maxFeePerGas && params.maxPriorityFeePerGas
+            ? {
+                maxFeePerGas: params.maxFeePerGas,
+                maxPriorityFeePerGas: params.maxPriorityFeePerGas,
+              }
+            : {}),
+          to: entryPointAddress,
+          value: '0x0',
+        },
         false,
         { id: gasPayer.id, type: gasPayer.type },
         {

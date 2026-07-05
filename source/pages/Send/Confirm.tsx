@@ -59,6 +59,7 @@ import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
+  type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -461,6 +462,40 @@ export const SendConfirm = () => {
         basicTxValues.transactionType ||
         (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
 
+      const getSmartAccountFeeOverrides = ():
+        | SmartAccountFeeOverrides
+        | undefined => {
+        if (isEIP1559Compatible === false) {
+          return undefined;
+        }
+
+        const maxPriorityFeePerGas =
+          customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+            ? customFee.maxPriorityFeePerGas
+            : fee.maxPriorityFeePerGas;
+        const maxFeePerGas =
+          customFee.isCustom && customFee.maxFeePerGas > 0
+            ? customFee.maxFeePerGas
+            : fee.maxFeePerGas;
+
+        if (
+          !maxPriorityFeePerGas ||
+          maxPriorityFeePerGas <= 0 ||
+          !maxFeePerGas ||
+          maxFeePerGas <= 0
+        ) {
+          return undefined;
+        }
+
+        return {
+          maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
+          maxPriorityFeePerGas: parseUnits(
+            safeToFixed(maxPriorityFeePerGas),
+            9
+          ).toString(),
+        };
+      };
+
       const submitSmartAccountExecution = async (
         target: string,
         value: string,
@@ -476,6 +511,7 @@ export const SendConfirm = () => {
             }),
             controllerEmitter,
             executions: [{ target, value, data }],
+            feeOverrides: getSmartAccountFeeOverrides(),
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -524,12 +560,12 @@ export const SendConfirm = () => {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        const numericTokenId = Number(tokenId);
-        if (isNaN(numericTokenId) || numericTokenId < 0) {
+        const tokenIdString = String(tokenId).trim();
+        if (!/^\d+$/.test(tokenIdString)) {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        return BigNumber.from(tokenId);
+        return BigNumber.from(tokenIdString);
       };
 
       const buildPasskeyTokenTransferData = async () => {
