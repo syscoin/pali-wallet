@@ -240,14 +240,21 @@ export { BigNumberCompat as BigNumber };
 export const toEthersBigNumberish = (value: BigNumberish | null | undefined) =>
   toBigIntValue(value);
 
+const normalizeUnit = (unit?: string | number) => {
+  if (typeof unit !== 'string') return unit;
+
+  const trimmed = unit.trim();
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : unit;
+};
+
 export const parseUnits = (value: string, unit?: string | number) =>
-  BigNumberCompat.from(ethersParseUnits(value, unit));
+  BigNumberCompat.from(ethersParseUnits(value, normalizeUnit(unit)));
 
 export const parseEther = (value: string) =>
   BigNumberCompat.from(ethersParseEther(value));
 
 export const formatUnits = (value: BigNumberish, unit?: string | number) =>
-  ethersFormatUnits(toBigIntValue(value), unit);
+  ethersFormatUnits(toBigIntValue(value), normalizeUnit(unit));
 
 export const formatEther = (value: BigNumberish) =>
   ethersFormatEther(toBigIntValue(value));
