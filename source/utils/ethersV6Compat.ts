@@ -1,17 +1,39 @@
-import * as ethersModule from 'ethers';
-
-const ethersAny = (ethersModule as any).ethers ?? ethersModule;
-const utilsAny = ethersAny.utils ?? ethersAny;
-const providersAny = ethersAny.providers ?? ethersAny;
-
-const AbiCoderImpl =
-  ethersAny.AbiCoder ??
-  utilsAny.AbiCoder ??
-  class {
-    static defaultAbiCoder() {
-      return utilsAny.defaultAbiCoder;
-    }
-  };
+import {
+  AbiCoder as EthersAbiCoder,
+  encodeBytes32String as ethersEncodeBytes32String,
+  Interface as EthersInterface,
+} from 'ethers/abi';
+import {
+  getAddress as ethersGetAddress,
+  isAddress as ethersIsAddress,
+} from 'ethers/address';
+import { Contract as EthersContract } from 'ethers/contract';
+import {
+  keccak256 as ethersKeccak256,
+  Signature as EthersSignature,
+} from 'ethers/crypto';
+import {
+  hashMessage as ethersHashMessage,
+  id as ethersId,
+  namehash as ethersNamehash,
+  TypedDataEncoder as EthersTypedDataEncoder,
+} from 'ethers/hash';
+import { JsonRpcProvider as EthersJsonRpcProvider } from 'ethers/providers';
+import {
+  concat as ethersConcat,
+  dataSlice as ethersDataSlice,
+  formatEther as ethersFormatEther,
+  formatUnits as ethersFormatUnits,
+  getBytes as ethersGetBytes,
+  hexlify as ethersHexlify,
+  isHexString as ethersIsHexString,
+  parseEther as ethersParseEther,
+  parseUnits as ethersParseUnits,
+  toBeHex as ethersToBeHex,
+  toUtf8Bytes as ethersToUtf8Bytes,
+  zeroPadValue as ethersZeroPadValue,
+} from 'ethers/utils';
+import { Wallet as EthersWallet } from 'ethers/wallet';
 
 export type Block = any;
 export type Contract = any;
@@ -21,9 +43,9 @@ export type Result = any;
 export type TransactionReceipt = any;
 export type TransactionResponse = any;
 
-export const AbiCoder: any = AbiCoderImpl;
-export const Contract: any = ethersAny.Contract;
-const InterfaceImpl: any = ethersAny.Interface ?? utilsAny.Interface;
+export const AbiCoder: any = EthersAbiCoder;
+export const Contract: any = EthersContract;
+const InterfaceImpl: any = EthersInterface;
 if (InterfaceImpl?.prototype && !InterfaceImpl.prototype.getSighash) {
   InterfaceImpl.prototype.getSighash = function getSighash(fragment: any) {
     return this.getFunction(fragment).selector;
@@ -37,43 +59,34 @@ if (InterfaceImpl?.prototype && !InterfaceImpl.prototype.getEventTopic) {
   };
 }
 export const Interface: any = InterfaceImpl;
-export const JsonRpcProvider: any = providersAny.JsonRpcProvider;
-export const Signature: any = ethersAny.Signature;
-export const TypedDataEncoder: any =
-  ethersAny.TypedDataEncoder ?? utilsAny._TypedDataEncoder;
-export const Wallet: any = ethersAny.Wallet;
-export const ZeroAddress: string =
-  ethersAny.ZeroAddress ?? ethersAny.constants?.AddressZero;
-export const defaultAbiCoder = AbiCoder.defaultAbiCoder
-  ? AbiCoder.defaultAbiCoder()
-  : utilsAny.defaultAbiCoder;
+export const JsonRpcProvider: any = EthersJsonRpcProvider;
+export const Signature: any = EthersSignature;
+export const TypedDataEncoder: any = EthersTypedDataEncoder;
+export const Wallet: any = EthersWallet;
+export const ZeroAddress: string = '0x0000000000000000000000000000000000000000';
+export const defaultAbiCoder = AbiCoder.defaultAbiCoder();
 export const AddressZero = ZeroAddress;
-export const concat: any = ethersAny.concat ?? utilsAny.hexConcat;
-export const dataSlice: any = ethersAny.dataSlice ?? utilsAny.hexDataSlice;
-export const encodeBytes32String: any =
-  ethersAny.encodeBytes32String ?? utilsAny.formatBytes32String;
-export const getAddress: any = ethersAny.getAddress ?? utilsAny.getAddress;
-export const getBytes: any = ethersAny.getBytes ?? utilsAny.arrayify;
-export const hexlify: any = ethersAny.hexlify ?? utilsAny.hexlify;
-export const id: any = ethersAny.id ?? utilsAny.id;
-export const isAddress: any = ethersAny.isAddress ?? utilsAny.isAddress;
-export const isHexString: any = ethersAny.isHexString ?? utilsAny.isHexString;
-export const keccak256: any = ethersAny.keccak256 ?? utilsAny.keccak256;
-export const namehash: any = ethersAny.namehash ?? utilsAny.namehash;
-export const toBeHex: any = ethersAny.toBeHex ?? utilsAny.hexlify;
-export const toUtf8Bytes: any = ethersAny.toUtf8Bytes ?? utilsAny.toUtf8Bytes;
-export const zeroPadValue: any = ethersAny.zeroPadValue ?? utilsAny.hexZeroPad;
+export const concat: any = ethersConcat;
+export const dataSlice: any = ethersDataSlice;
+export const encodeBytes32String: any = ethersEncodeBytes32String;
+export const getAddress: any = ethersGetAddress;
+export const getBytes: any = ethersGetBytes;
+export const hexlify: any = ethersHexlify;
+export const id: any = ethersId;
+export const isAddress: any = ethersIsAddress;
+export const isHexString: any = ethersIsHexString;
+export const keccak256: any = ethersKeccak256;
+export const namehash: any = ethersNamehash;
+export const toBeHex: any = ethersToBeHex;
+export const toUtf8Bytes: any = ethersToUtf8Bytes;
+export const zeroPadValue: any = ethersZeroPadValue;
 export const arrayify = getBytes;
 export const hexConcat = concat;
 export const hexDataSlice = dataSlice;
 export const hexZeroPad = zeroPadValue;
 export const formatBytes32String = encodeBytes32String;
-export const hashMessage: any = ethersAny.hashMessage ?? utilsAny.hashMessage;
+export const hashMessage: any = ethersHashMessage;
 export const _TypedDataEncoder = TypedDataEncoder;
-const ethersParseUnits: any = ethersAny.parseUnits ?? utilsAny.parseUnits;
-const ethersParseEther: any = ethersAny.parseEther ?? utilsAny.parseEther;
-const ethersFormatUnits: any = ethersAny.formatUnits ?? utilsAny.formatUnits;
-const ethersFormatEther: any = ethersAny.formatEther ?? utilsAny.formatEther;
 
 export type BigNumberish =
   | bigint
