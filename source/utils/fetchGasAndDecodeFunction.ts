@@ -59,7 +59,7 @@ export const fetchGasAndDecodeFunction = async (
     'network maxFeePerGas'
   ); // 2 Gwei fallback
   const networkMaxPriorityFeePerGas = safeBigNumber(
-    feeData?.maxPriorityFeePerGas || feeData?.gasPrice || '0x0',
+    feeData?.maxPriorityFeePerGas || feeData?.gasPrice,
     '0x3b9aca00',
     'network maxPriorityFeePerGas'
   ); // 1 Gwei fallback
@@ -182,6 +182,7 @@ export const fetchGasAndDecodeFunction = async (
       const clonedTx = { ...dataTx };
       delete clonedTx.gasLimit;
       delete clonedTx.gas;
+      delete clonedTx.gasPrice;
       delete clonedTx.maxPriorityFeePerGas;
       delete clonedTx.maxFeePerGas;
       if (!dataTx.to) {
