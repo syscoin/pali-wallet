@@ -627,7 +627,7 @@ export const SendTransaction = () => {
               : '0x0', // Convert value to hex string using safe conversion
             nonce: customNonce,
             maxPriorityFeePerGas: Boolean(
-              customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+              customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
             )
               ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
               : tx.maxPriorityFeePerGas != null
