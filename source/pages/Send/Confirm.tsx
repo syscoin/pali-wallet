@@ -499,7 +499,8 @@ export const SendConfirm = () => {
       const submitSmartAccountExecution = async (
         target: string,
         value: string,
-        data: string
+        data: string,
+        feeOverrides = getSmartAccountFeeOverrides()
       ) => {
         try {
           await signAndSubmitSmartAccountExecutions({
@@ -511,7 +512,7 @@ export const SendConfirm = () => {
             }),
             controllerEmitter,
             executions: [{ target, value, data }],
-            feeOverrides: getSmartAccountFeeOverrides(),
+            feeOverrides,
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -673,6 +674,7 @@ export const SendConfirm = () => {
                 ),
                 18
               );
+              let maxSendFeeOverrides: SmartAccountFeeOverrides | undefined;
 
               if (basicTxValues.isMax) {
                 const balanceWei = parseUnits(
@@ -698,8 +700,18 @@ export const SendConfirm = () => {
                     'wallet',
                     'ethereumTransaction',
                     'getFeeDataWithDynamicMaxPriorityFeePerGas',
-                  ])) as { maxFeePerGas?: BigNumber | string };
+                  ])) as {
+                    maxFeePerGas?: BigNumber | string;
+                    maxPriorityFeePerGas?: BigNumber | string;
+                  };
                   gasPriceWei = BigNumber.from(feeData.maxFeePerGas || 0);
+                  maxSendFeeOverrides = {
+                    maxFeePerGas: gasPriceWei.toString(),
+                    maxPriorityFeePerGas: BigNumber.from(
+                      feeData.maxPriorityFeePerGas ??
+                        parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9)
+                    ).toString(),
+                  };
                 }
 
                 if (gasPriceWei.lte(0)) {
@@ -740,7 +752,12 @@ export const SendConfirm = () => {
               }
 
               const amount = amountWei.toHexString();
-              await submitSmartAccountExecution(destinationTo, amount, '0x');
+              await submitSmartAccountExecution(
+                destinationTo,
+                amount,
+                '0x',
+                maxSendFeeOverrides
+              );
 
               setConfirmed(true);
               setLoading(false);
