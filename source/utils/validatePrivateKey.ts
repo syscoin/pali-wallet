@@ -5,7 +5,7 @@ import { INetwork } from 'types/network';
 // secp256k1 group order (N). A canonical private key must satisfy
 // 1 <= key < N. For equal-length lowercase hex strings, lexicographic
 // comparison matches numeric comparison, so plain string checks suffice and
-// avoid pulling @ethersproject/wallet (and its elliptic/bn.js/aes-js deps,
+// avoid pulling ethers wallet (and its elliptic/bn.js/aes-js deps,
 // ~170KB) into the UI bundle.
 const SECP256K1_ORDER_HEX =
   'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141';

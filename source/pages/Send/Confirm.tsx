@@ -59,6 +59,7 @@ import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
+  type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -461,10 +462,45 @@ export const SendConfirm = () => {
         basicTxValues.transactionType ||
         (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
 
+      const getSmartAccountFeeOverrides = ():
+        | SmartAccountFeeOverrides
+        | undefined => {
+        if (isEIP1559Compatible === false) {
+          return undefined;
+        }
+
+        const maxPriorityFeePerGas =
+          customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
+            ? customFee.maxPriorityFeePerGas
+            : fee.maxPriorityFeePerGas;
+        const maxFeePerGas =
+          customFee.isCustom && customFee.maxFeePerGas > 0
+            ? customFee.maxFeePerGas
+            : fee.maxFeePerGas;
+
+        if (
+          maxPriorityFeePerGas == null ||
+          maxPriorityFeePerGas < 0 ||
+          !maxFeePerGas ||
+          maxFeePerGas <= 0
+        ) {
+          return undefined;
+        }
+
+        return {
+          maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
+          maxPriorityFeePerGas: parseUnits(
+            safeToFixed(maxPriorityFeePerGas),
+            9
+          ).toString(),
+        };
+      };
+
       const submitSmartAccountExecution = async (
         target: string,
         value: string,
-        data: string
+        data: string,
+        feeOverrides = getSmartAccountFeeOverrides()
       ) => {
         try {
           await signAndSubmitSmartAccountExecutions({
@@ -476,6 +512,7 @@ export const SendConfirm = () => {
             }),
             controllerEmitter,
             executions: [{ target, value, data }],
+            feeOverrides,
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -524,12 +561,18 @@ export const SendConfirm = () => {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        const numericTokenId = Number(tokenId);
-        if (isNaN(numericTokenId) || numericTokenId < 0) {
+        let tokenIdValue: BigNumber;
+        try {
+          tokenIdValue = BigNumber.from(tokenId);
+        } catch {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        return BigNumber.from(tokenId);
+        if (tokenIdValue.lt(0)) {
+          throw new Error(t('send.invalidTokenId'));
+        }
+
+        return tokenIdValue;
       };
 
       const buildPasskeyTokenTransferData = async () => {
@@ -637,6 +680,7 @@ export const SendConfirm = () => {
                 ),
                 18
               );
+              let maxSendFeeOverrides: SmartAccountFeeOverrides | undefined;
 
               if (basicTxValues.isMax) {
                 const balanceWei = parseUnits(
@@ -662,8 +706,18 @@ export const SendConfirm = () => {
                     'wallet',
                     'ethereumTransaction',
                     'getFeeDataWithDynamicMaxPriorityFeePerGas',
-                  ])) as { maxFeePerGas?: BigNumber | string };
+                  ])) as {
+                    maxFeePerGas?: BigNumber | string;
+                    maxPriorityFeePerGas?: BigNumber | string;
+                  };
                   gasPriceWei = BigNumber.from(feeData.maxFeePerGas || 0);
+                  maxSendFeeOverrides = {
+                    maxFeePerGas: gasPriceWei.toString(),
+                    maxPriorityFeePerGas: BigNumber.from(
+                      feeData.maxPriorityFeePerGas ??
+                        parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9)
+                    ).toString(),
+                  };
                 }
 
                 if (gasPriceWei.lte(0)) {
@@ -704,7 +758,12 @@ export const SendConfirm = () => {
               }
 
               const amount = amountWei.toHexString();
-              await submitSmartAccountExecution(destinationTo, amount, '0x');
+              await submitSmartAccountExecution(
+                destinationTo,
+                amount,
+                '0x',
+                maxSendFeeOverrides
+              );
 
               setConfirmed(true);
               setLoading(false);

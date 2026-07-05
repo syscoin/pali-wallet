@@ -66,8 +66,8 @@ describe('Satoshi to SYS Conversion Consistency', () => {
       expect(satoshisStr).toBe('1234567890123456789'); // Original has 789 at end
       expect(satoshisNum.toString()).toBe('1234567890123456800'); // Number conversion lost precision - now 800
 
-      // The safe method uses BigNumber which handles large numbers better
-      expect(safeResult).toBe('12345678901.234568'); // formatSyscoinValue result
+      // The safe method preserves the exact satoshi precision.
+      expect(safeResult).toBe('12345678901.23456789');
 
       // Both methods end up with similar display values due to the extreme size,
       // but the key difference is HOW they get there:
@@ -85,8 +85,7 @@ describe('Satoshi to SYS Conversion Consistency', () => {
       const satoshis = '9999999999999999';
       const result = formatSyscoinValue(satoshis);
 
-      // formatSyscoinValue actually returns a rounded value
-      expect(parseFloat(result)).toBe(100000000); // Rounded for display
+      expect(result).toBe('99999999.99999999');
     });
   });
 

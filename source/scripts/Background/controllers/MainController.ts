@@ -2817,7 +2817,13 @@ class MainController {
       value: string;
     }>,
     accountId?: number,
-    options?: { useCachedMetadata?: boolean }
+    options?: {
+      feeOverrides?: {
+        maxFeePerGas?: string;
+        maxPriorityFeePerGas?: string;
+      };
+      useCachedMetadata?: boolean;
+    }
   ): Promise<{
     actionHash: string;
     execution: {
@@ -2838,6 +2844,8 @@ class MainController {
       id: number;
       type: KeyringAccountType;
     };
+    maxFeePerGas: string;
+    maxPriorityFeePerGas?: string;
     mode: string;
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
@@ -2863,6 +2871,8 @@ class MainController {
       id: number;
       type: KeyringAccountType;
     };
+    maxFeePerGas?: string;
+    maxPriorityFeePerGas?: string;
     mode?: string;
     signature: string;
     userOperation?: SmartAccountPackedUserOperation;

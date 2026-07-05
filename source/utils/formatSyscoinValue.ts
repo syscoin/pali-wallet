@@ -6,6 +6,12 @@ import {
   scientificToIntegerString,
 } from './bigNumberString';
 
+const trimRedundantDecimalZeros = (value: string): string => {
+  if (!value.includes('.')) return value;
+
+  return value.replace(/\.?0+$/, '');
+};
+
 /**
  * Format Syscoin/UTXO values from satoshis (8 decimals) to display format
  * Handles precision correctly without using direct division
@@ -45,9 +51,9 @@ export const formatSyscoinValue = (
       return '0';
     }
 
-    // Use formatUnits which properly handles the decimal conversion
-    // UTXO uses 8 decimals (satoshis)
-    return formatUnits(bnValue, decimals);
+    // Use formatUnits for exact decimal conversion, then normalize display-only
+    // zeros such as "1.0" without losing satoshi precision.
+    return trimRedundantDecimalZeros(formatUnits(bnValue, decimals));
   } catch (error) {
     console.error('Error formatting Syscoin value:', error);
     return '0';
@@ -133,8 +139,8 @@ export const formatGweiValue = (value: string | number | BigNumber): string => {
       return '0';
     }
 
-    // Use formatUnits with 9 decimals for Gwei
-    return formatUnits(bnValue, 9);
+    // Use formatUnits with 9 decimals for Gwei, then strip display-only zeros.
+    return trimRedundantDecimalZeros(formatUnits(bnValue, 9));
   } catch (error) {
     console.error('Error formatting Gwei value:', error);
     return '0';

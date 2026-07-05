@@ -17,9 +17,16 @@ jest.mock('utils/security/blacklistService', () => ({
   blacklistService: {},
 }));
 
+import { KeyringAccountType } from 'types/network';
+import {
+  buildSmartAccountUserOperation,
+  encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
+} from 'utils/smartAccount';
+
 import SmartAccountController from './index';
 
-const ACCOUNT_ADDRESS = '0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa';
+const ACCOUNT_ADDRESS = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const CHAIN_ID = 57;
 
 const buildAccount = () => ({
@@ -134,5 +141,98 @@ describe('SmartAccountController metadata hydration cache', () => {
     const cachedResult = await controller.hydrateSmartAccountMetadata(account);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(cachedResult.marker).toBe('fresh');
+  });
+});
+
+describe('SmartAccountController smart account execution fees', () => {
+  const gasPayer = {
+    address: '0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB',
+    id: 0,
+    type: KeyringAccountType.HDAccount,
+  };
+
+  const buildController = () => {
+    const sendAndSaveEthTransaction = jest.fn().mockResolvedValue({
+      hash: '0xabc',
+      wait: jest.fn(),
+    });
+    const controller: any = new SmartAccountController({
+      sendAndSaveEthTransaction,
+    } as any);
+    controller.getActiveSmartAccount = jest.fn(() => ({
+      account: { address: ACCOUNT_ADDRESS, id: 9 },
+      metadata: {
+        chainId: CHAIN_ID,
+        deploymentGasPayer: gasPayer,
+      },
+    }));
+    controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(gasPayer);
+    controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+    controller.invalidateHydratedMetadata = jest.fn();
+
+    return { controller, sendAndSaveEthTransaction };
+  };
+
+  const buildUserOperation = () =>
+    buildSmartAccountUserOperation({
+      accountGasLimits: encodeSmartAccountGasLimits({
+        callGasLimit: 1,
+        verificationGasLimit: 1,
+      }),
+      callData: '0x',
+      gasFees: encodeSmartAccountGasFees({
+        maxFeePerGas: 1,
+        maxPriorityFeePerGas: 0,
+      }),
+      nonce: '0',
+      preVerificationGas: '0',
+      sender: ACCOUNT_ADDRESS,
+    });
+
+  it('does not add EIP-1559 outer fees when legacy preparation has no priority fee', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+
+    await controller.submitSmartAccountExecution({
+      executions: [],
+      gasPayer,
+      maxFeePerGas: '1000000000',
+      signature: '0x1234',
+      userOperation: buildUserOperation(),
+    });
+
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        maxFeePerGas: expect.anything(),
+        maxPriorityFeePerGas: expect.anything(),
+      }),
+      false,
+      { id: gasPayer.id, type: gasPayer.type },
+      expect.any(Object),
+      expect.any(Object)
+    );
+  });
+
+  it('preserves explicit zero priority fee overrides for the outer transaction', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+
+    await controller.submitSmartAccountExecution({
+      executions: [],
+      gasPayer,
+      maxFeePerGas: '1000000000',
+      maxPriorityFeePerGas: '0',
+      signature: '0x1234',
+      userOperation: buildUserOperation(),
+    });
+
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        maxFeePerGas: '1000000000',
+        maxPriorityFeePerGas: '0',
+      }),
+      false,
+      { id: gasPayer.id, type: gasPayer.type },
+      expect.any(Object),
+      expect.any(Object)
+    );
   });
 });

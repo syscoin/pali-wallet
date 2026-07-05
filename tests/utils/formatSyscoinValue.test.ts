@@ -12,7 +12,7 @@ describe('formatSyscoinValue', () => {
       expect(formatSyscoinValue('100000000')).toBe('1');
       expect(formatSyscoinValue('50000000')).toBe('0.5');
       expect(formatSyscoinValue('12345678')).toBe('0.12345678');
-      expect(formatSyscoinValue('1')).toBe('1e-8'); // formatUnits returns scientific notation for very small numbers
+      expect(formatSyscoinValue('1')).toBe('0.00000001');
     });
 
     it('should handle BigNumber input', () => {
@@ -117,7 +117,7 @@ describe('formatSyscoinValue', () => {
       expect(formatGweiValue('1000000000')).toBe('1');
       expect(formatGweiValue('500000000')).toBe('0.5');
       expect(formatGweiValue('123456789')).toBe('0.123456789');
-      expect(formatGweiValue('1')).toBe('1e-9'); // formatUnits returns scientific notation for very small numbers
+      expect(formatGweiValue('1')).toBe('0.000000001');
     });
 
     it('should handle BigNumber input', () => {
