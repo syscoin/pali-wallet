@@ -745,6 +745,9 @@ const VaultState = createSlice({
           Boolean(transaction.isSpeedUp) ||
           Boolean(existingTransaction.replacesHash) ||
           Boolean(transaction.replacesHash);
+        const isReplaced =
+          Boolean(existingTransaction.isReplaced) ||
+          Boolean(transaction.isReplaced);
 
         return {
           ...transaction,
@@ -759,6 +762,10 @@ const VaultState = createSlice({
             existingTransaction.replacementIndexed ||
             transaction.replacementIndexed ||
             isReplacement,
+          isReplaced,
+          status: isReplaced
+            ? existingTransaction.status || transaction.status || 'replaced'
+            : transaction.status,
         } as any;
       });
       const mergedTransactions = [
