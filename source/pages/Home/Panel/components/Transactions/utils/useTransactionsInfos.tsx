@@ -87,6 +87,9 @@ export const useTransactionsListConfig = (
     return userTransactions
       .filter((item: any) => {
         if (!isBitcoinBased) {
+          if (item?.isCancel && item?.replacesHash) {
+            return false;
+          }
           return item?.chainId === chainId;
         }
         return item !== undefined && item !== null;

@@ -39,6 +39,7 @@ export interface IEvmTransaction {
 
   hash?: string;
   // Transaction replacement tracking
+  isCancel?: boolean;
   isReplaced?: boolean;
   isSpeedUp?: boolean;
 

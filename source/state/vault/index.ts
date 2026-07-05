@@ -3,7 +3,6 @@ import take from 'lodash/take';
 
 import {
   IEvmTransaction,
-  IEvmTransactionResponse,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
 import {
@@ -555,6 +554,13 @@ const VaultState = createSlice({
             const isSmartAccountExecution =
               Boolean(transactionAny.smartAccountExecutionFrom) ||
               Boolean(existingTxAny.smartAccountExecutionFrom);
+            const hasReplacementMetadata =
+              Boolean(transactionAny.isCancel) ||
+              Boolean(existingTxAny.isCancel) ||
+              Boolean(transactionAny.isSpeedUp) ||
+              Boolean(existingTxAny.isSpeedUp) ||
+              Boolean(transactionAny.replacesHash) ||
+              Boolean(existingTxAny.replacesHash);
 
             if (isSmartAccountExecution) {
               currentUserTransactions[existingTxIndex] = {
@@ -563,6 +569,19 @@ const VaultState = createSlice({
                 smartAccountExecutionFrom:
                   transactionAny.smartAccountExecutionFrom ||
                   existingTxAny.smartAccountExecutionFrom,
+                isCancel: existingTxAny.isCancel || transactionAny.isCancel,
+                isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
+                replacesHash:
+                  existingTxAny.replacesHash || transactionAny.replacesHash,
+              } as any;
+            } else if (hasReplacementMetadata) {
+              currentUserTransactions[existingTxIndex] = {
+                ...existingTxAny,
+                ...transactionAny,
+                isCancel: existingTxAny.isCancel || transactionAny.isCancel,
+                isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
+                replacesHash:
+                  existingTxAny.replacesHash || transactionAny.replacesHash,
               } as any;
             } else if (
               hasMoreConfirmations ||
@@ -635,6 +654,16 @@ const VaultState = createSlice({
           .filter(Boolean)
           .map((transactionId: string) => transactionId.toLowerCase())
       );
+      const existingTransactionsById = new Map(
+        (existingTransactions as Array<IEvmTransaction | ISysTransaction>)
+          .map((transaction: any) => {
+            const transactionId = transaction.hash || transaction.txid;
+            return transactionId
+              ? [transactionId.toLowerCase(), transaction]
+              : undefined;
+          })
+          .filter(Boolean) as Array<[string, IEvmTransaction | ISysTransaction]>
+      );
       const preservedLocalPendingTransactions = (
         existingTransactions as Array<IEvmTransaction | ISysTransaction>
       ).filter((transaction: any) => {
@@ -644,7 +673,11 @@ const VaultState = createSlice({
           return false;
         }
         if (networkType === TransactionsType.Ethereum) {
-          return Boolean(transaction.smartAccountExecutionFrom);
+          return Boolean(
+            transaction.smartAccountExecutionFrom ||
+              transaction.isSpeedUp ||
+              transaction.isCancel
+          );
         }
 
         const isConfirmed =
@@ -656,9 +689,30 @@ const VaultState = createSlice({
 
         return !isConfirmed;
       });
+      const refreshedTransactions = transactions.map((transaction: any) => {
+        const transactionId = transaction.hash || transaction.txid;
+        const existingTransaction = transactionId
+          ? (existingTransactionsById.get(transactionId.toLowerCase()) as any)
+          : undefined;
+
+        if (networkType !== TransactionsType.Ethereum || !existingTransaction) {
+          return transaction;
+        }
+
+        return {
+          ...transaction,
+          smartAccountExecutionFrom:
+            existingTransaction.smartAccountExecutionFrom ||
+            transaction.smartAccountExecutionFrom,
+          isCancel: existingTransaction.isCancel || transaction.isCancel,
+          isSpeedUp: existingTransaction.isSpeedUp || transaction.isSpeedUp,
+          replacesHash:
+            existingTransaction.replacesHash || transaction.replacesHash,
+        } as any;
+      });
       const mergedTransactions = [
         ...preservedLocalPendingTransactions,
-        ...transactions,
+        ...refreshedTransactions,
       ];
 
       // Set refreshed transactions while preserving local pending txs that
@@ -670,64 +724,6 @@ const VaultState = createSlice({
       } else {
         currentAccountTransactions[networkType][chainId] =
           mergedTransactions as any;
-      }
-    },
-
-    setTransactionStatusToCanceled(
-      state: IVaultState,
-      action: PayloadAction<{
-        chainID: number;
-        txHash: string;
-      }>
-    ) {
-      const { txHash, chainID } = action.payload;
-
-      const { isBitcoinBased, activeAccount } = state;
-
-      const { id, type } = activeAccount;
-
-      if (!state.accounts[type][id]) {
-        throw new Error(
-          'Unable to change Transaction to Canceled. Account not found'
-        );
-      }
-
-      if (isBitcoinBased) {
-        return;
-      }
-
-      // Ensure accountTransactions exists
-      if (!state.accountTransactions[type]) {
-        state.accountTransactions[type] = {};
-      }
-      if (!state.accountTransactions[type][id]) {
-        state.accountTransactions[type][id] = {
-          ethereum: {},
-          syscoin: {},
-        };
-      }
-
-      const currentUserTransactions = state.accountTransactions[type][id][
-        TransactionsType.Ethereum
-      ][chainID] as IEvmTransactionResponse[];
-
-      if (!currentUserTransactions) {
-        return; // No transactions to cancel
-      }
-
-      const findTxIndex = currentUserTransactions.findIndex(
-        (tx: IEvmTransactionResponse) => tx.hash === txHash
-      );
-
-      if (findTxIndex !== -1) {
-        state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
-          findTxIndex
-        ] = {
-          ...state.accountTransactions[type][id][TransactionsType.Ethereum][
-            chainID
-          ][findTxIndex],
-          isCanceled: true,
-        } as IEvmTransactionResponse;
       }
     },
 
@@ -743,7 +739,7 @@ const VaultState = createSlice({
       state.shouldShowFaucetModal[chainId] = isOpen;
     },
 
-    setTransactionStatusToAccelerated(
+    setTransactionStatusToReplaced(
       state: IVaultState,
       action: PayloadAction<{
         chainID: number;
@@ -758,7 +754,7 @@ const VaultState = createSlice({
 
       if (!state.accounts[type][id]) {
         throw new Error(
-          'Unable to replace the accelerated Transaction. Account not found'
+          'Unable to mark the replaced transaction. Account not found'
         );
       }
 
@@ -822,8 +818,7 @@ export const {
   setSingleTransactionToState,
   setAccountTransactions,
   setPasskeyCredentialProfile,
-  setTransactionStatusToCanceled,
-  setTransactionStatusToAccelerated,
+  setTransactionStatusToReplaced,
   setAccounts,
 } = VaultState.actions;
 
