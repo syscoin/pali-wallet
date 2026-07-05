@@ -1,8 +1,9 @@
-import { formatEther } from '@ethersproject/units';
 import {
   CustomJsonRpcProvider,
   IKeyringAccountState,
 } from '@sidhujag/sysweb3-keyring';
+
+import { formatEther } from 'utils/ethersV6Compat';
 
 import { IEvmBalanceController } from './types';
 

@@ -1,5 +1,3 @@
-import { getAddress, isAddress } from '@ethersproject/address';
-import { isHexString } from '@ethersproject/bytes';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -14,6 +12,8 @@ import {
   SmartAccountInstalledModule,
 } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { isHexString } from 'utils/ethersV6Compat';
+import { getAddress, isAddress } from 'utils/ethersV6Compat';
 import {
   encodeInstallValidatorModuleCall,
   encodeRotateValidatorModuleCall,

@@ -1,9 +1,9 @@
-import { Block } from '@ethersproject/providers';
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { Block } from 'utils/ethersV6Compat';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 // Module-level cache that persists across component mounts

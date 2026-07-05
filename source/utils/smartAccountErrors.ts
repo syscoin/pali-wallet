@@ -1,4 +1,4 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 /**
  * Shared smart-account (ERC-4337) error classification helpers.

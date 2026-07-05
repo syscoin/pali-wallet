@@ -1,14 +1,12 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/strings');
-
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { hexConcat } from '@ethersproject/bytes';
-import { id } from '@ethersproject/hash';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
+import { id } from 'utils/ethersV6Compat';
 
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './smartAccount/contracts';
-import { getSmartAccountDisplayTransaction } from './transactions';
+import {
+  getSmartAccountDisplayTransaction,
+  getTransactionDisplayInfo,
+} from './transactions';
 
 const ZERO_BYTES32 =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -17,6 +15,7 @@ const SMART_ACCOUNT = '0x1111111111111111111111111111111111111111';
 const TARGET = '0x2222222222222222222222222222222222222222';
 const BENEFICIARY = '0x3333333333333333333333333333333333333333';
 const MODULE = '0x4444444444444444444444444444444444444444';
+const TOKEN = '0x5555555555555555555555555555555555555555';
 
 const encodeHandleOps = (callData: string) => {
   const userOperation = [
@@ -145,6 +144,63 @@ describe('smart account transaction display', () => {
       input: installData,
       to: SMART_ACCOUNT,
       value: '0',
+    });
+  });
+});
+
+describe('token transaction display', () => {
+  it('keeps zero-valued ERC-20 transfers on the token display path', async () => {
+    const input = `${id('transfer(address,uint256)').slice(
+      0,
+      10
+    )}${defaultAbiCoder.encode(['address', 'uint256'], [TARGET, 0]).slice(2)}`;
+
+    await expect(
+      getTransactionDisplayInfo(
+        {
+          input,
+          to: TOKEN,
+          value: '0',
+        },
+        'ETH',
+        true
+      )
+    ).resolves.toMatchObject({
+      actualRecipient: TARGET,
+      displaySymbol: '0x5555...5555',
+      displayValue: '0',
+      formattedValue: '0',
+      isErc20Transfer: true,
+      isNft: false,
+    });
+  });
+
+  it('keeps ERC-721 token id zero on the NFT display path', async () => {
+    const input = `${id('transferFrom(address,address,uint256)').slice(
+      0,
+      10
+    )}${defaultAbiCoder
+      .encode(['address', 'address', 'uint256'], [SMART_ACCOUNT, TARGET, 0])
+      .slice(2)}`;
+
+    await expect(
+      getTransactionDisplayInfo(
+        {
+          input,
+          to: TOKEN,
+          value: '0',
+        },
+        'ETH',
+        true
+      )
+    ).resolves.toMatchObject({
+      actualRecipient: TARGET,
+      displaySymbol: 'NFT',
+      displayValue: 1,
+      formattedValue: '1',
+      isErc20Transfer: true,
+      isNft: true,
+      tokenId: '0',
     });
   });
 });

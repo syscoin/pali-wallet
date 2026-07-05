@@ -1,7 +1,6 @@
-import { Block } from '@ethersproject/providers';
-
 import store from 'state/store';
 import { INetworkType } from 'types/network';
+import { Block } from 'utils/ethersV6Compat';
 
 export const isActiveNetwork = (chain: INetworkType, chainId: number) => {
   const { activeNetwork } = store.getState().vault;

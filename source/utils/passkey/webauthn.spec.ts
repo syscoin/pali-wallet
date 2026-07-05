@@ -1,8 +1,3 @@
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/strings');
-jest.unmock('@ethersproject/transactions');
-jest.unmock('@ethersproject/wallet');
 jest.unmock('crypto');
 
 import { createHash, webcrypto } from 'crypto';

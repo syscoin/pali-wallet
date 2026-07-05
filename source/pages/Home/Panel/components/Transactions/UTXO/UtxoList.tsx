@@ -1,4 +1,3 @@
-import { BigNumber } from '@ethersproject/bignumber';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -18,6 +17,7 @@ import {
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
+import { BigNumber } from 'utils/ethersV6Compat';
 import {
   formatDisplayValue,
   formatSyscoinValue,

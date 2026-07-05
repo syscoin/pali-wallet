@@ -1,4 +1,3 @@
-import { isHexString } from '@ethersproject/bytes';
 import { Dialog } from '@headlessui/react';
 import { toSvg } from 'jdenticon';
 import React, {
@@ -22,6 +21,7 @@ import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
 
 // Component to render account icon matching the app's pattern - moved outside to prevent recreation

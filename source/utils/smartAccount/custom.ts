@@ -1,8 +1,7 @@
-import { Interface } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-
 import type { ISmartAccountMetadata } from 'types/network';
 import type { SmartAccountValidatorModule } from 'types/network';
+import { Interface } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
 
 import { aggregateContractCalls } from './aggregate';
 import { ERC7579_MODULE_TYPE_VALIDATOR } from './contracts';

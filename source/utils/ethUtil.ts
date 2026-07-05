@@ -1,7 +1,5 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import InputDataDecoder from 'ethereum-input-data-decoder';
-
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
+import { defaultAbiCoder, Interface } from 'utils/ethersV6Compat';
 import { retryableFetch } from 'utils/retryableFetch';
 import {
   paliCompositeValidatorInterface,
@@ -27,13 +25,41 @@ export const APPROVAL_METHOD_SIGNATURES = {
   setApprovalForAll: '0xa22cb465', // setApprovalForAll(address,bool)
 } as const;
 
+type DataDecoder = {
+  decodeData: (data: string) => IDecodedTx;
+};
+
+const emptyDecodedTx = (): IDecodedTx => ({
+  method: null,
+  types: [],
+  inputs: [],
+  names: [],
+});
+
+const createDataDecoder = (abi: any): DataDecoder => {
+  const iface = new Interface(
+    typeof abi === 'string' ? JSON.parse(abi) : abi || []
+  );
+
+  return {
+    decodeData: (data: string): IDecodedTx => {
+      try {
+        const parsed = iface.parseTransaction({ data });
+        return parsed ? parsedTransactionToDecodedTx(parsed) : emptyDecodedTx();
+      } catch {
+        return emptyDecodedTx();
+      }
+    },
+  };
+};
+
 // Create a cached instance of the decoder
-let erc20DecoderInstance: InputDataDecoder | null = null;
+let erc20DecoderInstance: DataDecoder | null = null;
 
 export const erc20DataDecoder = async (controller?: any) => {
   if (!erc20DecoderInstance) {
     const abi = await getErc20Abi(controller);
-    erc20DecoderInstance = new InputDataDecoder(abi);
+    erc20DecoderInstance = createDataDecoder(abi);
   }
   return erc20DecoderInstance;
 };
@@ -146,17 +172,36 @@ export const fetchFunctionSignature = async (
 const normalizeBytesValue = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : '0x';
 
-const getParsedArg = (args: any, key: string, index: number) =>
-  args?.[key] ?? args?.[index];
+const normalizeDecodedValue = (value: any): any => {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeDecodedValue);
+  if (value && typeof value === 'object') {
+    if (value._isBigNumber) return value.toString();
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        normalizeDecodedValue(entry),
+      ])
+    );
+  }
+  return value;
+};
 
-const parsedTransactionToDecodedTx = (parsed: any): IDecodedTx => ({
-  method: parsed.name,
-  types: parsed.functionFragment.inputs.map((input: any) => input.type),
-  inputs: parsed.functionFragment.inputs.map((input: any, index: number) =>
-    getParsedArg(parsed.args, input.name, index)
-  ),
-  names: parsed.functionFragment.inputs.map((input: any) => input.name),
-});
+const getParsedArg = (args: any, key: string, index: number) =>
+  normalizeDecodedValue(args?.[key] ?? args?.[index]);
+
+const parsedTransactionToDecodedTx = (parsed: any): IDecodedTx => {
+  const fragment = parsed.functionFragment ?? parsed.fragment;
+
+  return {
+    method: parsed.name,
+    types: fragment.inputs.map((input: any) => input.type),
+    inputs: fragment.inputs.map((input: any, index: number) =>
+      getParsedArg(parsed.args, input.name, index)
+    ),
+    names: fragment.inputs.map((input: any) => input.name),
+  };
+};
 
 const decodeERC7579ExecutionPayload = (
   method: string,
@@ -178,7 +223,7 @@ const decodeERC7579ExecutionPayload = (
     return {
       method,
       types: ['bytes32', 'address', 'uint256', 'bytes'],
-      inputs: [mode, target, value, data],
+      inputs: [mode, target, normalizeDecodedValue(value), data],
       names: ['mode', 'target', 'value', 'data'],
     };
   }
@@ -215,7 +260,7 @@ const decodeERC7579ExecutionPayload = (
     },
     {
       method,
-      inputs: [mode, executions.length],
+      inputs: [mode, normalizeDecodedValue(executions.length)],
       names: ['mode', 'executionCount'],
       types: ['bytes32', 'uint256'],
     }
@@ -318,10 +363,13 @@ export const decodeTransactionData = async (
             approvalInfo.approvalType === 'erc20-amount'
               ? [
                   approvalInfo.decodedData.spender,
-                  approvalInfo.decodedData.amount,
+                  normalizeDecodedValue(approvalInfo.decodedData.amount),
                 ]
               : approvalInfo.approvalType === 'erc721-single'
-              ? [approvalInfo.decodedData.to, approvalInfo.decodedData.tokenId]
+              ? [
+                  approvalInfo.decodedData.to,
+                  normalizeDecodedValue(approvalInfo.decodedData.tokenId),
+                ]
               : [
                   approvalInfo.decodedData.operator,
                   approvalInfo.decodedData.approved,
@@ -341,10 +389,10 @@ export const decodeTransactionData = async (
       const decoder = await erc20DataDecoder(controller);
       let decoderValue = decoder.decodeData(validatedData); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
-      const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
+      const decoderWrapInstance = createDataDecoder(wrapABI);
       decoderValue = decoderWrapInstance.decodeData(validatedData);
       if (decoderValue.method !== null) return decoderValue;
-      const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
+      const decoderInstance = createDataDecoder(pegasysABI);
       decoderValue = decoderInstance.decodeData(validatedData);
       if (decoderValue.method !== null) return decoderValue;
       const smartAccountDecoderValue =

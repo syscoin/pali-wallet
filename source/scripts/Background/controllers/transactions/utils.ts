@@ -37,7 +37,10 @@ export const getFormattedEvmTransactionResponse = async (
   if (!tx) {
     return await getEvmTransactionTimestamp(provider, transaction);
   }
-  return await getEvmTransactionTimestamp(provider, tx);
+  return await getEvmTransactionTimestamp(
+    provider,
+    tx as unknown as IEvmTransactionResponse
+  );
 };
 
 export const findUserTxsInProviderByBlocksRange = async (

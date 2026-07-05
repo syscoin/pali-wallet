@@ -1,5 +1,6 @@
-import { Interface } from '@ethersproject/abi';
-import { Contract } from '@ethersproject/contracts';
+import { Interface } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
+import type { Provider } from 'utils/ethersV6Compat';
 
 import {
   PALI_CANONICAL_ENTRYPOINT_ADDRESS,
@@ -7,7 +8,6 @@ import {
   getPaliCanonicalEntryPointAddress,
   getPaliCanonicalFactoryAddress,
 } from './deployment';
-import type { Provider } from '@ethersproject/providers';
 
 export const PALI_SMART_ACCOUNT_VERSION = 'PALI_SMART_ACCOUNT_ERC7579_V1';
 

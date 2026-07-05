@@ -29,13 +29,13 @@ jest.mock('@ethersproject/providers', () => ({
   JsonRpcProvider: jest.fn(),
 }));
 
-import { BigNumber } from '@ethersproject/bignumber';
 import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 // Import the real BigNumber (not mocked)
 
 // Import types from actual source
 import { ITokenEthProps } from '../../source/types/tokens';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 describe('Asset Management Comprehensive Test Suite', () => {
   // Test data setup

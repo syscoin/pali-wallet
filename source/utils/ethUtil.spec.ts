@@ -1,10 +1,5 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/strings');
-
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { hexConcat } from '@ethersproject/bytes';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
 
 import { decodeSmartAccountTransactionData } from './ethUtil';
 import {

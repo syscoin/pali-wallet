@@ -1,4 +1,4 @@
-import { formatBytes32String } from '@ethersproject/strings';
+import { formatBytes32String } from 'utils/ethersV6Compat';
 
 export const validateTransactionDataValue = (data: string | undefined) => {
   if (!data) return '0x';

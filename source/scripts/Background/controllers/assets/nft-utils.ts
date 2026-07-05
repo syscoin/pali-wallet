@@ -1,6 +1,7 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { Contract } from '@ethersproject/contracts';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+
+import { BigNumber } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
 
 // ERC-721 ABI fragments
 const ERC721_ABI = [
@@ -58,9 +59,19 @@ async function detectFakeNftContract(
 
 export interface INftTokenInfo {
   balance: number; // Display balance (decimals already applied, 0 for NFTs)
+  rawBalance?: string; // Exact raw balance for ERC-1155 quantities
   tokenId: string;
   verified: boolean;
 }
+
+const toDisplayNftBalance = (balance: any): number => {
+  const balanceBN = BigNumber.from(balance);
+  const maxSafeBN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
+
+  return balanceBN.lte(maxSafeBN)
+    ? balanceBN.toNumber()
+    : Number.MAX_SAFE_INTEGER;
+};
 
 /**
  * Check if a contract supports a specific interface
@@ -182,20 +193,15 @@ export async function verifyERC1155OwnershipHelper(
     const accounts = new Array(tokenIds.length).fill(ownerAddress);
     const balances = await contract.balanceOfBatch(accounts, tokenIds);
 
-    // Compare using a BigNumber to avoid JS number overflow issues
-    const MAX_SAFE_BN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
-
     return tokenIds.map((tokenId, index) => {
       // ERC-1155 NFTs have 0 decimals, so display balance = raw balance
-      // Use toNumber() safely, checking for overflow
       const balance = balances[index];
-      const displayBalance = balance.lte(MAX_SAFE_BN)
-        ? balance.toNumber()
-        : Number.MAX_SAFE_INTEGER; // Cap at max safe integer for display
+      const displayBalance = toDisplayNftBalance(balance);
 
       return {
         tokenId,
         balance: displayBalance,
+        rawBalance: balance?.toString(),
         verified: true,
       };
     });
@@ -206,18 +212,15 @@ export async function verifyERC1155OwnershipHelper(
     try {
       const contract = new Contract(contractAddress, ERC1155_ABI, provider);
       const results: INftTokenInfo[] = [];
-      const MAX_SAFE_BN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
       for (const tokenId of tokenIds) {
         try {
           const balance = await contract.balanceOf(ownerAddress, tokenId);
-          // Safe conversion to number for display
-          const displayBalance = balance.lte(MAX_SAFE_BN)
-            ? balance.toNumber()
-            : Number.MAX_SAFE_INTEGER;
+          const displayBalance = toDisplayNftBalance(balance);
 
           results.push({
             tokenId,
             balance: displayBalance,
+            rawBalance: balance?.toString(),
             verified: true,
           });
         } catch {

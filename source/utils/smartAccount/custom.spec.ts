@@ -1,14 +1,5 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/bignumber');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
-import { Interface } from '@ethersproject/abi';
-
 import type { SmartAccountValidatorModule } from 'types/network';
+import { Interface } from 'utils/ethersV6Compat';
 
 import {
   assertValidatorActivationAllowed,

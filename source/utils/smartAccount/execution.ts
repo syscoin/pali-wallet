@@ -1,7 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-import { hexConcat, hexDataSlice, isHexString } from '@ethersproject/bytes';
-
 import {
   getP256WebAuthnExternalSignatureMetadata,
   signP256WebAuthnActionHash,
@@ -11,6 +7,9 @@ import type {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
+import { hexConcat, hexDataSlice, isHexString } from 'utils/ethersV6Compat';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
 import {
@@ -874,6 +873,7 @@ export const signAndSubmitSmartAccountExecutions = async (
           executions: prepared.executions,
           accountId,
           gasPayer: prepared.gasPayer,
+          maxFeePerGas: prepared.maxFeePerGas,
           mode: prepared.mode,
           signature: signature.signature,
           skipRapidPolling,

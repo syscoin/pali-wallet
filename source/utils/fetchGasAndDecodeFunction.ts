@@ -1,10 +1,9 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { Block } from '@ethersproject/providers';
-
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
 import { INetwork } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
+import { Block } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 import { safeBigNumber } from './safeBigNumber';
 

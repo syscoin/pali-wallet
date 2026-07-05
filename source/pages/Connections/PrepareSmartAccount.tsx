@@ -1,4 +1,3 @@
-import { getAddress } from '@ethersproject/address';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -16,6 +15,7 @@ import {
 } from 'types/network';
 import type { IPasskeyCredentialProfile } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { getAddress } from 'utils/ethersV6Compat';
 import {
   bytesToHex,
   clearPendingCreationPasskey,

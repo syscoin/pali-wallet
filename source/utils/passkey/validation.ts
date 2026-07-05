@@ -1,4 +1,4 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 export type PasskeyWebAuthnProof = {
   authenticatorData: string;

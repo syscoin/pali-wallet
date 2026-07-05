@@ -1,16 +1,8 @@
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { hexConcat } from '@ethersproject/bytes';
-import { keccak256 } from '@ethersproject/keccak256';
-
 import { encodeP256WebAuthnAuthData } from '../passkey/account';
 import type { SmartAccountValidatorModule } from 'types/network';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
 import { SLH_DSA_SIGNATURE_LIMIT } from 'utils/slhDsa';
 
 import {
@@ -463,8 +455,8 @@ describe('ERC-7579 smart account helpers', () => {
       [auth.validator, auth.data]
     );
     const factory = {
-      getAddress: jest.fn(async () => accountAddress),
-      getInitData: jest.fn(async () => initCode),
+      'getAddress(bytes32,bytes)': jest.fn(async () => accountAddress),
+      'getInitData(address,bytes)': jest.fn(async () => initCode),
       interface: paliSmartAccountFactoryInterface,
     };
 

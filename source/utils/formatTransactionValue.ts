@@ -1,7 +1,6 @@
 // formatTransactionValue - chain details should be passed from the frontend
-import { formatEther } from '@ethersproject/units';
-
 import { IGetFiatAmount } from 'hooks/index';
+import { formatEther } from 'utils/ethersV6Compat';
 
 import { formatWithDecimals } from './format';
 

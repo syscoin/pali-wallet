@@ -1,7 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-import { id } from '@ethersproject/hash';
-import { formatUnits } from '@ethersproject/units';
 import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -10,6 +6,10 @@ import store from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
+import { formatUnits } from 'utils/ethersV6Compat';
+import { id } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
 
@@ -63,7 +63,7 @@ export const getTransactionDisplayInfo = async (
     // Get token ID for NFTs
     const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
 
-    if (tokenValue && tokenAddress) {
+    if (tokenValue != null && tokenAddress) {
       // Try to get token info from user's assets or fetch from controller
       try {
         const { accounts, activeAccount, accountAssets } =
@@ -187,7 +187,8 @@ export const getTransactionDisplayInfo = async (
       try {
         // ERC-1155 safeTransferFrom has an unambiguous selector
         if (isErc1155Tx) {
-          const nftAmount = Number(getERC1155TransferValue(tx)) || 1;
+          const erc1155Value = getERC1155TransferValue(tx);
+          const nftAmount = erc1155Value == null ? 1 : Number(erc1155Value);
           const inferredTokenId = getERC1155TokenId(tx) || undefined;
           return {
             displayValue: nftAmount,

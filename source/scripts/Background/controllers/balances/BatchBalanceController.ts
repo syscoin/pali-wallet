@@ -1,10 +1,10 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { Contract } from '@ethersproject/contracts';
-import { formatUnits } from '@ethersproject/units';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
+import { formatUnits } from 'utils/ethersV6Compat';
 import { resolveMulticall3Address } from 'utils/smartAccount';
 
 // Minimal ERC20 ABI for balance queries

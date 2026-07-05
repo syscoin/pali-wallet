@@ -1,13 +1,6 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
-import { Interface } from '@ethersproject/abi';
-import { hexZeroPad } from '@ethersproject/bytes';
-import { keccak256 } from '@ethersproject/keccak256';
+import { Interface } from 'utils/ethersV6Compat';
+import { hexZeroPad } from 'utils/ethersV6Compat';
+import { keccak256 } from 'utils/ethersV6Compat';
 
 import {
   aggregateContractCalls,

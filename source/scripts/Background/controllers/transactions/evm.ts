@@ -924,7 +924,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             console.log(
               `[pollingEvmTransactions] Found ${validUpdatedTxs.length} updated pending transactions`
             );
-            rawTransactions = [...rawTransactions, ...validUpdatedTxs];
+            rawTransactions = [
+              ...rawTransactions,
+              ...(validUpdatedTxs as unknown as IEvmTransactionResponse[]),
+            ];
           }
         }
       }
