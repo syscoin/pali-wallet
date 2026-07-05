@@ -12,6 +12,7 @@ import { PriorityBar } from './components';
 interface IEditPriorityModalProps {
   customFee: ICustomFeeParams;
   defaultGasLimit?: number;
+  estimatedFeeFloor?: IFeeState;
   fee: IFeeState;
   isSendLegacyTransaction?: boolean;
   setCustomFee: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
@@ -30,6 +31,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     setHaveError,
     isSendLegacyTransaction,
     defaultGasLimit = 42000, // Default fallback
+    estimatedFeeFloor,
   } = props;
   // Initialize priority based on whether we have custom fees
   const [priority, setPriority] = useState<number>(() => {
@@ -68,6 +70,91 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const gasPrice = fee?.gasPrice ?? 0;
   // ALWAYS have a gas limit - use custom, then fee, then default
   const gasLimit = customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
+  const watchedGasLimit = Form.useWatch('gasLimit', form);
+  const watchedGasPrice = Form.useWatch('gasPrice', form);
+  const watchedMaxFeePerGas = Form.useWatch('maxFeePerGas', form);
+  const watchedMaxPriorityFeePerGas = Form.useWatch(
+    'maxPriorityFeePerGas',
+    form
+  );
+
+  const belowEstimateWarnings = React.useMemo(() => {
+    const warnings: string[] = [];
+    const currentGasLimit = Number(
+      watchedGasLimit ?? form.getFieldValue('gasLimit') ?? 0
+    );
+    const gasLimitFloor = estimatedFeeFloor?.gasLimit;
+
+    if (
+      gasLimitFloor &&
+      currentGasLimit > 0 &&
+      currentGasLimit < gasLimitFloor
+    ) {
+      warnings.push(
+        t('send.gasLimitBelowEstimate', { estimate: gasLimitFloor })
+      );
+    }
+
+    if (isSendLegacyTransaction) {
+      const currentGasPrice = Number(
+        watchedGasPrice ?? form.getFieldValue('gasPrice') ?? 0
+      );
+      const gasPriceFloor = estimatedFeeFloor?.gasPrice;
+
+      if (
+        gasPriceFloor != null &&
+        currentGasPrice > 0 &&
+        currentGasPrice < gasPriceFloor
+      ) {
+        warnings.push(
+          t('send.gasPriceBelowEstimate', { estimate: gasPriceFloor })
+        );
+      }
+
+      return warnings;
+    }
+
+    const currentMaxFee = Number(
+      watchedMaxFeePerGas ?? form.getFieldValue('maxFeePerGas') ?? 0
+    );
+    const maxFeeFloor = estimatedFeeFloor?.maxFeePerGas;
+
+    if (
+      maxFeeFloor != null &&
+      currentMaxFee > 0 &&
+      currentMaxFee < maxFeeFloor
+    ) {
+      warnings.push(t('send.maxFeeBelowEstimate', { estimate: maxFeeFloor }));
+    }
+
+    const currentPriorityFee = Number(
+      watchedMaxPriorityFeePerGas ??
+        form.getFieldValue('maxPriorityFeePerGas') ??
+        0
+    );
+    const priorityFeeFloor = estimatedFeeFloor?.maxPriorityFeePerGas;
+
+    if (
+      priorityFeeFloor != null &&
+      currentPriorityFee >= 0 &&
+      currentPriorityFee < priorityFeeFloor
+    ) {
+      warnings.push(
+        t('send.priorityFeeBelowEstimate', { estimate: priorityFeeFloor })
+      );
+    }
+
+    return warnings;
+  }, [
+    estimatedFeeFloor,
+    form,
+    isSendLegacyTransaction,
+    t,
+    watchedGasLimit,
+    watchedGasPrice,
+    watchedMaxFeePerGas,
+    watchedMaxPriorityFeePerGas,
+  ]);
 
   // Validation functions
   const validateGasLimit = (value: number) => {
@@ -697,6 +784,21 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                 </div>
               )}
             </Form>
+            {belowEstimateWarnings.length > 0 && (
+              <div className="w-full mt-2 rounded-lg border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
+                <p className="text-warning-info text-xs font-medium mb-1">
+                  {t('send.feeBelowEstimateTitle')}
+                </p>
+                {belowEstimateWarnings.map((warning) => (
+                  <p
+                    key={warning}
+                    className="text-warning-info text-xs leading-5"
+                  >
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-center mt-4 mb-4 gap-6">

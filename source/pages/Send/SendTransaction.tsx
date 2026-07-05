@@ -60,6 +60,26 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+
+type FeeSafetyAdjustment = {
+  gasLimit?: {
+    recommended: number;
+    requested: number;
+  };
+  gasPrice?: {
+    recommended: number;
+    requested: number;
+  };
+  maxFeePerGas?: {
+    recommended: number;
+    requested: number;
+  };
+  maxPriorityFeePerGas?: {
+    recommended: number;
+    requested: number;
+  };
+};
+
 export const SendTransaction = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -152,6 +172,10 @@ export const SendTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+  const [feeSafetyAdjustment, setFeeSafetyAdjustment] =
+    useState<FeeSafetyAdjustment>({});
+  const [acceptedDappFeeRequest, setAcceptedDappFeeRequest] =
+    useState<boolean>(false);
 
   // Approval-specific state
   const [approvedTokenInfos, setApprovedTokenInfos] =
@@ -196,6 +220,77 @@ export const SendTransaction = () => {
   }, [tx?.value, activeNetwork.currency]);
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
+  const hasDappFeeSafetyAdjustment = useMemo(
+    () =>
+      Boolean(
+        feeSafetyAdjustment.gasLimit ||
+          feeSafetyAdjustment.gasPrice ||
+          feeSafetyAdjustment.maxFeePerGas ||
+          feeSafetyAdjustment.maxPriorityFeePerGas
+      ),
+    [feeSafetyAdjustment]
+  );
+
+  const isCurrentFeeBelowEstimate = useMemo(() => {
+    if (!customFee.isCustom || !fee) {
+      return false;
+    }
+
+    if (
+      customFee.gasLimit > 0 &&
+      fee.gasLimit > 0 &&
+      customFee.gasLimit < fee.gasLimit
+    ) {
+      return true;
+    }
+
+    if (isLegacyTransaction) {
+      return Boolean(
+        fee.gasPrice != null &&
+          customFee.gasPrice &&
+          customFee.gasPrice > 0 &&
+          customFee.gasPrice < fee.gasPrice
+      );
+    }
+
+    return (
+      (customFee.maxFeePerGas > 0 &&
+        fee.maxFeePerGas > 0 &&
+        customFee.maxFeePerGas < fee.maxFeePerGas) ||
+      (customFee.maxPriorityFeePerGas >= 0 &&
+        fee.maxPriorityFeePerGas > 0 &&
+        customFee.maxPriorityFeePerGas < fee.maxPriorityFeePerGas)
+    );
+  }, [customFee, fee, isLegacyTransaction]);
+
+  const handleUseDappFeeRequest = () => {
+    if (!fee) return;
+
+    if (isLegacyTransaction) {
+      setCustomFee({
+        isCustom: true,
+        gasLimit: feeSafetyAdjustment.gasLimit?.requested || fee.gasLimit,
+        gasPrice: feeSafetyAdjustment.gasPrice?.requested ?? fee.gasPrice ?? 0,
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+      });
+    } else {
+      const requestedMaxFee =
+        feeSafetyAdjustment.maxFeePerGas?.requested ?? fee.maxFeePerGas;
+      const requestedPriorityFee =
+        feeSafetyAdjustment.maxPriorityFeePerGas?.requested ??
+        Math.min(fee.maxPriorityFeePerGas, requestedMaxFee);
+      setCustomFee({
+        isCustom: true,
+        gasLimit: feeSafetyAdjustment.gasLimit?.requested || fee.gasLimit,
+        maxFeePerGas: requestedMaxFee,
+        maxPriorityFeePerGas: Math.min(requestedPriorityFee, requestedMaxFee),
+        gasPrice: 0,
+      });
+    }
+
+    setAcceptedDappFeeRequest(true);
+  };
 
   // Raw input 'to' (could be ENS or address)
   const toRaw = String(dataTx?.to || '');
@@ -641,14 +736,22 @@ export const SendTransaction = () => {
             },
           ]
         );
-        const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
-          await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
+        const {
+          feeDetails,
+          feeSafety,
+          formTx,
+          nonce,
+          isInvalidTxData,
+          gasLimitError,
+        } = await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
 
         // Only update state if component is still mounted
         if (isMounted) {
           setHasGasError(gasLimitError);
           setHasTxDataError(isInvalidTxData);
           setFee(feeDetails);
+          setFeeSafetyAdjustment(feeSafety || {});
+          setAcceptedDappFeeRequest(false);
           setTx(formTx);
           setCustomNonce(nonce);
           setInitialLoading(false);
@@ -924,6 +1027,7 @@ export const SendTransaction = () => {
           // No-op function since haveError is not used
         }}
         fee={fee}
+        estimatedFeeFloor={fee}
         isSendLegacyTransaction={isLegacyTransaction}
         defaultGasLimit={100000} // General transactions can vary widely
       />
@@ -1128,6 +1232,40 @@ export const SendTransaction = () => {
                 )}
               </div>
             )}
+
+            {(hasDappFeeSafetyAdjustment && !acceptedDappFeeRequest) ||
+            isCurrentFeeBelowEstimate ? (
+              <div className="w-full mt-4">
+                {hasDappFeeSafetyAdjustment && !acceptedDappFeeRequest && (
+                  <div className="rounded-xl border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
+                    <p className="text-warning-info text-xs font-semibold mb-1">
+                      {t('send.dappFeeRaisedTitle')}
+                    </p>
+                    <p className="text-warning-info text-xs leading-5">
+                      {t('send.dappFeeRaisedDescription')}
+                    </p>
+                    <button
+                      type="button"
+                      className="mt-2 text-xs text-brand-royalblue hover:opacity-80"
+                      onClick={handleUseDappFeeRequest}
+                    >
+                      {t('send.useDappFeeRequest')}
+                    </button>
+                  </div>
+                )}
+
+                {isCurrentFeeBelowEstimate && (
+                  <div className="mt-2 rounded-xl border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
+                    <p className="text-warning-info text-xs font-semibold mb-1">
+                      {t('send.feeBelowEstimateTitle')}
+                    </p>
+                    <p className="text-warning-info text-xs leading-5">
+                      {t('send.customFeeBelowEstimateWarning')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <div className="w-full mt-6">
               <ul
