@@ -664,6 +664,31 @@ const VaultState = createSlice({
           })
           .filter(Boolean) as Array<[string, IEvmTransaction | ISysTransaction]>
       );
+      const confirmedOrMaterializedReplacementHashesByOriginal = new Set(
+        (existingTransactions as Array<IEvmTransaction | ISysTransaction>)
+          .map((transaction: any) => {
+            const replacementId = transaction.hash || transaction.txid;
+            const originalId = transaction.replacesHash;
+            if (!replacementId || !originalId) {
+              return undefined;
+            }
+
+            const replacementIsMaterialized = incomingTransactionIds.has(
+              String(replacementId).toLowerCase()
+            );
+            const replacementIsConfirmed =
+              Number(transaction.confirmations || 0) > 0 ||
+              Number(transaction.blockNumber || 0) > 0 ||
+              Number(transaction.blockHeight || 0) > 0 ||
+              Number(transaction.height || 0) > 0 ||
+              Boolean(transaction.blockHash);
+
+            return replacementIsMaterialized || replacementIsConfirmed
+              ? String(originalId).toLowerCase()
+              : undefined;
+          })
+          .filter(Boolean) as string[]
+      );
       const preservedLocalPendingTransactions = (
         existingTransactions as Array<IEvmTransaction | ISysTransaction>
       ).filter((transaction: any) => {
@@ -673,6 +698,15 @@ const VaultState = createSlice({
           return false;
         }
         if (networkType === TransactionsType.Ethereum) {
+          if (
+            transaction.isReplaced &&
+            confirmedOrMaterializedReplacementHashesByOriginal.has(
+              transactionId.toLowerCase()
+            )
+          ) {
+            return false;
+          }
+
           return Boolean(
             transaction.smartAccountExecutionFrom ||
               transaction.isSpeedUp ||
