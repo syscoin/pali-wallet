@@ -561,12 +561,18 @@ export const SendConfirm = () => {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        const tokenIdString = String(tokenId).trim();
-        if (!/^\d+$/.test(tokenIdString)) {
+        let tokenIdValue: BigNumber;
+        try {
+          tokenIdValue = BigNumber.from(tokenId);
+        } catch {
           throw new Error(t('send.invalidTokenId'));
         }
 
-        return BigNumber.from(tokenIdString);
+        if (tokenIdValue.lt(0)) {
+          throw new Error(t('send.invalidTokenId'));
+        }
+
+        return tokenIdValue;
       };
 
       const buildPasskeyTokenTransferData = async () => {
