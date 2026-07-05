@@ -501,7 +501,7 @@ const EvmTransactionItem = React.memo(
           <div className="flex items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
-              {isConfirmed || isReplaced ? (
+              {isConfirmed || isReplaced || isTxCanceled ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
                     className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"

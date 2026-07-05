@@ -698,6 +698,16 @@ const VaultState = createSlice({
           })
           .filter(Boolean) as string[]
       );
+      const confirmedIncomingTransactionIds = new Set(
+        transactions
+          .map((transaction: any) => {
+            const transactionId = transaction.hash || transaction.txid;
+            return transactionId && isTransactionConfirmed(transaction)
+              ? transactionId.toLowerCase()
+              : undefined;
+          })
+          .filter(Boolean) as string[]
+      );
       const preservedLocalPendingTransactions = (
         existingTransactions as Array<IEvmTransaction | ISysTransaction>
       ).filter((transaction: any) => {
@@ -717,6 +727,16 @@ const VaultState = createSlice({
           }
 
           if (transaction.isSpeedUp || transaction.isCancel) {
+            const replacedTransactionId = transaction.replacesHash
+              ? String(transaction.replacesHash).toLowerCase()
+              : undefined;
+            if (
+              replacedTransactionId &&
+              confirmedIncomingTransactionIds.has(replacedTransactionId)
+            ) {
+              return false;
+            }
+
             return (
               !isTransactionConfirmed(transaction) ||
               !transaction.replacementIndexed
