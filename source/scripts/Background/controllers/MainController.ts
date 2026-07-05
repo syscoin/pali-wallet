@@ -4071,12 +4071,24 @@ class MainController {
       })
     );
 
+    const { accountTransactions, activeAccount: vaultActiveAccount } =
+      store.getState().vault;
+    const currentAccountTransactions =
+      accountTransactions[vaultActiveAccount.type]?.[vaultActiveAccount.id]?.[
+        TransactionsType.Ethereum
+      ]?.[chainID] || [];
+    const originalTransaction = currentAccountTransactions.find(
+      (tx: IEvmTransactionResponse | any) =>
+        tx?.hash?.toLowerCase?.() === oldTxHash.toLowerCase()
+    ) as any;
+
     const transactionWithMetadata = {
       ...newTxValue,
       chainId: chainID,
       timestamp: Math.floor(Date.now() / 1000),
       isCancel: true,
       replacesHash: oldTxHash,
+      smartAccountExecutionFrom: originalTransaction?.smartAccountExecutionFrom,
     };
 
     store.dispatch(
