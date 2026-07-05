@@ -510,7 +510,8 @@ const cancelTransaction = async (
   chainId: number,
   alert: any,
   t: (key: string) => string,
-  fallbackNonce?: number
+  fallbackNonce?: number,
+  signerAddress?: string
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -521,8 +522,8 @@ const cancelTransaction = async (
 
   try {
     const response = await controllerEmitter(
-      ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
-      [txHash, isLegacy, fallbackNonce]
+      ['wallet', 'cancelEvmTransaction'],
+      [txHash, isLegacy, fallbackNonce, signerAddress]
     );
 
     if (!response) {
@@ -530,9 +531,10 @@ const cancelTransaction = async (
       return;
     }
 
-    const { isCanceled, error } = response as {
+    const { isCanceled, error, transaction } = response as {
       error: boolean;
       isCanceled: boolean;
+      transaction?: IEvmTransactionResponse;
     };
 
     if (!isCanceled && error) {
@@ -543,11 +545,11 @@ const cancelTransaction = async (
     switch (isCanceled) {
       case true:
         await controllerEmitter(
-          ['wallet', 'setEvmTransactionAsCanceled'],
-          [txHash, chainId]
+          ['wallet', 'setEvmTransactionCancelSubmitted'],
+          [txHash, chainId, transaction]
         );
 
-        alert.success(t('transactions.transactionCanceledSuccessfully'));
+        alert.success(t('transactions.transactionCancelSubmitted'));
         break;
       case false:
         alert.error(t('transactions.transactionCancelFailed'));
@@ -626,11 +628,13 @@ export const handleUpdateTransaction = async ({
     chainId: number;
     isLegacy: boolean;
     nonce?: number;
+    signerAddress?: string;
     txHash: string;
     updateType: UpdateTxAction;
   };
 }) => {
-  const { alert, chainId, isLegacy, txHash, updateType, nonce } = updateData;
+  const { alert, chainId, isLegacy, txHash, updateType, nonce, signerAddress } =
+    updateData;
 
   switch (updateType) {
     case UpdateTxAction.Cancel:
@@ -640,7 +644,8 @@ export const handleUpdateTransaction = async ({
         chainId,
         alert,
         t,
-        nonce
+        nonce,
+        signerAddress
       );
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(txHash, isLegacy, chainId, alert, t);

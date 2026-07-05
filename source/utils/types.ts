@@ -28,6 +28,7 @@ export interface ITransactionOptions {
       chainId: number;
       isLegacy: boolean;
       nonce?: number;
+      signerAddress?: string;
       txHash: string;
       updateType: UpdateTxAction;
     };

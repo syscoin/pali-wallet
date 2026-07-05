@@ -39,15 +39,17 @@ export interface IEvmTransaction {
 
   hash?: string;
   // Transaction replacement tracking
+  isCancel?: boolean;
   isReplaced?: boolean;
   isSpeedUp?: boolean;
-
   maxFeePerGas?: BigNumber;
+
   // EIP-1559; Type 2
   maxPriorityFeePerGas?: BigNumber;
   nonce: number;
-
   r?: string;
+
+  replacementIndexed?: boolean;
 
   replacesHash?: string;
 

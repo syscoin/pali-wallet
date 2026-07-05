@@ -70,6 +70,7 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
                 nonce: transaction.nonce,
+                signerAddress: transaction.from,
               },
               t,
             });

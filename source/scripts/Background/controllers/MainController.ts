@@ -41,8 +41,7 @@ import {
   setAccountLabel,
   setAccountPropertyByIdAndType,
   setActiveAccount,
-  setTransactionStatusToAccelerated,
-  setTransactionStatusToCanceled,
+  setTransactionStatusToReplaced,
   setFaucetModalState,
   setNetworkChange,
   setSingleTransactionToState,
@@ -3935,15 +3934,6 @@ class MainController {
     return importedAccount;
   }
 
-  public setEvmTransactionAsCanceled(txHash: string, chainID: number) {
-    store.dispatch(
-      setTransactionStatusToCanceled({
-        txHash,
-        chainID,
-      })
-    );
-  }
-
   public setEvmTransactionAsAccelerated(
     oldTxHash: string,
     chainID: number,
@@ -3951,7 +3941,7 @@ class MainController {
   ) {
     // Mark the old transaction as replaced
     store.dispatch(
-      setTransactionStatusToAccelerated({
+      setTransactionStatusToReplaced({
         oldTxHash,
         chainID,
       })
@@ -3960,6 +3950,7 @@ class MainController {
     // Add metadata to the new transaction to indicate it's a speed-up
     const transactionWithMetadata = {
       ...newTxValue,
+      chainId: chainID,
       timestamp: Math.floor(Date.now() / 1000), // Convert to seconds
       isSpeedUp: true,
       replacesHash: oldTxHash,
@@ -3975,6 +3966,141 @@ class MainController {
     );
 
     // Notify about new accelerated/replacement transaction (shows as pending)
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const account = accounts[activeAccount.type]?.[activeAccount.id];
+    if (account) {
+      notificationManager.notifyTransaction({
+        transaction: transactionWithMetadata,
+        type: 'pending',
+        account: {
+          address: account.address,
+          label: account.label,
+        },
+        network: activeNetwork,
+        isEvm: true,
+      });
+    }
+  }
+
+  public async cancelEvmTransaction(
+    txHash: string,
+    isLegacy?: boolean,
+    fallbackNonce?: number,
+    signerAddress?: string
+  ) {
+    const { accounts, activeAccount } = store.getState().vault;
+    const normalizedSignerAddress = signerAddress?.toLowerCase();
+    const canUseSignerOverride =
+      activeAccount.type === KeyringAccountType.SmartAccount;
+
+    let targetAccount: { id: number; type: KeyringAccountType } | undefined;
+    if (canUseSignerOverride && normalizedSignerAddress) {
+      for (const accountType of Object.keys(accounts) as KeyringAccountType[]) {
+        if (accountType === KeyringAccountType.SmartAccount) {
+          continue;
+        }
+
+        const accountsById = accounts[accountType];
+        for (const [accountId, account] of Object.entries(accountsById)) {
+          if (account?.address?.toLowerCase() === normalizedSignerAddress) {
+            targetAccount = {
+              id: Number(accountId),
+              type: accountType,
+            };
+            break;
+          }
+        }
+
+        if (targetAccount) {
+          break;
+        }
+      }
+    }
+
+    const activeAccountValue = accounts[activeAccount.type]?.[activeAccount.id];
+    if (
+      !targetAccount &&
+      activeAccount.type === KeyringAccountType.SmartAccount &&
+      normalizedSignerAddress &&
+      activeAccountValue?.address?.toLowerCase() !== normalizedSignerAddress
+    ) {
+      throw new Error(
+        `Unable to find local signer ${signerAddress} for transaction cancellation`
+      );
+    }
+
+    const shouldUseTargetAccount =
+      targetAccount &&
+      (targetAccount.id !== activeAccount.id ||
+        targetAccount.type !== activeAccount.type);
+    const keyring = this.getActiveKeyring();
+    try {
+      if (shouldUseTargetAccount) {
+        keyring.setVaultStateGetter(() => ({
+          ...store.getState().vault,
+          activeAccount: targetAccount,
+        }));
+      }
+
+      return await getController().wallet.ethereumTransaction.cancelSentTransaction(
+        txHash,
+        isLegacy,
+        fallbackNonce
+      );
+    } finally {
+      if (shouldUseTargetAccount) {
+        keyring.setVaultStateGetter(() => store.getState().vault);
+      }
+    }
+  }
+
+  public setEvmTransactionCancelSubmitted(
+    oldTxHash: string,
+    chainID: number,
+    newTxValue?: IEvmTransactionResponse
+  ) {
+    if (!newTxValue) {
+      throw new Error('Cancel transaction response was not returned');
+    }
+
+    // A cancel is a replacement transaction. The original is not finalized as
+    // canceled until the replacement confirms, so users can still manage the
+    // pending cancel transaction if it stalls.
+    store.dispatch(
+      setTransactionStatusToReplaced({
+        oldTxHash,
+        chainID,
+      })
+    );
+
+    const { accountTransactions, activeAccount: vaultActiveAccount } =
+      store.getState().vault;
+    const currentAccountTransactions =
+      accountTransactions[vaultActiveAccount.type]?.[vaultActiveAccount.id]?.[
+        TransactionsType.Ethereum
+      ]?.[chainID] || [];
+    const originalTransaction = currentAccountTransactions.find(
+      (tx: IEvmTransactionResponse | any) =>
+        tx?.hash?.toLowerCase?.() === oldTxHash.toLowerCase()
+    ) as any;
+
+    const transactionWithMetadata = {
+      ...newTxValue,
+      chainId: chainID,
+      timestamp: Math.floor(Date.now() / 1000),
+      isCancel: true,
+      replacesHash: oldTxHash,
+      smartAccountExecutionFrom: originalTransaction?.smartAccountExecutionFrom,
+    };
+
+    store.dispatch(
+      setSingleTransactionToState({
+        chainId: chainID,
+        networkType: TransactionsType.Ethereum,
+        transaction: transactionWithMetadata,
+      })
+    );
+
     const { accounts, activeAccount, activeNetwork } = store.getState().vault;
     const account = accounts[activeAccount.type]?.[activeAccount.id];
     if (account) {

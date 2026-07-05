@@ -84,17 +84,19 @@ const EvmTransactionItem = React.memo(
     t: any;
     tokenMeta?: any;
     tx: ITransactionInfoEvm & {
+      isCancel?: boolean;
       isReplaced?: boolean;
       isSpeedUp?: boolean;
       replacesHash?: string;
     };
     txId: string;
   }) => {
-    const isTxCanceled = tx?.isCanceled === true;
+    const isCancel = tx?.isCancel === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
     const displayTx = getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
+    const isTxCanceled = tx?.isCanceled === true || (isCancel && isConfirmed);
     const currentAddress = currentAccount?.address?.toLowerCase();
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
@@ -479,6 +481,11 @@ const EvmTransactionItem = React.memo(
                     ({t('header.speedUp')})
                   </span>
                 )}
+                {isCancel && !isConfirmed && (
+                  <span className="text-warning-success ml-1 text-xs">
+                    ({t('transactions.cancelSubmitted')})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1">
                 {isFailed && isConfirmed ? (
@@ -494,7 +501,7 @@ const EvmTransactionItem = React.memo(
           <div className="flex items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
-              {isConfirmed || isTxCanceled || isReplaced ? (
+              {isConfirmed || isReplaced || isTxCanceled ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
                     className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
@@ -525,6 +532,7 @@ const EvmTransactionItem = React.memo(
     (prevProps.tx as any).isError === (nextProps.tx as any).isError &&
     (prevProps.tx as any).isReplaced === (nextProps.tx as any).isReplaced &&
     (prevProps.tx as any).isSpeedUp === (nextProps.tx as any).isSpeedUp &&
+    (prevProps.tx as any).isCancel === (nextProps.tx as any).isCancel &&
     prevProps.tx.value === nextProps.tx.value &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
     prevProps.currency === nextProps.currency &&
@@ -679,7 +687,7 @@ export const EvmTransactionsList = ({
 
   const getTxOptions = useCallback(
     (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {
-      if (!isCanceled && !isConfirmed) {
+      if (!isConfirmed) {
         return (
           <TransactionOptions
             handleUpdateTransaction={handleUpdateTransaction}
