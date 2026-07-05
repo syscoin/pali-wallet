@@ -73,11 +73,13 @@ const getSmartAccountSubmitJobKey = async ({
   accountAddress,
   accountId,
   executions,
+  feeOverrides,
   smartAccount,
 }: {
   accountAddress?: string;
   accountId?: number;
   executions: SmartAccountExecutionIntent[];
+  feeOverrides?: SmartAccountFeeOverrides;
   smartAccount: ISmartAccountMetadata;
 }) =>
   sha256Hex(
@@ -94,6 +96,10 @@ const getSmartAccountSubmitJobKey = async ({
         target: execution.target.toLowerCase(),
         value: execution.value,
       })),
+      feeOverrides: {
+        maxFeePerGas: feeOverrides?.maxFeePerGas ?? null,
+        maxPriorityFeePerGas: feeOverrides?.maxPriorityFeePerGas ?? null,
+      },
     })
   );
 
@@ -839,6 +845,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         accountAddress,
         accountId,
         executions,
+        feeOverrides,
         smartAccount,
       })
     : '';
