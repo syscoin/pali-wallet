@@ -275,10 +275,14 @@ export const SendTransaction = () => {
         maxPriorityFeePerGas: 0,
       });
     } else {
+      const requestedGasPrice = feeSafetyAdjustment.gasPrice?.requested;
       const requestedMaxFee =
-        feeSafetyAdjustment.maxFeePerGas?.requested ?? fee.maxFeePerGas;
+        feeSafetyAdjustment.maxFeePerGas?.requested ??
+        requestedGasPrice ??
+        fee.maxFeePerGas;
       const requestedPriorityFee =
         feeSafetyAdjustment.maxPriorityFeePerGas?.requested ??
+        requestedGasPrice ??
         Math.min(fee.maxPriorityFeePerGas, requestedMaxFee);
       setCustomFee({
         isCustom: true,
