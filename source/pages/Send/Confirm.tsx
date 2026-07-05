@@ -1621,6 +1621,7 @@ export const SendConfirm = () => {
           // No-op function since haveError is not used
         }}
         fee={fee}
+        estimatedFeeFloor={fee}
         isSendLegacyTransaction={!isEIP1559Compatible}
         defaultGasLimit={basicTxValues?.defaultGasLimit || 42000}
       />
