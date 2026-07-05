@@ -1071,15 +1071,19 @@ class SmartAccountController {
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
     });
+    const hasOuterEip1559FeeParams =
+      (options.feeOverrides?.maxFeePerGas != null &&
+        options.feeOverrides?.maxPriorityFeePerGas != null) ||
+      (feeData.maxFeePerGas != null && feeData.maxPriorityFeePerGas != null);
     const maxFeePerGas = BigNumber.from(
-      options.feeOverrides?.maxFeePerGas ||
-        feeData.maxFeePerGas ||
-        feeData.gasPrice ||
+      options.feeOverrides?.maxFeePerGas ??
+        feeData.maxFeePerGas ??
+        feeData.gasPrice ??
         0
     );
     const maxPriorityFeePerGas = BigNumber.from(
-      options.feeOverrides?.maxPriorityFeePerGas ||
-        feeData.maxPriorityFeePerGas ||
+      options.feeOverrides?.maxPriorityFeePerGas ??
+        feeData.maxPriorityFeePerGas ??
         0
     );
     const primaryGasPayer = this.getWalletGasPayerCandidates(
@@ -1136,7 +1140,9 @@ class SmartAccountController {
       executions,
       gasPayer,
       maxFeePerGas: maxFeePerGas.toString(),
-      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+      maxPriorityFeePerGas: hasOuterEip1559FeeParams
+        ? maxPriorityFeePerGas.toString()
+        : undefined,
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,
