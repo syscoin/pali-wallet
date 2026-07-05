@@ -299,8 +299,10 @@ export const EvmTransactionDetailsEnhanced = ({
     }
     transactionTx = txLocal as any;
 
-    isTxCanceled = txLocal?.isCanceled === true;
     isConfirmed = isTransactionInBlock(txLocal);
+    isTxCanceled =
+      txLocal?.isCanceled === true ||
+      (txLocal?.isCancel === true && isConfirmed);
     isTxSent =
       txLocal.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 

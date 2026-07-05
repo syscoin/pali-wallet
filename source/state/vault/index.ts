@@ -560,7 +560,9 @@ const VaultState = createSlice({
               Boolean(transactionAny.isSpeedUp) ||
               Boolean(existingTxAny.isSpeedUp) ||
               Boolean(transactionAny.replacesHash) ||
-              Boolean(existingTxAny.replacesHash);
+              Boolean(existingTxAny.replacesHash) ||
+              Boolean(transactionAny.replacementIndexed) ||
+              Boolean(existingTxAny.replacementIndexed);
 
             if (isSmartAccountExecution) {
               currentUserTransactions[existingTxIndex] = {
@@ -573,6 +575,9 @@ const VaultState = createSlice({
                 isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
                 replacesHash:
                   existingTxAny.replacesHash || transactionAny.replacesHash,
+                replacementIndexed:
+                  existingTxAny.replacementIndexed ||
+                  transactionAny.replacementIndexed,
               } as any;
             } else if (hasReplacementMetadata) {
               currentUserTransactions[existingTxIndex] = {
@@ -582,6 +587,9 @@ const VaultState = createSlice({
                 isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
                 replacesHash:
                   existingTxAny.replacesHash || transactionAny.replacesHash,
+                replacementIndexed:
+                  existingTxAny.replacementIndexed ||
+                  transactionAny.replacementIndexed,
               } as any;
             } else if (
               hasMoreConfirmations ||
@@ -709,7 +717,10 @@ const VaultState = createSlice({
           }
 
           if (transaction.isSpeedUp || transaction.isCancel) {
-            return !isTransactionConfirmed(transaction);
+            return (
+              !isTransactionConfirmed(transaction) ||
+              !transaction.replacementIndexed
+            );
           }
 
           return Boolean(transaction.smartAccountExecutionFrom);
@@ -727,6 +738,14 @@ const VaultState = createSlice({
           return transaction;
         }
 
+        const isReplacement =
+          Boolean(existingTransaction.isCancel) ||
+          Boolean(transaction.isCancel) ||
+          Boolean(existingTransaction.isSpeedUp) ||
+          Boolean(transaction.isSpeedUp) ||
+          Boolean(existingTransaction.replacesHash) ||
+          Boolean(transaction.replacesHash);
+
         return {
           ...transaction,
           smartAccountExecutionFrom:
@@ -736,6 +755,10 @@ const VaultState = createSlice({
           isSpeedUp: existingTransaction.isSpeedUp || transaction.isSpeedUp,
           replacesHash:
             existingTransaction.replacesHash || transaction.replacesHash,
+          replacementIndexed:
+            existingTransaction.replacementIndexed ||
+            transaction.replacementIndexed ||
+            isReplacement,
         } as any;
       });
       const mergedTransactions = [
