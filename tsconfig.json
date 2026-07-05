@@ -13,7 +13,7 @@
     "useDefineForClassFields": true,
     "skipLibCheck": true,
     "noResolve": false,
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "noImplicitAny": false,
