@@ -7,6 +7,11 @@ import { BigNumber } from 'utils/ethersV6Compat';
 
 import { safeBigNumber } from './safeBigNumber';
 
+const maxBigNumber = (left: BigNumber, right: BigNumber) =>
+  left.gte(right) ? left : right;
+
+const toGweiNumber = (value: BigNumber) => Number(value.toString()) / 1e9;
+
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetwork
@@ -48,30 +53,54 @@ export const fetchGasAndDecodeFunction = async (
     };
   }
 
-  // Use dApp values if provided, otherwise use network values
-  const maxFeePerGas = dataTx?.maxFeePerGas
-    ? safeBigNumber(dataTx.maxFeePerGas, '0x77359400', 'dApp maxFeePerGas')
-    : dataTx?.gasPrice
-    ? safeBigNumber(dataTx.gasPrice, '0x77359400', 'dApp gasPrice') // Convert legacy gasPrice to maxFeePerGas for UI
-    : safeBigNumber(
-        feeData?.maxFeePerGas,
-        '0x77359400',
-        'network maxFeePerGas'
-      ); // 2 Gwei fallback
+  const networkMaxFeePerGas = safeBigNumber(
+    feeData?.maxFeePerGas || feeData?.gasPrice,
+    '0x77359400',
+    'network maxFeePerGas'
+  ); // 2 Gwei fallback
+  const networkMaxPriorityFeePerGas = safeBigNumber(
+    feeData?.maxPriorityFeePerGas || feeData?.gasPrice,
+    '0x3b9aca00',
+    'network maxPriorityFeePerGas'
+  ); // 1 Gwei fallback
+  const networkGasPrice = safeBigNumber(
+    feeData?.gasPrice || feeData?.maxFeePerGas,
+    '0x77359400',
+    'network gasPrice'
+  );
 
-  const maxPriorityFeePerGas = dataTx?.maxPriorityFeePerGas
+  const dappMaxFeePerGas = dataTx?.maxFeePerGas
+    ? safeBigNumber(dataTx.maxFeePerGas, '0x77359400', 'dApp maxFeePerGas')
+    : null;
+  const dappMaxPriorityFeePerGas = dataTx?.maxPriorityFeePerGas
     ? safeBigNumber(
         dataTx.maxPriorityFeePerGas,
         '0x3b9aca00',
         'dApp maxPriorityFeePerGas'
       )
-    : dataTx?.gasPrice
-    ? safeBigNumber(dataTx.gasPrice, '0x3b9aca00', 'dApp gasPrice for priority') // For legacy, priority = gas price
-    : safeBigNumber(
-        feeData?.maxPriorityFeePerGas,
-        '0x3b9aca00',
-        'network maxPriorityFeePerGas'
-      ); // 1 Gwei fallback
+    : null;
+  const dappGasPrice = dataTx?.gasPrice
+    ? safeBigNumber(dataTx.gasPrice, '0x77359400', 'dApp gasPrice')
+    : null;
+
+  let maxFeePerGas = dappMaxFeePerGas
+    ? maxBigNumber(dappMaxFeePerGas, networkMaxFeePerGas)
+    : dappGasPrice
+    ? maxBigNumber(dappGasPrice, networkMaxFeePerGas)
+    : networkMaxFeePerGas;
+  const maxPriorityFeePerGas = dappMaxPriorityFeePerGas
+    ? maxBigNumber(dappMaxPriorityFeePerGas, networkMaxPriorityFeePerGas)
+    : dappGasPrice
+    ? maxBigNumber(dappGasPrice, networkMaxPriorityFeePerGas)
+    : networkMaxPriorityFeePerGas;
+
+  if (maxPriorityFeePerGas.gt(maxFeePerGas)) {
+    maxFeePerGas = maxPriorityFeePerGas;
+  }
+
+  const legacyGasPrice = dappGasPrice
+    ? maxBigNumber(dappGasPrice, networkGasPrice)
+    : networkGasPrice;
 
   const nonce = (await controllerEmitter(
     ['wallet', 'getRecommendedEvmNonce'],
@@ -107,19 +136,14 @@ export const fetchGasAndDecodeFunction = async (
 
   // If dApp sent gasPrice, make it a Type 0 (legacy) transaction
   if (dataTx?.gasPrice && !dataTx?.maxFeePerGas) {
-    formTx.gasPrice = String(dataTx.gasPrice);
+    formTx.gasPrice = legacyGasPrice.toString();
     // For legacy transactions, set EIP-1559 fields to gasPrice value for compatibility
-    const gasPriceBN = BigNumber.from(dataTx.gasPrice);
-    formTx.maxPriorityFeePerGas = gasPriceBN;
-    formTx.maxFeePerGas = gasPriceBN;
+    formTx.maxPriorityFeePerGas = legacyGasPrice;
+    formTx.maxFeePerGas = legacyGasPrice;
   } else {
     // Otherwise make it Type 2 (EIP-1559) transaction
-    formTx.maxPriorityFeePerGas = dataTx?.maxPriorityFeePerGas
-      ? BigNumber.from(dataTx.maxPriorityFeePerGas)
-      : maxPriorityFeePerGas;
-    formTx.maxFeePerGas = dataTx?.maxFeePerGas
-      ? BigNumber.from(dataTx.maxFeePerGas)
-      : maxFeePerGas;
+    formTx.maxPriorityFeePerGas = maxPriorityFeePerGas;
+    formTx.maxFeePerGas = maxFeePerGas;
   }
 
   const baseTx = {
@@ -131,84 +155,70 @@ export const fetchGasAndDecodeFunction = async (
   } as any;
   // Check if dataTx.gas or dataTx.gasLimit is provided and is a valid non-zero value
   let providedValue: BigNumber | null = null;
-  let shouldEstimateGas = true;
 
   // Try to get gas limit from either gas or gasLimit field (handles hex strings like "0x5208")
   if (dataTx.gasLimit !== undefined && dataTx.gasLimit !== null) {
     try {
       providedValue = BigNumber.from(dataTx.gasLimit);
-      shouldEstimateGas = providedValue.lte(0);
     } catch (e) {
-      shouldEstimateGas = true;
+      providedValue = null;
     }
   } else if (dataTx.gas !== undefined && dataTx.gas !== null) {
     try {
       providedValue = BigNumber.from(dataTx.gas);
-      shouldEstimateGas = providedValue.lte(0);
     } catch (e) {
-      shouldEstimateGas = true;
+      providedValue = null;
     }
   }
 
-  if (shouldEstimateGas) {
-    // verify tx data
-    try {
-      // Skip eth_call validation for simple ETH transfers (no data)
-      const isSimpleTransfer =
-        !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
+  // verify tx data
+  try {
+    // Skip eth_call validation for simple ETH transfers (no data)
+    const isSimpleTransfer =
+      !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
 
-      if (!isSimpleTransfer) {
-        // if it run successfully, the contract data is all right.
-        const clonedTx = { ...dataTx };
-        delete clonedTx.gasLimit;
-        delete clonedTx.gas;
-        delete clonedTx.maxPriorityFeePerGas;
-        delete clonedTx.maxFeePerGas;
-        if (!dataTx.to) {
-          delete clonedTx.to;
-        }
-        await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
-          ['eth_call', [clonedTx, 'latest']]
-        );
+    if (!isSimpleTransfer) {
+      // if it run successfully, the contract data is all right.
+      const clonedTx = { ...dataTx };
+      delete clonedTx.gasLimit;
+      delete clonedTx.gas;
+      delete clonedTx.gasPrice;
+      delete clonedTx.maxPriorityFeePerGas;
+      delete clonedTx.maxFeePerGas;
+      if (!dataTx.to) {
+        delete clonedTx.to;
       }
-    } catch (error) {
-      if (!error.message.includes('reverted')) {
-        isInvalidTxData = true;
-      }
+      await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+        ['eth_call', [clonedTx, 'latest']]
+      );
     }
-
-    try {
-      // if tx data is valid, Pali is able to estimate gas.
-      if (!isInvalidTxData) {
-        gasLimitResult = (await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-          [baseTx]
-        )) as any;
-
-        // Ensure the result from getTxGasLimit is a BigNumber
-        gasLimitResult = safeBigNumber(
-          gasLimitResult,
-          gasLimitFromCurrentBlock,
-          'Gas limit estimation result'
-        );
-      }
-    } catch (error) {
-      console.error(error);
-      gasLimitError = true;
+  } catch (error) {
+    if (!error.message.includes('reverted')) {
+      isInvalidTxData = true;
     }
-  } else {
-    // Use the provided gas value if it's valid
-    gasLimitResult = providedValue!; // We know it's not null if shouldEstimateGas is false
   }
 
-  // Set the gas limit based on our estimation or provided value
-  // Use block gas limit as primary fallback
-  const gasLimitWithFallback = safeBigNumber(
-    gasLimitResult,
-    gasLimitFromCurrentBlock,
-    'Gas limit'
-  );
+  let estimatedGasLimit: BigNumber | null = null;
+  try {
+    // if tx data is valid, Pali is able to estimate gas.
+    if (!isInvalidTxData) {
+      gasLimitResult = (await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+        [baseTx]
+      )) as any;
+
+      // Ensure the result from getTxGasLimit is a BigNumber
+      estimatedGasLimit = safeBigNumber(
+        gasLimitResult,
+        gasLimitFromCurrentBlock,
+        'Gas limit estimation result'
+      );
+    }
+  } catch (error) {
+    console.error(error);
+    gasLimitError = true;
+  }
 
   // Determine minimum gas based on transaction type
   // Simple ETH transfers (no data) need 42,000 gas
@@ -216,11 +226,26 @@ export const fetchGasAndDecodeFunction = async (
   const isSimpleTransfer =
     !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
   const minimumGas = isSimpleTransfer ? 42000 : 60000;
+  const applyMinimumGas = (gasLimit: BigNumber) =>
+    gasLimit.lt(minimumGas) ? BigNumber.from(minimumGas) : gasLimit;
 
-  // Ensure we have at least the minimum gas for the transaction type
-  formTx.gasLimit = gasLimitWithFallback.lt(minimumGas)
-    ? BigNumber.from(minimumGas)
-    : gasLimitWithFallback;
+  const estimatedGasLimitWithMinimum = estimatedGasLimit
+    ? applyMinimumGas(estimatedGasLimit)
+    : null;
+  const providedGasLimitWithMinimum =
+    providedValue && providedValue.gt(0)
+      ? applyMinimumGas(providedValue)
+      : null;
+  const fallbackGasLimit = applyMinimumGas(
+    safeBigNumber(gasLimitResult, gasLimitFromCurrentBlock, 'Gas limit')
+  );
+
+  formTx.gasLimit =
+    estimatedGasLimitWithMinimum && providedGasLimitWithMinimum
+      ? maxBigNumber(providedGasLimitWithMinimum, estimatedGasLimitWithMinimum)
+      : providedGasLimitWithMinimum ||
+        estimatedGasLimitWithMinimum ||
+        fallbackGasLimit;
 
   // Check if this is a legacy transaction
   const isLegacyTransaction = dataTx?.gasPrice && !dataTx?.maxFeePerGas;
@@ -249,9 +274,8 @@ export const fetchGasAndDecodeFunction = async (
 
   if (isLegacyTransaction) {
     // For legacy transactions, only set gasPrice
-    const gasPriceBigNumber = BigNumber.from(dataTx.gasPrice);
     // Convert wei to Gwei with proper decimal handling
-    feeDetails.gasPrice = Number(gasPriceBigNumber.toString()) / 1e9;
+    feeDetails.gasPrice = toGweiNumber(legacyGasPrice);
     // Legacy transactions don't have EIP-1559 fields, set minimal compatibility values
     // These are needed by the UI to display fee estimates
     feeDetails.baseFee = 0;
@@ -261,9 +285,8 @@ export const fetchGasAndDecodeFunction = async (
     // For EIP-1559 transactions
     // Convert wei to Gwei with proper decimal handling
     // Instead of integer division, convert to number first then divide
-    feeDetails.maxFeePerGas = Number(maxFeePerGas.toString()) / 1e9;
-    feeDetails.maxPriorityFeePerGas =
-      Number(maxPriorityFeePerGas.toString()) / 1e9;
+    feeDetails.maxFeePerGas = toGweiNumber(maxFeePerGas);
+    feeDetails.maxPriorityFeePerGas = toGweiNumber(maxPriorityFeePerGas);
 
     // Calculate baseFee
     const baseFeeCalc = maxFeePerGas.gt(maxPriorityFeePerGas)
@@ -274,6 +297,45 @@ export const fetchGasAndDecodeFunction = async (
 
   return {
     feeDetails,
+    feeSafety: {
+      gasLimit:
+        providedValue &&
+        estimatedGasLimitWithMinimum &&
+        providedValue.lt(estimatedGasLimitWithMinimum)
+          ? {
+              requested: parseInt(providedValue.toString(), 10),
+              recommended: parseInt(
+                estimatedGasLimitWithMinimum.toString(),
+                10
+              ),
+            }
+          : undefined,
+      gasPrice:
+        isLegacyTransaction && dappGasPrice && dappGasPrice.lt(networkGasPrice)
+          ? {
+              requested: toGweiNumber(dappGasPrice),
+              recommended: toGweiNumber(networkGasPrice),
+            }
+          : undefined,
+      maxFeePerGas:
+        !isLegacyTransaction &&
+        dappMaxFeePerGas &&
+        dappMaxFeePerGas.lt(networkMaxFeePerGas)
+          ? {
+              requested: toGweiNumber(dappMaxFeePerGas),
+              recommended: toGweiNumber(networkMaxFeePerGas),
+            }
+          : undefined,
+      maxPriorityFeePerGas:
+        !isLegacyTransaction &&
+        dappMaxPriorityFeePerGas &&
+        dappMaxPriorityFeePerGas.lt(networkMaxPriorityFeePerGas)
+          ? {
+              requested: toGweiNumber(dappMaxPriorityFeePerGas),
+              recommended: toGweiNumber(networkMaxPriorityFeePerGas),
+            }
+          : undefined,
+    },
     formTx,
     nonce,
     isInvalidTxData,
