@@ -17,7 +17,10 @@ import {
 } from './contracts';
 
 type PaliSmartAccountFactoryLike = {
-  getAddress: (salt: string, initCode: string) => Promise<string>;
+  'getAddress(bytes32,bytes)': (
+    salt: string,
+    initCode: string
+  ) => Promise<string>;
   'getInitData(address,bytes)': (
     validator: string,
     initData: string
@@ -129,7 +132,9 @@ export const toPaliSmartAccount = async ({
         accountFactory,
         deploymentAuth
       );
-      return getAddress(await accountFactory.getAddress(deploySalt, initCode));
+      return getAddress(
+        await accountFactory['getAddress(bytes32,bytes)'](deploySalt, initCode)
+      );
     })());
 
   const encodeExecutions = (calls: PaliSmartAccountCall[]) =>

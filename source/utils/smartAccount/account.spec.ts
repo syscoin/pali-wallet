@@ -455,7 +455,7 @@ describe('ERC-7579 smart account helpers', () => {
       [auth.validator, auth.data]
     );
     const factory = {
-      getAddress: jest.fn(async () => accountAddress),
+      'getAddress(bytes32,bytes)': jest.fn(async () => accountAddress),
       'getInitData(address,bytes)': jest.fn(async () => initCode),
       interface: paliSmartAccountFactoryInterface,
     };
