@@ -1136,9 +1136,7 @@ class SmartAccountController {
       executions,
       gasPayer,
       maxFeePerGas: maxFeePerGas.toString(),
-      maxPriorityFeePerGas: maxPriorityFeePerGas.gt(0)
-        ? maxPriorityFeePerGas.toString()
-        : undefined,
+      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
       mode: prepared.mode,
       smartAccount: active.metadata,
       userOperation,

@@ -470,7 +470,7 @@ export const SendConfirm = () => {
         }
 
         const maxPriorityFeePerGas =
-          customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+          customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
             ? customFee.maxPriorityFeePerGas
             : fee.maxPriorityFeePerGas;
         const maxFeePerGas =
@@ -479,8 +479,8 @@ export const SendConfirm = () => {
             : fee.maxFeePerGas;
 
         if (
-          !maxPriorityFeePerGas ||
-          maxPriorityFeePerGas <= 0 ||
+          maxPriorityFeePerGas == null ||
+          maxPriorityFeePerGas < 0 ||
           !maxFeePerGas ||
           maxFeePerGas <= 0
         ) {
