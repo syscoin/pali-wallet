@@ -96,7 +96,7 @@ const EvmTransactionItem = React.memo(
     const isSpeedUp = tx?.isSpeedUp === true;
     const displayTx = getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
-    const isTxCanceled = isCancel && isConfirmed;
+    const isTxCanceled = tx?.isCanceled === true || (isCancel && isConfirmed);
     const currentAddress = currentAccount?.address?.toLowerCase();
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
