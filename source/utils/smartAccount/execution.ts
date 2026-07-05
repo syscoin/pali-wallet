@@ -274,6 +274,7 @@ export type SubmitSmartAccountExecutionsParams = {
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
+  feeOverrides?: SmartAccountFeeOverrides;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
@@ -282,6 +283,11 @@ export type SubmitSmartAccountExecutionsParams = {
   smartAccount: ISmartAccountMetadata;
   useCachedMetadata?: boolean;
   waitForConfirmation?: boolean;
+};
+
+export type SmartAccountFeeOverrides = {
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
 };
 
 export type SmartAccountAuthenticatorSignature = {
@@ -815,6 +821,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     authenticatorContexts,
     controllerEmitter,
     executions,
+    feeOverrides,
     onAssertionResolved,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
@@ -843,6 +850,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         executions,
         accountId,
         {
+          feeOverrides,
           useCachedMetadata: useCachedMetadataOverride,
         },
       ],
@@ -874,6 +882,7 @@ export const signAndSubmitSmartAccountExecutions = async (
           accountId,
           gasPayer: prepared.gasPayer,
           maxFeePerGas: prepared.maxFeePerGas,
+          maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,
           mode: prepared.mode,
           signature: signature.signature,
           skipRapidPolling,
