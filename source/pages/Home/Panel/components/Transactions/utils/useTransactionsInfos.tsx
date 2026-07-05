@@ -6,6 +6,7 @@ import { ArrowUpSvg, ReceivedArrowSvg } from 'components/Icon/Icon';
 import { RootState } from 'state/store';
 import { ITransactionsListConfig } from 'types/useTransactionsInfo';
 import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Memoize transaction status icons using centralized SVG components
 const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
@@ -87,7 +88,11 @@ export const useTransactionsListConfig = (
     return userTransactions
       .filter((item: any) => {
         if (!isBitcoinBased) {
-          if (item?.isCancel && item?.replacesHash) {
+          if (
+            item?.isCancel &&
+            item?.replacesHash &&
+            isTransactionInBlock(item)
+          ) {
             return false;
           }
           return item?.chainId === chainId;
