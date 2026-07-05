@@ -3025,10 +3025,10 @@
   resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.28.tgz#05daaf0a9411febfe36d96a43f76767a5bcd5d03"
   integrity sha512-YN3qdoPNyFFdseO/iaUmr0gSWpKbVEPA6I9ePd8Sny2BhY11SsXkj1x+acL9RfmtsfZ7kh+tzo3//OOGCw+PLA==
 
-"@sidhujag/sysweb3-keyring@^1.0.603":
-  version "1.0.603"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.603.tgz#f32064aa104820297e18ef1cca03dfe2a8beec8c"
-  integrity sha512-ijCz6O8Y9Xuo3EVSRWmF0C5Xf4ekTFpq+np1eeSjJUj84gM44YRbCeXF2Z4/SuxTuTp6sRhUq0YStajQB+RBbA==
+"@sidhujag/sysweb3-keyring@^1.0.604":
+  version "1.0.604"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.604.tgz#4d8e1b28c59e9aa1bcaa9dbf7dd09c54ebffb8d0"
+  integrity sha512-E9dDJc8bP9QY/8W9V28TIMs8ef74tNkuDDMboHjwl3P0FEBknUkXbIEMw1ZGXShqO2OISuHZLrXQijVOc+Hm8g==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
@@ -3036,8 +3036,8 @@
     "@ledgerhq/logs" "^6.10.1"
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.28"
-    "@sidhujag/sysweb3-network" "^1.0.108"
-    "@sidhujag/sysweb3-utils" "^1.1.275"
+    "@sidhujag/sysweb3-network" "^1.0.109"
+    "@sidhujag/sysweb3-utils" "^1.1.277"
     "@trezor/connect-web" "^9.7.1"
     "@trezor/connect-webextension" "^9.7.1"
     "@trezor/utxo-lib" "^1.0.12"
@@ -3056,12 +3056,20 @@
     eth-chains "^1.0.0"
     ethers "^6.17.0"
 
-"@sidhujag/sysweb3-utils@^1.1.275":
-  version "1.1.275"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.275.tgz#77280ac34490fbbb36d19c56efd82bcb0654e796"
-  integrity sha512-hTldZHGcW7piyg9dh6/rPHhNSTGTAOZKHqk+yOETh3LPm1rLWPIAQibw8oDTg9o656tybIAUhyuEtp5emWTW7w==
+"@sidhujag/sysweb3-network@^1.0.109":
+  version "1.0.109"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.109.tgz#dc25e4e0938403ef18661d7874d2d8186be7ee98"
+  integrity sha512-ivHoiFMNeCeOIqMofDF0o9+zrEP1Zgq+IoIXGLdqltUoZluQb78ga63mKTeGivZjy3GZ6niMBFVIeSSSFswDog==
   dependencies:
-    "@sidhujag/sysweb3-network" "^1.0.108"
+    eth-chains "^1.0.0"
+    ethers "^6.17.0"
+
+"@sidhujag/sysweb3-utils@^1.1.276", "@sidhujag/sysweb3-utils@^1.1.277":
+  version "1.1.277"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.277.tgz#b6542053db369c45eea42bb9c8e0aca61dfdf184"
+  integrity sha512-epkjCycSb6YZImYkRkcOE6/JO7qomoK7/IwiR5cONJGZ10bdD9QrSU/QmERBoTCJjRoZKyxIu/uplN11LufQFA==
+  dependencies:
+    "@sidhujag/sysweb3-network" "^1.0.109"
     bech32 "^2.0.0"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
@@ -7083,9 +7091,16 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3:
   version "1.0.3"
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  dependencies:
+    eth-util-lite "^1.0.1"
+
+"eth-object@git+https://github.com/syscoin/eth-object.git":
+  version "1.0.3"
+  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
+  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 
@@ -11918,10 +11933,10 @@ svgo@^3.2.0:
     picocolors "^1.0.0"
     sax "^1.5.0"
 
-syscoinjs-lib@^1.0.270:
-  version "1.0.270"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.270.tgz#a4a64a95d24ed956b8744c9195eca17c5b328507"
-  integrity sha512-eTnThoGHw5Pz6bxxiZjTDmq5y8MktSYyopXCDAzVXtxxsMDBX/raHsoCPI7qlddHHp8oiViwEq1WnAuzUqGxcQ==
+syscoinjs-lib@^1.0.271:
+  version "1.0.271"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.271.tgz#629ac00e56c73ad019fc1398e9f36fe648751f40"
+  integrity sha512-WzFhVgTYSskCsV+61BunaarIhZZnx/YqBF+FRvKEd3T12XPCWwSzXMhnb09WrYq8IyZnR28x78m3ykZlAnAMwA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
