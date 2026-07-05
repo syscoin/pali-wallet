@@ -3990,9 +3990,11 @@ class MainController {
   ) {
     const { accounts, activeAccount } = store.getState().vault;
     const normalizedSignerAddress = signerAddress?.toLowerCase();
+    const canUseSignerOverride =
+      activeAccount.type === KeyringAccountType.SmartAccount;
 
     let targetAccount: { id: number; type: KeyringAccountType } | undefined;
-    if (normalizedSignerAddress) {
+    if (canUseSignerOverride && normalizedSignerAddress) {
       for (const accountType of Object.keys(accounts) as KeyringAccountType[]) {
         if (accountType === KeyringAccountType.SmartAccount) {
           continue;

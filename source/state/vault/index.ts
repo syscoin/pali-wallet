@@ -730,8 +730,9 @@ const VaultState = createSlice({
       });
       const refreshedTransactions = transactions.map((transaction: any) => {
         const transactionId = transaction.hash || transaction.txid;
-        const existingTransaction = transactionId
-          ? (existingTransactionsById.get(transactionId.toLowerCase()) as any)
+        const transactionIdLower = transactionId?.toLowerCase();
+        const existingTransaction = transactionIdLower
+          ? (existingTransactionsById.get(transactionIdLower) as any)
           : undefined;
 
         if (networkType !== TransactionsType.Ethereum || !existingTransaction) {
@@ -745,9 +746,17 @@ const VaultState = createSlice({
           Boolean(transaction.isSpeedUp) ||
           Boolean(existingTransaction.replacesHash) ||
           Boolean(transaction.replacesHash);
+        const replacementKnownForOriginal =
+          transactionIdLower &&
+          confirmedOrMaterializedReplacementHashesByOriginal.has(
+            transactionIdLower
+          );
+        const originalConfirmedWithoutReplacement =
+          isTransactionConfirmed(transaction) && !replacementKnownForOriginal;
         const isReplaced =
-          Boolean(existingTransaction.isReplaced) ||
-          Boolean(transaction.isReplaced);
+          (Boolean(existingTransaction.isReplaced) ||
+            Boolean(transaction.isReplaced)) &&
+          !originalConfirmedWithoutReplacement;
 
         return {
           ...transaction,
