@@ -2,33 +2,6 @@
 jest.mock('../../source/state/store');
 jest.mock('@sidhujag/sysweb3-utils');
 
-jest.mock('@ethersproject/units', () => ({
-  parseEther: (value: string) => ({
-    _hex: '0x' + (parseFloat(value) * 1e18).toString(16),
-  }),
-  parseUnits: (value: string, unit: string | number) => {
-    const decimals =
-      typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
-    return {
-      _hex: '0x' + (parseFloat(value) * Math.pow(10, decimals)).toString(16),
-    };
-  },
-  formatUnits: (value: any, unit: string | number) => {
-    const decimals =
-      typeof unit === 'string' && unit === 'gwei' ? 9 : Number(unit);
-    const num = BigInt(value._hex || value);
-    return (Number(num) / Math.pow(10, decimals)).toString();
-  },
-}));
-
-jest.mock('@ethersproject/contracts', () => ({
-  Contract: jest.fn(),
-}));
-
-jest.mock('@ethersproject/providers', () => ({
-  JsonRpcProvider: jest.fn(),
-}));
-
 import { INetwork, INetworkType } from '@sidhujag/sysweb3-network';
 
 // Import the real BigNumber (not mocked)
