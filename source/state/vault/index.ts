@@ -648,6 +648,12 @@ const VaultState = createSlice({
 
       const existingTransactions =
         currentAccountTransactions[networkType]?.[chainId] || [];
+      const isTransactionConfirmed = (transaction: any) =>
+        Number(transaction.confirmations || 0) > 0 ||
+        Number(transaction.blockNumber || 0) > 0 ||
+        Number(transaction.blockHeight || 0) > 0 ||
+        Number(transaction.height || 0) > 0 ||
+        Boolean(transaction.blockHash);
       const incomingTransactionIds = new Set(
         transactions
           .map((transaction: any) => transaction.hash || transaction.txid)
@@ -676,12 +682,7 @@ const VaultState = createSlice({
             const replacementIsMaterialized = incomingTransactionIds.has(
               String(replacementId).toLowerCase()
             );
-            const replacementIsConfirmed =
-              Number(transaction.confirmations || 0) > 0 ||
-              Number(transaction.blockNumber || 0) > 0 ||
-              Number(transaction.blockHeight || 0) > 0 ||
-              Number(transaction.height || 0) > 0 ||
-              Boolean(transaction.blockHash);
+            const replacementIsConfirmed = isTransactionConfirmed(transaction);
 
             return replacementIsMaterialized || replacementIsConfirmed
               ? String(originalId).toLowerCase()
@@ -707,21 +708,14 @@ const VaultState = createSlice({
             return false;
           }
 
-          return Boolean(
-            transaction.smartAccountExecutionFrom ||
-              transaction.isSpeedUp ||
-              transaction.isCancel
-          );
+          if (transaction.isSpeedUp || transaction.isCancel) {
+            return !isTransactionConfirmed(transaction);
+          }
+
+          return Boolean(transaction.smartAccountExecutionFrom);
         }
 
-        const isConfirmed =
-          Number(transaction.confirmations || 0) > 0 ||
-          Number(transaction.blockNumber || 0) > 0 ||
-          Number(transaction.blockHeight || 0) > 0 ||
-          Number(transaction.height || 0) > 0 ||
-          Boolean(transaction.blockHash);
-
-        return !isConfirmed;
+        return !isTransactionConfirmed(transaction);
       });
       const refreshedTransactions = transactions.map((transaction: any) => {
         const transactionId = transaction.hash || transaction.txid;
