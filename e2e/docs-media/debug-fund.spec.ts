@@ -1,5 +1,6 @@
-import { parseEther } from '@ethersproject/units';
 import { test } from '@playwright/test';
+
+import { parseEther } from 'utils/ethersV6Compat';
 
 import { predictAndFundSmartAccounts } from './fundSmartAccounts';
 

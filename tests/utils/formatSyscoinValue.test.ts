@@ -1,10 +1,9 @@
-import { BigNumber } from '@ethersproject/bignumber';
-
 import {
   formatSyscoinValue,
   toSatoshis,
   formatGweiValue,
 } from '../../source/utils/formatSyscoinValue';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 describe('formatSyscoinValue', () => {
   describe('formatSyscoinValue', () => {

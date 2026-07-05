@@ -1,12 +1,4 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/bignumber');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
-import { BigNumber } from '@ethersproject/bignumber';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts';
 import {

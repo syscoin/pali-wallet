@@ -1,4 +1,4 @@
-import { BigNumber } from '@ethersproject/bignumber';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 export interface ITransaction {
   blockTime: number;

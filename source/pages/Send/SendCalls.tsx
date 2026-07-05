@@ -1,6 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -14,6 +11,9 @@ import { RootState } from 'state/store';
 import { selectEnsNameToAddress } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getMethodName } from 'utils/commonMethodSignatures';
+import { formatEther } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
 import {

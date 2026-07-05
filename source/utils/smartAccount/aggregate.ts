@@ -1,10 +1,10 @@
-import { Interface } from '@ethersproject/abi';
+import { Interface } from 'utils/ethersV6Compat';
+import type { Result } from 'utils/ethersV6Compat';
 
 import {
   PALI_INFRASTRUCTURE_BY_ID,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
 } from './deployment';
-import type { Result } from '@ethersproject/abi';
 
 /**
  * Read-call aggregation for smart-account RPC traffic.

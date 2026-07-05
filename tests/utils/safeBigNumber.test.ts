@@ -1,10 +1,9 @@
 // Don't mock @ethersproject packages since BigNumber needs them
-import { BigNumber } from '@ethersproject/bignumber';
-
 import {
   safeBigNumber,
   canConvertToBigNumber,
 } from '../../source/utils/safeBigNumber';
+import { BigNumber } from 'utils/ethersV6Compat';
 
 describe('safeBigNumber', () => {
   describe('Valid inputs', () => {

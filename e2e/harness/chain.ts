@@ -1,9 +1,8 @@
-import { JsonRpcProvider } from '@ethersproject/providers';
-
 import {
   getPaliInfrastructureContracts,
   type PaliInfrastructureContract,
 } from '../../source/utils/smartAccount/deployment';
+import { JsonRpcProvider } from 'utils/ethersV6Compat';
 
 import { E2E_CONFIG } from './config';
 
@@ -46,7 +45,9 @@ export const getInfrastructureState = async (): Promise<
 > =>
   Promise.all(
     getInfrastructureContracts().map(async (contract) => {
-      const code = await withRetries(() => provider.getCode(contract.address));
+      const code = (await withRetries(() =>
+        provider.getCode(contract.address)
+      )) as string;
       return { contract, deployed: code !== '0x' && code.length > 2 };
     })
   );

@@ -1,6 +1,3 @@
-import { Interface } from '@ethersproject/abi';
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatEther, parseUnits } from '@ethersproject/units';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -40,6 +37,9 @@ import {
 } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { handleTransactionError } from 'utils/errorHandling';
+import { formatEther, parseUnits } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { Interface } from 'utils/ethersV6Compat';
 import { formatGweiValue } from 'utils/formatSyscoinValue';
 import {
   truncate,

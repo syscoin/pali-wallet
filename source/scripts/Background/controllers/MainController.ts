@@ -1,9 +1,5 @@
 // Removed unused import: ethErrors
 
-import { isHexString } from '@ethersproject/bytes';
-import { Contract } from '@ethersproject/contracts';
-import { namehash } from '@ethersproject/hash';
-import { formatUnits } from '@ethersproject/units';
 import {
   KeyringManager,
   CustomJsonRpcProvider,
@@ -106,6 +102,10 @@ import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
+import { formatUnits } from 'utils/ethersV6Compat';
+import { namehash } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
+import { isHexString } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
@@ -215,15 +215,23 @@ class MainController {
     AbortController
   >();
 
-  // Get or create a persistent provider for a given RPC URL
-  private getOrCreatePersistentProvider(url: string): CustomJsonRpcProvider {
-    const existing = this.persistentProviders.get(url);
+  // Get or create a persistent provider for a given chain/RPC URL
+  private getOrCreatePersistentProvider(
+    chainId: number,
+    url: string
+  ): CustomJsonRpcProvider {
+    const providerKey = `${chainId}|${url}`;
+    const existing = this.persistentProviders.get(providerKey);
     if (existing) return existing;
 
     const abortController = new AbortController();
-    const provider = new CustomJsonRpcProvider(abortController.signal, url);
-    this.persistentProviders.set(url, provider);
-    this.persistentProviderAbortControllers.set(url, abortController);
+    const provider = new CustomJsonRpcProvider(
+      abortController.signal,
+      url,
+      chainId
+    );
+    this.persistentProviders.set(providerKey, provider);
+    this.persistentProviderAbortControllers.set(providerKey, abortController);
     return provider;
   }
 
@@ -235,7 +243,7 @@ class MainController {
     const { networks } = store.getState().vaultGlobal;
     const network = networks?.ethereum?.[chainId];
     if (!network?.url) return null;
-    return this.getOrCreatePersistentProvider(network.url);
+    return this.getOrCreatePersistentProvider(chainId, network.url);
   }
 
   // Resolve the configured Ethereum mainnet provider (cached)
@@ -243,7 +251,7 @@ class MainController {
     const { networks } = store.getState().vaultGlobal;
     const mainnet = networks?.ethereum?.[1];
     if (!mainnet?.url) return null;
-    return this.getOrCreatePersistentProvider(mainnet.url);
+    return this.getOrCreatePersistentProvider(1, mainnet.url);
   }
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
@@ -4501,10 +4509,10 @@ class MainController {
           }));
         }
         txResponse =
-          await controller.wallet.ethereumTransaction.sendFormattedTransaction(
+          (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
             params,
             isLegacy
-          );
+          )) as unknown as IEvmTransactionResponse;
       } finally {
         if (shouldUseTargetAccount) {
           keyring.setVaultStateGetter(() => store.getState().vault);
@@ -6491,6 +6499,10 @@ class MainController {
   ): any {
     if (hexValue === null || hexValue === undefined) return null;
 
+    if (typeof hexValue === 'bigint') {
+      return returnType === 'number' ? Number(hexValue) : hexValue.toString();
+    }
+
     // Handle BigNumber objects from web3 provider
     if (hexValue && typeof hexValue === 'object') {
       // Check for different BigNumber structures
@@ -6511,9 +6523,8 @@ class MainController {
 
       if (hexString && hexString.startsWith('0x')) {
         try {
-          const parsed = parseInt(hexString, 16);
-          const result = returnType === 'number' ? parsed : parsed.toString();
-          return result;
+          const parsed = BigInt(hexString);
+          return returnType === 'number' ? Number(parsed) : parsed.toString();
         } catch (error) {
           console.warn(`Failed to convert BigNumber ${hexString}:`, error);
           return hexValue;
@@ -6526,8 +6537,8 @@ class MainController {
     if (!hexStr.startsWith('0x')) return hexValue; // Already converted or not hex
 
     try {
-      const parsed = parseInt(hexStr, 16);
-      return returnType === 'number' ? parsed : parsed.toString();
+      const parsed = BigInt(hexStr);
+      return returnType === 'number' ? Number(parsed) : parsed.toString();
     } catch (error) {
       console.warn(`Failed to convert hex value ${hexStr}:`, error);
       return hexValue;
@@ -6942,7 +6953,14 @@ class MainController {
     contractAddress: string,
     ownerAddress: string,
     tokenIds: string[]
-  ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> {
+  ): Promise<
+    {
+      balance: number;
+      rawBalance?: string;
+      tokenId: string;
+      verified: boolean;
+    }[]
+  > {
     return this.evmAssetsController.verifyERC1155Ownership(
       contractAddress,
       ownerAddress,

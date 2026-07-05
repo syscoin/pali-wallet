@@ -1,7 +1,3 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { getAddress } from '@ethersproject/address';
-import { id } from '@ethersproject/hash';
-import { formatUnits } from '@ethersproject/units';
 import { omit } from 'lodash';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -10,6 +6,10 @@ import store from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
+import { formatUnits } from 'utils/ethersV6Compat';
+import { id } from 'utils/ethersV6Compat';
+import { getAddress } from 'utils/ethersV6Compat';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
 

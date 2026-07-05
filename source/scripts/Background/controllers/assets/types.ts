@@ -176,7 +176,14 @@ export interface IEvmAssetsController {
     ownerAddress: string,
     tokenIds: string[],
     w3Provider: CustomJsonRpcProvider
-  ) => Promise<{ balance: number; tokenId: string; verified: boolean }[]>;
+  ) => Promise<
+    {
+      balance: number;
+      rawBalance?: string;
+      tokenId: string;
+      verified: boolean;
+    }[]
+  >;
 
   // Verify ownership of NFT token IDs
   verifyERC721Ownership: (

@@ -1,6 +1,3 @@
-import { Interface } from '@ethersproject/abi';
-import { BigNumber } from '@ethersproject/bignumber';
-import { parseUnits, formatEther } from '@ethersproject/units';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -32,6 +29,9 @@ import { convertBigNumberToString } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { handleTransactionError } from 'utils/errorHandling';
+import { parseUnits, formatEther } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { Interface } from 'utils/ethersV6Compat';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
@@ -492,23 +492,34 @@ export const SendTransaction = () => {
               customFee.isCustom && customFee.maxPriorityFeePerGas > 0
             )
               ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
-              : tx.maxPriorityFeePerGas &&
-                BigNumber.isBigNumber(tx.maxPriorityFeePerGas)
-              ? tx.maxPriorityFeePerGas // Use the BigNumber from tx
+              : tx.maxPriorityFeePerGas != null
+              ? safeBigNumber(
+                  tx.maxPriorityFeePerGas,
+                  parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9),
+                  'transaction maxPriorityFeePerGas'
+                )
               : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
             maxFeePerGas: Boolean(
               customFee.isCustom && customFee.maxFeePerGas > 0
             )
               ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
-              : tx.maxFeePerGas && BigNumber.isBigNumber(tx.maxFeePerGas)
-              ? tx.maxFeePerGas // Use the BigNumber from tx
+              : tx.maxFeePerGas != null
+              ? safeBigNumber(
+                  tx.maxFeePerGas,
+                  parseUnits(safeToFixed(fee.maxFeePerGas), 9),
+                  'transaction maxFeePerGas'
+                )
               : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
             gasLimit: Boolean(
               customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
             )
               ? BigNumber.from(customFee.gasLimit)
-              : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
-              ? tx.gasLimit // Use the BigNumber from tx
+              : tx.gasLimit != null
+              ? safeBigNumber(
+                  tx.gasLimit,
+                  BigNumber.from(fee.gasLimit || 42000),
+                  'transaction gasLimit'
+                )
               : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
             ...(toField ? { to: toField } : {}),
           };

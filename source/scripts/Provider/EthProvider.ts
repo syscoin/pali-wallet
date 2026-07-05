@@ -1,5 +1,4 @@
 // validateEOAAddress removed - validation should be done through background service
-import { getAddress } from '@ethersproject/address';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
@@ -12,6 +11,7 @@ import {
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { getAddress } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 

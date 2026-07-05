@@ -1,4 +1,3 @@
-import { formatUnits } from '@ethersproject/units';
 import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -20,6 +19,7 @@ import {
 } from 'state/vault/selectors';
 import { IDecodedTx } from 'types/transactions';
 import { formatMethodName } from 'utils/commonMethodSignatures';
+import { formatUnits } from 'utils/ethersV6Compat';
 import { camelCaseToText } from 'utils/index';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';

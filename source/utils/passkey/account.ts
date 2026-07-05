@@ -1,6 +1,5 @@
-import { defaultAbiCoder } from '@ethersproject/abi';
-
 import type { SmartAccountP256WebAuthnConfig } from 'types/network';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import type { SmartAccountAuthConfig } from 'utils/smartAccount';
 import { getPaliP256WebAuthnValidatorAddress } from 'utils/smartAccount/contracts';
 

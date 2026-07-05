@@ -1,11 +1,6 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/strings');
-
-import { defaultAbiCoder } from '@ethersproject/abi';
-import { hexConcat } from '@ethersproject/bytes';
-import { id } from '@ethersproject/hash';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
+import { id } from 'utils/ethersV6Compat';
 
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './smartAccount/contracts';
 import { getSmartAccountDisplayTransaction } from './transactions';

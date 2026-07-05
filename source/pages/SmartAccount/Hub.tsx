@@ -1,5 +1,3 @@
-import { getAddress, isAddress } from '@ethersproject/address';
-import { isHexString } from '@ethersproject/bytes';
 import { Form, Input } from 'antd';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +20,8 @@ import {
   ISmartAccountMetadata,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { isHexString } from 'utils/ethersV6Compat';
+import { getAddress, isAddress } from 'utils/ethersV6Compat';
 import {
   encodeCompositeValidatorInitData,
   encodeInstallValidatorModuleCall,

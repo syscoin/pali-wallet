@@ -1,11 +1,11 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { hexZeroPad } from '@ethersproject/bytes';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import store from 'state/store';
 import { setAccountPropertyByIdAndType } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import type { KeyringAccountType } from 'types/network';
+import { hexZeroPad } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,

@@ -1,4 +1,3 @@
-import { getAddress } from '@ethersproject/address';
 import { Form, Input } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +16,7 @@ import {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
+import { getAddress } from 'utils/ethersV6Compat';
 import {
   bytesToHex,
   clearPasskeyAccountRecords,

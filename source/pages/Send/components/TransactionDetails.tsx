@@ -1,5 +1,3 @@
-import { BigNumber } from '@ethersproject/bignumber';
-import { formatEther, parseUnits } from '@ethersproject/units';
 import { Input } from 'antd';
 import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +18,8 @@ import {
   IFeeState,
   ITxState,
 } from 'types/transactions';
+import { formatEther, parseUnits } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 

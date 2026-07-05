@@ -1,4 +1,4 @@
-import { isHexString } from '@ethersproject/bytes';
+import { isHexString } from 'utils/ethersV6Compat';
 
 import {
   SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,

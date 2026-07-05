@@ -1,11 +1,3 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/address');
-jest.unmock('@ethersproject/bignumber');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
 const dispatchMock = jest.fn();
 let vaultState: any;
 

@@ -1,4 +1,3 @@
-import { formatUnits } from '@ethersproject/units';
 import { getAsset } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import { isNil } from 'lodash';
@@ -6,6 +5,7 @@ import { isNil } from 'lodash';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
+import { formatUnits } from 'utils/ethersV6Compat';
 
 import {
   ASSET_CACHE_DURATION,

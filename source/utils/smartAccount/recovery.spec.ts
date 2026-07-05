@@ -1,10 +1,4 @@
-jest.unmock('@ethersproject/abi');
-jest.unmock('@ethersproject/bytes');
-jest.unmock('@ethersproject/hash');
-jest.unmock('@ethersproject/keccak256');
-jest.unmock('@ethersproject/strings');
-
-import { defaultAbiCoder } from '@ethersproject/abi';
+import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 import {
   ERC7579_MODE_BATCH_DEFAULT,

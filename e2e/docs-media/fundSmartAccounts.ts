@@ -1,9 +1,3 @@
-import { getAddress } from '@ethersproject/address';
-import { Contract } from '@ethersproject/contracts';
-import { JsonRpcProvider } from '@ethersproject/providers';
-import { formatEther, parseEther } from '@ethersproject/units';
-import { Wallet } from '@ethersproject/wallet';
-
 import {
   encodeEcdsaValidatorInitData,
   getPaliSmartAccountDeploymentSalt,
@@ -14,6 +8,11 @@ import {
   PALI_ERC7579_FACTORY_ABI,
 } from '../../source/utils/smartAccount/contracts';
 import { E2E_CONFIG } from '../harness/config';
+import { getAddress } from 'utils/ethersV6Compat';
+import { Contract } from 'utils/ethersV6Compat';
+import { JsonRpcProvider } from 'utils/ethersV6Compat';
+import { formatEther, parseEther } from 'utils/ethersV6Compat';
+import { Wallet } from 'utils/ethersV6Compat';
 
 export type PredictedSmartAccount = {
   accountIndex: number;

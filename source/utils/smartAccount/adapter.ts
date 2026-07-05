@@ -1,5 +1,7 @@
-import { getAddress } from '@ethersproject/address';
-import { hexConcat } from '@ethersproject/bytes';
+import { getAddress } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
+import type { Interface } from 'utils/ethersV6Compat';
+import type { Provider } from 'utils/ethersV6Compat';
 
 import {
   buildSmartAccountUserOperation,
@@ -13,8 +15,6 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts';
-import type { Interface } from '@ethersproject/abi';
-import type { Provider } from '@ethersproject/providers';
 
 type PaliSmartAccountFactoryLike = {
   functions?: {
