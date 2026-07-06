@@ -36,6 +36,33 @@ type SmartAccountTypedDataRequest = {
   actionHash: string;
 };
 
+const getTypedDataBaseType = (type: string) => type.replace(/\[.*\]$/, '');
+
+const getReachableTypedDataTypes = (
+  types: Record<string, Array<{ name: string; type: string }>>,
+  primaryType?: string
+) => {
+  const sanitizedTypes = { ...types };
+  delete sanitizedTypes.EIP712Domain;
+
+  if (!primaryType || !sanitizedTypes[primaryType]) {
+    return sanitizedTypes;
+  }
+
+  const reachableTypes: typeof sanitizedTypes = {};
+  const visit = (typeName: string) => {
+    if (!sanitizedTypes[typeName] || reachableTypes[typeName]) return;
+
+    reachableTypes[typeName] = sanitizedTypes[typeName];
+    for (const field of sanitizedTypes[typeName]) {
+      visit(getTypedDataBaseType(field.type));
+    }
+  };
+
+  visit(primaryType);
+  return reachableTypes;
+};
+
 const smartAccountTypedDataPrimaryTypes = new Set([
   'PaliSmartAccountExecution',
   'PaliSmartAccountPolicyUpdate',
@@ -277,12 +304,10 @@ const EthSign: React.FC<ISign> = () => {
         };
       }
 
-      const { domain, types, message: typedMessage } = typedData;
-      const sanitizedTypes = { ...types };
-      delete sanitizedTypes.EIP712Domain;
+      const { domain, message: typedMessage, primaryType, types } = typedData;
       return _TypedDataEncoder.hash(
         domain || {},
-        sanitizedTypes,
+        getReachableTypedDataTypes(types || {}, primaryType),
         typedMessage || {}
       );
     }

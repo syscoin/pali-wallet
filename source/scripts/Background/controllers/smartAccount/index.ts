@@ -15,6 +15,7 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
+import { getBlacklistTargetsForEvmCall } from 'utils/evmCallBlacklist';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSLHDSAKeyId,
@@ -1151,21 +1152,35 @@ class SmartAccountController {
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(
-    executions: Array<{ target: string }>
+    executions: Array<{ data?: string; target: string }>
   ): Promise<void> {
     for (const execution of executions) {
-      const target = getAddress(execution.target);
-      const blacklistResult = await blacklistService.checkAddress(target);
-      if (
-        blacklistResult.isBlacklisted &&
-        (blacklistResult.severity === 'critical' ||
-          blacklistResult.severity === 'high')
-      ) {
-        throw new Error(
-          `Smart account execution blocked: ${
-            blacklistResult.reason || 'Target address is blacklisted'
-          }. Severity: ${blacklistResult.severity}`
+      const targets = getBlacklistTargetsForEvmCall({
+        data: execution.data,
+        to: getAddress(execution.target),
+      });
+
+      for (const target of targets) {
+        const blacklistResult = await blacklistService.checkAddress(
+          target.address
         );
+        if (
+          blacklistResult.isBlacklisted &&
+          (blacklistResult.severity === 'critical' ||
+            blacklistResult.severity === 'high')
+        ) {
+          const fallbackReason =
+            target.type === 'approval'
+              ? 'Spender address is blacklisted'
+              : target.type === 'token-recipient'
+              ? 'Recipient address is blacklisted'
+              : 'Target address is blacklisted';
+          throw new Error(
+            `Smart account execution blocked: ${
+              blacklistResult.reason || fallbackReason
+            }. Severity: ${blacklistResult.severity}`
+          );
+        }
       }
     }
   }

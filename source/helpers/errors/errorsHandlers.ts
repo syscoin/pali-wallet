@@ -142,6 +142,30 @@ export const ethErrors = {
      */
     limitExceeded: <T extends Json>(arg?: EthErrorsArg<T>) =>
       getEthJsonRpcError(errorCodes.rpc.limitExceeded, arg),
+
+    /**
+     * Get a custom JSON-RPC error for method-specific specifications.
+     *
+     * Some wallet RPC specs define positive custom error codes outside the
+     * EIP-1193 provider range, e.g. EIP-5792's 57xx errors.
+     */
+    custom: <T extends Json>(opts: CustomErrorArg<T>) => {
+      if (!opts || typeof opts !== 'object' || Array.isArray(opts)) {
+        throw new Error(
+          'Ethereum RPC custom errors must provide single object argument.'
+        );
+      }
+
+      const { code, message, data } = opts;
+
+      if (!Number.isInteger(code)) {
+        throw new Error('"code" must be an integer');
+      }
+      if (!message || typeof message !== 'string') {
+        throw new Error('"message" must be a nonempty string');
+      }
+      return new EthereumRpcErrorHandler(code, message, data);
+    },
   },
 
   provider: {

@@ -63,6 +63,13 @@ export const erc20DataDecoder = async (controller?: any) => {
   }
   return erc20DecoderInstance;
 };
+
+const knownTransactionDataDecoder = createDataDecoder([
+  'function safeTransferFrom(address from,address to,uint256 id,uint256 amount,bytes data)',
+  'function safeBatchTransferFrom(address from,address to,uint256[] ids,uint256[] amounts,bytes data)',
+  'function mintBatch(address to,uint256[] ids,uint256[] amounts,bytes data)',
+]);
+
 // Export approval detection for use in blacklist middleware and UI components
 export const detectApprovalType = async (
   data: string,
@@ -398,6 +405,8 @@ export const decodeTransactionData = async (
       const smartAccountDecoderValue =
         decodeSmartAccountTransactionData(validatedData);
       if (smartAccountDecoderValue) return smartAccountDecoderValue;
+      decoderValue = knownTransactionDataDecoder.decodeData(validatedData);
+      if (decoderValue.method !== null) return decoderValue;
       if (decoderValue.method === null) {
         const methodId = data.slice(0, 10); // Get first 4 bytes (0x + 8 chars)
         const knownMethodName = getMethodName(methodId);

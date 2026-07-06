@@ -69,24 +69,25 @@ describe('ethError.rpc.server', () => {
 });
 
 describe('ethError.rpc', () => {
-  it.each(Object.entries(ethErrors.rpc).filter(([key]) => key !== 'server'))(
-    '%s returns appropriate value',
-    (key, value) => {
-      const createError = value as any;
-      const error = createError({
-        message: null,
-        data: Object.assign({}, dummyData),
-      });
+  it.each(
+    Object.entries(ethErrors.rpc).filter(
+      ([key]) => key !== 'server' && key !== 'custom'
+    )
+  )('%s returns appropriate value', (key, value) => {
+    const createError = value as any;
+    const error = createError({
+      message: null,
+      data: Object.assign({}, dummyData),
+    });
 
-      const rpcCode = errorCodes.rpc[key];
-      expect(
-        Object.values(errorCodes.rpc).includes(error.code) ||
-          (error.code <= -32000 && error.code >= -32099)
-      ).toBe(true);
-      expect(error.code).toBe(rpcCode);
-      expect(error.message).toBe(getMessageFromCode(rpcCode));
-    }
-  );
+    const rpcCode = errorCodes.rpc[key];
+    expect(
+      Object.values(errorCodes.rpc).includes(error.code) ||
+        (error.code <= -32000 && error.code >= -32099)
+    ).toBe(true);
+    expect(error.code).toBe(rpcCode);
+    expect(error.message).toBe(getMessageFromCode(rpcCode));
+  });
 
   it('server returns appropriate value', () => {
     const error = ethErrors.rpc.server({
@@ -96,6 +97,35 @@ describe('ethError.rpc', () => {
 
     expect(error.code <= -32000 && error.code >= -32099).toBe(true);
     expect(error.message).toBe(JSON_RPC_SERVER_ERROR_MESSAGE);
+  });
+
+  it('custom allows method-specific positive RPC error codes', () => {
+    const error = ethErrors.rpc.custom({
+      code: 5700,
+      message: CUSTOM_ERROR_MESSAGE,
+      data: Object.assign({}, dummyData),
+    });
+
+    expect(error.code).toBe(5700);
+    expect(error.message).toBe(CUSTOM_ERROR_MESSAGE);
+  });
+
+  it('custom throws if the value is invalid', () => {
+    expect(() => {
+      // @ts-expect-error Invalid input
+      ethErrors.rpc.custom('bar');
+    }).toThrow(
+      'Ethereum RPC custom errors must provide single object argument.'
+    );
+
+    expect(() => {
+      // @ts-expect-error Invalid input
+      ethErrors.rpc.custom({ code: '5700', message: CUSTOM_ERROR_MESSAGE });
+    }).toThrow('"code" must be an integer');
+
+    expect(() => {
+      ethErrors.rpc.custom({ code: 5700, message: '' });
+    }).toThrow('"message" must be a nonempty string');
   });
 });
 

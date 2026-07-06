@@ -5,9 +5,11 @@ import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { detectApprovalType } from 'utils/ethUtil';
+import {
+  getBlacklistTargetsForEvmCall,
+  IEvmCallBlacklistTarget,
+} from 'utils/evmCallBlacklist';
 import { blacklistService } from 'utils/security/blacklistService';
-import { getERC20Recipient } from 'utils/transactions';
 
 import { clearProviderCache } from './method-handlers';
 import {
@@ -1196,124 +1198,80 @@ export const blacklistCheckingMiddleware: Middleware = async (
 ) => {
   const { originalRequest } = context;
 
-  // Only check for transaction methods
-  if (
-    originalRequest.method === 'eth_sendTransaction' &&
-    originalRequest.params?.[0]
-  ) {
-    const txParams = originalRequest.params[0];
-
-    // Fast local check: Is this an approval transaction?
-    let approvalInfo;
-    if (txParams.data && txParams.to) {
-      try {
-        const controller = getController().wallet;
-        approvalInfo = await detectApprovalType(
-          txParams.data,
-          txParams.to,
-          controller.ethereumTransaction.web3Provider,
-          controller
-        );
-      } catch (error) {
-        console.debug('[Blacklist] Could not parse transaction data:', error);
-      }
-    }
-
-    // Decide which address to check based on transaction type
-    let addressToCheck: string;
-    let checkContext: {
-      approvalType?: string;
-      method?: string;
-      type: 'approval' | 'token-recipient' | 'recipient';
-    };
-
-    if (approvalInfo?.isApproval && approvalInfo.decodedData) {
-      // For approvals: Check the SPENDER address (who can steal tokens)
-      if (approvalInfo.approvalType === 'erc20-amount') {
-        addressToCheck = approvalInfo.decodedData.spender;
-      } else if (approvalInfo.approvalType === 'erc721-single') {
-        addressToCheck = approvalInfo.decodedData.to;
-      } else if (approvalInfo.approvalType === 'nft-all') {
-        addressToCheck = approvalInfo.decodedData.operator;
-      } else {
-        return next(); // Unknown approval type, skip blacklist check
-      }
-
-      checkContext = {
-        type: 'approval',
-        method: approvalInfo.method,
-        approvalType: approvalInfo.approvalType,
-      };
-    } else {
-      // Check if it's a token transfer (ERC-20 transfer/transferFrom)
-      const tokenRecipient = txParams.data
-        ? getERC20Recipient({
-            input: txParams.data,
-            to: txParams.to,
-          } as any)
-        : null;
-
-      if (tokenRecipient) {
-        // For token transfers: Check the token recipient (who receives tokens)
-        addressToCheck = tokenRecipient;
-        checkContext = { type: 'token-recipient' };
-      } else if (txParams.to) {
-        // For other transactions: Check the recipient address (ETH transfers, contract calls)
-        addressToCheck = txParams.to;
-        checkContext = { type: 'recipient' };
-      } else {
-        return next(); // No address to check (e.g., contract deployment)
-      }
-    }
-
-    // Single blacklist check
-    const blacklistResult = await blacklistService.checkAddress(addressToCheck);
-
-    if (
-      blacklistResult.isBlacklisted &&
-      (blacklistResult.severity === 'critical' ||
-        blacklistResult.severity === 'high')
-    ) {
-      console.warn(
-        `[Blacklist] ${
-          checkContext.type === 'approval'
-            ? 'Token approval'
-            : checkContext.type === 'token-recipient'
-            ? 'Token transfer'
-            : 'Transaction'
-        } blocked:`,
-        {
-          type: checkContext.type,
-          method: checkContext.method,
-          approvalType: checkContext.approvalType,
-          address: addressToCheck,
-          reason: blacklistResult.reason,
-          severity: blacklistResult.severity,
-        }
+  const assertTargetsAllowed = async (
+    targets: IEvmCallBlacklistTarget[],
+    contextLabel: string
+  ) => {
+    for (const target of targets) {
+      const blacklistResult = await blacklistService.checkAddress(
+        target.address
       );
 
-      let errorMessage: string;
-      if (checkContext.type === 'approval') {
-        errorMessage = `Token approval blocked (${checkContext.method}): ${
-          blacklistResult.reason || 'The spender address is blacklisted'
-        }. Severity: ${
-          blacklistResult.severity
-        }. This could be an attempt to steal your tokens.`;
-      } else if (checkContext.type === 'token-recipient') {
-        errorMessage = `Token transfer blocked: ${
-          blacklistResult.reason || 'The recipient address is blacklisted'
-        }. Severity: ${
-          blacklistResult.severity
-        }. Please verify the token recipient address before proceeding.`;
-      } else {
-        errorMessage = `Transaction blocked: ${
-          blacklistResult.reason || 'This address is blacklisted'
-        }. Severity: ${
-          blacklistResult.severity
-        }. Please verify the recipient address before proceeding.`;
-      }
+      if (
+        blacklistResult.isBlacklisted &&
+        (blacklistResult.severity === 'critical' ||
+          blacklistResult.severity === 'high')
+      ) {
+        console.warn('[Blacklist] EVM call blocked:', {
+          address: target.address,
+          context: contextLabel,
+          method: target.method,
+          reason: blacklistResult.reason,
+          severity: blacklistResult.severity,
+          type: target.type,
+        });
 
-      throw cleanErrorStack(ethErrors.provider.unauthorized(errorMessage));
+        let errorMessage: string;
+        if (target.type === 'approval') {
+          errorMessage = `Token approval blocked (${target.method}): ${
+            blacklistResult.reason || 'The spender address is blacklisted'
+          }. Severity: ${
+            blacklistResult.severity
+          }. This could be an attempt to steal your tokens.`;
+        } else if (target.type === 'token-recipient') {
+          errorMessage = `Token transfer blocked: ${
+            blacklistResult.reason || 'The recipient address is blacklisted'
+          }. Severity: ${
+            blacklistResult.severity
+          }. Please verify the token recipient address before proceeding.`;
+        } else {
+          errorMessage = `Transaction blocked: ${
+            blacklistResult.reason || 'This address is blacklisted'
+          }. Severity: ${
+            blacklistResult.severity
+          }. Please verify the recipient address before proceeding.`;
+        }
+
+        throw cleanErrorStack(ethErrors.provider.unauthorized(errorMessage));
+      }
+    }
+  };
+
+  if (originalRequest.method === 'eth_sendTransaction') {
+    const txParams = originalRequest.params?.[0];
+    if (txParams) {
+      await assertTargetsAllowed(
+        getBlacklistTargetsForEvmCall({
+          data: txParams.data || txParams.input,
+          to: txParams.to,
+        }),
+        'eth_sendTransaction'
+      );
+    }
+  }
+
+  if (originalRequest.method === 'wallet_sendCalls') {
+    const calls = originalRequest.params?.[0]?.calls;
+    if (Array.isArray(calls)) {
+      for (let index = 0; index < calls.length; index += 1) {
+        await assertTargetsAllowed(
+          getBlacklistTargetsForEvmCall({
+            data: calls[index]?.data,
+            to: calls[index]?.to,
+          }),
+          `wallet_sendCalls[${index}]`
+        );
+      }
     }
   }
 

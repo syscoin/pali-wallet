@@ -273,7 +273,7 @@ export const resolveCallsStatus = async (
   const provider = getProviderForChain(descriptor.chainId);
   if (!provider) {
     throw cleanErrorStack(
-      ethErrors.provider.custom({
+      ethErrors.rpc.custom({
         code: 5710,
         message: `This wallet has no RPC configured for the bundle's chain (chainId ${descriptor.chainId}).`,
       })
