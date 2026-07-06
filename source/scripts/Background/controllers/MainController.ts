@@ -106,6 +106,7 @@ import { namehash } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { isHexString } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -4601,17 +4602,30 @@ class MainController {
     try {
       const controller = getController();
 
-      // Check recipient address against blacklist
-      if (params.to) {
-        const blacklistResult = await blacklistService.checkAddress(params.to);
+      // Check the call target and obvious calldata recipients/spenders.
+      for (const target of await getBlacklistTargetsForEvmCallWithContractType({
+        controller: controller.wallet,
+        data: params.data || params.input,
+        to: params.to,
+        web3Provider: controller.wallet.ethereumTransaction.web3Provider,
+      })) {
+        const blacklistResult = await blacklistService.checkAddress(
+          target.address
+        );
         if (
           blacklistResult.isBlacklisted &&
           (blacklistResult.severity === 'critical' ||
             blacklistResult.severity === 'high')
         ) {
+          const fallbackReason =
+            target.type === 'approval'
+              ? 'Spender address is blacklisted'
+              : target.type === 'token-recipient'
+              ? 'Recipient address is blacklisted'
+              : 'Recipient address is blacklisted';
           throw new Error(
             `Transaction blocked: ${
-              blacklistResult.reason || 'Recipient address is blacklisted'
+              blacklistResult.reason || fallbackReason
             }. Severity: ${blacklistResult.severity}`
           );
         }

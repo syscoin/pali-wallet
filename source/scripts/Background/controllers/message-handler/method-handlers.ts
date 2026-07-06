@@ -175,7 +175,7 @@ export class WalletMethodHandler implements IMethodHandler {
           !smartAccountAtomicSupported
         ) {
           throw cleanErrorStack(
-            ethErrors.provider.custom({
+            ethErrors.rpc.custom({
               code: 5700,
               message:
                 'Atomic wallet_sendCalls requires an active smart account on the selected chain.',
@@ -210,7 +210,7 @@ export class WalletMethodHandler implements IMethodHandler {
         });
         if (!reserved) {
           throw cleanErrorStack(
-            ethErrors.provider.custom({
+            ethErrors.rpc.custom({
               code: 5720,
               message:
                 'There is already a bundle submitted with this id (Duplicate ID).',
