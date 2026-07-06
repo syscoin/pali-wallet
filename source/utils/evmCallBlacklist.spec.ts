@@ -9,6 +9,8 @@ const RECIPIENT = '0x4444444444444444444444444444444444444444';
 
 const ERC20_INTERFACE = new Interface([
   'function approve(address spender,uint256 amount)',
+  'function decreaseAllowance(address spender,uint256 subtractedValue)',
+  'function increaseAllowance(address spender,uint256 addedValue)',
 ]);
 
 const ERC721_INTERFACE = new Interface([
@@ -30,6 +32,32 @@ describe('getBlacklistTargetsForEvmCall', () => {
       { address: TOKEN, type: 'target' },
       { address: SPENDER, method: 'approve', type: 'approval' },
     ]);
+  });
+
+  it('allows ERC20 allowance reductions and revocations', () => {
+    const revokeTargets = getBlacklistTargetsForEvmCall({
+      data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 0]),
+      to: TOKEN,
+    });
+    expect(revokeTargets).toEqual([{ address: TOKEN, type: 'target' }]);
+
+    const decreaseTargets = getBlacklistTargetsForEvmCall({
+      data: ERC20_INTERFACE.encodeFunctionData('decreaseAllowance', [
+        SPENDER,
+        1,
+      ]),
+      to: TOKEN,
+    });
+    expect(decreaseTargets).toEqual([{ address: TOKEN, type: 'target' }]);
+
+    const zeroIncreaseTargets = getBlacklistTargetsForEvmCall({
+      data: ERC20_INTERFACE.encodeFunctionData('increaseAllowance', [
+        SPENDER,
+        0,
+      ]),
+      to: TOKEN,
+    });
+    expect(zeroIncreaseTargets).toEqual([{ address: TOKEN, type: 'target' }]);
   });
 
   it('includes approved NFT operators but ignores revocations', () => {

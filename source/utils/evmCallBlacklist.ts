@@ -21,6 +21,9 @@ const normalizeAddress = (address?: string | null): string | null => {
   return null;
 };
 
+const isZeroIntegerValue = (value: unknown): boolean =>
+  value != null && value.toString() === '0';
+
 const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
   if (!data || data === '0x' || data.length < 10) return [];
 
@@ -30,19 +33,21 @@ const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
   try {
     switch (selector) {
       case '0x095ea7b3': {
-        const [spender] = defaultAbiCoder.decode(
+        const [spender, amount] = defaultAbiCoder.decode(
           ['address', 'uint256'],
           calldata
         );
+        if (isZeroIntegerValue(amount)) return [];
         return [
           { address: getAddress(spender), method: 'approve', type: 'approval' },
         ];
       }
       case '0x39509351': {
-        const [spender] = defaultAbiCoder.decode(
+        const [spender, addedValue] = defaultAbiCoder.decode(
           ['address', 'uint256'],
           calldata
         );
+        if (isZeroIntegerValue(addedValue)) return [];
         return [
           {
             address: getAddress(spender),
@@ -52,17 +57,7 @@ const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
         ];
       }
       case '0xa457c2d7': {
-        const [spender] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          calldata
-        );
-        return [
-          {
-            address: getAddress(spender),
-            method: 'decreaseAllowance',
-            type: 'approval',
-          },
-        ];
+        return [];
       }
       case '0xa22cb465': {
         const [operator, approved] = defaultAbiCoder.decode(
