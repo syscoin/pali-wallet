@@ -1,4 +1,5 @@
 import { defaultAbiCoder, getAddress, isAddress } from 'utils/ethersV6Compat';
+import { getContractType } from 'utils/validations';
 
 export type EvmCallBlacklistTargetType =
   | 'approval'
@@ -24,7 +25,13 @@ const normalizeAddress = (address?: string | null): string | null => {
 const isZeroIntegerValue = (value: unknown): boolean =>
   value != null && value.toString() === '0';
 
-const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
+export const shouldResolveEvmCallBlacklistContractType = (data?: string) =>
+  data?.slice(0, 10).toLowerCase() === '0x095ea7b3';
+
+const decodeAddressTargets = (
+  data?: string,
+  tokenStandard?: string
+): IEvmCallBlacklistTarget[] => {
   if (!data || data === '0x' || data.length < 10) return [];
 
   const selector = data.slice(0, 10).toLowerCase();
@@ -37,7 +44,9 @@ const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
           ['address', 'uint256'],
           calldata
         );
-        if (isZeroIntegerValue(amount)) return [];
+        if (tokenStandard === 'ERC-20' && isZeroIntegerValue(amount)) {
+          return [];
+        }
         return [
           { address: getAddress(spender), method: 'approve', type: 'approval' },
         ];
@@ -159,12 +168,14 @@ const decodeAddressTargets = (data?: string): IEvmCallBlacklistTarget[] => {
 
 export const getBlacklistTargetsForEvmCall = ({
   data,
+  tokenStandard,
   to,
 }: {
   data?: string;
   to?: string;
+  tokenStandard?: string;
 }): IEvmCallBlacklistTarget[] => {
-  const targets = decodeAddressTargets(data);
+  const targets = decodeAddressTargets(data, tokenStandard);
   const normalizedTo = normalizeAddress(to);
 
   if (normalizedTo) {
@@ -179,5 +190,34 @@ export const getBlacklistTargetsForEvmCall = ({
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+};
+
+export const getBlacklistTargetsForEvmCallWithContractType = async ({
+  controller,
+  data,
+  to,
+  web3Provider,
+}: {
+  controller?: any;
+  data?: string;
+  to?: string;
+  web3Provider?: any;
+}): Promise<IEvmCallBlacklistTarget[]> => {
+  let tokenStandard: string | undefined;
+
+  if (to && web3Provider && shouldResolveEvmCallBlacklistContractType(data)) {
+    try {
+      tokenStandard = (await getContractType(to, web3Provider, controller))
+        ?.type;
+    } catch {
+      tokenStandard = undefined;
+    }
+  }
+
+  return getBlacklistTargetsForEvmCall({
+    data,
+    to,
+    tokenStandard,
   });
 };

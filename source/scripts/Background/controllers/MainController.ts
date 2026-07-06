@@ -106,7 +106,7 @@ import { namehash } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { isHexString } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
-import { getBlacklistTargetsForEvmCall } from 'utils/evmCallBlacklist';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -4603,9 +4603,11 @@ class MainController {
       const controller = getController();
 
       // Check the call target and obvious calldata recipients/spenders.
-      for (const target of getBlacklistTargetsForEvmCall({
+      for (const target of await getBlacklistTargetsForEvmCallWithContractType({
+        controller: controller.wallet,
         data: params.data || params.input,
         to: params.to,
+        web3Provider: controller.wallet.ethereumTransaction.web3Provider,
       })) {
         const blacklistResult = await blacklistService.checkAddress(
           target.address

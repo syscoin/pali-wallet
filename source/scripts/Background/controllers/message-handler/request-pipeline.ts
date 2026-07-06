@@ -6,7 +6,7 @@ import store from 'state/store';
 import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
-  getBlacklistTargetsForEvmCall,
+  getBlacklistTargetsForEvmCallWithContractType,
   IEvmCallBlacklistTarget,
 } from 'utils/evmCallBlacklist';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -1250,10 +1250,13 @@ export const blacklistCheckingMiddleware: Middleware = async (
   if (originalRequest.method === 'eth_sendTransaction') {
     const txParams = originalRequest.params?.[0];
     if (txParams) {
+      const controller = getController().wallet;
       await assertTargetsAllowed(
-        getBlacklistTargetsForEvmCall({
+        await getBlacklistTargetsForEvmCallWithContractType({
+          controller,
           data: txParams.data || txParams.input,
           to: txParams.to,
+          web3Provider: controller.ethereumTransaction.web3Provider,
         }),
         'eth_sendTransaction'
       );
@@ -1263,11 +1266,14 @@ export const blacklistCheckingMiddleware: Middleware = async (
   if (originalRequest.method === 'wallet_sendCalls') {
     const calls = originalRequest.params?.[0]?.calls;
     if (Array.isArray(calls)) {
+      const controller = getController().wallet;
       for (let index = 0; index < calls.length; index += 1) {
         await assertTargetsAllowed(
-          getBlacklistTargetsForEvmCall({
+          await getBlacklistTargetsForEvmCallWithContractType({
+            controller,
             data: calls[index]?.data,
             to: calls[index]?.to,
+            web3Provider: controller.ethereumTransaction.web3Provider,
           }),
           `wallet_sendCalls[${index}]`
         );

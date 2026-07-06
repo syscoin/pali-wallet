@@ -37,6 +37,7 @@ describe('getBlacklistTargetsForEvmCall', () => {
   it('allows ERC20 allowance reductions and revocations', () => {
     const revokeTargets = getBlacklistTargetsForEvmCall({
       data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 0]),
+      tokenStandard: 'ERC-20',
       to: TOKEN,
     });
     expect(revokeTargets).toEqual([{ address: TOKEN, type: 'target' }]);
@@ -58,6 +59,18 @@ describe('getBlacklistTargetsForEvmCall', () => {
       to: TOKEN,
     });
     expect(zeroIncreaseTargets).toEqual([{ address: TOKEN, type: 'target' }]);
+  });
+
+  it('does not treat unknown zero approve calls as ERC20 revocations', () => {
+    const targets = getBlacklistTargetsForEvmCall({
+      data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 0]),
+      to: TOKEN,
+    });
+
+    expect(targets).toEqual([
+      { address: TOKEN, type: 'target' },
+      { address: SPENDER, method: 'approve', type: 'approval' },
+    ]);
   });
 
   it('includes approved NFT operators but ignores revocations', () => {

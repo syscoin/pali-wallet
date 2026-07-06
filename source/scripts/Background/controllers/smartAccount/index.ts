@@ -15,7 +15,7 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { getBlacklistTargetsForEvmCall } from 'utils/evmCallBlacklist';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSLHDSAKeyId,
@@ -1154,10 +1154,12 @@ class SmartAccountController {
   private async assertSmartAccountExecutionTargetsAllowed(
     executions: Array<{ data?: string; target: string }>
   ): Promise<void> {
+    const provider = this.ethereumTransaction?.web3Provider;
     for (const execution of executions) {
-      const targets = getBlacklistTargetsForEvmCall({
+      const targets = await getBlacklistTargetsForEvmCallWithContractType({
         data: execution.data,
         to: getAddress(execution.target),
+        web3Provider: provider,
       });
 
       for (const target of targets) {
