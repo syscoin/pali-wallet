@@ -107,6 +107,10 @@ import { Contract } from 'utils/ethersV6Compat';
 import { isHexString } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
+import {
+  getEoaNonceFromHistoryTransaction,
+  needsEoaNonceHistoryVerification,
+} from 'utils/evmNonce';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -5018,7 +5022,10 @@ class MainController {
         }
       }
 
-      let localConfirmedNextNonce = 0;
+      const localConfirmedTransactions: Array<{
+        nonce: number;
+        transaction: any;
+      }> = [];
       const localPendingNonces = new Set<number>();
       const localTransactions =
         accountType !== undefined && accountId !== undefined
@@ -5030,29 +5037,55 @@ class MainController {
       // Match MetaMask's nonce model: start from canonical/latest chain state
       // plus local confirmed history, then skip nonces Pali has locally pending.
       for (const tx of localTransactions as any[]) {
-        if (tx.from && tx.from.toLowerCase() !== normalizedAddress) {
-          continue;
-        }
-        if (tx.nonce === undefined || tx.nonce === null) {
+        const nonce = getEoaNonceFromHistoryTransaction(tx, normalizedAddress);
+        if (nonce === undefined) {
           continue;
         }
 
-        const nonce =
-          typeof tx.nonce === 'string'
-            ? tx.nonce.startsWith('0x')
-              ? parseInt(tx.nonce, 16)
-              : Number(tx.nonce)
-            : Number(tx.nonce);
-        if (Number.isFinite(nonce)) {
-          if (isTransactionInBlock(tx)) {
-            localConfirmedNextNonce = Math.max(
-              localConfirmedNextNonce,
-              nonce + 1
+        if (isTransactionInBlock(tx)) {
+          localConfirmedTransactions.push({ nonce, transaction: tx });
+        } else {
+          localPendingNonces.add(nonce);
+        }
+      }
+
+      // Highest confirmed nonce is the only one that can affect the result.
+      // Verify incomplete explorer/history rows lazily so priority operations
+      // and old token-event records cannot masquerade as EOA transactions.
+      localConfirmedTransactions.sort((a, b) => b.nonce - a.nonce);
+      let localConfirmedNextNonce = 0;
+      for (const candidate of localConfirmedTransactions) {
+        if (candidate.nonce < latestNonce) {
+          break;
+        }
+
+        if (needsEoaNonceHistoryVerification(candidate.transaction)) {
+          const hash = candidate.transaction?.hash;
+          if (!hash) {
+            continue;
+          }
+
+          try {
+            const providerTransaction = await provider.send(
+              'eth_getTransactionByHash',
+              [hash]
             );
-          } else {
-            localPendingNonces.add(nonce);
+            if (
+              !providerTransaction ||
+              getEoaNonceFromHistoryTransaction(
+                providerTransaction as any,
+                normalizedAddress
+              ) !== candidate.nonce
+            ) {
+              continue;
+            }
+          } catch {
+            continue;
           }
         }
+
+        localConfirmedNextNonce = candidate.nonce + 1;
+        break;
       }
 
       let nextNonce = Math.max(latestNonce, localConfirmedNextNonce);
