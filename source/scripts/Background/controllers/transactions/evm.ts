@@ -4,6 +4,11 @@ import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
+import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  parseEvmInteger,
+  type EvmTransactionHistorySource,
+} from 'utils/evmNonce';
 
 import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
@@ -140,7 +145,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     const mapApiTx = (
       item: any,
       chainIdForMap: number,
-      overrideTo?: string
+      overrideTo?: string,
+      historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
     ) => {
       // Validate timestamp into a sane range
       let timestamp = parseInt(item.timeStamp, 10);
@@ -181,6 +187,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         gasPrice: item.gasPrice,
         gas: item.gas || item.gasLimit,
         nonce: nonceParsed,
+        type: parseEvmInteger(item.type),
+        r: item.r,
+        s: item.s,
+        v: parseEvmInteger(item.v),
+        historySource,
         // eslint-disable-next-line camelcase
         txreceipt_status: item.txreceipt_status || item.isError || null,
         isError: item.isError || null,
@@ -312,7 +323,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           const token20Data = await token20Response.json();
           if (Array.isArray(token20Data?.result)) {
             for (const ev of token20Data.result) {
-              const base = mapApiTx(ev, chainId, ev.contractAddress);
+              const base = mapApiTx(
+                ev,
+                chainId,
+                ev.contractAddress,
+                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+              );
               tokenOnly.push({ ...base, tokenRecipient: ev.to } as any);
             }
           }
@@ -412,6 +428,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
               tx.nonce !== undefined && tx.nonce !== null
                 ? parseInt(tx.nonce)
                 : undefined,
+            type: parseEvmInteger(tx.type),
+            r: tx.r,
+            s: tx.s,
+            v: parseEvmInteger(tx.v),
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending,
             // Add any other fields your UI expects as null/default
             contractAddress: tx.contractAddress || null,
             cumulativeGasUsed: tx.cumulativeGasUsed || null,
@@ -440,7 +461,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     } catch {}
 
     const tokenTransactions = tokenEventResults.map((ev: any) => {
-      const base = mapApiTx(ev, chainId, ev.contractAddress);
+      const base = mapApiTx(
+        ev,
+        chainId,
+        ev.contractAddress,
+        EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+      );
       return { ...base, tokenRecipient: ev.to } as any;
     });
 
@@ -551,7 +577,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             if (Array.isArray(token20Data?.result))
               tokenEvents.push(...token20Data.result);
             const tokenTxs = tokenEvents.map((ev: any) => {
-              const base = mapApiTx(ev, chainId, ev.contractAddress);
+              const base = mapApiTx(
+                ev,
+                chainId,
+                ev.contractAddress,
+                EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+              );
               return { ...base, tokenRecipient: ev.to } as any;
             });
             return { transactions: tokenTxs };
@@ -573,11 +604,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       ]);
 
       // Shared mapper for API items (txlist or tokentx) to internal shape
-      const mapApiTx = (
+      function mapApiTx(
         item: any,
         chainIdForMap: number,
-        overrideTo?: string
-      ) => {
+        overrideTo?: string,
+        historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
+      ) {
         let timestamp = parseInt(item.timeStamp, 10);
         const now = Math.floor(Date.now() / 1000);
         const oneYearFromNow = now + 365 * 24 * 60 * 60;
@@ -616,11 +648,16 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           gasPrice: item.gasPrice,
           gas: item.gas || item.gasLimit,
           nonce: nonceParsed,
+          type: parseEvmInteger(item.type),
+          r: item.r,
+          s: item.s,
+          v: parseEvmInteger(item.v),
+          historySource,
           // eslint-disable-next-line camelcase
           txreceipt_status: item.txreceipt_status || item.isError || null,
           isError: item.isError || null,
         } as any;
-      };
+      }
 
       let baseTxs: IEvmTransactionResponse[] = [];
       let baseCount = 0;

@@ -303,12 +303,24 @@ export const treatAndSortTransactions = (
 
       txMap.set(id, mergedTx);
     } else if (existing) {
-      // The existing tx has same or more confirmations, but check if new tx has earlier timestamps
+      // The existing tx has same or more confirmations, but enrich it with
+      // authoritative explorer metadata and earlier timestamps. Older vault
+      // rows may predate the source/type fields used for EOA nonce filtering.
       const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
       const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
       let updated = false;
       const mergedTx = { ...existing };
+
+      for (const metadataProperty of ['historySource', 'type', 'r', 's', 'v']) {
+        if (
+          (tx as any)[metadataProperty] !== undefined &&
+          (tx as any)[metadataProperty] !== (existing as any)[metadataProperty]
+        ) {
+          (mergedTx as any)[metadataProperty] = (tx as any)[metadataProperty];
+          updated = true;
+        }
+      }
 
       if (
         tx[TSTAMP_PROP] &&
