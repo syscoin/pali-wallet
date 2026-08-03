@@ -1,6 +1,8 @@
 import { IMasterController } from 'scripts/Background/controllers';
 import { extractErrorMessage } from 'utils/index';
 
+import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
@@ -95,8 +97,6 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
-  const extensionOrigin = new URL(chrome.runtime.getURL('')).origin;
-
   chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
     const { type, data } = message;
 
@@ -107,13 +107,13 @@ export const handleMasterControllerResponses = (
         return false;
       }
 
-      const { methods, params } = data;
-      const senderOrigin = sender.url ? new URL(sender.url).origin : '';
-      if (sender.tab && senderOrigin !== extensionOrigin) {
+      if (!isTrustedExtensionPageSender(sender)) {
         throw new Error(
           'Controller actions are not available from connected sites'
         );
       }
+
+      const { methods, params } = data;
 
       let targetMethod = MasterControllerInstance;
 

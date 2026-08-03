@@ -19,18 +19,29 @@ import {
 } from './sendCallsBundles';
 import { IEnhancedRequestContext, MethodHandlerType } from './types';
 
-// Cache for provider state methods
-interface IProviderStateCache {
-  [key: string]: { timestamp: number; value: any };
+// Cache for provider state methods. Host scoping prevents data crossing site
+// boundaries; the size cap prevents hostile sites from growing it without
+// bound by issuing requests from many subdomains.
+export const MAX_PROVIDER_CACHE_ENTRIES = 100;
+
+interface IProviderStateCacheEntry {
+  expiresAt: number;
+  value: any;
 }
 
-const providerStateCache: IProviderStateCache = {};
+const providerStateCache = new Map<string, IProviderStateCacheEntry>();
+
+const pruneProviderCache = (now: number) => {
+  for (const [key, cached] of providerStateCache) {
+    if (cached.expiresAt <= now) {
+      providerStateCache.delete(key);
+    }
+  }
+};
 
 // Clear cache function
 export function clearProviderCache() {
-  Object.keys(providerStateCache).forEach((key) => {
-    delete providerStateCache[key];
-  });
+  providerStateCache.clear();
 }
 
 // Base interface for method handlers
@@ -49,18 +60,36 @@ async function executeMethodWithCache(
   // Check if method has caching enabled
   if (methodConfig.cacheKey && methodConfig.cacheTTL) {
     const now = Date.now();
-    const cached = providerStateCache[methodConfig.cacheKey];
+    pruneProviderCache(now);
+    // Provider responses can contain origin-specific account data. Keep every
+    // cache entry scoped to the requesting host so a connected site's result
+    // can never be reused for another site.
+    const originCacheKey = JSON.stringify([
+      methodConfig.cacheKey,
+      context.originalRequest.host,
+    ]);
+    const cached = providerStateCache.get(originCacheKey);
 
-    if (cached && now - cached.timestamp < methodConfig.cacheTTL) {
+    if (cached) {
+      // Refresh insertion order so the Map also acts as an LRU queue.
+      providerStateCache.delete(originCacheKey);
+      providerStateCache.set(originCacheKey, cached);
       return cached.value;
     }
 
     // Execute and cache the result
     const result = await executor();
-    providerStateCache[methodConfig.cacheKey] = {
+    const completedAt = Date.now();
+    pruneProviderCache(completedAt);
+    while (providerStateCache.size >= MAX_PROVIDER_CACHE_ENTRIES) {
+      const oldestKey = providerStateCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      providerStateCache.delete(oldestKey);
+    }
+    providerStateCache.set(originCacheKey, {
+      expiresAt: completedAt + methodConfig.cacheTTL,
       value: result,
-      timestamp: now,
-    };
+    });
     return result;
   }
 
@@ -109,10 +138,10 @@ export class WalletMethodHandler implements IMethodHandler {
 
     const { vault, vaultGlobal } = state;
     // Don't destructure these variables if vault is not initialized
-    let activeAccount, activeNetwork, isBitcoinBased, accountAssets, networks;
+    let activeNetwork, isBitcoinBased, accountAssets, networks;
 
     if (vault) {
-      ({ activeAccount, activeNetwork, isBitcoinBased, accountAssets } = vault);
+      ({ activeNetwork, isBitcoinBased, accountAssets } = vault);
     }
 
     if (vaultGlobal) {
@@ -313,11 +342,22 @@ export class WalletMethodHandler implements IMethodHandler {
         case 'getAddress':
           return account.address;
 
-        case 'getTokens':
-          if (!activeAccount || !accountAssets) {
+        case 'getTokens': {
+          const connectedDapp = dapp.get(host);
+          if (
+            !wallet.isUnlocked() ||
+            !account ||
+            !connectedDapp ||
+            !accountAssets
+          ) {
             return [];
           }
-          return accountAssets[activeAccount.type]?.[activeAccount.id] || [];
+          return (
+            accountAssets[connectedDapp.accountType]?.[
+              connectedDapp.accountId
+            ] || []
+          );
+        }
 
         case 'estimateFee':
           return wallet.getRecommendedFee();
@@ -397,22 +437,8 @@ export class WalletMethodHandler implements IMethodHandler {
           // Return accounts if wallet is unlocked, similar to eth_accounts
           providerAccounts = [];
           if (wallet.isUnlocked() && !isBitcoinBased) {
-            // First check if dapp is already connected
             if (account) {
               providerAccounts = [account.address];
-            } else {
-              // If not connected but wallet is unlocked, return the active account
-              const vaultAccounts = store.getState().vault?.accounts;
-              const vaultActiveAccount = store.getState().vault?.activeAccount;
-              if (vaultAccounts && vaultActiveAccount) {
-                const activeAccountData =
-                  vaultAccounts[vaultActiveAccount.type]?.[
-                    vaultActiveAccount.id
-                  ];
-                if (activeAccountData?.address) {
-                  providerAccounts = [activeAccountData.address];
-                }
-              }
             }
           }
 
@@ -440,22 +466,8 @@ export class WalletMethodHandler implements IMethodHandler {
           // Return accounts if wallet is unlocked, similar to eth_accounts
           providerAccounts = [];
           if (wallet.isUnlocked() && isBitcoinBased) {
-            // First check if dapp is already connected
             if (account) {
               providerAccounts = [account.address];
-            } else {
-              // If not connected but wallet is unlocked, return the active account
-              const vaultAccounts = store.getState().vault?.accounts;
-              const vaultActiveAccount = store.getState().vault?.activeAccount;
-              if (vaultAccounts && vaultActiveAccount) {
-                const activeAccountData =
-                  vaultAccounts[vaultActiveAccount.type]?.[
-                    vaultActiveAccount.id
-                  ];
-                if (activeAccountData?.address) {
-                  providerAccounts = [activeAccountData.address];
-                }
-              }
             }
           }
           return {

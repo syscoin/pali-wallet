@@ -5,6 +5,8 @@ import {
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 
+import { isAllowedPageProviderMessageType } from './pageMessageAuthorization';
+
 const emitter = new EventEmitter();
 
 // Simple error logging rate limiting
@@ -147,6 +149,7 @@ const start = () => {
       const { id, type, data } = event.data;
 
       if (!id || !type) return;
+      if (!isAllowedPageProviderMessageType(type)) return;
 
       // listen for the response
       checkForPaliRegisterEvent(id);

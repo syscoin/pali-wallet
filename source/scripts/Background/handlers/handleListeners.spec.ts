@@ -16,6 +16,8 @@ const chrome = {
     getAll: jest.fn(),
   },
   runtime: {
+    getURL: jest.fn((path = '') => `chrome-extension://pali-extension/${path}`),
+    id: 'pali-extension',
     onMessage: {
       addListener: jest.fn(),
       removeListener: jest.fn(),
@@ -122,6 +124,9 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 
 // Mock dependencies
 jest.mock('scripts/Background/handlers/handleLogout');
+jest.mock('scripts/Background/controllers/message-handler', () => ({
+  onMessage: jest.fn(),
+}));
 jest.mock('state/store', () => ({
   getState: jest.fn(() => ({
     vault: {
@@ -160,7 +165,7 @@ const mockMasterController: jest.Mocked<IMasterController> = {
   // Mock wallet methods used in handleListeners
   wallet: {
     setActiveNetwork: jest.fn(),
-    setFiat: jest.fn(),
+    setFiat: jest.fn().mockResolvedValue(undefined),
   } as any, // Use 'as any' for brevity, ideally mock all methods
 };
 
@@ -243,7 +248,15 @@ describe('Background: handleListeners', () => {
   });
 
   describe('onMessage Listener', () => {
-    const sender = {} as chrome.runtime.MessageSender;
+    const sender = {
+      id: 'pali-extension',
+      url: 'chrome-extension://pali-extension/app.html',
+    } as chrome.runtime.MessageSender;
+    const contentScriptSender = {
+      id: 'pali-extension',
+      tab: { id: 1 },
+      url: 'https://malicious.example/',
+    } as chrome.runtime.MessageSender;
     const sendResponse = jest.fn();
 
     beforeEach(() => {
@@ -272,6 +285,25 @@ describe('Background: handleListeners', () => {
       messageListener(message, sender, sendResponse);
       expect(handleLogout).toHaveBeenCalledWith(mockMasterController);
       expect(sendResponse).not.toHaveBeenCalled();
+    });
+
+    it('should reject lock_wallet from a content script', () => {
+      const messageListener =
+        chrome.runtime.onMessage.addListener.mock.calls[0][0];
+
+      messageListener(
+        { type: 'lock_wallet' },
+        contentScriptSender,
+        sendResponse
+      );
+
+      expect(handleLogout).not.toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({
+        error: {
+          code: 4100,
+          message: 'Unauthorized internal message source',
+        },
+      });
     });
 
     it('should call wallet.setActiveNetwork for changeNetwork message (Bitcoin-based)', () => {
@@ -306,6 +338,27 @@ describe('Background: handleListeners', () => {
         message.data.network
       );
       expect(sendResponse).not.toHaveBeenCalled();
+    });
+
+    it('should reject changeNetwork from a content script', () => {
+      const messageListener =
+        chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      const message = {
+        type: 'changeNetwork',
+        data: { network: { chainId: 1 } },
+      };
+
+      messageListener(message, contentScriptSender, sendResponse);
+
+      expect(
+        mockMasterController.wallet.setActiveNetwork
+      ).not.toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({
+        error: {
+          code: 4100,
+          message: 'Unauthorized internal message source',
+        },
+      });
     });
   });
 });
