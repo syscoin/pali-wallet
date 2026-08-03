@@ -49,7 +49,14 @@ async function executeMethodWithCache(
   // Check if method has caching enabled
   if (methodConfig.cacheKey && methodConfig.cacheTTL) {
     const now = Date.now();
-    const cached = providerStateCache[methodConfig.cacheKey];
+    // Provider responses can contain origin-specific account data. Keep every
+    // cache entry scoped to the requesting host so a connected site's result
+    // can never be reused for another site.
+    const originCacheKey = JSON.stringify([
+      methodConfig.cacheKey,
+      context.originalRequest.host,
+    ]);
+    const cached = providerStateCache[originCacheKey];
 
     if (cached && now - cached.timestamp < methodConfig.cacheTTL) {
       return cached.value;
@@ -57,7 +64,7 @@ async function executeMethodWithCache(
 
     // Execute and cache the result
     const result = await executor();
-    providerStateCache[methodConfig.cacheKey] = {
+    providerStateCache[originCacheKey] = {
       value: result,
       timestamp: now,
     };
@@ -109,10 +116,10 @@ export class WalletMethodHandler implements IMethodHandler {
 
     const { vault, vaultGlobal } = state;
     // Don't destructure these variables if vault is not initialized
-    let activeAccount, activeNetwork, isBitcoinBased, accountAssets, networks;
+    let activeNetwork, isBitcoinBased, accountAssets, networks;
 
     if (vault) {
-      ({ activeAccount, activeNetwork, isBitcoinBased, accountAssets } = vault);
+      ({ activeNetwork, isBitcoinBased, accountAssets } = vault);
     }
 
     if (vaultGlobal) {
@@ -313,11 +320,22 @@ export class WalletMethodHandler implements IMethodHandler {
         case 'getAddress':
           return account.address;
 
-        case 'getTokens':
-          if (!activeAccount || !accountAssets) {
+        case 'getTokens': {
+          const connectedDapp = dapp.get(host);
+          if (
+            !wallet.isUnlocked() ||
+            !account ||
+            !connectedDapp ||
+            !accountAssets
+          ) {
             return [];
           }
-          return accountAssets[activeAccount.type]?.[activeAccount.id] || [];
+          return (
+            accountAssets[connectedDapp.accountType]?.[
+              connectedDapp.accountId
+            ] || []
+          );
+        }
 
         case 'estimateFee':
           return wallet.getRecommendedFee();
@@ -397,22 +415,8 @@ export class WalletMethodHandler implements IMethodHandler {
           // Return accounts if wallet is unlocked, similar to eth_accounts
           providerAccounts = [];
           if (wallet.isUnlocked() && !isBitcoinBased) {
-            // First check if dapp is already connected
             if (account) {
               providerAccounts = [account.address];
-            } else {
-              // If not connected but wallet is unlocked, return the active account
-              const vaultAccounts = store.getState().vault?.accounts;
-              const vaultActiveAccount = store.getState().vault?.activeAccount;
-              if (vaultAccounts && vaultActiveAccount) {
-                const activeAccountData =
-                  vaultAccounts[vaultActiveAccount.type]?.[
-                    vaultActiveAccount.id
-                  ];
-                if (activeAccountData?.address) {
-                  providerAccounts = [activeAccountData.address];
-                }
-              }
             }
           }
 
@@ -440,22 +444,8 @@ export class WalletMethodHandler implements IMethodHandler {
           // Return accounts if wallet is unlocked, similar to eth_accounts
           providerAccounts = [];
           if (wallet.isUnlocked() && isBitcoinBased) {
-            // First check if dapp is already connected
             if (account) {
               providerAccounts = [account.address];
-            } else {
-              // If not connected but wallet is unlocked, return the active account
-              const vaultAccounts = store.getState().vault?.accounts;
-              const vaultActiveAccount = store.getState().vault?.activeAccount;
-              if (vaultAccounts && vaultActiveAccount) {
-                const activeAccountData =
-                  vaultAccounts[vaultActiveAccount.type]?.[
-                    vaultActiveAccount.id
-                  ];
-                if (activeAccountData?.address) {
-                  providerAccounts = [activeAccountData.address];
-                }
-              }
             }
           }
           return {

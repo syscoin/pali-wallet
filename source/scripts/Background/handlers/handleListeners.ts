@@ -6,6 +6,10 @@ import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 
 import { checkForUpdates } from './handlePaliUpdates';
+import {
+  isPrivilegedInternalMessage,
+  isTrustedExtensionPageSender,
+} from './internalMessageAuthorization';
 
 // Flag to prevent duplicate listener registration
 let listenersInitialized = false;
@@ -149,6 +153,22 @@ export const handleListeners = (masterController: IMasterController) => {
     // EMERGENCY FIX: Drop all messages without types to prevent loops
     if (!type) {
       return false; // Silently drop malformed messages
+    }
+
+    // Raw internal commands intentionally bypass the dapp request pipeline,
+    // so they must only be callable by the extension's own UI/offscreen pages.
+    // A content script has the same extension id but retains the webpage URL.
+    if (
+      isPrivilegedInternalMessage(type) &&
+      !isTrustedExtensionPageSender(sender)
+    ) {
+      sendResponse({
+        error: {
+          code: 4100,
+          message: 'Unauthorized internal message source',
+        },
+      });
+      return false;
     }
 
     const { hasEthProperty } = store.getState().vaultGlobal;

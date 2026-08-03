@@ -160,6 +160,8 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
     requiresAuth: false, // Read-only - just token metadata
+    // Passive read: do not trigger a connect popup. The handler returns an
+    // empty list unless this origin already has a connected account.
     requiresConnection: false,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.Any,
