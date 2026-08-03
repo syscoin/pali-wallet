@@ -41,6 +41,7 @@ jest.mock('./sendCallsBundles', () => ({
 import {
   clearProviderCache,
   EthMethodHandler,
+  MAX_PROVIDER_CACHE_ENTRIES,
   WalletMethodHandler,
 } from './method-handlers';
 import {
@@ -250,5 +251,28 @@ describe('origin-scoped provider data', () => {
 
     expect(connectedResult).toEqual([CONNECTED_ADDRESS.toLowerCase()]);
     expect(unconnectedResult).toEqual([]);
+  });
+
+  it('bounds the host-scoped provider cache and evicts the least recently used entry', async () => {
+    getAccount.mockReturnValue(connectedAccount);
+    const handler = new EthMethodHandler();
+    const requestAccounts = (host: string) =>
+      handler.handle(
+        makeContext('eth_accounts', host, MethodHandlerType.Eth, 'accounts')
+      );
+
+    for (let index = 0; index < MAX_PROVIDER_CACHE_ENTRIES; index += 1) {
+      await requestAccounts(`host-${index}.example`);
+    }
+    expect(getAccount).toHaveBeenCalledTimes(MAX_PROVIDER_CACHE_ENTRIES);
+
+    // Refresh host 0, then insert one more host. Host 1 is now the LRU entry.
+    await requestAccounts('host-0.example');
+    await requestAccounts('host-overflow.example');
+    await requestAccounts('host-0.example');
+    expect(getAccount).toHaveBeenCalledTimes(MAX_PROVIDER_CACHE_ENTRIES + 1);
+
+    await requestAccounts('host-1.example');
+    expect(getAccount).toHaveBeenCalledTimes(MAX_PROVIDER_CACHE_ENTRIES + 2);
   });
 });
