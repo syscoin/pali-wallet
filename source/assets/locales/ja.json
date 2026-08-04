@@ -231,6 +231,7 @@
     "grantAccess": "あなたのアクセスを許可します",
     "byGrantingPermission": "権限を付与することで、次のコントラクトがあなたの資金にアクセスすることを許可します",
     "editPermission": "権限を編集",
+    "invalidApprovalDetails": "承認の詳細が無効です。このリクエストは確認できません。",
     "approveNftTransfer": "NFT転送を承認",
     "allowTransferOf": "転送を許可",
     "grantCollectionAccess": "コレクションへのアクセスを許可",

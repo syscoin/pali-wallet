@@ -83,8 +83,8 @@ export interface IDecodedTx {
 }
 
 export interface ICustomApprovedAllowanceAmount {
-  customAllowanceValue?: number | null;
-  defaultAllowanceValue?: number;
+  customAllowanceValue?: string | null;
+  defaultAllowanceValue?: string;
   isCustom: boolean;
 }
 

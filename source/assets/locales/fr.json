@@ -231,6 +231,7 @@
     "grantAccess": "Vous accordez l'accès à votre",
     "byGrantingPermission": "En accordant la permission, vous autorisez le contrat suivant à accéder à vos fonds",
     "editPermission": "Modifier la permission",
+    "invalidApprovalDetails": "Détails d’autorisation invalides. Cette demande ne peut pas être confirmée.",
     "approveNftTransfer": "Approuver le transfert NFT",
     "allowTransferOf": "Autoriser le transfert de",
     "grantCollectionAccess": "Accorder l'accès à la collection",
