@@ -151,6 +151,11 @@ test.describe('visual baselines', () => {
     await wallet.ensureOnHome();
     await wallet.page.locator('#send-btn').click();
     await expect(wallet.page).toHaveURL(/send\/eth/, { timeout: 30_000 });
+    // The route renders before balance/token initialization finishes. Wait for
+    // the intended ready-state button instead of capturing its loading spinner.
+    await expect(
+      wallet.page.getByRole('button', { name: /next/i }).first()
+    ).toBeEnabled({ timeout: E2E_CONFIG.slowActionTimeoutMs });
     await settle();
     await expect(wallet.page).toHaveScreenshot(['send-eth.png'], {
       mask: commonMasks(),

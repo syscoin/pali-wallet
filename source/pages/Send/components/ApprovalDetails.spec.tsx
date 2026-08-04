@@ -78,6 +78,36 @@ describe('ApprovalDetails', () => {
     expect(markup).toContain('transactions.unlimited');
   });
 
+  it('preserves approval metadata for mixed-case calldata', async () => {
+    jest
+      .spyOn(validations, 'getContractType')
+      .mockResolvedValue({ type: 'ERC-20' });
+    const encoded = APPROVAL_INTERFACE.encodeFunctionData('approve', [
+      AUTHORITY,
+      1,
+    ]);
+    const decodedTx = (await decodeTransactionData(
+      {
+        data: `0x${encoded.slice(2).toUpperCase()}`,
+        to: TOKEN_CONTRACT,
+      } as any,
+      {}
+    )) as any;
+
+    expect(decodedTx).toMatchObject({
+      approvalType: 'erc20-amount',
+      method: 'approve',
+      tokenStandard: 'ERC-20',
+    });
+    expect(
+      getApprovalAddressValues(
+        decodedTx,
+        TOKEN_CONTRACT,
+        decodedTx.approvalType
+      ).isValid
+    ).toBe(true);
+  });
+
   it.each(['increaseAllowance', 'decreaseAllowance'])(
     'binds real %s calldata to the spender and amount rows',
     async (method) => {

@@ -84,24 +84,29 @@ export const detectApprovalType = async (
   tokenStandard?: string;
 }> => {
   try {
-    // Get contract type using frontend detection
+    const normalizedData = data.toLowerCase();
+    // Contract-type lookup enriches the approval classification, but a
+    // transient lookup failure must not discard otherwise valid approval
+    // metadata and fall through to the generic ABI decoder.
     const contractType = await getContractType(
       contractAddress,
       web3Provider,
       controller
-    );
+    ).catch(() => undefined);
 
     if (
-      data.startsWith(APPROVAL_METHOD_SIGNATURES.approve) ||
-      data.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance) ||
-      data.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
+      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.approve) ||
+      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance) ||
+      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
     ) {
       // Determine method name
       let methodName = 'approve';
-      if (data.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance)) {
+      if (
+        normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance)
+      ) {
         methodName = 'increaseAllowance';
       } else if (
-        data.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
+        normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
       ) {
         methodName = 'decreaseAllowance';
       }
@@ -137,7 +142,9 @@ export const detectApprovalType = async (
           method: methodName,
         };
       }
-    } else if (data.startsWith(APPROVAL_METHOD_SIGNATURES.setApprovalForAll)) {
+    } else if (
+      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.setApprovalForAll)
+    ) {
       // Works for both ERC-721 and ERC-1155
       const [operator, approved] = defaultAbiCoder.decode(
         ['address', 'bool'],
