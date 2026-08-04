@@ -53,6 +53,8 @@ import { validateTransactionDataValue } from 'utils/validateTransactionDataValue
 import { getErc20Abi } from 'utils/validations';
 
 import {
+  Erc20ApprovalAddresses,
+  getErc20ApprovalAddressValues,
   TransactionDetailsComponent,
   TransactionDataComponent,
   TransactionHexComponent,
@@ -1091,9 +1093,6 @@ export const SendTransaction = () => {
                               `Unknown Token (${dataTx?.to?.slice(0, 8)}...)`}
                           </span>
                         </span>
-                        <span className="text-brand-graylight text-sm">
-                          {t('send.byGrantingPermission')}
-                        </span>
                       </>
                     )}
 
@@ -1139,28 +1138,37 @@ export const SendTransaction = () => {
                   </div>
 
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
-                    <div
-                      className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
-                      style={{
-                        backgroundColor: 'rgba(22, 39, 66, 1)',
-                        maxWidth: '150px',
-                      }}
-                    >
-                      <Tooltip
-                        content={
-                          resolvedTo || (toRaw.startsWith('0x') ? toRaw : '')
-                        }
+                    {approvalType === 'erc20-amount' ? (
+                      <Erc20ApprovalAddresses
+                        {...getErc20ApprovalAddressValues(
+                          decodedTxData,
+                          resolvedTo || toRaw
+                        )}
+                      />
+                    ) : (
+                      <div
+                        className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
+                        style={{
+                          backgroundColor: 'rgba(22, 39, 66, 1)',
+                          maxWidth: '150px',
+                        }}
                       >
-                        <span>{ellipsis(displayToLabel)}</span>
-                      </Tooltip>
-                      <IconButton onClick={() => copy(resolvedTo || toRaw)}>
-                        <Icon
-                          name="copy"
-                          className="text-brand-white hover:text-fields-input-borderfocus"
-                          wrapperClassname="flex items-center justify-center"
-                        />
-                      </IconButton>
-                    </div>
+                        <Tooltip
+                          content={
+                            resolvedTo || (toRaw.startsWith('0x') ? toRaw : '')
+                          }
+                        >
+                          <span>{ellipsis(displayToLabel)}</span>
+                        </Tooltip>
+                        <IconButton onClick={() => copy(resolvedTo || toRaw)}>
+                          <Icon
+                            name="copy"
+                            className="text-brand-white hover:text-fields-input-borderfocus"
+                            wrapperClassname="flex items-center justify-center"
+                          />
+                        </IconButton>
+                      </div>
+                    )}
 
                     {approvalType === 'erc20-amount' && (
                       <div>
