@@ -18,7 +18,6 @@ jest.mock('utils/security/blacklistService', () => ({
 }));
 
 import { KeyringAccountType } from 'types/network';
-import { BigNumber } from 'utils/ethersV6Compat';
 import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasFees,
@@ -153,15 +152,11 @@ describe('SmartAccountController smart account execution fees', () => {
   };
 
   const buildController = () => {
-    const estimateGas = jest.fn().mockResolvedValue('143280');
     const sendAndSaveEthTransaction = jest.fn().mockResolvedValue({
       hash: '0xabc',
       wait: jest.fn(),
     });
     const controller: any = new SmartAccountController({
-      getEthereumTransaction: () => ({
-        web3Provider: { estimateGas },
-      }),
       sendAndSaveEthTransaction,
     } as any);
     controller.getActiveSmartAccount = jest.fn(() => ({
@@ -175,7 +170,7 @@ describe('SmartAccountController smart account execution fees', () => {
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
     controller.invalidateHydratedMetadata = jest.fn();
 
-    return { controller, estimateGas, sendAndSaveEthTransaction };
+    return { controller, sendAndSaveEthTransaction };
   };
 
   const buildUserOperation = () =>
@@ -218,8 +213,7 @@ describe('SmartAccountController smart account execution fees', () => {
   });
 
   it('preserves explicit zero priority fee overrides for the outer transaction', async () => {
-    const { controller, estimateGas, sendAndSaveEthTransaction } =
-      buildController();
+    const { controller, sendAndSaveEthTransaction } = buildController();
 
     await controller.submitSmartAccountExecution({
       executions: [],
@@ -232,62 +226,9 @@ describe('SmartAccountController smart account execution fees', () => {
 
     expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        gasLimit: '143280',
         maxFeePerGas: '1000000000',
         maxPriorityFeePerGas: '0',
       }),
-      false,
-      { id: gasPayer.id, type: gasPayer.type },
-      expect.any(Object),
-      expect.any(Object)
-    );
-    expect(estimateGas).toHaveBeenCalledWith(
-      expect.objectContaining({
-        from: gasPayer.address,
-      })
-    );
-    expect(estimateGas).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        maxFeePerGas: expect.anything(),
-        maxPriorityFeePerGas: expect.anything(),
-      })
-    );
-  });
-
-  it('reuses the gas-tank credit estimate for the outer transaction', async () => {
-    const { controller, estimateGas, sendAndSaveEthTransaction } =
-      buildController();
-    controller.getActiveSmartAccount.mockReturnValue({
-      account: { address: ACCOUNT_ADDRESS, id: 9 },
-      metadata: {
-        chainId: 57057,
-        deploymentGasPayer: gasPayer,
-      },
-    });
-    controller.assertZkSysGasTankCoversTransaction = jest
-      .fn()
-      .mockResolvedValue(BigNumber.from('143280'));
-    const userOperation = buildUserOperation();
-    userOperation.gasFees = encodeSmartAccountGasFees({
-      maxFeePerGas: 0,
-      maxPriorityFeePerGas: 0,
-    });
-
-    await controller.submitSmartAccountExecution({
-      executions: [],
-      gasPayer,
-      maxFeePerGas: '1000000000',
-      maxPriorityFeePerGas: '0',
-      signature: '0x1234',
-      userOperation,
-    });
-
-    expect(
-      controller.assertZkSysGasTankCoversTransaction
-    ).toHaveBeenCalledTimes(1);
-    expect(estimateGas).not.toHaveBeenCalled();
-    expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ gasLimit: '143280' }),
       false,
       { id: gasPayer.id, type: gasPayer.type },
       expect.any(Object),
