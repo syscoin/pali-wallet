@@ -307,6 +307,7 @@ export const SmartAccountModuleConsent = () => {
               accountId: account.id,
               record: {
                 address: moduleAddress,
+                compositeCompatible: preflight?.compositeCompatible === true,
                 initData,
                 moduleType: 1,
                 name:
@@ -365,6 +366,7 @@ export const SmartAccountModuleConsent = () => {
     isActiveCompositeChild,
     metadata,
     moduleAddress,
+    preflight,
     refreshMetadata,
     request.name,
     t,

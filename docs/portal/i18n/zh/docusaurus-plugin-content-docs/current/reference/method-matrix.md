@@ -40,7 +40,7 @@ title: 方法矩阵
 | --- | --- |
 | 账户 | `eth_requestAccounts`, `eth_accounts` |
 | 交易 | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` |
-| 签名 | `eth_sign`, `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| 签名 | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | 网络 | `eth_chainId`, `net_version`, `eth_changeUTXOEVM` |
 | 链数据 | `eth_getBalance`, `eth_getCode`, `eth_getTransactionCount`, `eth_getTransactionReceipt`, `eth_getLogs`, `eth_getProof`, `eth_getStorageAt`, block 和 transaction 查询方法 |
 | 节点数据 | `eth_blockNumber`, `eth_feeHistory`, `eth_gasPrice`, `web3_clientVersion`, `web3_sha3`, `net_listening`, `net_peerCount` |

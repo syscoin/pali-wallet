@@ -353,6 +353,8 @@ const SmartAccountHub = () => {
             accountId: account.id,
             record: {
               address,
+              compositeCompatible:
+                customInstall.preflight?.compositeCompatible === true,
               initData,
               moduleType: 1,
               name:

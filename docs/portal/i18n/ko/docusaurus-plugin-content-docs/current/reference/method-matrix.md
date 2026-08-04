@@ -40,7 +40,7 @@ title: Method matrix
 | --- | --- |
 | Accounts | `eth_requestAccounts`, `eth_accounts` |
 | Transactions | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` |
-| Signing | `eth_sign`, `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| Signing | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | Network | `eth_chainId`, `net_version`, `eth_changeUTXOEVM` |
 | Chain data | `eth_getBalance`, `eth_getCode`, `eth_getTransactionCount`, `eth_getTransactionReceipt`, `eth_getLogs`, `eth_getProof`, `eth_getStorageAt`, block 및 transaction lookup method |
 | Node data | `eth_blockNumber`, `eth_feeHistory`, `eth_gasPrice`, `web3_clientVersion`, `web3_sha3`, `net_listening`, `net_peerCount` |

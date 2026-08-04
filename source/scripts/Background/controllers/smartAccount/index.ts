@@ -116,10 +116,6 @@ export interface ISmartAccountControllerDependencies {
       transactionAccounts?: Array<{ id: number; type: PaliKeyringAccountType }>;
     }
   ) => Promise<void>;
-  signEthWithAccount: (
-    params: string[],
-    targetAccount: { id: number; type: PaliKeyringAccountType }
-  ) => Promise<string>;
   signSLHDSARecoveryTargetActionHash: (params: {
     actionHash: string;
     keyId: string;
@@ -127,6 +123,10 @@ export interface ISmartAccountControllerDependencies {
     pkRoot: string;
     pkSeed: string;
   }) => Promise<string>;
+  signSmartAccountActionDigestInternal: (
+    params: string[],
+    targetAccount: { id: number; type: PaliKeyringAccountType }
+  ) => Promise<string>;
 }
 
 type GuardianRecoveryStatusForAccount = {
@@ -1583,7 +1583,7 @@ class SmartAccountController {
         account,
         approval: {
           guardian,
-          signature: await this.deps.signEthWithAccount(
+          signature: await this.deps.signSmartAccountActionDigestInternal(
             [guardian, operation.hash],
             localEoaGuardian
           ),
@@ -1827,7 +1827,7 @@ class SmartAccountController {
     await Promise.all(
       owners.slice(0, threshold).map((owner) => {
         const ownerAccount = this.getLocalSigningAccount(owner);
-        return this.deps.signEthWithAccount(
+        return this.deps.signSmartAccountActionDigestInternal(
           [owner, operationHash],
           ownerAccount
         );
@@ -1893,7 +1893,7 @@ class SmartAccountController {
       localOwners
         .slice(0, threshold)
         .map((owner) =>
-          this.deps.signEthWithAccount(
+          this.deps.signSmartAccountActionDigestInternal(
             [owner, actionHash],
             this.getLocalSigningAccount(owner)
           )
@@ -2298,6 +2298,7 @@ class SmartAccountController {
         installedModules.push({
           address: getAddress(record.address),
           config: {
+            compositeCompatible: record.compositeCompatible,
             initData: record.initData,
             moduleType: record.moduleType,
             name: record.name,

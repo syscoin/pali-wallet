@@ -433,7 +433,7 @@ export const PrepareSmartAccount = () => {
             ],
             signActionHash: ({ actionHash, owner }) =>
               controllerEmitter(
-                ['wallet', 'ethSignWithAccount'],
+                ['wallet', 'signSmartAccountActionDigestInternal'],
                 [
                   [owner.address, actionHash],
                   { id: owner.id, type: owner.type },

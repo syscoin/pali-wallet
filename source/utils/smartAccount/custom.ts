@@ -4,7 +4,10 @@ import { Interface } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 
 import { aggregateContractCalls } from './aggregate';
-import { ERC7579_MODULE_TYPE_VALIDATOR } from './contracts';
+import {
+  ERC7579_MODULE_TYPE_VALIDATOR,
+  PALI_MODULE_TYPE_COMPOSITE_CHILD,
+} from './contracts';
 import {
   getInstalledValidatorModuleByAddress,
   listInstalledValidatorModules,
@@ -27,6 +30,7 @@ export type CustomValidatorPreflightFailure =
   | 'not-a-validator-module';
 
 export type CustomValidatorPreflightResult = {
+  compositeCompatible: boolean;
   failures: CustomValidatorPreflightFailure[];
   ok: boolean;
 };
@@ -70,15 +74,21 @@ export const preflightCustomValidatorInstall = async (
   if (!code || code === '0x') {
     failures.push('no-contract-code');
     // isModuleType would revert against empty code; report and stop.
-    return { failures, ok: false };
+    return { compositeCompatible: false, failures, ok: false };
   }
 
-  const [moduleTypeResult] = await aggregateContractCalls(
+  const [moduleTypeResult, compositeTypeResult] = await aggregateContractCalls(
     provider,
     params.chainId,
     [
       {
         args: [ERC7579_MODULE_TYPE_VALIDATOR],
+        fn: 'isModuleType',
+        iface: ERC7579_MODULE_PROBE_INTERFACE,
+        target: address,
+      },
+      {
+        args: [PALI_MODULE_TYPE_COMPOSITE_CHILD],
         fn: 'isModuleType',
         iface: ERC7579_MODULE_PROBE_INTERFACE,
         target: address,
@@ -91,7 +101,12 @@ export const preflightCustomValidatorInstall = async (
     failures.push('not-a-validator-module');
   }
 
-  return { failures, ok: failures.length === 0 };
+  return {
+    compositeCompatible:
+      compositeTypeResult.success && Boolean(compositeTypeResult.result[0]),
+    failures,
+    ok: failures.length === 0,
+  };
 };
 
 /** True when Pali can natively produce signatures for this validator. */
@@ -136,8 +151,8 @@ export class SmartAccountLockoutError extends Error {
 
 /**
  * Lockout guard: refuses to activate a validator Pali cannot sign with.
- * A custom validator may only participate as a composite child alongside a
- * Pali-signable sibling; it can never become the sole active signer.
+ * A compatible custom validator may only participate as a composite child
+ * alongside a Pali-signable sibling; it can never become the sole signer.
  */
 export const assertValidatorActivationAllowed = (
   metadata: Pick<ISmartAccountMetadata, 'installedModules'>,
@@ -170,5 +185,7 @@ export const listCompositeChildCandidates = (
   metadata: Pick<ISmartAccountMetadata, 'installedModules'>
 ): SmartAccountValidatorModule[] =>
   listInstalledValidatorModules(metadata as ISmartAccountMetadata).filter(
-    (module) => module.id !== 'composite'
+    (module) =>
+      module.id !== 'composite' &&
+      (module.id !== 'custom' || module.config.compositeCompatible === true)
   );

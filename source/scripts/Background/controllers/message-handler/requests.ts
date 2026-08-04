@@ -56,6 +56,17 @@ export const methodRequest = async (
   host: string,
   data: { method: string; network?: string; params?: any[] }
 ) => {
+  // Never expose raw digest signing to connected sites. ECDSA smart accounts
+  // can share an owner with a dapp-facing EOA, so an eth_sign signature over a
+  // UserOperation hash could otherwise be replayed as account authorization.
+  if (data.method === 'eth_sign') {
+    throw cleanErrorStack(
+      ethErrors.provider.unsupportedMethod(
+        'eth_sign is not supported. Use personal_sign or eth_signTypedData_v4.'
+      )
+    );
+  }
+
   // Get method configuration from registry
   const methodConfig = getMethodConfig(data.method);
 

@@ -3,7 +3,7 @@ import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
-import { INetworkType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
   getBlacklistTargetsForEvmCallWithContractType,
@@ -791,10 +791,10 @@ const extractUtxoAddressFromPsbt = async (
 const findAccountByAddress = (
   address: string,
   accounts: any
-): { account: any; accountType: string } | null => {
+): { account: any; accountType: KeyringAccountType } | null => {
   const addressLower = address.toLowerCase();
 
-  for (const accountType of Object.keys(accounts)) {
+  for (const accountType of Object.keys(accounts) as KeyringAccountType[]) {
     const accountsOfType = accounts[accountType];
     if (accountsOfType) {
       for (const [accountId, accountData] of Object.entries(accountsOfType)) {
@@ -815,7 +815,7 @@ const findAccountByAddress = (
 const promptAccountSwitch = async (
   context: IEnhancedRequestContext,
   targetAccount: any,
-  targetAccountType: string
+  targetAccountType: KeyringAccountType
 ): Promise<void> => {
   await requestCoordinator.coordinatePopupRequest(
     context,
@@ -831,6 +831,24 @@ const promptAccountSwitch = async (
       }),
     MethodRoute.ChangeActiveConnectedAccount
   );
+};
+
+const syncDappAccountAfterSelection = async (
+  host: string,
+  targetAccount: any,
+  targetAccountType: KeyringAccountType
+): Promise<void> => {
+  const { dapp } = getController();
+  const connection = dapp.get(host);
+  if (
+    connection?.accountId === targetAccount.id &&
+    connection.accountType === targetAccountType
+  ) {
+    return;
+  }
+
+  await dapp.changeAccount(host, targetAccount.id, targetAccountType);
+  clearProviderCache();
 };
 
 // Middleware: Account Switching for Blocking Methods
@@ -893,38 +911,46 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
       );
     }
 
-    // Check if we're already on the correct account
+    // A connected site may request another wallet-owned account. Changing the
+    // site's provider-visible account always requires explicit selection
+    // consent, even when that account is already globally active.
     const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
-    if (
+    const isRequiredAccountActive =
       activeAccountData?.address.toLowerCase() ===
-      requiredFromAddress.toLowerCase()
-    ) {
-      // Already on the correct account
-      return next();
+      requiredFromAddress.toLowerCase();
+    const dappConnection = dapp.get(originalRequest.host);
+    const isRequiredAccountConnected =
+      dappConnection?.accountId === accountInfo.account.id &&
+      dappConnection.accountType === accountInfo.accountType;
+    if (!isRequiredAccountActive || !isRequiredAccountConnected) {
+      console.log(
+        '[Pipeline] Transaction requires switching to address:',
+        requiredFromAddress
+      );
+
+      try {
+        await promptAccountSwitch(
+          context,
+          accountInfo.account,
+          accountInfo.accountType
+        );
+      } catch (error) {
+        throw cleanErrorStack(
+          ethErrors.provider.unauthorized(
+            'Must switch to the required account for this operation'
+          )
+        );
+      }
     }
 
-    console.log(
-      '[Pipeline] Transaction requires switching to address:',
-      requiredFromAddress
+    // Synchronize the site's single provider-visible account with the account
+    // that will sign, including when it was already globally active.
+    await syncDappAccountAfterSelection(
+      originalRequest.host,
+      accountInfo.account,
+      accountInfo.accountType
     );
-
-    // Need to switch to the required account
-    try {
-      await promptAccountSwitch(
-        context,
-        accountInfo.account,
-        accountInfo.accountType
-      );
-
-      // Account switched successfully, continue with the request
-      return next();
-    } catch (error) {
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized(
-          'Must switch to the required account for this operation'
-        )
-      );
-    }
+    return next();
   }
 
   // Original logic for DApp connected account validation

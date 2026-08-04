@@ -707,8 +707,8 @@ class MainController {
         ),
       saveWalletState: (operation, isUserActivity, sync) =>
         this.saveWalletState(operation, isUserActivity, sync),
-      signEthWithAccount: (params, targetAccount) =>
-        this.ethSignWithAccount(params, targetAccount),
+      signSmartAccountActionDigestInternal: (params, targetAccount) =>
+        this.signSmartAccountActionDigestInternal(params, targetAccount),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
       createSmartAccountRecord: (params) =>
@@ -4695,7 +4695,7 @@ class MainController {
     }
   }
 
-  public async ethSignWithAccount(
+  public async signSmartAccountActionDigestInternal(
     params: string[],
     targetAccount: { id: number; type: KeyringAccountType }
   ): Promise<string> {

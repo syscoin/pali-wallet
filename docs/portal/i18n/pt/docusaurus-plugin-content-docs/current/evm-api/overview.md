@@ -11,7 +11,7 @@ O provider EVM da Pali é exposto por meio de `window.ethereum` e é compatível
 | Conectar | `eth_requestAccounts`, `eth_accounts` |
 | Rede | `eth_chainId`, `net_version`, `wallet_switchEthereumChain`, `wallet_addEthereumChain` |
 | Transações | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_estimateGas`, `eth_call` |
-| Assinatura | `personal_sign`, `eth_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| Assinatura | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | Permissões | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | Ativos | `wallet_watchAsset` |
 | Lotes | `wallet_sendCalls`, `wallet_getCapabilities` |

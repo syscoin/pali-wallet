@@ -19,55 +19,21 @@ import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
-import { hashMessage, _TypedDataEncoder } from 'utils/ethersV6Compat';
+import { hashMessage } from 'utils/ethersV6Compat';
 import { arrayify, isHexString } from 'utils/ethersV6Compat';
 import { getNetworkChain } from 'utils/network';
 import {
+  assertPaliErc7739TypedDataV4Method,
   encodeSmartAccountAuthenticatorSignature,
+  getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
+  signPaliErc7739TypedDataV4,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
 
 interface ISign {
   send?: boolean;
 }
-
-type SmartAccountTypedDataRequest = {
-  actionHash: string;
-};
-
-const getTypedDataBaseType = (type: string) => type.replace(/\[.*\]$/, '');
-
-const getReachableTypedDataTypes = (
-  types: Record<string, Array<{ name: string; type: string }>>,
-  primaryType?: string
-) => {
-  const sanitizedTypes = { ...types };
-  delete sanitizedTypes.EIP712Domain;
-
-  if (!primaryType || !sanitizedTypes[primaryType]) {
-    return sanitizedTypes;
-  }
-
-  const reachableTypes: typeof sanitizedTypes = {};
-  const visit = (typeName: string) => {
-    if (!sanitizedTypes[typeName] || reachableTypes[typeName]) return;
-
-    reachableTypes[typeName] = sanitizedTypes[typeName];
-    for (const field of sanitizedTypes[typeName]) {
-      visit(getTypedDataBaseType(field.type));
-    }
-  };
-
-  visit(primaryType);
-  return reachableTypes;
-};
-
-const smartAccountTypedDataPrimaryTypes = new Set([
-  'PaliSmartAccountExecution',
-  'PaliSmartAccountPolicyUpdate',
-  'PaliSmartAccountModuleInstall',
-]);
 
 const EthSign: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
@@ -182,40 +148,6 @@ const EthSign: React.FC<ISign> = () => {
     return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
   };
 
-  const getSmartAccountTypedDataRequest = (
-    typedData?: any
-  ): SmartAccountTypedDataRequest | null => {
-    if (!typedData?.message || !typedData?.primaryType) {
-      return null;
-    }
-
-    const { message: typedMessage, primaryType } = typedData;
-    const requestType =
-      typedMessage.requestType ||
-      typedMessage.smartAccountType ||
-      typedMessage.type ||
-      primaryType;
-    const isSmartAccountRequest =
-      smartAccountTypedDataPrimaryTypes.has(primaryType) ||
-      (typeof requestType === 'string' &&
-        requestType.toLowerCase().startsWith('smartaccount.'));
-    if (!isSmartAccountRequest) {
-      return null;
-    }
-
-    const actionHash =
-      typedMessage.actionHash ||
-      typedMessage.accountActionHash ||
-      typedMessage.challenge;
-    if (!isHexString(actionHash, 32)) {
-      throw { message: t('send.invalidParameters') };
-    }
-
-    return {
-      actionHash,
-    };
-  };
-
   const getHydratedSmartAccountMetadata =
     async (): Promise<ISmartAccountMetadata> => {
       if (!activeAccount.isSmartAccount || !activeAccount.smartAccount) {
@@ -229,38 +161,12 @@ const EthSign: React.FC<ISign> = () => {
       ) as Promise<ISmartAccountMetadata>;
     };
 
-  const encodeSmartAccount1271Signature = async (hash: string) => {
-    const smartAccount = await getHydratedSmartAccountMetadata();
-
-    const signature = await signSmartAccountActionHash({
-      actionHash: hash,
-      authenticatorContexts: getSmartAccountLocalOwnerContexts({
-        accounts,
-        controllerEmitter,
-      }),
-      onAuthenticatorSigningResolved: (authenticator) => {
-        if (authenticator === 'slh-dsa') {
-          setIsPqSigning(false);
-        }
-      },
-      onAuthenticatorSigningStarted: (authenticator) => {
-        if (authenticator === 'slh-dsa') {
-          setIsPqSigning(true);
-        }
-      },
-      smartAccount,
-    });
-
-    return encodeSmartAccountAuthenticatorSignature(signature);
-  };
-
-  const encodeSmartAccountTypedDataSignature = async (
-    request: SmartAccountTypedDataRequest
+  const signSmartAccountHash = async (
+    smartAccount: ISmartAccountMetadata,
+    actionHash: string
   ) => {
-    const smartAccount = await getHydratedSmartAccountMetadata();
-
     const signature = await signSmartAccountActionHash({
-      actionHash: request.actionHash,
+      actionHash,
       authenticatorContexts: getSmartAccountLocalOwnerContexts({
         accounts,
         controllerEmitter,
@@ -281,7 +187,30 @@ const EthSign: React.FC<ISign> = () => {
     return encodeSmartAccountAuthenticatorSignature(signature);
   };
 
-  const getSmartAccount1271Hash = (typedData?: any) => {
+  const encodeSmartAccountPersonalSignature = async (hash: string) => {
+    const smartAccount = await getHydratedSmartAccountMetadata();
+    return signSmartAccountHash(
+      smartAccount,
+      getPaliErc7739PersonalSignHash({
+        accountAddress: address,
+        chainId: smartAccount.chainId,
+        hash,
+      })
+    );
+  };
+
+  const signSmartAccountErc7739TypedDataV4 = async (typedData: any) => {
+    const smartAccount = await getHydratedSmartAccountMetadata();
+    return signPaliErc7739TypedDataV4({
+      accountAddress: address,
+      chainId: smartAccount.chainId,
+      signActionHash: (actionHash) =>
+        signSmartAccountHash(smartAccount, actionHash),
+      typedData,
+    });
+  };
+
+  const getSmartAccountPersonalHash = () => {
     if (data.eventName === 'personal_sign') {
       const msg = getPersonalSignMessage();
       return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
@@ -295,21 +224,6 @@ const EthSign: React.FC<ISign> = () => {
         };
       }
       return payload;
-    }
-
-    if (typedData) {
-      if (data.eventName === 'eth_signTypedData') {
-        throw {
-          message: t('send.smartAccountLegacyTypedDataUnsupported'),
-        };
-      }
-
-      const { domain, message: typedMessage, primaryType, types } = typedData;
-      return _TypedDataEncoder.hash(
-        domain || {},
-        getReachableTypedDataTypes(types || {}, primaryType),
-        typedMessage || {}
-      );
     }
 
     throw { message: t('send.smartAccountUnsupportedSigningRequest') };
@@ -339,31 +253,32 @@ const EthSign: React.FC<ISign> = () => {
           data.eventName === 'eth_signTypedData_v4'
             ? getTypedDataPayload()
             : undefined;
-        const smartAccountRequest = getSmartAccountTypedDataRequest(typedData);
-        response = smartAccountRequest
-          ? await encodeSmartAccountTypedDataSignature(smartAccountRequest)
-          : await encodeSmartAccount1271Signature(
-              getSmartAccount1271Hash(typedData)
-            );
+        if (typedData) {
+          if (data.eventName === 'eth_signTypedData') {
+            throw {
+              message: t('send.smartAccountLegacyTypedDataUnsupported'),
+            };
+          }
+          assertPaliErc7739TypedDataV4Method(data.eventName);
+          response = await signSmartAccountErc7739TypedDataV4(typedData);
+        } else {
+          response = await encodeSmartAccountPersonalSignature(
+            getSmartAccountPersonalHash()
+          );
+        }
       } else if (
         data.eventName === 'eth_signTypedData_v3' ||
         data.eventName === 'eth_signTypedData_v4'
       ) {
         const typedData = getTypedDataPayload();
-        const smartAccountRequest = getSmartAccountTypedDataRequest(typedData);
-        if (smartAccountRequest) {
-          throw { message: t('send.smartAccountActiveAccountRequired') };
-        } else {
-          const version =
-            data.eventName === 'eth_signTypedData_v3' ? 'V3' : 'V4';
-          response = (await controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'signTypedData'],
-            [address, typedData, version],
-            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-              ? 300000
-              : 10000
-          )) as string;
-        }
+        const version = data.eventName === 'eth_signTypedData_v3' ? 'V3' : 'V4';
+        response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'signTypedData'],
+          [address, typedData, version],
+          activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            ? 300000
+            : 10000
+        )) as string;
       } else if (data.eventName === 'eth_sign')
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'ethSign'],
@@ -396,9 +311,6 @@ const EthSign: React.FC<ISign> = () => {
           throw { message: t('send.signingForWrongAddress') };
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
-        if (getSmartAccountTypedDataRequest(typedData)) {
-          throw { message: t('send.smartAccountActiveAccountRequired') };
-        }
         if (data.eventName === 'eth_signTypedData') {
           response = (await controllerEmitter(
             ['wallet', 'ethereumTransaction', 'signTypedData'],

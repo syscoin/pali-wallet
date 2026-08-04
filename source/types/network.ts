@@ -178,6 +178,8 @@ export type SmartAccountGuardianRecoveryConfig = {
 };
 
 export type SmartAccountCustomModuleConfig = {
+  /** True only when the module opts into Pali's full-context composite API. */
+  compositeCompatible?: boolean;
   /** Init data the module was installed with (for display/uninstall hints). */
   initData?: string;
   /** ERC-7579 module type id (1 = validator, 2 = executor, ...). */

@@ -40,7 +40,7 @@ Esta referencia resume los métodos públicos orientados a dapps documentados de
 | --- | --- |
 | Cuentas | `eth_requestAccounts`, `eth_accounts` |
 | Transacciones | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` |
-| Firma | `eth_sign`, `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| Firma | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | Red | `eth_chainId`, `net_version`, `eth_changeUTXOEVM` |
 | Datos de cadena | `eth_getBalance`, `eth_getCode`, `eth_getTransactionCount`, `eth_getTransactionReceipt`, `eth_getLogs`, `eth_getProof`, `eth_getStorageAt`, métodos de búsqueda de bloques y transacciones |
 | Datos de nodo | `eth_blockNumber`, `eth_feeHistory`, `eth_gasPrice`, `web3_clientVersion`, `web3_sha3`, `net_listening`, `net_peerCount` |
