@@ -11,7 +11,7 @@ Palis EVM-Provider wird über `window.ethereum` bereitgestellt und ist mit stand
 | Verbinden | `eth_requestAccounts`, `eth_accounts` |
 | Netzwerk | `eth_chainId`, `net_version`, `wallet_switchEthereumChain`, `wallet_addEthereumChain` |
 | Transaktionen | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_estimateGas`, `eth_call` |
-| Signatur | `personal_sign`, `eth_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| Signatur | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | Berechtigungen | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | Assets | `wallet_watchAsset` |
 | Batches | `wallet_sendCalls`, `wallet_getCapabilities` |

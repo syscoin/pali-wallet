@@ -40,7 +40,7 @@ Diese Referenz fasst die öffentlichen dapp-seitigen Methoden zusammen, die aus 
 | --- | --- |
 | Accounts | `eth_requestAccounts`, `eth_accounts` |
 | Transaktionen | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` |
-| Signatur | `eth_sign`, `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| Signatur | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | Netzwerk | `eth_chainId`, `net_version`, `eth_changeUTXOEVM` |
 | Chain-Daten | `eth_getBalance`, `eth_getCode`, `eth_getTransactionCount`, `eth_getTransactionReceipt`, `eth_getLogs`, `eth_getProof`, `eth_getStorageAt`, Block- und Transaktions-Lookup-Methoden |
 | Node-Daten | `eth_blockNumber`, `eth_feeHistory`, `eth_gasPrice`, `web3_clientVersion`, `web3_sha3`, `net_listening`, `net_peerCount` |

@@ -11,7 +11,7 @@ PaliのEVMプロバイダーは`window.ethereum`を通じて公開され、標�
 | 接続 | `eth_requestAccounts`, `eth_accounts` |
 | ネットワーク | `eth_chainId`, `net_version`, `wallet_switchEthereumChain`, `wallet_addEthereumChain` |
 | トランザクション | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_estimateGas`, `eth_call` |
-| 署名 | `personal_sign`, `eth_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| 署名 | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | 権限 | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | アセット | `wallet_watchAsset` |
 | バッチ | `wallet_sendCalls`, `wallet_getCapabilities` |

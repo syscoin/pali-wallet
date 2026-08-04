@@ -11,7 +11,7 @@ Pali 的 EVM provider 通过 `window.ethereum` 暴露，并兼容标准 MetaMask
 | 连接 | `eth_requestAccounts`, `eth_accounts` |
 | 网络 | `eth_chainId`, `net_version`, `wallet_switchEthereumChain`, `wallet_addEthereumChain` |
 | 交易 | `eth_sendTransaction`, `eth_sendRawTransaction`, `eth_estimateGas`, `eth_call` |
-| 签名 | `personal_sign`, `eth_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
+| 签名 | `personal_sign`, `eth_signTypedData`, `eth_signTypedData_v3`, `eth_signTypedData_v4` |
 | 权限 | `wallet_requestPermissions`, `wallet_getPermissions`, `wallet_revokePermissions` |
 | 资产 | `wallet_watchAsset` |
 | 批量操作 | `wallet_sendCalls`, `wallet_getCapabilities` |
