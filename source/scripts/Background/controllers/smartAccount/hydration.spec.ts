@@ -18,6 +18,7 @@ jest.mock('utils/security/blacklistService', () => ({
 }));
 
 import { KeyringAccountType } from 'types/network';
+import { BigNumber } from 'utils/ethersV6Compat';
 import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasFees,
@@ -250,6 +251,47 @@ describe('SmartAccountController smart account execution fees', () => {
         maxFeePerGas: expect.anything(),
         maxPriorityFeePerGas: expect.anything(),
       })
+    );
+  });
+
+  it('reuses the gas-tank credit estimate for the outer transaction', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    controller.getActiveSmartAccount.mockReturnValue({
+      account: { address: ACCOUNT_ADDRESS, id: 9 },
+      metadata: {
+        chainId: 57057,
+        deploymentGasPayer: gasPayer,
+      },
+    });
+    controller.assertZkSysGasTankCoversTransaction = jest
+      .fn()
+      .mockResolvedValue(BigNumber.from('143280'));
+    const userOperation = buildUserOperation();
+    userOperation.gasFees = encodeSmartAccountGasFees({
+      maxFeePerGas: 0,
+      maxPriorityFeePerGas: 0,
+    });
+
+    await controller.submitSmartAccountExecution({
+      executions: [],
+      gasPayer,
+      maxFeePerGas: '1000000000',
+      maxPriorityFeePerGas: '0',
+      signature: '0x1234',
+      userOperation,
+    });
+
+    expect(
+      controller.assertZkSysGasTankCoversTransaction
+    ).toHaveBeenCalledTimes(1);
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ gasLimit: '143280' }),
+      false,
+      { id: gasPayer.id, type: gasPayer.type },
+      expect.any(Object),
+      expect.any(Object)
     );
   });
 });

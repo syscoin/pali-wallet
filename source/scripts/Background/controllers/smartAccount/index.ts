@@ -1275,8 +1275,9 @@ class SmartAccountController {
       const usesZkSysGasTank =
         Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
         signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
+      let outerGasLimit: BigNumber | undefined;
       if (usesZkSysGasTank) {
-        await this.assertZkSysGasTankCoversTransaction({
+        outerGasLimit = await this.assertZkSysGasTankCoversTransaction({
           chainId: active.metadata.chainId,
           gasPayerAddress: gasPayer.address,
           maxFeePerGas: params.maxFeePerGas,
@@ -1308,19 +1309,22 @@ class SmartAccountController {
       // LackOfFundForMaxFee failure whenever maxFeePerGas exceeds baseFee.
       // Estimate the outer handleOps call without fee fields, then provide the
       // resolved limit alongside the selected caps so the signing path does
-      // not estimate it a second time.
-      const provider = this.ethereumTransaction?.web3Provider;
-      if (!provider) {
-        throw new Error('Web3 provider not available');
+      // not estimate it a second time. Tank mode already made this exact
+      // estimate while checking credit, so reuse it instead of calling twice.
+      if (!outerGasLimit) {
+        const provider = this.ethereumTransaction?.web3Provider;
+        if (!provider) {
+          throw new Error('Web3 provider not available');
+        }
+        outerGasLimit = toCompatBigNumber(
+          await provider.estimateGas({
+            data: callData,
+            from: gasPayer.address,
+            to: entryPointAddress,
+            value: '0x0',
+          })
+        );
       }
-      const outerGasLimit = toCompatBigNumber(
-        await provider.estimateGas({
-          data: callData,
-          from: gasPayer.address,
-          to: entryPointAddress,
-          value: '0x0',
-        })
-      );
       const response = await this.deps.sendAndSaveEthTransaction(
         {
           data: callData,
@@ -1415,7 +1419,7 @@ class SmartAccountController {
     gasPayerAddress: string;
     maxFeePerGas?: string;
     transaction: { data?: string; to: string; value?: string };
-  }): Promise<void> {
+  }): Promise<BigNumber> {
     const provider = this.ethereumTransaction?.web3Provider;
     const tankAddress = getZkSysGasTankAddress(chainId);
     if (!provider || !tankAddress) {
@@ -1434,15 +1438,17 @@ class SmartAccountController {
       maxFeePerGas ? Promise.resolve(null) : provider.getFeeData(),
     ]);
     const credit = toCompatBigNumber(rawCredit);
+    const estimatedGasLimit = toCompatBigNumber(gasLimit);
     const resolvedMaxFeePerGas = BigNumber.from(
       maxFeePerGas || feeData?.maxFeePerGas || feeData?.gasPrice || 0
     );
-    const requiredCredit = gasLimit
+    const requiredCredit = estimatedGasLimit
       .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
       .mul(resolvedMaxFeePerGas);
     if (credit.lt(requiredCredit)) {
       throw new Error('PALI_ZKSYS_GAS_TANK_REQUIRED');
     }
+    return estimatedGasLimit;
   }
 
   /**
