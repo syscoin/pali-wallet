@@ -463,7 +463,7 @@ export const getSmartAccountLocalOwnerContexts = ({
       localOwners,
       signActionHash: ({ actionHash, owner }) =>
         controllerEmitter(
-          ['wallet', 'ethSignWithAccount'],
+          ['wallet', 'signSmartAccountActionDigestInternal'],
           [[owner.address, actionHash], { id: owner.id, type: owner.type }],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
         ) as Promise<string>,

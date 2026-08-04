@@ -497,21 +497,6 @@ export const METHOD_REGISTRY: MethodRegistry = {
     isBlocking: true,
   },
 
-  eth_sign: {
-    name: 'eth_sign',
-    handlerType: MethodHandlerType.Eth,
-    requiresTabId: true,
-    requiresAuth: false, // Popup handles auth
-    requiresConnection: true,
-    allowHardwareWallet: true,
-    networkPreference: NetworkPreference.EVM,
-    networkEnforcement: NetworkEnforcement.Always,
-    hasPopup: true,
-    popupRoute: MethodRoute.EthSign,
-    popupEventName: 'eth_sign',
-    isBlocking: true,
-  },
-
   personal_sign: {
     name: 'personal_sign',
     handlerType: MethodHandlerType.Eth,

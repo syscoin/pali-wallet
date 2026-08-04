@@ -1,4 +1,4 @@
-import { Interface } from 'utils/ethersV6Compat';
+import { Interface, keccak256, toUtf8Bytes } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import type { Provider } from 'utils/ethersV6Compat';
 
@@ -9,10 +9,13 @@ import {
   getPaliCanonicalFactoryAddress,
 } from './deployment';
 
-export const PALI_SMART_ACCOUNT_VERSION = 'PALI_SMART_ACCOUNT_ERC7579_V1';
+export const PALI_SMART_ACCOUNT_VERSION = 'PALI_SMART_ACCOUNT_ERC7579_V2';
 
 export const ERC7579_MODULE_TYPE_VALIDATOR = 1;
 export const ERC7579_MODULE_TYPE_EXECUTOR = 2;
+export const PALI_MODULE_TYPE_COMPOSITE_CHILD = keccak256(
+  toUtf8Bytes('pali.validator.composite-child.v1')
+);
 
 export type PaliAuthenticatorModuleId =
   | 'composite'
@@ -42,6 +45,7 @@ export type PaliModuleRegistryEntry = {
  */
 export type PaliCustomModuleDescriptor = {
   address: string;
+  compositeCompatible?: boolean;
   initData?: string;
   kind: 'custom';
   moduleType: number;
@@ -125,6 +129,8 @@ export const PALI_ERC7579_FACTORY_ABI = [
 export const PALI_SMART_ACCOUNT_ABI = [
   'function accountId() view returns (string)',
   'function activeValidator() view returns (address)',
+  'function domainSeparator() view returns (bytes32)',
+  'function eip712Domain() view returns (bytes1 fields,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt,uint256[] extensions)',
   'function entryPoint() view returns (address)',
   'function execute(bytes32 mode,bytes executionCalldata) payable',
   'function executeFromExecutor(bytes32 mode,bytes executionCalldata) payable returns (bytes[] returnData)',
@@ -161,6 +167,7 @@ export const PALI_ECDSA_VALIDATOR_ABI = [
   'function owners(address account) view returns (address[])',
   'function threshold(address account) view returns (uint64)',
   'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
+  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
 ] as const;
 
 export const PALI_P256_WEBAUTHN_VALIDATOR_ABI = [
@@ -171,6 +178,7 @@ export const PALI_P256_WEBAUTHN_VALIDATOR_ABI = [
   'function onUninstall(bytes data)',
   'function authData(address account) view returns ((bytes32 publicKeyX,bytes32 publicKeyY,bytes32 rpIdHash,bytes32 originHash,uint256 originLength))',
   'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
+  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
 ] as const;
 
 export const PALI_COMPOSITE_VALIDATOR_ABI = [
@@ -181,7 +189,7 @@ export const PALI_COMPOSITE_VALIDATOR_ABI = [
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function threshold(address account) view returns (uint64)',
-  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
+  'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) returns (uint256)',
 ] as const;
 
 export const PALI_SLH_DSA_VALIDATOR_ABI = [
@@ -192,6 +200,7 @@ export const PALI_SLH_DSA_VALIDATOR_ABI = [
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
   'function validateUserOp((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash) view returns (uint256)',
+  'function validateUserOpWithSender(address account,(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature) userOp,bytes32 userOpHash,bytes signature) returns (uint256)',
 ] as const;
 
 export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [

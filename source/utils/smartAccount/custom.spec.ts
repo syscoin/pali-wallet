@@ -1,6 +1,7 @@
 import type { SmartAccountValidatorModule } from 'types/network';
 import { Interface } from 'utils/ethersV6Compat';
 
+import { PALI_MODULE_TYPE_COMPOSITE_CHILD } from './contracts';
 import {
   assertValidatorActivationAllowed,
   isPaliSignableValidator,
@@ -27,7 +28,11 @@ const ecdsaModule: SmartAccountValidatorModule = {
 
 const customModule: SmartAccountValidatorModule = {
   address: CUSTOM_ADDR,
-  config: { moduleType: 1, name: 'PQ validator' },
+  config: {
+    compositeCompatible: true,
+    moduleType: 1,
+    name: 'PQ validator',
+  },
   id: 'custom',
   type: 'validator',
 };
@@ -49,15 +54,26 @@ const metadataWith = (modules: SmartAccountValidatorModule[]) => ({
 // Provider stub: no Multicall3 deployed (getCode '0x' for probe), direct
 // eth_call fallback returns the configured isModuleType answer.
 const providerFor = ({
+  compositeCompatible = false,
   hasCode,
   isValidator,
 }: {
+  compositeCompatible?: boolean;
   hasCode: boolean;
   isValidator: boolean;
 }) => ({
-  call: jest.fn(async () =>
-    PROBE_INTERFACE.encodeFunctionResult('isModuleType', [isValidator])
-  ),
+  call: jest.fn(async (transaction: { data: string }) => {
+    const [moduleType] = PROBE_INTERFACE.decodeFunctionData(
+      'isModuleType',
+      transaction.data
+    );
+    const isCompositeProbe =
+      BigInt(moduleType.toString()) ===
+      BigInt(PALI_MODULE_TYPE_COMPOSITE_CHILD);
+    return PROBE_INTERFACE.encodeFunctionResult('isModuleType', [
+      isCompositeProbe ? compositeCompatible : isValidator,
+    ]);
+  }),
   getCode: jest.fn(async (address: string) =>
     address.toLowerCase() === CUSTOM_ADDR.toLowerCase() && hasCode
       ? '0x6080'
@@ -71,7 +87,27 @@ describe('preflightCustomValidatorInstall', () => {
       providerFor({ hasCode: true, isValidator: true }),
       { address: CUSTOM_ADDR, chainId: 5700, metadata: metadataWith([]) }
     );
-    expect(result).toEqual({ failures: [], ok: true });
+    expect(result).toEqual({
+      compositeCompatible: false,
+      failures: [],
+      ok: true,
+    });
+  });
+
+  it('detects explicit composite-child compatibility', async () => {
+    const result = await preflightCustomValidatorInstall(
+      providerFor({
+        compositeCompatible: true,
+        hasCode: true,
+        isValidator: true,
+      }),
+      { address: CUSTOM_ADDR, chainId: 5700, metadata: metadataWith([]) }
+    );
+    expect(result).toEqual({
+      compositeCompatible: true,
+      failures: [],
+      ok: true,
+    });
   });
 
   it('rejects addresses without code (and skips the module probe)', async () => {
@@ -189,13 +225,26 @@ describe('assertValidatorActivationAllowed (lockout guard)', () => {
 });
 
 describe('listCompositeChildCandidates', () => {
-  it('lists installed non-composite validators', () => {
+  it('lists builtins and explicitly compatible custom validators', () => {
     const composite = compositeOf([ECDSA_ADDR], 1);
     const metadata = metadataWith([ecdsaModule, customModule, composite]);
     const candidates = listCompositeChildCandidates(metadata);
     expect(candidates.map((candidate) => candidate.address)).toEqual([
       ECDSA_ADDR,
       CUSTOM_ADDR,
+    ]);
+  });
+
+  it('excludes custom validators without the full-context marker', () => {
+    const incompatibleCustom: SmartAccountValidatorModule = {
+      ...customModule,
+      config: { moduleType: 1, name: 'Legacy validator' },
+    };
+    const candidates = listCompositeChildCandidates(
+      metadataWith([ecdsaModule, incompatibleCustom])
+    );
+    expect(candidates.map((candidate) => candidate.address)).toEqual([
+      ECDSA_ADDR,
     ]);
   });
 });
