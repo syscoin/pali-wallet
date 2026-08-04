@@ -102,7 +102,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       const gasPriceFloor = estimatedFeeFloor?.gasPrice;
 
       if (
-        gasPriceFloor != null &&
+        gasPriceFloor !== null &&
+        gasPriceFloor !== undefined &&
         currentGasPrice > 0 &&
         currentGasPrice < gasPriceFloor
       ) {
@@ -120,7 +121,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     const maxFeeFloor = estimatedFeeFloor?.maxFeePerGas;
 
     if (
-      maxFeeFloor != null &&
+      maxFeeFloor !== null &&
+      maxFeeFloor !== undefined &&
       currentMaxFee > 0 &&
       currentMaxFee < maxFeeFloor
     ) {
@@ -135,7 +137,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     const priorityFeeFloor = estimatedFeeFloor?.maxPriorityFeePerGas;
 
     if (
-      priorityFeeFloor != null &&
+      priorityFeeFloor !== null &&
+      priorityFeeFloor !== undefined &&
       currentPriorityFee >= 0 &&
       currentPriorityFee < priorityFeeFloor
     ) {

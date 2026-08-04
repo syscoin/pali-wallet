@@ -479,7 +479,8 @@ export const SendConfirm = () => {
             : fee.maxFeePerGas;
 
         if (
-          maxPriorityFeePerGas == null ||
+          maxPriorityFeePerGas === null ||
+          maxPriorityFeePerGas === undefined ||
           maxPriorityFeePerGas < 0 ||
           !maxFeePerGas ||
           maxFeePerGas <= 0

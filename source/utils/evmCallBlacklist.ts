@@ -23,7 +23,7 @@ const normalizeAddress = (address?: string | null): string | null => {
 };
 
 const isZeroIntegerValue = (value: unknown): boolean =>
-  value != null && value.toString() === '0';
+  value !== null && value !== undefined && value.toString() === '0';
 
 export const shouldResolveEvmCallBlacklistContractType = (data?: string) =>
   data?.slice(0, 10).toLowerCase() === '0x095ea7b3';

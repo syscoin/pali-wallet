@@ -1073,9 +1073,14 @@ class SmartAccountController {
       validatorKind: validatorProfile.validatorKind,
     });
     const hasOuterEip1559FeeParams =
-      (options.feeOverrides?.maxFeePerGas != null &&
-        options.feeOverrides?.maxPriorityFeePerGas != null) ||
-      (feeData.maxFeePerGas != null && feeData.maxPriorityFeePerGas != null);
+      (options.feeOverrides?.maxFeePerGas !== null &&
+        options.feeOverrides?.maxFeePerGas !== undefined &&
+        options.feeOverrides?.maxPriorityFeePerGas !== null &&
+        options.feeOverrides?.maxPriorityFeePerGas !== undefined) ||
+      (feeData.maxFeePerGas !== null &&
+        feeData.maxFeePerGas !== undefined &&
+        feeData.maxPriorityFeePerGas !== null &&
+        feeData.maxPriorityFeePerGas !== undefined);
     const maxFeePerGas = BigNumber.from(
       options.feeOverrides?.maxFeePerGas ??
         feeData.maxFeePerGas ??

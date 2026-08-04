@@ -246,7 +246,8 @@ export const SendTransaction = () => {
 
     if (isLegacyTransaction) {
       return Boolean(
-        fee.gasPrice != null &&
+        fee.gasPrice !== null &&
+          fee.gasPrice !== undefined &&
           customFee.gasPrice &&
           customFee.gasPrice > 0 &&
           customFee.gasPrice < fee.gasPrice
@@ -501,7 +502,8 @@ export const SendTransaction = () => {
               : fee.maxFeePerGas;
 
           if (
-            maxPriorityFeePerGas == null ||
+            maxPriorityFeePerGas === null ||
+            maxPriorityFeePerGas === undefined ||
             maxPriorityFeePerGas < 0 ||
             !maxFeePerGas ||
             maxFeePerGas <= 0
@@ -630,7 +632,8 @@ export const SendTransaction = () => {
               customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
             )
               ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
-              : tx.maxPriorityFeePerGas != null
+              : tx.maxPriorityFeePerGas !== null &&
+                tx.maxPriorityFeePerGas !== undefined
               ? safeBigNumber(
                   tx.maxPriorityFeePerGas,
                   parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9),
@@ -641,7 +644,7 @@ export const SendTransaction = () => {
               customFee.isCustom && customFee.maxFeePerGas > 0
             )
               ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
-              : tx.maxFeePerGas != null
+              : tx.maxFeePerGas !== null && tx.maxFeePerGas !== undefined
               ? safeBigNumber(
                   tx.maxFeePerGas,
                   parseUnits(safeToFixed(fee.maxFeePerGas), 9),
@@ -652,7 +655,7 @@ export const SendTransaction = () => {
               customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
             )
               ? BigNumber.from(customFee.gasLimit)
-              : tx.gasLimit != null
+              : tx.gasLimit !== null && tx.gasLimit !== undefined
               ? safeBigNumber(
                   tx.gasLimit,
                   BigNumber.from(fee.gasLimit || 42000),
