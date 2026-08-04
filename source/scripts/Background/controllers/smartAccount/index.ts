@@ -1302,9 +1302,29 @@ class SmartAccountController {
           gasPayer
         );
       }
+      // zkSYS derives an omitted estimateGas ceiling from balance / baseFee,
+      // then validates that ceiling against maxFeePerGas. Supplying EIP-1559
+      // caps during estimation therefore creates a self-scaling
+      // LackOfFundForMaxFee failure whenever maxFeePerGas exceeds baseFee.
+      // Estimate the outer handleOps call without fee fields, then provide the
+      // resolved limit alongside the selected caps so the signing path does
+      // not estimate it a second time.
+      const provider = this.ethereumTransaction?.web3Provider;
+      if (!provider) {
+        throw new Error('Web3 provider not available');
+      }
+      const outerGasLimit = toCompatBigNumber(
+        await provider.estimateGas({
+          data: callData,
+          from: gasPayer.address,
+          to: entryPointAddress,
+          value: '0x0',
+        })
+      );
       const response = await this.deps.sendAndSaveEthTransaction(
         {
           data: callData,
+          gasLimit: outerGasLimit.toString(),
           ...(params.maxFeePerGas && params.maxPriorityFeePerGas
             ? {
                 maxFeePerGas: params.maxFeePerGas,
