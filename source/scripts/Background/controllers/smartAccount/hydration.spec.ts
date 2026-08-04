@@ -152,11 +152,15 @@ describe('SmartAccountController smart account execution fees', () => {
   };
 
   const buildController = () => {
+    const estimateGas = jest.fn().mockResolvedValue('143280');
     const sendAndSaveEthTransaction = jest.fn().mockResolvedValue({
       hash: '0xabc',
       wait: jest.fn(),
     });
     const controller: any = new SmartAccountController({
+      getEthereumTransaction: () => ({
+        web3Provider: { estimateGas },
+      }),
       sendAndSaveEthTransaction,
     } as any);
     controller.getActiveSmartAccount = jest.fn(() => ({
@@ -170,7 +174,7 @@ describe('SmartAccountController smart account execution fees', () => {
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
     controller.invalidateHydratedMetadata = jest.fn();
 
-    return { controller, sendAndSaveEthTransaction };
+    return { controller, estimateGas, sendAndSaveEthTransaction };
   };
 
   const buildUserOperation = () =>
@@ -213,7 +217,8 @@ describe('SmartAccountController smart account execution fees', () => {
   });
 
   it('preserves explicit zero priority fee overrides for the outer transaction', async () => {
-    const { controller, sendAndSaveEthTransaction } = buildController();
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
 
     await controller.submitSmartAccountExecution({
       executions: [],
@@ -226,6 +231,7 @@ describe('SmartAccountController smart account execution fees', () => {
 
     expect(sendAndSaveEthTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
+        gasLimit: '143280',
         maxFeePerGas: '1000000000',
         maxPriorityFeePerGas: '0',
       }),
@@ -233,6 +239,17 @@ describe('SmartAccountController smart account execution fees', () => {
       { id: gasPayer.id, type: gasPayer.type },
       expect.any(Object),
       expect.any(Object)
+    );
+    expect(estimateGas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: gasPayer.address,
+      })
+    );
+    expect(estimateGas).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        maxFeePerGas: expect.anything(),
+        maxPriorityFeePerGas: expect.anything(),
+      })
     );
   });
 });
