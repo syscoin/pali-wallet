@@ -231,6 +231,7 @@
     "grantAccess": "您授予对您的访问权限",
     "byGrantingPermission": "通过授予权限，您正在授权以下合约访问您的资金",
     "editPermission": "编辑权限",
+    "invalidApprovalDetails": "授权详情无效。无法确认此请求。",
     "approveNftTransfer": "批准 NFT 转移",
     "allowTransferOf": "允许转移",
     "grantCollectionAccess": "授予收藏访问权限",

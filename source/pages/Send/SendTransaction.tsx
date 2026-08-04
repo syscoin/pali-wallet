@@ -3,14 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import {
-  Button,
-  DeviceWaitingBanner,
-  Icon,
-  IconButton,
-  Tooltip,
-  WarningModal,
-} from 'components/index';
+import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -25,17 +18,12 @@ import {
   IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
 } from 'types/transactions';
-import { convertBigNumberToString } from 'utils/bigNumberUtils';
+import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { handleTransactionError } from 'utils/errorHandling';
-import {
-  parseUnits,
-  formatEther,
-  toEthersBigNumberish,
-} from 'utils/ethersV6Compat';
+import { parseUnits, formatEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
-import { Interface } from 'utils/ethersV6Compat';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
@@ -53,8 +41,15 @@ import { validateTransactionDataValue } from 'utils/validateTransactionDataValue
 import { getErc20Abi } from 'utils/validations';
 
 import {
-  Erc20ApprovalAddresses,
-  getErc20ApprovalAddressValues,
+  ApprovalType,
+  canEditApprovalAmount,
+  encodeCustomApprovalData,
+  formatApprovalTokenAmount,
+  getApprovalAmountDisplay,
+  getApprovalAddressValues,
+} from './approval';
+import {
+  ApprovalDetails,
   TransactionDetailsComponent,
   TransactionDataComponent,
   TransactionHexComponent,
@@ -85,8 +80,7 @@ type FeeSafetyAdjustment = {
 export const SendTransaction = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const { navigate, alert, useCopyClipboard } = useUtils();
-  const [copied, copy] = useCopyClipboard();
+  const { navigate, alert } = useUtils();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -127,7 +121,7 @@ export const SendTransaction = () => {
     explicitType === 0 ||
     explicitType === '0x0';
   const isApproval = txMetadata.isApproval || false;
-  const approvalType = txMetadata.approvalType;
+  const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
 
   const targetedErc20ContractAddress = useMemo(() => {
@@ -185,7 +179,7 @@ export const SendTransaction = () => {
   const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
     useState<ICustomApprovedAllowanceAmount>({
       isCustom: false,
-      defaultAllowanceValue: 0,
+      defaultAllowanceValue: '0',
       customAllowanceValue: null,
     });
   const [openEditAllowanceModal, setOpenEditAllowanceModal] =
@@ -321,8 +315,7 @@ export const SendTransaction = () => {
     ]
   );
 
-  // ENS handling: display and resolution
-  const ensCache = useSelector((s: RootState) => s.vaultGlobal.ensCache);
+  // ENS handling: resolution
   const nameToAddress = useSelector(selectEnsNameToAddress);
   const [resolvedTo, setResolvedTo] = useState<string | null>(
     toRaw.toLowerCase().endsWith('.eth') ? null : toRaw
@@ -386,33 +379,63 @@ export const SendTransaction = () => {
     };
   }, [toRaw, nameToAddress]);
 
-  const displayToLabel = useMemo(() => {
-    if (toRaw.toLowerCase().endsWith('.eth')) return toRaw; // show the ENS input
-    const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
-    return cachedName || toRaw;
-  }, [toRaw, ensCache]);
+  const approvalDetails = useMemo(
+    () =>
+      getApprovalAddressValues(
+        decodedTxData,
+        resolvedTo || toRaw,
+        approvalType
+      ),
+    [decodedTxData, resolvedTo, toRaw, approvalType]
+  );
+  const hasInvalidApprovalDetails = isApproval && !approvalDetails.isValid;
+  const canEditCurrentApproval = canEditApprovalAmount(
+    approvalType,
+    decodedTxData?.method
+  );
+  const rawApprovalAmount =
+    approvalType === 'erc20-amount'
+      ? convertBigNumberToString(decodedTxData?.inputs?.[1])
+      : '';
+  const formattedApprovalAmount = useMemo(() => {
+    if (approvalType !== 'erc20-amount' || !rawApprovalAmount) {
+      return undefined;
+    }
 
-  // Lazy reverse-resolve for address input -> show ENS name if available later
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (!toRaw || !toRaw.startsWith('0x')) return;
-      const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
-      if (cachedName) return;
-      try {
-        await controllerEmitter(['wallet', 'reverseResolveEns'], [toRaw]);
-        if (!cancelled) {
-          // ensCache will update via store; label will re-render from selector
-        }
-      } catch {}
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [toRaw, ensCache]);
+    if (approvedTokenInfos?.tokenDecimals === undefined) {
+      return rawApprovalAmount;
+    }
+
+    try {
+      return formatApprovalTokenAmount(
+        decodedTxData?.inputs?.[1],
+        approvedTokenInfos.tokenDecimals
+      );
+    } catch {
+      return rawApprovalAmount;
+    }
+  }, [
+    approvalType,
+    rawApprovalAmount,
+    approvedTokenInfos?.tokenDecimals,
+    decodedTxData?.inputs,
+  ]);
+  const { amount: displayedApprovalAmount, isUnlimited: isUnlimitedApproval } =
+    getApprovalAmountDisplay({
+      canEdit: canEditCurrentApproval,
+      customAmount: customApprovedAllowanceAmount.customAllowanceValue,
+      formattedAmount: formattedApprovalAmount,
+      isCustom: customApprovedAllowanceAmount.isCustom,
+      isRequestedUnlimited:
+        decodedTxData?.method === 'approve' && isMaxUint256(rawApprovalAmount),
+    });
 
   const handleConfirm = async () => {
+    if (hasInvalidApprovalDetails) {
+      alert.error(t('send.invalidApprovalDetails'));
+      return;
+    }
+
     setLoading(true);
 
     let balance = Number(activeAccount?.balances?.ethereum || 0);
@@ -437,11 +460,13 @@ export const SendTransaction = () => {
       let txToSend = tx;
 
       // Handle approval-specific data encoding
-      if (
-        isApproval &&
-        approvalType === 'erc20-amount' &&
-        customApprovedAllowanceAmount.isCustom
-      ) {
+      if (isApproval && customApprovedAllowanceAmount.isCustom) {
+        if (!canEditCurrentApproval) {
+          alert.error(t('send.invalidApprovalDetails'));
+          setLoading(false);
+          return;
+        }
+
         // Ensure we have token info
         if (
           !approvedTokenInfos ||
@@ -454,31 +479,34 @@ export const SendTransaction = () => {
           return;
         }
 
-        // Only encode custom amount for ERC-20 approvals
         const abi = await getErc20Abi();
-        const erc20AbiInstance = new Interface(abi);
 
-        // Parse the custom allowance amount consistently as human-readable token units
-        let parsedAmount;
         try {
           const customValue = String(
             customApprovedAllowanceAmount.customAllowanceValue
           );
-          const decimals = approvedTokenInfos?.tokenDecimals ?? 18;
-          parsedAmount = parseUnits(customValue, decimals);
+          const encodedDataWithCustomValue = encodeCustomApprovalData({
+            abi,
+            approvalType,
+            decimals: approvedTokenInfos.tokenDecimals,
+            humanAmount: customValue,
+            method: decodedTxData?.method,
+            spender: String(decodedTxData?.inputs?.[0] || ''),
+          });
+
+          if (!encodedDataWithCustomValue) {
+            alert.error(t('send.invalidApprovalDetails'));
+            setLoading(false);
+            return;
+          }
+
+          txToSend = { ...tx, data: encodedDataWithCustomValue };
         } catch (parseError) {
           console.error('Error parsing amount:', parseError);
           alert.error('Invalid amount format. Please enter a valid number.');
           setLoading(false);
           return;
         }
-
-        const encodedDataWithCustomValue = erc20AbiInstance.encodeFunctionData(
-          'approve',
-          [decodedTxData?.inputs[0], toEthersBigNumberish(parsedAmount)]
-        );
-
-        txToSend = { ...tx, data: encodedDataWithCustomValue };
       }
       // For NFT approvals, the transaction data remains unchanged
 
@@ -901,12 +929,6 @@ export const SendTransaction = () => {
     }
   }, [confirmed, alert, t, navigate, isExternal, txResponse, eventName, host]);
 
-  // Handle copy success message
-  useEffect(() => {
-    if (!copied) return;
-    alert.success(t('home.addressCopied'));
-  }, [copied, alert, t]);
-
   // Fetch token info for approval transactions
   useEffect(() => {
     if (!isApproval || !dataTx?.to) return;
@@ -979,49 +1001,41 @@ export const SendTransaction = () => {
     decodedTxData,
   ]);
 
-  // Calculate default allowance value for ERC-20 approvals
-  useMemo(() => {
-    if (
-      !isApproval ||
-      approvalType !== 'erc20-amount' ||
-      !decodedTxData ||
-      !approvedTokenInfos?.tokenDecimals
-    )
+  // The allowance editor accepts human-readable token units and is available
+  // only for plain approve calls. Increment/decrement methods keep their
+  // original calldata and cannot be rewritten through this state.
+  useEffect(() => {
+    if (!isApproval || !canEditCurrentApproval) {
+      setCustomApprovedAllowanceAmount({
+        isCustom: false,
+        defaultAllowanceValue: '0',
+        customAllowanceValue: null,
+      });
       return;
-
-    // inputs[1] is the decoded amount (could be BigNumber, string, or object with _hex property)
-    const rawAmount = decodedTxData?.inputs?.[1];
-    if (!rawAmount) return;
-
-    let amountString;
-
-    // Handle different types of amount values
-    if (rawAmount._isBigNumber || rawAmount._hex) {
-      // It's an ethers BigNumber object
-      amountString = BigNumber.from(rawAmount).toString();
-    } else if (typeof rawAmount === 'object' && rawAmount.hex) {
-      // It's an object with hex property
-      amountString = BigNumber.from(rawAmount.hex).toString();
-    } else if (typeof rawAmount === 'object' && rawAmount.toString) {
-      // It's some other object with toString method
-      amountString = rawAmount.toString();
-    } else {
-      // It's already a string or number
-      amountString = String(rawAmount);
     }
 
-    // Keep the raw amount as-is (already in smallest unit)
-    const calculatedAllowanceValue = amountString;
+    if (approvedTokenInfos?.tokenDecimals === undefined) return;
 
-    setCustomApprovedAllowanceAmount({
-      isCustom: false,
-      defaultAllowanceValue: calculatedAllowanceValue,
-      customAllowanceValue: null,
-    });
+    try {
+      setCustomApprovedAllowanceAmount({
+        isCustom: false,
+        defaultAllowanceValue: formatApprovalTokenAmount(
+          decodedTxData?.inputs?.[1],
+          approvedTokenInfos.tokenDecimals
+        ),
+        customAllowanceValue: null,
+      });
+    } catch {
+      setCustomApprovedAllowanceAmount({
+        isCustom: false,
+        defaultAllowanceValue: '0',
+        customAllowanceValue: null,
+      });
+    }
   }, [
     isApproval,
-    approvalType,
-    decodedTxData,
+    canEditCurrentApproval,
+    decodedTxData?.inputs,
     approvedTokenInfos?.tokenDecimals,
   ]);
 
@@ -1041,16 +1055,17 @@ export const SendTransaction = () => {
         defaultGasLimit={100000} // General transactions can vary widely
       />
 
-      {approvalType === 'erc20-amount' && (
-        <EditApprovedAllowanceValueModal
-          showModal={openEditAllowanceModal}
-          host={host}
-          approvedTokenInfos={approvedTokenInfos}
-          customApprovedAllowanceAmount={customApprovedAllowanceAmount}
-          setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
-          setOpenEditFeeModal={setOpenEditAllowanceModal}
-        />
-      )}
+      {canEditCurrentApproval &&
+        approvedTokenInfos?.tokenDecimals !== undefined && (
+          <EditApprovedAllowanceValueModal
+            showModal={openEditAllowanceModal}
+            host={host}
+            approvedTokenInfos={approvedTokenInfos}
+            customApprovedAllowanceAmount={customApprovedAllowanceAmount}
+            setCustomApprovedAllowanceAmount={setCustomApprovedAllowanceAmount}
+            setOpenEditFeeModal={setOpenEditAllowanceModal}
+          />
+        )}
 
       <WarningModal
         show={showContractWarning}
@@ -1138,64 +1153,33 @@ export const SendTransaction = () => {
                   </div>
 
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
-                    {approvalType === 'erc20-amount' ? (
-                      <Erc20ApprovalAddresses
-                        {...getErc20ApprovalAddressValues(
-                          decodedTxData,
-                          resolvedTo || toRaw
-                        )}
-                      />
-                    ) : (
-                      <div
-                        className="flex items-center justify-around mt-1 p-3 w-full text-xs rounded-xl"
-                        style={{
-                          backgroundColor: 'rgba(22, 39, 66, 1)',
-                          maxWidth: '150px',
-                        }}
-                      >
-                        <Tooltip
-                          content={
-                            resolvedTo || (toRaw.startsWith('0x') ? toRaw : '')
-                          }
-                        >
-                          <span>{ellipsis(displayToLabel)}</span>
-                        </Tooltip>
-                        <IconButton onClick={() => copy(resolvedTo || toRaw)}>
-                          <Icon
-                            name="copy"
-                            className="text-brand-white hover:text-fields-input-borderfocus"
-                            wrapperClassname="flex items-center justify-center"
-                          />
-                        </IconButton>
-                      </div>
-                    )}
+                    <ApprovalDetails
+                      {...approvalDetails}
+                      formattedAmount={displayedApprovalAmount}
+                      isUnlimited={isUnlimitedApproval}
+                      tokenSymbol={approvedTokenInfos?.tokenSymbol}
+                    />
 
-                    {approvalType === 'erc20-amount' && (
-                      <div>
-                        <button
-                          type="button"
-                          className="text-blue-300 text-sm"
-                          onClick={() => setOpenEditAllowanceModal(true)}
-                        >
-                          {t('send.editPermission')}
-                        </button>
-                      </div>
-                    )}
+                    {canEditCurrentApproval &&
+                      approvedTokenInfos?.tokenDecimals !== undefined && (
+                        <div>
+                          <button
+                            type="button"
+                            className="text-blue-300 text-sm"
+                            onClick={() => setOpenEditAllowanceModal(true)}
+                          >
+                            {t('send.editPermission')}
+                          </button>
+                        </div>
+                      )}
 
-                    {(approvalType === 'erc721-single' ||
-                      approvalType === 'nft-all') && (
+                    {approvalType === 'erc721-single' && (
                       <div className="mt-2 text-center">
                         <p className="text-brand-white text-sm">
-                          {approvalType === 'erc721-single'
-                            ? `Token ID: ${
-                                nftInfo?.tokenId ||
-                                convertBigNumberToString(
-                                  decodedTxData?.inputs?.[1]
-                                )
-                              }`
-                            : `Operator: ${ellipsis(
-                                decodedTxData?.inputs?.[0] || ''
-                              )}`}
+                          {`Token ID: ${
+                            nftInfo?.tokenId ||
+                            convertBigNumberToString(decodedTxData?.inputs?.[1])
+                          }`}
                         </p>
                       </div>
                     )}
@@ -1352,6 +1336,11 @@ export const SendTransaction = () => {
                 {t('send.contractEstimateError')}
               </p>
             )}
+            {hasInvalidApprovalDetails && (
+              <p className="text-center text-warning-error text-xs mb-2">
+                {t('send.invalidApprovalDetails')}
+              </p>
+            )}
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"
@@ -1374,7 +1363,7 @@ export const SendTransaction = () => {
                 variant="primary"
                 type="button"
                 loading={loading}
-                disabled={hasTxDataError}
+                disabled={hasTxDataError || hasInvalidApprovalDetails}
                 onClick={handleConfirm}
               >
                 {t('buttons.confirm')}

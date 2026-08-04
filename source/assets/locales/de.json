@@ -231,6 +231,7 @@
     "grantAccess": "Sie gewähren Zugriff auf Ihr",
     "byGrantingPermission": "Durch die Erteilung der Erlaubnis autorisieren Sie den folgenden Vertrag, auf Ihre Gelder zuzugreifen",
     "editPermission": "Berechtigung bearbeiten",
+    "invalidApprovalDetails": "Ungültige Genehmigungsdetails. Diese Anfrage kann nicht bestätigt werden.",
     "approveNftTransfer": "NFT-Übertragung genehmigen",
     "allowTransferOf": "Übertragung erlauben von",
     "grantCollectionAccess": "Sammlungszugriff gewähren",
