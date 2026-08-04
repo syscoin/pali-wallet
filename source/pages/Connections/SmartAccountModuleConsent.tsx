@@ -366,6 +366,7 @@ export const SmartAccountModuleConsent = () => {
     isActiveCompositeChild,
     metadata,
     moduleAddress,
+    preflight,
     refreshMetadata,
     request.name,
     t,
