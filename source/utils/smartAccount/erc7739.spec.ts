@@ -162,7 +162,41 @@ describe('Pali ERC-7739 helpers', () => {
         ),
       ])
     );
+    const accountDomainActionHash = keccak256(
+      hexConcat([
+        '0x1901',
+        getPaliErc7739DomainSeparator({
+          accountAddress: ACCOUNT,
+          chainId: CHAIN_ID,
+        }),
+        keccak256(
+          defaultAbiCoder.encode(
+            [
+              'bytes32',
+              'bytes32',
+              'bytes32',
+              'bytes32',
+              'uint256',
+              'address',
+              'bytes32',
+            ],
+            [
+              nestedTypeHash,
+              request.contentsHash,
+              keccak256(toUtf8Bytes(PALI_ERC7739_DOMAIN_NAME)),
+              keccak256(toUtf8Bytes(PALI_ERC7739_DOMAIN_VERSION)),
+              CHAIN_ID,
+              ACCOUNT,
+              `0x${'00'.repeat(32)}`,
+            ]
+          )
+        ),
+      ])
+    );
     expect(request.actionHash).toBe(expectedActionHash);
+    // ERC-7739 uses the application separator as the outer EIP-712 domain;
+    // the smart-account domain is already bound inside nestedStructHash.
+    expect(request.actionHash).not.toBe(accountDomainActionHash);
     expect(request.actionHash).toBe(
       '0x17dc033452b12673364b15ed0871194ca9f5e01de0d02e954c10404ea1865f13'
     );
