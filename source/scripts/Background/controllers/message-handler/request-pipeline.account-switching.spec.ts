@@ -109,7 +109,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('updates the host connection when the requested account is already globally active', async () => {
+  it('requires selection consent before connecting an already-active requested account', async () => {
     mockGetState.mockReturnValue({
       vault: {
         accounts: {
@@ -119,14 +119,16 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
         activeAccount: { id: 1, type: KeyringAccountType.Imported },
       },
     });
-    const popupSpy = jest.spyOn(requestCoordinator, 'coordinatePopupRequest');
+    const popupSpy = jest
+      .spyOn(requestCoordinator, 'coordinatePopupRequest')
+      .mockResolvedValue(null);
     const next = jest.fn().mockResolvedValue('continued');
 
     await expect(
       accountSwitchingMiddleware(createContext(), next)
     ).resolves.toBe('continued');
 
-    expect(popupSpy).not.toHaveBeenCalled();
+    expect(popupSpy).toHaveBeenCalledTimes(1);
     expect(changeAccount).toHaveBeenCalledWith(
       host,
       accountB.id,
@@ -136,7 +138,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an already-active requested account selected when the later action is rejected', async () => {
+  it('connects an already-active requested account only after selection consent', async () => {
     mockGetState.mockReturnValue({
       vault: {
         accounts: {
@@ -146,14 +148,16 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
         activeAccount: { id: 1, type: KeyringAccountType.Imported },
       },
     });
-    const popupSpy = jest.spyOn(requestCoordinator, 'coordinatePopupRequest');
+    const popupSpy = jest
+      .spyOn(requestCoordinator, 'coordinatePopupRequest')
+      .mockResolvedValue(null);
     const next = jest.fn().mockRejectedValue(new Error('action rejected'));
 
     await expect(
       accountSwitchingMiddleware(createContext(), next)
     ).rejects.toThrow('action rejected');
 
-    expect(popupSpy).not.toHaveBeenCalled();
+    expect(popupSpy).toHaveBeenCalledTimes(1);
     expect(changeAccount).toHaveBeenCalledTimes(1);
     expect(changeAccount).toHaveBeenCalledWith(
       host,
@@ -205,6 +209,30 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
           [KeyringAccountType.Imported]: { 1: accountB },
         },
         activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      },
+    });
+    jest
+      .spyOn(requestCoordinator, 'coordinatePopupRequest')
+      .mockRejectedValue(new Error('user rejected'));
+    const next = jest.fn();
+
+    await expect(
+      accountSwitchingMiddleware(createContext(), next)
+    ).rejects.toMatchObject({ code: 4100 });
+
+    expect(changeAccount).not.toHaveBeenCalled();
+    expect(clearProviderCache).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('does not connect an already-active account without selection consent', async () => {
+    mockGetState.mockReturnValue({
+      vault: {
+        accounts: {
+          [KeyringAccountType.HDAccount]: { 0: accountA },
+          [KeyringAccountType.Imported]: { 1: accountB },
+        },
+        activeAccount: { id: 1, type: KeyringAccountType.Imported },
       },
     });
     jest

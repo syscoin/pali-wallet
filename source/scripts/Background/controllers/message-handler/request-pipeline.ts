@@ -911,14 +911,18 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
       );
     }
 
-    // A connected site may request another wallet-owned account. If switching
-    // is required, accepting the selection makes that account active; the
-    // requested action retains its own confirmation.
+    // A connected site may request another wallet-owned account. Changing the
+    // site's provider-visible account always requires explicit selection
+    // consent, even when that account is already globally active.
     const activeAccountData = accounts[activeAccount.type]?.[activeAccount.id];
     const isRequiredAccountActive =
       activeAccountData?.address.toLowerCase() ===
       requiredFromAddress.toLowerCase();
-    if (!isRequiredAccountActive) {
+    const dappConnection = dapp.get(originalRequest.host);
+    const isRequiredAccountConnected =
+      dappConnection?.accountId === accountInfo.account.id &&
+      dappConnection.accountType === accountInfo.accountType;
+    if (!isRequiredAccountActive || !isRequiredAccountConnected) {
       console.log(
         '[Pipeline] Transaction requires switching to address:',
         requiredFromAddress
