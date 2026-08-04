@@ -63,7 +63,7 @@ export const getTransactionDisplayInfo = async (
     // Get token ID for NFTs
     const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
 
-    if (tokenValue != null && tokenAddress) {
+    if (tokenValue !== null && tokenValue !== undefined && tokenAddress) {
       // Try to get token info from user's assets or fetch from controller
       try {
         const { accounts, activeAccount, accountAssets } =
@@ -188,7 +188,10 @@ export const getTransactionDisplayInfo = async (
         // ERC-1155 safeTransferFrom has an unambiguous selector
         if (isErc1155Tx) {
           const erc1155Value = getERC1155TransferValue(tx);
-          const nftAmount = erc1155Value == null ? 1 : Number(erc1155Value);
+          const nftAmount =
+            erc1155Value === null || erc1155Value === undefined
+              ? 1
+              : Number(erc1155Value);
           const inferredTokenId = getERC1155TokenId(tx) || undefined;
           return {
             displayValue: nftAmount,

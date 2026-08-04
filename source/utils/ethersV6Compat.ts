@@ -101,7 +101,7 @@ export type BigNumberish =
     };
 
 const toBigIntValue = (value: BigNumberish | null | undefined): bigint => {
-  if (value == null) return BigInt(0);
+  if (value === null || value === undefined) return BigInt(0);
   if (value instanceof BigNumberCompat) return value.value;
   if (typeof value === 'bigint') return value;
   if (typeof value === 'number') return BigInt(Math.trunc(value));
