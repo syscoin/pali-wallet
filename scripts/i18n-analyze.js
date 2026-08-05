@@ -44,23 +44,8 @@ const literals = new Set();
 const dynamicPrefixes = new Set();
 const translationCalls = new Map();
 
-const strRe = /(['"])((?:\\.|(?!\1)[^\\\n])*)\1/g;
-// template literals with interpolation: capture static prefix before first ${
-const tplRe = /`([^`$]*)\$\{[^`]*`/g;
-// full template literals without interpolation
-const tplPlainRe = /`([^`$\\]*)`/g;
-
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8');
-  let m;
-  while ((m = strRe.exec(src))) literals.add(m[2]);
-  while ((m = tplPlainRe.exec(src))) literals.add(m[1]);
-  while ((m = tplRe.exec(src))) {
-    const prefix = m[1];
-    if (/^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.]*$/.test(prefix))
-      dynamicPrefixes.add(prefix);
-  }
-
   const sourceFile = ts.createSourceFile(
     file,
     src,
@@ -69,6 +54,21 @@ for (const file of files) {
     file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
   const visit = (node) => {
+    // Track actual syntax nodes rather than regex matches so comments cannot
+    // make a dead translation key look used. String literals are retained
+    // because some valid t() calls receive a finite key through a variable.
+    if (
+      ts.isStringLiteralLike(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node)
+    ) {
+      literals.add(node.text);
+    } else if (ts.isTemplateExpression(node)) {
+      const prefix = node.head.text;
+      if (/^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.]*$/.test(prefix)) {
+        dynamicPrefixes.add(prefix);
+      }
+    }
+
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
       const isTranslationCall =
