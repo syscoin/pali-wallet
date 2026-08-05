@@ -93,9 +93,12 @@ class VaultCache {
     slip44: number,
     slip44State: ISlip44State
   ): Promise<void> {
-    return walletPersistenceMutex.runExclusive(async () => {
-      const vaultState = this.prepareSlip44Vault(slip44, slip44State);
+    // Refresh the cache synchronously when the write is enqueued. A switch back
+    // to this slip44 may read the cache while an older persistence operation is
+    // still holding the mutex, and must observe this newest snapshot.
+    const vaultState = this.prepareSlip44Vault(slip44, slip44State);
 
+    return walletPersistenceMutex.runExclusive(async () => {
       // Save to storage immediately
       await saveSlip44State(slip44, vaultState);
     });
