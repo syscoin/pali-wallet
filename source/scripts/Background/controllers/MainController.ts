@@ -193,6 +193,7 @@ class MainController {
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private balanceLoadingRequestId = 0;
+  private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
   private currentPromise: {
@@ -289,9 +290,7 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
+    this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
     }
@@ -308,6 +307,7 @@ class MainController {
     this.isStartingUp = false;
     this.isAccountSwitching = false;
     this.isNetworkSwitching = false;
+    this.isNetworkSwitchMainStateDirty = false;
 
     // Clear vault cache
     vaultCache.clearCache();
@@ -3024,9 +3024,7 @@ class MainController {
         if (this.cancellablePromises.assetsPromise) {
           this.cancellablePromises.assetsPromise.cancel();
         }
-        if (this.cancellablePromises.balancePromise) {
-          this.cancellablePromises.balancePromise.cancel();
-        }
+        this.cancelActiveBalanceUpdate();
         if (this.cancellablePromises.nftsPromise) {
           this.cancellablePromises.nftsPromise.cancel();
         }
@@ -3251,9 +3249,7 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
+    this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
     }
@@ -5527,6 +5523,19 @@ class MainController {
     return balancePromise;
   }
 
+  private cancelActiveBalanceUpdate(): void {
+    // Cancellation only rejects the wrapper; the underlying RPC can still
+    // settle later. Advance ownership first so that stale executor can no
+    // longer clear a newer request's loading state.
+    this.balanceLoadingRequestId += 1;
+    this.cancellablePromises.balancePromise?.cancel();
+    this.cancellablePromises.balancePromise = null;
+
+    if (store.getState().vaultGlobal.loadingStates.isLoadingBalances) {
+      store.dispatch(setIsLoadingBalances(false));
+    }
+  }
+
   public async refreshActiveAccountBalances({
     includeAssets = false,
     isPolling = false,
@@ -6404,16 +6413,19 @@ class MainController {
         clearTimeout(this.saveTimeout);
         this.saveTimeout = null;
       }
+      this.isNetworkSwitchMainStateDirty =
+        this.isNetworkSwitchMainStateDirty ||
+        previousSlip44 !== activeSlip44 ||
+        dappStateChanged ||
+        hadPendingWalletSave;
       try {
-        await persistCommittedWalletState(
-          previousSlip44 !== activeSlip44 ||
-            dappStateChanged ||
-            hadPendingWalletSave
-        );
+        await persistCommittedWalletState(this.isNetworkSwitchMainStateDirty);
+        this.isNetworkSwitchMainStateDirty = false;
       } catch (error) {
-        // The approval will reject, but keep a background retry so a transient
-        // storage failure does not also discard the already-committed state.
-        this.saveWalletState('network-switch-persistence-retry');
+        // Keep the main state dirty across retries. This is necessary when an
+        // earlier attempt removed incompatible dapps in memory but failed to
+        // persist them; a later retry must still include the main state.
+        this.isNetworkSwitchMainStateDirty = true;
         throw error;
       }
     }
