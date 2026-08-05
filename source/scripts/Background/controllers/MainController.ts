@@ -1794,23 +1794,17 @@ class MainController {
     slip44: number;
     vaultState: any;
   }) {
-    // Use setTimeout to defer the save, but handle async errors properly
-    setTimeout(async () => {
-      try {
-        await vaultCache.setSlip44Vault(
-          deferredSaveData.slip44,
-          deferredSaveData.vaultState
-        );
-      } catch (error) {
+    // Enqueue immediately so a later switch back to this slip44 cannot commit
+    // first and then be overwritten by this older snapshot. The promise remains
+    // non-blocking, while VaultCache serializes the actual storage operation.
+    void vaultCache
+      .setSlip44Vault(deferredSaveData.slip44, deferredSaveData.vaultState)
+      .catch((error) => {
         console.error(
           `[MainController] Deferred save failed for slip44 ${deferredSaveData.slip44}:`,
           error
         );
-        // Since we're in an async context, we can't re-throw to the caller
-        // Instead, we should handle the error appropriately here
-        // For now, logging is sufficient as this is a background save
-      }
-    }, 10);
+      });
   }
 
   // Internal method to perform the actual save

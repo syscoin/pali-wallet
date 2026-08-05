@@ -93,10 +93,12 @@ class VaultCache {
     slip44: number,
     slip44State: ISlip44State
   ): Promise<void> {
-    const vaultState = this.prepareSlip44Vault(slip44, slip44State);
+    return walletPersistenceMutex.runExclusive(async () => {
+      const vaultState = this.prepareSlip44Vault(slip44, slip44State);
 
-    // Save to storage immediately
-    await saveSlip44State(slip44, vaultState);
+      // Save to storage immediately
+      await saveSlip44State(slip44, vaultState);
+    });
   }
 
   /**
