@@ -57,9 +57,7 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
       {approvalType === 'erc20-amount' && (
         <>
           <div className="flex items-center justify-between gap-3 w-full">
-            <span className="text-brand-graylight">
-              {t('transactions.method')}
-            </span>
+            <span className="text-brand-graylight">{t('send.method')}</span>
             <span className="text-brand-white">
               {t(`transactions.methodNames.${method}`)}
             </span>

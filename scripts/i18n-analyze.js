@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const fs = require('fs');
 const path = require('path');
+const ts = require('typescript');
 
 const ROOT = path.resolve(__dirname, '..');
 const LOCALES_DIR = path.join(ROOT, 'source', 'assets', 'locales');
@@ -41,6 +42,7 @@ const files = walk(path.join(ROOT, 'source'));
 // --- Extract string literals + template literal prefixes from source ---
 const literals = new Set();
 const dynamicPrefixes = new Set();
+const translationCalls = new Map();
 
 const strRe = /(['"])((?:\\.|(?!\1)[^\\\n])*)\1/g;
 // template literals with interpolation: capture static prefix before first ${
@@ -58,6 +60,46 @@ for (const file of files) {
     if (/^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.]*$/.test(prefix))
       dynamicPrefixes.add(prefix);
   }
+
+  const sourceFile = ts.createSourceFile(
+    file,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  );
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      const isTranslationCall =
+        (ts.isIdentifier(callee) && callee.text === 't') ||
+        (ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          callee.expression.text === 'i18next' &&
+          callee.name.text === 't');
+      const [keyArg] = node.arguments;
+
+      if (
+        isTranslationCall &&
+        keyArg &&
+        ts.isStringLiteralLike(keyArg) &&
+        /^[a-zA-Z][a-zA-Z0-9_]*\.[a-zA-Z0-9_.-]+$/.test(keyArg.text)
+      ) {
+        const position = sourceFile.getLineAndCharacterOfPosition(
+          keyArg.getStart(sourceFile)
+        );
+        const locations = translationCalls.get(keyArg.text) || [];
+        locations.push(
+          `${path.relative(ROOT, file)}:${position.line + 1}:${
+            position.character + 1
+          }`
+        );
+        translationCalls.set(keyArg.text, locations);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
 }
 
 // --- Determine used keys ---
@@ -83,9 +125,23 @@ for (const key of enKeys) {
   }
 }
 const unused = [...enKeys].filter((k) => !used.has(k)).sort();
+const missingFromEn = [...translationCalls.entries()]
+  .filter(([key]) => !enKeys.has(key))
+  .sort(([a], [b]) => a.localeCompare(b));
+
+console.log('=== Translation calls missing from en ===');
+if (missingFromEn.length === 0) {
+  console.log('none');
+} else {
+  for (const [key, locations] of missingFromEn) {
+    console.log(`  MISSING ${key}`);
+    for (const location of locations) console.log(`    ${location}`);
+  }
+}
 
 // --- Cross-language consistency vs EN ---
-console.log('=== Cross-language key consistency (vs en) ===');
+console.log('\n=== Cross-language key consistency (vs en) ===');
+let localeConsistencyErrors = 0;
 for (const lng of LANGS) {
   if (lng === 'en') continue;
   const flat = flatten(locales[lng]);
@@ -97,6 +153,8 @@ for (const lng of LANGS) {
       enKeys.has(k) &&
       (flat[k] === '' || flat[k] === null || flat[k] === undefined)
   );
+  localeConsistencyErrors +=
+    missing.length + extra.length + untranslatedEmpty.length;
   console.log(
     `${lng}: missing=${missing.length} extra=${extra.length} empty=${untranslatedEmpty.length}`
   );
@@ -115,3 +173,7 @@ console.log(
   `\n=== Unused keys in en.json: ${unused.length} of ${enKeys.size} ===`
 );
 for (const k of unused) console.log(`  ${k}`);
+
+if (missingFromEn.length > 0 || localeConsistencyErrors > 0) {
+  process.exitCode = 1;
+}

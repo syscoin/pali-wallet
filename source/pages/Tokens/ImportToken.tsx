@@ -416,7 +416,7 @@ export const ImportToken: React.FC = () => {
           activeTab === 'custom' &&
           verifiedTokenBalance === -1
         ) {
-          alert.error(t('tokens.invalidTokenId'));
+          alert.error(t('send.invalidTokenId'));
           setCurrentlyImporting(null);
           return;
         }
