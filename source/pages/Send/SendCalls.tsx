@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
 import { Button, Icon, Tooltip } from 'components/index';
-import { LoadingComponent } from 'components/Loading';
+import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -181,6 +181,7 @@ export const SendCalls = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [selectedCalls, setSelectedCalls] = useState<boolean[]>([]);
   const [processingIndex, setProcessingIndex] = useState<number>(-1);
@@ -372,6 +373,7 @@ export const SendCalls = () => {
 
   const handleApprove = async () => {
     try {
+      setIsPqSigning(false);
       setLoading(true);
       setConfirmed(false); // Reset confirmed state for each attempt
 
@@ -515,6 +517,16 @@ export const SendCalls = () => {
                 });
               });
             },
+            onAuthenticatorSigningResolved: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(false);
+              }
+            },
+            onAuthenticatorSigningStarted: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(true);
+              }
+            },
             smartAccount: activeAccount.smartAccount,
           })) as any;
           const txHash = response.hash || response;
@@ -550,6 +562,8 @@ export const SendCalls = () => {
           setProcessingIndex(-1);
           alert.error(errorMessage);
           return;
+        } finally {
+          setIsPqSigning(false);
         }
       }
 
@@ -761,6 +775,7 @@ export const SendCalls = () => {
       }
     } catch (error) {
       console.error('Failed to process batch calls', error);
+      setIsPqSigning(false);
       setLoading(false);
       setConfirmed(false);
       setProcessingIndex(-1);
@@ -1057,6 +1072,13 @@ export const SendCalls = () => {
 
       {/* Action buttons */}
       <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+        <PqSigningOverlay
+          expectedSeconds={90}
+          show={isPqSigning}
+          subtitle={t('settings.slhDsaSigningOverlayDescription')}
+          title={t('settings.slhDsaSigningInProgress')}
+          warningSeconds={180}
+        />
         {/* Progress indicator */}
         {loading && transactionStatuses && (
           <div className="mb-3 px-4">
