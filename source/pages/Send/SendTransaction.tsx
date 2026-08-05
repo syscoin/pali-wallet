@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
-import { LoadingComponent } from 'components/Loading';
+import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -150,6 +150,7 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -436,6 +437,7 @@ export const SendTransaction = () => {
       return;
     }
 
+    setIsPqSigning(false);
     setLoading(true);
 
     let balance = Number(activeAccount?.balances?.ethereum || 0);
@@ -582,6 +584,16 @@ export const SendTransaction = () => {
               },
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
+            onAuthenticatorSigningResolved: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(false);
+              }
+            },
+            onAuthenticatorSigningStarted: (authenticator) => {
+              if (authenticator === 'slh-dsa') {
+                setIsPqSigning(true);
+              }
+            },
             smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {
@@ -742,6 +754,8 @@ export const SendTransaction = () => {
           setLoading(false);
         }
         return error;
+      } finally {
+        setIsPqSigning(false);
       }
     } else {
       setLoading(false);
@@ -1331,6 +1345,13 @@ export const SendTransaction = () => {
           {/* Fixed button container at bottom */}
           <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
             <DeviceWaitingBanner account={activeAccount} show={loading} />
+            <PqSigningOverlay
+              expectedSeconds={90}
+              show={isPqSigning}
+              subtitle={t('settings.slhDsaSigningOverlayDescription')}
+              title={t('settings.slhDsaSigningInProgress')}
+              warningSeconds={180}
+            />
             {hasTxDataError && (
               <p className="text-center text-warning-error text-xs mb-2">
                 {t('send.contractEstimateError')}
