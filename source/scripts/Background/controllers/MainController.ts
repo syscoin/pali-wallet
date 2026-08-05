@@ -6399,9 +6399,23 @@ class MainController {
     // wallet save. Commit the active vault and only include global state when
     // activeSlip44 or dapp connections changed, using one storage operation.
     if (!syncUpdates) {
-      await persistCommittedWalletState(
-        previousSlip44 !== activeSlip44 || dappStateChanged
-      );
+      const hadPendingWalletSave = Boolean(this.saveTimeout);
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      try {
+        await persistCommittedWalletState(
+          previousSlip44 !== activeSlip44 ||
+            dappStateChanged ||
+            hadPendingWalletSave
+        );
+      } catch (error) {
+        // The approval will reject, but keep a background retry so a transient
+        // storage failure does not also discard the already-committed state.
+        this.saveWalletState('network-switch-persistence-retry');
+        throw error;
+      }
     }
 
     // Notify about network change (notification manager handles validation)
