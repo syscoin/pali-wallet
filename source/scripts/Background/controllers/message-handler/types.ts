@@ -22,10 +22,9 @@ export enum NetworkPreference {
 
 // Network enforcement - when to enforce network preference
 export enum NetworkEnforcement {
-  // Enforce when establishing connection
-  Always = 'always', // Never enforce, just a preference
-  BeforeConnection = 'beforeConnection',
-  Never = 'never', // Always enforce before method execution
+  Always = 'always', // Enforce before every method execution
+  BeforeConnection = 'beforeConnection', // Enforce while establishing a new connection
+  Never = 'never', // Never enforce; the network is only a preference
 }
 
 // Popup routes for methods that need UI

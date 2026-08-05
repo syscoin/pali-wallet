@@ -203,7 +203,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresConnection: false,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
-    networkEnforcement: NetworkEnforcement.BeforeConnection,
+    networkEnforcement: NetworkEnforcement.Always,
     hasPopup: true,
     popupRoute: MethodRoute.ChangeAccount,
     popupEventName: 'requestPermissions',
@@ -479,7 +479,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresConnection: true,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.EVM,
-    networkEnforcement: NetworkEnforcement.BeforeConnection,
+    networkEnforcement: NetworkEnforcement.Always,
     hasPopup: false, // Let connectionMiddleware handle the popup
     returnsArray: true,
   },
@@ -1168,7 +1168,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresConnection: true,
     allowHardwareWallet: true,
     networkPreference: NetworkPreference.UTXO,
-    networkEnforcement: NetworkEnforcement.BeforeConnection,
+    networkEnforcement: NetworkEnforcement.Always,
     hasPopup: false, // No popup needed - just returns UTXO address
     returnsArray: true,
   },
