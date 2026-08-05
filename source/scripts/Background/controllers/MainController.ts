@@ -188,6 +188,7 @@ class MainController {
   private assetsManager: IAssetsManager;
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
+  private balanceLoadingRequestId = 0;
   private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
   private currentPromise: {
@@ -5345,6 +5346,19 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
+    // Polling requests never own the blocking loading state. Each non-polling
+    // request receives a generation so a superseded executor cannot clear the
+    // flag after a newer foreground balance request has started.
+    const loadingRequestId = isPolling ? null : ++this.balanceLoadingRequestId;
+    const clearBalanceLoadingIfOwned = () => {
+      if (
+        loadingRequestId !== null &&
+        loadingRequestId === this.balanceLoadingRequestId
+      ) {
+        store.dispatch(setIsLoadingBalances(false));
+      }
+    };
+
     // Set loading state immediately for non-polling updates
     // This prevents skeleton flashing by ensuring loading state is set before any async operations
     if (!isPolling) {
@@ -5360,7 +5374,7 @@ class MainController {
           '[MainController] Wallet is locked, skipping non-polling balance updates'
         );
         // Clear loading state and return
-        store.dispatch(setIsLoadingBalances(false));
+        clearBalanceLoadingIfOwned();
         return Promise.resolve();
       }
     }
@@ -5373,12 +5387,9 @@ class MainController {
       console.warn(
         '[updateBalancesFromCurrentAccount] Active account not found'
       );
-      store.dispatch(setIsLoadingBalances(false));
+      clearBalanceLoadingIfOwned();
       return Promise.resolve();
     }
-
-    // Capture isPolling for use in the inner async function
-    const isPollingUpdate = isPolling;
 
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
@@ -5406,6 +5417,7 @@ class MainController {
               console.log(
                 '[MainController] Skipping stale balance update after network change'
               );
+              clearBalanceLoadingIfOwned();
               resolve();
               return;
             }
@@ -5462,9 +5474,7 @@ class MainController {
             }
 
             // Clear loading state on success only if we set it
-            if (!isPollingUpdate) {
-              store.dispatch(setIsLoadingBalances(false));
-            }
+            clearBalanceLoadingIfOwned();
             resolve();
           } catch (error) {
             // Mark network quality as slow/poor on error
@@ -5481,9 +5491,7 @@ class MainController {
             // it survives a rejected request, the app-wide loading overlay can
             // intercept every click indefinitely. Network health is tracked by
             // networkStatus/networkQuality instead.
-            if (!isPollingUpdate) {
-              store.dispatch(setIsLoadingBalances(false));
-            }
+            clearBalanceLoadingIfOwned();
             reject(error);
           }
         }
