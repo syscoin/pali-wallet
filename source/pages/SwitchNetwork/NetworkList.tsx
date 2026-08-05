@@ -13,10 +13,10 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
-
-type currentNetwork = {
-  current: INetwork;
-};
+import {
+  getInitialNetworkSelection,
+  NetworkSelection,
+} from './networkSelection';
 
 interface INetworkListProps {
   disabledNetworkType?: string;
@@ -43,7 +43,9 @@ export const NetworkList = ({
   const { host, eventName } = queryData;
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
-    useState<currentNetwork>();
+    useState<NetworkSelection | null>(() =>
+      getInitialNetworkSelection(activeNetwork, isTypeSwitch)
+    );
   const [selectedNetwork, setSelectedNetwork] = useState<INetworkType>(() => {
     // If this is a type switch, force the target network type
     if (isTypeSwitch && forceNetworkType) {
@@ -55,13 +57,6 @@ export const NetworkList = ({
     return isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
   });
   const [isLoading, setIsLoading] = useState(false);
-
-  // Set the initial selected network to the current active network
-  React.useEffect(() => {
-    if (activeNetwork && !selectCurrentNetwork) {
-      setSelectCurrentNetwork({ current: activeNetwork });
-    }
-  }, [activeNetwork, selectCurrentNetwork]);
 
   const {
     networkThatNeedsChanging,
