@@ -69,7 +69,9 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
       // Perform the network switch and wait for state update
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
-        [newNetwork, true]
+        // The network/account state is committed before this resolves. Do not
+        // keep a dapp approval popup open for the subsequent balance refresh.
+        [newNetwork, false]
       );
       try {
         await waitForNetworkSwitch(newNetwork.chainId, 5000);

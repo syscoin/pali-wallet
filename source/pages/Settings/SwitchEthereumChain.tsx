@@ -45,7 +45,11 @@ const SwitchChain: React.FC = () => {
     setLoading(true);
     try {
       // Perform the network switch and wait for state update
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        // Balance refreshes must not hold a dapp switch approval open.
+        [network, false]
+      );
       try {
         await waitForNetworkSwitch(network.chainId, 5000);
       } catch (_e) {

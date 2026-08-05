@@ -84,8 +84,10 @@ export const NetworkList = ({
       // The user can always navigate away or try a different network if it's taking too long
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
-        [network, isTypeSwitch]
-      ); // syncUpdates: true
+        // Forced dapp type switches only need the committed network/account
+        // state; balance refreshes continue independently in the background.
+        [network, false]
+      );
 
       // Reset loading state on success
       setIsLoading(false);

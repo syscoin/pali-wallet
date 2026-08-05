@@ -5477,9 +5477,14 @@ class MainController {
               })
             );
 
+            // This flag represents an in-flight request, not network health. If
+            // it survives a rejected request, the app-wide loading overlay can
+            // intercept every click indefinitely. Network health is tracked by
+            // networkStatus/networkQuality instead.
+            if (!isPollingUpdate) {
+              store.dispatch(setIsLoadingBalances(false));
+            }
             reject(error);
-            // Don't clear loading state on error - let it stay until successful update
-            // This keeps the status indicator visible when RPC is failing
           }
         }
       );
