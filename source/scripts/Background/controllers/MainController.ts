@@ -6349,6 +6349,10 @@ class MainController {
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
+
+    // Invalidate network-dependent provider responses before reconciliation or
+    // notifications can trigger dapp reads against the newly active network.
+    clearProviderCache();
     await this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state

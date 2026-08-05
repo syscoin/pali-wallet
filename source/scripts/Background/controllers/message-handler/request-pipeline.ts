@@ -491,6 +491,26 @@ export const networkCompatibilityMiddleware: Middleware = async (
         )
       );
     }
+
+    // A competing network switch can supersede this one. setActiveNetwork
+    // reports that cancellation as a fulfilled result so the popup can close,
+    // therefore verify the live network type before allowing the request to
+    // continue.
+    const { isBitcoinBased: isBitcoinBasedAfterSwitch } =
+      store.getState().vault;
+    const switchCompleted = needsEVM
+      ? !isBitcoinBasedAfterSwitch
+      : isBitcoinBasedAfterSwitch;
+
+    if (!switchCompleted) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          `${originalRequest.method} requires ${
+            needsEVM ? 'an EVM-compatible' : 'a Bitcoin/UTXO'
+          } network. Network switch did not complete.`
+        )
+      );
+    }
   }
 
   return next();

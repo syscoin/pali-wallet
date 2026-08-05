@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "4.0.49",
+  "version": "4.0.50",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
