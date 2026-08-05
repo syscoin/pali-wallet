@@ -10,12 +10,14 @@ import { thunk, ThunkMiddleware } from 'redux-thunk';
 
 import { INetwork } from 'types/network';
 import { ISpamFilterState } from 'types/security';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
 import {
   loadPasskeyCredentialProfileState,
   loadState,
+  saveCommittedWalletState,
   saveState,
   savePasskeyCredentialProfileState,
 } from './paliStorage';
@@ -79,6 +81,20 @@ const store: Store<{
 
 let lastPersistedState: any | null = null;
 
+const getMainStateForStorage = (state: ReturnType<typeof store.getState>) => ({
+  dapp: state.dapp,
+  price: state.price,
+  vaultGlobal: state.vaultGlobal,
+});
+
+const isMainStateUnchanged = (state: ReturnType<typeof store.getState>) =>
+  Boolean(
+    lastPersistedState &&
+      isEqual(lastPersistedState.dapp, state.dapp) &&
+      isEqual(lastPersistedState.price, state.price) &&
+      isEqual(lastPersistedState.vaultGlobal, state.vaultGlobal)
+  );
+
 // Initialize cache once on startup.
 (async () => {
   try {
@@ -89,27 +105,18 @@ let lastPersistedState: any | null = null;
   }
 })();
 
-// Manual state persistence for important operations
-export async function saveMainState() {
+// Internal variant for callers that already hold walletPersistenceMutex.
+export async function saveMainStateWithinPersistenceLock() {
   try {
     const state = store.getState();
 
     // Fast in-memory comparison first. This avoids hitting chrome.storage
     // for the common case where nothing relevant has changed.
-    if (
-      lastPersistedState &&
-      isEqual(lastPersistedState.dapp, state.dapp) &&
-      isEqual(lastPersistedState.price, state.price) &&
-      isEqual(lastPersistedState.vaultGlobal, state.vaultGlobal)
-    ) {
+    if (isMainStateUnchanged(state)) {
       return false;
     }
     // Create main state with only global data (dapp, price, vaultGlobal)
-    const mainState = {
-      dapp: state.dapp,
-      price: state.price,
-      vaultGlobal: state.vaultGlobal,
-    };
+    const mainState = getMainStateForStorage(state);
 
     await saveState(mainState);
     lastPersistedState = state;
@@ -118,6 +125,46 @@ export async function saveMainState() {
     console.error('saveMainState() failed', error);
     return false;
   }
+}
+
+// Manual state persistence for important operations
+export async function saveMainState() {
+  return walletPersistenceMutex.runExclusive(() =>
+    saveMainStateWithinPersistenceLock()
+  );
+}
+
+/**
+ * Durably commit the active vault and, when necessary, the global state in one
+ * Chrome storage call. This is the minimal persistence barrier needed before
+ * an externally approved network switch reports success.
+ */
+export async function persistCommittedWalletState(
+  includeMainState: boolean,
+  skipUnchangedMainState = false
+): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    const state = store.getState();
+    const activeSlip44 = state.vaultGlobal.activeSlip44;
+
+    if (activeSlip44 === null) {
+      throw new Error('Cannot persist wallet state without an active slip44');
+    }
+
+    const vaultState = vaultCache.prepareSlip44Vault(activeSlip44, state.vault);
+    const shouldIncludeMainState =
+      includeMainState &&
+      (!skipUnchangedMainState || !isMainStateUnchanged(state));
+    const mainState = shouldIncludeMainState
+      ? getMainStateForStorage(state)
+      : undefined;
+
+    await saveCommittedWalletState(activeSlip44, vaultState, mainState);
+
+    if (mainState) {
+      lastPersistedState = mainState;
+    }
+  });
 }
 
 // New centralized function to load and activate a slip44 vault

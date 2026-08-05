@@ -262,7 +262,11 @@ const CustomRPCExternal = () => {
       setSwitchingNetwork(true);
 
       // Switch to the new network
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        // Do not hold the dapp approval open for post-switch balance loading.
+        [network, false]
+      );
 
       const type = data.eventName;
 

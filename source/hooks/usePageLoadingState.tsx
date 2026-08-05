@@ -12,6 +12,20 @@ interface IPageLoadingState {
 
 const TEN_SECONDS = 10000;
 
+const LOADING_OVERLAY_EXCLUDED_PAGES = new Set([
+  '/chain-fail-to-connect',
+  '/settings/networks/custom-rpc',
+  // Dapp approval pages own their pending state. A global overlay would cover
+  // their controls while the background switch is waiting for completion.
+  '/external/switch-network',
+  '/external/add-EthChain',
+  '/external/switch-EthChain',
+  '/external/switch-UtxoEvm',
+]);
+
+export const isPageLoadingOverlayExcluded = (pathname: string): boolean =>
+  LOADING_OVERLAY_EXCLUDED_PAGES.has(pathname);
+
 export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []
 ): IPageLoadingState => {
@@ -40,20 +54,12 @@ export const usePageLoadingState = (
   // Only apply timeout logic on pages where users expect quick loading
   const timeoutEnabledPages = ['/home'];
 
-  // Never show loading overlay on these pages - they handle their own loading states
-  const loadingExcludedPages = [
-    '/chain-fail-to-connect',
-    '/settings/networks/custom-rpc',
-  ];
-
   const shouldEnableTimeout = timeoutEnabledPages.some(
     (page) =>
       location.pathname === page || location.pathname.startsWith(`${page}/`)
   );
 
-  const isOnExcludedPage = loadingExcludedPages.some(
-    (page) => location.pathname === page
-  );
+  const isOnExcludedPage = isPageLoadingOverlayExcluded(location.pathname);
 
   // Determine if we're loading
   const isNetworkChanging = networkStatus === 'switching';

@@ -32,7 +32,11 @@ import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
 import store from 'state/store';
-import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
+import {
+  loadAndActivateSlip44Vault,
+  persistCommittedWalletState,
+  saveMainState,
+} from 'state/store';
 import {
   createAccount,
   initializeCleanVaultForSlip44,
@@ -188,6 +192,8 @@ class MainController {
   private assetsManager: IAssetsManager;
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
+  private balanceLoadingRequestId = 0;
+  private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
   private currentPromise: {
@@ -284,9 +290,7 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
+    this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
     }
@@ -303,6 +307,7 @@ class MainController {
     this.isStartingUp = false;
     this.isAccountSwitching = false;
     this.isNetworkSwitching = false;
+    this.isNetworkSwitchMainStateDirty = false;
 
     // Clear vault cache
     vaultCache.clearCache();
@@ -1789,23 +1794,17 @@ class MainController {
     slip44: number;
     vaultState: any;
   }) {
-    // Use setTimeout to defer the save, but handle async errors properly
-    setTimeout(async () => {
-      try {
-        await vaultCache.setSlip44Vault(
-          deferredSaveData.slip44,
-          deferredSaveData.vaultState
-        );
-      } catch (error) {
+    // Enqueue immediately so a later switch back to this slip44 cannot commit
+    // first and then be overwritten by this older snapshot. The promise remains
+    // non-blocking, while VaultCache serializes the actual storage operation.
+    void vaultCache
+      .setSlip44Vault(deferredSaveData.slip44, deferredSaveData.vaultState)
+      .catch((error) => {
         console.error(
           `[MainController] Deferred save failed for slip44 ${deferredSaveData.slip44}:`,
           error
         );
-        // Since we're in an async context, we can't re-throw to the caller
-        // Instead, we should handle the error appropriately here
-        // For now, logging is sufficient as this is a background save
-      }
-    }, 10);
+      });
   }
 
   // Internal method to perform the actual save
@@ -1813,13 +1812,9 @@ class MainController {
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
     if (activeSlip44 !== null) {
-      const currentVaultState = store.getState().vault;
-
-      // Save vault state to slip44-specific storage
-      await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-
-      // Save main state (global settings)
-      await saveMainState();
+      // Serialize with network-switch and emergency commits. The storage helper
+      // batches vault + changed main state into one Chrome storage operation.
+      await persistCommittedWalletState(true, true);
 
       console.log(
         `[MainController] Wallet state saved successfully for operation: ${operation}`
@@ -3019,9 +3014,7 @@ class MainController {
         if (this.cancellablePromises.assetsPromise) {
           this.cancellablePromises.assetsPromise.cancel();
         }
-        if (this.cancellablePromises.balancePromise) {
-          this.cancellablePromises.balancePromise.cancel();
-        }
+        this.cancelActiveBalanceUpdate();
         if (this.cancellablePromises.nftsPromise) {
           this.cancellablePromises.nftsPromise.cancel();
         }
@@ -3159,7 +3152,9 @@ class MainController {
     return null;
   }
 
-  private async ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+  private async ensureActiveAccountCompatibleWithNetwork(
+    network: INetwork
+  ): Promise<boolean> {
     const { accounts, activeAccount } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     let fallbackAccount = this.isAccountCompatibleWithNetwork(
@@ -3198,6 +3193,7 @@ class MainController {
 
     const { dapps } = store.getState().dapp;
     const controller = getController();
+    const incompatibleHosts: string[] = [];
     for (const [host, dapp] of Object.entries(dapps)) {
       const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
       if (
@@ -3210,14 +3206,23 @@ class MainController {
         continue;
       }
 
-      await controller.dapp.disconnect(host);
+      incompatibleHosts.push(host);
     }
+
+    // Remove all incompatible sessions in memory first. The caller includes
+    // the resulting dapp state in the same durable network-switch commit,
+    // avoiding one full main-state write per disconnected site.
+    await Promise.all(
+      incompatibleHosts.map((host) => controller.dapp.disconnect(host, false))
+    );
+    return incompatibleHosts.length > 0;
   }
 
   public async setActiveNetwork(
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
     // Cancel the current promise if it exists
     if (this.currentPromise) {
       this.currentPromise.cancel();
@@ -3234,9 +3239,7 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
+    this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
     }
@@ -3262,7 +3265,11 @@ class MainController {
     // Return the promise chain with error handling attached
     return promiseWrapper.promise
       .then(async () => {
-        await this.handleNetworkChangeSuccess(completeNetwork, syncUpdates);
+        await this.handleNetworkChangeSuccess(
+          completeNetwork,
+          syncUpdates,
+          previousSlip44
+        );
 
         // Return the success result
         const isBitcoinBased = completeNetwork.kind === INetworkType.Syscoin;
@@ -5345,6 +5352,19 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
+    // Polling requests never own the blocking loading state. Each non-polling
+    // request receives a generation so a superseded executor cannot clear the
+    // flag after a newer foreground balance request has started.
+    const loadingRequestId = isPolling ? null : ++this.balanceLoadingRequestId;
+    const clearBalanceLoadingIfOwned = () => {
+      if (
+        loadingRequestId !== null &&
+        loadingRequestId === this.balanceLoadingRequestId
+      ) {
+        store.dispatch(setIsLoadingBalances(false));
+      }
+    };
+
     // Set loading state immediately for non-polling updates
     // This prevents skeleton flashing by ensuring loading state is set before any async operations
     if (!isPolling) {
@@ -5360,7 +5380,7 @@ class MainController {
           '[MainController] Wallet is locked, skipping non-polling balance updates'
         );
         // Clear loading state and return
-        store.dispatch(setIsLoadingBalances(false));
+        clearBalanceLoadingIfOwned();
         return Promise.resolve();
       }
     }
@@ -5373,12 +5393,9 @@ class MainController {
       console.warn(
         '[updateBalancesFromCurrentAccount] Active account not found'
       );
-      store.dispatch(setIsLoadingBalances(false));
+      clearBalanceLoadingIfOwned();
       return Promise.resolve();
     }
-
-    // Capture isPolling for use in the inner async function
-    const isPollingUpdate = isPolling;
 
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
@@ -5406,6 +5423,7 @@ class MainController {
               console.log(
                 '[MainController] Skipping stale balance update after network change'
               );
+              clearBalanceLoadingIfOwned();
               resolve();
               return;
             }
@@ -5462,9 +5480,7 @@ class MainController {
             }
 
             // Clear loading state on success only if we set it
-            if (!isPollingUpdate) {
-              store.dispatch(setIsLoadingBalances(false));
-            }
+            clearBalanceLoadingIfOwned();
             resolve();
           } catch (error) {
             // Mark network quality as slow/poor on error
@@ -5477,9 +5493,12 @@ class MainController {
               })
             );
 
+            // This flag represents an in-flight request, not network health. If
+            // it survives a rejected request, the app-wide loading overlay can
+            // intercept every click indefinitely. Network health is tracked by
+            // networkStatus/networkQuality instead.
+            clearBalanceLoadingIfOwned();
             reject(error);
-            // Don't clear loading state on error - let it stay until successful update
-            // This keeps the status indicator visible when RPC is failing
           }
         }
       );
@@ -5492,6 +5511,19 @@ class MainController {
 
     // Return the promise so callers can wait for it to complete
     return balancePromise;
+  }
+
+  private cancelActiveBalanceUpdate(): void {
+    // Cancellation only rejects the wrapper; the underlying RPC can still
+    // settle later. Advance ownership first so that stale executor can no
+    // longer clear a newer request's loading state.
+    this.balanceLoadingRequestId += 1;
+    this.cancellablePromises.balancePromise?.cancel();
+    this.cancellablePromises.balancePromise = null;
+
+    if (store.getState().vaultGlobal.loadingStates.isLoadingBalances) {
+      store.dispatch(setIsLoadingBalances(false));
+    }
   }
 
   public async refreshActiveAccountBalances({
@@ -6324,7 +6356,8 @@ class MainController {
   };
   private async handleNetworkChangeSuccess(
     network: INetwork,
-    syncUpdates = false
+    syncUpdates = false,
+    previousSlip44: number | null = null
   ) {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
@@ -6348,15 +6381,45 @@ class MainController {
     // - all accounts
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
-    store.dispatch(setNetworkChange({ activeNetwork: network }));
+    if (store.getState().vault.activeNetwork !== network) {
+      store.dispatch(setNetworkChange({ activeNetwork: network }));
+    }
 
     // Invalidate network-dependent provider responses before reconciliation or
     // notifications can trigger dapp reads against the newly active network.
     clearProviderCache();
-    await this.ensureActiveAccountCompatibleWithNetwork(network);
+    const dappStateChanged =
+      await this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
+
+    // External approvals need a persistence barrier, but not a full sequential
+    // wallet save. Commit the active vault and only include global state when
+    // activeSlip44 or dapp connections changed, using one storage operation.
+    if (!syncUpdates) {
+      const hadPendingWalletSave = Boolean(this.saveTimeout);
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+      }
+      this.isNetworkSwitchMainStateDirty =
+        this.isNetworkSwitchMainStateDirty ||
+        previousSlip44 !== activeSlip44 ||
+        dappStateChanged ||
+        hadPendingWalletSave;
+      try {
+        await persistCommittedWalletState(this.isNetworkSwitchMainStateDirty);
+        this.isNetworkSwitchMainStateDirty = false;
+      } catch (error) {
+        // Keep the main state dirty across retries. This is necessary when an
+        // earlier attempt removed incompatible dapps in memory but failed to
+        // persist them; a later retry must still include the main state.
+        this.isNetworkSwitchMainStateDirty = true;
+        throw error;
+      }
+    }
+
     // Notify about network change (notification manager handles validation)
     notificationManager.notifyNetworkChange(network);
 
