@@ -15,6 +15,11 @@ import {
   initialActiveHdAccountState,
 } from 'types/network';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
+import {
+  getFreshNativeBalance,
+  isSameBalanceNetwork,
+  updateNativeBalanceCache,
+} from 'utils/nativeBalanceCache';
 
 import {
   IVaultState,
@@ -90,6 +95,22 @@ const ensureAccountTypeBuckets = (state: IVaultState) => {
   return state;
 };
 
+const restoreNativeBalancesForNetwork = (
+  state: IVaultState,
+  network: INetwork,
+  now = Date.now()
+) => {
+  Object.values(KeyringAccountType).forEach((accountType) => {
+    Object.values(state.accounts[accountType] || {}).forEach((account) => {
+      const cachedBalance = getFreshNativeBalance(account, network, now);
+      account.balances = {
+        ...account.balances,
+        [network.kind]: cachedBalance?.balance ?? -1,
+      } as IKeyringBalances;
+    });
+  });
+};
+
 const VaultState = createSlice({
   name: 'vault',
   initialState,
@@ -97,7 +118,12 @@ const VaultState = createSlice({
     rehydrate(_state: IVaultState, action: PayloadAction<IVaultState>) {
       // Complete replacement - ensures loaded vault state is exactly what was saved
       // This matches the behavior of initializeCleanVaultForSlip44 for consistency
-      return ensureAccountTypeBuckets(action.payload);
+      const rehydratedState = ensureAccountTypeBuckets(action.payload);
+      restoreNativeBalancesForNetwork(
+        rehydratedState,
+        rehydratedState.activeNetwork
+      );
+      return rehydratedState;
     },
     setAccounts(
       state: IVaultState,
@@ -142,22 +168,9 @@ const VaultState = createSlice({
       state.activeChain = activeNetwork.kind;
       state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
 
-      // Clear ALL accounts' balances when switching networks
-      // Use -1 to indicate "no data" - will show skeleton loader
-      Object.keys(KeyringAccountType).forEach((accountType) => {
-        const accounts = state.accounts[accountType as KeyringAccountType];
-        if (accounts) {
-          Object.keys(accounts).forEach((accountId) => {
-            const id = Number(accountId);
-            if (state.accounts[accountType as KeyringAccountType][id]) {
-              state.accounts[accountType as KeyringAccountType][id].balances = {
-                [INetworkType.Syscoin]: -1,
-                [INetworkType.Ethereum]: -1,
-              };
-            }
-          });
-        }
-      });
+      // Restore a recent network-specific value immediately. Missing or stale
+      // entries retain the established -1 sentinel and lazy-load in the UI.
+      restoreNativeBalancesForNetwork(state, activeNetwork);
 
       state.activeNetwork = activeNetwork;
     },
@@ -170,6 +183,56 @@ const VaultState = createSlice({
       if (state.accounts[type]?.[id]) {
         state.accounts[type][id].balances = action.payload;
       }
+    },
+    setAccountBalanceForNetwork(
+      state: IVaultState,
+      action: PayloadAction<{
+        balance: number | string;
+        id: number;
+        network: INetwork;
+        type: KeyringAccountType;
+        updatedAt?: number;
+      }>
+    ) {
+      const {
+        balance,
+        id,
+        network,
+        type,
+        updatedAt = Date.now(),
+      } = action.payload;
+      const account = state.accounts[type]?.[id];
+      if (!account) throw new Error('Account not found');
+
+      account.nativeBalanceCache = updateNativeBalanceCache(
+        account.nativeBalanceCache,
+        network,
+        balance,
+        updatedAt
+      );
+
+      if (isSameBalanceNetwork(state.activeNetwork, network)) {
+        account.balances = {
+          ...account.balances,
+          [network.kind]: balance,
+        } as IKeyringBalances;
+      }
+    },
+    setAccountBalanceSnapshot(
+      state: IVaultState,
+      action: PayloadAction<{
+        balances: IKeyringBalances;
+        id: number;
+        nativeBalanceCache?: IKeyringAccountState['nativeBalanceCache'];
+        type: KeyringAccountType;
+      }>
+    ) {
+      const { balances, id, nativeBalanceCache, type } = action.payload;
+      const account = state.accounts[type]?.[id];
+      if (!account) throw new Error('Account not found');
+
+      account.balances = balances;
+      account.nativeBalanceCache = nativeBalanceCache;
     },
     createAccount(
       state: IVaultState,
@@ -894,6 +957,8 @@ export const {
   setActiveNetwork,
   setFaucetModalState,
   setAccountBalances,
+  setAccountBalanceForNetwork,
+  setAccountBalanceSnapshot,
   forgetWallet,
   initializeCleanVaultForSlip44,
   removeAccount,

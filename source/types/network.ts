@@ -212,6 +212,11 @@ export type IKeyringBalances = {
   [INetworkType.Ethereum]: number;
 };
 
+export interface INativeBalanceCacheEntry {
+  balance: number | string;
+  updatedAt: number;
+}
+
 export interface IKeyringAccountState {
   address: string;
   balances: IKeyringBalances;
@@ -224,6 +229,9 @@ export interface IKeyringAccountState {
   isSmartAccount?: boolean;
   isTrezorWallet: boolean;
   label: string;
+  // Native balances are network-specific even though `balances` retains the
+  // legacy active-chain shape used throughout the UI.
+  nativeBalanceCache?: Record<string, INativeBalanceCacheEntry>;
   smartAccount?: ISmartAccountMetadata;
   // Per-chain last block scanned for ERC-4337 UserOperationEvent logs
   // (smart accounts only; chainId -> blockNumber)

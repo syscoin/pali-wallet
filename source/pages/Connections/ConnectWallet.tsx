@@ -470,7 +470,6 @@ export const ConnectWallet = () => {
                                     <LazyAccountBalance
                                       account={acc}
                                       accountType={keyringType}
-                                      fetchOnMissingBalance={false}
                                       showFiat={true}
                                       showSkeleton={true}
                                       precision={8}
