@@ -26,7 +26,6 @@ jest.mock('./popup-promise', () => ({
 
 import { getController } from 'scripts/Background';
 
-import { clearProviderCache } from './method-handlers';
 import { getMethodConfig } from './method-registry';
 import { popupPromise } from './popup-promise';
 import {
@@ -91,7 +90,6 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
         'continued'
       );
 
-      expect(clearProviderCache).toHaveBeenCalledTimes(1);
       expect(popupSpy).toHaveBeenCalledWith(
         context,
         expect.any(Function),
@@ -126,7 +124,6 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
       'continued'
     );
 
-    expect(clearProviderCache).toHaveBeenCalledTimes(1);
     expect(popupSpy).toHaveBeenCalledWith(
       context,
       expect.any(Function),
@@ -167,7 +164,6 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
         message: expect.stringContaining('Network switch did not complete'),
       });
 
-      expect(clearProviderCache).not.toHaveBeenCalled();
       expect(next).not.toHaveBeenCalled();
     }
   );
@@ -189,7 +185,6 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
         networkCompatibilityMiddleware(createContext(method as string), next)
       ).resolves.toBe('continued');
 
-      expect(clearProviderCache).not.toHaveBeenCalled();
       expect(popupSpy).not.toHaveBeenCalled();
       expect(next).toHaveBeenCalledTimes(1);
     }

@@ -511,10 +511,6 @@ export const networkCompatibilityMiddleware: Middleware = async (
         )
       );
     }
-
-    // The origin may remain connected across the type switch, so the
-    // connection middleware will not clear network-dependent provider state.
-    clearProviderCache();
   }
 
   return next();
