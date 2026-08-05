@@ -1,8 +1,8 @@
 import { INetwork, INetworkType } from 'types/network';
-import { emergencySaveMutex } from 'utils/asyncMutex';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 
 import { loadSlip44State, saveSlip44State } from './paliStorage';
-import store, { saveMainState } from './store';
+import store, { saveMainStateWithinPersistenceLock } from './store';
 import { ISlip44State } from './vault/types';
 
 // Slip44 constants
@@ -157,14 +157,14 @@ class VaultCache {
     console.log('[VaultCache] 🚨 Emergency save triggered');
 
     // Use mutex to ensure only one emergency save runs at a time
-    return emergencySaveMutex.runExclusive(async () => {
+    return walletPersistenceMutex.runExclusive(async () => {
       const globalState = store.getState().vaultGlobal;
       const activeSlip44 = globalState.activeSlip44;
       const liveVaultState = store.getState().vault;
 
       try {
         // Always save main state (vaultGlobal, dapp, price) - settings could have changed
-        await saveMainState();
+        await saveMainStateWithinPersistenceLock();
 
         if (activeSlip44 !== null && liveVaultState) {
           // During emergency save, we need to handle potential slip44 mismatches carefully

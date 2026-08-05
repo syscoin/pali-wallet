@@ -49,5 +49,5 @@ export const fiatPriceMutex = new AsyncMutex();
 export const networkSwitchMutex = new AsyncMutex();
 export const fiatAlarmMutex = new AsyncMutex();
 export const pollingMutex = new AsyncMutex();
-export const emergencySaveMutex = new AsyncMutex();
+export const walletPersistenceMutex = new AsyncMutex();
 export const accountSwitchMutex = new AsyncMutex();

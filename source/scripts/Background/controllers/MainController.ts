@@ -1818,13 +1818,9 @@ class MainController {
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
     if (activeSlip44 !== null) {
-      const currentVaultState = store.getState().vault;
-
-      // Save vault state to slip44-specific storage
-      await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-
-      // Save main state (global settings)
-      await saveMainState();
+      // Serialize with network-switch and emergency commits. The storage helper
+      // batches vault + changed main state into one Chrome storage operation.
+      await persistCommittedWalletState(true, true);
 
       console.log(
         `[MainController] Wallet state saved successfully for operation: ${operation}`
