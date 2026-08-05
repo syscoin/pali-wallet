@@ -241,7 +241,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 loading={loading}
                 onClick={onSubmit}
               >
-                {signOnly ? t('buttons.sign') : t('buttons.confirm')}
+                {signOnly ? t('send.sign') : t('buttons.confirm')}
               </Button>
             </div>
           </div>

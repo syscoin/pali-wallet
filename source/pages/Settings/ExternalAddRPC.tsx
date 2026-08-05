@@ -378,7 +378,7 @@ const CustomRPCExternal = () => {
         >
           <Input
             type="text"
-            placeholder={t('settings.rpcUrl')}
+            placeholder={t('settings.rpcUrlPlaceholder')}
             className="custom-input-normal relative"
             onBlur={async (e) => {
               const url = e.target.value?.trim();
@@ -396,7 +396,7 @@ const CustomRPCExternal = () => {
           <Input
             type="text"
             readOnly
-            placeholder={t('settings.chainId')}
+            placeholder={t('settings.chainIdCannotBeEdited')}
             className="custom-input-normal relative"
             style={{
               cursor: 'not-allowed',
@@ -525,7 +525,7 @@ const CustomRPCExternal = () => {
             onClick={() => form.submit()}
           >
             {switchingNetwork
-              ? t('settings.switchingNetwork')
+              ? t('networkConnection.switchingNetwork')
               : t('buttons.addNetwork')}
           </Button>
         </div>
