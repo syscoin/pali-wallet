@@ -174,6 +174,10 @@ console.log(
 );
 for (const k of unused) console.log(`  ${k}`);
 
-if (missingFromEn.length > 0 || localeConsistencyErrors > 0) {
+if (
+  missingFromEn.length > 0 ||
+  localeConsistencyErrors > 0 ||
+  unused.length > 0
+) {
   process.exitCode = 1;
 }
