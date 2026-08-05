@@ -77,9 +77,9 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
   it.each(['wallet_requestPermissions', 'eth_requestAccounts'])(
     'forces an EVM type switch for %s despite an existing UTXO connection',
     async (method) => {
-      mockGetState.mockReturnValue({
-        vault: { isBitcoinBased: true },
-      });
+      mockGetState
+        .mockReturnValueOnce({ vault: { isBitcoinBased: true } })
+        .mockReturnValue({ vault: { isBitcoinBased: false } });
       const popupSpy = jest
         .spyOn(requestCoordinator, 'coordinatePopupRequest')
         .mockResolvedValue(null);
@@ -111,9 +111,9 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
   );
 
   it('forces a UTXO type switch for sys_requestAccounts despite an existing EVM connection', async () => {
-    mockGetState.mockReturnValue({
-      vault: { isBitcoinBased: false },
-    });
+    mockGetState
+      .mockReturnValueOnce({ vault: { isBitcoinBased: false } })
+      .mockReturnValue({ vault: { isBitcoinBased: true } });
     const popupSpy = jest
       .spyOn(requestCoordinator, 'coordinatePopupRequest')
       .mockResolvedValue(null);
@@ -142,6 +142,31 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
     });
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['wallet_requestPermissions', true],
+    ['eth_requestAccounts', true],
+    ['sys_requestAccounts', false],
+  ])(
+    'rejects %s when a superseded switch leaves the wallet on the incompatible network type',
+    async (method, isBitcoinBased) => {
+      mockGetState.mockReturnValue({
+        vault: { isBitcoinBased },
+      });
+      jest
+        .spyOn(requestCoordinator, 'coordinatePopupRequest')
+        .mockResolvedValue(null);
+      const next = jest.fn().mockResolvedValue('continued');
+
+      await expect(
+        networkCompatibilityMiddleware(createContext(method as string), next)
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('Network switch did not complete'),
+      });
+
+      expect(next).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ['wallet_requestPermissions', false],
