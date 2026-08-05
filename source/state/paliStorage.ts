@@ -20,6 +20,22 @@ export const saveSlip44State = async (slip44: number, vaultState: any) => {
   }
 };
 
+export const saveCommittedWalletState = async (
+  slip44: number,
+  vaultState: any,
+  mainState?: any
+) => {
+  const items: Record<string, any> = {
+    [`state-vault-${slip44}`]: vaultState,
+  };
+
+  if (mainState) {
+    items.state = mainState;
+  }
+
+  await chromeStorage.setItems(items);
+};
+
 export const savePasskeyCredentialProfileState = async (
   slip44: number,
   passkeyCredentialProfile: any

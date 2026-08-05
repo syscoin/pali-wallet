@@ -32,7 +32,11 @@ import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
 import store from 'state/store';
-import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
+import {
+  loadAndActivateSlip44Vault,
+  persistCommittedWalletState,
+  saveMainState,
+} from 'state/store';
 import {
   createAccount,
   initializeCleanVaultForSlip44,
@@ -3160,7 +3164,9 @@ class MainController {
     return null;
   }
 
-  private async ensureActiveAccountCompatibleWithNetwork(network: INetwork) {
+  private async ensureActiveAccountCompatibleWithNetwork(
+    network: INetwork
+  ): Promise<boolean> {
     const { accounts, activeAccount } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
     let fallbackAccount = this.isAccountCompatibleWithNetwork(
@@ -3199,6 +3205,7 @@ class MainController {
 
     const { dapps } = store.getState().dapp;
     const controller = getController();
+    const incompatibleHosts: string[] = [];
     for (const [host, dapp] of Object.entries(dapps)) {
       const dappAccount = accounts[dapp.accountType]?.[dapp.accountId];
       if (
@@ -3211,14 +3218,23 @@ class MainController {
         continue;
       }
 
-      await controller.dapp.disconnect(host);
+      incompatibleHosts.push(host);
     }
+
+    // Remove all incompatible sessions in memory first. The caller includes
+    // the resulting dapp state in the same durable network-switch commit,
+    // avoiding one full main-state write per disconnected site.
+    await Promise.all(
+      incompatibleHosts.map((host) => controller.dapp.disconnect(host, false))
+    );
+    return incompatibleHosts.length > 0;
   }
 
   public async setActiveNetwork(
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
     // Cancel the current promise if it exists
     if (this.currentPromise) {
       this.currentPromise.cancel();
@@ -3263,7 +3279,11 @@ class MainController {
     // Return the promise chain with error handling attached
     return promiseWrapper.promise
       .then(async () => {
-        await this.handleNetworkChangeSuccess(completeNetwork, syncUpdates);
+        await this.handleNetworkChangeSuccess(
+          completeNetwork,
+          syncUpdates,
+          previousSlip44
+        );
 
         // Return the success result
         const isBitcoinBased = completeNetwork.kind === INetworkType.Syscoin;
@@ -6337,7 +6357,8 @@ class MainController {
   };
   private async handleNetworkChangeSuccess(
     network: INetwork,
-    syncUpdates = false
+    syncUpdates = false,
+    previousSlip44: number | null = null
   ) {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
@@ -6361,15 +6382,28 @@ class MainController {
     // - all accounts
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
-    store.dispatch(setNetworkChange({ activeNetwork: network }));
+    if (store.getState().vault.activeNetwork !== network) {
+      store.dispatch(setNetworkChange({ activeNetwork: network }));
+    }
 
     // Invalidate network-dependent provider responses before reconciliation or
     // notifications can trigger dapp reads against the newly active network.
     clearProviderCache();
-    await this.ensureActiveAccountCompatibleWithNetwork(network);
+    const dappStateChanged =
+      await this.ensureActiveAccountCompatibleWithNetwork(network);
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
+
+    // External approvals need a persistence barrier, but not a full sequential
+    // wallet save. Commit the active vault and only include global state when
+    // activeSlip44 or dapp connections changed, using one storage operation.
+    if (!syncUpdates) {
+      await persistCommittedWalletState(
+        previousSlip44 !== activeSlip44 || dappStateChanged
+      );
+    }
+
     // Notify about network change (notification manager handles validation)
     notificationManager.notifyNetworkChange(network);
 

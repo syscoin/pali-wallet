@@ -296,7 +296,7 @@ const DAppController = (): IDAppController => {
       : account.address;
   };
 
-  const disconnect = async (host: string) => {
+  const disconnect = async (host: string, persist = true) => {
     try {
       const previousConnectedDapps = getAll();
       const isInActiveSession = Boolean(_dapps[host]);
@@ -305,7 +305,9 @@ const DAppController = (): IDAppController => {
         case true:
           delete _dapps[host];
           store.dispatch(removeDApp(host));
-          await persistDappState('dapp disconnect');
+          if (persist) {
+            await persistDappState('dapp disconnect');
+          }
 
           // Trigger disconnection notification
           notificationManager.notifyDappConnection(host, false);
@@ -342,7 +344,9 @@ const DAppController = (): IDAppController => {
         case false:
           if (previousConnectedDapps[host]) {
             store.dispatch(removeDApp(host));
-            await persistDappState('dapp disconnect');
+            if (persist) {
+              await persistDappState('dapp disconnect');
+            }
 
             // Trigger disconnection notification
             notificationManager.notifyDappConnection(host, false);

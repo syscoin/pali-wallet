@@ -21,6 +21,16 @@ export const chromeStorage = {
         }
       });
     }),
+  setItems: (items: Record<string, any>): Promise<void> =>
+    new Promise((resolve, reject) => {
+      chrome.storage.local.set(items, function () {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    }),
   removeItem: (key: string): Promise<void> =>
     new Promise((resolve, reject) => {
       // Use Chrome Storage API

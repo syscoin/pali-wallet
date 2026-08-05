@@ -16,6 +16,7 @@ import { IDAppState } from './dapp/types';
 import {
   loadPasskeyCredentialProfileState,
   loadState,
+  saveCommittedWalletState,
   saveState,
   savePasskeyCredentialProfileState,
 } from './paliStorage';
@@ -79,6 +80,12 @@ const store: Store<{
 
 let lastPersistedState: any | null = null;
 
+const getMainStateForStorage = (state: ReturnType<typeof store.getState>) => ({
+  dapp: state.dapp,
+  price: state.price,
+  vaultGlobal: state.vaultGlobal,
+});
+
 // Initialize cache once on startup.
 (async () => {
   try {
@@ -105,11 +112,7 @@ export async function saveMainState() {
       return false;
     }
     // Create main state with only global data (dapp, price, vaultGlobal)
-    const mainState = {
-      dapp: state.dapp,
-      price: state.price,
-      vaultGlobal: state.vaultGlobal,
-    };
+    const mainState = getMainStateForStorage(state);
 
     await saveState(mainState);
     lastPersistedState = state;
@@ -117,6 +120,33 @@ export async function saveMainState() {
   } catch (error) {
     console.error('saveMainState() failed', error);
     return false;
+  }
+}
+
+/**
+ * Durably commit the active vault and, when necessary, the global state in one
+ * Chrome storage call. This is the minimal persistence barrier needed before
+ * an externally approved network switch reports success.
+ */
+export async function persistCommittedWalletState(
+  includeMainState: boolean
+): Promise<void> {
+  const state = store.getState();
+  const activeSlip44 = state.vaultGlobal.activeSlip44;
+
+  if (activeSlip44 === null) {
+    throw new Error('Cannot persist network switch without an active slip44');
+  }
+
+  const vaultState = vaultCache.prepareSlip44Vault(activeSlip44, state.vault);
+  const mainState = includeMainState
+    ? getMainStateForStorage(state)
+    : undefined;
+
+  await saveCommittedWalletState(activeSlip44, vaultState, mainState);
+
+  if (mainState) {
+    lastPersistedState = mainState;
   }
 }
 

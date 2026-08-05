@@ -93,6 +93,17 @@ class VaultCache {
     slip44: number,
     slip44State: ISlip44State
   ): Promise<void> {
+    const vaultState = this.prepareSlip44Vault(slip44, slip44State);
+
+    // Save to storage immediately
+    await saveSlip44State(slip44, vaultState);
+  }
+
+  /**
+   * Validate and cache a vault snapshot for a caller that persists multiple
+   * storage keys in one Chrome storage operation.
+   */
+  prepareSlip44Vault(slip44: number, slip44State: ISlip44State): ISlip44State {
     // 🛡️ SAFEGUARD: Validate slip44 matches before saving
     if (!validateVaultSlip44(slip44State, slip44)) {
       throw new Error(
@@ -103,9 +114,7 @@ class VaultCache {
 
     // Update cache
     this.slip44Cache.set(slip44, vaultState);
-
-    // Save to storage immediately
-    await saveSlip44State(slip44, vaultState);
+    return vaultState;
   }
 
   // activeSlip44 tracking removed - now handled by Redux global state
