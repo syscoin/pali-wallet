@@ -182,7 +182,6 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
-import { NativeBalanceCacheSaveScheduler } from './utils/nativeBalanceCacheSaveScheduler';
 
 // Default slip44 values for fallback cases
 
@@ -221,8 +220,6 @@ class MainController {
 
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
-  private nativeBalanceCacheSaveScheduler =
-    new NativeBalanceCacheSaveScheduler();
 
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
@@ -1151,7 +1148,6 @@ class MainController {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    this.clearNativeBalanceCacheSaveTimeout();
 
     // Clear auto-lock reset timeout
     if (this.autoLockResetTimeout) {
@@ -1769,7 +1765,6 @@ class MainController {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
-    this.clearNativeBalanceCacheSaveTimeout();
 
     console.log('[MainController] Auto-lock timer stopped');
   }
@@ -1854,21 +1849,6 @@ class MainController {
     }
   }
 
-  private clearNativeBalanceCacheSaveTimeout(): void {
-    this.nativeBalanceCacheSaveScheduler.cancel();
-  }
-
-  private scheduleNativeBalanceCacheSave(): void {
-    this.nativeBalanceCacheSaveScheduler.schedule(() => {
-      void this.performSave('native-balance-cache').catch((error) => {
-        console.error(
-          '[MainController] Failed to save native balance cache:',
-          error
-        );
-      });
-    });
-  }
-
   // Centralized wallet state saving with debouncing - auto-lock timer reset only for user operations
   private async saveWalletState(
     operation: string,
@@ -1888,7 +1868,6 @@ class MainController {
           clearTimeout(this.saveTimeout);
           this.saveTimeout = null;
         }
-        this.clearNativeBalanceCacheSaveTimeout();
 
         try {
           await this.performSave(operation);
@@ -1909,9 +1888,6 @@ class MainController {
 
       // Debounce the actual save to prevent rapid consecutive storage writes.
       this.saveTimeout = setTimeout(async () => {
-        // This save includes the latest balance cache, so an older pending
-        // cache-only write would only duplicate the storage operation.
-        this.clearNativeBalanceCacheSaveTimeout();
         try {
           await this.performSave(operation);
         } catch (error) {
@@ -5513,7 +5489,6 @@ class MainController {
                 type: activeAccount.type,
               })
             );
-            this.scheduleNativeBalanceCacheSave();
 
             // Clear loading state on success only if we set it
             clearBalanceLoadingIfOwned();
@@ -6442,7 +6417,6 @@ class MainController {
         clearTimeout(this.saveTimeout);
         this.saveTimeout = null;
       }
-      this.clearNativeBalanceCacheSaveTimeout();
       this.isNetworkSwitchMainStateDirty =
         this.isNetworkSwitchMainStateDirty ||
         previousSlip44 !== activeSlip44 ||
@@ -7619,10 +7593,6 @@ class MainController {
         type: resolvedType,
       })
     );
-    // Persist bursts independently from user-state saves so cache coalescing
-    // can never postpone a label, token, or settings write.
-    this.scheduleNativeBalanceCacheSave();
-
     return balance;
   }
 
