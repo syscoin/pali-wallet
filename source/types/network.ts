@@ -232,6 +232,10 @@ export interface IKeyringAccountState {
   // Native balances are network-specific even though `balances` retains the
   // legacy active-chain shape used throughout the UI.
   nativeBalanceCache?: Record<string, INativeBalanceCacheEntry>;
+  // Accounts are derived inside a slip44-specific vault. Persist that origin so
+  // a delayed popup patch can never present (or select) an account from a
+  // different UTXO network merely because both use non-hex addresses.
+  slip44?: number;
   smartAccount?: ISmartAccountMetadata;
   // Per-chain last block scanned for ERC-4337 UserOperationEvent logs
   // (smart accounts only; chainId -> blockNumber)

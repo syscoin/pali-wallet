@@ -13,7 +13,7 @@ import {
   MAX_TOKENS_DISPLAY,
 } from './constants';
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
-import { validateAndManageUserAssets, ensureTrailingSlash } from './utils';
+import { ensureTrailingSlash } from './utils';
 
 const SysAssetsControler = (): ISysAssetsController => {
   // Cache for Syscoin asset metadata
@@ -314,7 +314,8 @@ const SysAssetsControler = (): ISysAssetsController => {
   const getSysAssetsByXpub = async (
     xpubOrAddress: string,
     networkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    existingAssets: ITokenSysProps[] = []
   ): Promise<ISysTokensAssetReponse[]> => {
     // Refresh persisted/imported assets from all used SPT entries so zero-balance
     // tokens still keep their historical sent/received counters.
@@ -402,11 +403,6 @@ const SysAssetsControler = (): ISysAssetsController => {
       });
     });
 
-    // Get existing manually imported tokens from state
-    const { activeAccount, accountAssets } = store.getState().vault;
-    const existingAssets =
-      accountAssets[activeAccount.type]?.[activeAccount.id]?.syscoin || [];
-
     // Use aggregated tokens map for lookups
     const blockchainTokensMap = aggregatedTokensMap;
 
@@ -414,21 +410,26 @@ const SysAssetsControler = (): ISysAssetsController => {
     const updatedTokens: ISysTokensAssetReponse[] = existingAssets
       .filter((asset: ITokenSysProps) => asset.assetGuid !== undefined)
       .map((asset: ITokenSysProps) => {
-        const blockchainToken = blockchainTokensMap.get(asset.assetGuid!);
+        const blockchainToken = blockchainTokensMap.get(
+          String(asset.assetGuid)
+        );
 
         if (blockchainToken) {
-          // Token found in blockchain response - use aggregated data
-          return blockchainToken;
-        } else {
-          // Token not in blockchain response - set balance to 0
+          // Keep user-authored metadata while refreshing chain-derived values.
           return {
-            assetGuid: asset.assetGuid!,
+            ...asset,
+            ...blockchainToken,
+            assetGuid: String(asset.assetGuid),
+            chainId: networkChainId,
+          } as ISysTokensAssetReponse;
+        } else {
+          // Token not in the response still remains imported. Only its live
+          // balance/counters are reset; metadata must remain durable.
+          return {
+            ...asset,
+            assetGuid: String(asset.assetGuid),
             balance: 0,
             unconfirmedBalance: 0,
-            decimals: asset.decimals,
-            name: asset.name || asset.symbol,
-            path: '',
-            symbol: asset.symbol,
             totalReceived: '0',
             totalSent: '0',
             transfers: 0,
@@ -438,18 +439,10 @@ const SysAssetsControler = (): ISysAssetsController => {
         }
       });
 
-    const filteredAssetsLength = updatedTokens.slice(0, MAX_TOKENS_DISPLAY);
-
-    if (filteredAssetsLength && filteredAssetsLength.length > 0) {
-      const treatedAssets = validateAndManageUserAssets(
-        false,
-        filteredAssetsLength
-      ) as ISysTokensAssetReponse[];
-      // Syscoin 5 uses plain text symbols, no decoding needed
-      return treatedAssets;
-    }
-
-    return [];
+    // Return the explicit snapshot supplied by the caller. Reading the live
+    // active account here allowed a network/account switch during the request
+    // to rebuild one account's assets from another account's state.
+    return updatedTokens.slice(0, MAX_TOKENS_DISPLAY);
   };
 
   return {

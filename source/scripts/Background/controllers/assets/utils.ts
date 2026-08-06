@@ -6,21 +6,67 @@ import sortBy from 'lodash/sortBy';
 import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
+import { IAccountAssets } from 'state/vault/types';
+import {
+  IKeyringAccountState,
+  INetwork,
+  KeyringAccountType,
+} from 'types/network';
 import { ITokenEthProps } from 'types/tokens';
 
 import { ISysTokensAssetReponse } from './types';
 
+export const canCommitAssetUpdate = ({
+  account,
+  activeAccount,
+  assets,
+  latestAccount,
+  latestActiveAccount,
+  latestAssets,
+  latestNetwork,
+  latestRequestId,
+  network,
+  requestId,
+}: {
+  account: IKeyringAccountState;
+  activeAccount: { id: number; type: KeyringAccountType };
+  assets: IAccountAssets;
+  latestAccount?: IKeyringAccountState;
+  latestActiveAccount: { id: number; type: KeyringAccountType };
+  latestAssets?: IAccountAssets;
+  latestNetwork: INetwork;
+  latestRequestId: number;
+  network: INetwork;
+  requestId: number;
+}): boolean =>
+  requestId === latestRequestId &&
+  latestNetwork.chainId === network.chainId &&
+  latestNetwork.kind === network.kind &&
+  latestNetwork.url === network.url &&
+  latestNetwork.slip44 === network.slip44 &&
+  latestActiveAccount.id === activeAccount.id &&
+  latestActiveAccount.type === activeAccount.type &&
+  latestAccount?.address === account.address &&
+  latestAccount?.xpub === account.xpub &&
+  // Redux/Immer preserves this nested reference until that account's asset
+  // state changes. This O(1) snapshot check catches imports/deletes without a
+  // second deep comparison on every polling cycle.
+  latestAssets === assets;
+
 export const validateAndManageUserAssets = (
   isForEvm: boolean,
-  fetchedAssetsOrTokens: ISysTokensAssetReponse[] | ITokenEthProps[]
+  fetchedAssetsOrTokens: ISysTokensAssetReponse[] | ITokenEthProps[],
+  currentAssets?: ISysTokensAssetReponse[] | ITokenEthProps[]
 ) => {
   if (fetchedAssetsOrTokens.length === 0) return [];
 
-  const { activeAccount, accountAssets } = store.getState().vault;
-
-  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
-
-  const assetsValueToUse = isForEvm ? assets?.ethereum : assets?.syscoin;
+  const assetsValueToUse =
+    currentAssets ||
+    (() => {
+      const { activeAccount, accountAssets } = store.getState().vault;
+      const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
+      return isForEvm ? assets?.ethereum : assets?.syscoin;
+    })();
   const userClonedAssets = isForEvm
     ? (clone(compact(assetsValueToUse as ITokenEthProps[])) as ITokenEthProps[])
     : (clone(

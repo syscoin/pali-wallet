@@ -19,14 +19,14 @@ import AssetsManager from './index';
 const ACCOUNT = { xpub: 'zpub-test', address: 'sys1q...' } as any;
 const CURRENT_ASSETS = {
   ethereum: [],
-  syscoin: [{ assetGuid: '123', balance: 1 }],
+  syscoin: [{ assetGuid: '123', balance: 1, chainId: 57 }],
 } as any;
 
 describe('AssetsManager SPT gating by chain', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getSysAssetsByXpubMock.mockResolvedValue([
-      { assetGuid: '123', balance: 2 },
+      { assetGuid: '123', balance: 2, chainId: 57 },
     ]);
   });
 
@@ -41,7 +41,15 @@ describe('AssetsManager SPT gating by chain', () => {
     );
 
     expect(getSysAssetsByXpubMock).toHaveBeenCalledTimes(1);
-    expect(result.syscoin).toEqual([{ assetGuid: '123', balance: 2 }]);
+    expect(getSysAssetsByXpubMock).toHaveBeenCalledWith(
+      ACCOUNT.xpub,
+      'https://blockbook.syscoin.org/',
+      57,
+      CURRENT_ASSETS.syscoin
+    );
+    expect(result.syscoin).toEqual([
+      { assetGuid: '123', balance: 2, chainId: 57 },
+    ]);
   });
 
   it('fetches SPT assets on Syscoin testnet (5700)', async () => {
@@ -70,5 +78,29 @@ describe('AssetsManager SPT gating by chain', () => {
     expect(getSysAssetsByXpubMock).not.toHaveBeenCalled();
     // Existing assets are preserved untouched
     expect(result).toEqual(CURRENT_ASSETS);
+  });
+
+  it('preserves imported assets belonging to another chain', async () => {
+    const otherNetworkAsset = {
+      assetGuid: '999',
+      balance: 5,
+      chainId: 5700,
+    };
+    const result = await AssetsManager().utils.updateAssetsFromCurrentAccount(
+      ACCOUNT,
+      true,
+      'https://blockbook.syscoin.org/',
+      57,
+      undefined as any,
+      {
+        ...CURRENT_ASSETS,
+        syscoin: [...CURRENT_ASSETS.syscoin, otherNetworkAsset],
+      }
+    );
+
+    expect(result.syscoin).toEqual([
+      { assetGuid: '123', balance: 2, chainId: 57 },
+      otherNetworkAsset,
+    ]);
   });
 });
