@@ -868,7 +868,6 @@ const syncDappAccountAfterSelection = async (
   }
 
   await dapp.changeAccount(host, targetAccount.id, targetAccountType);
-  clearProviderCache();
 };
 
 // Middleware: Account Switching for Blocking Methods

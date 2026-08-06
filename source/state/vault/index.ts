@@ -136,6 +136,15 @@ const VaultState = createSlice({
       );
       return rehydratedState;
     },
+    restoreVaultSnapshot(
+      _state: IVaultState,
+      action: PayloadAction<IVaultState>
+    ) {
+      // This snapshot comes from the already-normalized live Redux state. It
+      // is used only to roll back a slip44 switch that failed before commit,
+      // so return it exactly without persisted-state migration or mutation.
+      return action.payload;
+    },
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
@@ -960,6 +969,7 @@ const VaultState = createSlice({
 
 export const {
   rehydrate,
+  restoreVaultSnapshot,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,

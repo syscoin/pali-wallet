@@ -3,6 +3,7 @@ import store from 'state/store';
 let currentState = store.getState();
 let pendingState: typeof currentState | null = null;
 let stateBroadcastTimeout: ReturnType<typeof setTimeout> | null = null;
+let deferredFullStateBroadcast = false;
 
 const STATE_BROADCAST_DEBOUNCE_MS = 50;
 
@@ -136,6 +137,51 @@ const getOnlyAccountBalanceChange = (
   return balanceChange;
 };
 
+export const isNetworkSwitchInProgress = (state: typeof currentState) => {
+  if (state.vaultGlobal.networkStatus === 'switching') {
+    return true;
+  }
+
+  const activeSlip44 = state.vaultGlobal.activeSlip44;
+  const vaultSlip44 = state.vault.activeNetwork.slip44;
+  return (
+    activeSlip44 !== null &&
+    vaultSlip44 !== undefined &&
+    Number(activeSlip44) !== Number(vaultSlip44)
+  );
+};
+
+const didFinishAlignedNetworkSwitch = (
+  previousState: typeof currentState,
+  nextState: typeof currentState
+) =>
+  previousState.vaultGlobal.networkStatus === 'switching' &&
+  (nextState.vaultGlobal.networkStatus === 'idle' ||
+    nextState.vaultGlobal.networkStatus === 'error') &&
+  !isNetworkSwitchInProgress(nextState);
+
+const hasUnpatchedNonVaultChange = (
+  previousState: typeof currentState,
+  nextState: typeof currentState
+) =>
+  // Dapp has its own full-slice patch. The target vault and active slip44 are
+  // published together on an aligned terminal transition, so only other root
+  // slices need deferring.
+  !shallowEqualExcept(previousState, nextState, [
+    'dapp',
+    'vault',
+    'vaultGlobal',
+  ]) ||
+  !shallowEqualExcept(previousState.vaultGlobal, nextState.vaultGlobal, [
+    'activeSlip44',
+    'isPollingUpdate',
+    'isSwitchingAccount',
+    'isPostNetworkSwitchLoading',
+    'networkQuality',
+    'networkStatus',
+    'networkTarget',
+  ]);
+
 export const sendFastStatePatches = (
   previousState: typeof currentState,
   nextState: typeof currentState
@@ -154,18 +200,25 @@ export const sendFastStatePatches = (
   const networkChanged =
     previousNetwork.chainId !== nextNetwork.chainId ||
     previousNetwork.url !== nextNetwork.url ||
-    previousNetwork.kind !== nextNetwork.kind;
+    previousNetwork.kind !== nextNetwork.kind ||
+    previousNetwork.slip44 !== nextNetwork.slip44;
+  const networkSwitchFinished = didFinishAlignedNetworkSwitch(
+    previousState,
+    nextState
+  );
+  const canPublishVault = !isNetworkSwitchInProgress(nextState);
+  const publishedVault =
+    canPublishVault && (networkChanged || networkSwitchFinished);
 
-  if (networkChanged) {
+  if (publishedVault) {
     sendRuntimeMessage({
       type: 'CONTROLLER_NETWORK_CHANGE',
       data: {
-        activeAccount: nextState.vault.activeAccount,
-        activeNetwork: nextNetwork,
-        // A slip44 switch replaces the account buckets and network together.
-        // Deliver them in one message so the popup cannot render a new network
-        // against accounts left over from the previous address family.
-        accounts: nextState.vault.accounts,
+        activeSlip44: nextState.vaultGlobal.activeSlip44,
+        // A slip44 switch replaces every account-owned bucket, not just the
+        // account list. Rehydrate the popup from the exact background vault so
+        // imported assets cannot remain stuck on the vault we just left.
+        vault: nextState.vault,
         networkStatus: nextState.vaultGlobal.networkStatus,
       },
     });
@@ -175,12 +228,15 @@ export const sendFastStatePatches = (
   const previousActiveAccount = previousState.vault.activeAccount;
   const nextActiveAccount = nextState.vault.activeAccount;
   const accountBalanceChange =
+    canPublishVault &&
+    !publishedVault &&
     previousState.vault.accounts !== nextState.vault.accounts
       ? getOnlyAccountBalanceChange(previousState, nextState)
       : null;
 
   if (
-    !networkChanged &&
+    canPublishVault &&
+    !publishedVault &&
     previousState.vault.accounts !== nextState.vault.accounts &&
     !accountBalanceChange
   ) {
@@ -221,8 +277,10 @@ export const sendFastStatePatches = (
   }
 
   if (
-    previousActiveAccount.id !== nextActiveAccount.id ||
-    previousActiveAccount.type !== nextActiveAccount.type
+    canPublishVault &&
+    !publishedVault &&
+    (previousActiveAccount.id !== nextActiveAccount.id ||
+      previousActiveAccount.type !== nextActiveAccount.type)
   ) {
     sendRuntimeMessage({
       type: 'CONTROLLER_ACTIVE_ACCOUNT_CHANGE',
@@ -231,7 +289,7 @@ export const sendFastStatePatches = (
     sentPatch = true;
   }
 
-  if (accountBalanceChange) {
+  if (canPublishVault && !publishedVault && accountBalanceChange) {
     sendRuntimeMessage({
       type: 'CONTROLLER_ACCOUNT_BALANCE_CHANGE',
       data: accountBalanceChange,
@@ -242,7 +300,7 @@ export const sendFastStatePatches = (
   return sentPatch;
 };
 
-const isHotPathOnlyChange = (
+export const isHotPathOnlyChange = (
   previousState: typeof currentState,
   nextState: typeof currentState,
   sentPatch: boolean
@@ -286,28 +344,23 @@ const isHotPathOnlyChange = (
     ['accounts']
   );
 
-  const vaultIsNetworkSwitchOnly = shallowEqualExcept(
-    previousState.vault,
-    nextState.vault,
-    [
-      'accounts',
-      'activeAccount',
-      'activeChain',
-      'activeNetwork',
-      'isBitcoinBased',
-    ]
-  );
+  const previousNetwork = previousState.vault.activeNetwork;
+  const nextNetwork = nextState.vault.activeNetwork;
+  const entireVaultWasPatched =
+    didFinishAlignedNetworkSwitch(previousState, nextState) ||
+    previousNetwork.chainId !== nextNetwork.chainId ||
+    previousNetwork.url !== nextNetwork.url ||
+    previousNetwork.kind !== nextNetwork.kind ||
+    previousNetwork.slip44 !== nextNetwork.slip44;
 
   return (
     sentPatch &&
-    (vaultIsActiveAccountOnly ||
-      vaultIsAccountsOnly ||
-      vaultIsNetworkSwitchOnly)
+    (vaultIsActiveAccountOnly || vaultIsAccountsOnly || entireVaultWasPatched)
   );
 };
 
 export function handleObserveStateChanges() {
-  store.subscribe(() => {
+  return store.subscribe(() => {
     const nextState = store.getState();
     // Use simple reference equality - Redux creates new state objects on changes
     // This is much more efficient than JSON.stringify comparison
@@ -315,7 +368,31 @@ export function handleObserveStateChanges() {
       const previousState = currentState;
       currentState = nextState;
       const sentPatch = sendFastStatePatches(previousState, nextState);
-      if (isHotPathOnlyChange(previousState, nextState, sentPatch)) {
+      // Loading a slip44 vault is an intermediate background state. The active
+      // keyring and persistence pointer are not committed until the switch
+      // succeeds, so never expose this state to the popup.
+      if (isNetworkSwitchInProgress(nextState)) {
+        // A full-state update that was already queued, or a non-patchable
+        // update received during the switch, must be delivered once the vault
+        // is safe to publish. Keep only this flag: pendingState itself may
+        // contain an intermediate vault and must not escape to the popup.
+        deferredFullStateBroadcast ||= Boolean(
+          pendingState || hasUnpatchedNonVaultChange(previousState, nextState)
+        );
+        pendingState = null;
+        return;
+      }
+      if (deferredFullStateBroadcast) {
+        deferredFullStateBroadcast = false;
+        scheduleStateBroadcast(nextState);
+        return;
+      }
+      const isHotPathOnly = isHotPathOnlyChange(
+        previousState,
+        nextState,
+        sentPatch
+      );
+      if (isHotPathOnly) {
         if (pendingState) {
           pendingState = nextState;
         }

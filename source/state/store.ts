@@ -28,6 +28,7 @@ import { IPersistState } from './types';
 import vault, {
   rehydrate as vaultRehydrate,
   initializeCleanVaultForSlip44,
+  restoreVaultSnapshot,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
 import vaultCache from './vaultCache';
@@ -73,6 +74,18 @@ const store: Store<{
     }).concat(customMiddlewareToAdd), // Concat our custom middleware array
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
+
+export function restoreSourceVaultAfterUncommittedSwitch(
+  sourceSlip44: number,
+  sourceVault: IVaultState
+): boolean {
+  if (store.getState().vaultGlobal.activeSlip44 !== sourceSlip44) {
+    return false;
+  }
+
+  store.dispatch(restoreVaultSnapshot(sourceVault));
+  return true;
+}
 
 // Cache the last persisted state locally to avoid the expensive
 // read-&-parse cycle from chrome.storage on every store update. This
@@ -173,6 +186,11 @@ export async function loadAndActivateSlip44Vault(
   targetNetwork?: INetwork,
   deferActiveSlip44Update = false
 ): Promise<boolean> {
+  // If a non-deferred storage/migration step fails, this is still the vault
+  // Redux actually contains. Re-align the global pointer to it in the catch so
+  // mismatch suppression cannot strand background state delivery.
+  const loadedVaultSlip44 = store.getState().vault.activeNetwork.slip44;
+
   try {
     console.log(`[Store] Loading slip44 vault: ${slip44}`);
 
@@ -245,6 +263,13 @@ export async function loadAndActivateSlip44Vault(
       return false;
     }
   } catch (error) {
+    if (
+      !deferActiveSlip44Update &&
+      loadedVaultSlip44 !== null &&
+      loadedVaultSlip44 !== undefined
+    ) {
+      store.dispatch(setActiveSlip44(Number(loadedVaultSlip44)));
+    }
     console.error(`[Store] Failed to load slip44 vault ${slip44}:`, error);
     return false;
   }

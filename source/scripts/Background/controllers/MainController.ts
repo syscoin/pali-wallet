@@ -36,6 +36,7 @@ import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
   persistCommittedWalletState,
+  restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
 import {
@@ -54,7 +55,7 @@ import {
   setAccountAssets,
   setAccountTransactions,
 } from 'state/vault';
-import { TransactionsType } from 'state/vault/types';
+import { IVaultState, TransactionsType } from 'state/vault/types';
 import vaultCache, {
   getSlip44ForNetwork,
   DEFAULT_EVM_SLIP44,
@@ -813,7 +814,7 @@ class MainController {
 
     // Create a state transaction to ensure atomic updates
     const stateTransaction: {
-      deferredSaveData: { slip44: number; vaultState: any } | null;
+      deferredSaveData: { slip44: number; vaultState: IVaultState } | null;
       needsSessionTransfer: boolean;
       sourceKeyring: KeyringManager | null;
       sourceSlip44: number | null;
@@ -1075,6 +1076,19 @@ class MainController {
         }
       }
     } catch (error) {
+      const sourceVault = stateTransaction.deferredSaveData;
+      if (
+        isSwitchingSlip44 &&
+        sourceVault &&
+        restoreSourceVaultAfterUncommittedSwitch(
+          sourceVault.slip44,
+          sourceVault.vaultState
+        )
+      ) {
+        console.warn(
+          `[MainController] Restored source vault for slip44 ${sourceVault.slip44} after the target switch failed before commit`
+        );
+      }
       console.error('[MainController] Error in switchActiveKeyring:', error);
       throw error;
     }
@@ -1806,7 +1820,7 @@ class MainController {
   // Perform deferred vault save in background (non-blocking)
   private performDeferredVaultSave(deferredSaveData: {
     slip44: number;
-    vaultState: any;
+    vaultState: IVaultState;
   }) {
     // Enqueue immediately so a later switch back to this slip44 cannot commit
     // first and then be overwritten by this older snapshot. The promise remains
@@ -6154,6 +6168,7 @@ class MainController {
   }
   private handleNetworkChangeError = (reason: any) => {
     const { activeNetwork } = store.getState().vault;
+    const { networkTarget } = store.getState().vaultGlobal;
 
     console.error('Network change error:', reason);
     console.error('Error type:', typeof reason);
@@ -6182,7 +6197,9 @@ class MainController {
       return;
     }
 
-    let errorMessage = `Failed to switch to ${activeNetwork.label}`;
+    let errorMessage = `Failed to switch to ${
+      networkTarget?.label || activeNetwork.label
+    }`;
 
     // Try to extract the actual error message from various error structures
     if (reason) {

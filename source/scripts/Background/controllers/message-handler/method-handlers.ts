@@ -9,6 +9,7 @@ import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
+import { executeMethodWithCache } from './provider-cache';
 import { requestCoordinator } from './request-pipeline';
 import {
   generateWalletBundleId,
@@ -19,82 +20,15 @@ import {
 } from './sendCallsBundles';
 import { IEnhancedRequestContext, MethodHandlerType } from './types';
 
-// Cache for provider state methods. Host scoping prevents data crossing site
-// boundaries; the size cap prevents hostile sites from growing it without
-// bound by issuing requests from many subdomains.
-export const MAX_PROVIDER_CACHE_ENTRIES = 100;
-
-interface IProviderStateCacheEntry {
-  expiresAt: number;
-  value: any;
-}
-
-const providerStateCache = new Map<string, IProviderStateCacheEntry>();
-
-const pruneProviderCache = (now: number) => {
-  for (const [key, cached] of providerStateCache) {
-    if (cached.expiresAt <= now) {
-      providerStateCache.delete(key);
-    }
-  }
-};
-
-// Clear cache function
-export function clearProviderCache() {
-  providerStateCache.clear();
-}
+export {
+  clearProviderCache,
+  MAX_PROVIDER_CACHE_ENTRIES,
+} from './provider-cache';
 
 // Base interface for method handlers
 export interface IMethodHandler {
   canHandle(context: IEnhancedRequestContext): boolean;
   handle(context: IEnhancedRequestContext): Promise<any>;
-}
-
-// Generic method executor that uses registry configuration
-async function executeMethodWithCache(
-  context: IEnhancedRequestContext,
-  executor: () => Promise<any>
-): Promise<any> {
-  const { methodConfig } = context;
-
-  // Check if method has caching enabled
-  if (methodConfig.cacheKey && methodConfig.cacheTTL) {
-    const now = Date.now();
-    pruneProviderCache(now);
-    // Provider responses can contain origin-specific account data. Keep every
-    // cache entry scoped to the requesting host so a connected site's result
-    // can never be reused for another site.
-    const originCacheKey = JSON.stringify([
-      methodConfig.cacheKey,
-      context.originalRequest.host,
-    ]);
-    const cached = providerStateCache.get(originCacheKey);
-
-    if (cached) {
-      // Refresh insertion order so the Map also acts as an LRU queue.
-      providerStateCache.delete(originCacheKey);
-      providerStateCache.set(originCacheKey, cached);
-      return cached.value;
-    }
-
-    // Execute and cache the result
-    const result = await executor();
-    const completedAt = Date.now();
-    pruneProviderCache(completedAt);
-    while (providerStateCache.size >= MAX_PROVIDER_CACHE_ENTRIES) {
-      const oldestKey = providerStateCache.keys().next().value;
-      if (oldestKey === undefined) break;
-      providerStateCache.delete(oldestKey);
-    }
-    providerStateCache.set(originCacheKey, {
-      expiresAt: completedAt + methodConfig.cacheTTL,
-      value: result,
-    });
-    return result;
-  }
-
-  // No caching, just execute
-  return executor();
 }
 
 // Check if method requires active account
