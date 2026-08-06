@@ -45,6 +45,11 @@ interface IValidatedPasswordInputProps {
   onValidationError?: (error: any) => void;
 
   /**
+   * Callback when the input changes after a validation attempt.
+   */
+  onValidationReset?: () => void;
+
+  /**
    * Callback when validation succeeds
    */
   onValidationSuccess?: (result: any, password: string) => void;
@@ -58,12 +63,19 @@ interface IValidatedPasswordInputProps {
    * Whether the field is required (defaults to true)
    */
   required?: boolean;
+
+  /**
+   * Validate after a typing debounce or only after an explicit Confirm/Enter.
+   * Password operations that consume rate-limit attempts must use 'submit'.
+   */
+  validationTrigger?: 'change' | 'submit';
 }
 
 export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   onValidate,
   onValidationSuccess,
   onValidationError,
+  onValidationReset,
   placeholder,
   id,
   form,
@@ -72,11 +84,13 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   required = true,
   errorMessage,
   debounceMs = 300,
+  validationTrigger = 'change',
 }) => {
   const { t } = useTranslation();
 
   // Validation states
   const [isValidating, setIsValidating] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
   const [validationStatus, setValidationStatus] = useState<
     'success' | 'error' | ''
   >('');
@@ -95,16 +109,22 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   const onValidateRef = useRef(onValidate);
   const onValidationSuccessRef = useRef(onValidationSuccess);
   const onValidationErrorRef = useRef(onValidationError);
+  const onValidationResetRef = useRef(onValidationReset);
   const formRef = useRef(form);
   const nameRef = useRef(name);
   const errorMessageRef = useRef(errorMessage);
   const validationRunIdRef = useRef(0);
+  const passwordValueRef = useRef('');
+  const performValidationRef = useRef<
+    ((password: string) => Promise<void>) | null
+  >(null);
 
   // Update refs when props change
   useEffect(() => {
     onValidateRef.current = onValidate;
     onValidationSuccessRef.current = onValidationSuccess;
     onValidationErrorRef.current = onValidationError;
+    onValidationResetRef.current = onValidationReset;
     formRef.current = form;
     nameRef.current = name;
     errorMessageRef.current = errorMessage;
@@ -112,6 +132,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
     onValidate,
     onValidationSuccess,
     onValidationError,
+    onValidationReset,
     form,
     name,
     errorMessage,
@@ -133,6 +154,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
       // Mark this run as the latest. Any older async results should be ignored.
       const runId = ++validationRunIdRef.current;
 
+      isValidatingRef.current = true;
       setIsValidating(true);
       setValidationStatus('');
 
@@ -178,10 +200,19 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
 
         // Set form field error if form is provided
         if (formRef.current) {
+          const lockoutMessage =
+            error instanceof Error &&
+            error.message.startsWith('Too many failed attempts')
+              ? error.message
+              : undefined;
           formRef.current.setFields([
             {
               name: nameRef.current,
-              errors: [errorMessageRef.current || t('start.wrongPassword')],
+              errors: [
+                errorMessageRef.current ||
+                  lockoutMessage ||
+                  t('start.wrongPassword'),
+              ],
             },
           ]);
         }
@@ -193,10 +224,13 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
       } finally {
         // Only the latest run should control the loading state
         if (runId === validationRunIdRef.current) {
+          isValidatingRef.current = false;
           setIsValidating(false);
         }
       }
     };
+
+    performValidationRef.current = performValidation;
 
     // Create debounced function
     debouncedValidationRef.current = debounce(performValidation, debounceMs);
@@ -207,6 +241,7 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
         debouncedValidationRef.current.cancel();
         debouncedValidationRef.current = null;
       }
+      performValidationRef.current = null;
     };
   }, [debounceMs, t]); // Only depend on debounceMs and t
 
@@ -214,21 +249,34 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   const handlePasswordChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = e.target.value;
+      passwordValueRef.current = value;
+      setHasPassword(Boolean(value.trim()));
+      onValidationResetRef.current?.();
+
+      // Immediately invalidate an in-flight result for an older input value.
+      validationRunIdRef.current += 1;
 
       // Only clear validation state visually, don't touch form fields here
       if (validationStatusRef.current) {
         setValidationStatus('');
       }
 
-      if (value.trim() && debouncedValidationRef.current) {
+      if (
+        validationTrigger === 'change' &&
+        value.trim() &&
+        debouncedValidationRef.current
+      ) {
         // Only set loading if we're not already validating
         if (!isValidatingRef.current) {
+          isValidatingRef.current = true;
           setIsValidating(true);
         }
         debouncedValidationRef.current(value);
       } else {
+        debouncedValidationRef.current?.cancel();
         // Only update state if it's different
         if (isValidatingRef.current) {
+          isValidatingRef.current = false;
           setIsValidating(false);
         }
         if (validationStatusRef.current) {
@@ -236,8 +284,21 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
         }
       }
     },
-    []
-  ); // No dependencies since we use refs
+    [validationTrigger]
+  );
+
+  const handleExplicitValidation = useCallback(() => {
+    const password = passwordValueRef.current;
+    if (
+      !password.trim() ||
+      isValidatingRef.current ||
+      !performValidationRef.current
+    )
+      return;
+
+    debouncedValidationRef.current?.cancel();
+    void performValidationRef.current(password);
+  }, []);
 
   return (
     <Form.Item
@@ -258,6 +319,27 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
         placeholder={placeholder || t('settings.enterYourPassword')}
         id={id}
         onChange={handlePasswordChange}
+        onPressEnter={
+          validationTrigger === 'submit'
+            ? (event) => {
+                event.preventDefault();
+                handleExplicitValidation();
+              }
+            : undefined
+        }
+        suffix={
+          validationTrigger === 'submit' ? (
+            <button
+              type="button"
+              className="text-brand-blue500 text-xs font-medium disabled:opacity-50"
+              disabled={!hasPassword || isValidating}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleExplicitValidation}
+            >
+              {t('buttons.confirm')}
+            </button>
+          ) : undefined
+        }
       />
     </Form.Item>
   );
