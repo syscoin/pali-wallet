@@ -69,10 +69,12 @@ const PhraseView = () => {
             onValidate={validatePassword}
             onValidationSuccess={handleValidationSuccess}
             onValidationError={handleValidationError}
+            onValidationReset={handleValidationError}
             placeholder={t('settings.enterYourPassword')}
             id="phraseview_password"
             form={form}
             name="password"
+            validationTrigger="submit"
           />
 
           <Form.Item name="seed" className="w-full md:max-w-md">

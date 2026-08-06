@@ -128,10 +128,12 @@ const ForgetWalletView = () => {
             onValidate={validatePassword}
             onValidationSuccess={handleValidationSuccess}
             onValidationError={handleValidationError}
+            onValidationReset={handleValidationError}
             placeholder={t('settings.enterYourPassword')}
             id="forget_password"
             form={form}
             name="password"
+            validationTrigger="submit"
           />
 
           {hasAccountFunds && (

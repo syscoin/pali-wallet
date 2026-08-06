@@ -132,10 +132,12 @@ const PrivateKeyView = () => {
             onValidate={validatePassword}
             onValidationSuccess={handleValidationSuccess}
             onValidationError={handleValidationError}
+            onValidationReset={handleValidationError}
             placeholder={t('settings.enterYourPassword')}
             form={form}
             name="password"
             className="my-4"
+            validationTrigger="submit"
           />
         </Form>
       )}
