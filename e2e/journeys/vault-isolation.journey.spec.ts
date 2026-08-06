@@ -20,9 +20,8 @@ const getStoredVaults = async (wallet: PaliWallet) => {
   return worker.evaluate(
     () =>
       new Promise<Record<string, StoredVault | undefined>>((resolve) => {
-        chrome.storage.local.get(
-          ['state-vault-57', 'state-vault-60'],
-          (items) => resolve(items as Record<string, StoredVault | undefined>)
+        chrome.storage.local.get(['state-vault-1', 'state-vault-60'], (items) =>
+          resolve(items as Record<string, StoredVault | undefined>)
         );
       })
   );
@@ -84,8 +83,12 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
   const wallet = await PaliWallet.launch('vault-isolation');
 
   try {
-    await wallet.step('import fresh seed on Syscoin UTXO', () =>
-      wallet.importSeedAndCreatePassword()
+    await wallet.step(
+      'import fresh seed and switch to Syscoin Testnet',
+      async () => {
+        await wallet.importSeedAndCreatePassword();
+        await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
+      }
     );
 
     await wallet.step('import an SPT into the Syscoin vault', () =>
@@ -105,9 +108,9 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
     );
 
     await wallet.step(
-      'switch to Rollux and create another EVM account',
+      'switch to zkTanenbaum and create another EVM account',
       async () => {
-        await wallet.switchNetwork('Rollux', 'EVM');
+        await wallet.switchNetwork('zkTanenbaum', 'EVM');
         await createHdAccount(wallet);
         await controllerAction(
           wallet,
@@ -132,7 +135,7 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
         const state = await getBackgroundState(wallet);
         const vaults = await getStoredVaults(wallet);
         const activeAccounts = getHdAddresses(state.vault);
-        const sysAccounts = getHdAddresses(vaults['state-vault-57']);
+        const sysAccounts = getHdAddresses(vaults['state-vault-1']);
         const evmAccounts = getHdAddresses(vaults['state-vault-60']);
 
         expect({
@@ -159,32 +162,32 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
           ],
         });
         expect(
-          vaults['state-vault-57']?.accountAssets.HDAccount['0'].syscoin
+          vaults['state-vault-1']?.accountAssets.HDAccount['0'].syscoin
         ).toEqual([
-          expect.objectContaining({ assetGuid: '123456789', chainId: 57 }),
+          expect.objectContaining({ assetGuid: '123456789', chainId: 5700 }),
         ]);
         expect(
           vaults['state-vault-60']?.accountAssets.HDAccount['1'].ethereum
         ).toEqual([
           expect.objectContaining({
             contractAddress: '0x00000000000000000000000000000000000000a1',
-            chainId: 570,
+            chainId: 57057,
           }),
         ]);
       }
     );
 
-    await wallet.step('switch back to Syscoin', async () => {
-      await wallet.switchNetwork('Syscoin Mainnet', 'UTXO');
+    await wallet.step('switch back to Syscoin Testnet', async () => {
+      await wallet.switchNetwork('Syscoin Testnet', 'UTXO');
     });
 
     await wallet.step(
-      'UTXO switch restored only slip44 57 accounts',
+      'UTXO switch restored only slip44 1 accounts',
       async () => {
         const state = await getBackgroundState(wallet);
         const vaults = await getStoredVaults(wallet);
         const activeAccounts = getHdAddresses(state.vault);
-        const sysAccounts = getHdAddresses(vaults['state-vault-57']);
+        const sysAccounts = getHdAddresses(vaults['state-vault-1']);
         const evmAccounts = getHdAddresses(vaults['state-vault-60']);
 
         expect({
@@ -199,8 +202,8 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
               address: expect.not.stringMatching(/^0x/),
             }),
           ],
-          activeNetwork: expect.objectContaining({ slip44: 57 }),
-          activeSlip44: 57,
+          activeNetwork: expect.objectContaining({ slip44: 1 }),
+          activeSlip44: 1,
           evmAccounts: [
             expect.objectContaining({ address: expect.stringMatching(/^0x/) }),
             expect.objectContaining({ address: expect.stringMatching(/^0x/) }),
@@ -212,14 +215,14 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
           ],
         });
         expect(state.vault.accountAssets.HDAccount['0'].syscoin).toEqual([
-          expect.objectContaining({ assetGuid: '123456789', chainId: 57 }),
+          expect.objectContaining({ assetGuid: '123456789', chainId: 5700 }),
         ]);
         expect(
           vaults['state-vault-60']?.accountAssets.HDAccount['1'].ethereum
         ).toEqual([
           expect.objectContaining({
             contractAddress: '0x00000000000000000000000000000000000000a1',
-            chainId: 570,
+            chainId: 57057,
           }),
         ]);
       }
@@ -233,7 +236,7 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
       'persisted slip44 vaults contain one address family',
       async () => {
         const vaults = await getStoredVaults(wallet);
-        const sysAccounts = getHdAddresses(vaults['state-vault-57']);
+        const sysAccounts = getHdAddresses(vaults['state-vault-1']);
         const evmAccounts = getHdAddresses(vaults['state-vault-60']);
 
         expect(sysAccounts).toHaveLength(2);
@@ -245,24 +248,24 @@ test('vaults keep UTXO and EVM accounts isolated while alternating networks', as
           evmAccounts.every(({ address }) => address?.startsWith('0x'))
         ).toBe(true);
         expect(sysAccounts.map(({ label }) => label)).toEqual([
-          'SYS 1',
-          'SYS 2',
+          'SYS-T 1',
+          'SYS-T 2',
         ]);
         expect(evmAccounts.map(({ label }) => label)).toEqual([
           'Account 1',
           'Account 2',
         ]);
         expect(
-          vaults['state-vault-57']?.accountAssets.HDAccount['0'].syscoin
+          vaults['state-vault-1']?.accountAssets.HDAccount['0'].syscoin
         ).toEqual([
-          expect.objectContaining({ assetGuid: '123456789', chainId: 57 }),
+          expect.objectContaining({ assetGuid: '123456789', chainId: 5700 }),
         ]);
         expect(
           vaults['state-vault-60']?.accountAssets.HDAccount['1'].ethereum
         ).toEqual([
           expect.objectContaining({
             contractAddress: '0x00000000000000000000000000000000000000a1',
-            chainId: 570,
+            chainId: 57057,
           }),
         ]);
       }
