@@ -56,9 +56,10 @@ describe('network switch vault rollback', () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
     jest.spyOn(vaultCache, 'getSlip44Vault').mockRejectedValueOnce(loadError);
 
-    const loaded = await loadAndActivateSlip44Vault(requestedSlip44);
+    await expect(loadAndActivateSlip44Vault(requestedSlip44)).rejects.toBe(
+      loadError
+    );
 
-    expect(loaded).toBe(false);
     expect(store.getState().vault.activeNetwork.slip44).toBe(loadedVaultSlip44);
     expect(store.getState().vaultGlobal.activeSlip44).toBe(loadedVaultSlip44);
     errorSpy.mockRestore();

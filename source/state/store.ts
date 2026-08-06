@@ -271,7 +271,7 @@ export async function loadAndActivateSlip44Vault(
       store.dispatch(setActiveSlip44(Number(loadedVaultSlip44)));
     }
     console.error(`[Store] Failed to load slip44 vault ${slip44}:`, error);
-    return false;
+    throw error;
   }
 }
 
