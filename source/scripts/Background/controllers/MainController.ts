@@ -5493,6 +5493,7 @@ class MainController {
                 type: activeAccount.type,
               })
             );
+            this.scheduleNativeBalanceCacheSave();
 
             // Clear loading state on success only if we set it
             clearBalanceLoadingIfOwned();
