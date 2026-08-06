@@ -134,6 +134,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     ) {
       const balanceStr = String(existingBalance);
       setBalance(balanceStr);
+      // A targeted Redux update may deliver this value before an in-flight
+      // controller request resolves. This branch owns the newest request id,
+      // so it must also finish the loading state for the superseded request.
+      setIsLoading(false);
+      setError(null);
       if (onBalanceLoad) {
         onBalanceLoad(balanceStr);
       }
