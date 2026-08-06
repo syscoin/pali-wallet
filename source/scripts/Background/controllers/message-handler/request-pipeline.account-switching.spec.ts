@@ -22,7 +22,6 @@ jest.mock('./method-handlers', () => ({
 import { getController } from 'scripts/Background';
 import { KeyringAccountType } from 'types/network';
 
-import { clearProviderCache } from './method-handlers';
 import {
   accountSwitchingMiddleware,
   requestCoordinator,
@@ -105,7 +104,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
       accountB.id,
       KeyringAccountType.Imported
     );
-    expect(clearProviderCache).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -134,7 +132,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
       accountB.id,
       KeyringAccountType.Imported
     );
-    expect(clearProviderCache).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -164,7 +161,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
       accountB.id,
       KeyringAccountType.Imported
     );
-    expect(clearProviderCache).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
     expect(changeAccount.mock.invocationCallOrder[0]).toBeLessThan(
       next.mock.invocationCallOrder[0]
@@ -197,7 +193,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
 
     expect(popupSpy).toHaveBeenCalledTimes(1);
     expect(changeAccount).not.toHaveBeenCalled();
-    expect(clearProviderCache).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -221,7 +216,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     ).rejects.toMatchObject({ code: 4100 });
 
     expect(changeAccount).not.toHaveBeenCalled();
-    expect(clearProviderCache).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -245,7 +239,6 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     ).rejects.toMatchObject({ code: 4100 });
 
     expect(changeAccount).not.toHaveBeenCalled();
-    expect(clearProviderCache).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 });

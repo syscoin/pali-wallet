@@ -9,6 +9,7 @@ import { IDAppController } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
+import { clearProviderCache } from './message-handler/provider-cache';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 interface IDappsSession {
@@ -250,6 +251,10 @@ const DAppController = (): IDAppController => {
     }
 
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
+    // The connection is already changed in Redux at this point. Invalidate
+    // eth_accounts/provider-state responses before persistence or event
+    // delivery can overlap another request from this host.
+    clearProviderCache();
     await persistDappState('dapp account change');
     _dapps[host].activeAddress = isBitcoinBased
       ? account.xpub
