@@ -36,6 +36,13 @@ export const shouldShowSpamWarning = (
     return false;
   }
 
+  // A warning popup is already handling this burst. The request coordinator
+  // will queue the underlying request, so opening another warning only
+  // interrupts the user twice for the same activity.
+  if (dappState.warningShown) {
+    return false;
+  }
+
   // Don't show warning if already blocked
   if (isDappBlocked(state, host)) {
     return false;

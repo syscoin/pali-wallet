@@ -33,11 +33,12 @@ export interface ISpamFilterState {
 }
 
 export interface ISpamFilterConfig {
-  // Time window to count requests (default: 10000ms = 10s)
+  // How long to block after the user chooses to block (default: 60000ms = 1min)
   blockDurationMs: number;
-  // How long to block (default: 60000ms = 1min)
+  // Feature flag to enable/disable spam filter
   enabled: boolean;
+  // Number of unresolved requests before warning (default: 3)
   requestThreshold: number;
-  // Number of requests before warning (default: 3)
-  timeWindowMs: number; // Feature flag to enable/disable spam filter
+  // Time window to count requests (default: 10000ms = 10s)
+  timeWindowMs: number;
 }
