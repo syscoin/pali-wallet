@@ -186,6 +186,11 @@ export async function loadAndActivateSlip44Vault(
   targetNetwork?: INetwork,
   deferActiveSlip44Update = false
 ): Promise<boolean> {
+  // If a non-deferred storage/migration step fails, this is still the vault
+  // Redux actually contains. Re-align the global pointer to it in the catch so
+  // mismatch suppression cannot strand background state delivery.
+  const loadedVaultSlip44 = store.getState().vault.activeNetwork.slip44;
+
   try {
     console.log(`[Store] Loading slip44 vault: ${slip44}`);
 
@@ -258,6 +263,13 @@ export async function loadAndActivateSlip44Vault(
       return false;
     }
   } catch (error) {
+    if (
+      !deferActiveSlip44Update &&
+      loadedVaultSlip44 !== null &&
+      loadedVaultSlip44 !== undefined
+    ) {
+      store.dispatch(setActiveSlip44(Number(loadedVaultSlip44)));
+    }
     console.error(`[Store] Failed to load slip44 vault ${slip44}:`, error);
     return false;
   }

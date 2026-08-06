@@ -1,5 +1,9 @@
-import store, { restoreSourceVaultAfterUncommittedSwitch } from 'state/store';
+import store, {
+  loadAndActivateSlip44Vault,
+  restoreSourceVaultAfterUncommittedSwitch,
+} from 'state/store';
 import { setNetworkChange } from 'state/vault';
+import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 
 describe('network switch vault rollback', () => {
@@ -43,5 +47,20 @@ describe('network switch vault rollback', () => {
     ).toBe(false);
     expect(store.getState().vault.activeNetwork).toBe(targetNetwork);
     expect(store.getState().vaultGlobal.activeSlip44).toBe(targetSlip44);
+  });
+
+  it('realigns active slip44 when a non-deferred vault load fails', async () => {
+    const loadedVaultSlip44 = store.getState().vault.activeNetwork.slip44;
+    const requestedSlip44 = loadedVaultSlip44 === 60 ? 57 : 60;
+    const loadError = new Error('vault storage unavailable');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+    jest.spyOn(vaultCache, 'getSlip44Vault').mockRejectedValueOnce(loadError);
+
+    const loaded = await loadAndActivateSlip44Vault(requestedSlip44);
+
+    expect(loaded).toBe(false);
+    expect(store.getState().vault.activeNetwork.slip44).toBe(loadedVaultSlip44);
+    expect(store.getState().vaultGlobal.activeSlip44).toBe(loadedVaultSlip44);
+    errorSpy.mockRestore();
   });
 });
