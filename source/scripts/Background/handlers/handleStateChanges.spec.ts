@@ -1,18 +1,34 @@
+import { setPrices } from 'state/price';
 import store from 'state/store';
+import { setNetworkChange } from 'state/vault';
+import {
+  setActiveSlip44,
+  startSwitchNetwork,
+  switchNetworkSuccess,
+} from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import {
+  handleObserveStateChanges,
   isHotPathOnlyChange,
   isNetworkSwitchInProgress,
   sendFastStatePatches,
 } from './handleStateChanges';
 
 describe('network state patches', () => {
+  let unsubscribeStateChanges: (() => void) | undefined;
+
   beforeEach(() => {
     (chrome.runtime.sendMessage as jest.Mock).mockClear();
   });
 
-  it('withholds an intermediate vault and publishes it on commit', () => {
+  afterEach(() => {
+    unsubscribeStateChanges?.();
+    unsubscribeStateChanges = undefined;
+    jest.useRealTimers();
+  });
+
+  it('withholds an intermediate vault and publishes it on terminal alignment', () => {
     const initialState = store.getState();
     const previousState = {
       ...initialState,
@@ -109,6 +125,33 @@ describe('network state patches', () => {
     expect(isNetworkSwitchInProgress(keyringCommittedState)).toBe(true);
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
 
+    const failedState = {
+      ...keyringCommittedState,
+      vaultGlobal: {
+        ...keyringCommittedState.vaultGlobal,
+        networkStatus: 'error' as const,
+      },
+    };
+    const failureSentPatch = sendFastStatePatches(
+      keyringCommittedState,
+      failedState
+    );
+    const failureMessages = (
+      chrome.runtime.sendMessage as jest.Mock
+    ).mock.calls.map(([message]) => message);
+    const failureNetworkMessage = failureMessages.find(
+      (message) => message.type === 'CONTROLLER_NETWORK_CHANGE'
+    );
+
+    expect(isNetworkSwitchInProgress(failedState)).toBe(false);
+    expect(failureNetworkMessage.data.activeSlip44).toBe(60);
+    expect(failureNetworkMessage.data.vault).toBe(targetVault);
+    expect(failureNetworkMessage.data.networkStatus).toBe('error');
+    expect(
+      isHotPathOnlyChange(keyringCommittedState, failedState, failureSentPatch)
+    ).toBe(true);
+
+    (chrome.runtime.sendMessage as jest.Mock).mockClear();
     const committedState = {
       ...keyringCommittedState,
       vaultGlobal: {
@@ -144,5 +187,68 @@ describe('network state patches', () => {
     expect(
       isHotPathOnlyChange(keyringCommittedState, committedState, sentPatch)
     ).toBe(true);
+  });
+
+  it('keeps a switch-only vault hydration on the patch fast path', () => {
+    jest.useFakeTimers();
+    unsubscribeStateChanges = handleObserveStateChanges();
+    const currentVault = store.getState().vault;
+    const targetSlip44 = currentVault.activeNetwork.slip44 === 60 ? 57 : 60;
+    const targetNetwork = {
+      ...currentVault.activeNetwork,
+      chainId: Number(currentVault.activeNetwork.chainId) + 1,
+      slip44: targetSlip44,
+      url: 'https://target-switch.example',
+    };
+
+    store.dispatch(startSwitchNetwork(targetNetwork));
+    store.dispatch(setNetworkChange({ activeNetwork: targetNetwork }));
+    store.dispatch(setActiveSlip44(targetSlip44));
+    store.dispatch(switchNetworkSuccess());
+    jest.runOnlyPendingTimers();
+
+    const messages = (chrome.runtime.sendMessage as jest.Mock).mock.calls.map(
+      ([message]) => message
+    );
+    expect(
+      messages.some((message) => message.type === 'CONTROLLER_NETWORK_CHANGE')
+    ).toBe(true);
+    expect(
+      messages.some((message) => message.type === 'CONTROLLER_STATE_CHANGE')
+    ).toBe(false);
+  });
+
+  it('delivers non-patchable updates deferred during a network switch', () => {
+    jest.useFakeTimers();
+    unsubscribeStateChanges = handleObserveStateChanges();
+    const targetNetwork = store.getState().vault.activeNetwork;
+
+    store.dispatch(startSwitchNetwork(targetNetwork));
+    store.dispatch(
+      setPrices({
+        asset: 'usd',
+        price: 123,
+      })
+    );
+
+    expect(
+      (chrome.runtime.sendMessage as jest.Mock).mock.calls.some(
+        ([message]) => message.type === 'CONTROLLER_STATE_CHANGE'
+      )
+    ).toBe(false);
+
+    store.dispatch(switchNetworkSuccess());
+    jest.runOnlyPendingTimers();
+
+    const fullStateMessage = (
+      chrome.runtime.sendMessage as jest.Mock
+    ).mock.calls.find(
+      ([message]) => message.type === 'CONTROLLER_STATE_CHANGE'
+    )?.[0];
+
+    expect(fullStateMessage.data.price.fiat).toEqual({
+      asset: 'usd',
+      price: 123,
+    });
   });
 });

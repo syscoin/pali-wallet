@@ -3,6 +3,7 @@ import store from 'state/store';
 let currentState = store.getState();
 let pendingState: typeof currentState | null = null;
 let stateBroadcastTimeout: ReturnType<typeof setTimeout> | null = null;
+let deferredFullStateBroadcast = false;
 
 const STATE_BROADCAST_DEBOUNCE_MS = 50;
 
@@ -150,13 +151,36 @@ export const isNetworkSwitchInProgress = (state: typeof currentState) => {
   );
 };
 
-const didCommitNetworkSwitch = (
+const didFinishAlignedNetworkSwitch = (
   previousState: typeof currentState,
   nextState: typeof currentState
 ) =>
   previousState.vaultGlobal.networkStatus === 'switching' &&
-  nextState.vaultGlobal.networkStatus === 'idle' &&
+  (nextState.vaultGlobal.networkStatus === 'idle' ||
+    nextState.vaultGlobal.networkStatus === 'error') &&
   !isNetworkSwitchInProgress(nextState);
+
+const hasUnpatchedNonVaultChange = (
+  previousState: typeof currentState,
+  nextState: typeof currentState
+) =>
+  // Dapp has its own full-slice patch. The target vault and active slip44 are
+  // published together on an aligned terminal transition, so only other root
+  // slices need deferring.
+  !shallowEqualExcept(previousState, nextState, [
+    'dapp',
+    'vault',
+    'vaultGlobal',
+  ]) ||
+  !shallowEqualExcept(previousState.vaultGlobal, nextState.vaultGlobal, [
+    'activeSlip44',
+    'isPollingUpdate',
+    'isSwitchingAccount',
+    'isPostNetworkSwitchLoading',
+    'networkQuality',
+    'networkStatus',
+    'networkTarget',
+  ]);
 
 export const sendFastStatePatches = (
   previousState: typeof currentState,
@@ -178,13 +202,13 @@ export const sendFastStatePatches = (
     previousNetwork.url !== nextNetwork.url ||
     previousNetwork.kind !== nextNetwork.kind ||
     previousNetwork.slip44 !== nextNetwork.slip44;
-  const networkSwitchCommitted = didCommitNetworkSwitch(
+  const networkSwitchFinished = didFinishAlignedNetworkSwitch(
     previousState,
     nextState
   );
   const canPublishVault = !isNetworkSwitchInProgress(nextState);
   const publishedVault =
-    canPublishVault && (networkChanged || networkSwitchCommitted);
+    canPublishVault && (networkChanged || networkSwitchFinished);
 
   if (publishedVault) {
     sendRuntimeMessage({
@@ -323,7 +347,7 @@ export const isHotPathOnlyChange = (
   const previousNetwork = previousState.vault.activeNetwork;
   const nextNetwork = nextState.vault.activeNetwork;
   const entireVaultWasPatched =
-    didCommitNetworkSwitch(previousState, nextState) ||
+    didFinishAlignedNetworkSwitch(previousState, nextState) ||
     previousNetwork.chainId !== nextNetwork.chainId ||
     previousNetwork.url !== nextNetwork.url ||
     previousNetwork.kind !== nextNetwork.kind ||
@@ -336,7 +360,7 @@ export const isHotPathOnlyChange = (
 };
 
 export function handleObserveStateChanges() {
-  store.subscribe(() => {
+  return store.subscribe(() => {
     const nextState = store.getState();
     // Use simple reference equality - Redux creates new state objects on changes
     // This is much more efficient than JSON.stringify comparison
@@ -348,10 +372,27 @@ export function handleObserveStateChanges() {
       // keyring and persistence pointer are not committed until the switch
       // succeeds, so never expose this state to the popup.
       if (isNetworkSwitchInProgress(nextState)) {
+        // A full-state update that was already queued, or a non-patchable
+        // update received during the switch, must be delivered once the vault
+        // is safe to publish. Keep only this flag: pendingState itself may
+        // contain an intermediate vault and must not escape to the popup.
+        deferredFullStateBroadcast ||= Boolean(
+          pendingState || hasUnpatchedNonVaultChange(previousState, nextState)
+        );
         pendingState = null;
         return;
       }
-      if (isHotPathOnlyChange(previousState, nextState, sentPatch)) {
+      if (deferredFullStateBroadcast) {
+        deferredFullStateBroadcast = false;
+        scheduleStateBroadcast(nextState);
+        return;
+      }
+      const isHotPathOnly = isHotPathOnlyChange(
+        previousState,
+        nextState,
+        sentPatch
+      );
+      if (isHotPathOnly) {
         if (pendingState) {
           pendingState = nextState;
         }
