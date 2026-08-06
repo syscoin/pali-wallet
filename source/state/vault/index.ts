@@ -83,27 +83,28 @@ const initialState: IVaultState = {
   },
 };
 
-const ensureAccountTypeBuckets = (state: IVaultState) => {
-  Object.values(KeyringAccountType).forEach((accountType) => {
-    if (!state.accounts[accountType]) state.accounts[accountType] = {};
-    if (!state.accountAssets[accountType])
-      state.accountAssets[accountType] = {};
-    if (!state.accountTransactions[accountType])
-      state.accountTransactions[accountType] = {};
+const prepareRehydratedVault = (state: IVaultState): IVaultState => {
+  const accounts = { ...state.accounts };
+  const accountAssets = { ...state.accountAssets };
+  const accountTransactions = { ...state.accountTransactions };
 
-    // Migrate older saved accounts in place. Each persisted vault belongs to
-    // exactly one slip44, so its accounts inherit that durable provenance.
-    Object.values(state.accounts[accountType]).forEach((account) => {
-      if (
+  Object.values(KeyringAccountType).forEach((accountType) => {
+    const persistedAccounts = state.accounts[accountType] || {};
+    accounts[accountType] = Object.fromEntries(
+      Object.entries(persistedAccounts).map(([id, account]) => [
+        id,
         account.slip44 === undefined &&
         state.activeNetwork?.slip44 !== undefined
-      ) {
-        account.slip44 = state.activeNetwork.slip44;
-      }
-    });
+          ? { ...account, slip44: state.activeNetwork.slip44 }
+          : account,
+      ])
+    );
+    accountAssets[accountType] = state.accountAssets[accountType] || {};
+    accountTransactions[accountType] =
+      state.accountTransactions[accountType] || {};
   });
 
-  return state;
+  return { ...state, accountAssets, accounts, accountTransactions };
 };
 
 const restoreNativeBalancesForNetwork = (
@@ -111,15 +112,27 @@ const restoreNativeBalancesForNetwork = (
   network: INetwork,
   now = Date.now()
 ) => {
+  const restoredAccounts = { ...state.accounts };
+
   Object.values(KeyringAccountType).forEach((accountType) => {
-    Object.values(state.accounts[accountType] || {}).forEach((account) => {
-      const cachedBalance = getFreshNativeBalance(account, network, now);
-      account.balances = {
-        ...account.balances,
-        [network.kind]: cachedBalance?.balance ?? -1,
-      } as IKeyringBalances;
-    });
+    restoredAccounts[accountType] = Object.fromEntries(
+      Object.entries(state.accounts[accountType] || {}).map(([id, account]) => {
+        const cachedBalance = getFreshNativeBalance(account, network, now);
+        return [
+          id,
+          {
+            ...account,
+            balances: {
+              ...account.balances,
+              [network.kind]: cachedBalance?.balance ?? -1,
+            } as IKeyringBalances,
+          },
+        ];
+      })
+    );
   });
+
+  state.accounts = restoredAccounts;
 };
 
 const VaultState = createSlice({
@@ -129,7 +142,9 @@ const VaultState = createSlice({
     rehydrate(_state: IVaultState, action: PayloadAction<IVaultState>) {
       // Complete replacement - ensures loaded vault state is exactly what was saved
       // This matches the behavior of initializeCleanVaultForSlip44 for consistency
-      const rehydratedState = ensureAccountTypeBuckets(action.payload);
+      // Cached vault snapshots can be frozen Redux objects. Never mutate the
+      // action payload while normalizing persisted state.
+      const rehydratedState = prepareRehydratedVault(action.payload);
       restoreNativeBalancesForNetwork(
         rehydratedState,
         rehydratedState.activeNetwork

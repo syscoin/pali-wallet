@@ -886,8 +886,10 @@ class MainController {
             `[MainController] Failed to load vault for slip44 ${slip44}:`,
             vaultLoadError
           );
-          // Continue anyway - we'll create a new vault
-          hasExistingVaultState = false;
+          // A failed target hydration is not the same as a missing target
+          // vault. Continuing would create target accounts in the still-active
+          // source vault and permanently mix slip44 account/asset state.
+          throw vaultLoadError;
         }
 
         // Update vault state with correct network info

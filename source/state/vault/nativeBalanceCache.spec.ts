@@ -6,6 +6,7 @@ import {
 } from 'utils/nativeBalanceCache';
 
 import vaultReducer, {
+  rehydrate,
   setAccountBalanceForNetwork,
   setNetworkChange,
 } from './index';
@@ -25,6 +26,23 @@ const getHdAccount = (state: ReturnType<typeof vaultReducer>) =>
 describe('network native balance cache', () => {
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('rehydrates a frozen cached vault without mutating it', () => {
+    const network = evmNetwork(57_057);
+    let state = vaultReducer(undefined, { type: 'test/init' });
+    state = vaultReducer(state, setNetworkChange({ activeNetwork: network }));
+    const frozenAccount = getHdAccount(state);
+    const originalBalances = frozenAccount.balances;
+
+    expect(Object.isFrozen(state)).toBe(true);
+    expect(Object.isFrozen(frozenAccount)).toBe(true);
+
+    const rehydrated = vaultReducer(undefined, rehydrate(state));
+
+    expect(rehydrated.activeNetwork).toBe(network);
+    expect(getHdAccount(rehydrated)).not.toBe(frozenAccount);
+    expect(frozenAccount.balances).toBe(originalBalances);
   });
 
   it('restores a fresh balance when returning to a previously visited network', () => {
