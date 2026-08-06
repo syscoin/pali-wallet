@@ -90,6 +90,17 @@ const ensureAccountTypeBuckets = (state: IVaultState) => {
       state.accountAssets[accountType] = {};
     if (!state.accountTransactions[accountType])
       state.accountTransactions[accountType] = {};
+
+    // Migrate older saved accounts in place. Each persisted vault belongs to
+    // exactly one slip44, so its accounts inherit that durable provenance.
+    Object.values(state.accounts[accountType]).forEach((account) => {
+      if (
+        account.slip44 === undefined &&
+        state.activeNetwork?.slip44 !== undefined
+      ) {
+        account.slip44 = state.activeNetwork.slip44;
+      }
+    });
   });
 
   return state;
@@ -248,6 +259,7 @@ const VaultState = createSlice({
       // Override the initial balances to -1 (indicating "no data")
       const accountWithInitialBalances = {
         ...account,
+        slip44: state.activeNetwork.slip44,
         balances: {
           [INetworkType.Syscoin]: -1,
           [INetworkType.Ethereum]: -1,

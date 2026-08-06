@@ -7,7 +7,7 @@ import {
 import { isHexString } from 'utils/ethersV6Compat';
 
 type AccountForCompatibility = Pick<IKeyringAccountState, 'address'> &
-  Partial<Pick<IKeyringAccountState, 'smartAccount'>>;
+  Partial<Pick<IKeyringAccountState, 'slip44' | 'smartAccount'>>;
 
 /**
  * Account buckets can briefly be delivered separately from the active network
@@ -32,7 +32,16 @@ export const isAccountCompatibleWithNetwork = (
     return false;
   }
 
-  return network.kind === INetworkType.Syscoin
-    ? !isHexString(account.address)
-    : isHexString(account.address);
+  if (network.kind === INetworkType.Syscoin) {
+    if (isHexString(account.address)) return false;
+
+    // UTXO accounts are not interchangeable: a Bitcoin account (slip44 0)
+    // must not appear on Syscoin (slip44 57), for example. Address-family-only
+    // filtering cannot distinguish those networks.
+    return account.slip44 === undefined
+      ? true
+      : Number(account.slip44) === Number(network.slip44);
+  }
+
+  return isHexString(account.address);
 };

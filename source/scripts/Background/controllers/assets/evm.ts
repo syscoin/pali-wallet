@@ -568,7 +568,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
       // Combine updated assets with other network assets
       const allAssets = [...updatedAssets, ...otherNetworkAssets];
 
-      return validateAndManageUserAssets(true, allAssets) as ITokenEthProps[];
+      return validateAndManageUserAssets(
+        true,
+        allAssets,
+        accountAssets
+      ) as ITokenEthProps[];
     }
 
     // No API available or API failed - use multicall3 for batch balance fetching
@@ -739,7 +743,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     return validateAndManageUserAssets(
       true,
-      allUpdatedAssets
+      allUpdatedAssets,
+      accountAssets
     ) as ITokenEthProps[];
   };
 

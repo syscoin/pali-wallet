@@ -36,12 +36,20 @@ const AssetsManager = (): IAssetsManager => {
         const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
           currentAccount.xpub,
           activeNetworkUrl,
-          networkChainId
+          networkChainId,
+          currentAssets.syscoin.filter(
+            (asset) => asset.chainId === networkChainId
+          )
         );
 
         return {
           ...currentAssets,
-          syscoin: getSysAssets,
+          syscoin: [
+            ...getSysAssets,
+            ...currentAssets.syscoin.filter(
+              (asset) => asset.chainId !== networkChainId
+            ),
+          ],
         };
 
       case false:

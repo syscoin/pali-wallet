@@ -45,7 +45,8 @@ export interface ISysAssetsController {
   getSysAssetsByXpub: (
     xpub: string,
     networkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    existingAssets?: ITokenSysProps[]
   ) => Promise<ISysTokensAssetReponse[]>;
   getUserOwnedTokens: (xpub: string) => Promise<ISysTokensAssetReponse[]>;
   validateSPTOnly: (

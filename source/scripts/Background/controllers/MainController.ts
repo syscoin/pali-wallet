@@ -22,6 +22,7 @@ import {
   isValidSYSAddress,
 } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
+import isEqual from 'lodash/isEqual';
 import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
@@ -158,7 +159,7 @@ import SysAccountController, { ISysAccountController } from './account/syscoin';
 import AssetsManager from './assets';
 import EvmAssetsController from './assets/evm';
 import { IAssetsManager } from './assets/types';
-import { ensureTrailingSlash } from './assets/utils';
+import { canCommitAssetUpdate, ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
@@ -198,6 +199,7 @@ class MainController {
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private balanceLoadingRequestId = 0;
+  private assetUpdateRequestId = 0;
   private isNetworkSwitchMainStateDirty = false;
   private smartAccount: SmartAccountController;
   private cancellablePromises: CancellablePromises;
@@ -297,6 +299,9 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
+    // Prevent an unabortable RPC from an earlier visit to this same network
+    // (A -> B -> A) from committing against the new vault snapshot.
+    this.assetUpdateRequestId += 1;
     this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
@@ -3032,6 +3037,9 @@ class MainController {
         if (this.cancellablePromises.assetsPromise) {
           this.cancellablePromises.assetsPromise.cancel();
         }
+        // Cancellation rejects the wrapper but cannot abort an RPC already in
+        // flight. Invalidate its eventual writeback explicitly.
+        this.assetUpdateRequestId += 1;
         this.cancelActiveBalanceUpdate();
         if (this.cancellablePromises.nftsPromise) {
           this.cancellablePromises.nftsPromise.cancel();
@@ -3243,6 +3251,9 @@ class MainController {
     if (this.cancellablePromises.assetsPromise) {
       this.cancellablePromises.assetsPromise.cancel();
     }
+    // Prevent an unabortable RPC from an earlier visit to this same network
+    // (A -> B -> A) from committing against the new vault snapshot.
+    this.assetUpdateRequestId += 1;
     this.cancelActiveBalanceUpdate();
     if (this.cancellablePromises.nftsPromise) {
       this.cancellablePromises.nftsPromise.cancel();
@@ -5246,10 +5257,13 @@ class MainController {
       }
     }
 
+    const requestId = ++this.assetUpdateRequestId;
     const { accounts, accountAssets } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-    const currentAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
+    const currentAssets = accountAssets[activeAccount.type]?.[
+      activeAccount.id
+    ] || { ethereum: [], syscoin: [] };
 
     // Check if account exists before proceeding
     if (!currentAccount) {
@@ -5271,16 +5285,29 @@ class MainController {
                 activeNetwork.url,
                 activeNetwork.chainId,
                 web3Provider,
-                currentAssets || { ethereum: [], syscoin: [] }
+                currentAssets
               );
-            const latestNetwork = store.getState().vault.activeNetwork;
+            const latestVault = store.getState().vault;
+            const latestAccount =
+              latestVault.accounts[activeAccount.type]?.[activeAccount.id];
+            const latestAssets =
+              latestVault.accountAssets[activeAccount.type]?.[activeAccount.id];
             if (
-              latestNetwork.chainId !== activeNetwork.chainId ||
-              latestNetwork.kind !== activeNetwork.kind ||
-              latestNetwork.url !== activeNetwork.url
+              !canCommitAssetUpdate({
+                account: currentAccount,
+                activeAccount,
+                assets: currentAssets,
+                latestAccount,
+                latestActiveAccount: latestVault.activeAccount,
+                latestAssets,
+                latestNetwork: latestVault.activeNetwork,
+                latestRequestId: this.assetUpdateRequestId,
+                network: activeNetwork,
+                requestId,
+              })
             ) {
               console.log(
-                '[MainController] Skipping stale asset update after network change'
+                '[MainController] Skipping stale asset update after account, network, or imported-asset change'
               );
               resolve();
               return;
@@ -5311,6 +5338,11 @@ class MainController {
 
             if (validateIfIsInvalidDispatch) {
               // Skip dispatch but still resolve - empty data might be valid
+              resolve();
+              return;
+            }
+
+            if (isEqual(updatedAssets, currentAssets)) {
               resolve();
               return;
             }
