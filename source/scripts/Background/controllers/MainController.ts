@@ -5295,10 +5295,8 @@ class MainController {
             if (
               !canCommitAssetUpdate({
                 account: currentAccount,
-                activeAccount,
                 assets: currentAssets,
                 latestAccount,
-                latestActiveAccount: latestVault.activeAccount,
                 latestAssets,
                 latestNetwork: latestVault.activeNetwork,
                 latestRequestId: this.assetUpdateRequestId,

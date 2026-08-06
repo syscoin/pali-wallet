@@ -7,21 +7,15 @@ import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
 import { IAccountAssets } from 'state/vault/types';
-import {
-  IKeyringAccountState,
-  INetwork,
-  KeyringAccountType,
-} from 'types/network';
+import { IKeyringAccountState, INetwork } from 'types/network';
 import { ITokenEthProps } from 'types/tokens';
 
 import { ISysTokensAssetReponse } from './types';
 
 export const canCommitAssetUpdate = ({
   account,
-  activeAccount,
   assets,
   latestAccount,
-  latestActiveAccount,
   latestAssets,
   latestNetwork,
   latestRequestId,
@@ -29,10 +23,8 @@ export const canCommitAssetUpdate = ({
   requestId,
 }: {
   account: IKeyringAccountState;
-  activeAccount: { id: number; type: KeyringAccountType };
   assets: IAccountAssets;
   latestAccount?: IKeyringAccountState;
-  latestActiveAccount: { id: number; type: KeyringAccountType };
   latestAssets?: IAccountAssets;
   latestNetwork: INetwork;
   latestRequestId: number;
@@ -44,8 +36,6 @@ export const canCommitAssetUpdate = ({
   latestNetwork.kind === network.kind &&
   latestNetwork.url === network.url &&
   latestNetwork.slip44 === network.slip44 &&
-  latestActiveAccount.id === activeAccount.id &&
-  latestActiveAccount.type === activeAccount.type &&
   latestAccount?.address === account.address &&
   latestAccount?.xpub === account.xpub &&
   // Redux/Immer preserves this nested reference until that account's asset

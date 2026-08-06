@@ -1,5 +1,5 @@
 import { IAccountAssets } from 'state/vault/types';
-import { INetworkType, KeyringAccountType } from 'types/network';
+import { INetworkType } from 'types/network';
 
 import { canCommitAssetUpdate } from './utils';
 
@@ -9,7 +9,6 @@ const network = {
   slip44: 57,
   url: 'https://blockbook.syscoin.org/',
 } as any;
-const activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
 const account = {
   address: 'sys1qaccount',
   xpub: 'zpub-account',
@@ -22,10 +21,8 @@ const assets: IAccountAssets = {
 const canCommit = (overrides: Record<string, any> = {}) =>
   canCommitAssetUpdate({
     account,
-    activeAccount,
     assets,
     latestAccount: account,
-    latestActiveAccount: activeAccount,
     latestAssets: assets,
     latestNetwork: network,
     latestRequestId: 4,
@@ -37,6 +34,16 @@ const canCommit = (overrides: Record<string, any> = {}) =>
 describe('asset update commit guard', () => {
   it('allows a refresh when its account, network, and base assets are unchanged', () => {
     expect(canCommit()).toBe(true);
+  });
+
+  it('allows an explicit non-active target refresh when the target is unchanged', () => {
+    expect(
+      canCommit({
+        // The requested target is resolved directly from its account bucket;
+        // committing must not depend on which account the UI currently shows.
+        latestAccount: { ...account },
+      })
+    ).toBe(true);
   });
 
   it('rejects a stale SPT refresh after an imported asset is appended', () => {
