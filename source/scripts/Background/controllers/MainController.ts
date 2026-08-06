@@ -96,6 +96,7 @@ import {
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
   fiatPriceMutex,
   networkSwitchMutex,
@@ -108,7 +109,6 @@ import {
 import { formatUnits } from 'utils/ethersV6Compat';
 import { namehash } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { isHexString } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
@@ -3013,23 +3013,13 @@ class MainController {
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
       try {
-        const { accounts, activeNetwork, isBitcoinBased } =
-          store.getState().vault;
-        if (String(type) === KeyringAccountType.SmartAccount) {
-          const account = accounts[type]?.[id] as any;
-          if (isBitcoinBased) {
-            throw new Error(
-              'Smart accounts are only available on EVM networks'
-            );
-          }
-          if (
-            Number(account?.smartAccount?.chainId) !==
-            Number(activeNetwork.chainId)
-          ) {
-            throw new Error(
-              'Smart account is not available on the active network'
-            );
-          }
+        const { accounts, activeNetwork } = store.getState().vault;
+        const account = accounts[type]?.[id];
+        if (!account) {
+          throw new Error('Account not found');
+        }
+        if (!isAccountCompatibleWithNetwork(account, type, activeNetwork)) {
+          throw new Error('Account is not available on the active network');
         }
 
         // Account context changed; rapid polling should not continue against the old active account.
@@ -3139,21 +3129,7 @@ class MainController {
     type: KeyringAccountType,
     network: INetwork
   ): boolean {
-    if (!account) return false;
-
-    if (String(type) === KeyringAccountType.SmartAccount) {
-      return (
-        network.kind === INetworkType.Ethereum &&
-        Number(account?.smartAccount?.chainId) === Number(network.chainId)
-      );
-    }
-
-    const address = account.address;
-    if (typeof address !== 'string') return false;
-
-    return network.kind === INetworkType.Syscoin
-      ? !isHexString(address)
-      : isHexString(address);
+    return isAccountCompatibleWithNetwork(account, type, network);
   }
 
   private getFirstCompatibleAccountForNetwork(network: INetwork) {
@@ -6961,8 +6937,10 @@ class MainController {
       result = await this.account.sys.saveTokenInfo(token);
     }
 
-    // Save wallet state after adding token
-    this.saveWalletState('add-token', true);
+    // Token import is user-authored durable state. Do not report success until
+    // it has crossed the persistence boundary; a network switch can otherwise
+    // replace the active slip44 vault before the debounced save runs.
+    await this.saveWalletState('add-token', true, true);
 
     return result;
   }

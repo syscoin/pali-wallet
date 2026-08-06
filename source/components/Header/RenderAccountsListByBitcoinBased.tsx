@@ -17,6 +17,7 @@ import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { selectActiveAccountRef } from 'state/vault';
 import { KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {
@@ -125,9 +126,6 @@ const RenderAccountsListByBitcoinBased =
     const accounts = useSelector((state: RootState) => state.vault.accounts);
     const activeNetwork = useSelector(
       (state: RootState) => state.vault.activeNetwork
-    );
-    const isBitcoinBased = useSelector(
-      (state: RootState) => state.vault.isBitcoinBased
     );
     const activeAccount = useSelector(selectActiveAccountRef);
     // When the accounts list is scrollable, a first click can be swallowed by inertial scrolling
@@ -289,24 +287,20 @@ const RenderAccountsListByBitcoinBased =
       () =>
         Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
           Object.values(accountsOfType || {})
-            .filter((account: any) => {
-              if (accountType !== KeyringAccountType.SmartAccount) {
-                return true;
-              }
-
-              return (
-                !isBitcoinBased &&
-                Number(account?.smartAccount?.chainId) ===
-                  Number(activeNetwork.chainId)
-              );
-            })
+            .filter((account: any) =>
+              isAccountCompatibleWithNetwork(
+                account,
+                accountType,
+                activeNetwork
+              )
+            )
             .map((account, index) => ({
               account,
               accountType: accountType as KeyringAccountType,
               index,
             }))
         ),
-      [accounts, activeNetwork.chainId, isBitcoinBased]
+      [accounts, activeNetwork.chainId, activeNetwork.kind]
     );
 
     const isAnySwitching = switchingAccount !== null;
