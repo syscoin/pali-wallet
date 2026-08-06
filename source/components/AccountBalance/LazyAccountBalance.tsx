@@ -7,6 +7,7 @@ import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { formatNumber } from 'utils/index';
+import { getFreshNativeBalance } from 'utils/nativeBalanceCache';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
@@ -40,9 +41,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   onBalanceLoad,
 }) => {
   const { controllerEmitter } = useController();
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const { getFiatAmount } = usePrice();
 
   const [balance, setBalance] = useState<string | null>(null);
@@ -121,10 +120,12 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     if (!mountedRef.current) return;
     const requestId = ++loadRequestIdRef.current;
 
-    // Check if balance is already available in the account object
-    const existingBalance = isBitcoinBased
-      ? account.balances?.syscoin
-      : account.balances?.ethereum;
+    // The legacy balances field has no timestamp, so only short-circuit with
+    // the matching network cache entry while it is still fresh.
+    const existingBalance = getFreshNativeBalance(
+      account,
+      activeNetwork
+    )?.balance;
 
     // If balance exists and is not -1 (which means "no data"), use it directly
     if (
@@ -152,6 +153,12 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       return;
     }
 
+    // Do not keep rendering a stale value while this request is rate-limited
+    // or in flight.
+    setBalance(null);
+    setIsLoading(true);
+    setError(null);
+
     // Check rate limiting
     if (!canMakeRequest()) {
       // Schedule a retry after the rate limit window
@@ -165,9 +172,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
       return;
     }
-
-    setIsLoading(true);
-    setError(null);
 
     try {
       const balanceValue = await fetchBalance();
@@ -188,8 +192,8 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       setBalance('0'); // Default to 0 on error
     }
   }, [
-    account.balances,
-    isBitcoinBased,
+    account,
+    activeNetwork,
     fetchOnMissingBalance,
     getCacheKey,
     canMakeRequest,
@@ -227,18 +231,15 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   const fiatValue =
     showFiat && nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
 
-  // Show skeleton if loading OR if we don't have a balance yet (and existing balance is -1)
-  const shouldShowSkeleton =
-    fetchOnMissingBalance &&
-    showSkeleton &&
-    (isLoading ||
-      (balance === null &&
-        (account.balances?.ethereum === -1 ||
-          account.balances?.syscoin === -1)));
+  const hasFreshBalance = Boolean(
+    getFreshNativeBalance(account, activeNetwork)
+  );
 
-  const hasMissingBalance =
-    balance === null &&
-    (account.balances?.ethereum === -1 || account.balances?.syscoin === -1);
+  const hasMissingBalance = balance === null && !hasFreshBalance;
+
+  // Show a skeleton while a missing or expired value is being fetched.
+  const shouldShowSkeleton =
+    fetchOnMissingBalance && showSkeleton && (isLoading || hasMissingBalance);
 
   if (shouldShowSkeleton) {
     return (
