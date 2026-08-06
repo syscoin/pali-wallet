@@ -245,7 +245,6 @@ export const ChangeConnectedAccount = () => {
                     <LazyAccountBalance
                       account={connectedAccount}
                       accountType={accountType}
-                      fetchOnMissingBalance={false}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}
@@ -307,7 +306,6 @@ export const ChangeConnectedAccount = () => {
                     <LazyAccountBalance
                       account={activeAccount}
                       accountType={activeAccountRef.type}
-                      fetchOnMissingBalance={false}
                       showFiat={true}
                       showSkeleton={true}
                       precision={8}

@@ -7,6 +7,10 @@ import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { formatNumber } from 'utils/index';
+import {
+  getFreshNativeBalance,
+  NATIVE_BALANCE_CACHE_TTL_MS,
+} from 'utils/nativeBalanceCache';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
@@ -40,22 +44,29 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   onBalanceLoad,
 }) => {
   const { controllerEmitter } = useController();
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const { getFiatAmount } = usePrice();
 
   const [balance, setBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const loadRequestIdRef = useRef(0);
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const freshBalanceEntry = getFreshNativeBalance(account, activeNetwork);
+  const freshBalanceUpdatedAt = freshBalanceEntry?.updatedAt;
 
   // Generate unique key for request deduplication
   const getCacheKey = useCallback(() => {
-    const networkKey = isBitcoinBased ? 'sys' : `evm-${activeNetwork.chainId}`;
-    return `${accountType}-${account.id}-${networkKey}`;
-  }, [account.id, accountType, isBitcoinBased, activeNetwork.chainId]);
+    const networkKey = `${activeNetwork.kind}-${activeNetwork.chainId}`;
+    return `${accountType}-${account.id}-${account.address}-${networkKey}`;
+  }, [
+    account.address,
+    account.id,
+    accountType,
+    activeNetwork.chainId,
+    activeNetwork.kind,
+  ]);
 
   // Check if we can make a request based on rate limiting
   const canMakeRequest = useCallback(() => {
@@ -70,9 +81,6 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     return validTimestamps.length < MAX_REQUESTS_PER_WINDOW;
   }, []);
 
-  // Abort controller for cancelling requests
-  const abortControllerRef = useRef<AbortController | null>(null);
-
   // Fetch balance from backend
   const fetchBalance = useCallback(async (): Promise<string> => {
     const cacheKey = getCacheKey();
@@ -84,52 +92,45 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
 
     // Create the fetch promise
     const fetchPromise = (async () => {
-      try {
-        // Add timestamp for rate limiting
-        requestTimestamps.push(Date.now());
+      // Add timestamp for rate limiting
+      requestTimestamps.push(Date.now());
 
-        // Add randomized delay to prevent thundering herd when multiple accounts fetch simultaneously
-        const randomDelay =
-          Math.floor(Math.random() * (MAX_BATCH_DELAY - MIN_BATCH_DELAY)) +
-          MIN_BATCH_DELAY;
-        await new Promise((resolve) => setTimeout(resolve, randomDelay));
+      // Add randomized delay to prevent thundering herd when multiple accounts fetch simultaneously
+      const randomDelay =
+        Math.floor(Math.random() * (MAX_BATCH_DELAY - MIN_BATCH_DELAY)) +
+        MIN_BATCH_DELAY;
+      await new Promise((resolve) => setTimeout(resolve, randomDelay));
 
-        // Call the background controller to fetch balance
-        try {
-          const result = await controllerEmitter(
-            ['wallet', 'getBalanceForAccount'],
-            [account, isBitcoinBased, activeNetwork.url]
-          );
-          const balanceValue = result as string;
-
-          // Clear pending request
-          pendingRequests.delete(cacheKey);
-
-          return balanceValue;
-        } catch (fetchError) {
-          throw fetchError;
-        }
-      } catch (err) {
-        // Clear pending request on error
+      // Call the background controller to fetch balance
+      return (await controllerEmitter(
+        ['wallet', 'getBalanceForAccount'],
+        [account, accountType, activeNetwork]
+      )) as string;
+    })().finally(() => {
+      // Keep the request shared across fast popup remounts until it settles.
+      // The promise owns its registry entry, not any individual component.
+      if (pendingRequests.get(cacheKey) === fetchPromise) {
         pendingRequests.delete(cacheKey);
-        throw err;
       }
-    })();
+    });
 
     // Store the pending request
     pendingRequests.set(cacheKey, fetchPromise);
 
     return fetchPromise;
-  }, [account, isBitcoinBased, activeNetwork, getCacheKey]);
+  }, [account, accountType, activeNetwork, getCacheKey]);
 
   // Load balance with rate limiting
   const loadBalance = useCallback(async () => {
     if (!mountedRef.current) return;
+    const requestId = ++loadRequestIdRef.current;
 
-    // Check if balance is already available in the account object
-    const existingBalance = isBitcoinBased
-      ? account.balances?.syscoin
-      : account.balances?.ethereum;
+    // The legacy balances field has no timestamp, so only short-circuit with
+    // the matching network cache entry while it is still fresh.
+    const existingBalance = getFreshNativeBalance(
+      account,
+      activeNetwork
+    )?.balance;
 
     // If balance exists and is not -1 (which means "no data"), use it directly
     if (
@@ -139,6 +140,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     ) {
       const balanceStr = String(existingBalance);
       setBalance(balanceStr);
+      // A targeted Redux update may deliver this value before an in-flight
+      // controller request resolves. This branch owns the newest request id,
+      // so it must also finish the loading state for the superseded request.
+      setIsLoading(false);
+      setError(null);
       if (onBalanceLoad) {
         onBalanceLoad(balanceStr);
       }
@@ -151,6 +157,12 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       setError(null);
       return;
     }
+
+    // Do not keep rendering a stale value while this request is rate-limited
+    // or in flight.
+    setBalance(null);
+    setIsLoading(true);
+    setError(null);
 
     // Check rate limiting
     if (!canMakeRequest()) {
@@ -166,13 +178,11 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
     try {
       const balanceValue = await fetchBalance();
 
-      // Always update state since components remount quickly on external screens
+      if (!mountedRef.current || requestId !== loadRequestIdRef.current) return;
+
       setBalance(balanceValue);
       setIsLoading(false);
 
@@ -180,13 +190,15 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
         onBalanceLoad(balanceValue);
       }
     } catch (err) {
+      if (!mountedRef.current || requestId !== loadRequestIdRef.current) return;
+
       setError('Failed to load balance');
       setIsLoading(false);
       setBalance('0'); // Default to 0 on error
     }
   }, [
-    account.balances,
-    isBitcoinBased,
+    account,
+    activeNetwork,
     fetchOnMissingBalance,
     getCacheKey,
     canMakeRequest,
@@ -194,16 +206,47 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     onBalanceLoad,
   ]);
 
-  // Load balance on mount or when dependencies change
+  // Track the actual component lifetime separately from balance refreshes.
   useEffect(() => {
-    loadBalance();
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
+      loadRequestIdRef.current += 1;
       if (fetchTimeoutRef.current) {
         clearTimeout(fetchTimeoutRef.current);
       }
     };
+  }, []);
+
+  // Load on mount and re-read live Redux balances when account data changes.
+  useEffect(() => {
+    void loadBalance();
   }, [loadBalance]);
+
+  // Refresh a mounted card when its current cache entry reaches the TTL.
+  // This is a single sleeping timeout, not polling, and unmounting the card
+  // cancels it before any request can be made.
+  useEffect(() => {
+    if (freshBalanceUpdatedAt === undefined) return undefined;
+
+    const expiresAt = freshBalanceUpdatedAt + NATIVE_BALANCE_CACHE_TTL_MS;
+    let expiryTimeout: ReturnType<typeof setTimeout>;
+
+    const refreshWhenExpired = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining > 0) {
+        expiryTimeout = setTimeout(refreshWhenExpired, remaining + 1);
+        return;
+      }
+
+      void loadBalance();
+    };
+
+    refreshWhenExpired();
+
+    return () => clearTimeout(expiryTimeout);
+  }, [freshBalanceUpdatedAt, loadBalance]);
 
   // Format balance for display
   const formattedBalance = balance
@@ -217,36 +260,13 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   const fiatValue =
     showFiat && nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
 
-  // Cleanup effect - cancel any pending requests on unmount
-  useEffect(
-    () => () => {
-      // Cancel any pending request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
+  const hasFreshBalance = Boolean(freshBalanceEntry);
 
-      // Clear from pending requests map
-      const cacheKey = getCacheKey();
-      if (pendingRequests.has(cacheKey)) {
-        pendingRequests.delete(cacheKey);
-      }
-    },
-    [getCacheKey]
-  );
+  const hasMissingBalance = balance === null && !hasFreshBalance;
 
-  // Show skeleton if loading OR if we don't have a balance yet (and existing balance is -1)
+  // Show a skeleton while a missing or expired value is being fetched.
   const shouldShowSkeleton =
-    fetchOnMissingBalance &&
-    showSkeleton &&
-    (isLoading ||
-      (balance === null &&
-        (account.balances?.ethereum === -1 ||
-          account.balances?.syscoin === -1)));
-
-  const hasMissingBalance =
-    balance === null &&
-    (account.balances?.ethereum === -1 || account.balances?.syscoin === -1);
+    fetchOnMissingBalance && showSkeleton && (isLoading || hasMissingBalance);
 
   if (shouldShowSkeleton) {
     return (

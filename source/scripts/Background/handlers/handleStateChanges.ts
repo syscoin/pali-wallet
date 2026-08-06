@@ -1,5 +1,4 @@
 import store from 'state/store';
-import { INetworkType } from 'types/network';
 
 let currentState = store.getState();
 let pendingState: typeof currentState | null = null;
@@ -85,23 +84,13 @@ const shallowEqualExcept = (
   return true;
 };
 
-const isOnlyActiveAccountBalanceChange = (
+const getOnlyAccountBalanceChange = (
   previousState: typeof currentState,
-  nextState: typeof currentState,
-  networkType: INetworkType
+  nextState: typeof currentState
 ) => {
-  const activeAccount = nextState.vault.activeAccount;
   const previousAccounts = previousState.vault.accounts;
   const nextAccounts = nextState.vault.accounts;
-  const previousTypeAccounts = previousAccounts[activeAccount.type] || {};
-  const nextTypeAccounts = nextAccounts[activeAccount.type] || {};
-  const activeAccountKey = String(activeAccount.id);
-  const previousAccount = previousTypeAccounts[activeAccount.id];
-  const nextAccount = nextTypeAccounts[activeAccount.id];
-
-  if (!previousAccount || !nextAccount) {
-    return false;
-  }
+  let balanceChange: any = null;
 
   const accountTypes = new Set([
     ...Object.keys(previousAccounts),
@@ -109,12 +98,8 @@ const isOnlyActiveAccountBalanceChange = (
   ]);
 
   for (const accountType of accountTypes) {
-    if (accountType !== activeAccount.type) {
-      if (previousAccounts[accountType] !== nextAccounts[accountType]) {
-        return false;
-      }
-      continue;
-    }
+    const previousTypeAccounts = previousAccounts[accountType] || {};
+    const nextTypeAccounts = nextAccounts[accountType] || {};
 
     const accountIds = new Set([
       ...Object.keys(previousTypeAccounts),
@@ -122,22 +107,33 @@ const isOnlyActiveAccountBalanceChange = (
     ]);
 
     for (const accountId of accountIds) {
-      if (accountId !== activeAccountKey) {
-        if (previousTypeAccounts[accountId] !== nextTypeAccounts[accountId]) {
-          return false;
-        }
+      const previousAccount = previousTypeAccounts[accountId];
+      const nextAccount = nextTypeAccounts[accountId];
+      if (previousAccount === nextAccount) {
+        continue;
       }
+      if (
+        !previousAccount ||
+        !nextAccount ||
+        !shallowEqualExcept(previousAccount, nextAccount, [
+          'balances',
+          'nativeBalanceCache',
+        ]) ||
+        balanceChange
+      ) {
+        return null;
+      }
+
+      balanceChange = {
+        balances: nextAccount.balances,
+        id: Number(accountId),
+        nativeBalanceCache: nextAccount.nativeBalanceCache,
+        type: accountType,
+      };
     }
   }
 
-  if (!shallowEqualExcept(previousAccount, nextAccount, ['balances'])) {
-    return false;
-  }
-
-  return (
-    previousAccount.balances?.[networkType] !==
-    nextAccount.balances?.[networkType]
-  );
+  return balanceChange;
 };
 
 const sendFastStatePatches = (
@@ -174,13 +170,14 @@ const sendFastStatePatches = (
 
   const previousActiveAccount = previousState.vault.activeAccount;
   const nextActiveAccount = nextState.vault.activeAccount;
-  const networkType = nextState.vault.isBitcoinBased
-    ? INetworkType.Syscoin
-    : INetworkType.Ethereum;
+  const accountBalanceChange =
+    previousState.vault.accounts !== nextState.vault.accounts
+      ? getOnlyAccountBalanceChange(previousState, nextState)
+      : null;
 
   if (
     previousState.vault.accounts !== nextState.vault.accounts &&
-    !isOnlyActiveAccountBalanceChange(previousState, nextState, networkType)
+    !accountBalanceChange
   ) {
     sendRuntimeMessage({
       type: 'CONTROLLER_ACCOUNTS_CHANGE',
@@ -229,24 +226,10 @@ const sendFastStatePatches = (
     sentPatch = true;
   }
 
-  const previousAccount =
-    previousState.vault.accounts[nextActiveAccount.type]?.[
-      nextActiveAccount.id
-    ];
-  const nextAccount =
-    nextState.vault.accounts[nextActiveAccount.type]?.[nextActiveAccount.id];
-
-  const previousBalance = previousAccount?.balances?.[networkType];
-  const nextBalance = nextAccount?.balances?.[networkType];
-
-  if (previousBalance !== nextBalance && nextAccount?.balances) {
+  if (accountBalanceChange) {
     sendRuntimeMessage({
       type: 'CONTROLLER_ACCOUNT_BALANCE_CHANGE',
-      data: {
-        id: nextActiveAccount.id,
-        type: nextActiveAccount.type,
-        balances: nextAccount.balances,
-      },
+      data: accountBalanceChange,
     });
     sentPatch = true;
   }

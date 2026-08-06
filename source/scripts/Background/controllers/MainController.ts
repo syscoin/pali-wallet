@@ -43,6 +43,7 @@ import {
   forgetWallet,
   removeAccount,
   setAccountLabel,
+  setAccountBalanceForNetwork,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setTransactionStatusToReplaced,
@@ -100,7 +101,6 @@ import {
   networkSwitchMutex,
   accountSwitchMutex,
 } from 'utils/asyncMutex';
-import { areBalancesDifferent } from 'utils/balance';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   PALI_NETWORKS_STATE,
@@ -116,6 +116,10 @@ import {
   needsEoaNonceHistoryVerification,
 } from 'utils/evmNonce';
 import { logError } from 'utils/logger';
+import {
+  getFreshNativeBalance,
+  isSameBalanceNetwork,
+} from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
@@ -176,6 +180,7 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import { NativeBalanceCacheSaveScheduler } from './utils/nativeBalanceCacheSaveScheduler';
 
 // Default slip44 values for fallback cases
 
@@ -213,6 +218,8 @@ class MainController {
 
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
+  private nativeBalanceCacheSaveScheduler =
+    new NativeBalanceCacheSaveScheduler();
 
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
@@ -1125,6 +1132,7 @@ class MainController {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
+    this.clearNativeBalanceCacheSaveTimeout();
 
     // Clear auto-lock reset timeout
     if (this.autoLockResetTimeout) {
@@ -1742,6 +1750,7 @@ class MainController {
       clearTimeout(this.saveTimeout);
       this.saveTimeout = null;
     }
+    this.clearNativeBalanceCacheSaveTimeout();
 
     console.log('[MainController] Auto-lock timer stopped');
   }
@@ -1826,6 +1835,21 @@ class MainController {
     }
   }
 
+  private clearNativeBalanceCacheSaveTimeout(): void {
+    this.nativeBalanceCacheSaveScheduler.cancel();
+  }
+
+  private scheduleNativeBalanceCacheSave(): void {
+    this.nativeBalanceCacheSaveScheduler.schedule(() => {
+      void this.performSave('native-balance-cache').catch((error) => {
+        console.error(
+          '[MainController] Failed to save native balance cache:',
+          error
+        );
+      });
+    });
+  }
+
   // Centralized wallet state saving with debouncing - auto-lock timer reset only for user operations
   private async saveWalletState(
     operation: string,
@@ -1845,6 +1869,7 @@ class MainController {
           clearTimeout(this.saveTimeout);
           this.saveTimeout = null;
         }
+        this.clearNativeBalanceCacheSaveTimeout();
 
         try {
           await this.performSave(operation);
@@ -1863,8 +1888,11 @@ class MainController {
         clearTimeout(this.saveTimeout);
       }
 
-      // Debounce the actual save by 100ms to prevent rapid consecutive saves
+      // Debounce the actual save to prevent rapid consecutive storage writes.
       this.saveTimeout = setTimeout(async () => {
+        // This save includes the latest balance cache, so an older pending
+        // cache-only write would only duplicate the storage operation.
+        this.clearNativeBalanceCacheSaveTimeout();
         try {
           await this.performSave(operation);
         } catch (error) {
@@ -1876,7 +1904,7 @@ class MainController {
         } finally {
           this.saveTimeout = null;
         }
-      }, 100); // 100ms debounce delay
+      }, 100);
     } catch (error) {
       console.error(
         `[MainController] Error in saveWalletState for operation ${operation}:`,
@@ -5455,29 +5483,17 @@ class MainController {
               );
             }
 
-            const actualUserBalance = isBitcoinBased
-              ? currentAccount.balances[INetworkType.Syscoin]
-              : currentAccount.balances[INetworkType.Ethereum];
-            const validateIfCanDispatch = areBalancesDifferent(
-              actualUserBalance,
-              updatedBalance
+            // Record successful reads even when the numeric value did not
+            // change, so the per-network cache freshness reflects this RPC.
+            store.dispatch(
+              setAccountBalanceForNetwork({
+                balance: updatedBalance,
+                id: activeAccount.id,
+                network: activeNetwork,
+                type: activeAccount.type,
+              })
             );
-
-            if (validateIfCanDispatch) {
-              store.dispatch(
-                setAccountPropertyByIdAndType({
-                  id: activeAccount.id,
-                  type: activeAccount.type,
-                  property: 'balances',
-                  value: {
-                    ...currentAccount.balances,
-                    [isBitcoinBased
-                      ? INetworkType.Syscoin
-                      : INetworkType.Ethereum]: updatedBalance,
-                  },
-                })
-              );
-            }
+            this.scheduleNativeBalanceCacheSave();
 
             // Clear loading state on success only if we set it
             clearBalanceLoadingIfOwned();
@@ -6403,6 +6419,7 @@ class MainController {
         clearTimeout(this.saveTimeout);
         this.saveTimeout = null;
       }
+      this.clearNativeBalanceCacheSaveTimeout();
       this.isNetworkSwitchMainStateDirty =
         this.isNetworkSwitchMainStateDirty ||
         previousSlip44 !== activeSlip44 ||
@@ -7499,22 +7516,89 @@ class MainController {
 
   public async getBalanceForAccount(
     account: IKeyringAccountState,
-    isBitcoinBased: boolean,
-    networkUrl: string
+    accountType: KeyringAccountType | string,
+    requestedNetwork: INetwork
   ): Promise<string> {
-    try {
-      const balance =
-        await this.balancesManager.utils.getBalanceUpdatedForAccount(
-          account,
-          isBitcoinBased,
-          networkUrl
-        );
-
-      return balance;
-    } catch (error) {
-      // Return 0 on error to allow UI to continue functioning
-      return '0';
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    if (!isSameBalanceNetwork(activeNetwork, requestedNetwork)) {
+      throw new Error('Network changed before balance request started');
     }
+
+    const requestedAccountType = Object.values(KeyringAccountType).includes(
+      accountType as KeyringAccountType
+    )
+      ? (accountType as KeyringAccountType)
+      : activeAccount.id === account.id
+      ? activeAccount.type
+      : null;
+    const resolvedType = requestedAccountType;
+    const storedAccount = resolvedType
+      ? accounts[resolvedType]?.[account.id]
+      : null;
+
+    const isSameAccount =
+      storedAccount && account.xpub && storedAccount.xpub
+        ? storedAccount.xpub === account.xpub
+        : storedAccount?.address?.toLowerCase() ===
+          account.address?.toLowerCase();
+    if (!resolvedType || !storedAccount || !isSameAccount) {
+      throw new Error('Balance account is no longer available');
+    }
+
+    const cachedBalance = getFreshNativeBalance(storedAccount, activeNetwork);
+    if (cachedBalance) {
+      if (
+        String(storedAccount.balances?.[activeNetwork.kind]) !==
+        String(cachedBalance.balance)
+      ) {
+        store.dispatch(
+          setAccountBalanceForNetwork({
+            balance: cachedBalance.balance,
+            id: storedAccount.id,
+            network: activeNetwork,
+            type: resolvedType,
+            updatedAt: cachedBalance.updatedAt,
+          })
+        );
+      }
+      return String(cachedBalance.balance);
+    }
+
+    const balance =
+      await this.balancesManager.utils.getBalanceUpdatedForAccount(
+        storedAccount,
+        activeNetwork.kind === INetworkType.Syscoin,
+        activeNetwork.url
+      );
+
+    const latestState = store.getState().vault;
+    if (!isSameBalanceNetwork(latestState.activeNetwork, requestedNetwork)) {
+      throw new Error('Network changed while balance request was in flight');
+    }
+    const latestAccount = latestState.accounts[resolvedType]?.[account.id];
+    if (
+      !latestAccount ||
+      (account.xpub && latestAccount.xpub
+        ? latestAccount.xpub !== account.xpub
+        : latestAccount.address?.toLowerCase() !==
+          account.address?.toLowerCase())
+    ) {
+      throw new Error('Balance account changed while request was in flight');
+    }
+
+    store.dispatch(
+      setAccountBalanceForNetwork({
+        balance,
+        id: latestAccount.id,
+        network: latestState.activeNetwork,
+        type: resolvedType,
+      })
+    );
+    // Persist bursts independently from user-state saves so cache coalescing
+    // can never postpone a label, token, or settings write.
+    this.scheduleNativeBalanceCacheSave();
+
+    return balance;
   }
 
   // Chain info methods for frontend access

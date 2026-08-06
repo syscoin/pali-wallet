@@ -11,7 +11,7 @@ import store, { RootState } from 'state/store';
 import {
   setAccounts,
   setActiveAccount,
-  setAccountPropertyByIdAndType,
+  setAccountBalanceSnapshot,
   setNetworkChange,
 } from 'state/vault';
 import { setNetworkRuntimeState, setNetworkStatus } from 'state/vaultGlobal';
@@ -202,11 +202,11 @@ export const useRouterLogic = () => {
         message.data
       ) {
         store.dispatch(
-          setAccountPropertyByIdAndType({
+          setAccountBalanceSnapshot({
+            balances: message.data.balances,
             id: message.data.id,
+            nativeBalanceCache: message.data.nativeBalanceCache,
             type: message.data.type,
-            property: 'balances',
-            value: message.data.balances,
           })
         );
         return true;
