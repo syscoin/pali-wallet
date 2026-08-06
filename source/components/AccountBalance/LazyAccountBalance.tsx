@@ -7,7 +7,10 @@ import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import { IKeyringAccountState } from 'types/network';
 import { formatNumber } from 'utils/index';
-import { getFreshNativeBalance } from 'utils/nativeBalanceCache';
+import {
+  getFreshNativeBalance,
+  NATIVE_BALANCE_CACHE_TTL_MS,
+} from 'utils/nativeBalanceCache';
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 1000; // 1 second window
@@ -50,6 +53,8 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   const mountedRef = useRef(true);
   const loadRequestIdRef = useRef(0);
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const freshBalanceEntry = getFreshNativeBalance(account, activeNetwork);
+  const freshBalanceUpdatedAt = freshBalanceEntry?.updatedAt;
 
   // Generate unique key for request deduplication
   const getCacheKey = useCallback(() => {
@@ -219,6 +224,30 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
     void loadBalance();
   }, [loadBalance]);
 
+  // Refresh a mounted card when its current cache entry reaches the TTL.
+  // This is a single sleeping timeout, not polling, and unmounting the card
+  // cancels it before any request can be made.
+  useEffect(() => {
+    if (freshBalanceUpdatedAt === undefined) return undefined;
+
+    const expiresAt = freshBalanceUpdatedAt + NATIVE_BALANCE_CACHE_TTL_MS;
+    let expiryTimeout: ReturnType<typeof setTimeout>;
+
+    const refreshWhenExpired = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining > 0) {
+        expiryTimeout = setTimeout(refreshWhenExpired, remaining + 1);
+        return;
+      }
+
+      void loadBalance();
+    };
+
+    refreshWhenExpired();
+
+    return () => clearTimeout(expiryTimeout);
+  }, [freshBalanceUpdatedAt, loadBalance]);
+
   // Format balance for display
   const formattedBalance = balance
     ? formatNumber(parseFloat(balance), precision)
@@ -231,9 +260,7 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   const fiatValue =
     showFiat && nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
 
-  const hasFreshBalance = Boolean(
-    getFreshNativeBalance(account, activeNetwork)
-  );
+  const hasFreshBalance = Boolean(freshBalanceEntry);
 
   const hasMissingBalance = balance === null && !hasFreshBalance;
 
