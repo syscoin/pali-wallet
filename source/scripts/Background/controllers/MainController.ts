@@ -631,7 +631,7 @@ class MainController {
   // Rate limiting for failed unlock attempts (persisted to storage)
   private failedUnlockAttempts = 0;
   private lastFailedUnlockTime = 0;
-  private readonly MAX_FAILED_ATTEMPTS = 5;
+  private readonly MAX_FAILED_ATTEMPTS = 10;
   private readonly LOCKOUT_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
   private readonly RATE_LIMIT_STORAGE_KEY = 'pali_rate_limit_state';
   private rateLimitInitialized = false;

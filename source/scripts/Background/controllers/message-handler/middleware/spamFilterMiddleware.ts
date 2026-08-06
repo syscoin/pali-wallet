@@ -2,7 +2,12 @@ import { ethErrors } from 'helpers/errors';
 
 import { popupPromise } from '../popup-promise';
 import { Middleware, requestCoordinator } from '../request-pipeline';
-import { recordRequest, blockDapp, showWarning } from 'state/spamFilter';
+import {
+  recordRequest,
+  blockDapp,
+  resetDappRequests,
+  showWarning,
+} from 'state/spamFilter';
 import {
   isDappBlocked,
   shouldShowSpamWarning,
@@ -16,9 +21,9 @@ import cleanErrorStack from 'utils/cleanErrorStack';
  *
  * Features:
  * - Tracks popup request counts per dapp within a time window
- * - Shows warning after threshold is reached (default: 3 requests in 10 seconds)
+ * - Shows warning after threshold is reached (default: 3 unresolved requests in 10 seconds)
  * - User can choose to temporarily block the dapp (default: 1 minute)
- * - Grace period after warning to prevent duplicate warnings (default: 30 seconds)
+ * - Resets an allowed burst so normal follow-up requests are not interrupted
  * - Blocked dapps get authorization errors without showing popups
  */
 export const spamFilterMiddleware: Middleware = async (context, next) => {
@@ -54,42 +59,54 @@ export const spamFilterMiddleware: Middleware = async (context, next) => {
       `[SpamFilter] Popup spam threshold reached for ${host}, showing warning`
     );
 
-    // Mark that we're showing the warning (grace period will prevent duplicates)
+    // Mark the warning as active so concurrent requests do not open duplicates.
     store.dispatch(showWarning({ host }));
 
-    // Show spam warning popup through coordinator
-    const result = await requestCoordinator.coordinatePopupRequest(
-      context,
-      () =>
-        popupPromise({
-          host,
-          route: 'spam-warning' as any,
-          eventName: 'spamWarningResponse',
-          data: {
-            requestCount:
-              updatedState.spamFilter.dapps[host]?.requests.length || 0,
-          },
-        }),
-      'spam-warning' as any
-    );
-
-    // Handle user response
-    if (result && (result as any).action === 'block') {
-      console.log(`[SpamFilter] User chose to block ${host}`);
-      store.dispatch(blockDapp({ host }));
-
-      // Throw error to block this request
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized('Request blocked due to spam filter.')
+    try {
+      // Show spam warning popup through coordinator
+      const result = await requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: 'spam-warning' as any,
+            eventName: 'spamWarningResponse',
+            data: {
+              requestCount:
+                updatedState.spamFilter.dapps[host]?.requests.length || 0,
+            },
+          }),
+        'spam-warning' as any
       );
-    }
 
-    // If user chose not to block, continue with grace period
-    console.log(
-      `[SpamFilter] User chose not to block ${host}, continuing with grace period`
-    );
+      // Handle user response
+      if (result && (result as any).action === 'block') {
+        console.log(`[SpamFilter] User chose to block ${host}`);
+        store.dispatch(blockDapp({ host }));
+
+        // Throw error to block this request
+        throw cleanErrorStack(
+          ethErrors.provider.unauthorized('Request blocked due to spam filter.')
+        );
+      }
+
+      console.log(
+        `[SpamFilter] User chose not to block ${host}, resetting request burst`
+      );
+    } finally {
+      // Start a fresh burst after allow or popup dismissal. Without this reset,
+      // every later popup request immediately retriggers the warning. Preserve
+      // the blocked state when the user explicitly chose to block the site.
+      if (!isDappBlocked(store.getState(), host)) {
+        store.dispatch(resetDappRequests({ host }));
+      }
+    }
   }
 
-  // Continue to next middleware
-  return next();
+  // A completed popup is legitimate interaction, not an accumulating spam
+  // burst. Rejected or failed requests remain recorded so repeated unwanted
+  // prompts can still reach the warning threshold.
+  const result = await next();
+  store.dispatch(resetDappRequests({ host }));
+  return result;
 };

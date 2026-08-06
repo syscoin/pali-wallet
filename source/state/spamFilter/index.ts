@@ -88,6 +88,7 @@ const spamFilterSlice = createSlice({
       if (state.dapps[host]) {
         state.dapps[host].requests = [];
         state.dapps[host].warningShown = false;
+        state.dapps[host].lastResetTime = Date.now();
       }
     },
 

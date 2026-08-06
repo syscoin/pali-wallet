@@ -18,6 +18,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
 
@@ -90,6 +91,9 @@ const ACCOUNT_TYPE_CONFIG = {
 
 const ManageAccountsView = React.memo(() => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const activeAccountRef = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -293,12 +297,16 @@ const ManageAccountsView = React.memo(() => {
   const accountsList = useMemo(
     () =>
       Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
-        Object.values(accountsOfType || {}).map((account) => ({
-          account: account as IKeyringAccountState,
-          accountType: accountType as KeyringAccountType,
-        }))
+        Object.values(accountsOfType || {})
+          .filter((account) =>
+            isAccountCompatibleWithNetwork(account, accountType, activeNetwork)
+          )
+          .map((account) => ({
+            account: account as IKeyringAccountState,
+            accountType: accountType as KeyringAccountType,
+          }))
       ),
-    [accounts]
+    [accounts, activeNetwork]
   );
 
   return (
