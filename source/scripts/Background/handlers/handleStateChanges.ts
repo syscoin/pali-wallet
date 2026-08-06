@@ -136,7 +136,7 @@ const getOnlyAccountBalanceChange = (
   return balanceChange;
 };
 
-const sendFastStatePatches = (
+export const sendFastStatePatches = (
   previousState: typeof currentState,
   nextState: typeof currentState
 ): boolean => {
@@ -151,17 +151,21 @@ const sendFastStatePatches = (
 
   const previousNetwork = previousState.vault.activeNetwork;
   const nextNetwork = nextState.vault.activeNetwork;
-
-  if (
+  const networkChanged =
     previousNetwork.chainId !== nextNetwork.chainId ||
     previousNetwork.url !== nextNetwork.url ||
-    previousNetwork.kind !== nextNetwork.kind
-  ) {
+    previousNetwork.kind !== nextNetwork.kind;
+
+  if (networkChanged) {
     sendRuntimeMessage({
       type: 'CONTROLLER_NETWORK_CHANGE',
       data: {
         activeAccount: nextState.vault.activeAccount,
         activeNetwork: nextNetwork,
+        // A slip44 switch replaces the account buckets and network together.
+        // Deliver them in one message so the popup cannot render a new network
+        // against accounts left over from the previous address family.
+        accounts: nextState.vault.accounts,
         networkStatus: nextState.vaultGlobal.networkStatus,
       },
     });
@@ -176,6 +180,7 @@ const sendFastStatePatches = (
       : null;
 
   if (
+    !networkChanged &&
     previousState.vault.accounts !== nextState.vault.accounts &&
     !accountBalanceChange
   ) {
