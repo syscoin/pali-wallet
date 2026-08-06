@@ -9,12 +9,16 @@ import { rehydrate as dappRehydrate } from 'state/dapp';
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
 import {
+  rehydrate as vaultRehydrate,
   setAccounts,
   setActiveAccount,
   setAccountBalanceSnapshot,
-  setNetworkChange,
 } from 'state/vault';
-import { setNetworkRuntimeState, setNetworkStatus } from 'state/vaultGlobal';
+import {
+  setActiveSlip44,
+  setNetworkRuntimeState,
+  setNetworkStatus,
+} from 'state/vaultGlobal';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { loadNavigationState } from 'utils/navigationState';
 
@@ -181,13 +185,8 @@ export const useRouterLogic = () => {
       }
 
       if (message.type === 'CONTROLLER_NETWORK_CHANGE' && message.data) {
-        if (message.data.accounts) {
-          store.dispatch(setAccounts(message.data.accounts));
-        }
-        store.dispatch(setActiveAccount(message.data.activeAccount));
-        store.dispatch(
-          setNetworkChange({ activeNetwork: message.data.activeNetwork })
-        );
+        store.dispatch(vaultRehydrate(message.data.vault));
+        store.dispatch(setActiveSlip44(message.data.activeSlip44));
         store.dispatch(setNetworkStatus(message.data.networkStatus));
         return true;
       }
