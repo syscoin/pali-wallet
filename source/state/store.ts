@@ -28,6 +28,7 @@ import { IPersistState } from './types';
 import vault, {
   rehydrate as vaultRehydrate,
   initializeCleanVaultForSlip44,
+  restoreVaultSnapshot,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
 import vaultCache from './vaultCache';
@@ -73,6 +74,18 @@ const store: Store<{
     }).concat(customMiddlewareToAdd), // Concat our custom middleware array
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
+
+export function restoreSourceVaultAfterUncommittedSwitch(
+  sourceSlip44: number,
+  sourceVault: IVaultState
+): boolean {
+  if (store.getState().vaultGlobal.activeSlip44 !== sourceSlip44) {
+    return false;
+  }
+
+  store.dispatch(restoreVaultSnapshot(sourceVault));
+  return true;
+}
 
 // Cache the last persisted state locally to avoid the expensive
 // read-&-parse cycle from chrome.storage on every store update. This
