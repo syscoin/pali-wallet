@@ -18,6 +18,7 @@ import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/format';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
+import { SYSX_ASSET_GUID } from 'utils/tokens';
 
 export interface IDecodedTransaction {
   error?: string;
@@ -527,7 +528,9 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                 const assetInfo = assetInfoMap[primaryAsset.assetGuid] || {
                   assetGuid: primaryAsset.assetGuid,
                   symbol:
-                    primaryAsset.assetGuid === '123456' ? 'SYSX' : 'Unknown',
+                    primaryAsset.assetGuid === SYSX_ASSET_GUID
+                      ? 'SYSX'
+                      : 'Unknown',
                   decimals: 8,
                 };
 
@@ -594,7 +597,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                     assetInfoMap[output.assetInfo.assetGuid] || {
                       assetGuid: output.assetInfo.assetGuid,
                       symbol:
-                        output.assetInfo.assetGuid === '123456'
+                        output.assetInfo.assetGuid === SYSX_ASSET_GUID
                           ? 'SYSX'
                           : 'SPT',
                       decimals: 8,
@@ -616,7 +619,9 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       assetInfo = assetInfoMap[asset.assetGuid] || {
                         assetGuid: asset.assetGuid,
                         symbol:
-                          asset.assetGuid === '123456' ? 'SYSX' : 'Unknown',
+                          asset.assetGuid === SYSX_ASSET_GUID
+                            ? 'SYSX'
+                            : 'Unknown',
                         decimals: 8,
                       };
                       assetAmount = formatSyscoinValue(
@@ -862,7 +867,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                                   )
                                 : '0'}{' '}
                               {input.assetInfo.symbol ||
-                                (input.assetInfo.assetGuid === '123456'
+                                (input.assetInfo.assetGuid === SYSX_ASSET_GUID
                                   ? 'SYSX'
                                   : 'SPT')}
                             </Typography.Text>
