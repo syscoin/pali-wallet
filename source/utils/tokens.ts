@@ -9,9 +9,55 @@ const CONFIGURED_ZKSYS_TOKEN_ADDRESSES = new Set(
   )
 );
 
+const SYSCOIN_LOGO_URL =
+  'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
+const BITCOIN_LOGO_URL =
+  'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png';
+
+export const SYSX_ASSET_GUID = '123456';
+
+interface IKnownSyscoinAsset {
+  coinGeckoId: string;
+  isVerified: true;
+  logo: string;
+}
+
+const KNOWN_SYSCOIN_ASSETS: Readonly<Record<string, IKnownSyscoinAsset>> = {
+  [SYSX_ASSET_GUID]: {
+    coinGeckoId: 'syscoin',
+    isVerified: true,
+    logo: SYSCOIN_LOGO_URL,
+  },
+};
+
+// Reserved logos previously assigned by symbol. They must not survive on a
+// noncanonical SPT if they were persisted by an older wallet build.
+const RESERVED_UTXO_LOGOS = new Set([SYSCOIN_LOGO_URL, BITCOIN_LOGO_URL]);
+
+export const getKnownSyscoinAsset = (
+  assetGuid?: number | string
+): IKnownSyscoinAsset | null => {
+  if (assetGuid === undefined || assetGuid === null) return null;
+
+  return KNOWN_SYSCOIN_ASSETS[String(assetGuid)] || null;
+};
+
+export const sanitizeUtxoTokenLogo = (
+  logo: string | undefined,
+  assetGuid?: number | string
+): string | undefined => {
+  if (!logo) return logo;
+
+  const knownAsset = getKnownSyscoinAsset(assetGuid);
+  if (knownAsset?.logo === logo) return logo;
+
+  return RESERVED_UTXO_LOGOS.has(logo) ? undefined : logo;
+};
+
 export const getKnownTokenLogo = (
-  symbol?: string,
-  contractAddress?: string
+  _symbol?: string,
+  contractAddress?: string,
+  assetGuid?: number | string
 ): string | null => {
   if (
     contractAddress &&
@@ -24,30 +70,26 @@ export const getKnownTokenLogo = (
     return null;
   }
 
-  switch (symbol?.toUpperCase()) {
-    case 'SYSX':
-    case 'SYS':
-      return 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
-    case 'BTC':
-      return 'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png';
-    default:
-      return null;
-  }
+  return getKnownSyscoinAsset(assetGuid)?.logo || null;
 };
 
 /**
- * Get token logo URL based on symbol
- * @param symbol - Token symbol
+ * Get a token logo without treating an issuer-controlled symbol as identity.
+ * @param symbol - Token symbol used only to decide whether a generic fallback is useful
  * @param includePaliLogo - Whether to return Pali logo for unknown tokens (default: true)
+ * @param assetGuid - Immutable Syscoin asset identity for UTXO tokens
  * @returns Logo URL or null/undefined
  */
 export const getTokenLogo = (
   symbol: string | undefined,
-  includePaliLogo = true
+  includePaliLogo = true,
+  assetGuid?: number | string
 ): string | null => {
+  const knownLogo = getKnownTokenLogo(symbol, undefined, assetGuid);
+  if (knownLogo) return knownLogo;
   if (!symbol) return null;
 
-  return getKnownTokenLogo(symbol) || (includePaliLogo ? PaliLogo : null);
+  return includePaliLogo ? PaliLogo : null;
 };
 
 /**

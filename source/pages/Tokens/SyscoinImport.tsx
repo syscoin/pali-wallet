@@ -222,7 +222,7 @@ export const SyscoinImport: React.FC = () => {
           name: token.name || token.symbol || '',
           balance: displayBalance,
           decimals: decimals,
-          logo: getTokenLogo(token.symbol || ''),
+          logo: getTokenLogo(token.symbol || '', true, token.assetGuid),
           assetGuid: token.assetGuid || '',
           type: token.type || 'SPTAllocated',
         };
@@ -236,7 +236,7 @@ export const SyscoinImport: React.FC = () => {
 
     try {
       // Get token logo URL for known tokens
-      const tokenLogo = getTokenLogo(asset.symbol);
+      const tokenLogo = getTokenLogo(asset.symbol, true, asset.assetGuid);
 
       // Convert to ITokenSysProps format for vault storage
       const tokenToSave: ITokenSysProps = {

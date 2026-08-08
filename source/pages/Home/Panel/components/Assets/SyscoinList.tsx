@@ -147,7 +147,10 @@ export const SyscoinAssetsList = () => {
                 <Tooltip content={asset.name || asset.symbol}>
                   <span className="inline-flex items-center justify-center">
                     <TokenIcon
-                      logo={asset.image || getTokenLogo(asset.symbol)}
+                      logo={
+                        asset.image ||
+                        getTokenLogo(asset.symbol, true, asset.assetGuid)
+                      }
                       assetGuid={String(asset.assetGuid)}
                       symbol={asset.symbol}
                       size={24}
