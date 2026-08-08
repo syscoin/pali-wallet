@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { NftFallbackSvg } from 'components/Icon/Icon';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
-import { getKnownTokenLogo } from 'utils/tokens';
+import { getKnownTokenLogo, sanitizeUtxoTokenLogo } from 'utils/tokens';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
 // Add a simple LRU cap to prevent unbounded growth
@@ -58,10 +58,10 @@ export const TokenIcon: React.FC<ITokenIconProps> = React.memo(
     size = 24,
     symbol,
   }) => {
-    const knownLogo = getKnownTokenLogo(symbol, contractAddress);
-    const resolvedLogo = contractAddress
-      ? knownLogo || logo
-      : logo || knownLogo;
+    const knownLogo = getKnownTokenLogo(symbol, contractAddress, assetGuid);
+    const safeProvidedLogo =
+      assetGuid !== undefined ? sanitizeUtxoTokenLogo(logo, assetGuid) : logo;
+    const resolvedLogo = knownLogo || safeProvidedLogo;
 
     // Create a unique cache key
     const getCacheKey = () => {

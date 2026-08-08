@@ -19,6 +19,7 @@ import {
   camelCaseToText,
   syscoinKeysOfInterest,
   adjustUrl,
+  getKnownSyscoinAsset,
   getTokenLogo,
 } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
@@ -37,7 +38,10 @@ export const SyscoinAssetDetails = ({
   const location = useLocation();
   const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
-  const [marketData, setMarketData] = useState<any>(null);
+  const [marketDataState, setMarketDataState] = useState<{
+    assetGuid: string;
+    data: any;
+  } | null>(null);
   const [hasFetchedData, setHasFetchedData] = useState(false);
 
   // Use a ref to track if a request is in progress to prevent duplicates
@@ -73,6 +77,12 @@ export const SyscoinAssetDetails = ({
     };
   }
 
+  const currentAssetGuid = String(asset?.assetGuid || id);
+  const marketData =
+    marketDataState?.assetGuid === currentAssetGuid
+      ? marketDataState.data
+      : null;
+
   // All hooks must be called before any early returns
   // Memoize formattedAsset and assetSymbol calculation
   const { formattedAsset, assetSymbol } = useMemo(() => {
@@ -103,14 +113,13 @@ export const SyscoinAssetDetails = ({
     return { formattedAsset: formatted, assetSymbol: symbol };
   }, [asset]);
 
-  // Reset fetch state when asset changes
+  // Reset fetch state when asset identity changes. Market data is also tagged
+  // with this GUID so a late response for the previous asset never renders.
   useEffect(() => {
-    if (asset?.assetGuid !== id) {
-      setHasFetchedData(false);
-      setMarketData(null);
-      fetchingRef.current = false;
-    }
-  }, [asset?.assetGuid, id]);
+    setHasFetchedData(false);
+    setMarketDataState(null);
+    fetchingRef.current = false;
+  }, [currentAssetGuid]);
 
   // Trigger fresh data fetch for newly imported assets
   useEffect(() => {
@@ -161,8 +170,7 @@ export const SyscoinAssetDetails = ({
   // Try to fetch CoinGecko data for known Syscoin assets
   useEffect(() => {
     const fetchMarketData = async () => {
-      if (!asset || !assetSymbol || hasFetchedData || fetchingRef.current)
-        return;
+      if (!asset || hasFetchedData || fetchingRef.current) return;
 
       // Set the ref to prevent duplicate calls
       fetchingRef.current = true;
@@ -170,15 +178,10 @@ export const SyscoinAssetDetails = ({
       setIsLoadingMarketData(true);
 
       try {
-        // Map known Syscoin assets to CoinGecko IDs
-        const symbolToCoinGeckoId: Record<string, string> = {
-          SYSX: 'syscoin', // SYSX token maps to syscoin on CoinGecko
-          SYS: 'syscoin', // Native SYS
-          BTC: 'bitcoin',
-          // Add more mappings as needed
-        };
-
-        const coinGeckoId = symbolToCoinGeckoId[assetSymbol.value];
+        // Asset symbols are issuer-controlled. Only immutable GUID identity can
+        // attach official market data or verification to an SPT.
+        const knownAsset = getKnownSyscoinAsset(currentAssetGuid);
+        const coinGeckoId = knownAsset?.coinGeckoId;
 
         if (coinGeckoId) {
           console.log(
@@ -192,9 +195,12 @@ export const SyscoinAssetDetails = ({
 
           if (response.ok) {
             const data = await response.json();
-            setMarketData({
-              ...data,
-              isVerified: true,
+            setMarketDataState({
+              assetGuid: currentAssetGuid,
+              data: {
+                ...data,
+                isVerified: knownAsset.isVerified,
+              },
             });
 
             console.log(
@@ -207,7 +213,7 @@ export const SyscoinAssetDetails = ({
           }
         } else {
           console.log(
-            `[SyscoinAssetDetails] No CoinGecko mapping found for symbol: ${assetSymbol.value}`
+            `[SyscoinAssetDetails] No CoinGecko mapping found for asset GUID: ${currentAssetGuid}`
           );
         }
       } catch (error) {
@@ -225,7 +231,7 @@ export const SyscoinAssetDetails = ({
     };
 
     fetchMarketData();
-  }, [asset, assetSymbol, hasFetchedData]);
+  }, [asset, currentAssetGuid, hasFetchedData]);
 
   useEffect(() => {
     if (!isCopied) return;
@@ -495,12 +501,20 @@ export const SyscoinAssetDetails = ({
             marketData?.image?.small ||
             marketData?.image?.thumb ||
             asset?.image ||
-            getTokenLogo(assetSymbol?.value, false)) && (
+            getTokenLogo(
+              assetSymbol?.value,
+              false,
+              asset?.assetGuid || id
+            )) && (
             <div className="group relative p-2">
               <TokenIcon
                 logo={
                   asset?.image ||
-                  getTokenLogo(assetSymbol?.value, false) ||
+                  getTokenLogo(
+                    assetSymbol?.value,
+                    false,
+                    asset?.assetGuid || id
+                  ) ||
                   marketData?.image?.large ||
                   marketData?.image?.small ||
                   marketData?.image?.thumb ||
