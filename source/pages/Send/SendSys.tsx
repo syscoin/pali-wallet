@@ -36,6 +36,7 @@ import {
   isAssetAmountWithinBalance,
   toEightDecimalBuilderAmount,
 } from 'utils/syscoinAssetAmount';
+import { getRefreshedSyscoinAssetSelection } from 'utils/syscoinAssetSelection';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
@@ -93,21 +94,15 @@ export const SendSys = () => {
   useEffect(() => {
     if (!selectedAsset || !accountAssets?.syscoin) return;
 
-    const refreshedAsset = Object.values(accountAssets.syscoin).find(
-      (asset) => String(asset.assetGuid) === String(selectedAsset.assetGuid)
+    const refreshedAsset = getRefreshedSyscoinAssetSelection(
+      selectedAsset,
+      accountAssets.syscoin
     );
 
-    if (
-      refreshedAsset &&
-      String(refreshedAsset.balance || 0) !== String(selectedAsset.balance || 0)
-    ) {
+    if (refreshedAsset) {
       setSelectedAsset(refreshedAsset);
     }
-  }, [
-    accountAssets?.syscoin,
-    selectedAsset?.assetGuid,
-    selectedAsset?.balance,
-  ]);
+  }, [accountAssets?.syscoin, selectedAsset]);
 
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
