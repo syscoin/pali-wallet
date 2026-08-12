@@ -13,7 +13,8 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IImportableAsset {
   assetGuid?: string;
-  balance: number;
+  assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
+  balance: number | string;
   chainId?: number;
   contractAddress?: string;
   decimals?: number;
@@ -21,6 +22,7 @@ interface IImportableAsset {
   isNft?: boolean;
   logo?: string;
   name?: string;
+  originDecimals?: number;
   symbol: string;
   tokenId?: string;
   tokenStandard?: string;
@@ -146,7 +148,7 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                         ? '—'
                         : formatFullPrecisionBalance(
                             asset.balance || 0,
-                            Math.min(asset.decimals || 8, 4) // Limit displayed decimals
+                            Math.min(asset.decimals ?? 8, 4) // Limit displayed decimals
                           )}
                     </span>
                     <span
@@ -185,10 +187,10 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
                 {asset.type && assetType === 'utxo' && (
                   <div
                     className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 mr-4 ${getTokenTypeBadgeColor(
-                      asset.type
+                      asset.assetType || asset.type
                     )}`}
                   >
-                    SPT
+                    {asset.assetType || 'SPT'}
                   </div>
                 )}
               </div>

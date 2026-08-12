@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -27,6 +27,13 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(
+    'Transaction details are loading'
+  );
+
+  const handleReviewStateChange = useCallback((error: string | null) => {
+    setReviewError(error);
+  }, []);
 
   // Use shallow equality checks to prevent unnecessary re-renders
   const { activeAccount: activeAccountData, accounts } = useSelector(
@@ -63,6 +70,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   }, [data]);
 
   const onSubmit = async () => {
+    if (reviewError) {
+      setErrorMsg(reviewError);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -206,6 +218,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 psbt={data}
                 showTechnicalDetails={false}
                 showTransactionOptions={false}
+                onReviewStateChange={handleReviewStateChange}
               />
             </div>
           </div>
@@ -237,7 +250,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed}
+                disabled={confirmed || Boolean(reviewError)}
                 loading={loading}
                 onClick={onSubmit}
               >

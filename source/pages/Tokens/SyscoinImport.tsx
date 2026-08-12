@@ -210,7 +210,7 @@ export const SyscoinImport: React.FC = () => {
   const convertToImportableAssets = useCallback(
     (tokens: (ISysTokensAssetReponse | ITokenSysProps)[]) =>
       tokens.map((token) => {
-        const decimals = token.decimals || 8;
+        const decimals = token.decimals ?? 8;
 
         // The balance field is already in display units (e.g., 0.02 means 0.02 tokens)
         // No need to convert from satoshis since the API returns display values
@@ -224,6 +224,10 @@ export const SyscoinImport: React.FC = () => {
           decimals: decimals,
           logo: getTokenLogo(token.symbol || '', true, token.assetGuid),
           assetGuid: token.assetGuid || '',
+          assetType: token.assetType,
+          contract: token.contract,
+          originDecimals: token.originDecimals,
+          tokenId: token.tokenId,
           type: token.type || 'SPTAllocated',
         };
       }),
@@ -245,6 +249,10 @@ export const SyscoinImport: React.FC = () => {
         name: asset.name || asset.symbol,
         decimals: asset.decimals,
         balance: asset.balance,
+        assetType: asset.assetType,
+        contract: asset.contract,
+        originDecimals: asset.originDecimals,
+        tokenId: asset.tokenId,
         chainId: asset.chainId || activeNetwork.chainId,
         type: asset.type || 'SPTAllocated',
         // Store image URL only for known tokens

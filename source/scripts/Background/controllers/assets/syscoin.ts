@@ -128,20 +128,18 @@ const SysAssetsControler = (): ISysAssetsController => {
       .map(([assetGuid, tokens]) => {
         // Take the first token as the base (for metadata)
         const firstToken = tokens[0];
-        const decimals = firstToken.decimals || 8;
+        const decimals = firstToken.decimals ?? 8;
 
         // Sum up balances from all UTXOs for this asset
-        let totalConfirmedBalance = 0;
-        let totalUnconfirmedBalance = 0;
+        let totalConfirmedBalance = BigInt(0);
+        let totalUnconfirmedBalance = BigInt(0);
         let totalSent = BigInt(0);
         let totalReceived = BigInt(0);
         let totalTransfers = 0;
 
         tokens.forEach((token: any) => {
           // Add confirmed balance
-          totalConfirmedBalance += parseFloat(
-            formatUnits(String(token.balance || 0), decimals)
-          );
+          totalConfirmedBalance += BigInt(String(token.balance || 0));
 
           // Add unconfirmed delta (can be positive or negative)
           // Blockbook now provides per-address SPT unconfirmed deltas
@@ -149,9 +147,7 @@ const SysAssetsControler = (): ISysAssetsController => {
             token.unconfirmedBalance !== undefined
               ? token.unconfirmedBalance
               : 0;
-          totalUnconfirmedBalance += parseFloat(
-            formatUnits(String(unconfirmedRaw || 0), decimals)
-          );
+          totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
 
           // Sum up totals (using BigInt to avoid precision issues)
           totalSent += BigInt(token.totalSent || 0);
@@ -160,15 +156,24 @@ const SysAssetsControler = (): ISysAssetsController => {
         });
 
         // Real-time balance is confirmed + unconfirmed delta
-        const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
+        const displayBalance = formatUnits(
+          (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
+          decimals
+        );
 
         return {
           ...firstToken,
           assetGuid: assetGuid,
           // Use aggregated balances
           balance: displayBalance,
-          confirmedBalance: totalConfirmedBalance,
-          unconfirmedBalance: totalUnconfirmedBalance,
+          confirmedBalance: formatUnits(
+            totalConfirmedBalance.toString(),
+            decimals
+          ),
+          unconfirmedBalance: formatUnits(
+            totalUnconfirmedBalance.toString(),
+            decimals
+          ),
           totalSent: formatUnits(totalSent.toString(), decimals),
           totalReceived: formatUnits(totalReceived.toString(), decimals),
           transfers: totalTransfers,
@@ -222,7 +227,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       }
 
       // Get user's balance for this asset (optional)
-      let balance: number = 0;
+      let balance = '0';
       try {
         // Blockbook doesn't support filtering by assetGuid, so we fetch all tokens
         const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -244,15 +249,15 @@ const SysAssetsControler = (): ISysAssetsController => {
 
         if (matchingTokens.length > 0) {
           // Convert from satoshis to display format and aggregate across all UTXOs
-          const decimals = assetData.decimals || 8;
+          const decimals = assetData.decimals ?? 8;
 
           // Sum up balances from all UTXOs for this asset
-          balance = matchingTokens.reduce((total: number, token: any) => {
-            const tokenBalance = parseFloat(
-              formatUnits(String(token.balance || 0), decimals)
-            );
-            return total + tokenBalance;
-          }, 0);
+          const rawBalance = matchingTokens.reduce(
+            (total: bigint, token: any) =>
+              total + BigInt(String(token.balance || 0)),
+            BigInt(0)
+          );
+          balance = formatUnits(rawBalance.toString(), decimals);
 
           console.log(
             `[SysAssetsController] Found ${matchingTokens.length} UTXOs for asset ${assetGuid}, total balance: ${balance}`
@@ -269,6 +274,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       // Return validated token details
       const tokenDetails: ITokenSysProps = {
         assetGuid: assetGuid,
+        assetType: assetData.assetType,
         symbol: cleanTokenSymbol(assetData.symbol),
         name: cleanTokenSymbol(assetData.symbol), // Syscoin assets often use symbol as name - keep intact
         decimals: assetData.decimals,
@@ -277,6 +283,8 @@ const SysAssetsControler = (): ISysAssetsController => {
         totalSupply: assetData.totalSupply,
         description: assetData.metaData || '',
         contract: assetData.contract || '', // NEVM contract if bridged
+        originDecimals: assetData.originDecimals,
+        tokenId: assetData.tokenId,
         chainId: store.getState().vault.activeNetwork.chainId,
         type: 'SPTAllocated',
       };
@@ -358,27 +366,23 @@ const SysAssetsControler = (): ISysAssetsController => {
     tokensByAssetGuid.forEach((tokens, assetGuid) => {
       // Take the first token as the base (for metadata)
       const firstToken = tokens[0];
-      const decimals = firstToken.decimals || 8;
+      const decimals = firstToken.decimals ?? 8;
 
       // Sum up balances from all UTXOs for this asset
-      let totalConfirmedBalance = 0;
-      let totalUnconfirmedBalance = 0;
+      let totalConfirmedBalance = BigInt(0);
+      let totalUnconfirmedBalance = BigInt(0);
       let totalSent = BigInt(0);
       let totalReceived = BigInt(0);
       let totalTransfers = 0;
 
       tokens.forEach((token: any) => {
         // Add confirmed balance
-        totalConfirmedBalance += parseFloat(
-          formatUnits(String(token.balance || 0), decimals)
-        );
+        totalConfirmedBalance += BigInt(String(token.balance || 0));
 
         // Add unconfirmed delta (positive for receiver, negative for sender)
         const unconfirmedRaw =
           token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
-        totalUnconfirmedBalance += parseFloat(
-          formatUnits(String(unconfirmedRaw || 0), decimals)
-        );
+        totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
 
         // Sum up totals (using BigInt to avoid precision issues)
         totalSent += BigInt(token.totalSent || 0);
@@ -387,14 +391,23 @@ const SysAssetsControler = (): ISysAssetsController => {
       });
 
       // Real-time balance is confirmed + unconfirmed delta
-      const displayBalance = totalConfirmedBalance + totalUnconfirmedBalance;
+      const displayBalance = formatUnits(
+        (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
+        decimals
+      );
 
       aggregatedTokensMap.set(assetGuid, {
         ...firstToken,
         assetGuid: assetGuid,
         balance: displayBalance,
-        confirmedBalance: totalConfirmedBalance,
-        unconfirmedBalance: totalUnconfirmedBalance,
+        confirmedBalance: formatUnits(
+          totalConfirmedBalance.toString(),
+          decimals
+        ),
+        unconfirmedBalance: formatUnits(
+          totalUnconfirmedBalance.toString(),
+          decimals
+        ),
         totalSent: formatUnits(totalSent.toString(), decimals),
         totalReceived: formatUnits(totalReceived.toString(), decimals),
         transfers: totalTransfers,
@@ -428,8 +441,8 @@ const SysAssetsControler = (): ISysAssetsController => {
           return {
             ...asset,
             assetGuid: String(asset.assetGuid),
-            balance: 0,
-            unconfirmedBalance: 0,
+            balance: '0',
+            unconfirmedBalance: '0',
             totalReceived: '0',
             totalSent: '0',
             transfers: 0,

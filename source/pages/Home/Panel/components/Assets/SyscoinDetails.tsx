@@ -70,7 +70,7 @@ export const SyscoinAssetDetails = ({
       symbol: navigationState.symbol || 'Unknown',
       name: navigationState.name || navigationState.symbol || 'Unknown Token',
       balance: navigationState.balance || 0,
-      decimals: navigationState.decimals || 8,
+      decimals: navigationState.decimals ?? 8,
       chainId: activeNetwork.chainId,
       type: navigationState.type || 'SPTAllocated',
       image: navigationState.logo,

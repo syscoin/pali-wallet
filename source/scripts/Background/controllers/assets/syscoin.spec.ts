@@ -52,7 +52,7 @@ describe('SysAssetsController imported asset refresh', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       assetGuid: '123',
-      balance: 2.5,
+      balance: '2.5',
       chainId: 57,
       description: 'user metadata',
       image: 'ipfs://token-image',
@@ -82,10 +82,51 @@ describe('SysAssetsController imported asset refresh', () => {
 
     expect(result[0]).toMatchObject({
       assetGuid: '456',
-      balance: 0,
+      balance: '0',
       chainId: 5700,
       description: 'durable metadata',
       image: 'ipfs://durable-image',
+    });
+  });
+
+  it('preserves zero-decimal NFT and ERC-1155 balances', async () => {
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      tokensAsset: [
+        {
+          assetGuid: '4294967297',
+          balance: '2',
+          decimals: 0,
+          symbol: 'NFT',
+          totalReceived: '2',
+          totalSent: '0',
+          transfers: 1,
+          type: 'SPTAllocated',
+        },
+      ],
+    });
+
+    const result = await SysAssetsController().getSysAssetsByXpub(
+      'zpub-account',
+      'https://blockbook.syscoin.org',
+      57,
+      [
+        {
+          assetGuid: '4294967297',
+          balance: 0,
+          chainId: 57,
+          decimals: 0,
+          name: 'NFT',
+          symbol: 'NFT',
+          type: 'SPTAllocated',
+        } as any,
+      ]
+    );
+
+    expect(result[0]).toMatchObject({
+      assetGuid: '4294967297',
+      balance: '2',
+      decimals: 0,
+      totalReceived: '2',
     });
   });
 });

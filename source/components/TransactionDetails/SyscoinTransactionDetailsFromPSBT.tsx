@@ -17,12 +17,17 @@ import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/format';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+import {
+  getAssetReviewRows,
+  getSyscoinPsbtReviewError,
+} from 'utils/syscoinPsbtReview';
 import { getSyscoinTransactionTypeLabel } from 'utils/syscoinTransactionUtils';
 import { SYSX_ASSET_GUID } from 'utils/tokens';
 
 export interface IDecodedTransaction {
   error?: string;
   fee?: number;
+  feeSatoshis?: string;
   locktime?: number;
   size?: number;
   syscoin?: {
@@ -31,7 +36,7 @@ export interface IDecodedTransaction {
         assetGuid: string;
         values?: Array<{
           n: number;
-          value: number;
+          value: number | string;
           valueFormatted?: string;
         }>;
       }>;
@@ -71,12 +76,14 @@ export interface IDecodedTransaction {
       type: string;
     };
     value: number;
+    valueSatoshis?: string;
   }>;
   vsize?: number;
   weight?: number;
 }
 
 interface ISyscoinTransactionDetailsProps {
+  onReviewStateChange?: (reviewError: string | null) => void;
   psbt?: string;
   showTechnicalDetails?: boolean;
   showTransactionOptions?: boolean;
@@ -197,6 +204,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
   transaction,
   showTechnicalDetails = true,
   showTransactionOptions = false,
+  onReviewStateChange,
 }) => {
   const { controllerEmitter } = useController();
   const { useCopyClipboard, alert } = useUtils();
@@ -245,17 +253,27 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               (a: any) => a.assetGuid === assetGuid
             );
 
-            if (localAsset) {
+            const hasCompleteLocalMetadata =
+              localAsset?.assetType === 'SYSX' ||
+              (Boolean(localAsset?.assetType) &&
+                Boolean(localAsset?.contract) &&
+                Number.isInteger(localAsset?.originDecimals) &&
+                (localAsset?.assetType === 'ERC20' ||
+                  Boolean(localAsset?.tokenId)));
+
+            if (hasCompleteLocalMetadata) {
               assetMap[assetGuid] = localAsset;
             } else {
-              // If not found locally, fetch from network
+              // Persisted assets created before bridge metadata support do not
+              // identify their origin type. Refresh them before allowing a
+              // dapp-requested signature instead of trusting stale defaults.
               try {
                 const assetData = await controllerEmitter(
                   ['wallet', 'addSysDefaultToken'],
                   [assetGuid, activeNetwork.url]
                 );
                 if (assetData && typeof assetData === 'object') {
-                  assetMap[assetGuid] = assetData;
+                  assetMap[assetGuid] = { ...localAsset, ...assetData };
                 }
               } catch (error) {
                 console.log(
@@ -309,6 +327,15 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
       copyJson(JSON.stringify(jsonData, null, 2));
     }
   };
+
+  const reviewError = getSyscoinPsbtReviewError(decodedTx, assetInfoMap);
+  const assetReviewRows = decodedTx
+    ? getAssetReviewRows(decodedTx, assetInfoMap)
+    : [];
+
+  useEffect(() => {
+    onReviewStateChange?.(reviewError);
+  }, [onReviewStateChange, reviewError]);
 
   if (loading && !initialLoadDone) {
     return (
@@ -491,13 +518,17 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
         )}
 
         {/* Fee */}
-        {decodedTx.fee !== undefined && (
+        {(decodedTx.feeSatoshis !== undefined ||
+          decodedTx.fee !== undefined) && (
           <div className="flex justify-between items-center gap-2">
             <Typography.Text className="text-brand-gray200 text-xs sm:text-sm flex-shrink-0">
               {t('send.networkFee')}:
             </Typography.Text>
             <Typography.Text className="text-white text-xs sm:text-sm text-right">
-              {decodedTx.fee} {activeNetwork.currency.toUpperCase()}
+              {decodedTx.feeSatoshis !== undefined
+                ? formatSyscoinValue(decodedTx.feeSatoshis, 8)
+                : decodedTx.fee}{' '}
+              {activeNetwork.currency.toUpperCase()}
             </Typography.Text>
           </div>
         )}
@@ -514,6 +545,69 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           </div>
         )}
       </div>
+
+      {reviewError && (
+        <div className="bg-warning-error bg-opacity-10 border border-warning-error rounded-lg p-3">
+          <div className="flex items-start gap-2">
+            <WarningOutlined className="text-warning-error mt-0.5" />
+            <Typography.Text className="text-warning-error text-xs sm:text-sm">
+              {reviewError}
+            </Typography.Text>
+          </div>
+        </div>
+      )}
+
+      {decodedTx.vout && decodedTx.vout.length > 0 && (
+        <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
+          <Typography.Text className="text-white text-sm font-medium block">
+            Transaction outputs
+          </Typography.Text>
+          {decodedTx.vout.map((output) => {
+            const recipient = output.scriptPubKey?.addresses?.[0];
+            const rawValue = output.valueSatoshis;
+
+            return (
+              <div
+                key={`review-output-${output.n}`}
+                className="pt-2 border-t border-alpha-whiteAlpha100 space-y-2"
+              >
+                <div className="flex justify-between items-center gap-3">
+                  <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                    Output #{output.n}:
+                  </Typography.Text>
+                  <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
+                    {rawValue !== undefined
+                      ? formatSyscoinValue(rawValue, 8)
+                      : output.value}{' '}
+                    {activeNetwork.currency.toUpperCase()}
+                  </Typography.Text>
+                </div>
+                {recipient ? (
+                  <CopyableField
+                    label="Recipient"
+                    value={recipient}
+                    displayValue={ellipsis(recipient, 10, 10)}
+                    monospace
+                    copyMessage={t('home.addressCopied')}
+                    className="text-xs sm:text-sm"
+                    labelClassName="text-xs sm:text-sm"
+                    valueClassName="text-xs sm:text-sm"
+                  />
+                ) : (
+                  <div className="flex justify-between items-center gap-3">
+                    <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                      Output type:
+                    </Typography.Text>
+                    <Typography.Text className="text-white text-xs sm:text-sm text-right">
+                      {output.scriptPubKey?.type || 'Unknown'}
+                    </Typography.Text>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Asset Transfers - show all assets involved */}
       {(() => (
@@ -564,6 +658,74 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                           valueClassName="text-xs sm:text-sm"
                         />
                       </div>
+
+                      {assetInfo.assetType && (
+                        <div className="flex justify-between items-center gap-3">
+                          <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                            Standard:
+                          </Typography.Text>
+                          <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
+                            {assetInfo.assetType}
+                          </Typography.Text>
+                        </div>
+                      )}
+
+                      {assetInfo.contract && (
+                        <CopyableField
+                          label="Origin contract"
+                          value={assetInfo.contract}
+                          displayValue={ellipsis(assetInfo.contract, 10, 10)}
+                          monospace
+                          copyMessage={t('home.addressCopied')}
+                          className="text-xs sm:text-sm"
+                          labelClassName="text-xs sm:text-sm"
+                          valueClassName="text-xs sm:text-sm"
+                        />
+                      )}
+
+                      {assetInfo.tokenId && (
+                        <CopyableField
+                          label="Token ID"
+                          value={assetInfo.tokenId}
+                          displayValue={ellipsis(assetInfo.tokenId, 10, 10)}
+                          monospace
+                          className="text-xs sm:text-sm"
+                          labelClassName="text-xs sm:text-sm"
+                          valueClassName="text-xs sm:text-sm"
+                        />
+                      )}
+
+                      {assetReviewRows
+                        .filter(
+                          (row) => row.assetGuid === primaryAsset.assetGuid
+                        )
+                        .map((row) => (
+                          <div
+                            key={`${row.assetGuid}-${row.outputIndex}`}
+                            className="pt-2 border-t border-alpha-whiteAlpha100 space-y-2"
+                          >
+                            <div className="flex justify-between items-center gap-3">
+                              <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                                {row.isBurn ? 'Burn amount:' : 'Amount:'}
+                              </Typography.Text>
+                              <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
+                                {row.amount} {row.symbol}
+                              </Typography.Text>
+                            </div>
+                            {row.recipient && (
+                              <CopyableField
+                                label="Recipient"
+                                value={row.recipient}
+                                displayValue={ellipsis(row.recipient, 10, 10)}
+                                monospace
+                                copyMessage={t('home.addressCopied')}
+                                className="text-xs sm:text-sm"
+                                labelClassName="text-xs sm:text-sm"
+                                valueClassName="text-xs sm:text-sm"
+                              />
+                            )}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 );
@@ -606,7 +768,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                   if (output.assetInfo.value) {
                     assetAmount = formatSyscoinValue(
                       output.assetInfo.value.toString(),
-                      assetInfo.decimals || 8
+                      assetInfo.decimals ?? 8
                     );
                   }
                 } else if (decodedTx.syscoin?.allocations?.assets) {
@@ -626,7 +788,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                       };
                       assetAmount = formatSyscoinValue(
                         allocation.value.toString(),
-                        assetInfo.decimals || 8
+                        assetInfo.decimals ?? 8
                       );
                       break;
                     }
@@ -863,7 +1025,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                               {input.assetInfo.value
                                 ? formatSyscoinValue(
                                     input.assetInfo.value.toString(),
-                                    input.assetInfo.decimals || 8
+                                    input.assetInfo.decimals ?? 8
                                   )
                                 : '0'}{' '}
                               {input.assetInfo.symbol ||
@@ -935,5 +1097,6 @@ export const SyscoinTransactionDetailsFromPSBT = React.memo(
     prevProps.psbt === nextProps.psbt &&
     prevProps.transaction?.psbt === nextProps.transaction?.psbt &&
     prevProps.showTechnicalDetails === nextProps.showTechnicalDetails &&
-    prevProps.showTransactionOptions === nextProps.showTransactionOptions
+    prevProps.showTransactionOptions === nextProps.showTransactionOptions &&
+    prevProps.onReviewStateChange === nextProps.onReviewStateChange
 );

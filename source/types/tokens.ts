@@ -98,7 +98,8 @@ export interface IWatchAssetTokenProps {
 
 export interface ITokenSysProps {
   assetGuid?: string;
-  balance?: number;
+  assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
+  balance?: number | string;
   chainId?: number;
   contract?: string; // NEVM contract address for cross-chain assets
   decimals?: number;
@@ -107,8 +108,10 @@ export interface ITokenSysProps {
   maxSupply?: string;
   metaData?: string; // Syscoin 5 - general metadata field
   name?: string;
+  originDecimals?: number;
   path?: string;
   symbol?: string;
+  tokenId?: string;
   totalReceived?: string;
   totalSent?: string;
   totalSupply?: string;
@@ -119,11 +122,14 @@ export interface ITokenSysProps {
 // Interface for getSysAssetMetadata response (matches getAsset return type)
 export interface ISysAssetMetadata {
   assetGuid: string;
+  assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
   contract: string;
   decimals: number;
   maxSupply: string;
   metaData?: string; // Syscoin 5 - general metadata field
+  originDecimals?: number;
   symbol: string;
+  tokenId?: string;
   totalSupply: string;
 }
 

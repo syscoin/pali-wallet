@@ -58,18 +58,22 @@ export interface ISysAssetsController {
 
 export interface ISysTokensAssetReponse {
   assetGuid: string;
-  balance: number;
+  assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
+  balance: number | string;
   chainId?: number;
-  confirmedBalance?: number;
+  confirmedBalance?: number | string;
+  contract?: string;
   decimals: number;
   name: string;
+  originDecimals?: number;
   path: string;
   symbol: string;
+  tokenId?: string;
   totalReceived: string;
   totalSent: string;
   transfers: number;
   type: string;
-  unconfirmedBalance?: number;
+  unconfirmedBalance?: number | string;
 }
 
 // EVM TYPES
