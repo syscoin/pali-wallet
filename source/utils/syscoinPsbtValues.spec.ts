@@ -69,6 +69,59 @@ const createUnfinalizedBurnToSyscoinPsbt = ({
   return psbt;
 };
 
+const createUnfinalizedMintPsbt = (mintedAssetValue = '100000000') => {
+  const allocationData = syscointx.bufferUtils.serializeAssetAllocations([
+    {
+      assetGuid: '123456',
+      values: [
+        {
+          n: 0,
+          value: new syscoinUtils.BN(mintedAssetValue),
+        },
+      ],
+    },
+  ]);
+  const mintProof = syscointx.bufferUtils.serializeMintSyscoin({
+    ethtxid: Buffer.alloc(32),
+    blockhash: Buffer.alloc(32),
+    txpos: 0,
+    txparentnodes: Buffer.alloc(32),
+    txpath: Buffer.alloc(1),
+    receiptpos: 0,
+    receiptparentnodes: Buffer.alloc(32),
+    txroot: Buffer.alloc(32),
+    receiptroot: Buffer.alloc(32),
+  });
+  const psbt = new syscoinUtils.bitcoinjs.Psbt({
+    network: syscoinUtils.syscoinNetworks.testnet,
+  });
+
+  psbt.setVersion(140);
+  psbt.addInput({
+    hash: Buffer.alloc(32),
+    index: 0,
+    witnessUtxo: {
+      script: Buffer.from(
+        '00140000000000000000000000000000000000000000',
+        'hex'
+      ),
+      value: BigInt(10000),
+    },
+  });
+  psbt.addOutput({
+    script: Buffer.from('00140000000000000000000000000000000000000001', 'hex'),
+    value: BigInt(9000),
+  });
+  psbt.addOutput({
+    script: syscoinUtils.bitcoinjs.payments.embed({
+      data: [Buffer.concat([allocationData, mintProof])],
+    }).output!,
+    value: BigInt(0),
+  });
+
+  return psbt;
+};
+
 const emptyTransaction = () => {
   const transaction = new syscoinUtils.bitcoinjs.Transaction();
   transaction.version = 2;
@@ -217,6 +270,61 @@ describe('Syscoin PSBT value summary', () => {
       feeSatoshis: '1000',
       outputValuesSatoshis: ['9000', '100000000'],
     });
+  });
+
+  it('reviews exact v140 bridge-mint allocations from an unfinalized SPSBT', () => {
+    const mintedAssetValue = '100000000';
+    const psbt = createUnfinalizedMintPsbt(mintedAssetValue);
+
+    const transaction = psbt.extractTransaction(true, true);
+    expect(psbt.data.inputs[0].finalScriptSig).toBeUndefined();
+    expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
+    expect(transaction.version).toBe(140);
+
+    const summary = getSyscoinPsbtValueSummary(psbt);
+    expect(summary).toEqual({
+      assetAllocations: [
+        {
+          assetGuid: '123456',
+          values: [{ n: 0, value: mintedAssetValue }],
+        },
+      ],
+      feeSatoshis: '1000',
+      outputValuesSatoshis: ['9000', '0'],
+    });
+
+    const decoder = new SyscoinTransaction(
+      null,
+      null,
+      syscoinUtils.syscoinNetworks.testnet
+    );
+    const decoded = decoder.decodeRawTransaction(psbt);
+    decoded.feeSatoshis = summary.feeSatoshis;
+    decoded.vout.forEach((output: any, index: number) => {
+      output.valueSatoshis = summary.outputValuesSatoshis[index];
+    });
+    decoded.syscoin.allocations = { assets: summary.assetAllocations };
+
+    expect(decoded.syscoin.txtype).toBe('assetallocation_mint');
+    expect(
+      getSyscoinPsbtReviewError(decoded, {
+        '123456': { assetType: 'SYSX', decimals: 8, symbol: 'SYSX' },
+      })
+    ).toBeNull();
+  });
+
+  it('preserves v140 bridge-mint allocations above the safe integer limit', () => {
+    const mintedAssetValue = '9007199254740993';
+
+    expect(
+      getSyscoinPsbtValueSummary(createUnfinalizedMintPsbt(mintedAssetValue))
+        .assetAllocations
+    ).toEqual([
+      {
+        assetGuid: '123456',
+        values: [{ n: 0, value: mintedAssetValue }],
+      },
+    ]);
   });
 
   it.each([

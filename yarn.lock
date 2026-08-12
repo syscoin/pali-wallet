@@ -11938,7 +11938,7 @@ syscoinjs-lib@^1.0.273:
     syscointx-js "^1.0.127"
     varuint-bitcoin "^2.0.0"
 
-syscointx-js@^1.0.127:
+syscointx-js@1.0.127, syscointx-js@^1.0.127:
   version "1.0.127"
   resolved "https://registry.yarnpkg.com/syscointx-js/-/syscointx-js-1.0.127.tgz#95c3822c0aa8f10eba1efa60f7ab348df31495f6"
   integrity sha512-9bZ86RxcJvs7YdwiaPIqSgP2z0HD7n0E9mb0WG4deJRfbrRXLhMczmICvwJ/yIxlKx0SgF5rmF49rrX8mNKSEw==
