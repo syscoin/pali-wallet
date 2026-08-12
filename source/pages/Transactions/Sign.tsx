@@ -98,7 +98,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       } else {
         // Sign-only flow
         response = await controllerEmitter(
-          ['wallet', 'syscoinTransaction', 'signPSBT'],
+          ['wallet', 'signSyscoinPsbt'],
           [
             {
               psbt: data,

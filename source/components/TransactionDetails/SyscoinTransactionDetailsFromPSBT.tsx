@@ -44,6 +44,13 @@ export interface IDecodedTransaction {
     burn?: {
       ethaddress: string;
     };
+    inputAssets?: Array<{
+      assetGuid: string;
+      inputIndex: number;
+      previousOutputIndex: number;
+      previousTxid: string;
+      value: string;
+    }>;
     mint?: {
       blockhash: string;
       ethtxid: string;
@@ -755,6 +762,66 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
           </div>
         </div>
       ))()}
+
+      {decodedTx.syscoin?.inputAssets &&
+        decodedTx.syscoin.inputAssets.length > 0 && (
+          <div className="space-y-3">
+            <Typography.Text className="text-white text-sm font-medium">
+              {t('send.assetsInvolved')} · {t('send.inputs')}
+            </Typography.Text>
+            <div className="space-y-2">
+              {decodedTx.syscoin.inputAssets.map((inputAsset) => {
+                const assetInfo = assetInfoMap[inputAsset.assetGuid] || {
+                  decimals: 8,
+                  symbol:
+                    inputAsset.assetGuid === SYSX_ASSET_GUID
+                      ? 'SYSX'
+                      : 'Unknown',
+                };
+
+                return (
+                  <div
+                    key={`${inputAsset.previousTxid}-${inputAsset.previousOutputIndex}-${inputAsset.assetGuid}`}
+                    className="bg-brand-blue800 p-4 rounded-lg space-y-2"
+                  >
+                    <div className="flex justify-between items-center gap-3">
+                      <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                        {t('send.inputs')} #{inputAsset.inputIndex}:
+                      </Typography.Text>
+                      <Typography.Text className="text-white text-xs sm:text-sm font-semibold text-right">
+                        {formatSyscoinValue(
+                          inputAsset.value,
+                          assetInfo.decimals ?? 8
+                        )}{' '}
+                        {assetInfo.symbol}
+                      </Typography.Text>
+                    </div>
+                    <CopyableField
+                      label={t('send.assetGuid')}
+                      value={inputAsset.assetGuid}
+                      displayValue={ellipsis(inputAsset.assetGuid, 12, 12)}
+                      monospace
+                      copyMessage={t('home.assetGuidCopied')}
+                    />
+                    <CopyableField
+                      label={`${t('send.transactionId')} / ${t(
+                        'send.outputs'
+                      )}`}
+                      value={`${inputAsset.previousTxid}:${inputAsset.previousOutputIndex}`}
+                      displayValue={`${ellipsis(
+                        inputAsset.previousTxid,
+                        10,
+                        10
+                      )}:${inputAsset.previousOutputIndex}`}
+                      monospace
+                      copyMessage={t('home.hashCopied')}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       {/* Outputs Summary - show based on technical details or detail toggle */}
       {(showTechnicalDetails || showDetails) &&
