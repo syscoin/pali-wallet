@@ -42,6 +42,9 @@ export type FieldValuesType = {
 
 export const MINIMUM_FEE = 0.00001;
 
+// Large consolidation PSBTs resolve prevouts through a bounded worker pool.
+export const SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS = 60_000;
+
 // Define the keys you are interested in
 export const syscoinKeysOfInterest = [
   'symbol',

@@ -565,6 +565,147 @@ describe('Syscoin PSBT value summary', () => {
     );
   });
 
+  it('deduplicates witness prevout lookups from the same transaction', async () => {
+    const previousTransaction = emptyTransaction();
+    previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+    const script = Buffer.from(
+      '00140000000000000000000000000000000000000001',
+      'hex'
+    );
+    previousTransaction.addOutput(script, BigInt(1000));
+    previousTransaction.addOutput(script, BigInt(2000));
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(2);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      witnessUtxo: { script, value: BigInt(1000) },
+    });
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 1,
+      witnessUtxo: { script, value: BigInt(2000) },
+    });
+    psbt.addOutput({ script, value: BigInt(2900) });
+    const fetchRawTransaction = jest.fn().mockResolvedValue({
+      hex: previousTransaction.toHex(),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, fetchRawTransaction)
+    ).resolves.toMatchObject({ feeSatoshis: '100', inputAssets: [] });
+    expect(fetchRawTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds concurrent witness prevout lookups', async () => {
+    const script = Buffer.from(
+      '00140000000000000000000000000000000000000001',
+      'hex'
+    );
+    const previousTransactions = Array.from({ length: 12 }, (_, index) => {
+      const previousTransaction = emptyTransaction();
+      previousTransaction.addInput(Buffer.alloc(32, index + 1), 0xffffffff);
+      previousTransaction.addOutput(script, BigInt(1000));
+      return previousTransaction;
+    });
+    const previousTransactionsById = new Map(
+      previousTransactions.map((transaction) => [
+        transaction.getId(),
+        transaction,
+      ])
+    );
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(2);
+    for (const previousTransaction of previousTransactions) {
+      psbt.addInput({
+        hash: previousTransaction.getHash(),
+        index: 0,
+        witnessUtxo: { script, value: BigInt(1000) },
+      });
+    }
+    psbt.addOutput({ script, value: BigInt(11900) });
+
+    let activeLookups = 0;
+    let maximumActiveLookups = 0;
+    const fetchRawTransaction = jest.fn(async (txid: string) => {
+      activeLookups += 1;
+      maximumActiveLookups = Math.max(maximumActiveLookups, activeLookups);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      activeLookups -= 1;
+      return { hex: previousTransactionsById.get(txid)?.toHex() };
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, fetchRawTransaction)
+    ).resolves.toMatchObject({ feeSatoshis: '100', inputAssets: [] });
+    expect(fetchRawTransaction).toHaveBeenCalledTimes(
+      previousTransactions.length
+    );
+    expect(maximumActiveLookups).toBe(8);
+  });
+
+  it('stops scheduling witness prevout lookups after a failure', async () => {
+    const script = Buffer.from(
+      '00140000000000000000000000000000000000000001',
+      'hex'
+    );
+    const previousTransactions = Array.from({ length: 12 }, (_, index) => {
+      const previousTransaction = emptyTransaction();
+      previousTransaction.addInput(Buffer.alloc(32, index + 1), 0xffffffff);
+      previousTransaction.addOutput(script, BigInt(1000));
+      return previousTransaction;
+    });
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(2);
+    for (const previousTransaction of previousTransactions) {
+      psbt.addInput({
+        hash: previousTransaction.getHash(),
+        index: 0,
+        witnessUtxo: { script, value: BigInt(1000) },
+      });
+    }
+    psbt.addOutput({ script, value: BigInt(11900) });
+
+    let rejectFirstLookup: ((reason?: unknown) => void) | undefined;
+    const settleActiveLookups: Array<() => void> = [];
+    const previousTransactionsById = new Map(
+      previousTransactions.map((transaction) => [
+        transaction.getId(),
+        transaction,
+      ])
+    );
+    const fetchRawTransaction = jest.fn(
+      (txid: string) =>
+        new Promise((resolve, reject) => {
+          if (!rejectFirstLookup) {
+            rejectFirstLookup = reject;
+          } else {
+            settleActiveLookups.push(() =>
+              resolve({ hex: previousTransactionsById.get(txid)?.toHex() })
+            );
+          }
+        })
+    );
+    const verification = getVerifiedSyscoinPsbtValueSummary(
+      psbt,
+      fetchRawTransaction
+    );
+
+    expect(fetchRawTransaction).toHaveBeenCalledTimes(8);
+    rejectFirstLookup?.(new Error('lookup failed'));
+    await expect(verification).rejects.toThrow('lookup failed');
+    settleActiveLookups.forEach((settle) => settle());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchRawTransaction).toHaveBeenCalledTimes(8);
+  });
+
   it('accepts a supported asset send whose inputs and outputs match exactly', async () => {
     const { allocationData, assetScript, previousTransaction } =
       createAssetPrevout();

@@ -8,6 +8,7 @@ const ALLOCATION_BURN_TO_ETHEREUM_VERSION = 141;
 const ALLOCATION_SEND_VERSION = 142;
 const SYSX_ASSET_GUID = '123456';
 const CORE_MAX_SCRIPT_SIZE = 10_000;
+const MAX_CONCURRENT_PREVOUT_LOOKUPS = 8;
 const CORE_WITNESS_COMMITMENT_HEADER = Buffer.from('aa21a9ed', 'hex');
 const SYSCOIN_ASSET_VERSIONS = new Set([
   ALLOCATION_BURN_TO_SYSCOIN_VERSION,
@@ -220,23 +221,68 @@ const verifyAssetConservation = (
   }
 };
 
+const verifyPreviousTransaction = (
+  psbt: any,
+  inputIndex: number,
+  previousTransaction: any
+) => {
+  const txInput = psbt.txInputs[inputIndex];
+  const input = psbt.data.inputs[inputIndex];
+  if (!Buffer.from(txInput.hash).equals(previousTransaction.getHash())) {
+    throw new Error(`PSBT input ${inputIndex} previous transaction mismatch`);
+  }
+
+  const previousOutput = previousTransaction.outs?.[txInput.index];
+  if (!previousOutput) {
+    throw new Error(`Unable to verify PSBT input ${inputIndex}`);
+  }
+  if (
+    input.witnessUtxo &&
+    (toBigIntValue(input.witnessUtxo.value, `PSBT input ${inputIndex}`) !==
+      toBigIntValue(previousOutput.value, `PSBT input ${inputIndex}`) ||
+      !Buffer.from(input.witnessUtxo.script).equals(previousOutput.script))
+  ) {
+    throw new Error(`Conflicting PSBT input ${inputIndex} UTXO data`);
+  }
+};
+
 const resolvePreviousTransactions = async (
   psbt: any,
   fetchRawTransaction: RawTransactionFetcher
-): Promise<any[]> =>
-  Promise.all(
-    psbt.txInputs.map(async (txInput: any, inputIndex: number) => {
-      const input = psbt.data.inputs[inputIndex];
-      let previousTransaction: any;
+): Promise<any[]> => {
+  const previousTransactions = new Array(psbt.txInputs.length);
+  const remoteInputIndexesByTxid = new Map<string, number[]>();
 
-      if (input.nonWitnessUtxo) {
-        previousTransaction = syscoinUtils.bitcoinjs.Transaction.fromBuffer(
-          input.nonWitnessUtxo
-        );
-      } else {
-        const previousTxid = Buffer.from(txInput.hash)
-          .reverse()
-          .toString('hex');
+  psbt.txInputs.forEach((txInput: any, inputIndex: number) => {
+    const input = psbt.data.inputs[inputIndex];
+    if (input.nonWitnessUtxo) {
+      const previousTransaction = syscoinUtils.bitcoinjs.Transaction.fromBuffer(
+        input.nonWitnessUtxo
+      );
+      verifyPreviousTransaction(psbt, inputIndex, previousTransaction);
+      previousTransactions[inputIndex] = previousTransaction;
+      return;
+    }
+
+    const previousTxid = Buffer.from(txInput.hash).reverse().toString('hex');
+    const inputIndexes = remoteInputIndexesByTxid.get(previousTxid);
+    if (inputIndexes) {
+      inputIndexes.push(inputIndex);
+    } else {
+      remoteInputIndexesByTxid.set(previousTxid, [inputIndex]);
+    }
+  });
+
+  const lookups = Array.from(remoteInputIndexesByTxid.entries());
+  let nextLookupIndex = 0;
+  let lookupFailed = false;
+  const runLookupWorker = async () => {
+    while (!lookupFailed) {
+      const lookup = lookups[nextLookupIndex++];
+      if (!lookup) return;
+
+      const [previousTxid, inputIndexes] = lookup;
+      try {
         const response = await fetchRawTransaction(previousTxid);
         const rawTransactionHex = getRawTransactionHex(response);
         if (
@@ -244,34 +290,33 @@ const resolvePreviousTransactions = async (
           rawTransactionHex.length % 2 !== 0 ||
           !/^[0-9a-fA-F]+$/.test(rawTransactionHex)
         ) {
-          throw new Error(`Unable to verify PSBT input ${inputIndex} prevout`);
+          throw new Error(
+            `Unable to verify PSBT input ${inputIndexes[0]} prevout`
+          );
         }
-        previousTransaction =
+        const previousTransaction =
           syscoinUtils.bitcoinjs.Transaction.fromHex(rawTransactionHex);
-      }
 
-      if (!Buffer.from(txInput.hash).equals(previousTransaction.getHash())) {
-        throw new Error(
-          `PSBT input ${inputIndex} previous transaction mismatch`
-        );
+        for (const inputIndex of inputIndexes) {
+          verifyPreviousTransaction(psbt, inputIndex, previousTransaction);
+          previousTransactions[inputIndex] = previousTransaction;
+        }
+      } catch (error) {
+        lookupFailed = true;
+        throw error;
       }
+    }
+  };
 
-      const previousOutput = previousTransaction.outs?.[txInput.index];
-      if (!previousOutput) {
-        throw new Error(`Unable to verify PSBT input ${inputIndex}`);
-      }
-      if (
-        input.witnessUtxo &&
-        (toBigIntValue(input.witnessUtxo.value, `PSBT input ${inputIndex}`) !==
-          toBigIntValue(previousOutput.value, `PSBT input ${inputIndex}`) ||
-          !Buffer.from(input.witnessUtxo.script).equals(previousOutput.script))
-      ) {
-        throw new Error(`Conflicting PSBT input ${inputIndex} UTXO data`);
-      }
-
-      return previousTransaction;
-    })
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MAX_CONCURRENT_PREVOUT_LOOKUPS, lookups.length) },
+      runLookupWorker
+    )
   );
+
+  return previousTransactions;
+};
 
 const getVerifiedInputAssets = (
   psbt: any,

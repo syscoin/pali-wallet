@@ -15,6 +15,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
+import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { ellipsis } from 'utils/format';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
@@ -244,7 +245,8 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
       try {
         const decodedData = (await controllerEmitter(
           ['wallet', 'decodeRawTransaction'],
-          [psbtData]
+          [psbtData],
+          SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
         )) as IDecodedTransaction;
         setDecodedTx(decodedData);
 
