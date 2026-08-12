@@ -150,6 +150,86 @@ describe('EVM address poisoning protection', () => {
     ).toEqual([LEGITIMATE_RECIPIENT, UNRELATED_RECIPIENT]);
   });
 
+  it('does not trust forged smart-account calldata without canonical history provenance', () => {
+    const forgedHandleOps =
+      encodeSmartAccountNativeTransfer(POISONED_RECIPIENT);
+
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            from: POISONED_RECIPIENT,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+            input: forgedHandleOps,
+            to: ACTIVE_ACCOUNT,
+            ['txreceipt_status']: '1',
+          },
+          {
+            from: POISONED_RECIPIENT,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+            input: forgedHandleOps,
+            smartAccountExecutionFrom: ACTIVE_ACCOUNT,
+            to: ACTIVE_ACCOUNT,
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+  });
+
+  it('does not trust a foreign UserOperation under smart-account history metadata', () => {
+    const foreignSmartAccount = POISONED_RECIPIENT;
+    const executionCalldata = hexConcat([
+      LEGITIMATE_RECIPIENT,
+      defaultAbiCoder.encode(['uint256'], ['1']),
+    ]);
+    const executeCall = `${id('execute(bytes32,bytes)').slice(
+      0,
+      10
+    )}${defaultAbiCoder
+      .encode(['bytes32', 'bytes'], [ZERO_BYTES32, executionCalldata])
+      .slice(2)}`;
+    const userOperation = [
+      foreignSmartAccount,
+      0,
+      '0x',
+      executeCall,
+      ZERO_BYTES32,
+      50_000,
+      ZERO_BYTES32,
+      '0x',
+      '0x1234',
+    ];
+    const handleOps = `${id(
+      'handleOps((address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes)[],address)'
+    ).slice(0, 10)}${defaultAbiCoder
+      .encode(
+        [
+          'tuple(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)[]',
+          'address',
+        ],
+        [[userOperation], UNRELATED_RECIPIENT]
+      )
+      .slice(2)}`;
+
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            from: UNRELATED_RECIPIENT,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+            input: handleOps,
+            smartAccountExecutionFrom: ACTIVE_ACCOUNT,
+            to: ENTRYPOINT,
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+  });
+
   it('does not trust batch recipients when per-call failure is allowed', () => {
     expect(
       getTrustedEvmRecipients(

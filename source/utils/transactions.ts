@@ -382,7 +382,11 @@ export const getSmartAccountExecutionTransactions = (
   tx: any,
   {
     requireDefaultExecution = false,
-  }: { requireDefaultExecution?: boolean } = {}
+    requireMatchingSmartAccount = false,
+  }: {
+    requireDefaultExecution?: boolean;
+    requireMatchingSmartAccount?: boolean;
+  } = {}
 ): any[] => {
   const input = String(tx?.input || tx?.data || '');
   if (!input || input === '0x' || input.length < 10) {
@@ -403,13 +407,16 @@ export const getSmartAccountExecutionTransactions = (
       const smartAccount = String(
         tx.smartAccountExecutionFrom || ''
       ).toLowerCase();
-      const userOperation =
-        userOperations.find(
-          (operation) =>
-            smartAccount &&
-            String(operation.sender || operation[0]).toLowerCase() ===
-              smartAccount
-        ) || userOperations[0];
+      const matchingUserOperation = userOperations.find(
+        (operation) =>
+          smartAccount &&
+          String(operation.sender || operation[0]).toLowerCase() ===
+            smartAccount
+      );
+      const userOperation = matchingUserOperation || userOperations[0];
+      if (requireMatchingSmartAccount && !matchingUserOperation) {
+        return [];
+      }
       const callData = String(
         userOperation?.callData || userOperation?.[3] || ''
       );

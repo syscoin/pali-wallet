@@ -1,6 +1,7 @@
 import { isAddress } from 'utils/ethersV6Compat';
 
 import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmNonce';
+import { PALI_ENTRYPOINT_V09_ADDRESS } from './smartAccount/contracts';
 import {
   getERC1155Recipient,
   getERC20Recipient,
@@ -71,22 +72,31 @@ const getTrustedEvmRecipientsFromTransaction = (
     return [];
   }
 
-  const executionTransactions = getSmartAccountExecutionTransactions(
-    transaction,
-    { requireDefaultExecution: true }
-  );
-  const outboundTransactions =
-    executionTransactions.length > 0 ? executionTransactions : [transaction];
   const normalizedSmartAccount = normalizeEvmAddress(
     transaction?.smartAccountExecutionFrom
   );
+  const isCanonicalSmartAccountHistory =
+    normalizedSmartAccount === normalizedAccount &&
+    normalizeEvmAddress(transaction?.to) ===
+      PALI_ENTRYPOINT_V09_ADDRESS.toLowerCase();
+  const executionTransactions = isCanonicalSmartAccountHistory
+    ? getSmartAccountExecutionTransactions(transaction, {
+        requireDefaultExecution: true,
+        requireMatchingSmartAccount: true,
+      })
+    : [];
+  if (isCanonicalSmartAccountHistory && executionTransactions.length === 0) {
+    return [];
+  }
+  const outboundTransactions =
+    executionTransactions.length > 0 ? executionTransactions : [transaction];
   const recipients: string[] = [];
 
   for (const outboundTransaction of outboundTransactions) {
     const normalizedSender = normalizeEvmAddress(outboundTransaction?.from);
     if (
       normalizedSender !== normalizedAccount &&
-      normalizedSmartAccount !== normalizedAccount
+      !isCanonicalSmartAccountHistory
     ) {
       continue;
     }
