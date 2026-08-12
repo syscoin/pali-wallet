@@ -1,6 +1,8 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { getAllocationsFromOutputs } from 'syscointx-js';
 
 const ALLOCATION_BURN_TO_SYSCOIN_VERSION = 138;
+const ALLOCATION_MINT_VERSION = 140;
 const SYSX_ASSET_GUID = '123456';
 
 const toBigIntValue = (value: unknown, field: string): bigint => {
@@ -86,15 +88,19 @@ export const getSyscoinPsbtValueSummary = (
     throw new Error('Unable to verify PSBT asset allocations');
   }
   const transaction = psbt.extractTransaction(true, true);
-  const assetAllocations = (
-    syscoinUtils.getAllocationsFromTx(transaction) || []
-  ).map((allocation: any) => ({
-    assetGuid: String(allocation.assetGuid),
-    values: (allocation.values || []).map((value: any) => ({
-      n: value.n,
-      value: toBigIntValue(value.value, 'asset allocation').toString(),
-    })),
-  }));
+  const rawAssetAllocations =
+    transaction.version === ALLOCATION_MINT_VERSION
+      ? getAllocationsFromOutputs(transaction.outs)
+      : syscoinUtils.getAllocationsFromTx(transaction);
+  const assetAllocations = (rawAssetAllocations || []).map(
+    (allocation: any) => ({
+      assetGuid: String(allocation.assetGuid),
+      values: (allocation.values || []).map((value: any) => ({
+        n: value.n,
+        value: toBigIntValue(value.value, 'asset allocation').toString(),
+      })),
+    })
+  );
 
   let effectiveInput = totalInput;
   if (transaction.version === ALLOCATION_BURN_TO_SYSCOIN_VERSION) {
