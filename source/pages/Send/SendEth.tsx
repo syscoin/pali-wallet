@@ -25,6 +25,10 @@ import {
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
+import {
+  findEvmAddressPoisoningCollision,
+  getTrustedEvmRecipients,
+} from 'utils/addressPoisoning';
 import { parseEther, parseUnits, formatUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
@@ -118,6 +122,36 @@ export const SendEth = () => {
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
+  const currentEvmTransactions = useMemo(
+    () =>
+      accountTransactions?.[vaultActiveAccount.type]?.[vaultActiveAccount.id]
+        ?.ethereum?.[activeNetwork?.chainId] || [],
+    [
+      accountTransactions,
+      activeNetwork?.chainId,
+      vaultActiveAccount.id,
+      vaultActiveAccount.type,
+    ]
+  );
+  const trustedRecentRecipients = useMemo(
+    () =>
+      getTrustedEvmRecipients(
+        currentEvmTransactions,
+        activeAccount?.address || ''
+      ),
+    [activeAccount?.address, currentEvmTransactions]
+  );
+  const localEvmAddresses = useMemo(() => {
+    const addresses: string[] = [];
+    Object.values(accounts || {}).forEach((byId: any) => {
+      Object.values(byId || {}).forEach((account: any) => {
+        if (String(account?.address || '').startsWith('0x')) {
+          addresses.push(account.address);
+        }
+      });
+    });
+    return addresses;
+  }, [accounts]);
 
   // Disable MAX sends when there is a pending outgoing tx.
   // Many RPCs do not expose a reliable "pending spendable" balance, so allowing MAX
@@ -320,25 +354,16 @@ export const SendEth = () => {
         });
       } catch {}
 
-      // Recent recipients for current account + chain
-      try {
-        const chainId = activeNetwork?.chainId;
-        const currentAccTxs =
-          accountTransactions?.[vaultActiveAccount.type]?.[
-            vaultActiveAccount.id
-          ]?.ethereum?.[chainId];
-        const seen = new Set<string>();
-        (currentAccTxs || []).forEach((tx: any) => {
-          const to = String(tx?.to || '').toLowerCase();
-          if (!to || seen.has(to)) return;
-          const maybeName = (ensCache as any)?.[to]?.name;
-          const display = maybeName || to;
-          if (!q || String(display).toLowerCase().includes(q)) {
-            results.push({ label: display, address: tx.to, type: 'recent' });
-            seen.add(to);
-          }
-        });
-      } catch {}
+      // Only recipients from canonical outbound transactions are trusted as
+      // recent. Incoming dust and explorer token-event placeholders are never
+      // promoted into an address-selection surface.
+      trustedRecentRecipients.forEach((address) => {
+        const maybeName = (ensCache as any)?.[address]?.name;
+        const display = maybeName || address;
+        if (!q || String(display).toLowerCase().includes(q)) {
+          results.push({ label: display, address, type: 'recent' });
+        }
+      });
 
       // ENS suggestion row when typing .eth
       if (q.toLowerCase().endsWith('.eth')) {
@@ -361,7 +386,7 @@ export const SendEth = () => {
       }
       setSuggestions(deduped.slice(0, 10));
     },
-    [accounts, accountTransactions, activeAccount, activeNetwork]
+    [accounts, ensCache, trustedRecentRecipients]
   );
 
   // Save state when user blurs from input fields
@@ -1175,8 +1200,24 @@ export const SendEth = () => {
                     return Promise.resolve();
                   }
 
+                  const assertNotPoisoned = (address: string) => {
+                    const collision = findEvmAddressPoisoningCollision(
+                      address,
+                      trustedRecentRecipients,
+                      localEvmAddresses
+                    );
+                    if (collision) {
+                      throw new Error(
+                        t('send.addressPoisoningBlocked', {
+                          address: collision.trustedAddress,
+                        })
+                      );
+                    }
+                  };
+
                   // Accept valid hex addresses directly
                   if (isValidEthereumAddress(value)) {
+                    assertNotPoisoned(value);
                     return Promise.resolve();
                   }
 
@@ -1187,6 +1228,7 @@ export const SendEth = () => {
                   ) {
                     const resolved = await tryResolveEns(value);
                     if (resolved) {
+                      assertNotPoisoned(resolved);
                       // Replace input with resolved address for submission
                       form.setFieldValue('receiver', resolved);
                       setReceiverInput(resolved);

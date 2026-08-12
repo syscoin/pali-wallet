@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -15,9 +15,14 @@ import type { IEvmTransactionResponse } from 'scripts/Background/controllers/tra
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
+  selectActiveAccountTransactions,
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { IDecodedTx } from 'types/transactions';
+import {
+  getEvmHistoryAddressCopyRisk,
+  getTrustedEvmRecipients,
+} from 'utils/addressPoisoning';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { camelCaseToText } from 'utils/index';
@@ -48,6 +53,17 @@ export const EvmTransactionDetailsEnhanced = ({
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
+  const activeAccountTransactions = useSelector(
+    selectActiveAccountTransactions
+  );
+  const trustedRecipients = useMemo(
+    () =>
+      getTrustedEvmRecipients(
+        activeAccountTransactions?.ethereum?.[chainId] || [],
+        currentAccount?.address || ''
+      ),
+    [activeAccountTransactions, chainId, currentAccount?.address]
+  );
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -446,6 +462,24 @@ export const EvmTransactionDetailsEnhanced = ({
 
   // Handle copy actions with appropriate messages
   const handleCopy = (value: string, label: string) => {
+    const copyRisk = getEvmHistoryAddressCopyRisk({
+      accountAddress: currentAccount?.address || '',
+      address: value,
+      label,
+      transaction: transactionTx,
+      trustedRecipients,
+    });
+    if (copyRisk) {
+      alert.warning(
+        copyRisk.kind === 'lookalike'
+          ? t('send.addressPoisoningBlocked', {
+              address: copyRisk.trustedAddress,
+            })
+          : t('send.addressPoisoningHistoryCopyBlocked')
+      );
+      return;
+    }
+
     copy(value ?? '');
     alert.info(getCopyMessage(label));
   };
