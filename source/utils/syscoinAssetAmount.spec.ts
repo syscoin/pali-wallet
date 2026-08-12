@@ -1,5 +1,6 @@
 import {
   assertValidAssetAmount,
+  hasNonZeroAssetDelta,
   isAssetAmountWithinBalance,
   toEightDecimalBuilderAmount,
 } from './syscoinAssetAmount';
@@ -42,6 +43,15 @@ describe('Syscoin asset amount conversion', () => {
   it('rejects malformed, zero, and negative amounts', () => {
     for (const amount of ['', '0', '-1', '1e2', '1.2.3', '1'.repeat(21)]) {
       expect(() => assertValidAssetAmount(amount, 8)).toThrow();
+    }
+  });
+
+  it('detects exact nonzero unconfirmed balance strings', () => {
+    for (const amount of [1, -1, '0.00000001', '-0.00000001']) {
+      expect(hasNonZeroAssetDelta(amount)).toBe(true);
+    }
+    for (const amount of [undefined, 0, '0', '0.00000000', '-0.0', 'invalid']) {
+      expect(hasNonZeroAssetDelta(amount)).toBe(false);
     }
   });
 });

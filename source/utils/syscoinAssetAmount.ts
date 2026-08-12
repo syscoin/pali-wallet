@@ -67,6 +67,17 @@ export const isAssetAmountWithinBalance = (
   }
 };
 
+export const hasNonZeroAssetDelta = (
+  amount: number | string | undefined
+): boolean => {
+  if (amount === undefined) return false;
+
+  const normalizedAmount = String(amount).trim();
+  if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizedAmount)) return false;
+
+  return !/^-?0*(?:\.0*)?$/.test(normalizedAmount);
+};
+
 /**
  * The installed keyring API accepts asset amounts in an eight-decimal display
  * format. Convert the selected asset's display precision into that exact
