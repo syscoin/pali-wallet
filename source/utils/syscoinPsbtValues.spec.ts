@@ -170,6 +170,55 @@ describe('Syscoin PSBT value summary', () => {
     ).toBeNull();
   });
 
+  it('counts the value-bearing SYS burn output when computing a v139 fee', () => {
+    const allocationData = syscointx.bufferUtils.serializeAssetAllocations([
+      {
+        assetGuid: '123456',
+        values: [{ n: 0, value: new syscoinUtils.BN('100000000') }],
+      },
+    ]);
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+
+    psbt.setVersion(139);
+    psbt.addInput({
+      hash: Buffer.alloc(32),
+      index: 0,
+      witnessUtxo: {
+        script: Buffer.from(
+          '00140000000000000000000000000000000000000000',
+          'hex'
+        ),
+        value: BigInt(100010000),
+      },
+    });
+    psbt.addOutput({
+      script: Buffer.from(
+        '00140000000000000000000000000000000000000001',
+        'hex'
+      ),
+      value: BigInt(9000),
+    });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [allocationData],
+      }).output!,
+      value: BigInt(100000000),
+    });
+
+    expect(getSyscoinPsbtValueSummary(psbt)).toEqual({
+      assetAllocations: [
+        {
+          assetGuid: '123456',
+          values: [{ n: 0, value: '100000000' }],
+        },
+      ],
+      feeSatoshis: '1000',
+      outputValuesSatoshis: ['9000', '100000000'],
+    });
+  });
+
   it.each([
     ['a non-SYSX allocation', { allocationAssetGuid: '123457' }],
     ['a burn assigned to a spendable output', { allocationOutputIndex: 1 }],
