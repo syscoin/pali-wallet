@@ -59,24 +59,13 @@ const getAssetMetadataError = (
 
   const isNftGuid = BigInt(assetGuid) >> BigInt(32) > BigInt(0);
   const assetType = metadata?.assetType;
+  if (!assetType) {
+    return `Unable to verify the origin type for asset ${assetGuid}`;
+  }
   if (assetGuid === '123456') {
     if (assetType !== 'SYSX' || decimals !== 8) {
       return 'SYSX metadata does not match its canonical identity';
     }
-    return null;
-  }
-
-  if (!assetType) {
-    const hasBridgeOriginMetadata =
-      Boolean(metadata?.contract) ||
-      metadata?.originDecimals !== undefined ||
-      metadata?.tokenId !== undefined;
-    if (isNftGuid || hasBridgeOriginMetadata) {
-      return `Unable to verify the origin type for asset ${assetGuid}`;
-    }
-
-    // Native SPTs have no bridge origin. Their consensus GUID, precision, and
-    // decoded integer amounts are sufficient for transaction review.
     return null;
   }
 
@@ -109,7 +98,10 @@ const getAssetMetadataError = (
   if (!/^0x[0-9a-fA-F]{40}$/.test(metadata.contract || '')) {
     return `Unable to verify origin contract for asset ${assetGuid}`;
   }
-  if (!/^\d+$/.test(metadata.tokenId || '')) {
+  if (
+    !/^\d+$/.test(metadata.tokenId || '') ||
+    BigInt(metadata.tokenId!) <= BigInt(0)
+  ) {
     return `Unable to verify token ID for asset ${assetGuid}`;
   }
 
