@@ -4,7 +4,7 @@ import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmNonce';
 import {
   getERC1155Recipient,
   getERC20Recipient,
-  getSmartAccountDisplayTransaction,
+  getSmartAccountExecutionTransactions,
   isERC1155Transfer,
   isTokenTransfer,
 } from './transactions';
@@ -40,13 +40,26 @@ const getCommonSuffixLength = (left: string, right: string) => {
   return length;
 };
 
-const isFailedTransaction = (transaction: any) =>
-  transaction?.isError === '1' || transaction?.txreceipt_status === '0';
+const isFailedTransaction = (transaction: any) => {
+  const isError = transaction?.isError;
+  const receiptStatus = transaction?.txreceipt_status;
+  // Legacy explorer rows may copy isError into txreceipt_status, turning a
+  // successful isError="0" into a contradictory receipt status of "0".
+  const isExplicitSuccess =
+    isError === '0' || isError === 0 || isError === false;
 
-export const getTrustedEvmRecipient = (
+  return (
+    isError === '1' ||
+    isError === 1 ||
+    isError === true ||
+    ((receiptStatus === '0' || receiptStatus === 0) && !isExplicitSuccess)
+  );
+};
+
+const getTrustedEvmRecipientsFromTransaction = (
   transaction: any,
   accountAddress: string
-): string | null => {
+): string[] => {
   const normalizedAccount = normalizeEvmAddress(accountAddress);
   if (
     !normalizedAccount ||
@@ -55,38 +68,58 @@ export const getTrustedEvmRecipient = (
     transaction.historySource ===
       EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
   ) {
-    return null;
+    return [];
   }
 
-  const displayTransaction =
-    getSmartAccountDisplayTransaction(transaction) || transaction;
-  const normalizedSender = normalizeEvmAddress(displayTransaction?.from);
+  const executionTransactions = getSmartAccountExecutionTransactions(
+    transaction,
+    { requireDefaultExecution: true }
+  );
+  const outboundTransactions =
+    executionTransactions.length > 0 ? executionTransactions : [transaction];
   const normalizedSmartAccount = normalizeEvmAddress(
     transaction?.smartAccountExecutionFrom
   );
-  if (
-    normalizedSender !== normalizedAccount &&
-    normalizedSmartAccount !== normalizedAccount
-  ) {
-    return null;
-  }
+  const recipients: string[] = [];
 
-  let recipient: string | null = null;
-  if (isTokenTransfer(displayTransaction)) {
-    recipient = isERC1155Transfer(displayTransaction)
-      ? getERC1155Recipient(displayTransaction)
-      : getERC20Recipient(displayTransaction);
-  } else {
-    const input = String(
-      displayTransaction?.input || displayTransaction?.data || '0x'
-    );
-    if (input === '0x') {
-      recipient = displayTransaction?.to || null;
+  for (const outboundTransaction of outboundTransactions) {
+    const normalizedSender = normalizeEvmAddress(outboundTransaction?.from);
+    if (
+      normalizedSender !== normalizedAccount &&
+      normalizedSmartAccount !== normalizedAccount
+    ) {
+      continue;
+    }
+
+    let recipient: string | null = null;
+    if (isTokenTransfer(outboundTransaction)) {
+      recipient = isERC1155Transfer(outboundTransaction)
+        ? getERC1155Recipient(outboundTransaction)
+        : getERC20Recipient(outboundTransaction);
+    } else {
+      const input = String(
+        outboundTransaction?.input || outboundTransaction?.data || '0x'
+      );
+      if (input === '0x') {
+        recipient = outboundTransaction?.to || null;
+      }
+    }
+
+    const normalizedRecipient = normalizeEvmAddress(recipient);
+    if (normalizedRecipient) {
+      recipients.push(normalizedRecipient);
     }
   }
 
-  return normalizeEvmAddress(recipient);
+  return recipients;
 };
+
+export const getTrustedEvmRecipient = (
+  transaction: any,
+  accountAddress: string
+): string | null =>
+  getTrustedEvmRecipientsFromTransaction(transaction, accountAddress)[0] ||
+  null;
 
 export const getTrustedEvmRecipients = (
   transactions: any[] | null | undefined,
@@ -96,10 +129,15 @@ export const getTrustedEvmRecipients = (
   const seen = new Set<string>();
 
   for (const transaction of transactions || []) {
-    const recipient = getTrustedEvmRecipient(transaction, accountAddress);
-    if (recipient && !seen.has(recipient)) {
-      seen.add(recipient);
-      recipients.push(recipient);
+    const transactionRecipients = getTrustedEvmRecipientsFromTransaction(
+      transaction,
+      accountAddress
+    );
+    for (const recipient of transactionRecipients) {
+      if (!seen.has(recipient)) {
+        seen.add(recipient);
+        recipients.push(recipient);
+      }
     }
   }
 

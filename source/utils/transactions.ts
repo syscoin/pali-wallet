@@ -377,10 +377,16 @@ const decodeERC7579ExecutionCalldata = (
   return null;
 };
 
-export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
+/** Decode every inner ERC-7579 execution while preserving the outer history. */
+export const getSmartAccountExecutionTransactions = (
+  tx: any,
+  {
+    requireDefaultExecution = false,
+  }: { requireDefaultExecution?: boolean } = {}
+): any[] => {
   const input = String(tx?.input || tx?.data || '');
   if (!input || input === '0x' || input.length < 10) {
-    return null;
+    return [];
   }
 
   try {
@@ -408,12 +414,15 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
         userOperation?.callData || userOperation?.[3] || ''
       );
       if (!callData.startsWith(ERC7579_EXECUTE_SELECTOR)) {
-        return null;
+        return [];
       }
       const [mode, executionCalldata] = defaultAbiCoder.decode(
         ['bytes32', 'bytes'],
         `0x${callData.slice(10)}`
       ) as unknown as [string, string];
+      if (requireDefaultExecution && mode.slice(4, 6).toLowerCase() !== '00') {
+        return [];
+      }
       executions = decodeERC7579ExecutionCalldata(mode, executionCalldata);
       smartAccountExecutionFrom =
         tx.smartAccountExecutionFrom ||
@@ -421,20 +430,39 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
         userOperation[0] ||
         tx.from;
     } else {
-      return null;
+      return [];
     }
 
     if (!executions?.length) {
-      return null;
+      return [];
     }
 
+    return executions.map((execution) => ({
+      ...tx,
+      from: smartAccountExecutionFrom,
+      input: execution.data || '0x',
+      data: execution.data || '0x',
+      to: execution.target,
+      value: execution.value?.toString?.() || String(execution.value || '0'),
+    }));
+  } catch (error) {
+    return [];
+  }
+};
+
+export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
+  const executions = getSmartAccountExecutionTransactions(tx);
+  if (executions.length === 0) {
+    return null;
+  }
+
+  try {
     const outerTo = String(tx?.to || '').toLowerCase();
-    const smartAccount = String(smartAccountExecutionFrom || '').toLowerCase();
+    const smartAccount = String(executions[0]?.from || '').toLowerCase();
     const isMeaningfulExecution = (execution: any) => {
-      const target = String(execution.target || '').toLowerCase();
-      const data = String(execution.data || '0x');
-      const value =
-        execution.value?.toString?.() || String(execution.value || '0');
+      const target = String(execution.to || '').toLowerCase();
+      const data = String(execution.input || execution.data || '0x');
+      const value = String(execution.value || '0');
 
       return (
         data !== '0x' ||
@@ -443,14 +471,18 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
       );
     };
     const moduleInstallExecution = executions.find((execution) => {
-      const data = String(execution.data || '0x').toLowerCase();
+      const data = String(
+        execution.input || execution.data || '0x'
+      ).toLowerCase();
       return (
         data.startsWith(INSTALL_MODULE_SELECTOR) ||
         data.startsWith(ROTATE_VALIDATOR_SELECTOR)
       );
     });
     const hasModuleUninstallExecution = executions.some((execution) => {
-      const data = String(execution.data || '0x').toLowerCase();
+      const data = String(
+        execution.input || execution.data || '0x'
+      ).toLowerCase();
       return data.startsWith(UNINSTALL_MODULE_SELECTOR);
     });
     const selected =
@@ -458,14 +490,7 @@ export const getSmartAccountDisplayTransaction = (tx: any): any | null => {
       executions.find((execution) => isMeaningfulExecution(execution)) ||
       executions[executions.length - 1];
 
-    return {
-      ...tx,
-      from: smartAccountExecutionFrom,
-      input: selected.data || '0x',
-      data: selected.data || '0x',
-      to: selected.target,
-      value: selected.value?.toString?.() || selected.value || '0',
-    };
+    return selected;
   } catch (error) {
     return null;
   }

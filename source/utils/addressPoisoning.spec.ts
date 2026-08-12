@@ -25,16 +25,15 @@ const encodeTransferFrom = (from: string, recipient: string, value = 0) =>
     .encode(['address', 'address', 'uint256'], [from, recipient, value])
     .slice(2)}`;
 
-const encodeSmartAccountNativeTransfer = (recipient: string) => {
-  const executionCalldata = hexConcat([
-    recipient,
-    defaultAbiCoder.encode(['uint256'], ['1']),
-  ]);
+const encodeSmartAccountExecutions = (
+  mode: string,
+  executionCalldata: string
+) => {
   const executeCall = `${id('execute(bytes32,bytes)').slice(
     0,
     10
   )}${defaultAbiCoder
-    .encode(['bytes32', 'bytes'], [ZERO_BYTES32, executionCalldata])
+    .encode(['bytes32', 'bytes'], [mode, executionCalldata])
     .slice(2)}`;
   const userOperation = [
     ACTIVE_ACCOUNT,
@@ -59,6 +58,24 @@ const encodeSmartAccountNativeTransfer = (recipient: string) => {
       [[userOperation], UNRELATED_RECIPIENT]
     )
     .slice(2)}`;
+};
+
+const encodeSmartAccountNativeTransfer = (recipient: string) =>
+  encodeSmartAccountExecutions(
+    ZERO_BYTES32,
+    hexConcat([recipient, defaultAbiCoder.encode(['uint256'], ['1'])])
+  );
+
+const encodeSmartAccountBatch = (
+  executions: Array<{ data: string; target: string; value: string }>,
+  executionType = '00'
+) => {
+  const mode = `0x01${executionType}${'00'.repeat(30)}`;
+  const executionCalldata = defaultAbiCoder.encode(
+    ['tuple(address target,uint256 value,bytes callData)[]'],
+    [executions.map(({ data, target, value }) => [target, value, data])]
+  );
+  return encodeSmartAccountExecutions(mode, executionCalldata);
 };
 
 describe('EVM address poisoning protection', () => {
@@ -104,6 +121,62 @@ describe('EVM address poisoning protection', () => {
     ).toEqual([LEGITIMATE_RECIPIENT]);
   });
 
+  it('preserves every outbound recipient in a smart-account batch', () => {
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            from: UNRELATED_RECIPIENT,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+            input: encodeSmartAccountBatch([
+              {
+                data: '0x',
+                target: LEGITIMATE_RECIPIENT,
+                value: '1',
+              },
+              {
+                data: encodeTransfer(UNRELATED_RECIPIENT),
+                target: TOKEN_CONTRACT,
+                value: '0',
+              },
+            ]),
+            smartAccountExecutionFrom: ACTIVE_ACCOUNT,
+            to: ENTRYPOINT,
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([LEGITIMATE_RECIPIENT, UNRELATED_RECIPIENT]);
+  });
+
+  it('does not trust batch recipients when per-call failure is allowed', () => {
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            from: UNRELATED_RECIPIENT,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+            input: encodeSmartAccountBatch(
+              [
+                {
+                  data: '0x',
+                  target: LEGITIMATE_RECIPIENT,
+                  value: '1',
+                },
+              ],
+              '01'
+            ),
+            smartAccountExecutionFrom: ACTIVE_ACCOUNT,
+            to: ENTRYPOINT,
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+  });
+
   it('does not trust inbound transfers or synthetic token-event history', () => {
     expect(
       getTrustedEvmRecipients(
@@ -139,6 +212,64 @@ describe('EVM address poisoning protection', () => {
             input: '0x',
             to: LEGITIMATE_RECIPIENT,
             ['txreceipt_status']: '0',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+  });
+
+  it('uses an explicit explorer isError value before its receipt-status fallback', () => {
+    const explorerTransaction = {
+      from: ACTIVE_ACCOUNT,
+      historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+      input: '0x',
+      to: LEGITIMATE_RECIPIENT,
+    };
+
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...explorerTransaction,
+            isError: '0',
+            ['txreceipt_status']: '0',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([LEGITIMATE_RECIPIENT]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...explorerTransaction,
+            isError: '1',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...explorerTransaction,
+            isError: false,
+            ['txreceipt_status']: 0,
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([LEGITIMATE_RECIPIENT]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...explorerTransaction,
+            isError: true,
+            ['txreceipt_status']: 1,
           },
         ],
         ACTIVE_ACCOUNT
