@@ -34,14 +34,27 @@ export const getSyscoinPsbtValueSummary = (
     const input = psbt.data.inputs[index];
     let inputValue: unknown;
 
-    if (input.witnessUtxo?.value !== undefined) {
-      inputValue = input.witnessUtxo.value;
-    } else if (input.nonWitnessUtxo) {
+    if (input.nonWitnessUtxo) {
       const previousTransaction = syscoinUtils.bitcoinjs.Transaction.fromBuffer(
         input.nonWitnessUtxo
       );
-      inputValue =
-        previousTransaction.outs?.[psbt.txInputs[index].index]?.value;
+      const previousOutput =
+        previousTransaction.outs?.[psbt.txInputs[index].index];
+      if (!previousOutput) {
+        throw new Error(`Unable to verify PSBT input ${index}`);
+      }
+
+      if (
+        input.witnessUtxo &&
+        (toBigIntValue(input.witnessUtxo.value, `PSBT input ${index}`) !==
+          toBigIntValue(previousOutput.value, `PSBT input ${index}`) ||
+          !Buffer.from(input.witnessUtxo.script).equals(previousOutput.script))
+      ) {
+        throw new Error(`Conflicting PSBT input ${index} UTXO data`);
+      }
+      inputValue = previousOutput.value;
+    } else if (input.witnessUtxo?.value !== undefined) {
+      inputValue = input.witnessUtxo.value;
     }
 
     if (inputValue === undefined) {

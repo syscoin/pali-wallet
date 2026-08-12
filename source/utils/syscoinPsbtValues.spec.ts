@@ -57,21 +57,29 @@ describe('Syscoin PSBT value summary', () => {
   });
 
   it('extracts large asset allocations as exact decimal strings', () => {
-    const transaction = emptyTransaction();
-    transaction.version = 142;
-    transaction.addOutput(
-      syscoinUtils.bitcoinjs.payments.embed({
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: Buffer.alloc(32),
+      index: 0,
+      witnessUtxo: {
+        script: Buffer.from(
+          '00140000000000000000000000000000000000000000',
+          'hex'
+        ),
+        value: BigInt(1000),
+      },
+    });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
         data: [Buffer.from('018efefeff010101808efefefefefeff03', 'hex')],
       }).output!,
-      BigInt(0)
-    );
-
-    const summary = getSyscoinPsbtValueSummary({
-      data: { inputs: [{ witnessUtxo: { value: BigInt(1000) } }] },
-      txInputs: [{ index: 0 }],
-      txOutputs: [{ value: BigInt(0) }],
-      extractTransaction: () => transaction,
+      value: BigInt(0),
     });
+
+    const summary = getSyscoinPsbtValueSummary(psbt);
 
     expect(summary.assetAllocations).toEqual([
       {
@@ -79,5 +87,34 @@ describe('Syscoin PSBT value summary', () => {
         values: [{ n: 1, value: '9007199254740993' }],
       },
     ]);
+  });
+
+  it('rejects conflicting witness and non-witness UTXO data', () => {
+    const previousTransaction = emptyTransaction();
+    previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+    const previousScript = Buffer.from(
+      '76a914000000000000000000000000000000000000000088ac',
+      'hex'
+    );
+    previousTransaction.addOutput(previousScript, BigInt(5000));
+
+    expect(() =>
+      getSyscoinPsbtValueSummary({
+        data: {
+          inputs: [
+            {
+              nonWitnessUtxo: previousTransaction.toBuffer(),
+              witnessUtxo: {
+                script: previousScript,
+                value: BigInt(1000),
+              },
+            },
+          ],
+        },
+        txInputs: [{ index: 0 }],
+        txOutputs: [{ value: BigInt(0) }],
+        extractTransaction: emptyTransaction,
+      })
+    ).toThrow('Conflicting PSBT input 0 UTXO data');
   });
 });
