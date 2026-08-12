@@ -12,6 +12,10 @@ import {
 } from './syscoinPsbtValues';
 
 const syscointx = jest.requireActual('syscointx-js');
+const CORE_WITNESS_COMMITMENT = Buffer.concat([
+  Buffer.from('aa21a9ed', 'hex'),
+  Buffer.alloc(32),
+]);
 
 const createUnfinalizedBurnToSyscoinPsbt = ({
   allocationAssetGuid = '123456',
@@ -152,6 +156,36 @@ const createAssetPrevout = () => {
   );
 
   return { allocationData, assetScript, previousTransaction };
+};
+
+const createWitnessWrappedAssetPrevout = () => {
+  const realAllocationData = syscointx.bufferUtils.serializeAssetAllocations([
+    {
+      assetGuid: '4294967297',
+      values: [{ n: 1, value: new syscoinUtils.BN(1) }],
+    },
+  ]);
+  const javascriptDecoy = Buffer.concat([
+    Buffer.from('aa21a9ed00', 'hex'),
+    Buffer.alloc(168 * 2),
+    Buffer.alloc(169 * 2),
+  ]);
+  const previousTransaction = new syscoinUtils.bitcoinjs.Transaction();
+  previousTransaction.version = 142;
+  previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+  const assetScript = Buffer.from(
+    '00140000000000000000000000000000000000000001',
+    'hex'
+  );
+  previousTransaction.addOutput(
+    syscoinUtils.bitcoinjs.payments.embed({
+      data: [javascriptDecoy, realAllocationData],
+    }).output!,
+    BigInt(0)
+  );
+  previousTransaction.addOutput(assetScript, BigInt(546));
+
+  return { assetScript, previousTransaction };
 };
 
 describe('Syscoin PSBT value summary', () => {
@@ -387,6 +421,13 @@ describe('Syscoin PSBT value summary', () => {
       }).output!,
       value: BigInt(0),
     });
+    psbt.addOutput({
+      script: Buffer.from(
+        '00140000000000000000000000000000000000000001',
+        'hex'
+      ),
+      value: BigInt(0),
+    });
 
     const summary = getSyscoinPsbtValueSummary(psbt);
 
@@ -473,6 +514,27 @@ describe('Syscoin PSBT value summary', () => {
     );
   });
 
+  it('rejects a standard transaction spending an asset hidden behind a Core witness-marker push', async () => {
+    const { assetScript, previousTransaction } =
+      createWitnessWrappedAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(2);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 1,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow(
+      'Asset-bearing PSBT input 0 is not allowed in transaction version 2'
+    );
+  });
+
   it('accepts a standard transaction after hash-binding its witness prevout', async () => {
     const previousTransaction = emptyTransaction();
     previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
@@ -543,6 +605,176 @@ describe('Syscoin PSBT value summary', () => {
         },
       ],
     });
+  });
+
+  it('accepts the Core witness-marker form and uses its second pushed allocation payload', async () => {
+    const { allocationData, assetScript, previousTransaction } =
+      createAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addUnknownKeyValToInput(0, {
+      key: Buffer.from('assetInfo'),
+      value: Buffer.from(
+        JSON.stringify({ assetGuid: '4294967297', value: '1' })
+      ),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [CORE_WITNESS_COMMITMENT, allocationData],
+      }).output!,
+      value: BigInt(0),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).resolves.toMatchObject({
+      assetAllocations: [
+        {
+          assetGuid: '4294967297',
+          values: [{ n: 0, value: '1' }],
+        },
+      ],
+      feeSatoshis: '46',
+    });
+  });
+
+  it('rejects trailing pushes after the Core-selected Syscoin payload', async () => {
+    const { allocationData, assetScript, previousTransaction } =
+      createAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addUnknownKeyValToInput(0, {
+      key: Buffer.from('assetInfo'),
+      value: Buffer.from(
+        JSON.stringify({ assetGuid: '4294967297', value: '1' })
+      ),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [
+          CORE_WITNESS_COMMITMENT,
+          allocationData,
+          Buffer.from('00', 'hex'),
+        ],
+      }).output!,
+      value: BigInt(0),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow('Unable to verify Syscoin transaction data');
+  });
+
+  it('rejects a Core witness marker without a second pushed payload', async () => {
+    const { assetScript, previousTransaction } = createAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addUnknownKeyValToInput(0, {
+      key: Buffer.from('assetInfo'),
+      value: Buffer.from(
+        JSON.stringify({ assetGuid: '4294967297', value: '1' })
+      ),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [CORE_WITNESS_COMMITMENT],
+      }).output!,
+      value: BigInt(0),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow('Unable to verify Syscoin transaction data');
+  });
+
+  it('rejects a second push when the first payload is not a Core witness marker', async () => {
+    const { allocationData, assetScript, previousTransaction } =
+      createAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addUnknownKeyValToInput(0, {
+      key: Buffer.from('assetInfo'),
+      value: Buffer.from(
+        JSON.stringify({ assetGuid: '4294967297', value: '1' })
+      ),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [allocationData, Buffer.from('00', 'hex')],
+      }).output!,
+      value: BigInt(0),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow('Unable to verify Syscoin transaction data');
+  });
+
+  it("does not skip Core's first unspendable output for a later parseable OP_RETURN", async () => {
+    const { allocationData, assetScript, previousTransaction } =
+      createAssetPrevout();
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(142);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    psbt.addUnknownKeyValToInput(0, {
+      key: Buffer.from('assetInfo'),
+      value: Buffer.from(
+        JSON.stringify({ assetGuid: '4294967297', value: '1' })
+      ),
+    });
+    psbt.addOutput({ script: assetScript, value: BigInt(500) });
+    psbt.addOutput({
+      script: Buffer.alloc(10_001, syscoinUtils.bitcoinjs.opcodes.OP_TRUE),
+      value: BigInt(0),
+    });
+    psbt.addOutput({
+      script: syscoinUtils.bitcoinjs.payments.embed({
+        data: [allocationData],
+      }).output!,
+      value: BigInt(0),
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow('Unable to verify Syscoin transaction data');
   });
 
   it('rejects an asset send whose serialized outputs do not conserve inputs', async () => {

@@ -1,11 +1,21 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { getAllocationsFromOutputs } from 'syscointx-js';
+import { bufferUtils as syscoinBufferUtils } from 'syscointx-js';
 
 const ALLOCATION_BURN_TO_SYSCOIN_VERSION = 138;
+const SYSCOIN_BURN_TO_ALLOCATION_VERSION = 139;
 const ALLOCATION_MINT_VERSION = 140;
 const ALLOCATION_BURN_TO_ETHEREUM_VERSION = 141;
 const ALLOCATION_SEND_VERSION = 142;
 const SYSX_ASSET_GUID = '123456';
+const CORE_MAX_SCRIPT_SIZE = 10_000;
+const CORE_WITNESS_COMMITMENT_HEADER = Buffer.from('aa21a9ed', 'hex');
+const SYSCOIN_ASSET_VERSIONS = new Set([
+  ALLOCATION_BURN_TO_SYSCOIN_VERSION,
+  SYSCOIN_BURN_TO_ALLOCATION_VERSION,
+  ALLOCATION_MINT_VERSION,
+  ALLOCATION_BURN_TO_ETHEREUM_VERSION,
+  ALLOCATION_SEND_VERSION,
+]);
 
 export interface ISyscoinPsbtInputAsset {
   assetGuid: string;
@@ -41,12 +51,92 @@ const normalizeAssetAllocations = (
     })),
   }));
 
-const getExactAssetAllocations = (transaction: any) =>
-  normalizeAssetAllocations(
-    transaction.version === ALLOCATION_MINT_VERSION
-      ? getAllocationsFromOutputs(transaction.outs)
-      : syscoinUtils.getAllocationsFromTx(transaction)
-  );
+const asPushedBytes = (chunk: unknown): Buffer | null =>
+  chunk instanceof Uint8Array ? Buffer.from(chunk) : null;
+
+/**
+ * Mirror Syscoin Core's GetSyscoinData selection boundary. Core uses the
+ * first unspendable output, then treats a >=36-byte aa21a9ed first push as a
+ * witness commitment and consumes exactly one following push. Selecting a
+ * payload merely because it parses would let a decoy disagree with chainstate.
+ * Pali additionally requires a structurally complete script and fails closed
+ * on malformed trailing bytes rather than treating a decode failure as EOF.
+ */
+const getCoreSyscoinPayload = (transaction: any): Buffer => {
+  const dataOutput = (transaction?.outs || []).find((output: any) => {
+    const script = output?.script;
+    return (
+      script instanceof Uint8Array &&
+      (script.length > CORE_MAX_SCRIPT_SIZE ||
+        script[0] === syscoinUtils.bitcoinjs.opcodes.OP_RETURN)
+    );
+  });
+  const script = dataOutput?.script;
+  if (!(script instanceof Uint8Array)) {
+    throw new Error('Unable to verify Syscoin transaction data');
+  }
+
+  const chunks = syscoinUtils.bitcoinjs.script.decompile(script);
+  if (!chunks || chunks[0] !== syscoinUtils.bitcoinjs.opcodes.OP_RETURN) {
+    throw new Error('Unable to verify Syscoin transaction data');
+  }
+
+  const firstPush = asPushedBytes(chunks[1]);
+  if (!firstPush) {
+    throw new Error('Unable to verify Syscoin transaction data');
+  }
+
+  const hasWitnessCommitment =
+    firstPush.length >= 36 &&
+    firstPush
+      .subarray(0, CORE_WITNESS_COMMITMENT_HEADER.length)
+      .equals(CORE_WITNESS_COMMITMENT_HEADER);
+  const payloadIndex = hasWitnessCommitment ? 2 : 1;
+  const payload = asPushedBytes(chunks[payloadIndex]);
+  if (!payload || chunks.length !== payloadIndex + 1) {
+    throw new Error('Unable to verify Syscoin transaction data');
+  }
+
+  return payload;
+};
+
+const getExactAssetAllocations = (
+  transaction: any
+): IExactAssetAllocation[] => {
+  if (!SYSCOIN_ASSET_VERSIONS.has(transaction?.version)) return [];
+
+  try {
+    const payload = getCoreSyscoinPayload(transaction);
+    const decoded = syscoinBufferUtils.deserializeAssetAllocations(payload);
+    const allocations = normalizeAssetAllocations(decoded);
+    if (allocations.length === 0) {
+      throw new Error('Empty Syscoin asset allocations');
+    }
+
+    for (const allocation of allocations) {
+      if (
+        !/^\d+$/.test(allocation.assetGuid) ||
+        allocation.values.length === 0
+      ) {
+        throw new Error('Invalid Syscoin asset allocation');
+      }
+
+      for (const value of allocation.values) {
+        if (
+          !Number.isSafeInteger(value.n) ||
+          value.n < 0 ||
+          value.n >= transaction.outs.length
+        ) {
+          throw new Error('Invalid Syscoin asset output');
+        }
+      }
+    }
+
+    return allocations;
+  } catch (_error) {
+    throw new Error('Unable to verify Syscoin transaction data');
+  }
+};
 
 const getRawTransactionHex = (response: any): string | null => {
   if (typeof response === 'string') return response;
