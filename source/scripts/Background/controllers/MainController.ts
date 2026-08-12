@@ -3,6 +3,7 @@
 import {
   KeyringManager,
   CustomJsonRpcProvider,
+  PsbtUtils,
 } from '@sidhujag/sysweb3-keyring';
 import {
   getSysRpc,
@@ -149,6 +150,7 @@ import type {
   SmartAccountPackedUserOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
+import { getSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
 import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
@@ -6542,7 +6544,35 @@ class MainController {
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = (psbtOrHex: any, isRawHex = false) => {
     try {
-      return this.syscoinTransaction.decodeRawTransaction(psbtOrHex, isRawHex);
+      const decoded = this.syscoinTransaction.decodeRawTransaction(
+        psbtOrHex,
+        isRawHex
+      );
+
+      if (!isRawHex) {
+        const psbt = PsbtUtils.fromPali(
+          psbtOrHex,
+          store.getState().vault.activeNetwork
+        );
+        const summary = getSyscoinPsbtValueSummary(psbt);
+        if (
+          !Array.isArray(decoded.vout) ||
+          decoded.vout.length !== summary.outputValuesSatoshis.length
+        ) {
+          throw new Error('Decoded outputs do not match the PSBT');
+        }
+        decoded.feeSatoshis = summary.feeSatoshis;
+        decoded.vout.forEach((output: any, index: number) => {
+          output.valueSatoshis = summary.outputValuesSatoshis[index];
+        });
+        if (decoded.syscoin) {
+          decoded.syscoin.allocations = summary.assetAllocations.length
+            ? { assets: summary.assetAllocations }
+            : null;
+        }
+      }
+
+      return decoded;
     } catch (error) {
       console.error('Error decoding raw transaction:', error);
       throw new Error(`Failed to decode raw transaction: ${error.message}`);

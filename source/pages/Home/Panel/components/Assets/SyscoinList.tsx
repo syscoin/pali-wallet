@@ -26,6 +26,7 @@ import {
 } from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
+import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
@@ -180,8 +181,7 @@ export const SyscoinAssetsList = () => {
                     </span>
 
                     {/* Pending if token has non-zero unconfirmed delta or an unconfirmed transfer exists */}
-                    {((typeof asset.unconfirmedBalance === 'number' &&
-                      asset.unconfirmedBalance !== 0) ||
+                    {(hasNonZeroAssetDelta(asset.unconfirmedBalance) ||
                       pendingAssetGuids.has(String(asset.assetGuid))) && (
                       <span
                         className="px-2 py-0.5 text-[9px] bg-yellow-500/20 text-yellow-500 rounded-full border border-yellow-500/20 font-medium animate-pulse"

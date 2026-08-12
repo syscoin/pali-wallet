@@ -22,10 +22,8 @@ import { ITokenSysProps } from 'types/tokens';
 import { handleTransactionError } from 'utils/errorHandling';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
-  truncate,
   isNFT,
   getAssetBalance,
-  formatCurrency,
   ellipsis,
   MINIMUM_FEE,
   adjustUrl,
@@ -33,6 +31,12 @@ import {
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
+import {
+  assertValidAssetAmount,
+  isAssetAmountWithinBalance,
+  toEightDecimalBuilderAmount,
+} from 'utils/syscoinAssetAmount';
+import { getRefreshedSyscoinAssetSelection } from 'utils/syscoinAssetSelection';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
@@ -90,21 +94,15 @@ export const SendSys = () => {
   useEffect(() => {
     if (!selectedAsset || !accountAssets?.syscoin) return;
 
-    const refreshedAsset = Object.values(accountAssets.syscoin).find(
-      (asset) => String(asset.assetGuid) === String(selectedAsset.assetGuid)
+    const refreshedAsset = getRefreshedSyscoinAssetSelection(
+      selectedAsset,
+      accountAssets.syscoin
     );
 
-    if (
-      refreshedAsset &&
-      Number(refreshedAsset.balance || 0) !== Number(selectedAsset.balance || 0)
-    ) {
+    if (refreshedAsset) {
       setSelectedAsset(refreshedAsset);
     }
-  }, [
-    accountAssets?.syscoin,
-    selectedAsset?.assetGuid,
-    selectedAsset?.balance,
-  ]);
+  }, [accountAssets?.syscoin, selectedAsset]);
 
   // Save navigation state when user completes interaction
   const saveCurrentState = useCallback(async () => {
@@ -210,28 +208,17 @@ export const SendSys = () => {
   );
 
   const assetDecimals = useMemo(
-    () =>
-      selectedAsset && selectedAsset?.decimals ? selectedAsset.decimals : 8,
+    () => selectedAsset?.decimals ?? 8,
     [selectedAsset?.decimals]
-  );
-
-  const formattedAssetBalance = useMemo(
-    () =>
-      selectedAsset &&
-      truncate(
-        formatCurrency(String(+selectedAsset.balance), selectedAsset.decimals),
-        14
-      ),
-    [selectedAsset, assetDecimals]
   );
 
   // Keep balance as string to preserve precision
   const balanceStr = useMemo(
     () =>
       selectedAsset
-        ? formattedAssetBalance || '0'
+        ? String(selectedAsset.balance ?? '0')
         : activeAccount?.balances[INetworkType.Syscoin] || '0',
-    [selectedAsset, formattedAssetBalance, activeAccount?.balances]
+    [selectedAsset, activeAccount?.balances]
   );
 
   const handleMaxButton = useCallback(() => {
@@ -503,6 +490,12 @@ export const SendSys = () => {
           returnContext
         );
       } else {
+        const builderAmount = toEightDecimalBuilderAmount(
+          String(amount),
+          assetDecimals,
+          selectedAsset.assetType
+        );
+
         // For tokens, we need to estimate the fee for display
         let tokenFeeEstimate = MINIMUM_FEE; // Default
         let tokenPsbt = null;
@@ -511,7 +504,7 @@ export const SendSys = () => {
             ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
             [
               {
-                amount: amount, // Keep as string to preserve precision
+                amount: builderAmount,
                 receivingAddress: receiver,
                 feeRate,
                 txOptions: { rbf: RBF },
@@ -882,21 +875,41 @@ export const SendSys = () => {
                         );
                       }
 
-                      // Get balance as string to preserve precision
-                      let validationBalanceStr: string;
                       if (selectedAsset) {
-                        // For assets, the balance is already formatted
-                        validationBalanceStr = formattedAssetBalance
-                          ? String(formattedAssetBalance)
-                          : '0';
-                      } else {
-                        // For native SYS, balance is already in decimal format
-                        validationBalanceStr = activeAccount?.balances[
-                          INetworkType.Syscoin
-                        ]
-                          ? String(activeAccount.balances[INetworkType.Syscoin])
-                          : '0';
+                        try {
+                          assertValidAssetAmount(
+                            inputAmount,
+                            assetDecimals,
+                            selectedAsset.assetType
+                          );
+                        } catch {
+                          return Promise.reject(
+                            new Error(t('send.invalidAmount'))
+                          );
+                        }
+
+                        if (
+                          !isAssetAmountWithinBalance(
+                            inputAmount,
+                            String(selectedAsset.balance ?? '0'),
+                            assetDecimals
+                          )
+                        ) {
+                          return Promise.reject(
+                            new Error(t('send.insufficientFunds'))
+                          );
+                        }
+
+                        return Promise.resolve();
                       }
+
+                      // Get balance as string to preserve precision
+                      // Native SYS balance is already in decimal format.
+                      const validationBalanceStr = activeAccount?.balances[
+                        INetworkType.Syscoin
+                      ]
+                        ? String(activeAccount.balances[INetworkType.Syscoin])
+                        : '0';
 
                       // Use currency.js with 8 decimal precision for safe comparison
                       try {
