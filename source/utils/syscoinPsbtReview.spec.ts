@@ -63,6 +63,66 @@ describe('Syscoin PSBT review', () => {
     expect(getAssetReviewRows(decoded, metadata)[0].amount).toBe('1.23');
   });
 
+  it('accepts native SPTs without bridge origin metadata', () => {
+    const decoded = decodedTransfer('987654', '12345');
+    const metadata = {
+      '987654': {
+        assetGuid: '987654',
+        contract: '',
+        decimals: 2,
+        symbol: 'NATIVE',
+      },
+    };
+
+    expect(getSyscoinPsbtReviewError(decoded, metadata)).toBeNull();
+    expect(getAssetReviewRows(decoded, metadata)[0].amount).toBe('123.45');
+  });
+
+  it('still requires an origin type for bridge-shaped metadata', () => {
+    expect(
+      getSyscoinPsbtReviewError(decodedTransfer('4294967297', '1'), {
+        '4294967297': {
+          contract: '0x1111111111111111111111111111111111111111',
+          decimals: 0,
+          originDecimals: 0,
+          tokenId: '0',
+        },
+      })
+    ).toBe('Unable to verify the origin type for asset 4294967297');
+
+    expect(
+      getSyscoinPsbtReviewError(decodedTransfer('987654', '1'), {
+        '987654': {
+          contract: '0x1111111111111111111111111111111111111111',
+          decimals: 8,
+          originDecimals: 8,
+        },
+      })
+    ).toBe('Unable to verify the origin type for asset 987654');
+  });
+
+  it('accepts bridged NFT token ID zero but rejects malformed IDs', () => {
+    const metadata = {
+      '4294967297': {
+        assetType: 'ERC721' as const,
+        contract: '0x1111111111111111111111111111111111111111',
+        decimals: 0,
+        originDecimals: 0,
+        symbol: 'ZERO',
+        tokenId: '0',
+      },
+    };
+
+    expect(
+      getSyscoinPsbtReviewError(decodedTransfer('4294967297', '1'), metadata)
+    ).toBeNull();
+
+    metadata['4294967297'].tokenId = '-1';
+    expect(
+      getSyscoinPsbtReviewError(decodedTransfer('4294967297', '1'), metadata)
+    ).toBe('Unable to verify token ID for asset 4294967297');
+  });
+
   it('fails closed when bridged NFT metadata falls back to eight decimals', () => {
     expect(
       getSyscoinPsbtReviewError(decodedTransfer('4294967297', '1'), {
