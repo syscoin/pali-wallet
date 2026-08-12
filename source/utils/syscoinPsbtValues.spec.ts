@@ -1,8 +1,73 @@
 jest.unmock('syscoinjs-lib');
 
-import { utils as syscoinUtils } from 'syscoinjs-lib';
+import {
+  syscoin as SyscoinTransaction,
+  utils as syscoinUtils,
+} from 'syscoinjs-lib';
 
+import { getSyscoinPsbtReviewError } from './syscoinPsbtReview';
 import { getSyscoinPsbtValueSummary } from './syscoinPsbtValues';
+
+const syscointx = jest.requireActual('syscointx-js');
+
+const createUnfinalizedBurnToSyscoinPsbt = ({
+  allocationAssetGuid = '123456',
+  allocationOutputIndex = 2,
+  allocationValue = '100000000',
+  mintedSys = BigInt(100000000),
+}: {
+  allocationAssetGuid?: string;
+  allocationOutputIndex?: number;
+  allocationValue?: string;
+  mintedSys?: bigint;
+} = {}) => {
+  const allocationData = syscointx.bufferUtils.serializeAssetAllocations([
+    {
+      assetGuid: allocationAssetGuid,
+      values: [
+        {
+          n: allocationOutputIndex,
+          value: new syscoinUtils.BN(allocationValue),
+        },
+      ],
+    },
+  ]);
+  const burnData = syscointx.bufferUtils.serializeAllocationBurn({
+    ethaddress: Buffer.alloc(0),
+  });
+  const psbt = new syscoinUtils.bitcoinjs.Psbt({
+    network: syscoinUtils.syscoinNetworks.testnet,
+  });
+
+  psbt.setVersion(138);
+  psbt.addInput({
+    hash: Buffer.alloc(32),
+    index: 0,
+    witnessUtxo: {
+      script: Buffer.from(
+        '00140000000000000000000000000000000000000000',
+        'hex'
+      ),
+      value: BigInt(10000),
+    },
+  });
+  psbt.addOutput({
+    script: Buffer.from('00140000000000000000000000000000000000000000', 'hex'),
+    value: mintedSys,
+  });
+  psbt.addOutput({
+    script: Buffer.from('00140000000000000000000000000000000000000001', 'hex'),
+    value: BigInt(9000),
+  });
+  psbt.addOutput({
+    script: syscoinUtils.bitcoinjs.payments.embed({
+      data: [Buffer.concat([allocationData, burnData])],
+    }).output!,
+    value: BigInt(0),
+  });
+
+  return psbt;
+};
 
 const emptyTransaction = () => {
   const transaction = new syscoinUtils.bitcoinjs.Transaction();
@@ -53,7 +118,68 @@ describe('Syscoin PSBT value summary', () => {
         txOutputs: [{ value: BigInt(2) }],
         extractTransaction: emptyTransaction,
       })
-    ).toThrow('PSBT outputs exceed its inputs');
+    ).toThrow('PSBT outputs exceed its effective inputs');
+  });
+
+  it('accounts for the exact SYSX burned into native SYS in an unfinalized v138 SPSBT', () => {
+    const psbt = createUnfinalizedBurnToSyscoinPsbt();
+    const transaction = psbt.extractTransaction(true, true);
+    const rawInput = BigInt(psbt.data.inputs[0].witnessUtxo!.value);
+    const rawOutput = transaction.outs.reduce(
+      (total: bigint, output: any) => total + BigInt(output.value),
+      BigInt(0)
+    );
+
+    expect(psbt.data.inputs[0].finalScriptSig).toBeUndefined();
+    expect(psbt.data.inputs[0].finalScriptWitness).toBeUndefined();
+    expect(transaction.version).toBe(138);
+    expect(transaction.outs[0].value).toBe(BigInt(100000000));
+    expect(rawOutput).toBeGreaterThan(rawInput);
+
+    const summary = getSyscoinPsbtValueSummary(psbt);
+    expect(rawInput + transaction.outs[0].value).toBeGreaterThanOrEqual(
+      rawOutput
+    );
+    expect(summary).toEqual({
+      assetAllocations: [
+        {
+          assetGuid: '123456',
+          values: [{ n: 2, value: '100000000' }],
+        },
+      ],
+      feeSatoshis: '1000',
+      outputValuesSatoshis: ['100000000', '9000', '0'],
+    });
+
+    const decoder = new SyscoinTransaction(
+      null,
+      null,
+      syscoinUtils.syscoinNetworks.testnet
+    );
+    const decoded = decoder.decodeRawTransaction(psbt);
+    decoded.feeSatoshis = summary.feeSatoshis;
+    decoded.vout.forEach((output: any, index: number) => {
+      output.valueSatoshis = summary.outputValuesSatoshis[index];
+    });
+    decoded.syscoin.allocations = { assets: summary.assetAllocations };
+
+    expect(
+      getSyscoinPsbtReviewError(decoded, {
+        '123456': { assetType: 'SYSX', decimals: 8, symbol: 'SYSX' },
+      })
+    ).toBeNull();
+  });
+
+  it.each([
+    ['a non-SYSX allocation', { allocationAssetGuid: '123457' }],
+    ['a burn assigned to a spendable output', { allocationOutputIndex: 1 }],
+    ['a burn amount different from output zero', { allocationValue: '1' }],
+  ])('rejects v138 with %s', (_description, fixtureOptions) => {
+    expect(() =>
+      getSyscoinPsbtValueSummary(
+        createUnfinalizedBurnToSyscoinPsbt(fixtureOptions)
+      )
+    ).toThrow('SYSX burn amount does not match the native SYS mint output');
   });
 
   it('extracts large asset allocations as exact decimal strings', () => {

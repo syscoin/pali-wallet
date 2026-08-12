@@ -1,5 +1,8 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+const ALLOCATION_BURN_TO_SYSCOIN_VERSION = 138;
+const SYSX_ASSET_GUID = '123456';
+
 const toBigIntValue = (value: unknown, field: string): bigint => {
   const normalized = String(value);
   if (!/^\d+$/.test(normalized)) {
@@ -79,10 +82,6 @@ export const getSyscoinPsbtValueSummary = (
     BigInt(0)
   );
 
-  if (totalInput < totalOutput) {
-    throw new Error('PSBT outputs exceed its inputs');
-  }
-
   if (typeof psbt.extractTransaction !== 'function') {
     throw new Error('Unable to verify PSBT asset allocations');
   }
@@ -97,9 +96,49 @@ export const getSyscoinPsbtValueSummary = (
     })),
   }));
 
+  let effectiveInput = totalInput;
+  if (transaction.version === ALLOCATION_BURN_TO_SYSCOIN_VERSION) {
+    const mintedSys = toBigIntValue(
+      transaction.outs?.[0]?.value,
+      'SYSX to SYS mint output'
+    );
+    const burnOutputIndex = transaction.outs?.findIndex(
+      (output: any) =>
+        output?.script?.[0] === syscoinUtils.bitcoinjs.opcodes.OP_RETURN
+    );
+    const matchingBurns = assetAllocations.flatMap((allocation) =>
+      allocation.assetGuid === SYSX_ASSET_GUID
+        ? allocation.values.filter(
+            ({ n, value }) =>
+              Number.isInteger(n) &&
+              n === burnOutputIndex &&
+              burnOutputIndex > 0 &&
+              BigInt(value) === mintedSys
+          )
+        : []
+    );
+
+    if (
+      mintedSys <= BigInt(0) ||
+      transaction.outs?.length !== outputValuesSatoshis.length ||
+      mintedSys.toString() !== outputValuesSatoshis[0] ||
+      matchingBurns.length !== 1
+    ) {
+      throw new Error(
+        'SYSX burn amount does not match the native SYS mint output'
+      );
+    }
+
+    effectiveInput += mintedSys;
+  }
+
+  if (effectiveInput < totalOutput) {
+    throw new Error('PSBT outputs exceed its effective inputs');
+  }
+
   return {
     assetAllocations,
-    feeSatoshis: (totalInput - totalOutput).toString(),
+    feeSatoshis: (effectiveInput - totalOutput).toString(),
     outputValuesSatoshis,
   };
 };
