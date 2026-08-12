@@ -25,12 +25,12 @@ interface IDecodedReviewTransaction {
   error?: string;
   feeSatoshis?: string;
   syscoin?: {
-    allocations?: { assets?: IDecodedAsset[] };
+    allocations?: { assets?: IDecodedAsset[] } | null;
     txtype?: string;
   };
   vout?: Array<{
     n: number;
-    scriptPubKey?: { addresses?: string[]; type?: string };
+    scriptPubKey?: { addresses?: string[]; hex?: string; type?: string };
   }>;
 }
 
@@ -43,6 +43,19 @@ export interface IAssetReviewRow {
   recipient?: string;
   symbol: string;
 }
+
+const getCanonicalOutputRecipient = (
+  output: NonNullable<IDecodedReviewTransaction['vout']>[number] | undefined
+): string | undefined =>
+  [
+    'pubkeyhash',
+    'scripthash',
+    'witness_v0_keyhash',
+    'witness_v0_scripthash',
+    'witness_v1_taproot',
+  ].includes(output?.scriptPubKey?.type || '')
+    ? output?.scriptPubKey?.addresses?.[0]
+    : undefined;
 
 const getAssetMetadataError = (
   assetGuid: string,
@@ -130,6 +143,18 @@ export const getSyscoinPsbtReviewError = (
 
   const assets = decodedTx.syscoin?.allocations?.assets || [];
   const normalizedType = normalizeSyscoinTransactionType(txType);
+  if (normalizedType && normalizedType !== 'nevmdata' && assets.length === 0) {
+    return 'Unable to verify Syscoin asset allocations';
+  }
+
+  for (const output of decodedTx.vout || []) {
+    const hasCanonicalAddress = Boolean(getCanonicalOutputRecipient(output));
+    const scriptHex = output.scriptPubKey?.hex || '';
+    if (!hasCanonicalAddress && !/^(?:[0-9a-fA-F]{2})+$/.test(scriptHex)) {
+      return `Unable to verify output ${output.n} script`;
+    }
+  }
+
   for (const asset of assets) {
     const metadataError = getAssetMetadataError(
       asset.assetGuid,
@@ -206,7 +231,7 @@ export const getAssetReviewRows = (
         assetGuid: asset.assetGuid,
         outputIndex: value.n,
         rawAmount,
-        recipient: output?.scriptPubKey?.addresses?.[0],
+        recipient: getCanonicalOutputRecipient(output),
         isBurn: output?.scriptPubKey?.type === 'nulldata',
         symbol:
           metadata?.symbol ||

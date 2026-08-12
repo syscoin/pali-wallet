@@ -6565,6 +6565,11 @@ class MainController {
         decoded.vout.forEach((output: any, index: number) => {
           output.valueSatoshis = summary.outputValuesSatoshis[index];
         });
+        if (decoded.syscoin) {
+          decoded.syscoin.allocations = summary.assetAllocations.length
+            ? { assets: summary.assetAllocations }
+            : null;
+        }
       }
 
       return decoded;

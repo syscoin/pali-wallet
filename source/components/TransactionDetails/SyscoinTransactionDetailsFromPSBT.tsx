@@ -563,7 +563,17 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
             Transaction outputs
           </Typography.Text>
           {decodedTx.vout.map((output) => {
-            const recipient = output.scriptPubKey?.addresses?.[0];
+            const outputType = output.scriptPubKey?.type;
+            const isCanonicalAddressOutput = [
+              'pubkeyhash',
+              'scripthash',
+              'witness_v0_keyhash',
+              'witness_v0_scripthash',
+              'witness_v1_taproot',
+            ].includes(outputType);
+            const recipient = isCanonicalAddressOutput
+              ? output.scriptPubKey?.addresses?.[0]
+              : undefined;
             const rawValue = output.valueSatoshis;
 
             return (
@@ -594,14 +604,25 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
                     valueClassName="text-xs sm:text-sm"
                   />
                 ) : (
-                  <div className="flex justify-between items-center gap-3">
-                    <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
-                      Output type:
-                    </Typography.Text>
-                    <Typography.Text className="text-white text-xs sm:text-sm text-right">
-                      {output.scriptPubKey?.type || 'Unknown'}
-                    </Typography.Text>
-                  </div>
+                  <>
+                    <div className="flex justify-between items-center gap-3">
+                      <Typography.Text className="text-brand-gray200 text-xs sm:text-sm">
+                        Output type:
+                      </Typography.Text>
+                      <Typography.Text className="text-white text-xs sm:text-sm text-right">
+                        {outputType || 'Unknown'}
+                      </Typography.Text>
+                    </div>
+                    <CopyableField
+                      label="Output script"
+                      value={output.scriptPubKey?.hex || ''}
+                      monospace
+                      copyMessage={t('home.addressCopied')}
+                      className="text-xs sm:text-sm items-start"
+                      labelClassName="text-xs sm:text-sm"
+                      valueClassName="text-xs sm:text-sm break-all"
+                    />
+                  </>
                 )}
               </div>
             );

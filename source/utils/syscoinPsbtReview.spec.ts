@@ -121,7 +121,7 @@ describe('Syscoin PSBT review', () => {
         },
         txtype: 'assetallocation_burn_to_ethereum',
       },
-      vout: [{ n: 1, scriptPubKey: { type: 'nulldata' } }],
+      vout: [{ n: 1, scriptPubKey: { hex: '6a0100', type: 'nulldata' } }],
     };
     const metadata = {
       '123': {
@@ -139,5 +139,43 @@ describe('Syscoin PSBT review', () => {
 
     decoded.syscoin.allocations.assets[0].values[0].value = '123000000';
     expect(getSyscoinPsbtReviewError(decoded, metadata)).toBeNull();
+  });
+
+  it('fails closed when an asset transaction has no exact allocations', () => {
+    expect(
+      getSyscoinPsbtReviewError(
+        {
+          feeSatoshis: '1000',
+          syscoin: { allocations: null, txtype: 'assetallocation_send' },
+          vout: [],
+        },
+        {}
+      )
+    ).toBe('Unable to verify Syscoin asset allocations');
+  });
+
+  it('requires the exact script for addressless outputs', () => {
+    const decoded = decodedTransfer('123456', '123000000');
+    (decoded.vout[0] as any).scriptPubKey = {
+      addresses: [],
+      type: 'pubkey',
+    };
+
+    expect(
+      getSyscoinPsbtReviewError(decoded, {
+        '123456': { assetType: 'SYSX', decimals: 8 },
+      })
+    ).toBe('Unable to verify output 1 script');
+
+    (decoded.vout[0] as any).scriptPubKey = {
+      addresses: [],
+      hex: '2102',
+      type: 'pubkey',
+    };
+    expect(
+      getSyscoinPsbtReviewError(decoded, {
+        '123456': { assetType: 'SYSX', decimals: 8 },
+      })
+    ).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import * as syscoinjs from 'syscoinjs-lib';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 const toBigIntValue = (value: unknown, field: string): bigint => {
   const normalized = String(value);
@@ -10,7 +10,14 @@ const toBigIntValue = (value: unknown, field: string): bigint => {
 
 export const getSyscoinPsbtValueSummary = (
   psbt: any
-): { feeSatoshis: string; outputValuesSatoshis: string[] } => {
+): {
+  assetAllocations: Array<{
+    assetGuid: string;
+    values: Array<{ n: number; value: string }>;
+  }>;
+  feeSatoshis: string;
+  outputValuesSatoshis: string[];
+} => {
   if (
     !psbt?.data?.inputs ||
     !Array.isArray(psbt.txInputs) ||
@@ -30,8 +37,9 @@ export const getSyscoinPsbtValueSummary = (
     if (input.witnessUtxo?.value !== undefined) {
       inputValue = input.witnessUtxo.value;
     } else if (input.nonWitnessUtxo) {
-      const previousTransaction =
-        syscoinjs.utils.bitcoinjs.Transaction.fromBuffer(input.nonWitnessUtxo);
+      const previousTransaction = syscoinUtils.bitcoinjs.Transaction.fromBuffer(
+        input.nonWitnessUtxo
+      );
       inputValue =
         previousTransaction.outs?.[psbt.txInputs[index].index]?.value;
     }
@@ -55,7 +63,22 @@ export const getSyscoinPsbtValueSummary = (
     throw new Error('PSBT outputs exceed its inputs');
   }
 
+  if (typeof psbt.extractTransaction !== 'function') {
+    throw new Error('Unable to verify PSBT asset allocations');
+  }
+  const transaction = psbt.extractTransaction(true, true);
+  const assetAllocations = (
+    syscoinUtils.getAllocationsFromTx(transaction) || []
+  ).map((allocation: any) => ({
+    assetGuid: String(allocation.assetGuid),
+    values: (allocation.values || []).map((value: any) => ({
+      n: value.n,
+      value: toBigIntValue(value.value, 'asset allocation').toString(),
+    })),
+  }));
+
   return {
+    assetAllocations,
     feeSatoshis: (totalInput - totalOutput).toString(),
     outputValuesSatoshis,
   };
