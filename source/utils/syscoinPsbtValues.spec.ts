@@ -111,10 +111,35 @@ describe('Syscoin PSBT value summary', () => {
             },
           ],
         },
-        txInputs: [{ index: 0 }],
+        txInputs: [{ hash: previousTransaction.getHash(), index: 0 }],
         txOutputs: [{ value: BigInt(0) }],
         extractTransaction: emptyTransaction,
       })
     ).toThrow('Conflicting PSBT input 0 UTXO data');
+  });
+
+  it('rejects a non-witness UTXO from a different transaction', () => {
+    const referencedTransaction = emptyTransaction();
+    referencedTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+    referencedTransaction.addOutput(Buffer.from('51', 'hex'), BigInt(5000));
+
+    const unrelatedTransaction = emptyTransaction();
+    unrelatedTransaction.addInput(Buffer.alloc(32, 1), 0xffffffff);
+    unrelatedTransaction.addOutput(Buffer.from('51', 'hex'), BigInt(5000));
+
+    expect(() =>
+      getSyscoinPsbtValueSummary({
+        data: {
+          inputs: [
+            {
+              nonWitnessUtxo: unrelatedTransaction.toBuffer(),
+            },
+          ],
+        },
+        txInputs: [{ hash: referencedTransaction.getHash(), index: 0 }],
+        txOutputs: [{ value: BigInt(0) }],
+        extractTransaction: emptyTransaction,
+      })
+    ).toThrow('PSBT input 0 previous transaction mismatch');
   });
 });

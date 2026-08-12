@@ -38,6 +38,13 @@ export const getSyscoinPsbtValueSummary = (
       const previousTransaction = syscoinUtils.bitcoinjs.Transaction.fromBuffer(
         input.nonWitnessUtxo
       );
+      if (
+        !Buffer.from(psbt.txInputs[index].hash).equals(
+          previousTransaction.getHash()
+        )
+      ) {
+        throw new Error(`PSBT input ${index} previous transaction mismatch`);
+      }
       const previousOutput =
         previousTransaction.outs?.[psbt.txInputs[index].index];
       if (!previousOutput) {
