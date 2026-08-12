@@ -1,4 +1,5 @@
 const SYSCOIN_BUILDER_DECIMALS = 8;
+type AssetType = 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
 
 const normalizeDecimals = (decimals: number): number => {
   if (
@@ -15,7 +16,8 @@ const normalizeDecimals = (decimals: number): number => {
 const parseAssetAmount = (
   amount: string,
   decimals: number,
-  allowZero = false
+  allowZero = false,
+  assetType?: AssetType
 ): bigint => {
   const normalizedDecimals = normalizeDecimals(decimals);
   const normalizedAmount = String(amount).trim();
@@ -41,15 +43,19 @@ const parseAssetAmount = (
   if (rawAmount < BigInt(0) || (!allowZero && rawAmount === BigInt(0))) {
     throw new Error('Amount must be greater than zero');
   }
+  if (assetType === 'ERC721' && rawAmount !== BigInt(1)) {
+    throw new Error('ERC721 transfers require exactly one token');
+  }
 
   return rawAmount;
 };
 
 export const assertValidAssetAmount = (
   amount: string,
-  decimals: number
+  decimals: number,
+  assetType?: AssetType
 ): void => {
-  parseAssetAmount(amount, decimals);
+  parseAssetAmount(amount, decimals, false, assetType);
 };
 
 export const isAssetAmountWithinBalance = (
@@ -86,9 +92,15 @@ export const hasNonZeroAssetDelta = (
  */
 export const toEightDecimalBuilderAmount = (
   amount: string,
-  decimals: number
+  decimals: number,
+  assetType?: AssetType
 ): string => {
-  const rawAmount = parseAssetAmount(amount, decimals).toString();
+  const rawAmount = parseAssetAmount(
+    amount,
+    decimals,
+    false,
+    assetType
+  ).toString();
   const padded = rawAmount.padStart(SYSCOIN_BUILDER_DECIMALS + 1, '0');
 
   return `${padded.slice(0, -SYSCOIN_BUILDER_DECIMALS)}.${padded.slice(

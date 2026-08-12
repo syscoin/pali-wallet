@@ -497,7 +497,8 @@ export const SendSys = () => {
       } else {
         const builderAmount = toEightDecimalBuilderAmount(
           String(amount),
-          assetDecimals
+          assetDecimals,
+          selectedAsset.assetType
         );
 
         // For tokens, we need to estimate the fee for display
@@ -881,7 +882,11 @@ export const SendSys = () => {
 
                       if (selectedAsset) {
                         try {
-                          assertValidAssetAmount(inputAmount, assetDecimals);
+                          assertValidAssetAmount(
+                            inputAmount,
+                            assetDecimals,
+                            selectedAsset.assetType
+                          );
                         } catch {
                           return Promise.reject(
                             new Error(t('send.invalidAmount'))

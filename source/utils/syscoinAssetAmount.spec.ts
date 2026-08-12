@@ -7,8 +7,11 @@ import {
 
 describe('Syscoin asset amount conversion', () => {
   it('converts zero-decimal NFT quantities to exact builder units', () => {
-    expect(toEightDecimalBuilderAmount('1', 0)).toBe('0.00000001');
-    expect(toEightDecimalBuilderAmount('25', 0)).toBe('0.00000025');
+    expect(toEightDecimalBuilderAmount('1', 0, 'ERC721')).toBe('0.00000001');
+    expect(toEightDecimalBuilderAmount('25', 0, 'ERC1155')).toBe('0.00000025');
+    expect(() => toEightDecimalBuilderAmount('2', 0, 'ERC721')).toThrow(
+      'ERC721 transfers require exactly one token'
+    );
   });
 
   it('preserves eight-decimal fungible SPT amounts', () => {
