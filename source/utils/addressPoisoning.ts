@@ -164,22 +164,26 @@ export interface IEvmAddressPoisoningCollision {
 export const findEvmAddressPoisoningCollision = (
   candidateAddress: string,
   trustedRecipients: string[],
-  exemptAddresses: string[] = []
+  exactExemptAddresses: string[] = []
 ): IEvmAddressPoisoningCollision | null => {
   const candidate = normalizeEvmAddress(candidateAddress);
   if (!candidate) return null;
 
-  const exemptions = new Set(
-    exemptAddresses
+  const exactExemptions = new Set(
+    exactExemptAddresses
       .map((address) => normalizeEvmAddress(address))
       .filter(Boolean) as string[]
   );
-  if (exemptions.has(candidate)) return null;
+  // Exact local-account destinations are safe, but those same addresses are
+  // useful collision anchors when the candidate is a distinct lookalike.
+  if (exactExemptions.has(candidate)) return null;
 
   const candidateHex = candidate.slice(2);
-  for (const trustedRecipient of trustedRecipients) {
-    const trustedAddress = normalizeEvmAddress(trustedRecipient);
-    if (!trustedAddress || trustedAddress === candidate) continue;
+  const findCollisionWithAnchor = (
+    anchorAddress: string
+  ): IEvmAddressPoisoningCollision | null => {
+    const trustedAddress = normalizeEvmAddress(anchorAddress);
+    if (!trustedAddress || trustedAddress === candidate) return null;
 
     const trustedHex = trustedAddress.slice(2);
     const matchingPrefixLength = getCommonPrefixLength(
@@ -201,6 +205,19 @@ export const findEvmAddressPoisoningCollision = (
         trustedAddress,
       };
     }
+
+    return null;
+  };
+
+  // Preserve history-recipient precedence when a candidate resembles both a
+  // prior recipient and a local account.
+  for (const trustedRecipient of trustedRecipients) {
+    const collision = findCollisionWithAnchor(trustedRecipient);
+    if (collision) return collision;
+  }
+  for (const exactExemption of exactExemptions) {
+    const collision = findCollisionWithAnchor(exactExemption);
+    if (collision) return collision;
   }
 
   return null;

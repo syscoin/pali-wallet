@@ -1947,6 +1947,7 @@ export const SendEth = () => {
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <Button
+            id="send-eth-next-btn"
             variant="neutral"
             className="text-sm text-brand-royalblue"
             type="submit"

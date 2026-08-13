@@ -11,6 +11,8 @@ const ACTIVE_ACCOUNT = '0x1111111111111111111111111111111111111111';
 const LEGITIMATE_RECIPIENT = '0x6d90cc8ce83b6d0acf634ed45d4bcc37eddd2e48';
 const POISONED_RECIPIENT = '0x6d9052b2df589de00324127fe2707eb34e592e48';
 const UNRELATED_RECIPIENT = '0x2222222222222222222222222222222222222222';
+const LOCAL_ACCOUNT = '0xa1b2cc8ce83b6d0acf634ed45d4bcc37edddc3d4';
+const LOCAL_ACCOUNT_LOOKALIKE = '0xa1b252b2df589de00324127fe2707eb34e59c3d4';
 const TOKEN_CONTRACT = '0x5555555555555555555555555555555555555555';
 const ENTRYPOINT = '0x433709009b8330fda32311df1c2afa402ed8d009';
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}`;
@@ -383,6 +385,22 @@ describe('EVM address poisoning protection', () => {
         [POISONED_RECIPIENT]
       )
     ).toBeNull();
+  });
+
+  it('allows exact local destinations while blocking distinct local-account lookalikes', () => {
+    expect(
+      findEvmAddressPoisoningCollision(LOCAL_ACCOUNT, [], [LOCAL_ACCOUNT])
+    ).toBeNull();
+    expect(
+      findEvmAddressPoisoningCollision(
+        LOCAL_ACCOUNT_LOOKALIKE,
+        [],
+        [LOCAL_ACCOUNT]
+      )
+    ).toMatchObject({
+      candidate: LOCAL_ACCOUNT_LOOKALIKE,
+      trustedAddress: LOCAL_ACCOUNT,
+    });
   });
 
   it('refuses copying untrusted history addresses but preserves canonical outbound copies', () => {
