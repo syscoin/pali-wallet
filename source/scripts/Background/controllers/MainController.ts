@@ -150,7 +150,7 @@ import type {
   SmartAccountPackedUserOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
-import { getSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
+import { getVerifiedSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
 import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
@@ -4569,7 +4569,7 @@ class MainController {
         const controller = getController();
 
         // Step 1: Sign the PSBT
-        const signedPsbt = await controller.wallet.syscoinTransaction.signPSBT({
+        const signedPsbt = await this.signSyscoinPsbt({
           psbt: params.psbt,
           isTrezor: params.isTrezor,
           isLedger: params.isLedger,
@@ -6541,8 +6541,27 @@ class MainController {
   // Expose txUtils methods individually for better type safety
   public getRawTransaction = this.txUtils.getRawTransaction;
 
+  private verifySyscoinPsbt = async (psbtData: any) => {
+    const activeNetwork = store.getState().vault.activeNetwork;
+    const psbt = PsbtUtils.fromPali(psbtData, activeNetwork);
+    const summary = await getVerifiedSyscoinPsbtValueSummary(psbt, (txid) =>
+      this.txUtils.getRawTransaction(activeNetwork.url, txid)
+    );
+
+    return { psbt, summary };
+  };
+
+  public signSyscoinPsbt = async (params: {
+    isLedger?: boolean;
+    isTrezor?: boolean;
+    psbt: any;
+  }) => {
+    await this.verifySyscoinPsbt(params.psbt);
+    return this.syscoinTransaction.signPSBT(params);
+  };
+
   // Add decodeRawTransaction method for PSBT/transaction details display
-  public decodeRawTransaction = (psbtOrHex: any, isRawHex = false) => {
+  public decodeRawTransaction = async (psbtOrHex: any, isRawHex = false) => {
     try {
       const decoded = this.syscoinTransaction.decodeRawTransaction(
         psbtOrHex,
@@ -6550,11 +6569,7 @@ class MainController {
       );
 
       if (!isRawHex) {
-        const psbt = PsbtUtils.fromPali(
-          psbtOrHex,
-          store.getState().vault.activeNetwork
-        );
-        const summary = getSyscoinPsbtValueSummary(psbt);
+        const { summary } = await this.verifySyscoinPsbt(psbtOrHex);
         if (
           !Array.isArray(decoded.vout) ||
           decoded.vout.length !== summary.outputValuesSatoshis.length
@@ -6569,6 +6584,7 @@ class MainController {
           decoded.syscoin.allocations = summary.assetAllocations.length
             ? { assets: summary.assetAllocations }
             : null;
+          decoded.syscoin.inputAssets = summary.inputAssets;
         }
       }
 

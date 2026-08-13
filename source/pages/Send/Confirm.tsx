@@ -56,6 +56,7 @@ import {
   removeScientificNotation,
   omitTransactionObjectData,
   INITIAL_FEE,
+  SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
@@ -700,7 +701,7 @@ export const SendConfirm = () => {
               ],
               activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                 ? 300000 // 5 minutes timeout for hardware wallet operations
-                : 10000 // Default 10 seconds for regular wallets
+                : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
             );
 
             setConfirmed(true);
