@@ -11,6 +11,22 @@ import {
 } from './transactions';
 
 const REQUIRED_MATCHING_HEX_CHARACTERS = 4;
+const UNTRUSTED_TRANSACTION_STATUSES = new Set([
+  '0',
+  '0x0',
+  'cancel',
+  'canceled',
+  'cancelled',
+  'dropped',
+  'error',
+  'failed',
+  'failure',
+  'false',
+  'pending',
+  'replaced',
+  'reverted',
+  'superseded',
+]);
 
 const normalizeEvmAddress = (address: unknown): string | null => {
   if (typeof address !== 'string' || !isAddress(address)) return null;
@@ -41,20 +57,32 @@ const getCommonSuffixLength = (left: string, right: string) => {
   return length;
 };
 
-const isFailedTransaction = (transaction: any) => {
+const isConfirmedSuccessfulTransaction = (transaction: any) => {
+  const normalizedStatus = String(transaction?.status ?? '').toLowerCase();
+  if (
+    transaction?.historySource ===
+      EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending ||
+    transaction?.isReplaced === true ||
+    transaction?.isCanceled === true ||
+    transaction?.isCancel === true ||
+    UNTRUSTED_TRANSACTION_STATUSES.has(normalizedStatus)
+  ) {
+    return false;
+  }
+
   const isError = transaction?.isError;
   const receiptStatus = transaction?.txreceipt_status;
   // Legacy explorer rows may copy isError into txreceipt_status, turning a
   // successful isError="0" into a contradictory receipt status of "0".
   const isExplicitSuccess =
     isError === '0' || isError === 0 || isError === false;
+  const isExplicitFailure =
+    isError === '1' || isError === 1 || isError === true;
 
-  return (
-    isError === '1' ||
-    isError === 1 ||
-    isError === true ||
-    ((receiptStatus === '0' || receiptStatus === 0) && !isExplicitSuccess)
-  );
+  if (isExplicitSuccess) return true;
+  if (isExplicitFailure) return false;
+
+  return receiptStatus === '1' || receiptStatus === 1 || receiptStatus === true;
 };
 
 const getTrustedEvmRecipientsFromTransaction = (
@@ -65,7 +93,7 @@ const getTrustedEvmRecipientsFromTransaction = (
   if (
     !normalizedAccount ||
     !transaction ||
-    isFailedTransaction(transaction) ||
+    !isConfirmedSuccessfulTransaction(transaction) ||
     transaction.historySource ===
       EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
   ) {

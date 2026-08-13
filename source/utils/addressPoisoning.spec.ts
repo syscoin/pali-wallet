@@ -301,6 +301,91 @@ describe('EVM address poisoning protection', () => {
     ).toEqual([]);
   });
 
+  it('requires confirmed success and excludes pending or replaced history', () => {
+    const outboundTransaction = {
+      from: ACTIVE_ACCOUNT,
+      historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+      input: '0x',
+      to: LEGITIMATE_RECIPIENT,
+    };
+
+    expect(
+      getTrustedEvmRecipients([outboundTransaction], ACTIVE_ACCOUNT)
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...outboundTransaction,
+            historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending,
+            isError: '0',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...outboundTransaction,
+            isError: '0',
+            status: 'pending',
+            ['txreceipt_status']: '1',
+          },
+          {
+            ...outboundTransaction,
+            isError: '0',
+            status: 'failed',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...outboundTransaction,
+            isError: '0',
+            isReplaced: true,
+            status: 'replaced',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...outboundTransaction,
+            isCanceled: true,
+            isError: '0',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+    expect(
+      getTrustedEvmRecipients(
+        [
+          {
+            ...outboundTransaction,
+            isCancel: true,
+            isError: '0',
+            ['txreceipt_status']: '1',
+          },
+        ],
+        ACTIVE_ACCOUNT
+      )
+    ).toEqual([]);
+  });
+
   it('uses an explicit explorer isError value before its receipt-status fallback', () => {
     const explorerTransaction = {
       from: ACTIVE_ACCOUNT,
