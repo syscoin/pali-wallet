@@ -472,6 +472,15 @@ describe('EVM address poisoning protection', () => {
     ).toBeNull();
   });
 
+  it('allows an exact trusted recipient even when another trusted recipient is a lookalike', () => {
+    expect(
+      findEvmAddressPoisoningCollision(LEGITIMATE_RECIPIENT, [
+        POISONED_RECIPIENT,
+        LEGITIMATE_RECIPIENT,
+      ])
+    ).toBeNull();
+  });
+
   it('allows exact local destinations while blocking distinct local-account lookalikes', () => {
     expect(
       findEvmAddressPoisoningCollision(LOCAL_ACCOUNT, [], [LOCAL_ACCOUNT])

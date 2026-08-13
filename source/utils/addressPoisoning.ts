@@ -202,17 +202,22 @@ export const findEvmAddressPoisoningCollision = (
       .map((address) => normalizeEvmAddress(address))
       .filter(Boolean) as string[]
   );
-  // Exact local-account destinations are safe, but those same addresses are
-  // useful collision anchors when the candidate is a distinct lookalike.
-  if (exactExemptions.has(candidate)) return null;
+  const normalizedTrustedRecipients = trustedRecipients
+    .map((address) => normalizeEvmAddress(address))
+    .filter(Boolean) as string[];
+  // Exact trusted/local destinations are safe even when another anchor looks
+  // similar. Local addresses remain anchors for distinct candidates.
+  if (
+    exactExemptions.has(candidate) ||
+    normalizedTrustedRecipients.includes(candidate)
+  ) {
+    return null;
+  }
 
   const candidateHex = candidate.slice(2);
   const findCollisionWithAnchor = (
-    anchorAddress: string
+    trustedAddress: string
   ): IEvmAddressPoisoningCollision | null => {
-    const trustedAddress = normalizeEvmAddress(anchorAddress);
-    if (!trustedAddress || trustedAddress === candidate) return null;
-
     const trustedHex = trustedAddress.slice(2);
     const matchingPrefixLength = getCommonPrefixLength(
       candidateHex,
@@ -239,7 +244,7 @@ export const findEvmAddressPoisoningCollision = (
 
   // Preserve history-recipient precedence when a candidate resembles both a
   // prior recipient and a local account.
-  for (const trustedRecipient of trustedRecipients) {
+  for (const trustedRecipient of normalizedTrustedRecipients) {
     const collision = findCollisionWithAnchor(trustedRecipient);
     if (collision) return collision;
   }
