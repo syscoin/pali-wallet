@@ -10,6 +10,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { handleTransactionError } from 'utils/errorHandling';
 import { clearNavigationState } from 'utils/navigationState';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
@@ -93,12 +94,12 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
-            : 10000 // Default 10 seconds for regular wallets
+            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
         );
       } else {
         // Sign-only flow
         response = await controllerEmitter(
-          ['wallet', 'syscoinTransaction', 'signPSBT'],
+          ['wallet', 'signSyscoinPsbt'],
           [
             {
               psbt: data,
@@ -108,7 +109,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
-            : 10000 // Default 10 seconds for regular wallets
+            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
         );
       }
       // Show success toast
