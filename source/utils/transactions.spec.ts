@@ -5,6 +5,7 @@ import { id } from 'utils/ethersV6Compat';
 import { PALI_ENTRYPOINT_V09_ADDRESS } from './smartAccount/contracts';
 import {
   getSmartAccountDisplayTransaction,
+  getSmartAccountExecutionTransactions,
   getTransactionDisplayInfo,
 } from './transactions';
 
@@ -104,6 +105,22 @@ describe('smart account transaction display', () => {
       to: TARGET,
       value: '9',
     });
+    expect(getSmartAccountExecutionTransactions(tx)).toEqual([
+      expect.objectContaining({
+        data: '0x',
+        from: SMART_ACCOUNT,
+        input: '0x',
+        to: SMART_ACCOUNT,
+        value: '0',
+      }),
+      expect.objectContaining({
+        data: '0x123456',
+        from: SMART_ACCOUNT,
+        input: '0x123456',
+        to: TARGET,
+        value: '9',
+      }),
+    ]);
   });
 
   it('prefers module install over uninstall for module update batches', () => {

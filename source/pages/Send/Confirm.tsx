@@ -36,6 +36,10 @@ import {
   selectValidEnsCache,
 } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
+import {
+  findEvmAddressPoisoningCollision,
+  getTrustedEvmRecipients,
+} from 'utils/addressPoisoning';
 import { handleTransactionError } from 'utils/errorHandling';
 import {
   formatEther,
@@ -85,11 +89,43 @@ export const SendConfirm = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    accountTransactions,
+  } = useSelector((state: RootState) => state.vault);
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const currentEvmTransactions = useMemo(
+    () =>
+      accountTransactions?.[activeAccountMeta.type]?.[activeAccountMeta.id]
+        ?.ethereum?.[activeNetwork?.chainId] || [],
+    [
+      accountTransactions,
+      activeAccountMeta.id,
+      activeAccountMeta.type,
+      activeNetwork?.chainId,
+    ]
+  );
+  const trustedRecentRecipients = useMemo(
+    () =>
+      getTrustedEvmRecipients(
+        currentEvmTransactions,
+        activeAccount?.address || ''
+      ),
+    [activeAccount?.address, currentEvmTransactions]
+  );
+  const localEvmAddresses = useMemo(() => {
+    const addresses: string[] = [];
+    Object.values(accounts || {}).forEach((byId: any) => {
+      Object.values(byId || {}).forEach((account: any) => {
+        if (String(account?.address || '').startsWith('0x')) {
+          addresses.push(account.address);
+        }
+      });
+    });
+    return addresses;
+  }, [accounts]);
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
   // when using the default routing, state will have the tx data
@@ -166,6 +202,23 @@ export const SendConfirm = () => {
     const cachedName = ensCache?.[toRaw.toLowerCase()]?.name;
     return cachedName || toRaw;
   }, [toRaw, ensCache]);
+  const recipientPoisoningCollision = useMemo(
+    () =>
+      isBitcoinBased
+        ? null
+        : findEvmAddressPoisoningCollision(
+            resolvedToAddress || toRaw,
+            trustedRecentRecipients,
+            localEvmAddresses
+          ),
+    [
+      isBitcoinBased,
+      localEvmAddresses,
+      resolvedToAddress,
+      toRaw,
+      trustedRecentRecipients,
+    ]
+  );
 
   // We always display addresses; ENS names are only used as input and resolved to addresses
 
@@ -431,6 +484,15 @@ export const SendConfirm = () => {
   }, [navigate, alert, t, getLegacyGasPrice]);
 
   const handleConfirm = async () => {
+    if (recipientPoisoningCollision) {
+      alert.error(
+        t('send.addressPoisoningBlocked', {
+          address: recipientPoisoningCollision.trustedAddress,
+        })
+      );
+      return;
+    }
+
     let balance: string | number = isBitcoinBased
       ? activeAccount.balances[INetworkType.Syscoin]
       : activeAccount.balances[INetworkType.Ethereum];
@@ -1867,6 +1929,29 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </div>
+            {recipientPoisoningCollision && (
+              <div className="w-full mt-3 p-3 rounded-lg border border-warning-error bg-warning-error bg-opacity-10">
+                <div className="flex items-start gap-2">
+                  <Icon
+                    name="warning"
+                    className="w-4 h-4 mt-0.5 text-warning-error shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-warning-error text-xs font-semibold">
+                      {t('send.addressPoisoningTitle')}
+                    </p>
+                    <p className="text-brand-gray200 text-xs mt-1">
+                      {t('send.addressPoisoningBlocked', {
+                        address: recipientPoisoningCollision.trustedAddress,
+                      })}
+                    </p>
+                    <p className="text-white text-[10px] font-mono break-all mt-2">
+                      {recipientPoisoningCollision.trustedAddress}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
             {/* Only show fee section if we have meaningful fee information */}
             {!(isBitcoinBased && basicTxValues.fee === 0) && (
@@ -2231,6 +2316,7 @@ export const SendConfirm = () => {
               type="button"
               disabled={
                 confirmed ||
+                Boolean(recipientPoisoningCollision) ||
                 isCalculatingFees ||
                 (!isBitcoinBased && !!feeCalculationError)
               }
