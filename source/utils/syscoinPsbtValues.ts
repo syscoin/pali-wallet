@@ -185,6 +185,8 @@ const verifyAssetConservation = (
   inputAssets: ISyscoinPsbtInputAsset[],
   outputAllocations: IExactAssetAllocation[]
 ) => {
+  const allowsSysxMintDelta =
+    transactionVersion === SYSCOIN_BURN_TO_ALLOCATION_VERSION;
   const versionsThatRequireMatchingAssetTotals = new Set([
     ALLOCATION_BURN_TO_SYSCOIN_VERSION,
     ALLOCATION_BURN_TO_ETHEREUM_VERSION,
@@ -193,7 +195,7 @@ const verifyAssetConservation = (
 
   if (
     inputAssets.length > 0 &&
-    transactionVersion !== SYSCOIN_BURN_TO_ALLOCATION_VERSION &&
+    !allowsSysxMintDelta &&
     !versionsThatRequireMatchingAssetTotals.has(transactionVersion)
   ) {
     throw new Error(
@@ -201,7 +203,11 @@ const verifyAssetConservation = (
     );
   }
 
-  if (!versionsThatRequireMatchingAssetTotals.has(transactionVersion)) return;
+  if (
+    !allowsSysxMintDelta &&
+    !versionsThatRequireMatchingAssetTotals.has(transactionVersion)
+  )
+    return;
 
   const inputTotals = sumAssets(inputAssets);
   const outputTotals = sumAssets(
@@ -215,6 +221,7 @@ const verifyAssetConservation = (
   const assetGuids = new Set([...inputTotals.keys(), ...outputTotals.keys()]);
 
   for (const assetGuid of assetGuids) {
+    if (allowsSysxMintDelta && assetGuid === SYSX_ASSET_GUID) continue;
     if (
       (inputTotals.get(assetGuid) || BigInt(0)) !==
       (outputTotals.get(assetGuid) || BigInt(0))
@@ -408,12 +415,7 @@ export const getSyscoinPsbtValueSummary = (
   let totalInput = BigInt(0);
   for (let index = 0; index < psbt.data.inputs.length; index++) {
     const input = psbt.data.inputs[index];
-    if (
-      input.sighashType !== undefined &&
-      input.sighashType !== syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL
-    ) {
-      throw new Error(`PSBT input ${index} must use SIGHASH_ALL`);
-    }
+    let inputScript: Uint8Array | undefined;
     let inputValue: unknown;
 
     if (input.nonWitnessUtxo || previousTransactions?.[index]) {
@@ -439,13 +441,30 @@ export const getSyscoinPsbtValueSummary = (
       ) {
         throw new Error(`Conflicting PSBT input ${index} UTXO data`);
       }
+      inputScript = previousOutput.script;
       inputValue = previousOutput.value;
     } else if (input.witnessUtxo?.value !== undefined) {
+      inputScript = input.witnessUtxo.script;
       inputValue = input.witnessUtxo.value;
     }
 
     if (inputValue === undefined) {
       throw new Error(`Unable to verify PSBT input ${index}`);
+    }
+    const isTaproot =
+      inputScript instanceof Uint8Array &&
+      inputScript.length === 34 &&
+      inputScript[0] === syscoinUtils.bitcoinjs.opcodes.OP_1 &&
+      inputScript[1] === 32;
+    if (
+      input.sighashType !== undefined &&
+      input.sighashType !== syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL &&
+      !(
+        isTaproot &&
+        input.sighashType === syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT
+      )
+    ) {
+      throw new Error(`PSBT input ${index} does not bind every output`);
     }
     totalInput += toBigIntValue(inputValue, `PSBT input ${index}`);
   }
