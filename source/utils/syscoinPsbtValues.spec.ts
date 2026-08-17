@@ -874,18 +874,40 @@ describe('Syscoin PSBT value summary', () => {
     });
   });
 
-  it('rejects a dapp PSBT input that does not bind every output', async () => {
+  it.each([
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_NONE,
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_NONE |
+      syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
+  ])(
+    'rejects dapp PSBT sighash %s because it does not bind every output',
+    async (sighashType) => {
+      const { psbt } = createAssetBearingV139Psbt();
+      psbt.updateInput(0, { sighashType });
+
+      await expect(
+        getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+      ).rejects.toThrow('PSBT input 0 does not bind every output');
+    }
+  );
+
+  it('allows SIGHASH_ALL with ANYONECANPAY for a legacy input', async () => {
     const { psbt } = createAssetBearingV139Psbt();
     psbt.updateInput(0, {
-      sighashType: syscoinUtils.bitcoinjs.Transaction.SIGHASH_NONE,
+      sighashType:
+        syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL |
+        syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
     });
 
     await expect(
       getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
-    ).rejects.toThrow('PSBT input 0 does not bind every output');
+    ).resolves.toMatchObject({ feeSatoshis: '1000' });
   });
 
-  it('allows explicit SIGHASH_DEFAULT only for a Taproot input', async () => {
+  it.each([
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT,
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL |
+      syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
+  ])('allows output-binding Taproot sighash %s', async (sighashType) => {
     const taprootScript = Buffer.concat([
       Buffer.from([syscoinUtils.bitcoinjs.opcodes.OP_1, 32]),
       Buffer.alloc(32, 1),
@@ -903,8 +925,7 @@ describe('Syscoin PSBT value summary', () => {
     });
     // bip174's updater rejects an explicit zero even though zero is the
     // serialized Taproot SIGHASH_DEFAULT value accepted in parsed PSBTs.
-    psbt.data.inputs[0].sighashType =
-      syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT;
+    psbt.data.inputs[0].sighashType = sighashType;
     psbt.addOutput({ script: taprootScript, value: BigInt(900) });
     const parsedPsbt = syscoinUtils.bitcoinjs.Psbt.fromBuffer(psbt.toBuffer(), {
       network: syscoinUtils.syscoinNetworks.testnet,

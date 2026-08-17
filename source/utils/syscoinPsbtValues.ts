@@ -456,9 +456,14 @@ export const getSyscoinPsbtValueSummary = (
       inputScript.length === 34 &&
       inputScript[0] === syscoinUtils.bitcoinjs.opcodes.OP_1 &&
       inputScript[1] === 32;
+    const baseSighashType =
+      input.sighashType === undefined
+        ? undefined
+        : input.sighashType &
+          ~syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY;
     if (
       input.sighashType !== undefined &&
-      input.sighashType !== syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL &&
+      baseSighashType !== syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL &&
       !(
         isTaproot &&
         input.sighashType === syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT
