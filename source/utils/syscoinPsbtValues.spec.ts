@@ -159,6 +159,74 @@ const createAssetPrevout = () => {
   return { allocationData, assetScript, previousTransaction };
 };
 
+const createAssetBearingV139Psbt = ({
+  assetGuid = '123456',
+  currentAssetValue = '2000000000',
+  previousAssetValue = '1000000000',
+}: {
+  assetGuid?: string;
+  currentAssetValue?: string;
+  previousAssetValue?: string;
+} = {}) => {
+  const assetScript = Buffer.from(
+    '00140000000000000000000000000000000000000001',
+    'hex'
+  );
+  const previousAllocationData =
+    syscointx.bufferUtils.serializeAssetAllocations([
+      {
+        assetGuid,
+        values: [{ n: 1, value: new syscoinUtils.BN(previousAssetValue) }],
+      },
+    ]);
+  const previousTransaction = new syscoinUtils.bitcoinjs.Transaction();
+  previousTransaction.version = 139;
+  previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+  previousTransaction.addOutput(
+    syscoinUtils.bitcoinjs.payments.embed({
+      data: [previousAllocationData],
+    }).output!,
+    BigInt('1000000000')
+  );
+  previousTransaction.addOutput(assetScript, BigInt('80000000000000'));
+
+  const currentAllocationData = syscointx.bufferUtils.serializeAssetAllocations(
+    [
+      {
+        assetGuid,
+        values: [{ n: 1, value: new syscoinUtils.BN(currentAssetValue) }],
+      },
+    ]
+  );
+  const psbt = new syscoinUtils.bitcoinjs.Psbt({
+    network: syscoinUtils.syscoinNetworks.testnet,
+  });
+  psbt.setVersion(139);
+  psbt.addInput({
+    hash: previousTransaction.getHash(),
+    index: 1,
+    nonWitnessUtxo: previousTransaction.toBuffer(),
+  });
+  psbt.addUnknownKeyValToInput(0, {
+    key: Buffer.from('assetInfo'),
+    value: Buffer.from(
+      JSON.stringify({ assetGuid, value: previousAssetValue })
+    ),
+  });
+  psbt.addOutput({
+    script: syscoinUtils.bitcoinjs.payments.embed({
+      data: [currentAllocationData],
+    }).output!,
+    value: BigInt('1000000000'),
+  });
+  psbt.addOutput({
+    script: assetScript,
+    value: BigInt('79998999999000'),
+  });
+
+  return { previousTransaction, psbt };
+};
+
 const createWitnessWrappedAssetPrevout = () => {
   const realAllocationData = syscointx.bufferUtils.serializeAssetAllocations([
     {
@@ -778,6 +846,108 @@ describe('Syscoin PSBT value summary', () => {
         },
       ],
     });
+  });
+
+  it('accepts an authenticated v139 SYSX input that Core returns with the mint', async () => {
+    const { previousTransaction, psbt } = createAssetBearingV139Psbt();
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).resolves.toEqual({
+      assetAllocations: [
+        {
+          assetGuid: '123456',
+          values: [{ n: 1, value: '2000000000' }],
+        },
+      ],
+      feeSatoshis: '1000',
+      inputAssets: [
+        {
+          assetGuid: '123456',
+          inputIndex: 0,
+          previousOutputIndex: 1,
+          previousTxid: previousTransaction.getId(),
+          value: '1000000000',
+        },
+      ],
+      outputValuesSatoshis: ['1000000000', '79998999999000'],
+    });
+  });
+
+  it.each([
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_NONE,
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_NONE |
+      syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
+  ])(
+    'rejects dapp PSBT sighash %s because it does not bind every output',
+    async (sighashType) => {
+      const { psbt } = createAssetBearingV139Psbt();
+      psbt.updateInput(0, { sighashType });
+
+      await expect(
+        getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+      ).rejects.toThrow('PSBT input 0 does not bind every output');
+    }
+  );
+
+  it('allows SIGHASH_ALL with ANYONECANPAY for a legacy input', async () => {
+    const { psbt } = createAssetBearingV139Psbt();
+    psbt.updateInput(0, {
+      sighashType:
+        syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL |
+        syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).resolves.toMatchObject({ feeSatoshis: '1000' });
+  });
+
+  it.each([
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT,
+    syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL |
+      syscoinUtils.bitcoinjs.Transaction.SIGHASH_ANYONECANPAY,
+  ])('allows output-binding Taproot sighash %s', async (sighashType) => {
+    const taprootScript = Buffer.concat([
+      Buffer.from([syscoinUtils.bitcoinjs.opcodes.OP_1, 32]),
+      Buffer.alloc(32, 1),
+    ]);
+    const previousTransaction = emptyTransaction();
+    previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+    previousTransaction.addOutput(taprootScript, BigInt(1000));
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+    });
+    // bip174's updater rejects an explicit zero even though zero is the
+    // serialized Taproot SIGHASH_DEFAULT value accepted in parsed PSBTs.
+    psbt.data.inputs[0].sighashType = sighashType;
+    psbt.addOutput({ script: taprootScript, value: BigInt(900) });
+    const parsedPsbt = syscoinUtils.bitcoinjs.Psbt.fromBuffer(psbt.toBuffer(), {
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(parsedPsbt, jest.fn())
+    ).resolves.toMatchObject({ feeSatoshis: '100', inputAssets: [] });
+  });
+
+  it('conserves unrelated asset inputs even in a v139 transaction', async () => {
+    const { psbt } = createAssetBearingV139Psbt({
+      assetGuid: '4294967297',
+      currentAssetValue: '2',
+      previousAssetValue: '1',
+    });
+
+    await expect(
+      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+    ).rejects.toThrow(
+      'PSBT asset 4294967297 inputs do not match its serialized allocations'
+    );
   });
 
   it('accepts the Core witness-marker form and uses its second pushed allocation payload', async () => {
