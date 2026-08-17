@@ -185,7 +185,7 @@ const verifyAssetConservation = (
   inputAssets: ISyscoinPsbtInputAsset[],
   outputAllocations: IExactAssetAllocation[]
 ) => {
-  const versionsThatConsumeAssets = new Set([
+  const versionsThatRequireMatchingAssetTotals = new Set([
     ALLOCATION_BURN_TO_SYSCOIN_VERSION,
     ALLOCATION_BURN_TO_ETHEREUM_VERSION,
     ALLOCATION_SEND_VERSION,
@@ -193,14 +193,15 @@ const verifyAssetConservation = (
 
   if (
     inputAssets.length > 0 &&
-    !versionsThatConsumeAssets.has(transactionVersion)
+    transactionVersion !== SYSCOIN_BURN_TO_ALLOCATION_VERSION &&
+    !versionsThatRequireMatchingAssetTotals.has(transactionVersion)
   ) {
     throw new Error(
       `Asset-bearing PSBT input ${inputAssets[0].inputIndex} is not allowed in transaction version ${transactionVersion}`
     );
   }
 
-  if (!versionsThatConsumeAssets.has(transactionVersion)) return;
+  if (!versionsThatRequireMatchingAssetTotals.has(transactionVersion)) return;
 
   const inputTotals = sumAssets(inputAssets);
   const outputTotals = sumAssets(
@@ -407,6 +408,12 @@ export const getSyscoinPsbtValueSummary = (
   let totalInput = BigInt(0);
   for (let index = 0; index < psbt.data.inputs.length; index++) {
     const input = psbt.data.inputs[index];
+    if (
+      input.sighashType !== undefined &&
+      input.sighashType !== syscoinUtils.bitcoinjs.Transaction.SIGHASH_ALL
+    ) {
+      throw new Error(`PSBT input ${index} must use SIGHASH_ALL`);
+    }
     let inputValue: unknown;
 
     if (input.nonWitnessUtxo || previousTransactions?.[index]) {
