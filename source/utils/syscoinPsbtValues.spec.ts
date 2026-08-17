@@ -906,9 +906,12 @@ describe('Syscoin PSBT value summary', () => {
     psbt.data.inputs[0].sighashType =
       syscoinUtils.bitcoinjs.Transaction.SIGHASH_DEFAULT;
     psbt.addOutput({ script: taprootScript, value: BigInt(900) });
+    const parsedPsbt = syscoinUtils.bitcoinjs.Psbt.fromBuffer(psbt.toBuffer(), {
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
 
     await expect(
-      getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+      getVerifiedSyscoinPsbtValueSummary(parsedPsbt, jest.fn())
     ).resolves.toMatchObject({ feeSatoshis: '100', inputAssets: [] });
   });
 
