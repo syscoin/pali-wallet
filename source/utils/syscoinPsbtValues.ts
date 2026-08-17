@@ -33,6 +33,10 @@ interface IExactAssetAllocation {
 
 type RawTransactionFetcher = (txid: string) => Promise<unknown>;
 
+const equalBytes = (left: Uint8Array, right: Uint8Array): boolean =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
 const toBigIntValue = (value: unknown, field: string): bigint => {
   const normalized = String(value);
   if (!/^\d+$/.test(normalized)) {
@@ -228,7 +232,7 @@ const verifyPreviousTransaction = (
 ) => {
   const txInput = psbt.txInputs[inputIndex];
   const input = psbt.data.inputs[inputIndex];
-  if (!Buffer.from(txInput.hash).equals(previousTransaction.getHash())) {
+  if (!equalBytes(txInput.hash, previousTransaction.getHash())) {
     throw new Error(`PSBT input ${inputIndex} previous transaction mismatch`);
   }
 
@@ -240,7 +244,7 @@ const verifyPreviousTransaction = (
     input.witnessUtxo &&
     (toBigIntValue(input.witnessUtxo.value, `PSBT input ${inputIndex}`) !==
       toBigIntValue(previousOutput.value, `PSBT input ${inputIndex}`) ||
-      !Buffer.from(input.witnessUtxo.script).equals(previousOutput.script))
+      !equalBytes(input.witnessUtxo.script, previousOutput.script))
   ) {
     throw new Error(`Conflicting PSBT input ${inputIndex} UTXO data`);
   }
@@ -410,9 +414,7 @@ export const getSyscoinPsbtValueSummary = (
         previousTransactions?.[index] ||
         syscoinUtils.bitcoinjs.Transaction.fromBuffer(input.nonWitnessUtxo);
       if (
-        !Buffer.from(psbt.txInputs[index].hash).equals(
-          previousTransaction.getHash()
-        )
+        !equalBytes(psbt.txInputs[index].hash, previousTransaction.getHash())
       ) {
         throw new Error(`PSBT input ${index} previous transaction mismatch`);
       }
@@ -426,7 +428,7 @@ export const getSyscoinPsbtValueSummary = (
         input.witnessUtxo &&
         (toBigIntValue(input.witnessUtxo.value, `PSBT input ${index}`) !==
           toBigIntValue(previousOutput.value, `PSBT input ${index}`) ||
-          !Buffer.from(input.witnessUtxo.script).equals(previousOutput.script))
+          !equalBytes(input.witnessUtxo.script, previousOutput.script))
       ) {
         throw new Error(`Conflicting PSBT input ${index} UTXO data`);
       }

@@ -1,5 +1,6 @@
 jest.unmock('syscoinjs-lib');
 
+import { Buffer as BrowserBuffer } from 'buffer/';
 import {
   syscoin as SyscoinTransaction,
   utils as syscoinUtils,
@@ -563,6 +564,37 @@ describe('Syscoin PSBT value summary', () => {
     expect(fetchRawTransaction).toHaveBeenCalledWith(
       previousTransaction.getId()
     );
+  });
+
+  it('verifies an embedded witness prevout with the browser Buffer polyfill', async () => {
+    const previousTransaction = emptyTransaction();
+    previousTransaction.addInput(Buffer.alloc(32), 0xffffffff);
+    const script = Buffer.from(
+      '00140000000000000000000000000000000000000001',
+      'hex'
+    );
+    previousTransaction.addOutput(script, BigInt(1000));
+    const psbt = new syscoinUtils.bitcoinjs.Psbt({
+      network: syscoinUtils.syscoinNetworks.testnet,
+    });
+    psbt.setVersion(2);
+    psbt.addInput({
+      hash: previousTransaction.getHash(),
+      index: 0,
+      nonWitnessUtxo: previousTransaction.toBuffer(),
+      witnessUtxo: { script, value: BigInt(1000) },
+    });
+    psbt.addOutput({ script, value: BigInt(900) });
+    const originalBuffer = global.Buffer;
+    global.Buffer = BrowserBuffer as unknown as typeof Buffer;
+
+    try {
+      await expect(
+        getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn())
+      ).resolves.toMatchObject({ feeSatoshis: '100', inputAssets: [] });
+    } finally {
+      global.Buffer = originalBuffer;
+    }
   });
 
   it('deduplicates witness prevout lookups from the same transaction', async () => {
