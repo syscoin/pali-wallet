@@ -78,7 +78,14 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.png$/i,
+        resourceQuery: /inline/,
+        type: 'asset/inline',
+        exclude: /node_modules/,
+      },
+      {
         test: /\.(jpg|png|svg|webp|xlsx|xls|csv)$/i,
+        resourceQuery: { not: [/inline/] },
         type: 'asset/resource',
         generator: {
           filename: 'assets/all_assets/[name][ext]',
