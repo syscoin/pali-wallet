@@ -32,6 +32,10 @@ import {
   buildHydratedP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
+  getGuardianRecoveryDigestContext,
+  getSmartAccountGuardianRecoveryHash,
+  SmartAccountGuardianRecoveryDigestContext,
+  SmartAccountGuardianRecoveryOperation,
   buildSmartAccountUserOperation,
   encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
@@ -54,6 +58,7 @@ import {
   PaliSmartAccountAuthenticatorSetup,
   SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
+  ERC7579_MODULE_TYPE_EXECUTOR,
   PALI_CREATE2_DEPLOYER_ADDRESS,
   PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
   getPaliInfrastructureContracts,
@@ -73,6 +78,7 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
+import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
@@ -1607,6 +1613,10 @@ class SmartAccountController {
       params.target
     );
     await this.proveRecoveryTargetOwnership(params.target, operation.hash);
+    await this.validateSmartAccountGuardianRecoveryOperation({
+      account,
+      operation,
+    });
 
     const localEoaGuardian = this.findLocalSigningAccount(guardian);
     if (localEoaGuardian) {
@@ -1654,7 +1664,7 @@ class SmartAccountController {
     approval: { guardian: string; signature: string };
     gasPayer?: { address: string; id: number; type: PaliKeyringAccountType };
     guardian: string;
-    operation: ReturnType<typeof buildSmartAccountGuardianRecoveryOperation>;
+    operation: SmartAccountGuardianRecoveryOperation;
   }) {
     const account = getAddress(params.account);
     const recoveryModule = getAddress(params.operation.recoveryModule);
@@ -1663,6 +1673,10 @@ class SmartAccountController {
     if (approvalGuardian !== guardian) {
       throw new Error('Guardian approval does not match recovery guardian');
     }
+    await this.validateSmartAccountGuardianRecoveryOperation({
+      account,
+      operation: params.operation,
+    });
     const approvals = [
       {
         guardian,
@@ -1712,13 +1726,16 @@ class SmartAccountController {
     }
   }
 
-  public async finalizeSmartAccountGuardianRecovery(params: {
-    account: string;
-    executionCalldata: string;
-    mode: string;
-    recoveryModule?: string;
-    salt: string;
-  }) {
+  public async finalizeSmartAccountGuardianRecovery(
+    params: SmartAccountGuardianRecoveryDigestContext & {
+      account: string;
+      chainId: number;
+      executionCalldata: string;
+      mode: string;
+      recoveryModule?: string;
+      salt: string;
+    }
+  ) {
     const account = getAddress(params.account);
     const status = params.recoveryModule
       ? null
@@ -1727,6 +1744,10 @@ class SmartAccountController {
     if (!recoveryModule) {
       throw new Error('Guardian recovery module is not configured');
     }
+    await this.validateSmartAccountGuardianRecoveryOperation({
+      account,
+      operation: { ...params, recoveryModule },
+    });
     const callData = paliGuardianRecoveryModuleInterface.encodeFunctionData(
       'executeRecovery',
       [account, params.salt, params.mode, params.executionCalldata]
@@ -1808,12 +1829,104 @@ class SmartAccountController {
     return buildSmartAccountGuardianRecoveryOperation({
       account,
       chainId: activeNetwork.chainId,
+      ...(await this.readGuardianRecoveryDigestContext(
+        account,
+        recoveryModule
+      )),
       replaceExistingValidator,
       recoveryModule,
       revokeValidator,
       salt: randomBytes32Hex(),
       target,
     });
+  }
+
+  private async readGuardianRecoveryDigestContext(
+    account: string,
+    recoveryModule: string
+  ): Promise<SmartAccountGuardianRecoveryDigestContext> {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const module = new Contract(
+      recoveryModule,
+      paliGuardianRecoveryModuleInterface,
+      provider
+    );
+    const epoch = await module.policyEpoch(account);
+    return getGuardianRecoveryDigestContext({
+      policyEpoch: epoch.toString(),
+    });
+  }
+
+  public async validateSmartAccountGuardianRecoveryOperation(params: {
+    account: string;
+    operation: Omit<SmartAccountGuardianRecoveryOperation, 'hash'> & {
+      hash?: string;
+    };
+  }): Promise<void> {
+    const account = getAddress(params.account);
+    const operation = params.operation;
+    const recoveryModule = getAddress(operation.recoveryModule);
+    const { activeNetwork } = store.getState().vault;
+    const context = getGuardianRecoveryDigestContext(operation);
+    if (
+      !operation.account ||
+      getAddress(operation.account) !== account ||
+      operation.chainId !== activeNetwork.chainId
+    ) {
+      throw new Error(
+        'Guardian recovery intent does not match the account or network'
+      );
+    }
+    const status = await this.getGuardianRecoveryStatusForAccount(account);
+    if (!status || getAddress(status.moduleAddress) !== recoveryModule) {
+      throw new Error(
+        'Guardian recovery module is not installed for this account'
+      );
+    }
+    const current = await this.readGuardianRecoveryDigestContext(
+      account,
+      recoveryModule
+    );
+    if (current.policyEpoch !== context.policyEpoch) {
+      throw new GuardianRecoveryPolicyChangedError();
+    }
+    const hash = getSmartAccountGuardianRecoveryHash({
+      ...operation,
+      ...context,
+      account,
+      chainId: activeNetwork.chainId,
+    });
+    if (
+      operation.hash !== undefined &&
+      operation.hash.toLowerCase() !== hash.toLowerCase()
+    ) {
+      throw new Error(
+        'Guardian recovery approval hash does not match its intent'
+      );
+    }
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      throw new Error('Web3 provider not available');
+    }
+    const module = new Contract(
+      recoveryModule,
+      paliGuardianRecoveryModuleInterface,
+      provider
+    );
+    const onChainHash = await module.getRecoveryScheduleHash(
+      account,
+      operation.salt,
+      operation.mode,
+      operation.executionCalldata
+    );
+    if (onChainHash.toLowerCase() !== hash.toLowerCase()) {
+      throw new Error(
+        'Guardian recovery digest does not match the installed policy'
+      );
+    }
   }
 
   private async proveRecoveryTargetOwnership(
@@ -2112,15 +2225,6 @@ class SmartAccountController {
     );
     const slhDsaAddress = getConfiguredAuthenticatorAddress(chainId, 'slh-dsa');
     const includeSlhDsa = Boolean(slhDsaAddress);
-    const { activeNetwork } = store.getState().vault;
-    const guardianModuleAddress = getConfiguredAuthenticatorAddress(
-      activeNetwork.chainId,
-      'guardian-recovery'
-    );
-    const includeGuardian = Boolean(
-      guardianModuleAddress && guardianModuleAddress !== AddressZero
-    );
-
     const isModuleInstalledCall = (
       moduleAddress: string,
       moduleType: number = ERC7579_MODULE_TYPE_VALIDATOR
@@ -2189,22 +2293,6 @@ class SmartAccountController {
         iface: paliSmartAccountInterface,
         target: account.address,
       },
-      ...(includeGuardian
-        ? ([
-            {
-              args: [account.address],
-              fn: 'config',
-              iface: paliGuardianRecoveryModuleInterface,
-              target: guardianModuleAddress,
-            },
-            {
-              args: [account.address],
-              fn: 'guardians',
-              iface: paliGuardianRecoveryModuleInterface,
-              target: guardianModuleAddress,
-            },
-          ] as AggregateCallRequest[])
-        : []),
       ...customRecords.map((record) =>
         isModuleInstalledCall(record.address, record.moduleType)
       ),
@@ -2297,7 +2385,6 @@ class SmartAccountController {
     }
 
     const activeValidatorResultIndex = 8 + (includeSlhDsa ? 2 : 0);
-    const guardianBaseIndex = activeValidatorResultIndex + 1;
 
     if (includeSlhDsa) {
       const slhDsaInstalled =
@@ -2321,7 +2408,7 @@ class SmartAccountController {
     // Custom (bring-your-own) modules still installed on-chain. Failed
     // probes (e.g. module self-destructed) simply drop the module from the
     // installed list; the durable record remains for later re-probing.
-    const customBaseIndex = guardianBaseIndex + (includeGuardian ? 2 : 0);
+    const customBaseIndex = activeValidatorResultIndex + 1;
     customRecords.forEach((record, index) => {
       const probe = results[customBaseIndex + index];
       const installed = probe?.success && Boolean(probe.result[0]);
@@ -2341,31 +2428,28 @@ class SmartAccountController {
       }
     });
 
-    if (includeGuardian) {
-      const guardianStatus = this.decodeGuardianRecoveryStatus(
-        guardianModuleAddress,
-        results[guardianBaseIndex],
-        results[guardianBaseIndex + 1]
-      );
-      if (guardianStatus) {
-        installedModules.push({
-          address: getAddress(guardianStatus.moduleAddress),
-          config: {
-            delaySeconds: guardianStatus.delaySeconds,
-            expirationSeconds: guardianStatus.expirationSeconds,
-            guardians: guardianStatus.guardians,
-            threshold: guardianStatus.threshold,
-          },
-          data: encodeGuardianRecoveryInitData({
-            delaySeconds: guardianStatus.delaySeconds,
-            expirationSeconds: guardianStatus.expirationSeconds,
-            guardians: guardianStatus.guardians,
-            threshold: guardianStatus.threshold,
-          }),
-          id: 'guardian-recovery',
-          type: 'executor',
-        });
-      }
+    const guardianStatus = await this.getGuardianRecoveryStatusForAccount(
+      account.address,
+      chainId
+    );
+    if (guardianStatus) {
+      installedModules.push({
+        address: getAddress(guardianStatus.moduleAddress),
+        config: {
+          delaySeconds: guardianStatus.delaySeconds,
+          expirationSeconds: guardianStatus.expirationSeconds,
+          guardians: guardianStatus.guardians,
+          threshold: guardianStatus.threshold,
+        },
+        data: encodeGuardianRecoveryInitData({
+          delaySeconds: guardianStatus.delaySeconds,
+          expirationSeconds: guardianStatus.expirationSeconds,
+          guardians: guardianStatus.guardians,
+          threshold: guardianStatus.threshold,
+        }),
+        id: 'guardian-recovery',
+        type: 'executor',
+      });
     }
 
     const activeValidatorAddress = getAddress(
@@ -2436,79 +2520,37 @@ class SmartAccountController {
     };
   }
 
-  private getGuardianStatusFromHydratedMetadata(
-    metadata: ISmartAccountMetadata
-  ): GuardianRecoveryStatusForAccount | null {
-    const module = metadata.installedModules?.find(
-      (installedModule) => installedModule.id === 'guardian-recovery'
-    );
-    if (!module) {
-      return null;
-    }
-    const config = (module.config || {}) as {
-      delaySeconds?: number;
-      expirationSeconds?: number;
-      guardians?: string[];
-      threshold?: number;
-    };
-    const guardians = (config.guardians || []).map((guardian) =>
-      getAddress(guardian)
-    );
-    const delaySeconds = Number(config.delaySeconds || 0);
-    return {
-      delay: String(delaySeconds),
-      delaySeconds,
-      exists: true,
-      expirationSeconds: Number(config.expirationSeconds || 0),
-      guardianCount: String(guardians.length),
-      guardians,
-      moduleAddress: module.address,
-      pending: null,
-      threshold: Number(config.threshold || 0),
-    };
-  }
-
   private async getGuardianRecoveryStatusForAccount(
-    account: string
+    account: string,
+    chainId = store.getState().vault.activeNetwork.chainId
   ): Promise<GuardianRecoveryStatusForAccount | null> {
-    const { activeNetwork } = store.getState().vault;
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
     }
     const moduleAddress = getConfiguredAuthenticatorAddress(
-      activeNetwork.chainId,
+      chainId,
       'guardian-recovery'
     );
     if (!moduleAddress || moduleAddress === AddressZero) {
       return null;
     }
-
-    // Reuse a fresh (or currently running) hydration of the same account
-    // instead of re-fetching guardian state with dedicated RPC calls.
-    const hydrationKey = `${activeNetwork.chainId}:${account.toLowerCase()}`;
-    const inflight = this.inflightHydrations.get(hydrationKey);
-    if (inflight) {
-      try {
-        const metadata = await inflight;
-        if (metadata.isDeployed) {
-          return this.getGuardianStatusFromHydratedMetadata(metadata);
-        }
-      } catch {
-        // Fall through to the dedicated fetch below.
-      }
-    } else {
-      const cached = this.hydratedMetadataCache.get(hydrationKey);
-      if (
-        cached &&
-        Date.now() - cached.timestamp < HYDRATED_METADATA_TTL_MS &&
-        cached.metadata.isDeployed
-      ) {
-        return this.getGuardianStatusFromHydratedMetadata(cached.metadata);
-      }
+    const installedResults = await aggregateContractCalls(provider, chainId, [
+      {
+        args: [ERC7579_MODULE_TYPE_EXECUTOR, moduleAddress, '0x'],
+        fn: 'isModuleInstalled',
+        iface: paliSmartAccountInterface,
+        target: account,
+      },
+    ]);
+    const [isInstalled] = this.requireAggregateResult(
+      installedResults[0],
+      'guardian-recovery installation'
+    );
+    if (!isInstalled) {
+      return null;
     }
-
-    const calls: AggregateCallRequest[] = [
+    const results = await aggregateContractCalls(provider, chainId, [
       {
         args: [account],
         fn: 'config',
@@ -2521,17 +2563,18 @@ class SmartAccountController {
         iface: paliGuardianRecoveryModuleInterface,
         target: moduleAddress,
       },
-    ];
-    const results = await aggregateContractCalls(
-      provider,
-      activeNetwork.chainId,
-      calls
-    );
-    return this.decodeGuardianRecoveryStatus(
+    ]);
+    const status = this.decodeGuardianRecoveryStatus(
       moduleAddress,
       results[0],
       results[1]
     );
+    if (!status) {
+      throw new Error(
+        'Installed guardian recovery module has no active policy'
+      );
+    }
+    return status;
   }
 
   private getActiveSmartAccount(address?: string): {

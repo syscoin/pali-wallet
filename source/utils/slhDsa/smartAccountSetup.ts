@@ -1,7 +1,11 @@
 import { chromeStorage } from 'utils/storageAPI';
 
 import { SLH_DSA_PARAMETER_SET } from './constants';
-import { provisionRuntimeSLHDSAStateFromSetupSecret } from './signer';
+import {
+  assertSLHDSASessionGeneration,
+  getSLHDSASessionGeneration,
+  provisionRuntimeSLHDSAStateFromSetupSecret,
+} from './signer';
 
 export type SLHDSASmartAccountSetupStatus = {
   accountId: number;
@@ -112,6 +116,7 @@ export const startSLHDSASmartAccountValidatorSetup = async ({
     setupSecretHex: string;
   }>;
 }): Promise<SLHDSASmartAccountSetupStatus> => {
+  const sessionGeneration = getSLHDSASessionGeneration();
   const existingJob = setupJobs.get(accountId);
   if (existingJob) {
     return (
@@ -145,13 +150,18 @@ export const startSLHDSASmartAccountValidatorSetup = async ({
 
   const job = (async (): Promise<SLHDSASmartAccountSetupStatus> => {
     try {
+      assertSLHDSASessionGeneration(sessionGeneration);
       const { derivationLabel, setupSecretHex } = await getSetupSecret();
-      const state = await provisionRuntimeSLHDSAStateFromSetupSecret({
-        accountId,
-        accountIndex,
-        derivationLabel,
-        setupSecretHex,
-      });
+      assertSLHDSASessionGeneration(sessionGeneration);
+      const state = await provisionRuntimeSLHDSAStateFromSetupSecret(
+        {
+          accountId,
+          accountIndex,
+          derivationLabel,
+          setupSecretHex,
+        },
+        sessionGeneration
+      );
       const status: SLHDSASmartAccountSetupStatus = {
         accountId,
         canFinalize: true,

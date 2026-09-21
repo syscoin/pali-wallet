@@ -1,6 +1,8 @@
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { id as hashText } from 'utils/ethersV6Compat';
 import { keccak256 } from 'utils/ethersV6Compat';
+import { BigNumber, getAddress } from 'utils/ethersV6Compat';
+import { isGuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
   encodeERC7579Executions,
@@ -12,18 +14,52 @@ import {
 } from './account';
 
 const PALI_GUARDIAN_RECOVERY_SCHEDULE_TYPEHASH = hashText(
-  'PaliGuardianRecoverySchedule(uint256 chainId,address account,address module,bytes32 salt,bytes32 mode,bytes32 executionCalldataHash)'
+  'PaliGuardianRecoverySchedule(uint256 chainId,address account,address module,uint256 policyEpoch,bytes32 salt,bytes32 mode,bytes32 executionCalldataHash)'
 );
-
 export type SmartAccountGuardianSignature = string;
 
-export type SmartAccountGuardianRecoveryIntent = {
-  account: string;
-  chainId: number;
-  executionCalldata: string;
-  mode: string;
-  recoveryModule: string;
-  salt: string;
+export type SmartAccountGuardianRecoveryDigestContext = {
+  policyEpoch: string;
+};
+
+export type SmartAccountGuardianRecoveryIntent =
+  SmartAccountGuardianRecoveryDigestContext & {
+    account: string;
+    chainId: number;
+    executionCalldata: string;
+    mode: string;
+    recoveryModule: string;
+    salt: string;
+  };
+
+export type SmartAccountGuardianRecoveryOperation =
+  SmartAccountGuardianRecoveryIntent & {
+    hash: string;
+  };
+
+export const clearStaleGuardianRecoveryOperation = <
+  T extends { recoveryOperation?: unknown }
+>(
+  credential: T,
+  error: unknown
+): T =>
+  isGuardianRecoveryPolicyChangedError(error)
+    ? { ...credential, recoveryOperation: undefined }
+    : credential;
+
+export const getGuardianRecoveryDigestContext = (
+  context: SmartAccountGuardianRecoveryDigestContext
+): SmartAccountGuardianRecoveryDigestContext => {
+  if (
+    typeof context.policyEpoch !== 'string' ||
+    !/^[1-9][0-9]*$/.test(context.policyEpoch) ||
+    BigNumber.from(context.policyEpoch).gt(
+      '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+    )
+  ) {
+    throw new Error('Guardian recovery requires a current policy epoch');
+  }
+  return { policyEpoch: context.policyEpoch };
 };
 
 export const SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS =
@@ -42,14 +78,17 @@ export const getSmartAccountGuardianRecoveryHash = ({
   mode,
   recoveryModule,
   salt,
-}: SmartAccountGuardianRecoveryIntent): string =>
-  keccak256(
+  policyEpoch,
+}: SmartAccountGuardianRecoveryIntent): string => {
+  const context = getGuardianRecoveryDigestContext({ policyEpoch });
+  return keccak256(
     defaultAbiCoder.encode(
       [
         'bytes32',
         'uint256',
         'address',
         'address',
+        'uint256',
         'bytes32',
         'bytes32',
         'bytes32',
@@ -59,22 +98,27 @@ export const getSmartAccountGuardianRecoveryHash = ({
         chainId,
         account,
         recoveryModule,
+        context.policyEpoch,
         salt,
         mode,
         keccak256(executionCalldata),
       ]
     )
   );
+};
 
-export const buildSmartAccountGuardianRecoveryOperation = (params: {
-  account: string;
-  chainId: number;
-  recoveryModule: string;
-  replaceExistingValidator?: boolean;
-  revokeValidator?: string;
-  salt: string;
-  target: PaliRecoveryTarget;
-}) => {
+export const buildSmartAccountGuardianRecoveryOperation = (
+  params: SmartAccountGuardianRecoveryDigestContext & {
+    account: string;
+    chainId: number;
+    recoveryModule: string;
+    replaceExistingValidator?: boolean;
+    revokeValidator?: string;
+    salt: string;
+    target: PaliRecoveryTarget;
+  }
+) => {
+  const context = getGuardianRecoveryDigestContext(params);
   const replacesActiveTarget =
     params.revokeValidator?.toLowerCase() ===
     params.target.auth.validator.toLowerCase();
@@ -107,9 +151,13 @@ export const buildSmartAccountGuardianRecoveryOperation = (params: {
   const { executionCalldata, mode } = encodeERC7579Executions(executions);
 
   return {
+    ...context,
+    account: getAddress(params.account),
+    chainId: params.chainId,
     executionCalldata,
     hash: getSmartAccountGuardianRecoveryHash({
       account: params.account,
+      ...context,
       chainId: params.chainId,
       executionCalldata,
       mode,

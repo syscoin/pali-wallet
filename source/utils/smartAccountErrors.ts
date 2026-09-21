@@ -1,5 +1,30 @@
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
+const GUARDIAN_RECOVERY_POLICY_CHANGED =
+  'PALI_GUARDIAN_RECOVERY_POLICY_CHANGED';
+
+export class GuardianRecoveryPolicyChangedError extends Error {
+  public readonly code = GUARDIAN_RECOVERY_POLICY_CHANGED;
+
+  constructor() {
+    // The popup transport may retain only the message, so keep the code exact.
+    super(GUARDIAN_RECOVERY_POLICY_CHANGED);
+    this.name = 'GuardianRecoveryPolicyChangedError';
+  }
+}
+
+export const isGuardianRecoveryPolicyChangedError = (
+  error: unknown
+): boolean => {
+  if (error === GUARDIAN_RECOVERY_POLICY_CHANGED) return true;
+  if (!error || typeof error !== 'object') return false;
+  const value = error as { code?: unknown; message?: unknown };
+  return (
+    value.code === GUARDIAN_RECOVERY_POLICY_CHANGED ||
+    value.message === GUARDIAN_RECOVERY_POLICY_CHANGED
+  );
+};
+
 /**
  * Shared smart-account (ERC-4337) error classification helpers.
  *

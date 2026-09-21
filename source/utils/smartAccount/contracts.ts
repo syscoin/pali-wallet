@@ -210,7 +210,7 @@ export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'function cancelRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata)',
   'function config(address account) view returns ((uint32 delay,uint32 expiration,uint64 threshold,bool installed))',
   'function executeRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata) returns (bytes[] returnData)',
-  'function getOperationId(address account,bytes32 salt,bytes32 mode,bytes executionCalldata) pure returns (bytes32)',
+  'function getOperationId(address account,bytes32 salt,bytes32 mode,bytes executionCalldata) view returns (bytes32)',
   'function getRecoveryScheduleHash(address account,bytes32 salt,bytes32 mode,bytes executionCalldata) view returns (bytes32)',
   'function guardians(address account) view returns (address[])',
   'function isGuardian(address account,address guardian) view returns (bool)',
@@ -218,6 +218,7 @@ export const PALI_GUARDIAN_RECOVERY_MODULE_ABI = [
   'function isModuleType(uint256 moduleTypeId) view returns (bool)',
   'function onInstall(bytes data)',
   'function onUninstall(bytes data)',
+  'function policyEpoch(address account) view returns (uint256)',
   'function scheduleRecovery(address account,bytes32 salt,bytes32 mode,bytes executionCalldata,(address guardian,bytes signature)[] approvals) returns (bytes32 operationId)',
 ] as const;
 

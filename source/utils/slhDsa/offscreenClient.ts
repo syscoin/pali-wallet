@@ -91,14 +91,18 @@ const sendBestEffortOffscreenCleanupMessage = async (type: string) => {
 export const signSLHDSAInOffscreen = async (
   params: SLHDSASignActionHashParams & {
     secretKeyHex?: string;
-  }
+  },
+  assertCurrentSession?: () => void
 ): Promise<string> => {
+  assertCurrentSession?.();
   await ensureOffscreenDocument();
+  assertCurrentSession?.();
 
   const response = (await chrome.runtime.sendMessage({
     payload: params,
     type: 'PALI_SLH_DSA_SIGN',
   })) as SLHDSAOffscreenResponse | undefined;
+  assertCurrentSession?.();
 
   if (!response) {
     throw new Error('SLH-DSA signer returned no response');
@@ -113,23 +117,29 @@ export const signSLHDSAInOffscreen = async (
   return response.result.signature;
 };
 
-export const prepareSLHDSAKeypairInOffscreen = async ({
-  accountId,
-  setupSecretHex,
-}: {
-  accountId?: number;
-  setupSecretHex: string;
-}): Promise<{
+export const prepareSLHDSAKeypairInOffscreen = async (
+  {
+    accountId,
+    setupSecretHex,
+  }: {
+    accountId?: number;
+    setupSecretHex: string;
+  },
+  assertCurrentSession?: () => void
+): Promise<{
   pkRoot: string;
   pkSeed: string;
   secretKeyHex: string;
 }> => {
+  assertCurrentSession?.();
   await ensureOffscreenDocument();
+  assertCurrentSession?.();
 
   const response = (await chrome.runtime.sendMessage({
     payload: { accountId, setupSecretHex },
     type: 'PALI_SLH_DSA_PREPARE_KEYPAIR',
   })) as SLHDSAOffscreenResponse | undefined;
+  assertCurrentSession?.();
 
   if (!response) {
     throw new Error('SLH-DSA key preparation returned no response');

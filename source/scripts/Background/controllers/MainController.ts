@@ -126,6 +126,7 @@ import {
 import { getNetworkChain } from 'utils/network';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
+  getSLHDSASessionGeneration,
   cancelSLHDSAWorkerInOffscreen,
   clearRuntimeSLHDSAStates,
   clearSLHDSAPublicPrecomputeCache,
@@ -148,6 +149,8 @@ import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountPackedUserOperation,
+  SmartAccountGuardianRecoveryDigestContext,
+  SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
 import { getVerifiedSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
@@ -2980,26 +2983,34 @@ class MainController {
     approval: { guardian: string; signature: string };
     gasPayer?: { address: string; id: number; type: KeyringAccountType };
     guardian: string;
-    operation: {
-      executionCalldata: string;
-      hash: string;
-      mode: string;
-      recoveryModule: string;
-      salt: string;
-    };
+    operation: SmartAccountGuardianRecoveryOperation;
   }) {
     return this.smartAccount.submitPreparedSmartAccountGuardianStartRecovery(
       params
     );
   }
 
-  public async finalizeSmartAccountGuardianRecovery(params: {
+  public async validateSmartAccountGuardianRecoveryOperation(params: {
     account: string;
-    executionCalldata: string;
-    mode: string;
-    recoveryModule?: string;
-    salt: string;
+    operation: Omit<SmartAccountGuardianRecoveryOperation, 'hash'> & {
+      hash?: string;
+    };
   }) {
+    return this.smartAccount.validateSmartAccountGuardianRecoveryOperation(
+      params
+    );
+  }
+
+  public async finalizeSmartAccountGuardianRecovery(
+    params: SmartAccountGuardianRecoveryDigestContext & {
+      account: string;
+      chainId: number;
+      executionCalldata: string;
+      mode: string;
+      recoveryModule?: string;
+      salt: string;
+    }
+  ) {
     return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
   }
 
@@ -4876,7 +4887,8 @@ class MainController {
   }
 
   private async hydrateActiveSLHDSAStateForSigning(
-    params: SLHDSASignActionHashParams
+    params: SLHDSASignActionHashParams,
+    sessionGeneration: number
   ): Promise<void> {
     const { activeAccount, accounts } = store.getState().vault;
     const targetAccountId = params.accountId ?? activeAccount.id;
@@ -4932,23 +4944,24 @@ class MainController {
       );
     }
 
-    putRuntimeSLHDSAState(state);
+    putRuntimeSLHDSAState(state, sessionGeneration);
   }
 
   public async signSLHDSAActionHash(
     params: SLHDSASignActionHashParams
   ): Promise<string> {
     this.configureSLHDSASessionStateCrypto();
+    const sessionGeneration = getSLHDSASessionGeneration();
     try {
-      return await signSLHDSAActionHashLocal(params);
+      return await signSLHDSAActionHashLocal(params, sessionGeneration);
     } catch (error: any) {
       const message = error?.message || String(error);
       if (!message.includes('not available in this unlocked session')) {
         throw error;
       }
-      await this.hydrateActiveSLHDSAStateForSigning(params);
+      await this.hydrateActiveSLHDSAStateForSigning(params, sessionGeneration);
       try {
-        return await signSLHDSAActionHashLocal(params);
+        return await signSLHDSAActionHashLocal(params, sessionGeneration);
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(
@@ -4968,8 +4981,9 @@ class MainController {
     params: SLHDSASignActionHashParams
   ): Promise<string> {
     this.configureSLHDSASessionStateCrypto();
+    const sessionGeneration = getSLHDSASessionGeneration();
     try {
-      return await signSLHDSAActionHashLocal(params);
+      return await signSLHDSAActionHashLocal(params, sessionGeneration);
     } catch (error: any) {
       const message = error?.message || String(error);
       if (!message.includes('not available in this unlocked session')) {
@@ -4986,9 +5000,9 @@ class MainController {
           )}. Regenerate the local signer before using it as a recovery target.`
         );
       }
-      putRuntimeSLHDSAState(state);
+      putRuntimeSLHDSAState(state, sessionGeneration);
       try {
-        return await signSLHDSAActionHashLocal(params);
+        return await signSLHDSAActionHashLocal(params, sessionGeneration);
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(

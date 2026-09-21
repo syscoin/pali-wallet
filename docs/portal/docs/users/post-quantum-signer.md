@@ -2,7 +2,7 @@
 title: Post-quantum smart-account signer
 ---
 
-Pali smart accounts can be controlled by different validators. One supported validator is a local post-quantum signer based on **SLH-DSA-SHA2-128s**, the stateless hash-based signature family standardized by NIST as FIPS 205.
+Pali smart accounts can be controlled by different validators. One supported validator is a local post-quantum signer using **SLH-DSA-SHA2-128-24**, an experimental limited-signature profile proposed in the [NIST SP 800-230 initial public draft](https://csrc.nist.gov/pubs/sp/800/230/ipd). This profile is not approved for general-purpose use.
 
 In plain language: this is a way for a smart account to approve actions with a signature scheme designed to resist known quantum attacks against today's ECDSA-style signatures.
 
@@ -60,13 +60,13 @@ Keep the browser extension open while signing. Avoid closing the browser, lockin
 
 ## Signature limit
 
-Pali's current SLH-DSA profile has an absolute capacity of `2^24` signatures from one prepared local signer. Pali keeps `1,000` signatures in reserve for rotating away from the key, so normal signing stops at `2^24 - 1,000`. That is still more than 16 million signatures, so normal users are not expected to hit it.
+Pali's current SLH-DSA profile requires a lifetime limit of `2^24` signatures per key, including signatures made by every copy of that key. Pali's local counter keeps `1,000` signatures in reserve for rotating away from the key, so normal signing stops at `2^24 - 1,000` recorded signatures.
 
-The limit exists so Pali can keep the signer practical: it fixes the tree size used for the local cache and keeps signatures compact for this parameter set. If the normal signing budget is exhausted, Pali stops regular signing with that local key and preserves the reserve for validator rotation retries instead of continuing with an exhausted signer.
+This limit is part of the draft profile's security assumptions. Regenerating a signer preserves usage history still available locally. Restoring only a seed phrase or an older browser backup does not recover missing usage history, and separate devices do not share a counter. Those cases remain an unresolved limit of the current implementation.
 
 ## Why Pali is adding this
 
-ECDSA and P-256 passkeys are based on elliptic-curve discrete logarithms. A sufficiently capable quantum computer running Shor's algorithm would threaten those signature schemes. SLH-DSA is hash-based and is part of NIST's post-quantum cryptography standards, so it gives Pali a path to quantum-resistant account authorization without changing the smart-account address.
+ECDSA and P-256 passkeys are based on elliptic-curve discrete logarithms. A sufficiently capable quantum computer running Shor's algorithm would threaten those signature schemes. SLH-DSA uses hash-based signatures and gives Pali a path to quantum-resistant account authorization without changing the smart-account address. Pali's current limited-signature profile remains experimental; it is not one of the general-purpose parameter sets standardized in FIPS 205.
 
 Smart accounts make this practical because the signing method is a replaceable validator module. The same account can start with ECDSA or passkeys, then rotate to SLH-DSA when the user, network, and tooling are ready.
 

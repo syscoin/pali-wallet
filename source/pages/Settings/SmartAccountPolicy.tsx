@@ -36,6 +36,7 @@ import {
   buildP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
   buildSmartAccountValidatorSwitchPlan,
+  clearStaleGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
   ERC7579_MODULE_TYPE_EXECUTOR,
@@ -51,11 +52,13 @@ import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountAuthenticatorBuildResult,
+  SmartAccountGuardianRecoveryDigestContext,
 } from 'utils/smartAccount';
 import {
   getSmartAccountActionErrorMessage,
   isGuardianRecoveryAlreadyScheduledError,
   isGuardianRecoveryExpiredError,
+  isGuardianRecoveryPolicyChangedError,
   isGuardianRecoveryNotReadyError,
   isNativeGasError,
   isSmartAccountPrefundError,
@@ -111,7 +114,9 @@ type GuardianReplacementCredential = {
   credentialId?: string;
   credentialIdHash?: string;
   kind: RecoveryAuthenticatorId;
-  recoveryOperation?: {
+  recoveryOperation?: SmartAccountGuardianRecoveryDigestContext & {
+    account: string;
+    chainId: number;
     executionCalldata: string;
     mode: string;
     readyAt: number;
@@ -144,8 +149,11 @@ type SLHDSAPreparedSignerRecord = {
   version: 1;
 };
 
-const guardianReplacementAuthenticatorKey = (account: string) =>
-  `pali-smart-account-recovery-replacement:${account.toLowerCase()}`;
+const guardianReplacementAuthenticatorKey = (
+  account: string,
+  chainId: number
+) =>
+  `pali-smart-account-recovery-replacement:${chainId}:${account.toLowerCase()}`;
 
 const SmartAccountPolicy = () => {
   const location = useLocation();
@@ -176,8 +184,6 @@ const SmartAccountPolicy = () => {
   const [guardianStatus, setGuardianStatus] =
     useState<GuardianRecoveryStatus>(null);
   const [guardianStatusLoading, setGuardianStatusLoading] = useState(false);
-  const [guardianReplacementCredential, setGuardianReplacementCredential] =
-    useState<GuardianReplacementCredential | null>(null);
   const [
     guardianReplacementStorageVersion,
     setGuardianReplacementStorageVersion,
@@ -254,7 +260,10 @@ const SmartAccountPolicy = () => {
   const storedGuardianReplacement = useMemo(() => {
     if (!smartAccountAddress) return null;
     const stored = localStorage.getItem(
-      guardianReplacementAuthenticatorKey(smartAccountAddress)
+      guardianReplacementAuthenticatorKey(
+        smartAccountAddress,
+        activeNetwork.chainId
+      )
     );
     if (!stored) return null;
     try {
@@ -264,11 +273,10 @@ const SmartAccountPolicy = () => {
     }
   }, [
     smartAccountAddress,
-    guardianReplacementCredential,
+    activeNetwork.chainId,
     guardianReplacementStorageVersion,
   ]);
-  const activeGuardianReplacement =
-    guardianReplacementCredential || storedGuardianReplacement;
+  const activeGuardianReplacement = storedGuardianReplacement;
   const pendingReplacementKind = activeGuardianReplacement?.recoveryOperation
     ? activeGuardianReplacement.kind
     : null;
@@ -386,10 +394,12 @@ const SmartAccountPolicy = () => {
   const storeGuardianReplacementCredential = (
     credential: GuardianReplacementCredential
   ) => {
-    setGuardianReplacementCredential(credential);
     if (smartAccountAddress) {
       localStorage.setItem(
-        guardianReplacementAuthenticatorKey(smartAccountAddress),
+        guardianReplacementAuthenticatorKey(
+          smartAccountAddress,
+          activeNetwork.chainId
+        ),
         JSON.stringify(credential)
       );
     }
@@ -399,10 +409,12 @@ const SmartAccountPolicy = () => {
   const clearGuardianReplacementCredential = () => {
     if (smartAccountAddress) {
       localStorage.removeItem(
-        guardianReplacementAuthenticatorKey(smartAccountAddress)
+        guardianReplacementAuthenticatorKey(
+          smartAccountAddress,
+          activeNetwork.chainId
+        )
       );
     }
-    setGuardianReplacementCredential(null);
     setGuardianReplacementStorageVersion((version) => version + 1);
   };
 
@@ -1264,6 +1276,12 @@ const SmartAccountPolicy = () => {
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
+      if (activeGuardianReplacement?.recoveryOperation) {
+        storeGuardianReplacementCredential({
+          ...activeGuardianReplacement,
+          recoveryOperation: undefined,
+        });
+      }
       setGuardianStatus((currentStatus) =>
         currentStatus
           ? {
@@ -1479,6 +1497,17 @@ const SmartAccountPolicy = () => {
         [{ account: smartAccountAddress, guardian, target }],
         300000
       )) as any;
+      if (!preparedRecovery.approval && preparedRecovery.smartGuardian) {
+        await controllerEmitter(
+          ['wallet', 'validateSmartAccountGuardianRecoveryOperation'],
+          [
+            {
+              account: smartAccountAddress,
+              operation: preparedRecovery.operation,
+            },
+          ]
+        );
+      }
       const approval =
         preparedRecovery.approval ||
         (preparedRecovery.smartGuardian
@@ -1517,6 +1546,9 @@ const SmartAccountPolicy = () => {
       );
       const recoveryOperation = recoveryResponse?.operation
         ? {
+            account: recoveryResponse.operation.account,
+            chainId: recoveryResponse.operation.chainId,
+            policyEpoch: recoveryResponse.operation.policyEpoch,
             executionCalldata: recoveryResponse.operation.executionCalldata,
             mode: recoveryResponse.operation.mode,
             readyAt: Math.floor(Date.now() / 1000) + delaySeconds,
@@ -1562,12 +1594,20 @@ const SmartAccountPolicy = () => {
     try {
       setGuardianStep(t('settings.smartAccountGuardianRecoveryStepFinalize'));
       const recoveryOperation = activeGuardianReplacement.recoveryOperation;
+      if (
+        getAddress(recoveryOperation.account) !== smartAccountAddress ||
+        recoveryOperation.chainId !== activeNetwork.chainId
+      ) {
+        throw new Error(
+          'Recovery intent belongs to a different account or network'
+        );
+      }
       await controllerEmitter(
         ['wallet', 'finalizeSmartAccountGuardianRecovery'],
         [
           {
-            account: smartAccountAddress,
             ...recoveryOperation,
+            account: smartAccountAddress,
           },
         ],
         300000
@@ -1610,6 +1650,16 @@ const SmartAccountPolicy = () => {
     } catch (error: any) {
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
+        if (isGuardianRecoveryPolicyChangedError(error)) {
+          storeGuardianReplacementCredential(
+            clearStaleGuardianRecoveryOperation(
+              activeGuardianReplacement,
+              error
+            )
+          );
+          alert.error(t('settings.smartAccountGuardianRecoveryPolicyUpdated'));
+          return;
+        }
         if (isGuardianRecoveryExpiredError(error)) {
           // The scheduled operation expired on-chain and can never be
           // executed. Drop it from local state (keeping the replacement
