@@ -1,4 +1,4 @@
-import { type Locator, expect, test } from '@playwright/test';
+import { type Locator, type Page, expect, test } from '@playwright/test';
 
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
@@ -18,21 +18,21 @@ let smartAccountCreated = false;
 
 // Matches any "money-looking" number (balances, fiat, fees) anywhere on the
 // page. The text engine resolves to the innermost matching elements.
-const dynamicNumbers = () => wallet.page.getByText(/\d[\d,]*\.\d{2,}/);
+const dynamicNumbers = (page: Page) => page.getByText(/\d[\d,]*\.\d{2,}/);
 
-const commonMasks = (): Locator[] => [
-  dynamicNumbers(),
-  wallet.page.locator('#activity-panel-list'),
-  wallet.page.locator('#activity-panel-empty'),
+const commonMasks = (page = wallet.page): Locator[] => [
+  dynamicNumbers(page),
+  page.locator('#activity-panel-list'),
+  page.locator('#activity-panel-empty'),
 ];
 
-const settle = async (ms = 1200) => {
-  await wallet.page.waitForLoadState('networkidle').catch(() => undefined);
-  await wallet.page.waitForTimeout(ms);
+const settle = async (ms = 1200, page = wallet.page) => {
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await page.waitForTimeout(ms);
   // Hash routing keeps one document alive across screens, so a scroll
   // container can carry scroll offset from a previous test into the next
   // capture. Pin every baseline to scroll-top for determinism.
-  await wallet.page
+  await page
     .evaluate(() => {
       window.scrollTo(0, 0);
       document
@@ -40,7 +40,7 @@ const settle = async (ms = 1200) => {
         .forEach((el) => el.scrollTop > 0 && (el.scrollTop = 0));
     })
     .catch(() => undefined);
-  await wallet.page.waitForTimeout(150);
+  await page.waitForTimeout(150);
 };
 
 test.describe('visual baselines', () => {
@@ -293,17 +293,85 @@ test.describe('visual baselines', () => {
     });
   });
 
-  test('advanced settings', async () => {
-    await wallet.gotoRoute('#/settings/advanced');
-    await expect(
-      wallet.page.getByText(/smart account setup/i).first()
-    ).toBeVisible({ timeout: 60_000 });
-    await settle(1500);
-    await expect(wallet.page).toHaveScreenshot(['advanced.png'], {
-      mask: commonMasks(),
-      fullPage: true,
+  for (const ready of [true, false]) {
+    test(`advanced settings (${ready ? 'ready' : 'not ready'})`, async () => {
+      // A new canonical module is absent from the live testnet until rollout.
+      // Pin this read-only UI input and cover both layouts without deploying it.
+      const page = await wallet.context.newPage();
+      try {
+        await page.addInitScript((isReady) => {
+          const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+          chrome.runtime.sendMessage = ((...args: any[]) => {
+            const [message, callback] = args;
+            if (
+              location.hash === '#/settings/advanced' &&
+              message?.type === 'CONTROLLER_ACTION' &&
+              message.data?.methods?.length === 2 &&
+              message.data.methods[0] === 'wallet' &&
+              message.data.methods[1] === 'getSmartAccountInfrastructureStatus'
+            ) {
+              const status = {
+                contracts: [
+                  {
+                    deployed: isReady,
+                    displayName: 'Guardian recovery',
+                    id: 'guardian-recovery',
+                  },
+                ],
+                create2Deployer: { deployed: true },
+                ready: isReady,
+              };
+              if (typeof callback === 'function') {
+                queueMicrotask(() => callback(status));
+                return;
+              }
+              return Promise.resolve(status);
+            }
+            return (sendMessage as any)(...args);
+          }) as typeof chrome.runtime.sendMessage;
+        }, ready);
+        await page.goto(wallet.appUrl('#/home'));
+        await expect(page.locator('#home-balance')).toBeVisible({
+          timeout: 60_000,
+        });
+        await settle(600, page);
+        await page.locator('#general-settings-button').click();
+        await page
+          .getByRole('menuitem', { name: 'Advanced', exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/settings\/advanced$/);
+        await expect(
+          page.getByText('Smart account setup', { exact: true })
+        ).toBeVisible({ timeout: 60_000 });
+        await expect(
+          page.getByText(ready ? 'Ready' : 'Not ready', { exact: true })
+        ).toBeVisible();
+        const deploy = page.getByRole('button', {
+          name: 'Deploy',
+          exact: true,
+        });
+        if (ready) {
+          await expect(deploy).toHaveCount(0);
+          await expect(page.getByText(/setup item\(s\) missing/)).toHaveCount(
+            0
+          );
+        } else {
+          await expect(
+            page.getByText('1 setup item(s) missing.', { exact: true })
+          ).toBeVisible();
+          await expect(deploy).toBeEnabled();
+        }
+        await settle(1500, page);
+        await expect(page).toHaveURL(/#\/settings\/advanced$/);
+        await expect(page).toHaveScreenshot(
+          [ready ? 'advanced.png' : 'advanced-not-ready.png'],
+          { mask: commonMasks(page), fullPage: true }
+        );
+      } finally {
+        await page.close();
+      }
     });
-  });
+  }
 
   test('custom rpc', async () => {
     await wallet.gotoRoute('#/settings/networks/custom-rpc');

@@ -1,4 +1,5 @@
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { defaultAbiCoder, id, keccak256 } from 'utils/ethersV6Compat';
+import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
   ERC7579_MODE_BATCH_DEFAULT,
@@ -9,7 +10,11 @@ import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   paliSmartAccountInterface,
 } from './contracts';
-import { buildSmartAccountGuardianRecoveryOperation } from './recovery';
+import {
+  buildSmartAccountGuardianRecoveryOperation,
+  clearStaleGuardianRecoveryOperation,
+  getSmartAccountGuardianRecoveryHash,
+} from './recovery';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const CHAIN_ID = 57057;
@@ -34,6 +39,7 @@ describe('smart account guardian recovery operation encoding', () => {
       account: ACCOUNT,
       chainId: CHAIN_ID,
       recoveryModule: RECOVERY_MODULE,
+      policyEpoch: '1',
       salt: SALT,
       target,
     });
@@ -56,6 +62,7 @@ describe('smart account guardian recovery operation encoding', () => {
       account: ACCOUNT,
       chainId: CHAIN_ID,
       recoveryModule: RECOVERY_MODULE,
+      policyEpoch: '1',
       replaceExistingValidator: true,
       revokeValidator: VALIDATOR,
       salt: SALT,
@@ -79,6 +86,7 @@ describe('smart account guardian recovery operation encoding', () => {
       account: ACCOUNT,
       chainId: CHAIN_ID,
       recoveryModule: RECOVERY_MODULE,
+      policyEpoch: '1',
       revokeValidator: OLD_VALIDATOR,
       salt: SALT,
       target,
@@ -108,6 +116,7 @@ describe('smart account guardian recovery operation encoding', () => {
       account: ACCOUNT,
       chainId: CHAIN_ID,
       recoveryModule: RECOVERY_MODULE,
+      policyEpoch: '1',
       replaceExistingValidator: true,
       revokeValidator: OLD_VALIDATOR,
       salt: SALT,
@@ -132,5 +141,103 @@ describe('smart account guardian recovery operation encoding', () => {
     expect(parsed[0].args.module).toBe(VALIDATOR);
     expect(parsed[0].args.initData).toBe(target.auth.data);
     expect(parsed[1].args.module).toBe(OLD_VALIDATOR);
+  });
+});
+
+describe('guardian recovery consent domain', () => {
+  const intent = {
+    account: ACCOUNT,
+    chainId: CHAIN_ID,
+    policyEpoch: '7',
+    executionCalldata: '0x1234',
+    mode: ERC7579_MODE_SINGLE_DEFAULT,
+    recoveryModule: RECOVERY_MODULE,
+    salt: SALT,
+  };
+
+  it('matches the contract epoch hash with the epoch immediately after the module', () => {
+    const expected = keccak256(
+      defaultAbiCoder.encode(
+        [
+          'bytes32',
+          'uint256',
+          'address',
+          'address',
+          'uint256',
+          'bytes32',
+          'bytes32',
+          'bytes32',
+        ],
+        [
+          id(
+            'PaliGuardianRecoverySchedule(uint256 chainId,address account,address module,uint256 policyEpoch,bytes32 salt,bytes32 mode,bytes32 executionCalldataHash)'
+          ),
+          CHAIN_ID,
+          ACCOUNT,
+          RECOVERY_MODULE,
+          '7',
+          SALT,
+          intent.mode,
+          keccak256(intent.executionCalldata),
+        ]
+      )
+    );
+    expect(getSmartAccountGuardianRecoveryHash(intent)).toBe(expected);
+    expect(
+      getSmartAccountGuardianRecoveryHash({ ...intent, policyEpoch: '8' })
+    ).not.toBe(expected);
+    expect(
+      getSmartAccountGuardianRecoveryHash(JSON.parse(JSON.stringify(intent)))
+    ).toBe(expected);
+  });
+
+  it.each([
+    undefined,
+    '0',
+    '-1',
+    '01',
+    '1.5',
+    '0x1',
+    (BigInt(1) << BigInt(256)).toString(),
+  ])('rejects invalid epoch %s', (policyEpoch) => {
+    expect(() =>
+      getSmartAccountGuardianRecoveryHash({ ...intent, policyEpoch })
+    ).toThrow();
+  });
+});
+
+describe('invalidated pending recovery credentials', () => {
+  const credential = {
+    credentialId: 'existing-passkey',
+    authenticator: { kind: 'p256-webauthn', publicKey: 'existing-key' },
+    recoveryOperation: { policyEpoch: '7', executionCalldata: '0x1234' },
+  };
+  const policyChanged = new GuardianRecoveryPolicyChangedError();
+
+  it.each([
+    policyChanged,
+    { code: policyChanged.code },
+    { message: policyChanged.message },
+    policyChanged.message,
+  ])(
+    'drops only the pending operation on a confirmed policy change (%p)',
+    (error) => {
+      const next = clearStaleGuardianRecoveryOperation(credential, error);
+      expect(next.recoveryOperation).toBeUndefined();
+      expect(next.credentialId).toBe(credential.credentialId);
+      expect(next.authenticator).toBe(credential.authenticator);
+      expect(credential.recoveryOperation).toBeDefined();
+    }
+  );
+
+  it.each([
+    new Error('RPC timeout'),
+    new Error('Guardian recovery digest does not match the installed policy'),
+    new Error('RPC failure: PALI_GUARDIAN_RECOVERY_POLICY_CHANGED'),
+    undefined,
+  ])('retains pending recovery on uncertain errors (%p)', (error) => {
+    expect(clearStaleGuardianRecoveryOperation(credential, error)).toBe(
+      credential
+    );
   });
 });

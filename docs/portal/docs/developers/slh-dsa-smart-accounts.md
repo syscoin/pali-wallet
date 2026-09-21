@@ -2,7 +2,7 @@
 title: SLH-DSA smart accounts
 ---
 
-Pali smart accounts support modular validators. The post-quantum validator uses wallet-managed **SLH-DSA-SHA2-128s** signing. The user-facing label may say post-quantum or SLH-DSA; the protocol-facing authenticator id is `slh-dsa`.
+Pali smart accounts support modular validators. The post-quantum validator uses wallet-managed **SLH-DSA-SHA2-128-24** signing, an experimental limited-signature profile proposed in the [NIST SP 800-230 initial public draft](https://csrc.nist.gov/pubs/sp/800/230/ipd). This profile is not approved for general-purpose use. The user-facing label may say post-quantum or SLH-DSA; the protocol-facing authenticator id is `slh-dsa`.
 
 This page is for dapp developers, reviewers, and operators integrating with Pali smart accounts.
 
@@ -14,7 +14,7 @@ Pali smart accounts and the SLH-DSA validator are early infrastructure. Start wi
 
 Classical EVM EOAs use secp256k1 ECDSA. Most passkeys use P-256 ECDSA. Both families rely on elliptic-curve discrete logarithms, which are the class of signatures threatened by a large enough fault-tolerant quantum computer running Shor's algorithm.
 
-SLH-DSA is different: it is a stateless hash-based signature scheme standardized by NIST in FIPS 205. The security argument is based on hash functions rather than discrete logarithms. The tradeoff is practical: signatures and verification keys are larger, and signing is much heavier than ECDSA or WebAuthn.
+SLH-DSA uses stateless hash-based signatures. The security argument is based on hash functions rather than discrete logarithms. Pali's current parameter set comes from the limited-signature draft described above; it is not one of the general-purpose parameter sets standardized in FIPS 205. Signatures and verification keys are larger, and signing is much heavier than ECDSA or WebAuthn.
 
 Smart accounts are the right place for this because validators are replaceable modules. The account address can stay stable while the active validator changes between ECDSA, passkey, composite policy, and SLH-DSA.
 
@@ -93,9 +93,11 @@ Do not design dapp UX around fixed signing times.
 
 ## Signature limit and gas shape
 
-Pali's current SLH-DSA signer profile has an absolute per-key capacity of `2^24` signatures. Pali reserves `1,000` signatures for validator rotation retries, so the normal signing budget is `2^24 - 1,000`. The limit is not expected to matter for normal wallet use, but it is enforced: once `signatureCount >= signatureLimit`, Pali refuses normal signing and only allows the reserved budget for explicit `rotateValidator` executions.
+Pali's current SLH-DSA signer profile requires a lifetime limit of `2^24` signatures per signing key, across all uses and copies of that key. Pali's local counter reserves `1,000` signatures for validator rotation retries, so the normal signing budget is `2^24 - 1,000`. Once the local `signatureCount >= signatureLimit`, Pali refuses normal signing and only allows the reserved budget for explicit `rotateValidator` executions.
 
-That limit is part of the practicality tradeoff. The local cache is sized for this profile, and the resulting SLH-DSA signature is `3,856` bytes. The signature is much larger than ECDSA or WebAuthn signatures, so Pali uses validator-aware gas budgets before signing the `UserOperation`.
+Regenerating the same key preserves usage history available in local encrypted or runtime state and rejects unreadable or invalid existing records. Seed-only restores, older browser-profile backups and separate devices do not recover or coordinate unknown lifetime usage. The local counter therefore does not establish the lifetime bound across those cases; that remains a production acceptance requirement.
+
+The limit is part of this draft profile's security assumptions. The local cache is sized for this profile, and the resulting SLH-DSA signature is `3,856` bytes. The signature is much larger than ECDSA or WebAuthn signatures, so Pali uses validator-aware gas budgets before signing the `UserOperation`.
 
 Current wallet constants:
 
