@@ -43,6 +43,7 @@ import {
   encodeSmartAccountAuthenticatorSignature,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
+  getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
   paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
@@ -1516,7 +1517,11 @@ const SmartAccountPolicy = () => {
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
                   accountId: getLocalSmartAccountIdByAddress(guardian),
-                  actionHash: preparedRecovery.operation.hash,
+                  actionHash: getPaliErc7739PersonalSignHash({
+                    accountAddress: guardian,
+                    chainId: preparedRecovery.operation.chainId,
+                    hash: preparedRecovery.operation.hash,
+                  }),
                   authenticatorContexts: getLocalOwnerContexts(),
                   smartAccount: preparedRecovery.smartGuardian,
                 })
