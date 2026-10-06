@@ -271,11 +271,11 @@ export const getPaliCanonicalEntryPointAddress = (chainId?: number): string =>
 export const getPaliCanonicalFactoryAddress = (chainId?: number): string =>
   getPaliInfrastructureById(chainId).factory.address;
 
-// Chain-specific zkSYS gas-tank deployments. These are protocol deployment
-// addresses, not user-editable RPC metadata; fill per network after launch
-// config records l2.zksys_gas_tank_addr.
+// SYSCOIN: The v32 zkTanenbaum tank is immutable in the canonical OS guest.
+// Keep this protocol binding separate from user-editable RPC metadata; the
+// launch bootstrap attests the runtime before recording its deployed address.
 export const ZKSYS_GAS_TANK_ADDRESSES: Partial<Record<number, string>> = {
-  57057: '0xB9fEFf70EC42b6B5Af5A690b4DBc332a2D1F3BeB',
+  57057: '0xb49943ea232624dd4aa63e18186076c6c99a68ef',
 };
 
 export const getZkSysGasTankAddress = (chainId?: number): string | undefined =>
