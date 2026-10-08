@@ -249,6 +249,48 @@ it('preserves AA inner-token hints through the actual pending-to-receipt update'
   ).toEqual([T]);
 });
 
+it('carries actual router receipt Transfer logs through direct confirmation into targeted refresh', async () => {
+  const hash = `0x${'aa'.repeat(32)}`;
+  const router = `0x${'66'.repeat(20)}`;
+  const logs = [
+    {
+      address: T,
+      topics: [
+        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+        `0x${'0'.repeat(24)}${A.slice(2)}`,
+        `0x${'0'.repeat(24)}${U.slice(2)}`,
+      ],
+    },
+  ];
+  state.vault.accountTransactions[type][0].ethereum[1] = [
+    { hash, blockNumber: null },
+  ];
+  provider.getTransaction = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: router,
+    value: BigInt(0),
+    chainId: 1,
+    data: '0x1234',
+  });
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    blockNumber: 10,
+    status: 1,
+    logs,
+  });
+  provider.getBlockNumber = jest.fn().mockResolvedValue(11);
+  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  const transaction = await controller.getEvmTransactionFromProvider(hash);
+  expect(transaction.logs).toBe(logs);
+  controller.updateTrackedEvmTransactionCopies(hash, 1, transaction);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 11 });
+  expect((Contract as jest.Mock).mock.calls.at(-1)?.[0]).toBe(T);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+  expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(5);
+});
+
 it('does not let an older same-key read overwrite a newer response', async () => {
   let resolve!: (value: bigint) => void;
   balanceOf

@@ -185,6 +185,8 @@ export const ImportToken: React.FC = () => {
     let current = true;
     const validateCustomToken = async (contractAddress: string) => {
       if (!contractAddress || contractAddress.length < 42) {
+        // SYSCOIN: A cancelled validation cannot clear this input's spinner.
+        setIsValidatingCustom(false);
         setCustomTokenDetails(null);
         return;
       }
