@@ -99,6 +99,78 @@ describe('receipt balance queue', () => {
     await jest.advanceTimersByTimeAsync(100);
     expect(committed).toEqual([5]);
   });
+
+  it('aborts hung transports at the deadline and releases all three worker slots', async () => {
+    const signals: AbortSignal[] = [];
+    const hung = jest.fn((_current, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<void>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    });
+    const healthy = jest.fn().mockResolvedValue(undefined);
+    for (let i = 0; i < 3; i++) queue.schedule(`hung-${i}`, 10, hung);
+    queue.schedule('healthy', 10, healthy);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(hung).toHaveBeenCalledTimes(3);
+    expect(healthy).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(signals.slice(0, 3).every((signal) => signal.aborted)).toBe(true);
+    expect(healthy).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(124_250);
+    expect(hung).toHaveBeenCalledTimes(12); // four attempts for each key
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(300_000);
+    expect(hung).toHaveBeenCalledTimes(12);
+  });
+
+  it('aborts replacements and context cancellation without late writes or retries', async () => {
+    const gates = [deferred(), deferred()];
+    const signals: AbortSignal[] = [];
+    const committed: number[] = [];
+    queue.schedule('same', 10, async (current, signal) => {
+      signals.push(signal);
+      await gates[0].promise; // even a broken transport that ignores abort
+      if (current()) committed.push(10);
+    });
+    await jest.advanceTimersByTimeAsync(100);
+    queue.schedule('same', 11, async (current, signal) => {
+      signals.push(signal);
+      await gates[1].promise;
+      if (current()) committed.push(11);
+    });
+    expect(signals[0].aborted).toBe(true);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(signals).toHaveLength(2);
+    queue.cancel();
+    expect(signals[1].aborted).toBe(true);
+    gates.forEach((gate) => gate.resolve());
+    await jest.advanceTimersByTimeAsync(300_000);
+    expect(committed).toEqual([]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not allow a timed-out response to commit during a newer retry', async () => {
+    const old = deferred();
+    const committed: number[] = [];
+    const read = jest
+      .fn()
+      .mockImplementationOnce(async (current) => {
+        await old.promise;
+        if (current()) committed.push(1);
+      })
+      .mockImplementationOnce(async (current) => {
+        if (current()) committed.push(2);
+      });
+    queue.schedule('token', 10, read);
+    await jest.advanceTimersByTimeAsync(30_350);
+    expect(read).toHaveBeenCalledTimes(2);
+    old.resolve();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(committed).toEqual([2]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });
 
 describe('receipt affected-key planning', () => {

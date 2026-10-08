@@ -57,6 +57,8 @@ jest.mock('utils/ethersV6Compat', () => ({
   Contract: jest.fn(),
 }));
 
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+
 import { KeyringAccountType } from 'types/network';
 import { Contract } from 'utils/ethersV6Compat';
 
@@ -80,6 +82,7 @@ const type = KeyringAccountType.HDAccount;
 let controller: any;
 let balanceOf: jest.Mock;
 let provider: any;
+let readProviders: any[];
 beforeEach(() => {
   jest.useFakeTimers();
   state = {
@@ -97,6 +100,20 @@ beforeEach(() => {
     getBalance: jest.fn().mockResolvedValue(BigInt('1000000000000000000')),
     send: jest.fn().mockResolvedValue('0xb'),
   };
+  readProviders = [];
+  (CustomJsonRpcProvider as jest.Mock).mockImplementation(
+    (signal, url, chainId) => {
+      const local = {
+        ...provider,
+        signal,
+        url,
+        chainId,
+        destroy: jest.fn(),
+      };
+      readProviders.push(local);
+      return local;
+    }
+  );
   balanceOf = jest.fn().mockResolvedValue(BigInt(9));
   (Contract as jest.Mock).mockReturnValue({ balanceOf });
   controller = Object.create(MainController.prototype);
@@ -276,6 +293,68 @@ it('reads the current head for a late historical receipt, with one shared head q
   expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 20 });
   expect(provider.getBalance).toHaveBeenCalledWith(A, 20);
   expect(provider.send).toHaveBeenCalledTimes(1);
+});
+
+it('uses disposable receipt-only providers with the captured URL, chain and abort signal', async () => {
+  controller.refreshBalancesAfterReceipt({ from: A, to: T, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(readProviders).toHaveLength(2);
+  for (const local of readProviders) {
+    expect(local.url).toBe('https://rpc.test');
+    expect(local.chainId).toBe(1);
+    expect(local.signal.aborted).toBe(true);
+    expect(local.destroy).toHaveBeenCalledTimes(1);
+  }
+  expect(provider.destroy).toBeUndefined();
+  expect((Contract as jest.Mock).mock.calls.at(-1)?.[2]).toBe(readProviders[1]);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('clears an aborted owning head read and does not start a balance read after cancellation', async () => {
+  let resolve!: (value: string) => void;
+  provider.send
+    .mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      })
+    )
+    .mockResolvedValue('0x15');
+  // Native owns the shared head query; both native and token are waiting for it.
+  controller.refreshBalancesAfterReceipt({ from: A, to: T, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(provider.send).toHaveBeenCalledTimes(1);
+  await jest.advanceTimersByTimeAsync(30_250);
+  expect(readProviders[0].signal.aborted).toBe(true);
+  expect(readProviders[1].signal.aborted).toBe(true);
+  expect(provider.send).toHaveBeenCalledTimes(2);
+  expect(provider.getBalance).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 21 });
+  resolve('0xb'); // ignored-abort transport finally completes the old query
+  await jest.advanceTimersByTimeAsync(0);
+  expect(provider.getBalance).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+  expect(
+    readProviders.every((local) => local.destroy.mock.calls.length === 1)
+  ).toBe(true);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('immediately disposes pending receipt transports when the wallet context is cancelled', async () => {
+  provider.send.mockReturnValue(new Promise(() => undefined));
+  controller.refreshBalancesAfterReceipt({ from: A, to: T, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  controller.stopAllRapidPolling();
+  await jest.advanceTimersByTimeAsync(0);
+  expect(readProviders.every((local) => local.signal.aborted)).toBe(true);
+  expect(
+    readProviders.every((local) => local.destroy.mock.calls.length === 1)
+  ).toBe(true);
+  expect(jest.getTimerCount()).toBe(0);
+  await jest.advanceTimersByTimeAsync(300_000);
+  expect(provider.send).toHaveBeenCalledTimes(1);
+  expect(balanceOf).not.toHaveBeenCalled();
 });
 
 it('does not overwrite a newer regular token balance with a delayed receipt response', async () => {

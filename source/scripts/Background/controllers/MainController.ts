@@ -6162,9 +6162,12 @@ class MainController {
     // One shared, uncached head read per receipt, not one per affected token.
     // Pin reads to that current head, never an old history receipt's block.
     let headRead: Promise<number> | undefined;
-    const currentBlock = () => {
+    const currentBlock = (
+      readProvider: CustomJsonRpcProvider,
+      signal: AbortSignal
+    ) => {
       if (!headRead) {
-        headRead = provider
+        const pending = readProvider
           .send('eth_blockNumber', [])
           .then((value: string) => {
             const head = Number(value);
@@ -6172,6 +6175,18 @@ class MainController {
               throw new Error('RPC is behind receipt');
             return head;
           });
+        headRead = pending;
+        const clearPending = () => {
+          if (headRead === pending) headRead = undefined;
+        };
+        signal.addEventListener('abort', clearPending, { once: true });
+        void pending.then(
+          () => signal.removeEventListener('abort', clearPending),
+          () => {
+            clearPending();
+            signal.removeEventListener('abort', clearPending);
+          }
+        );
       }
       return headRead;
     };
@@ -6203,33 +6218,38 @@ class MainController {
           this.receiptBalanceRefresh.schedule(
             `${keyPrefix}native`,
             block,
-            async (current) => {
-              if (!current() || !accountIsCurrent()) return;
-              const latestRead = this.beginTargetedBalanceRead(
-                `${keyPrefix}native`
-              );
-              this.nativeBalanceRevision += 1;
-              let raw;
-              try {
-                raw = await provider.getBalance(
-                  account.address,
-                  await currentBlock()
-                );
-              } catch (error) {
-                headRead = undefined;
-                throw error;
-              }
-              if (!current() || !accountIsCurrent() || !latestRead()) return;
-              this.nativeBalanceRevision += 1;
-              store.dispatch(
-                setAccountBalanceForNetwork({
-                  balance: Number(formatUnits(raw, 18)),
-                  id: accountId,
-                  network,
-                  type,
-                })
-              );
-            }
+            async (current, signal) =>
+              this.withReceiptReadProvider(
+                signal,
+                network,
+                async (readProvider) => {
+                  if (!current() || !accountIsCurrent()) return;
+                  const latestRead = this.beginTargetedBalanceRead(
+                    `${keyPrefix}native`
+                  );
+                  this.nativeBalanceRevision += 1;
+                  let raw;
+                  try {
+                    const head = await currentBlock(readProvider, signal);
+                    if (!current() || !accountIsCurrent()) return;
+                    raw = await readProvider.getBalance(account.address, head);
+                  } catch (error) {
+                    headRead = undefined;
+                    throw error;
+                  }
+                  if (!current() || !accountIsCurrent() || !latestRead())
+                    return;
+                  this.nativeBalanceRevision += 1;
+                  store.dispatch(
+                    setAccountBalanceForNetwork({
+                      balance: Number(formatUnits(raw, 18)),
+                      id: accountId,
+                      network,
+                      type,
+                    })
+                  );
+                }
+              )
           );
         }
         if (!targets.owners.has(owner)) return;
@@ -6245,49 +6265,83 @@ class MainController {
             this.receiptBalanceRefresh.schedule(
               `${keyPrefix}${tokenKey}`,
               block,
-              async (current) => {
-                if (!current() || !accountIsCurrent()) return;
-                const latestRead = this.beginTargetedBalanceRead(
-                  `${keyPrefix}${tokenKey}`
-                );
-                this.assetUpdateRequestId += 1;
-                let balance;
-                try {
-                  balance = await readTrackedTokenBalance(
-                    provider,
-                    account.address,
-                    token,
-                    await currentBlock()
-                  );
-                } catch (error) {
-                  headRead = undefined;
-                  throw error;
-                }
-                if (!current() || !accountIsCurrent() || !latestRead()) return;
-                const latest =
-                  store.getState().vault.accountAssets[type]?.[accountId]
-                    ?.ethereum || [];
-                this.assetUpdateRequestId += 1;
-                store.dispatch(
-                  setAccountAssets({
-                    accountId,
-                    accountType: type,
-                    property: 'ethereum',
-                    // Merge against latest state: never restore removed tokens or
-                    // another concurrent token's old balance/metadata.
-                    value: latest.map((asset) =>
-                      asset.chainId === network.chainId &&
-                      tokenBalanceKey(asset) === tokenKey
-                        ? { ...asset, ...balance }
-                        : asset
-                    ),
-                  })
-                );
-              }
+              async (current, signal) =>
+                this.withReceiptReadProvider(
+                  signal,
+                  network,
+                  async (readProvider) => {
+                    if (!current() || !accountIsCurrent()) return;
+                    const latestRead = this.beginTargetedBalanceRead(
+                      `${keyPrefix}${tokenKey}`
+                    );
+                    this.assetUpdateRequestId += 1;
+                    let balance;
+                    try {
+                      const head = await currentBlock(readProvider, signal);
+                      if (!current() || !accountIsCurrent()) return;
+                      balance = await readTrackedTokenBalance(
+                        readProvider,
+                        account.address,
+                        token,
+                        head
+                      );
+                    } catch (error) {
+                      headRead = undefined;
+                      throw error;
+                    }
+                    if (!current() || !accountIsCurrent() || !latestRead())
+                      return;
+                    const latest =
+                      store.getState().vault.accountAssets[type]?.[accountId]
+                        ?.ethereum || [];
+                    this.assetUpdateRequestId += 1;
+                    store.dispatch(
+                      setAccountAssets({
+                        accountId,
+                        accountType: type,
+                        property: 'ethereum',
+                        // Merge against latest state: never restore removed tokens or
+                        // another concurrent token's old balance/metadata.
+                        value: latest.map((asset) =>
+                          asset.chainId === network.chainId &&
+                          tokenBalanceKey(asset) === tokenKey
+                            ? { ...asset, ...balance }
+                            : asset
+                        ),
+                      })
+                    );
+                  }
+                )
             );
           });
       });
     });
+  }
+
+  private async withReceiptReadProvider<T>(
+    signal: AbortSignal,
+    network: INetwork,
+    read: (provider: CustomJsonRpcProvider) => Promise<T>
+  ): Promise<T> {
+    const provider = new CustomJsonRpcProvider(
+      signal,
+      network.url,
+      network.chainId
+    );
+    let disposed = false;
+    const dispose = () => {
+      if (!disposed) {
+        disposed = true;
+        provider.destroy();
+      }
+    };
+    signal.addEventListener('abort', dispose, { once: true });
+    try {
+      return await read(provider);
+    } finally {
+      signal.removeEventListener('abort', dispose);
+      dispose();
+    }
   }
 
   private async reconcileLocalPendingEvmSmartAccountTransactions(

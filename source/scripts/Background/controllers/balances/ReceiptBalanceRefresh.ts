@@ -4,8 +4,9 @@ import { Contract, formatUnits, id } from 'utils/ethersV6Compat';
 type RefreshJob = {
   attempt: number;
   block: number;
+  controller?: AbortController;
   due: number;
-  run: (isCurrent: () => boolean) => Promise<void>;
+  run: (isCurrent: () => boolean, signal: AbortSignal) => Promise<void>;
 };
 
 // SYSCOIN: Receipt-driven reads are bounded, coalesced per account/chain/asset,
@@ -23,12 +24,14 @@ export class ReceiptBalanceRefresh {
     const previous = this.jobs.get(key);
     if (previous && previous.block >= block) return;
     if (!previous && this.jobs.size >= 256) return;
+    previous?.controller?.abort();
     this.jobs.set(key, { attempt: 0, block, due: Date.now() + 100, run });
     this.pump();
   }
 
   cancel() {
     this.generation += 1;
+    this.jobs.forEach((job) => job.controller?.abort());
     this.jobs.clear();
     this.completed.clear();
     if (this.timer) clearTimeout(this.timer);
@@ -43,10 +46,29 @@ export class ReceiptBalanceRefresh {
       if (this.running.size >= 3) break;
       if (this.running.has(job) || job.due > Date.now()) continue;
       this.running.add(job);
-      const isCurrent = () =>
-        generation === this.generation && this.jobs.get(key) === job;
-      void Promise.resolve()
-        .then(() => (isCurrent() ? job.run(isCurrent) : undefined))
+      const controller = new AbortController();
+      job.controller = controller;
+      const ownsAttempt = () =>
+        generation === this.generation &&
+        this.jobs.get(key) === job &&
+        job.controller === controller;
+      const isCurrent = () => ownsAttempt() && !controller.signal.aborted;
+      // SYSCOIN: Abort reaches the job-local transport, not the wallet provider.
+      // The wrapper also releases capacity if a broken transport ignores abort;
+      // its eventual result cannot commit through the attempt/signal guard.
+      const deadline = setTimeout(() => controller.abort(), 30_000);
+      let removeAbort: (() => void) | undefined;
+      void new Promise<void>((resolve, reject) => {
+        const aborted = () => reject(new Error('Receipt balance read aborted'));
+        controller.signal.addEventListener('abort', aborted, { once: true });
+        removeAbort = () =>
+          controller.signal.removeEventListener('abort', aborted);
+        Promise.resolve()
+          .then(() =>
+            isCurrent() ? job.run(isCurrent, controller.signal) : undefined
+          )
+          .then(resolve, reject);
+      })
         .then(() => {
           if (!isCurrent()) return;
           this.jobs.delete(key);
@@ -57,13 +79,17 @@ export class ReceiptBalanceRefresh {
           }
         })
         .catch(() => {
-          if (!isCurrent()) return;
+          if (!ownsAttempt()) return;
           // Only RPC errors (including a node behind the receipt block) retry.
           const retryDelay = [250, 1000, 3000][job.attempt++];
           if (retryDelay === undefined) this.jobs.delete(key);
           else job.due = Date.now() + retryDelay;
         })
         .finally(() => {
+          clearTimeout(deadline);
+          removeAbort?.();
+          controller.abort();
+          if (job.controller === controller) job.controller = undefined;
           this.running.delete(job);
           this.pump();
         });
