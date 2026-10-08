@@ -238,12 +238,23 @@ class MainController {
   private receiptBalanceRefresh = new ReceiptBalanceRefresh();
   private nativeBalanceRevision = 0;
   private targetedBalanceVersions = new Map<string, object>();
+  private targetedBalanceEvictions = 0;
+
+  private captureBalanceReadVersion(key: string): () => boolean {
+    const version = this.targetedBalanceVersions.get(key);
+    const evictions = this.targetedBalanceEvictions;
+    return () =>
+      this.targetedBalanceVersions.get(key) === version &&
+      // SYSCOIN: An absent marker must not pass after create-then-evict ABA.
+      (version !== undefined || this.targetedBalanceEvictions === evictions);
+  }
 
   private beginTargetedBalanceRead(key: string): () => boolean {
     const version = {};
     this.targetedBalanceVersions.delete(key);
     this.targetedBalanceVersions.set(key, version);
     if (this.targetedBalanceVersions.size > 512) {
+      this.targetedBalanceEvictions += 1;
       this.targetedBalanceVersions.delete(
         this.targetedBalanceVersions.keys().next().value!
       );
@@ -5306,6 +5317,23 @@ class MainController {
       return Promise.resolve();
     }
 
+    const balanceKeyPrefix = `${activeNetwork.chainId}:${
+      activeNetwork.url
+    }:${currentAccount.address.toLowerCase()}:`;
+    // SYSCOIN: Snapshot only current-chain keys without inserting markers for
+    // every token. A queued/retried target invalidates its key, not this poll.
+    const balanceReadVersions = new Map(
+      (isBitcoinBased ? [] : currentAssets.ethereum)
+        .filter((token) => token.chainId === activeNetwork.chainId)
+        .map((token) => {
+          const key = tokenBalanceKey(token);
+          return [
+            key,
+            this.captureBalanceReadVersion(`${balanceKeyPrefix}${key}`),
+          ];
+        })
+    );
+
     const { currentPromise: assetsPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
@@ -5349,17 +5377,25 @@ class MainController {
               return;
             }
 
-            // SYSCOIN: Even an unchanged regular RPC read supersedes a delayed
-            // receipt/preflight read of that key. Other keys remain independent.
+            // Determine every eligible result before advancing markers: this
+            // commit itself may evict entries when a wallet has >512 tokens.
+            let supersededReads = false;
             successfulBalanceReads.forEach((_token, key) => {
-              this.beginTargetedBalanceRead(
-                `${activeNetwork.chainId}:${
-                  activeNetwork.url
-                }:${currentAccount.address.toLowerCase()}:${key}`
-              );
+              if (!balanceReadVersions.get(key)?.()) {
+                successfulBalanceReads.delete(key);
+                supersededReads = true;
+              }
+            });
+            // SYSCOIN: Even an unchanged successful normal read supersedes an
+            // older target of that key, never a target started after this poll.
+            successfulBalanceReads.forEach((_token, key) => {
+              this.beginTargetedBalanceRead(`${balanceKeyPrefix}${key}`);
             });
 
-            if (!isBitcoinBased && latestAssets !== currentAssets) {
+            if (
+              !isBitcoinBased &&
+              (latestAssets !== currentAssets || supersededReads)
+            ) {
               // SYSCOIN: The guard allows only balance-only changes here. Merge
               // actual successful reads, including unchanged results, without
               // restoring failed/unread keys from the older poll snapshot.
@@ -5503,6 +5539,11 @@ class MainController {
       return Promise.resolve();
     }
 
+    const nativeKey = `${activeNetwork.chainId}:${
+      activeNetwork.url
+    }:${currentAccount.address.toLowerCase()}:native`;
+    const nativeReadIsCurrent = this.captureBalanceReadVersion(nativeKey);
+
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
 
@@ -5523,7 +5564,8 @@ class MainController {
             const latestNetwork = store.getState().vault.activeNetwork;
             if (
               (!isBitcoinBased &&
-                nativeRevision !== this.nativeBalanceRevision) ||
+                (nativeRevision !== this.nativeBalanceRevision ||
+                  !nativeReadIsCurrent())) ||
               latestNetwork.chainId !== activeNetwork.chainId ||
               latestNetwork.kind !== activeNetwork.kind ||
               latestNetwork.url !== activeNetwork.url
@@ -5566,11 +5608,7 @@ class MainController {
             // Record successful reads even when the numeric value did not
             // change, so the per-network cache freshness reflects this RPC.
             if (!isBitcoinBased) {
-              this.beginTargetedBalanceRead(
-                `${activeNetwork.chainId}:${
-                  activeNetwork.url
-                }:${currentAccount.address.toLowerCase()}:native`
-              );
+              this.beginTargetedBalanceRead(nativeKey);
             }
             store.dispatch(
               setAccountBalanceForNetwork({
@@ -6252,7 +6290,6 @@ class MainController {
                   const latestRead = this.beginTargetedBalanceRead(
                     `${keyPrefix}native`
                   );
-                  this.nativeBalanceRevision += 1;
                   let raw;
                   try {
                     const head = await currentBlock(readProvider, signal);
@@ -6298,7 +6335,6 @@ class MainController {
                     const latestRead = this.beginTargetedBalanceRead(
                       `${keyPrefix}${tokenKey}`
                     );
-                    this.assetUpdateRequestId += 1;
                     let balance;
                     try {
                       const head = await currentBlock(readProvider, signal);
@@ -6407,6 +6443,7 @@ class MainController {
   private stopAllRapidPolling() {
     this.receiptBalanceRefresh.cancel();
     this.targetedBalanceVersions.clear();
+    this.targetedBalanceEvictions += 1;
     this.nativeBalanceRevision += 1;
     this.activeRapidPolls.forEach((timeoutId) => clearTimeout(timeoutId));
     this.activeRapidPolls.clear();
@@ -7003,7 +7040,6 @@ class MainController {
     }
     // SYSCOIN: One balanceOf, not four metadata calls; merge only this key into
     // the latest state after checking the initiating account/chain context.
-    this.assetUpdateRequestId += 1;
     const latestRead = this.beginTargetedBalanceRead(
       `${activeNetwork.chainId}:${
         activeNetwork.url

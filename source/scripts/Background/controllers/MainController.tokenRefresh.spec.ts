@@ -131,6 +131,7 @@ beforeEach(() => {
   Object.assign(controller, {
     receiptBalanceRefresh: new ReceiptBalanceRefresh(),
     targetedBalanceVersions: new Map(),
+    targetedBalanceEvictions: 0,
     assetUpdateRequestId: 0,
     nativeBalanceRevision: 0,
     activeRapidPolls: new Map(),
@@ -679,4 +680,268 @@ it('counts a successful unchanged normal read even when no asset dispatch is nee
   resolve(BigInt(10));
   await jest.advanceTimersByTimeAsync(0);
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(5);
+});
+
+it('keeps unrelated regular results when a receipt retry starts after the poll', async () => {
+  let targetDone!: (value: bigint) => void;
+  let regularDone!: () => void;
+  balanceOf.mockRejectedValueOnce(new Error('RPC unavailable')).mockReturnValue(
+    new Promise((done) => {
+      targetDone = done;
+    })
+  );
+  controller.refreshBalancesAfterReceipt({
+    from: U,
+    to: A,
+    contractAddress: T,
+    blockNumber: 10,
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  controller.assetsManager = {
+    utils: {
+      updateAssetsFromCurrentAccount: async (...args: any[]) => {
+        await new Promise<void>((done) => {
+          regularDone = done;
+        });
+        args[6](asset(T, 7));
+        args[6](asset(U, 26));
+        return { ethereum: [asset(T, 7), asset(U, 26)], syscoin: [] };
+      },
+    },
+  };
+  const regular = controller.updateAssetsFromCurrentAccount({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  await jest.advanceTimersByTimeAsync(250);
+  expect(balanceOf).toHaveBeenCalledTimes(2);
+  regularDone();
+  await regular;
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(5);
+  expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(26);
+  targetDone(BigInt(19));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(19);
+  expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(26);
+});
+
+it('keeps unrelated regular results when a fourth queued receipt target starts', async () => {
+  const V = `0x${'55'.repeat(20)}`;
+  const W = `0x${'66'.repeat(20)}`;
+  state.vault.accountAssets[type][0].ethereum.push(asset(V), asset(W));
+  let nativeDone!: (value: bigint) => void;
+  let firstDone!: (value: bigint) => void;
+  let secondDone!: (value: bigint) => void;
+  let fourthDone!: (value: bigint) => void;
+  let regularDone!: () => void;
+  provider.getBalance.mockReturnValue(
+    new Promise((done) => {
+      nativeDone = done;
+    })
+  );
+  balanceOf
+    .mockReturnValueOnce(new Promise((done) => (firstDone = done)))
+    .mockReturnValueOnce(new Promise((done) => (secondDone = done)))
+    .mockReturnValueOnce(new Promise((done) => (fourthDone = done)));
+  controller.refreshBalancesAfterReceipt({
+    from: A,
+    to: A,
+    balanceRefreshTokenAddresses: [T, U, V],
+    blockNumber: 10,
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(balanceOf).toHaveBeenCalledTimes(2);
+  controller.assetsManager = {
+    utils: {
+      updateAssetsFromCurrentAccount: async (...args: any[]) => {
+        await new Promise<void>((done) => {
+          regularDone = done;
+        });
+        const tokens = [asset(T, 7), asset(U, 8), asset(V, 9), asset(W, 26)];
+        tokens.forEach(args[6]);
+        return { ethereum: tokens, syscoin: [] };
+      },
+    },
+  };
+  const regular = controller.updateAssetsFromCurrentAccount({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  secondDone(BigInt(20));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(balanceOf).toHaveBeenCalledTimes(3);
+  regularDone();
+  await regular;
+  expect(state.vault.accountAssets[type][0].ethereum[3].balance).toBe(26);
+  expect(state.vault.accountAssets[type][0].ethereum[2].balance).toBe(5);
+  nativeDone(BigInt(0));
+  firstDone(BigInt(10));
+  fourthDone(BigInt(30));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accountAssets[type][0].ethereum[2].balance).toBe(30);
+  expect(state.vault.accountAssets[type][0].ethereum[3].balance).toBe(26);
+});
+
+it('does not discard a regular native read when another account receipt starts', async () => {
+  const B = `0x${'77'.repeat(20)}`;
+  state.vault.accounts[type][1] = { address: B };
+  state.vault.accountAssets[type][1] = { ethereum: [], syscoin: [] };
+  let targetDone!: (value: bigint) => void;
+  let regularDone!: (value: number) => void;
+  provider.getBalance.mockReturnValue(
+    new Promise((done) => {
+      targetDone = done;
+    })
+  );
+  controller.balancesManager = {
+    utils: {
+      getBalanceUpdatedForAccount: () =>
+        new Promise((done) => {
+          regularDone = done;
+        }),
+    },
+  };
+  const regular = controller.updateUserNativeBalance({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  controller.refreshBalancesAfterReceipt({ from: B, to: U, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  regularDone(2);
+  await regular;
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(2);
+  targetDone(BigInt('1000000000000000000'));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accounts[type][1].nativeBalance).toBe(1);
+});
+
+it('protects a newer same-account native receipt from an earlier normal read', async () => {
+  let targetDone!: (value: bigint) => void;
+  let regularDone!: (value: number) => void;
+  provider.getBalance.mockReturnValue(
+    new Promise((done) => {
+      targetDone = done;
+    })
+  );
+  controller.balancesManager = {
+    utils: {
+      getBalanceUpdatedForAccount: () =>
+        new Promise((done) => {
+          regularDone = done;
+        }),
+    },
+  };
+  const regular = controller.updateUserNativeBalance({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  controller.refreshBalancesAfterReceipt({ from: A, to: U, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  regularDone(2);
+  await regular;
+  expect(state.vault.accounts[type][0].nativeBalance).toBeUndefined();
+  targetDone(BigInt('1000000000000000000'));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+});
+
+it('updates every token across repeated normal polls larger than the marker bound', async () => {
+  const tokens = Array.from({ length: 600 }, (_, index) =>
+    asset(`0x${(index + 1).toString(16).padStart(40, '0')}`, 0)
+  );
+  state.vault.accountAssets[type][0].ethereum = tokens;
+  for (const balance of [1, 2]) {
+    controller.assetsManager = {
+      utils: {
+        updateAssetsFromCurrentAccount: async (...args: any[]) => {
+          const updated = tokens.map((token) => ({
+            ...token,
+            balance,
+            rawBalance: balance.toString(),
+          }));
+          updated.forEach(args[6]);
+          return { ethereum: updated, syscoin: [] };
+        },
+      },
+    };
+    await controller.updateAssetsFromCurrentAccount({
+      activeAccount: state.vault.activeAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: false,
+      isPolling: true,
+    });
+    expect(
+      state.vault.accountAssets[type][0].ethereum.every(
+        (token: any) => token.balance === balance
+      )
+    ).toBe(true);
+    expect(controller.targetedBalanceVersions.size).toBe(512);
+  }
+});
+
+it('fails closed after an absent key was targeted then evicted, without starving the next poll', async () => {
+  let targetDone!: (value: bigint) => void;
+  let regularDone!: () => void;
+  balanceOf.mockReturnValueOnce(
+    new Promise((done) => {
+      targetDone = done;
+    })
+  );
+  controller.assetsManager = {
+    utils: {
+      updateAssetsFromCurrentAccount: async (...args: any[]) => {
+        await new Promise<void>((done) => {
+          regularDone = done;
+        });
+        args[6](asset(T, 7));
+        args[6](asset(U, 26));
+        return { ethereum: [asset(T, 7), asset(U, 26)], syscoin: [] };
+      },
+    },
+  };
+  const regular = controller.updateAssetsFromCurrentAccount({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  controller.refreshBalancesAfterReceipt({
+    from: U,
+    to: A,
+    contractAddress: T,
+    blockNumber: 10,
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  for (let index = 0; index < 513; index++)
+    controller.beginTargetedBalanceRead(`other:${index}`);
+  regularDone();
+  await regular;
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(5);
+
+  controller.assetsManager.utils.updateAssetsFromCurrentAccount = async (
+    ...args: any[]
+  ) => {
+    args[6](asset(T, 7));
+    args[6](asset(U, 26));
+    return { ethereum: [asset(T, 7), asset(U, 26)], syscoin: [] };
+  };
+  await controller.updateAssetsFromCurrentAccount({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  targetDone(BigInt(99));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(7);
+  expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(26);
+  expect(controller.targetedBalanceVersions.size).toBe(512);
 });
