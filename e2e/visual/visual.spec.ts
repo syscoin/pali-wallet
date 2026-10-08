@@ -2,6 +2,7 @@ import { type Locator, type Page, expect, test } from '@playwright/test';
 
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { resetVisualScroll } from './scrollReset';
 
 // Pixel-baseline walk of the core screens. One onboarding, then every test
 // navigates and asserts a masked screenshot against the committed baseline.
@@ -29,17 +30,10 @@ const commonMasks = (page = wallet.page): Locator[] => [
 const settle = async (ms = 1200, page = wallet.page) => {
   await page.waitForLoadState('networkidle').catch(() => undefined);
   await page.waitForTimeout(ms);
-  // Hash routing keeps one document alive across screens, so a scroll
-  // container can carry scroll offset from a previous test into the next
-  // capture. Pin every baseline to scroll-top for determinism.
-  await page
-    .evaluate(() => {
-      window.scrollTo(0, 0);
-      document
-        .querySelectorAll('*')
-        .forEach((el) => el.scrollTop > 0 && (el.scrollTop = 0));
-    })
-    .catch(() => undefined);
+  // SYSCOIN: Hash routing keeps one document alive across screens, so a scroll
+  // container can carry either scroll axis from a previous test into the next
+  // capture. Pin every baseline to its initial viewport for determinism.
+  await page.evaluate(resetVisualScroll).catch(() => undefined);
   await page.waitForTimeout(150);
 };
 
