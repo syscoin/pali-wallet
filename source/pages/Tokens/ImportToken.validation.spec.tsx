@@ -1,7 +1,9 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 
 import { useController } from 'hooks/useController';
+import { getCurrentTab } from 'utils/navigationState';
 
 import { ImportToken } from './ImportToken';
 
@@ -19,12 +21,17 @@ jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ state: null }),
-  useSearchParams: () => [new URLSearchParams('tab=custom'), jest.fn()],
+  useSearchParams: jest.fn(() => [
+    new URLSearchParams('tab=custom'),
+    jest.fn(),
+  ]),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-jest.mock('utils/navigationState', () => ({ getCurrentTab: () => 'custom' }));
+jest.mock('utils/navigationState', () => ({
+  getCurrentTab: jest.fn(() => 'custom'),
+}));
 
 const ADDRESS = `0x${'11'.repeat(20)}`;
 const TOKEN = `0x${'33'.repeat(20)}`;
@@ -68,6 +75,11 @@ describe('custom token validation cancellation', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     slots = [];
+    (getCurrentTab as jest.Mock).mockReturnValue('custom');
+    (useSearchParams as jest.Mock).mockReturnValue([
+      new URLSearchParams('tab=custom'),
+      jest.fn(),
+    ]);
     jest.spyOn(React, 'useState').mockImplementation((initial?: any) => {
       const index = cursor++;
       if (!(index in slots))
@@ -145,5 +157,34 @@ describe('custom token validation cancellation', () => {
         ([[, method]]) => method !== 'getUserOwnedTokens'
       )
     ).toHaveLength(1);
+  });
+
+  it('offers an explicit retry after a discovery failure without automatic idle requests', async () => {
+    (getCurrentTab as jest.Mock).mockReturnValue('owned');
+    (useSearchParams as jest.Mock).mockReturnValue([
+      new URLSearchParams('tab=owned'),
+      jest.fn(),
+    ]);
+    emitter
+      .mockRejectedValueOnce(new Error('HTTP 429'))
+      .mockResolvedValueOnce([]);
+    render();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(
+      find(render(), (element) => element.props.role === 'alert')
+    ).toBeDefined();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(emitter).toHaveBeenCalledTimes(1);
+    const retry = find(
+      render(),
+      (element) =>
+        element.type === 'button' && element.props.children === 'receive.retry'
+    );
+    expect(retry).toBeDefined();
+    await retry!.props.onClick();
+    expect(emitter).toHaveBeenCalledTimes(2);
+    expect(
+      find(render(), (element) => element.props.role === 'alert')
+    ).toBeUndefined();
   });
 });

@@ -5292,7 +5292,7 @@ class MainController {
     }
 
     const requestId = ++this.assetUpdateRequestId;
-    const successfulBalanceReads = new Set<string>();
+    const successfulBalanceReads = new Map<string, ITokenEthProps>();
     const { accounts, accountAssets } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
@@ -5313,7 +5313,7 @@ class MainController {
             // Safe access to transaction objects with error handling
             const web3Provider = this.ethereumTransaction?.web3Provider;
 
-            const updatedAssets =
+            let updatedAssets =
               await this.assetsManager.utils.updateAssetsFromCurrentAccount(
                 currentAccount,
                 isBitcoinBased,
@@ -5321,7 +5321,8 @@ class MainController {
                 activeNetwork.chainId,
                 web3Provider,
                 currentAssets,
-                (token) => successfulBalanceReads.add(tokenBalanceKey(token))
+                (token) =>
+                  successfulBalanceReads.set(tokenBalanceKey(token), token)
               );
             const latestVault = store.getState().vault;
             const latestAccount =
@@ -5331,6 +5332,7 @@ class MainController {
             if (
               !canCommitAssetUpdate({
                 account: currentAccount,
+                allowBalanceChanges: !isBitcoinBased,
                 assets: currentAssets,
                 latestAccount,
                 latestAssets,
@@ -5349,13 +5351,36 @@ class MainController {
 
             // SYSCOIN: Even an unchanged regular RPC read supersedes a delayed
             // receipt/preflight read of that key. Other keys remain independent.
-            successfulBalanceReads.forEach((key) => {
+            successfulBalanceReads.forEach((_token, key) => {
               this.beginTargetedBalanceRead(
                 `${activeNetwork.chainId}:${
                   activeNetwork.url
                 }:${currentAccount.address.toLowerCase()}:${key}`
               );
             });
+
+            if (!isBitcoinBased && latestAssets !== currentAssets) {
+              // SYSCOIN: The guard allows only balance-only changes here. Merge
+              // actual successful reads, including unchanged results, without
+              // restoring failed/unread keys from the older poll snapshot.
+              updatedAssets = {
+                ...updatedAssets,
+                syscoin: latestAssets!.syscoin,
+                ethereum: latestAssets!.ethereum.map((token) => {
+                  const read =
+                    token.chainId === activeNetwork.chainId
+                      ? successfulBalanceReads.get(tokenBalanceKey(token))
+                      : undefined;
+                  return read
+                    ? {
+                        ...token,
+                        balance: read.balance,
+                        rawBalance: read.rawBalance,
+                      }
+                    : token;
+                }),
+              };
+            }
 
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length < currentAssets.ethereum.length ||
@@ -5386,7 +5411,7 @@ class MainController {
               return;
             }
 
-            if (isEqual(updatedAssets, currentAssets)) {
+            if (isEqual(updatedAssets, latestAssets)) {
               resolve();
               return;
             }
@@ -6239,7 +6264,6 @@ class MainController {
                   }
                   if (!current() || !accountIsCurrent() || !latestRead())
                     return;
-                  this.nativeBalanceRevision += 1;
                   store.dispatch(
                     setAccountBalanceForNetwork({
                       balance: Number(formatUnits(raw, 18)),
@@ -6294,7 +6318,6 @@ class MainController {
                     const latest =
                       store.getState().vault.accountAssets[type]?.[accountId]
                         ?.ethereum || [];
-                    this.assetUpdateRequestId += 1;
                     store.dispatch(
                       setAccountAssets({
                         accountId,
@@ -7004,7 +7027,6 @@ class MainController {
       !latestRead()
     )
       throw new Error('Token balance refresh context changed');
-    this.assetUpdateRequestId += 1;
     const refreshedAsset = { ...existingAsset, ...balance };
     const ethereumAssets = (
       latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||

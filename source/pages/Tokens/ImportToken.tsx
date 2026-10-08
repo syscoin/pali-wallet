@@ -626,7 +626,17 @@ export const ImportToken: React.FC = () => {
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
         {activeTab === 'owned' && ownedTokensUnavailable ? (
-          <div role="alert">{t('settings.apiConnectionError')}</div>
+          <div role="alert">
+            <p>{t('settings.apiConnectionError')}</p>
+            {/* SYSCOIN: Retry only on user action; the API cooldown still applies. */}
+            <button
+              className="mt-2 text-brand-royalblue underline"
+              onClick={loadOwnedTokens}
+              type="button"
+            >
+              {t('receive.retry')}
+            </button>
+          </div>
         ) : activeTab === 'owned' ? (
           <ImportableAssetsList
             key={`owned-${currentlyImporting || 'none'}`}

@@ -15,6 +15,11 @@ jest.mock('@sidhujag/sysweb3-utils', () => ({
 jest.mock('../balances/BatchBalanceController', () => ({
   BatchBalanceController: jest.fn(),
 }));
+jest.mock('utils/ethersV6Compat', () => ({
+  ...jest.requireActual('utils/ethersV6Compat'),
+  Contract: jest.fn(),
+}));
+jest.mock('./nft-utils', () => ({ verifyERC1155OwnershipHelper: jest.fn() }));
 
 import { retryableFetch } from '@sidhujag/sysweb3-network';
 import {
@@ -24,8 +29,10 @@ import {
 
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import store from 'state/store';
+import { Contract } from 'utils/ethersV6Compat';
 
 import EvmAssetsController from './evm';
+import { verifyERC1155OwnershipHelper } from './nft-utils';
 
 const TOKEN = `0x${'33'.repeat(20)}`;
 const ACCOUNT = `0x${'11'.repeat(20)}`;
@@ -175,7 +182,11 @@ it('uses RPC for tracked balances with a configured API and preserves a failed t
   ).toBe(9);
   expect(retryableFetch).not.toHaveBeenCalled();
   expect(onBalanceRead).toHaveBeenCalledTimes(1);
-  expect(onBalanceRead).toHaveBeenCalledWith(tokens[0]);
+  expect(onBalanceRead).toHaveBeenCalledWith({
+    ...tokens[0],
+    balance: 0,
+    rawBalance: '0',
+  });
 });
 
 it('deduplicates same-chain metadata but not a switched chain; old results cannot be relabelled', async () => {
@@ -209,6 +220,7 @@ it('reports a successful unchanged balance read even when the legacy result is a
     contractAddress: TOKEN,
     chainId: 1,
     balance: 0,
+    rawBalance: '0',
     decimals: 0,
     isNft: false,
     tokenSymbol: 'T',
@@ -224,3 +236,81 @@ it('reports a successful unchanged balance read even when the legacy result is a
   expect(result).toEqual([]);
   expect(read).toHaveBeenCalledWith(token);
 });
+
+it.each([
+  ['0', 18, '0'],
+  ['0.000001', 6, '1'],
+  [
+    '9007199254740993.123456789123456789',
+    18,
+    '9007199254740993123456789123456789',
+  ],
+])(
+  'reports exact raw ERC20 balance for %s without a Number round trip',
+  async (balance, decimals, rawBalance) => {
+    (BatchBalanceController as jest.Mock).mockImplementation(() => ({
+      getBatchTokenBalances: async () => new Map([[TOKEN, balance]]),
+    }));
+    const read = jest.fn();
+    const result = await EvmAssetsController().updateAllEvmTokens(
+      { address: ACCOUNT } as any,
+      1,
+      {} as any,
+      [
+        {
+          contractAddress: TOKEN,
+          chainId: 1,
+          balance: 9,
+          rawBalance: '9',
+          decimals,
+          isNft: false,
+          tokenSymbol: 'T',
+        } as any,
+      ],
+      read
+    );
+    expect(read).toHaveBeenCalledWith(
+      expect.objectContaining({ balance: Number(balance), rawBalance })
+    );
+    expect(result[0].rawBalance).toBe(rawBalance);
+  }
+);
+
+it.each(['ERC-721', 'ERC-1155'])(
+  'reports actual numeric and exact raw %s balance to normal-read commits',
+  async (tokenStandard) => {
+    const rawBalance = '900719925474099312345';
+    (Contract as jest.Mock).mockReturnValue({
+      balanceOf: async () => BigInt(rawBalance),
+    });
+    (verifyERC1155OwnershipHelper as jest.Mock).mockResolvedValue([
+      { verified: true, balance: Number(rawBalance), rawBalance },
+    ]);
+    const read = jest.fn();
+    const pending = EvmAssetsController().updateAllEvmTokens(
+      { address: ACCOUNT } as any,
+      1,
+      {} as any,
+      [
+        {
+          contractAddress: TOKEN,
+          chainId: 1,
+          balance: 9,
+          rawBalance: '9',
+          decimals: 0,
+          isNft: true,
+          tokenStandard,
+          tokenId: '1',
+          tokenSymbol: 'NFT',
+        } as any,
+      ],
+      read
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    const result = await pending;
+    expect(read).toHaveBeenCalledWith(
+      expect.objectContaining({ balance: Number(rawBalance), rawBalance })
+    );
+    expect(result[0].rawBalance).toBe(rawBalance);
+  }
+);

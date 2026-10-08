@@ -20,7 +20,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress } from 'utils/ethersV6Compat';
+import { formatUnits, isAddress, parseUnits } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 
 import {
@@ -583,11 +583,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
-        if (balance !== undefined) onBalanceRead?.(token);
-        return {
+        if (balance === undefined) return token;
+        const updated = {
           ...token,
-          balance: balance !== undefined ? parseFloat(balance) : token.balance,
+          balance: parseFloat(balance),
+          rawBalance: parseUnits(balance, token.decimals).toString(),
         };
+        onBalanceRead?.(updated);
+        return updated;
       });
     }
 
@@ -641,12 +644,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
             contractAssets.forEach((asset, index) => {
               const info = ownershipInfo[index];
               if (info && info.verified) {
-                onBalanceRead?.(asset);
-                updatedErc1155Assets.push({
+                const updated = {
                   ...asset,
                   balance: info.balance,
                   rawBalance: info.rawBalance,
-                });
+                };
+                onBalanceRead?.(updated);
+                updatedErc1155Assets.push(updated);
               } else {
                 console.warn(
                   `[EvmAssetsController] Failed to verify ERC-1155 token ${contractAddress}#${asset.tokenId}`
@@ -691,13 +695,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
               : Number(balanceCallMethod);
             if (!Number.isFinite(collectionBalance) || collectionBalance < 0)
               throw new Error('Invalid NFT balance');
-            onBalanceRead?.(nftAsset);
+            const updated = {
+              ...nftAsset,
+              balance: collectionBalance,
+              rawBalance: balanceCallMethod.toString(),
+            };
+            onBalanceRead?.(updated);
 
             console.log(
               `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
             );
 
-            return { ...nftAsset, balance: collectionBalance };
+            return updated;
           } catch (error) {
             console.error(
               `[EvmAssetsController] Failed to fetch NFT balance for ${nftAsset.contractAddress}:`,

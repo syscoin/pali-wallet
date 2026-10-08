@@ -17,10 +17,20 @@ jest.mock('state/store', () => ({
     getState: () => state,
     dispatch: (action: any) => {
       const { payload } = action;
-      if (action.type === 'assets')
-        state.vault.accountAssets[payload.accountType][
-          payload.accountId
-        ].ethereum = payload.value || payload.assets.ethereum;
+      if (action.type === 'assets') {
+        const account =
+          state.vault.accountAssets[payload.accountType][payload.accountId];
+        state.vault.accountAssets = {
+          ...state.vault.accountAssets,
+          [payload.accountType]: {
+            ...state.vault.accountAssets[payload.accountType],
+            [payload.accountId]: {
+              ...account,
+              ethereum: payload.value || payload.assets.ethereum,
+            },
+          },
+        };
+      }
       if (action.type === 'balance')
         state.vault.accounts[payload.type][payload.id].nativeBalance =
           payload.balance;
@@ -72,6 +82,7 @@ const U = `0x${'44'.repeat(20)}`;
 const asset = (contractAddress: string, balance = 5) => ({
   contractAddress,
   balance,
+  rawBalance: balance.toString(),
   chainId: 1,
   decimals: 0,
   isNft: false,
@@ -451,6 +462,142 @@ it('does not overwrite a newer regular native balance with a delayed receipt res
   await jest.advanceTimersByTimeAsync(0);
   expect(state.vault.accounts[type][0].nativeBalance).toBe(2);
 });
+
+it.each(['receipt', 'preflight'])(
+  'allows a later-started regular token read to finish after the %s read',
+  async (mode) => {
+    let receiptDone!: (value: bigint) => void;
+    let regularDone!: () => void;
+    balanceOf.mockReturnValueOnce(
+      new Promise((done) => {
+        receiptDone = done;
+      })
+    );
+    let preflight: Promise<unknown> | undefined;
+    if (mode === 'receipt') {
+      controller.refreshBalancesAfterReceipt({
+        from: U,
+        to: A,
+        contractAddress: T,
+        blockNumber: 10,
+      });
+      await jest.advanceTimersByTimeAsync(100);
+    } else preflight = controller.refreshActiveEvmTokenBalance(T);
+    controller.assetsManager = {
+      utils: {
+        updateAssetsFromCurrentAccount: async (...args: any[]) => {
+          await new Promise<void>((done) => {
+            regularDone = done;
+          });
+          args[6](asset(T, 11));
+          return { ethereum: [asset(T, 11), asset(U)], syscoin: [] };
+        },
+      },
+    };
+    const regular = controller.updateAssetsFromCurrentAccount({
+      activeAccount: state.vault.activeAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: false,
+      isPolling: true,
+    });
+    receiptDone(BigInt(10));
+    if (preflight) await preflight;
+    await jest.advanceTimersByTimeAsync(0);
+    expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(10);
+    regularDone();
+    await regular;
+    expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(11);
+  }
+);
+
+it('allows a later-started regular native read to finish after a receipt read', async () => {
+  let receiptDone!: (value: bigint) => void;
+  let regularDone!: (value: number) => void;
+  provider.getBalance.mockReturnValueOnce(
+    new Promise((done) => {
+      receiptDone = done;
+    })
+  );
+  controller.refreshBalancesAfterReceipt({ from: A, to: U, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  controller.balancesManager = {
+    utils: {
+      getBalanceUpdatedForAccount: () =>
+        new Promise((done) => {
+          regularDone = done;
+        }),
+    },
+  };
+  const regular = controller.updateUserNativeBalance({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  receiptDone(BigInt('1000000000000000000'));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+  regularDone(2);
+  await regular;
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(2);
+});
+
+it.each(['unchanged', 'failed', 'mixed'])(
+  'keeps per-key freshness when a later regular read is %s relative to its starting snapshot',
+  async (mode) => {
+    state.vault.accountAssets[type][0].ethereum.push({
+      ...asset(T, 88),
+      chainId: 2,
+    });
+    let receiptDone!: (value: bigint) => void;
+    let regularDone!: () => void;
+    balanceOf.mockReturnValueOnce(
+      new Promise((done) => {
+        receiptDone = done;
+      })
+    );
+    controller.refreshBalancesAfterReceipt({
+      from: U,
+      to: A,
+      contractAddress: T,
+      blockNumber: 10,
+    });
+    await jest.advanceTimersByTimeAsync(100);
+    controller.assetsManager = {
+      utils: {
+        updateAssetsFromCurrentAccount: async (...args: any[]) => {
+          await new Promise<void>((done) => {
+            regularDone = done;
+          });
+          if (mode === 'unchanged') args[6](asset(T, 5));
+          if (mode === 'mixed') args[6](asset(U, 26));
+          return { ethereum: [], syscoin: [] };
+        },
+      },
+    };
+    const regular = controller.updateAssetsFromCurrentAccount({
+      activeAccount: state.vault.activeAccount,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: false,
+      isPolling: true,
+    });
+    receiptDone(BigInt(10));
+    await jest.advanceTimersByTimeAsync(0);
+    regularDone();
+    await regular;
+    expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(
+      mode === 'unchanged' ? 5 : 10
+    );
+    expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(
+      mode === 'mixed' ? 26 : 5
+    );
+    expect(state.vault.accountAssets[type][0].ethereum[2]).toMatchObject({
+      chainId: 2,
+      balance: 88,
+      rawBalance: '88',
+    });
+  }
+);
 
 it('retains external-dapp preflight for an unimported ERC20 without adding an asset', async () => {
   const external = `0x${'66'.repeat(20)}`;
