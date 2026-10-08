@@ -4,6 +4,7 @@ import {
 } from '@sidhujag/sysweb3-keyring';
 
 import { IAccountAssets } from 'state/vault/types';
+import { ITokenEthProps } from 'types/tokens';
 import { CHAIN_IDS } from 'utils/constants';
 
 import EvmAssetsController from './evm';
@@ -24,7 +25,8 @@ const AssetsManager = (): IAssetsManager => {
     activeNetworkUrl: string,
     networkChainId: number,
     web3Provider: CustomJsonRpcProvider,
-    currentAssets: IAccountAssets
+    currentAssets: IAccountAssets,
+    onBalanceRead?: (token: ITokenEthProps) => void
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
@@ -67,7 +69,8 @@ const AssetsManager = (): IAssetsManager => {
           currentAccount,
           networkChainId,
           web3Provider,
-          currentAssets.ethereum || []
+          currentAssets.ethereum || [],
+          onBalanceRead
         );
 
         return {

@@ -129,11 +129,9 @@ export class BatchBalanceController {
               `[BatchBalanceController] Failed to decode balance for ${token.tokenSymbol}:`,
               decodeError
             );
-            balances.set(token.contractAddress.toLowerCase(), '0');
           }
         } else {
-          // Token query failed, set balance to 0
-          balances.set(token.contractAddress.toLowerCase(), '0');
+          // SYSCOIN: Missing means unknown, not zero; callers preserve old balances.
         }
       });
 
@@ -165,21 +163,14 @@ export class BatchBalanceController {
 
     // Add a small delay between requests to be respectful to public RPCs
     const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
-    let requestCount = 0;
 
     // Queue each token individually - this ensures only 3 run at a time
     tokens.forEach((token) => {
       queue.execute(async () => {
-        // Add progressive delay for each request
-        if (requestCount > 0) {
-          await new Promise((resolve) =>
-            setTimeout(
-              resolve,
-              DELAY_BETWEEN_REQUESTS * Math.floor(requestCount / 3)
-            )
-          );
-        }
-        requestCount++;
+        // SYSCOIN: Keep three workers paced, without growing O(n²) sleep time.
+        await new Promise((resolve) =>
+          setTimeout(resolve, DELAY_BETWEEN_REQUESTS)
+        );
 
         try {
           const contract = new Contract(
@@ -199,9 +190,6 @@ export class BatchBalanceController {
             balance: formattedBalance,
           };
         } catch (error) {
-          // Store 0 balance on error
-          balances.set(token.contractAddress.toLowerCase(), '0');
-
           return {
             success: false,
             address: token.contractAddress.toLowerCase(),

@@ -20,8 +20,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { isZeroBalance } from 'utils/balance';
-import { formatUnits } from 'utils/ethersV6Compat';
+import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 
 import {
@@ -37,7 +36,28 @@ const toSafeNumber = (value: any, fallback = 0): number => {
   return Number.isFinite(numeric) ? numeric : fallback;
 };
 
+// SYSCOIN: Shared across short-lived polling controllers; never hammer an
+// unavailable discovery endpoint. This does not block on-chain balance reads.
+const discoveryCooldowns = new Map<string, number>();
+const DISCOVERY_COOLDOWN_MS = 60_000;
+const MAX_DISCOVERY_ENDPOINTS = 64;
+
+const coolDownDiscovery = (key: string) => {
+  discoveryCooldowns.delete(key);
+  discoveryCooldowns.set(key, Date.now() + DISCOVERY_COOLDOWN_MS);
+  if (discoveryCooldowns.size > MAX_DISCOVERY_ENDPOINTS) {
+    discoveryCooldowns.delete(discoveryCooldowns.keys().next().value);
+  }
+};
+
 const EvmAssetsController = (): IEvmAssetsController => {
+  // SYSCOIN: Bind async metadata to the chain/RPC that started it, never a
+  // mutable active network read after await.
+  const metadataContext = () => {
+    const { chainId, url } = store.getState().vault.activeNetwork;
+    return { chainId, key: `${chainId}:${url}` };
+  };
+  const contextIsCurrent = (key: string) => metadataContext().key === key;
   // Cache for token price data
   const priceDataCache = new Map<
     string,
@@ -92,6 +112,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return [];
     }
 
+    const endpointKey = `${activeNetwork.chainId}:${apiUrl}`;
+    if ((discoveryCooldowns.get(endpointKey) || 0) > Date.now()) {
+      throw new Error('Token discovery API is temporarily unavailable');
+    }
+
     console.log(
       `[EvmAssetsController] Fetching user tokens from API: ${apiUrl}`
     );
@@ -117,93 +142,131 @@ const EvmAssetsController = (): IEvmAssetsController => {
       tokenListUrl.searchParams.set('apikey', existingApiKey);
     }
 
-    const response = await retryableFetch(tokenListUrl.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.status !== '1' || !data.result) {
-      console.warn(
-        `[EvmAssetsController] API returned error or no tokens:`,
-        data.message || 'No results'
-      );
-      // This is a legitimate "no tokens" response from the API
-      return [];
-    }
-
-    if (!Array.isArray(data.result)) {
-      console.warn(
-        '[EvmAssetsController] API returned tokenlist result in an unexpected format'
-      );
-      return [];
-    }
-
-    const tokens = data.result;
-
-    // Helper function to detect tokens with invisible/funny characters in name
-    const hasInvisibleChars = (name: string): boolean => {
-      if (!name) return false;
-
-      // Check for zero-width spaces and other invisible Unicode characters
-      return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(name);
-    };
-
-    // Convert to ITokenSearchResult format and filter out tokens with funny characters
-    const results: ITokenSearchResult[] = tokens
-      .filter(
-        (token: any) =>
-          token?.contractAddress && !hasInvisibleChars(token.name || '')
-      ) // Filter malformed entries and names with invisible chars
-      .map((token: any) => {
-        // Check if it's an NFT based on type
-        const tokenType = token.type || 'ERC-20';
-        const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
-
-        // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
-        const tokenId =
-          tokenType === 'ERC-1155' && token.id ? token.id : undefined;
-        const uniqueId = tokenId
-          ? `${token.contractAddress.toLowerCase()}-${
-              activeNetwork.chainId
-            }-${tokenId}`
-          : `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`;
-
-        // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
-        const parsed = Number.parseInt(token.decimals);
-        const safeDecimals =
-          Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
-
-        return {
-          id: uniqueId,
-          symbol: cleanTokenSymbol(token.symbol || (isNft ? 'NFT' : 'Unknown')),
-          name: token.name || (isNft ? 'NFT Collection' : 'Unknown Token'), // Keep names intact - they can have spaces
-          contractAddress: token.contractAddress,
-          balance: isNft
-            ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
-            : parseFloat(formatUnits(token.balance || '0', safeDecimals)),
-          decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
-          tokenStandard: tokenType,
-          ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
-        };
+    try {
+      const response = await retryableFetch(tokenListUrl.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
       });
 
-    console.log(
-      `[EvmAssetsController] Found ${
-        results.length
-      } valid tokens via API (filtered ${
-        tokens.length - results.length
-      } tokens with invisible characters)`
-    );
-    return results;
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.status !== '1') {
+        // A documented empty result is not the same as NOTOK/rate limiting.
+        if (
+          data.status === '0' &&
+          /^no tokens found$/i.test(String(data.message || data.result || ''))
+        ) {
+          discoveryCooldowns.delete(endpointKey);
+          return [];
+        }
+        throw new Error(
+          'Token discovery API returned an unsuccessful response'
+        );
+      }
+
+      if (!Array.isArray(data.result)) {
+        throw new Error('Token discovery API returned an invalid token list');
+      }
+
+      const tokens = data.result;
+
+      // Helper function to detect tokens with invisible/funny characters in name
+      const hasInvisibleChars = (name: string): boolean => {
+        if (!name) return false;
+
+        // Check for zero-width spaces and other invisible Unicode characters
+        return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(
+          name
+        );
+      };
+
+      // Convert to ITokenSearchResult format and filter out tokens with funny characters
+      const results: ITokenSearchResult[] = tokens
+        .filter(
+          (token: any) =>
+            typeof token?.contractAddress === 'string' &&
+            isAddress(token.contractAddress) &&
+            !hasInvisibleChars(String(token.name || ''))
+        ) // Filter malformed entries and names with invisible chars
+        .map((token: any) => {
+          try {
+            // Check if it's an NFT based on type
+            const tokenType = token.type || 'ERC-20';
+            const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
+
+            // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
+            const tokenId =
+              tokenType === 'ERC-1155' && token.id ? token.id : undefined;
+            const uniqueId = tokenId
+              ? `${token.contractAddress.toLowerCase()}-${
+                  activeNetwork.chainId
+                }-${tokenId}`
+              : `${token.contractAddress.toLowerCase()}-${
+                  activeNetwork.chainId
+                }`;
+
+            // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
+            const parsed = Number(token.decimals);
+            const safeDecimals =
+              token.decimals === null || token.decimals === undefined
+                ? 18
+                : parsed;
+            if (
+              !Number.isInteger(safeDecimals) ||
+              safeDecimals < 0 ||
+              safeDecimals > 80
+            ) {
+              return null;
+            }
+
+            return {
+              id: uniqueId,
+              symbol: cleanTokenSymbol(
+                String(token.symbol || (isNft ? 'NFT' : 'Unknown'))
+              ),
+              name: String(
+                token.name || (isNft ? 'NFT Collection' : 'Unknown Token')
+              ),
+              contractAddress: token.contractAddress,
+              balance: isNft
+                ? Number(token.balance || 0)
+                : parseFloat(formatUnits(token.balance || '0', safeDecimals)),
+              decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
+              tokenStandard: tokenType,
+              ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
+            };
+          } catch {
+            // SYSCOIN: One malformed/malicious token must not hide the valid list.
+            return null;
+          }
+        })
+        .filter(
+          (token): token is ITokenSearchResult =>
+            token !== null &&
+            Number.isFinite(token.balance) &&
+            token.balance >= 0
+        );
+
+      console.log(
+        `[EvmAssetsController] Found ${
+          results.length
+        } valid tokens via API (filtered ${
+          tokens.length - results.length
+        } tokens with invisible characters)`
+      );
+      discoveryCooldowns.delete(endpointKey);
+      return results;
+    } catch (error) {
+      coolDownDiscovery(endpointKey);
+      throw error;
+    }
   };
 
   /**
@@ -215,6 +278,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
+    const context = metadataContext();
     try {
       console.log(
         `[EvmAssetsController] Validating ERC-20 token: ${contractAddress}`
@@ -275,16 +339,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
       }
 
       // Create token details for ERC-20
+      if (!contextIsCurrent(context.key)) return null;
       const tokenDetails: ITokenDetails = {
-        id: `${contractAddress.toLowerCase()}-${
-          store.getState().vault.activeNetwork.chainId
-        }`,
+        id: `${contractAddress.toLowerCase()}-${context.chainId}`,
         symbol: cleanTokenSymbol(symbol).toUpperCase(),
         name: name || symbol, // Keep names intact - they can have spaces
         contractAddress,
         decimals: safeDecimals,
         balance, // Full precision balance
-        chainId: store.getState().vault.activeNetwork.chainId,
+        chainId: context.chainId,
         tokenStandard,
         isNft: false,
         isVerified: false,
@@ -484,11 +547,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
     account: IKeyringAccountState,
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
-    accountAssets: ITokenEthProps[]
+    accountAssets: ITokenEthProps[],
+    onBalanceRead?: (token: ITokenEthProps) => void
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(accountAssets)) return [];
-
-    const { activeNetwork } = store.getState().vault;
 
     // Filter assets for current network
     const currentNetworkAssets = accountAssets.filter(
@@ -498,84 +560,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
       (asset) => asset.chainId !== currentNetworkChainId
     );
 
-    // If API is available, use it for efficient batch updates
-    // Only use explicitly configured API URLs, not explorer URLs
-    const apiUrl = activeNetwork.apiUrl;
-    if (apiUrl) {
-      console.log(
-        `[EvmAssetsController] Using API for batch token update: ${apiUrl}`
-      );
-
-      // Get all tokens from API in one call
-      const ownedTokens = await getUserOwnedTokens(account.address);
-
-      // Create a map of owned tokens for quick lookup
-      // For ERC-1155, include tokenId in the key
-      const ownedTokensMap = new Map(
-        ownedTokens.map((token) => {
-          const key =
-            token.tokenStandard === 'ERC-1155' && token.tokenId
-              ? `${token.contractAddress.toLowerCase()}-${token.tokenId}`
-              : token.contractAddress.toLowerCase();
-          return [key, token];
-        })
-      );
-
-      // Update existing assets with API data
-      const updatedAssets = await Promise.all(
-        currentNetworkAssets.map(async (asset) => {
-          // Create lookup key based on token standard
-          const lookupKey =
-            asset.tokenStandard === 'ERC-1155' && asset.tokenId
-              ? `${asset.contractAddress.toLowerCase()}-${asset.tokenId}`
-              : asset.contractAddress.toLowerCase();
-
-          const apiToken = ownedTokensMap.get(lookupKey);
-
-          if (apiToken) {
-            // Token found in API - update balance
-            console.log(
-              `[EvmAssetsController] Updating ${asset.tokenSymbol} balance from API: ${apiToken.balance}`
-            );
-
-            // For all tokens (including NFTs), use the balance from API
-            return {
-              ...asset,
-              balance: asset.isNft
-                ? Math.floor(apiToken.balance) // NFTs need integer balances
-                : apiToken.balance, // Keep full precision for regular tokens
-            };
-          } else {
-            // Token not in API response - set balance to 0 (as requested)
-            // This handles the case where API is set and balance query returns nothing
-            console.log(
-              `[EvmAssetsController] Token ${asset.tokenSymbol} not found in API - setting balance to 0`
-            );
-
-            // Skip updating balance to 0 if it's already 0 (avoid unnecessary updates)
-            if (isZeroBalance(asset.balance)) {
-              return asset;
-            }
-
-            return {
-              ...asset,
-              balance: 0,
-            };
-          }
-        })
-      );
-
-      // Combine updated assets with other network assets
-      const allAssets = [...updatedAssets, ...otherNetworkAssets];
-
-      return validateAndManageUserAssets(
-        true,
-        allAssets,
-        accountAssets
-      ) as ITokenEthProps[];
-    }
-
-    // No API available or API failed - use multicall3 for batch balance fetching
+    // SYSCOIN: The explorer has no balance watermark. Keep discovery/metadata
+    // there, but read tracked balances from RPC at the existing polling cadence
+    // so an indexing delay cannot overwrite a receipt-confirmed balance.
     console.log(
       `[EvmAssetsController] Using multicall3 for batch token balance updates`
     );
@@ -596,9 +583,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
+        if (balance !== undefined) onBalanceRead?.(token);
         return {
           ...token,
-          balance: balance ? parseFloat(balance) : 0, // Keep full precision
+          balance: balance !== undefined ? parseFloat(balance) : token.balance,
         };
       });
     }
@@ -653,6 +641,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             contractAssets.forEach((asset, index) => {
               const info = ownershipInfo[index];
               if (info && info.verified) {
+                onBalanceRead?.(asset);
                 updatedErc1155Assets.push({
                   ...asset,
                   balance: info.balance,
@@ -679,36 +668,30 @@ const EvmAssetsController = (): IEvmAssetsController => {
       // Process ERC-721 tokens individually with queue
       const queue = new Queue(3);
       const DELAY_BETWEEN_REQUESTS = 100; // 100ms between each request
-      let requestCount = 0;
 
       // Queue each ERC-721 NFT individually - this ensures only 3 run at a time
       erc721Assets.forEach((nftAsset) => {
         queue.execute(async () => {
-          // Add progressive delay for each request
-          if (requestCount > 0) {
-            await new Promise((resolve) =>
-              setTimeout(
-                resolve,
-                DELAY_BETWEEN_REQUESTS * Math.floor(requestCount / 3)
-              )
-            );
-          }
-          requestCount++;
-
-          // ERC-721: balanceOf(address) returns total count
-          const currentAbi = getErc21Abi();
-          const contract = new Contract(
-            nftAsset.contractAddress,
-            currentAbi,
-            w3Provider
+          // SYSCOIN: Constant per-worker pacing, not quadratic cumulative sleeps.
+          await new Promise((resolve) =>
+            setTimeout(resolve, DELAY_BETWEEN_REQUESTS)
           );
 
           try {
+            // ERC-721: isolate even malformed addresses/ABI construction.
+            const contract = new Contract(
+              nftAsset.contractAddress,
+              getErc21Abi(),
+              w3Provider
+            );
             const balanceCallMethod = await contract.balanceOf(account.address);
             // Convert BigNumber to number safely (NFT counts are typically small)
             const collectionBalance = balanceCallMethod.toNumber
               ? balanceCallMethod.toNumber()
               : Number(balanceCallMethod);
+            if (!Number.isFinite(collectionBalance) || collectionBalance < 0)
+              throw new Error('Invalid NFT balance');
+            onBalanceRead?.(nftAsset);
 
             console.log(
               `[EvmAssetsController] Updated ERC-721 collection ${nftAsset.contractAddress}: ${collectionBalance} NFTs`
@@ -799,9 +782,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
     // Check cache first - no balance needed, so cache is more effective
-    const cacheKey = `${contractAddress.toLowerCase()}-${
-      store.getState().vault.activeNetwork.chainId
-    }`;
+    const context = metadataContext();
+    const cacheKey = `${context.key}:${contractAddress.toLowerCase()}`;
     const cached = tokenDetailsCache.get(cacheKey);
     const now = Date.now();
 
@@ -814,7 +796,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
 
     // Check if there's already a pending request for this contract
-    const pendingKey = `basic-${contractAddress}`;
+    const pendingKey = `basic-${cacheKey}`;
     if (pendingRequests.has(pendingKey)) {
       console.log(
         `[EvmAssetsController] Reusing pending basic token details request for ${contractAddress}`
@@ -854,15 +836,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
           );
 
           basicTokenDetails = {
-            id: `${contractAddress.toLowerCase()}-${
-              store.getState().vault.activeNetwork.chainId
-            }`,
+            id: `${contractAddress.toLowerCase()}-${context.chainId}`,
             symbol: cleanTokenSymbol(nftMetadata.symbol).toUpperCase(),
             name: nftMetadata.name || cleanTokenSymbol(nftMetadata.symbol),
             contractAddress,
             decimals: 0, // NFTs always have 0 decimals
             balance: 0, // No balance for basic details
-            chainId: store.getState().vault.activeNetwork.chainId,
+            chainId: context.chainId,
             tokenStandard: contractType as any,
             isNft: true,
             isVerified: false,
@@ -876,21 +856,20 @@ const EvmAssetsController = (): IEvmAssetsController => {
           );
 
           basicTokenDetails = {
-            id: `${contractAddress.toLowerCase()}-${
-              store.getState().vault.activeNetwork.chainId
-            }`,
+            id: `${contractAddress.toLowerCase()}-${context.chainId}`,
             symbol: cleanTokenSymbol(metadata.tokenSymbol).toUpperCase(),
             name: cleanTokenSymbol(metadata.tokenSymbol), // Use symbol as name for basic info
             contractAddress,
             decimals: Number(metadata.decimals ?? 18),
             balance: 0, // No balance for basic details
-            chainId: store.getState().vault.activeNetwork.chainId,
+            chainId: context.chainId,
             tokenStandard: contractType as any,
             isNft: false,
             isVerified: false, // Basic validation only, no CoinGecko verification
           };
         }
 
+        if (!contextIsCurrent(context.key)) return null;
         // Cache the basic details for future use
         tokenDetailsCache.set(cacheKey, {
           details: basicTokenDetails,
@@ -927,6 +906,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
+    const context = metadataContext();
     try {
       // Get basic details first (cached)
       const basicDetails = await getTokenDetails(
@@ -934,7 +914,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         walletAddress,
         w3Provider
       );
-      if (!basicDetails) return null;
+      if (!basicDetails || !contextIsCurrent(context.key)) return null;
 
       // For NFTs, get balance from NFT-specific methods
       if (basicDetails.isNft) {
@@ -963,6 +943,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           );
         }
 
+        if (!contextIsCurrent(context.key)) return null;
         return {
           ...basicDetails,
           balance,
@@ -979,6 +960,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         formatUnits(metadata.balance || '0', Number(metadata.decimals ?? 18))
       );
 
+      if (!contextIsCurrent(context.key)) return null;
       return {
         ...basicDetails,
         balance: balance, // Keep full precision
@@ -1001,7 +983,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
     // Check cache first for enhanced data
-    const cacheKey = `${contractAddress.toLowerCase()}-${getCurrentNetworkPlatform()}`;
+    const context = metadataContext();
+    const currentPlatform = getCurrentNetworkPlatform();
+    const cacheKey = `${context.key}:${contractAddress.toLowerCase()}:enhanced`;
     const cached = tokenDetailsCache.get(cacheKey);
     const now = Date.now();
 
@@ -1012,7 +996,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         walletAddress,
         w3Provider
       );
-      if (!detailsWithBalance) return null;
+      if (!detailsWithBalance || !contextIsCurrent(context.key)) return null;
 
       // Check if we have cached enhanced market data
       if (cached && now - cached.timestamp < TOKEN_DETAILS_CACHE_DURATION) {
@@ -1027,8 +1011,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       // Try to enhance with CoinGecko market data
       try {
-        const currentPlatform = getCurrentNetworkPlatform();
-
         if (currentPlatform) {
           // Check if token exists in CoinGecko
           const response = await retryableFetch(
@@ -1037,6 +1019,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           if (response.ok) {
             const coinGeckoData = await response.json();
+            if (!contextIsCurrent(context.key)) return null;
 
             // Clean CoinGecko symbol before merging
             if (coinGeckoData.symbol) {
@@ -1077,7 +1060,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       console.log(
         `[EvmAssetsController] No market data available for ${contractAddress}, returning basic details with balance`
       );
-      return detailsWithBalance;
+      return contextIsCurrent(context.key) ? detailsWithBalance : null;
     } catch (error) {
       console.error(
         '[EvmAssetsController] Error getting token details with market data:',
@@ -1095,7 +1078,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
     contractAddress: string
   ): Promise<any | null> => {
     // Check cache first
-    const cacheKey = `${contractAddress.toLowerCase()}-${getCurrentNetworkPlatform()}-marketonly`;
+    const context = metadataContext();
+    const currentPlatform = getCurrentNetworkPlatform();
+    const cacheKey = `${
+      context.key
+    }:${contractAddress.toLowerCase()}:marketonly`;
     const cached = tokenDetailsCache.get(cacheKey);
     const now = Date.now();
 
@@ -1107,7 +1094,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
 
     // Check if there's already a pending request for this contract
-    const pendingKey = `market-${contractAddress}`;
+    const pendingKey = `market-${cacheKey}`;
     if (pendingRequests.has(pendingKey)) {
       console.log(
         `[EvmAssetsController] Reusing pending market data request for ${contractAddress}`
@@ -1118,8 +1105,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
     // Create the promise and store it
     const requestPromise = (async () => {
       try {
-        const currentPlatform = getCurrentNetworkPlatform();
-
         if (!currentPlatform) {
           const { activeNetwork } = store.getState().vault;
           console.log(
@@ -1135,6 +1120,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         if (response.ok) {
           const coinGeckoData = await response.json();
+          if (!contextIsCurrent(context.key)) return null;
 
           // Clean the symbol and return in ITokenDetails format
           const marketData = {
@@ -1292,6 +1278,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenDetails | null> => {
+    const context = metadataContext();
     console.log(
       `[EvmAssetsController] Validating NFT contract: ${contractAddress}`
     );
@@ -1322,7 +1309,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       `[EvmAssetsController] Detected ${contractType} NFT contract: ${contractAddress}`
     );
 
-    const { activeNetwork } = store.getState().vault;
+    const activeNetwork = { chainId: context.chainId };
     let nftDetails: ITokenDetails;
 
     if (contractType === 'ERC-721') {
@@ -1482,7 +1469,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       symbol: nftDetails.symbol,
     });
 
-    return nftDetails;
+    return contextIsCurrent(context.key) ? nftDetails : null;
   };
 
   return {

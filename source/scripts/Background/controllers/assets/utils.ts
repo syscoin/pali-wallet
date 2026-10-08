@@ -124,6 +124,8 @@ export const validateAndManageUserAssets = (
       if (isForEvm) {
         const aEvm = a as ITokenEthProps;
         const bEvm = b as ITokenEthProps;
+        // SYSCOIN: Never collapse the same deployment address across chains.
+        if (aEvm.chainId !== bEvm.chainId) return false;
         const sameContract =
           (aEvm.contractAddress || '').toLowerCase() ===
           (bEvm.contractAddress || '').toLowerCase();

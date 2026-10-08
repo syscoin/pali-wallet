@@ -167,6 +167,12 @@ import EvmAssetsController from './assets/evm';
 import { IAssetsManager } from './assets/types';
 import { canCommitAssetUpdate, ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
+import {
+  ReceiptBalanceRefresh,
+  readTrackedTokenBalance,
+  receiptBalanceTargets,
+  tokenBalanceKey,
+} from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
@@ -229,6 +235,21 @@ class MainController {
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
   private pendingEvmReceiptChecks = new Map<string, number>();
+  private receiptBalanceRefresh = new ReceiptBalanceRefresh();
+  private nativeBalanceRevision = 0;
+  private targetedBalanceVersions = new Map<string, object>();
+
+  private beginTargetedBalanceRead(key: string): () => boolean {
+    const version = {};
+    this.targetedBalanceVersions.delete(key);
+    this.targetedBalanceVersions.set(key, version);
+    if (this.targetedBalanceVersions.size > 512) {
+      this.targetedBalanceVersions.delete(
+        this.targetedBalanceVersions.keys().next().value!
+      );
+    }
+    return () => this.targetedBalanceVersions.get(key) === version;
+  }
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
@@ -4283,6 +4304,7 @@ class MainController {
 
                   // Transaction just confirmed
                   if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
+                    if (!isBitcoinBased) this.refreshBalancesAfterReceipt(tx);
                     notificationManager.notifyTransaction({
                       transaction: tx,
                       type: isBitcoinBased
@@ -5213,7 +5235,11 @@ class MainController {
       }
 
       // Save the transaction (this will also clear navigation state)
-      await this.sendAndSaveTransaction(txResponse);
+      await this.sendAndSaveTransaction({
+        ...txResponse,
+        // SYSCOIN: Retain the affected contract even before receipt logs exist.
+        balanceRefreshTokenAddresses: [params.tokenAddress],
+      });
 
       return txResponse;
     } catch (error) {
@@ -5266,6 +5292,7 @@ class MainController {
     }
 
     const requestId = ++this.assetUpdateRequestId;
+    const successfulBalanceReads = new Set<string>();
     const { accounts, accountAssets } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
@@ -5293,7 +5320,8 @@ class MainController {
                 activeNetwork.url,
                 activeNetwork.chainId,
                 web3Provider,
-                currentAssets
+                currentAssets,
+                (token) => successfulBalanceReads.add(tokenBalanceKey(token))
               );
             const latestVault = store.getState().vault;
             const latestAccount =
@@ -5318,6 +5346,16 @@ class MainController {
               resolve();
               return;
             }
+
+            // SYSCOIN: Even an unchanged regular RPC read supersedes a delayed
+            // receipt/preflight read of that key. Other keys remain independent.
+            successfulBalanceReads.forEach((key) => {
+              this.beginTargetedBalanceRead(
+                `${activeNetwork.chainId}:${
+                  activeNetwork.url
+                }:${currentAccount.address.toLowerCase()}:${key}`
+              );
+            });
 
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length < currentAssets.ethereum.length ||
@@ -5429,6 +5467,7 @@ class MainController {
 
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+    const nativeRevision = this.nativeBalanceRevision;
 
     // Check if account exists before proceeding
     if (!currentAccount) {
@@ -5458,6 +5497,8 @@ class MainController {
 
             const latestNetwork = store.getState().vault.activeNetwork;
             if (
+              (!isBitcoinBased &&
+                nativeRevision !== this.nativeBalanceRevision) ||
               latestNetwork.chainId !== activeNetwork.chainId ||
               latestNetwork.kind !== activeNetwork.kind ||
               latestNetwork.url !== activeNetwork.url
@@ -5499,6 +5540,13 @@ class MainController {
 
             // Record successful reads even when the numeric value did not
             // change, so the per-network cache freshness reflects this RPC.
+            if (!isBitcoinBased) {
+              this.beginTargetedBalanceRead(
+                `${activeNetwork.chainId}:${
+                  activeNetwork.url
+                }:${currentAccount.address.toLowerCase()}:native`
+              );
+            }
             store.dispatch(
               setAccountBalanceForNetwork({
                 balance: updatedBalance,
@@ -5920,34 +5968,7 @@ class MainController {
             this.updateTrackedEvmTransactionCopies(txHash, chainId, directTx);
 
             if (isTransactionInBlock(directTx)) {
-              try {
-                await this.updateUserNativeBalance({
-                  activeAccount: targetAccount ?? postLookupActiveAccount,
-                  activeNetwork: postLookupActiveNetwork,
-                  isBitcoinBased: false,
-                  isPolling: true,
-                });
-              } catch (error) {
-                console.warn(
-                  '[RapidPoll] Failed to refresh balance after direct EVM confirmation:',
-                  error
-                );
-              }
-
-              try {
-                await this.updateAssetsFromCurrentAccount({
-                  activeAccount: targetAccount ?? postLookupActiveAccount,
-                  activeNetwork: postLookupActiveNetwork,
-                  isBitcoinBased: false,
-                  isPolling: true,
-                });
-              } catch (error) {
-                console.warn(
-                  '[RapidPoll] Failed to refresh assets after direct EVM confirmation:',
-                  error
-                );
-              }
-
+              // Targeted receipt reads are independently retried/coalesced.
               const blockInfo = getTransactionBlockInfo(directTx);
               console.log(
                 `[RapidPoll] Transaction ${txHash} confirmed by direct lookup! In block: ${blockInfo}. Stopping rapid poll.`
@@ -6060,6 +6081,16 @@ class MainController {
           }
 
           if (isConfirmedUpdate && !isTransactionInBlock(existingTx)) {
+            this.refreshBalancesAfterReceipt({
+              ...existingTx,
+              ...txUpdate,
+              balanceRefreshTokenAddresses: (existingTx as any)
+                .balanceRefreshTokenAddresses,
+              balanceRefreshNativeAddresses: (existingTx as any)
+                .balanceRefreshNativeAddresses,
+              smartAccountExecutionFrom: (existingTx as any)
+                .smartAccountExecutionFrom,
+            });
             const notificationKey = `${accountType}:${accountId}`;
             const account = accounts[accountType]?.[Number(accountId)];
             if (account && !notifiedAccounts.has(notificationKey)) {
@@ -6087,6 +6118,10 @@ class MainController {
                 ...txUpdate,
                 smartAccountExecutionFrom: (existingTx as any)
                   .smartAccountExecutionFrom,
+                balanceRefreshTokenAddresses: (existingTx as any)
+                  .balanceRefreshTokenAddresses,
+                balanceRefreshNativeAddresses: (existingTx as any)
+                  .balanceRefreshNativeAddresses,
                 timestamp: (existingTx as any).timestamp,
               } as IEvmTransactionResponse,
             })
@@ -6106,6 +6141,153 @@ class MainController {
         notificationManager.updatePendingTransactionBadge(activeAccountTxs);
       }
     }
+  }
+
+  // SYSCOIN: Refresh only receipt-affected tracked keys, not every token in the
+  // wallet. The API has no indexed-height watermark and cannot authoritatively
+  // replace these balances; regular tracked-token polling also uses RPC.
+  private refreshBalancesAfterReceipt(tx: any) {
+    const {
+      activeNetwork: network,
+      activeAccount,
+      accounts,
+      accountAssets,
+    } = store.getState().vault;
+    const block = Number(tx.balanceRefreshBlockNumber || tx.blockNumber);
+    if (!Number.isSafeInteger(block) || block <= 0) return;
+    if (tx.chainId && Number(tx.chainId) !== network.chainId) return;
+    const targets = receiptBalanceTargets(tx);
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) return;
+    // One shared, uncached head read per receipt, not one per affected token.
+    // Pin reads to that current head, never an old history receipt's block.
+    let headRead: Promise<number> | undefined;
+    const currentBlock = () => {
+      if (!headRead) {
+        headRead = provider
+          .send('eth_blockNumber', [])
+          .then((value: string) => {
+            const head = Number(value);
+            if (!Number.isSafeInteger(head) || head < block)
+              throw new Error('RPC is behind receipt');
+            return head;
+          });
+      }
+      return headRead;
+    };
+    const contextIsCurrent = () => {
+      const vault = store.getState().vault;
+      return (
+        vault.activeNetwork.chainId === network.chainId &&
+        vault.activeNetwork.url === network.url &&
+        vault.activeNetwork.kind === network.kind &&
+        vault.activeNetwork.slip44 === network.slip44 &&
+        vault.activeAccount.id === activeAccount.id &&
+        vault.activeAccount.type === activeAccount.type
+      );
+    };
+
+    Object.values(KeyringAccountType).forEach((type) => {
+      Object.entries(accounts[type] || {}).forEach(([id, account]) => {
+        const owner = account.address?.toLowerCase();
+        if (!owner) return;
+        const accountId = Number(id);
+        const keyPrefix = `${network.chainId}:${network.url}:${owner}:`;
+        const accountIsCurrent = () =>
+          contextIsCurrent() &&
+          store
+            .getState()
+            .vault.accounts[type]?.[accountId]?.address?.toLowerCase() ===
+            owner;
+        if (targets.native.has(owner)) {
+          this.receiptBalanceRefresh.schedule(
+            `${keyPrefix}native`,
+            block,
+            async (current) => {
+              if (!current() || !accountIsCurrent()) return;
+              const latestRead = this.beginTargetedBalanceRead(
+                `${keyPrefix}native`
+              );
+              this.nativeBalanceRevision += 1;
+              let raw;
+              try {
+                raw = await provider.getBalance(
+                  account.address,
+                  await currentBlock()
+                );
+              } catch (error) {
+                headRead = undefined;
+                throw error;
+              }
+              if (!current() || !accountIsCurrent() || !latestRead()) return;
+              this.nativeBalanceRevision += 1;
+              store.dispatch(
+                setAccountBalanceForNetwork({
+                  balance: Number(formatUnits(raw, 18)),
+                  id: accountId,
+                  network,
+                  type,
+                })
+              );
+            }
+          );
+        }
+        if (!targets.owners.has(owner)) return;
+        const assets = accountAssets[type]?.[accountId]?.ethereum || [];
+        assets
+          .filter(
+            (token) =>
+              token.chainId === network.chainId &&
+              targets.tokens.has(token.contractAddress?.toLowerCase())
+          )
+          .forEach((token) => {
+            const tokenKey = tokenBalanceKey(token);
+            this.receiptBalanceRefresh.schedule(
+              `${keyPrefix}${tokenKey}`,
+              block,
+              async (current) => {
+                if (!current() || !accountIsCurrent()) return;
+                const latestRead = this.beginTargetedBalanceRead(
+                  `${keyPrefix}${tokenKey}`
+                );
+                this.assetUpdateRequestId += 1;
+                let balance;
+                try {
+                  balance = await readTrackedTokenBalance(
+                    provider,
+                    account.address,
+                    token,
+                    await currentBlock()
+                  );
+                } catch (error) {
+                  headRead = undefined;
+                  throw error;
+                }
+                if (!current() || !accountIsCurrent() || !latestRead()) return;
+                const latest =
+                  store.getState().vault.accountAssets[type]?.[accountId]
+                    ?.ethereum || [];
+                this.assetUpdateRequestId += 1;
+                store.dispatch(
+                  setAccountAssets({
+                    accountId,
+                    accountType: type,
+                    property: 'ethereum',
+                    // Merge against latest state: never restore removed tokens or
+                    // another concurrent token's old balance/metadata.
+                    value: latest.map((asset) =>
+                      asset.chainId === network.chainId &&
+                      tokenBalanceKey(asset) === tokenKey
+                        ? { ...asset, ...balance }
+                        : asset
+                    ),
+                  })
+                );
+              }
+            );
+          });
+      });
+    });
   }
 
   private async reconcileLocalPendingEvmSmartAccountTransactions(
@@ -6146,6 +6328,9 @@ class MainController {
 
   // Clean up all active polls (called when wallet locks)
   private stopAllRapidPolling() {
+    this.receiptBalanceRefresh.cancel();
+    this.targetedBalanceVersions.clear();
+    this.nativeBalanceRevision += 1;
     this.activeRapidPolls.forEach((timeoutId) => clearTimeout(timeoutId));
     this.activeRapidPolls.clear();
     console.log('[RapidPoll] Stopped all rapid polling');
@@ -6696,10 +6881,6 @@ class MainController {
       throw new Error('Active account or token contract not found');
     }
 
-    const tokenInfo = await this.getERC20TokenInfo(
-      contractAddress,
-      currentAccount.address
-    );
     const currentAssets = accountAssets[activeAccount.type]?.[
       activeAccount.id
     ] || {
@@ -6707,9 +6888,6 @@ class MainController {
       syscoin: [],
     };
     const contractLower = contractAddress.toLowerCase();
-    const formattedBalance = parseFloat(
-      formatUnits(tokenInfo.balance || '0', tokenInfo.decimals)
-    );
     const existingAsset = currentAssets.ethereum.find(
       (asset) =>
         !asset.isNft &&
@@ -6717,27 +6895,71 @@ class MainController {
         (!asset.chainId || asset.chainId === activeNetwork.chainId)
     );
 
-    const refreshedAsset: ITokenEthProps = {
-      ...existingAsset,
-      chainId: existingAsset?.chainId || activeNetwork.chainId,
-      contractAddress: existingAsset?.contractAddress || contractAddress,
-      isNft: false,
-      tokenStandard: existingAsset?.tokenStandard || 'ERC-20',
-      balance: formattedBalance,
-      decimals: tokenInfo.decimals,
-      name: tokenInfo.name,
-      tokenSymbol: tokenInfo.symbol,
-    };
-
     if (!existingAsset) {
-      return refreshedAsset;
+      // External dapps may transfer/approve an unimported ERC20. Preserve that
+      // one-off preflight without importing it or adding polling work.
+      const info = await this.getERC20TokenInfo(
+        contractAddress,
+        currentAccount.address
+      );
+      const latest = store.getState().vault;
+      if (
+        latest.activeNetwork.chainId !== activeNetwork.chainId ||
+        latest.activeNetwork.url !== activeNetwork.url ||
+        latest.activeAccount.id !== activeAccount.id ||
+        latest.activeAccount.type !== activeAccount.type ||
+        latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+          currentAccount.address
+      ) {
+        throw new Error('Token balance refresh context changed');
+      }
+      return {
+        chainId: activeNetwork.chainId,
+        contractAddress,
+        isNft: false,
+        tokenStandard: 'ERC-20',
+        balance: Number(formatUnits(info.balance, info.decimals)),
+        decimals: info.decimals,
+        name: info.name,
+        tokenSymbol: info.symbol,
+      } as ITokenEthProps;
     }
-
-    const ethereumAssets = currentAssets.ethereum.map((asset) =>
+    // SYSCOIN: One balanceOf, not four metadata calls; merge only this key into
+    // the latest state after checking the initiating account/chain context.
+    this.assetUpdateRequestId += 1;
+    const latestRead = this.beginTargetedBalanceRead(
+      `${activeNetwork.chainId}:${
+        activeNetwork.url
+      }:${currentAccount.address.toLowerCase()}:${tokenBalanceKey(
+        existingAsset
+      )}`
+    );
+    const balance = await readTrackedTokenBalance(
+      this.ethereumTransaction.web3Provider,
+      currentAccount.address,
+      existingAsset
+    );
+    const latest = store.getState().vault;
+    if (
+      latest.activeNetwork.chainId !== activeNetwork.chainId ||
+      latest.activeNetwork.url !== activeNetwork.url ||
+      latest.activeAccount.id !== activeAccount.id ||
+      latest.activeAccount.type !== activeAccount.type ||
+      latest.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+        currentAccount.address ||
+      !latestRead()
+    )
+      throw new Error('Token balance refresh context changed');
+    this.assetUpdateRequestId += 1;
+    const refreshedAsset = { ...existingAsset, ...balance };
+    const ethereumAssets = (
+      latest.accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum ||
+      []
+    ).map((asset) =>
       !asset.isNft &&
       asset.contractAddress?.toLowerCase() === contractLower &&
       (!asset.chainId || asset.chainId === activeNetwork.chainId)
-        ? refreshedAsset
+        ? { ...asset, ...balance }
         : asset
     );
 
@@ -6933,6 +7155,7 @@ class MainController {
         to: tx.to,
         value: this.convertHexValue(tx.value) || '0',
         blockNumber: blockNumber,
+        balanceRefreshBlockNumber: receipt ? latestBlock : null,
         blockHash: receipt ? receipt.blockHash : null,
         timestamp: timestamp,
         confirmations,
