@@ -21,7 +21,7 @@ jest.mock('react-redux', () => ({
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: any) => options?.defaultValue || key,
+    t: (key: string) => key,
   }),
 }));
 jest.mock('hooks/useController', () => ({
@@ -72,7 +72,7 @@ describe('smart account setup status safety', () => {
 
   it('shows useful feedback during a slow initial check', () => {
     const markup = render([null, false, true, false, true, '']);
-    expect(markup).toContain('taking longer than expected');
+    expect(markup).toContain('settings.smartAccountInfrastructureCheckingSlow');
     expect(markup).not.toContain('settings.smartAccountCreate2Missing');
   });
 
@@ -82,7 +82,7 @@ describe('smart account setup status safety', () => {
     expect(markup).not.toContain(
       'settings.smartAccountInfrastructureMissingCount'
     );
-    expect(markup).toContain('Check status');
+    expect(markup).toContain('settings.smartAccountInfrastructureCheckStatus');
   });
 
   it('keeps a pending deployment disabled after reopening the screen', () => {
@@ -97,7 +97,7 @@ describe('smart account setup status safety', () => {
       false,
       '',
     ]);
-    expect(markup).toContain('Deployment is pending');
+    expect(markup).toContain('settings.smartAccountInfrastructurePending');
     expect(markup).toMatch(
       /<button[^>]*disabled[^>]*>settings.deploySmartAccountInfrastructure/
     );

@@ -104,14 +104,14 @@ const InfrastructurePanel = ({
   useEffect(() => {
     setSlow(false);
     if (!reading) return;
-    const timer = setTimeout(() => setSlow(true), 1800);
+    const timer = setTimeout(() => setSlow(true), 1200);
     return () => clearTimeout(timer);
   }, [reading]);
 
   useEffect(() => {
     setSlowDeployment(false);
     if (!deploying) return;
-    const timer = setTimeout(() => setSlowDeployment(true), 1800);
+    const timer = setTimeout(() => setSlowDeployment(true), 1200);
     return () => clearTimeout(timer);
   }, [deploying]);
 
@@ -144,10 +144,7 @@ const InfrastructurePanel = ({
         setMessage(
           insufficientGas
             ? t('settings.smartAccountInfrastructureInsufficientGas')
-            : t('settings.smartAccountInfrastructureCheckBeforeRetry', {
-                defaultValue:
-                  'Setup stopped or is still pending. Check the updated status before continuing; submitted transactions may still confirm.',
-              })
+            : t('settings.smartAccountInfrastructureCheckBeforeRetry')
         );
       }
     } finally {
@@ -177,10 +174,7 @@ const InfrastructurePanel = ({
             {!current ? (
               <p>
                 {unavailable || slow
-                  ? t('settings.smartAccountInfrastructureCheckingSlow', {
-                      defaultValue:
-                        'Setup status is taking longer than expected. You can check again or leave this page.',
-                    })
+                  ? t('settings.smartAccountInfrastructureCheckingSlow')
                   : t('buttons.loading')}
               </p>
             ) : (
@@ -203,12 +197,7 @@ const InfrastructurePanel = ({
               </>
             )}
             {(current?.pending || slowDeployment) && (
-              <p>
-                {t('settings.smartAccountInfrastructurePending', {
-                  defaultValue:
-                    'Deployment is pending. Status updates automatically; you can leave this page.',
-                })}
-              </p>
+              <p>{t('settings.smartAccountInfrastructurePending')}</p>
             )}
             {message && <p>{message}</p>}
           </div>
@@ -218,9 +207,7 @@ const InfrastructurePanel = ({
             disabled={reading}
             onClick={() => void refresh()}
           >
-            {t('settings.smartAccountInfrastructureCheckStatus', {
-              defaultValue: 'Check status',
-            })}
+            {t('settings.smartAccountInfrastructureCheckStatus')}
           </Button>
           {current?.create2Deployer.deployed && Boolean(missing?.length) && (
             <Button
