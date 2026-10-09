@@ -182,13 +182,16 @@ describe('custom token validation cancellation', () => {
     'explains manual import when network %s has no discovery API',
     (chainId) => {
       (getCurrentTab as jest.Mock).mockReturnValue('owned');
+      (useSearchParams as jest.Mock).mockReturnValue([
+        new URLSearchParams('tab=owned'),
+        jest.fn(),
+      ]);
       (useSelector as jest.Mock).mockReturnValue({
         activeAccount: { type: 'HDAccount', id: 0 },
         accounts: { HDAccount: { 0: { address: ADDRESS } } },
         activeNetwork: { chainId },
         accountAssets: {},
       });
-      render();
       const tree = render();
       expect(
         find(
@@ -207,6 +210,57 @@ describe('custom token validation cancellation', () => {
         )
       ).toBeDefined();
       expect(emitter).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([1, 8453])(
+    'keeps the manual form accessible when network %s loses its API with an owned-tab URL',
+    (chainId) => {
+      (getCurrentTab as jest.Mock).mockReturnValue('owned');
+      const params = new URLSearchParams('tab=owned');
+      (useSearchParams as jest.Mock).mockReturnValue([params, jest.fn()]);
+      const state = {
+        activeAccount: { type: 'HDAccount', id: 0 },
+        accounts: { HDAccount: { 0: { address: ADDRESS } } },
+        activeNetwork: { chainId: 1, apiUrl: 'https://explorer.test/api' },
+        accountAssets: {},
+      };
+      (useSelector as jest.Mock).mockReturnValue(state);
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeUndefined();
+      expect(emitter).toHaveBeenCalledTimes(1);
+
+      (useSelector as jest.Mock).mockReturnValue({
+        ...state,
+        activeNetwork: { chainId },
+      });
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeDefined();
+      expect(emitter).toHaveBeenCalledTimes(1);
+      expect(params.get('tab')).toBe('owned');
+
+      (useSelector as jest.Mock).mockReturnValue(state);
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeUndefined();
+      expect(emitter).toHaveBeenCalledTimes(2);
     }
   );
 

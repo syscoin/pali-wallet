@@ -47,7 +47,7 @@ export const ImportToken: React.FC = () => {
     return tabValue as 'owned' | 'custom';
   };
 
-  const [activeTab, setActiveTab] = useState<'owned' | 'custom'>(
+  const [requestedTab, setRequestedTab] = useState<'owned' | 'custom'>(
     getInitialTab()
   );
 
@@ -88,9 +88,8 @@ export const ImportToken: React.FC = () => {
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
 
-  useEffect(() => {
-    if (!activeNetwork.apiUrl) setActiveTab('custom');
-  }, [activeNetwork.apiUrl]);
+  // Keep the URL preference, but always show manual import without discovery.
+  const activeTab = activeNetwork.apiUrl ? requestedTab : 'custom';
 
   // Use deferred value for search optimization
   const deferredCustomAddress = useDeferredValue(customContractAddress);
@@ -512,9 +511,9 @@ export const ImportToken: React.FC = () => {
   useEffect(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam === 'custom') {
-      setActiveTab('custom');
+      setRequestedTab('custom');
     } else if (tabParam === 'owned') {
-      setActiveTab('owned');
+      setRequestedTab('owned');
     }
   }, [searchParams]);
 
@@ -554,7 +553,7 @@ export const ImportToken: React.FC = () => {
 
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
-    setActiveTab(tab);
+    setRequestedTab(tab);
     updateTabInUrl(tab);
     if (tab === 'custom') {
       setCustomContractAddress('');
