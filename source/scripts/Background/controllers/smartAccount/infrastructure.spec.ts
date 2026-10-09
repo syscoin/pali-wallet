@@ -648,6 +648,95 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     });
   });
 
+  it.each([false, true])(
+    'settles only its unsent hardware attempt after a late journal clear (newer attempt: %s)',
+    async (hasNewerAttempt) => {
+      state.vault.activeAccount = { id: 3, type: KeyringAccountType.Ledger };
+      state.vault.accounts.Ledger = {
+        3: { id: 3, address: '0xcccccccccccccccccccccccccccccccccccccccc' },
+      };
+      deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+        Object.assign(Error('Definitely before broadcast'), {
+          transactionNotBroadcast: true,
+        })
+      );
+      let finishClear!: () => void;
+      let delayed = false;
+      (chromeStorage.setItem as jest.Mock).mockImplementation((key, value) => {
+        if (value === null && !delayed) {
+          delayed = true;
+          return new Promise<void>((resolve) => {
+            finishClear = () => {
+              journalStorage[key] = null;
+              resolve();
+            };
+          });
+        }
+        journalStorage[key] = value;
+        return Promise.resolve();
+      });
+      const deploying = controller.deploySmartAccountInfrastructure();
+      const rejected = expect(deploying).rejects.toThrow(
+        'Infrastructure RPC timed out'
+      );
+      await flush();
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(8001);
+      await rejected;
+      const newer = { contractId: 'factory', attemptId: hash(98) };
+      if (hasNewerAttempt) controller.pendingInfrastructure.set(1, newer);
+      finishClear();
+      await flush();
+      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      const status = await controller.getSmartAccountInfrastructureStatus(true);
+      if (hasNewerAttempt) {
+        expect(status.pending).toEqual(newer);
+      } else {
+        expect(status.pending).toBeUndefined();
+        await expect(
+          controller.deploySmartAccountInfrastructure()
+        ).resolves.toMatchObject({
+          deployed: ['accountImplementation', 'factory'],
+        });
+      }
+    }
+  );
+
+  it('retains a known-unsent attempt when its delayed journal clear fails', async () => {
+    deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+      Object.assign(Error('Definitely before broadcast'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    let rejectClear!: () => void;
+    (chromeStorage.setItem as jest.Mock).mockImplementation((key, value) => {
+      if (value === null)
+        return new Promise<void>((_resolve, reject) => {
+          rejectClear = () => reject(Error('Storage unavailable'));
+        });
+      journalStorage[key] = value;
+      return Promise.resolve();
+    });
+    const deploying = controller.deploySmartAccountInfrastructure();
+    const rejected = expect(deploying).rejects.toThrow(
+      'Infrastructure RPC timed out'
+    );
+    await flush();
+    await jest.advanceTimersByTimeAsync(8001);
+    await rejected;
+    const reservation = controller.pendingInfrastructure.get(1);
+    rejectClear();
+    await flush();
+    expect(controller.pendingInfrastructure.get(1)).toEqual(reservation);
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(
+      reservation
+    );
+    expect(
+      (await controller.getSmartAccountInfrastructureStatus(true)).pending
+    ).toEqual(reservation);
+    expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     'Wallet context changed',
     'insufficient funds',

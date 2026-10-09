@@ -852,15 +852,20 @@ class SmartAccountController {
                     (error as Error)?.message || ''
                   ))))
           ) {
-            await this.infrastructureDeadline(
-              clearInfrastructureJournal(context.chainId, reservation)
-            );
-            if (
-              infrastructurePendingIdentity(
-                this.pendingInfrastructure.get(context.chainId)
-              ) === reservation.attemptId
-            )
-              this.pendingInfrastructure.delete(context.chainId);
+            const releaseRejectedAttempt = clearInfrastructureJournal(
+              context.chainId,
+              reservation
+            ).then(() => {
+              // A successful clear may arrive after its deadline. Settle the
+              // same unsent in-memory attempt then, without touching a retry.
+              if (
+                infrastructurePendingIdentity(
+                  this.pendingInfrastructure.get(context.chainId)
+                ) === reservation.attemptId
+              )
+                this.pendingInfrastructure.delete(context.chainId);
+            });
+            await this.infrastructureDeadline(releaseRejectedAttempt);
           }
           throw error;
         }
