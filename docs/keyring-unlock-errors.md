@@ -36,6 +36,15 @@ revalidate the contract against the released package.
 
 The adversarial follow-up on upstream commit `15dd94f` passes 28 targeted cases and the full 19-suite, 300-test keyring suite. These are source-package results; npm publication is still a separate step.
 
+The same planned 1.0.612 release also exposes `transactionNotBroadcast` on
+formatted EVM transaction errors. A per-call flag records whether the provider's
+broadcast method has been entered. Fee lookup, gas estimation and signing
+failures before that boundary are safe to retry; failures after it remain
+ambiguous. The marker must be derived from the current call, overriding a reused
+error's old marker. Pali uses it to release only unsent infrastructure attempts;
+an acknowledged transaction hash always takes precedence. This contract is
+separate from password authentication and never changes failed-login counters.
+
 A separate UI race is fixed in Pali: Home could read stale locked status after
 successful unlock or wallet creation and redirect back to login. Unlock, seed import and new-wallet creation now await a fresh
 authoritative status, and older replies cannot overwrite it. Failed confirmation after successful creation returns to existing-wallet recovery rather than creating the wallet again.

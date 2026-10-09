@@ -14,7 +14,7 @@ Vault read errors and an incomplete vault/key pair fail initialization. They mus
 
 `usePageLoadingState` observes real account/network state. `PageLoadingOverlay` delays the spinner for 150 ms and the blocking backdrop for 500 ms to avoid flicker. After two seconds it changes to a nonblocking status message. The underlying operation continues with its actual status.
 
-`AppLayout` keeps header navigation available but makes Home, transaction, account-editing and account-consent content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. Case, trailing-slash and encoded-path aliases receive the same guards. No timer changes the network to idle or declares a connection failure merely because it is slow.
+`AppLayout` keeps header navigation available but makes Home, transaction, account-editing, account-management, advanced-settings and account-consent content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. Case, trailing-slash and encoded-path aliases receive the same guards. Account-removal confirmations also validate context inside the portal and again in the background before deletion. No timer changes the network to idle or declares a connection failure merely because it is slow.
 
 Approval pages retain their own user-consent and transaction lifecycle. A pending approval is never accepted automatically to meet a responsiveness target.
 
@@ -27,6 +27,12 @@ Before routing an approval, the initial external document registers through Chro
 A failed or malformed status response marks cached lock state unavailable. The layout shows a reconnect message, keeps sensitive actions inert, and polls again after two seconds. Seed, private-key and wallet-forget views unmount on disconnection, clearing their cached plaintext and requiring fresh authentication after reconnection. Header navigation stays available. A shared lifecycle port marks status unavailable immediately if the worker disconnects. Returning focus or visibility revalidates cached status; late replies from before disconnection cannot restore it. A valid response clears the unavailable state. Read-only status requests have an independent 1.8-second timeout and disable transport backoff because the shared poller owns retries; loss of the worker must not silently look like a healthy unlocked wallet.
 
 Unlock, seed import and new-wallet creation refresh the shared authentication status before entering Home. A stale locked response from before authentication cannot overwrite the fresh result. If creation succeeds but status confirmation fails, the UI returns to the existing-wallet recovery screen instead of repeating creation.
+
+## Smart-account infrastructure setup
+
+The Advanced settings card shows explanatory status after 1.2 seconds of waiting, leaving room for route transitions within the two-second feedback target. It distinguishes unavailable status from missing infrastructure and offers a read-only status check. New feedback is translated in every supported locale without inline translation defaults.
+
+Status checks refresh on focus, after deployment finishes or errors, and every five seconds while pending or unavailable (thirty seconds when healthy). A deployment request is never automatically retried. Pending work disables duplicate submission on its chain while allowing navigation and deployment on another chain. Remaining unsigned work stops when wallet context changes; already submitted transactions can still confirm. Neither a UI deadline nor a missing receipt proves that a transaction failed.
 
 ## Lists and stale data
 
