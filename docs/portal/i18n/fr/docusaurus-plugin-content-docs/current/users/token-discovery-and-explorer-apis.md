@@ -11,14 +11,14 @@ Pali peut utiliser l’API d’un explorateur pour trouver des jetons et des NFT
 | Réseau principal Ethereum | Routescan, sans compte ni clé d’API. Prend en charge les jetons ERC-20 et les actifs ERC-721/ERC-1155 compatibles. | Utilisez **Importer un jeton → Ajouter Personnalisé**.                                                                              |
 | Base                      | Aucune API de détection par défaut. Le réseau et son RPC restent disponibles.                                      | Ajoutez des actifs à partir de l’adresse de leur contrat ou configurez une API d’explorateur compatible à laquelle vous avez accès. |
 | Arbitrum One              | Aucune API de détection par défaut. Le réseau et son RPC restent disponibles.                                      | Ajoutez des actifs à partir de l’adresse de leur contrat ou configurez une API d’explorateur compatible à laquelle vous avez accès. |
-| Autres réseaux EVM        | Dépend de l’API d’explorateur configurée pour ce réseau.                                                           | Utilisez **Ajouter Personnalisé** si la détection est indisponible.                                                                 |
+| Autres réseaux EVM        | Dépend de l’API d’explorateur configurée pour ce réseau.                                                           | Ajoutez des actifs à partir de l’adresse de leur contrat si la détection est indisponible.                                          |
 
-Lorsqu’aucune API d’explorateur n’est configurée, Pali ouvre **Ajouter Personnalisé**, masque **Vos Tokens** et explique comment ajouter des actifs ou configurer une API. Effacer une URL d’API ne supprime ni le réseau ni ses actifs importés. Sans API d’explorateur, l’historique des transactions repose sur les transactions enregistrées localement et les consultations RPC ; il peut ne pas retrouver l’intégralité de l’historique antérieur.
+Lorsqu’aucune API d’explorateur n’est configurée, Pali affiche directement le formulaire d’adresse du contrat, sans onglets, avec un bref message et un lien **Aide pour importer des tokens**. Effacer une URL d’API ne supprime ni le réseau ni ses actifs importés. Sans API d’explorateur, l’historique des transactions repose sur les transactions enregistrées localement et les consultations RPC ; il peut ne pas retrouver l’intégralité de l’historique antérieur.
 
 ## Ajouter manuellement un jeton ou un NFT
 
 1. Sélectionnez le réseau et le compte appropriés.
-2. Ouvrez **Importer un jeton → Ajouter Personnalisé**.
+2. Ouvrez **Importer un jeton**. Si des onglets sont affichés, choisissez **Ajouter Personnalisé**.
 3. Saisissez l’adresse du contrat de l’actif sur ce réseau.
 4. Vérifiez les informations détectées pour l’actif. Pour un actif ERC-1155, saisissez également son identifiant de jeton.
 5. Importez l’actif.
@@ -114,7 +114,7 @@ Pali enregistre l’URL d’API configurée dans les paramètres réseau de l’
 ## Résultats vides, API indisponibles et nouvelles tentatives
 
 - **Aucun jeton supplémentaire à importer :** l’API n’a renvoyé aucun actif détenu supplémentaire pris en charge après exclusion des actifs déjà importés. Cela ne prouve pas que le compte ne possède aucun actif ; l’indexation et la couverture des actifs peuvent être incomplètes.
-- **La détection n’est pas configurée :** le réseau n’a pas d’URL d’API d’explorateur. Utilisez **Ajouter Personnalisé** ou configurez un service compatible via **Gérer les réseaux**.
+- **La détection n’est pas configurée :** le réseau n’a pas d’URL d’API d’explorateur. Ajoutez des actifs à partir de l’adresse de leur contrat ou configurez un service compatible via **Gérer les réseaux**.
 - **API indisponible / accès interdit :** vérifiez le point d’accès du fournisseur, la chaîne sélectionnée, la clé d’API et l’offre. Une réponse `403` indique que le fournisseur a refusé l’accès.
 - **Trop de requêtes :** une réponse `429` signifie que le fournisseur limite les requêtes. Son quota peut déjà être épuisé lorsque vous ouvrez la liste pour la première fois. Patientez avant d’utiliser **Réessayer** et vérifiez les limites d’utilisation du fournisseur si les échecs persistent.
 

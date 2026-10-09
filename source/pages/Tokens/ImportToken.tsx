@@ -12,8 +12,8 @@ import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
-import { TbFileImport } from 'components/Icon/Icon';
 import {
+  FiDownload,
   LoadingOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -32,12 +32,11 @@ import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
-import { isRoutescanApiUrl } from 'utils/tokenDiscovery';
 
 export const ImportToken: React.FC = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -90,6 +89,15 @@ export const ImportToken: React.FC = () => {
 
   // Keep the URL preference, but always show manual import without discovery.
   const activeTab = activeNetwork.apiUrl ? requestedTab : 'custom';
+  const language = (i18n.resolvedLanguage || i18n.language || 'en')
+    .toLowerCase()
+    .split('-')[0];
+  const docsLocale = ['es', 'pt', 'fr', 'de', 'ru', 'zh', 'ja', 'ko'].includes(
+    language
+  )
+    ? `/${language}`
+    : '';
+  const importHelpUrl = `https://docs.paliwallet.com${docsLocale}/docs/users/token-discovery-and-explorer-apis`;
 
   // Use deferred value for search optimization
   const deferredCustomAddress = useDeferredValue(customContractAddress);
@@ -602,8 +610,8 @@ export const ImportToken: React.FC = () => {
   return (
     <div className="flex flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
-      <div className="h-10 relative flex items-end justify-center w-full bg-bkg-1 -mt-2">
-        {activeNetwork.apiUrl && (
+      {activeNetwork.apiUrl && (
+        <div className="h-10 relative flex items-end justify-center w-full bg-bkg-1 -mt-2">
           <button
             className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
               activeTab === 'owned'
@@ -611,43 +619,28 @@ export const ImportToken: React.FC = () => {
                 : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
             }`}
             type="button"
+            aria-pressed={activeTab === 'owned'}
             onClick={() => handleTabChange('owned')}
           >
             {t('tokens.yourTokens')}
           </button>
-        )}
-
-        <button
-          className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
-            activeTab === 'custom'
-              ? 'bg-bkg-3 text-brand-white rounded-tl-[2rem]'
-              : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
-          }`}
-          type="button"
-          onClick={() => handleTabChange('custom')}
-        >
-          {t('tokens.addCustomTab')}
-        </button>
-      </div>
+          <button
+            className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
+              activeTab === 'custom'
+                ? 'bg-bkg-3 text-brand-white rounded-tl-[2rem]'
+                : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
+            }`}
+            type="button"
+            aria-pressed={activeTab === 'custom'}
+            onClick={() => handleTabChange('custom')}
+          >
+            {t('tokens.addCustomTab')}
+          </button>
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
-        {!activeNetwork.apiUrl && (
-          <p className="mb-4 text-sm text-brand-gray200">
-            {t('tokens.discoveryUnavailable')}
-          </p>
-        )}
-        {activeTab === 'owned' &&
-          isRoutescanApiUrl(activeNetwork.apiUrl, activeNetwork.chainId) && (
-            <a
-              className="block mb-3 text-xs text-brand-royalblue underline"
-              href="https://routescan.io"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Routescan.io APIs
-            </a>
-          )}
         {activeTab === 'owned' && ownedTokensUnavailable ? (
           <div role="alert">
             <p>{t('settings.apiConnectionError')}</p>
@@ -658,6 +651,27 @@ export const ImportToken: React.FC = () => {
               type="button"
             >
               {t('receive.retry')}
+            </button>
+          </div>
+        ) : activeTab === 'owned' &&
+          !isLoadingOwned &&
+          ownedAssetsForList.length === 0 ? (
+          <div className="flex flex-col items-center text-center px-4 py-12">
+            <div className="w-16 h-16 mb-4 bg-bkg-2 rounded-full flex items-center justify-center">
+              <FiDownload size={32} className="text-brand-royalblue" />
+            </div>
+            <h3 className="text-brand-white font-rubik font-medium text-lg mb-2">
+              {t('tokens.noAdditionalTokensFound')}
+            </h3>
+            <p className="text-brand-gray200 text-sm max-w-xs mb-5">
+              {t('tokens.missingTokenManualImport')}
+            </p>
+            <button
+              className="h-10 px-6 rounded-full bg-brand-royalblue text-brand-white text-sm font-medium hover:bg-brand-royalbluemedium transition-colors"
+              type="button"
+              onClick={() => handleTabChange('custom')}
+            >
+              {t('tokens.addCustomTab')}
             </button>
           </div>
         ) : activeTab === 'owned' ? (
@@ -676,68 +690,105 @@ export const ImportToken: React.FC = () => {
           <div className="space-y-4">
             {/* Contract Address Input */}
             <div className="relative max-w-lg mx-auto">
-              <input
-                className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30 
+              <label
+                className="block mb-2 text-sm font-medium text-brand-white"
+                htmlFor="custom-token-contract"
+              >
+                {t('settings.contractAddress')}
+              </label>
+              <div className="relative">
+                <input
+                  id="custom-token-contract"
+                  className="w-full h-12 px-6 pr-12 bg-brand-blue800 border border-bkg-white200/30
                             rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
                             focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
                             transition-all duration-200"
-                placeholder={t('tokens.enterContractAddress')}
-                value={customContractAddress}
-                onChange={(e) => setCustomContractAddress(e.target.value)}
-              />
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
-                {isValidatingCustom ? (
-                  <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
-                ) : customTokenDetails && customContractAddress ? (
-                  <CheckCircleOutlined className="text-warning-success text-base" />
-                ) : customContractAddress &&
-                  !customTokenDetails &&
-                  !isValidatingCustom ? (
-                  <CloseCircleOutlined className="text-warning-error text-base" />
-                ) : null}
+                  placeholder={t('tokens.enterContractAddress')}
+                  value={customContractAddress}
+                  onChange={(e) => {
+                    setCustomContractAddress(e.target.value);
+                    setCustomTokenDetails(null);
+                    setCustomTokenId('');
+                    setVerifiedTokenBalance(null);
+                    setVerifiedTokenRawBalance(null);
+                  }}
+                />
+                <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-6 h-6">
+                  {isValidatingCustom ? (
+                    <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
+                  ) : customTokenDetails && customContractAddress ? (
+                    <CheckCircleOutlined className="text-warning-success text-base" />
+                  ) : customContractAddress &&
+                    !customTokenDetails &&
+                    !isValidatingCustom ? (
+                    <CloseCircleOutlined className="text-warning-error text-base" />
+                  ) : null}
+                </div>
               </div>
+              {!activeNetwork.apiUrl && (
+                <div className="mt-3 text-xs text-brand-gray200 leading-relaxed">
+                  <p>{t('tokens.discoveryUnavailable')}</p>
+                  <a
+                    className="inline-block mt-1 text-brand-royalbluemedium underline hover:text-brand-white"
+                    href={importHelpUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t('tokens.importHelp')}
+                  </a>
+                </div>
+              )}
             </div>
 
             {/* Token ID Input for ERC-1155 */}
             {customTokenDetails?.tokenStandard === 'ERC-1155' && (
               <div className="relative max-w-lg mx-auto">
-                <input
-                  className="w-full h-12 px-6 pr-14 bg-brand-blue800 border border-bkg-white200/30 
+                <label
+                  className="block mb-2 text-sm font-medium text-brand-white"
+                  htmlFor="custom-token-id"
+                >
+                  {t('send.tokenId')}
+                </label>
+                <div className="relative">
+                  <input
+                    id="custom-token-id"
+                    className="w-full h-12 px-6 pr-14 bg-brand-blue800 border border-bkg-white200/30
                               rounded-full text-brand-white placeholder-brand-gray200/70 text-sm font-poppins
                               focus:border-brand-royalblue/50 focus:outline-none focus:ring-2 focus:ring-brand-royalblue/20
                               transition-all duration-200"
-                  placeholder={t('send.enterTokenId')}
-                  value={customTokenId}
-                  onChange={(e) => setCustomTokenId(e.target.value)}
-                />
-                <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
-                  {isVerifyingTokenId ? (
-                    <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
-                  ) : verifiedTokenBalance !== null && customTokenId ? (
-                    verifiedTokenBalance >= 0 ? (
-                      <CheckCircleOutlined
-                        className={
-                          verifiedTokenBalance === 0
-                            ? 'text-brand-gray200 text-sm'
-                            : 'text-warning-success text-sm'
-                        }
-                        title={
-                          verifiedTokenBalance === 0
-                            ? `${t('tokens.balanceForTokenId', {
-                                balance: 0,
-                              })} ${t('tokens.verifyTokenExists')}`
-                            : t('tokens.balanceForTokenId', {
-                                balance: verifiedTokenBalance,
-                              })
-                        }
-                      />
-                    ) : (
-                      <CloseCircleOutlined
-                        className="text-warning-error text-sm"
-                        title="Invalid token ID format"
-                      />
-                    )
-                  ) : null}
+                    placeholder={t('send.enterTokenId')}
+                    value={customTokenId}
+                    onChange={(e) => setCustomTokenId(e.target.value)}
+                  />
+                  <div className="absolute right-5 top-1/2 transform -translate-y-1/2 flex items-center justify-center w-5 h-5">
+                    {isVerifyingTokenId ? (
+                      <LoadingOutlined className="text-brand-royalblue animate-spin text-sm" />
+                    ) : verifiedTokenBalance !== null && customTokenId ? (
+                      verifiedTokenBalance >= 0 ? (
+                        <CheckCircleOutlined
+                          className={
+                            verifiedTokenBalance === 0
+                              ? 'text-brand-gray200 text-sm'
+                              : 'text-warning-success text-sm'
+                          }
+                          title={
+                            verifiedTokenBalance === 0
+                              ? `${t('tokens.balanceForTokenId', {
+                                  balance: 0,
+                                })} ${t('tokens.verifyTokenExists')}`
+                              : t('tokens.balanceForTokenId', {
+                                  balance: verifiedTokenBalance,
+                                })
+                          }
+                        />
+                      ) : (
+                        <CloseCircleOutlined
+                          className="text-warning-error text-sm"
+                          title="Invalid token ID format"
+                        />
+                      )
+                    ) : null}
+                  </div>
                 </div>
               </div>
             )}
@@ -762,27 +813,6 @@ export const ImportToken: React.FC = () => {
                 fetchingLogos={fetchingLogos}
                 assetType="evm"
               />
-            )}
-
-            {/* Empty state for custom tab */}
-            {!customContractAddress && !customTokenDetails && (
-              <div className="text-center py-12">
-                <div className="relative inline-block mb-4">
-                  <div className="absolute inset-0 bg-brand-royalblue/20 blur-3xl rounded-full"></div>
-                  <div className="relative w-16 h-16 mx-auto bg-bkg-2 rounded-full flex items-center justify-center">
-                    <TbFileImport
-                      size={32}
-                      className="text-brand-royalblue hover:text-brand-royalbluemedium transition-colors duration-200"
-                    />
-                  </div>
-                </div>
-                <h3 className="text-brand-white font-rubik font-medium text-lg mb-1">
-                  {t('tokens.addCustomToken')}
-                </h3>
-                <p className="text-brand-gray200 text-sm font-poppins max-w-xs mx-auto">
-                  {t('tokens.enterContractToImport')}
-                </p>
-              </div>
             )}
           </div>
         )}

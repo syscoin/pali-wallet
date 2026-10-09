@@ -11,14 +11,14 @@ Pali kann über eine Explorer-API Token und NFTs finden, die Sie importieren kö
 | Ethereum Mainnet     | Routescan, ohne Konto oder API-Schlüssel. Unterstützt ERC-20-Token und unterstützte ERC-721-/ERC-1155-Bestände. | Verwenden Sie **Token importieren → Benutzerdefiniert hinzufügen**.                                                               |
 | Base                 | Keine standardmäßige API zur Erkennung. Das Netzwerk und sein RPC bleiben verfügbar.                            | Fügen Sie Assets über ihre Vertragsadresse hinzu oder richten Sie eine kompatible Explorer-API ein, auf die Sie zugreifen dürfen. |
 | Arbitrum One         | Keine standardmäßige API zur Erkennung. Das Netzwerk und sein RPC bleiben verfügbar.                            | Fügen Sie Assets über ihre Vertragsadresse hinzu oder richten Sie eine kompatible Explorer-API ein, auf die Sie zugreifen dürfen. |
-| Andere EVM-Netzwerke | Abhängig von der für das Netzwerk eingerichteten Explorer-API.                                                  | Verwenden Sie **Benutzerdefiniert hinzufügen**, wenn die Erkennung nicht verfügbar ist.                                           |
+| Andere EVM-Netzwerke | Abhängig von der für das Netzwerk eingerichteten Explorer-API.                                                  | Fügen Sie Assets über die Vertragsadresse hinzu, wenn die Erkennung nicht verfügbar ist.                                          |
 
-Wenn keine Explorer-API eingerichtet ist, öffnet Pali **Benutzerdefiniert hinzufügen**, blendet **Ihre Token** aus und erklärt, wie Sie Assets hinzufügen oder eine API einrichten können. Das Löschen einer API-URL entfernt weder das Netzwerk noch seine importierten Assets. Ohne Explorer-API beruht die Transaktionshistorie auf lokal gespeicherten Transaktionen und RPC-Abfragen; eine vollständige ältere Historie lässt sich damit möglicherweise nicht wiederherstellen.
+Wenn keine Explorer-API eingerichtet ist, zeigt Pali direkt das Formular für die Vertragsadresse ohne Registerkarten an, zusammen mit einem kurzen Hinweis und dem Link **Hilfe zum Token-Import**. Das Löschen einer API-URL entfernt weder das Netzwerk noch seine importierten Assets. Ohne Explorer-API beruht die Transaktionshistorie auf lokal gespeicherten Transaktionen und RPC-Abfragen; eine vollständige ältere Historie lässt sich damit möglicherweise nicht wiederherstellen.
 
 ## Einen Token oder NFT manuell hinzufügen
 
 1. Wählen Sie das richtige Netzwerk und Konto aus.
-2. Öffnen Sie **Token importieren → Benutzerdefiniert hinzufügen**.
+2. Öffnen Sie **Token importieren**. Wenn Registerkarten angezeigt werden, wählen Sie **Benutzerdefiniert hinzufügen**.
 3. Geben Sie die Vertragsadresse des Assets in diesem Netzwerk ein.
 4. Prüfen Sie die erkannten Asset-Details. Geben Sie bei einem ERC-1155-Asset zusätzlich seine Token-ID ein.
 5. Importieren Sie das Asset.
@@ -114,7 +114,7 @@ Pali speichert eine eingerichtete API-URL in den Netzwerkeinstellungen der Erwei
 ## Leere Ergebnisse, nicht verfügbare APIs und erneute Versuche
 
 - **Keine weiteren Token zum Importieren:** Die API hat nach Ausschluss bereits importierter Assets keine weiteren unterstützten Bestände zurückgegeben. Das beweist nicht, dass das Konto keine Assets besitzt; die Indexierung und die Abdeckung der Asset-Typen können unvollständig sein.
-- **Erkennung ist nicht eingerichtet:** Für das Netzwerk ist keine Explorer-API-URL hinterlegt. Verwenden Sie **Benutzerdefiniert hinzufügen** oder richten Sie über **Netzwerke verwalten** einen kompatiblen Dienst ein.
+- **Erkennung ist nicht eingerichtet:** Für das Netzwerk ist keine Explorer-API-URL hinterlegt. Fügen Sie Assets über die Vertragsadresse hinzu oder richten Sie über **Netzwerke verwalten** einen kompatiblen Dienst ein.
 - **API nicht verfügbar / Zugriff verweigert:** Prüfen Sie den Endpunkt des Anbieters, die ausgewählte Chain, den API-Schlüssel und den Tarif. Eine Antwort mit `403` bedeutet, dass der Anbieter den Zugriff verweigert hat.
 - **Zu viele Anfragen:** Eine Antwort mit `429` bedeutet, dass der Anbieter Anfragen begrenzt. Sein Kontingent kann bereits beim ersten Öffnen der Liste erschöpft sein. Warten Sie, bevor Sie **Erneut versuchen** wählen, und prüfen Sie bei anhaltenden Fehlern die Nutzungslimits des Anbieters.
 

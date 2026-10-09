@@ -11,14 +11,14 @@ Pali can use an explorer API to find tokens and NFTs you can import. You can als
 | Ethereum mainnet   | Routescan, without an account or API key. Supports ERC-20 tokens and supported ERC-721/ERC-1155 holdings. | Use **Import Token → Add Custom**.                                                         |
 | Base               | No default discovery API. The network and its RPC remain available.                                       | Add assets by contract address, or configure a compatible explorer API you have access to. |
 | Arbitrum One       | No default discovery API. The network and its RPC remain available.                                       | Add assets by contract address, or configure a compatible explorer API you have access to. |
-| Other EVM networks | Depends on the explorer API configured for that network.                                                  | Use **Add Custom** if discovery is unavailable.                                            |
+| Other EVM networks | Depends on the explorer API configured for that network.                                                  | Add assets by contract address if discovery is unavailable.                                |
 
-When no explorer API is configured, Pali opens **Add Custom**, hides **Your Tokens**, and explains how to add assets or configure an API. Clearing an API URL does not remove the network or its imported assets. Without an explorer API, transaction history relies on locally saved transactions and RPC reads; it may not recover a complete older history.
+When no explorer API is configured, Pali shows the contract-address form directly, without tabs, with a short notice and a **Token import help** link. Clearing an API URL does not remove the network or its imported assets. Without an explorer API, transaction history relies on locally saved transactions and RPC reads; it may not recover a complete older history.
 
 ## Add a token or NFT manually
 
 1. Select the correct network and account.
-2. Open **Import Token → Add Custom**.
+2. Open **Import Token**. If tabs are shown, choose **Add Custom**.
 3. Enter the asset's contract address on that network.
 4. Review the detected asset details. For an ERC-1155 asset, also enter its token ID.
 5. Import the asset.
@@ -114,7 +114,7 @@ Pali saves a configured API URL in its extension network settings. A key include
 ## Empty results, unavailable APIs, and retries
 
 - **No additional tokens to import:** the API returned no supported additional holdings after already imported assets were excluded. This does not prove the account has no assets; indexing and asset coverage can be incomplete.
-- **Discovery is not configured:** the network has no explorer API URL. Use **Add Custom**, or configure a compatible service through **Manage networks**.
+- **Discovery is not configured:** the network has no explorer API URL. Add assets by contract address, or configure a compatible service through **Manage networks**.
 - **API unavailable / access forbidden:** check the provider's endpoint, selected chain, API key, and plan. A `403` response indicates the provider refused access.
 - **Too many requests:** a `429` response means the provider is limiting requests. Its quota can already be exhausted when you first open the list. Wait before using **Retry**, and check the provider's usage limits if failures continue.
 

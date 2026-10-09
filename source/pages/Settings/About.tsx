@@ -83,6 +83,15 @@ const AboutView: FC = () => {
           </div>
         </SimpleCard>
 
+        <a
+          className="mt-4 text-xs text-brand-gray200 underline hover:text-brand-white"
+          href="https://routescan.io"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t('settings.tokenDataProvider', { provider: 'Routescan' })}
+        </a>
+
         <div className="w-full px-4 absolute bottom-12 md:static">
           <Button
             className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
