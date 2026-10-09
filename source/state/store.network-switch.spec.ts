@@ -2,7 +2,7 @@ import store, {
   loadAndActivateSlip44Vault,
   restoreSourceVaultAfterUncommittedSwitch,
 } from 'state/store';
-import { setNetworkChange } from 'state/vault';
+import { setNetworkChange, restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 
@@ -63,5 +63,43 @@ describe('network switch vault rollback', () => {
     expect(store.getState().vault.activeNetwork.slip44).toBe(loadedVaultSlip44);
     expect(store.getState().vaultGlobal.activeSlip44).toBe(loadedVaultSlip44);
     errorSpy.mockRestore();
+  });
+
+  it('does not apply a delayed target hydration or stale rollback after a newer wallet is restored', async () => {
+    let completeLoad!: (value: any) => void;
+    const loading = new Promise<any>((resolve) => {
+      completeLoad = resolve;
+    });
+    const loadSpy = jest
+      .spyOn(vaultCache, 'getSlip44Vault')
+      .mockReturnValueOnce(loading);
+    const original = store.getState().vault;
+    const targetNetwork = {
+      ...original.activeNetwork,
+      slip44: 60,
+      url: 'https://delayed-target.example',
+    };
+    let current = true;
+    const activation = (loadAndActivateSlip44Vault as any)(
+      60,
+      targetNetwork,
+      true,
+      () => current
+    );
+    const rejected = expect(activation).rejects.toThrow('Wallet state changed');
+    const newerVault = {
+      ...original,
+      activeNetwork: {
+        ...original.activeNetwork,
+        url: 'https://new-wallet.example',
+      },
+    };
+    store.dispatch(restoreVaultSnapshot(newerVault));
+    const currentVault = store.getState().vault;
+    current = false;
+    completeLoad(null);
+    await rejected;
+    expect(store.getState().vault).toBe(currentVault);
+    loadSpy.mockRestore();
   });
 });

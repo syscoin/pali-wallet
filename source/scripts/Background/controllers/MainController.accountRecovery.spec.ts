@@ -19,6 +19,7 @@ jest.mock('./storageManager', () => ({
 import { getController } from '..';
 import store, * as storeModule from 'state/store';
 import { KeyringAccountType } from 'types/network';
+import { AsyncMutex } from 'utils/asyncMutex';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   SYSCOIN_MAINNET_NETWORK,
@@ -71,6 +72,10 @@ describe('non-destructive account recovery boundaries', () => {
     };
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 0;
+    wallet.walletStateGeneration = 0;
+    wallet.networkRequestGeneration = 0;
+    wallet.authenticationMutex = new AsyncMutex();
+    wallet.performDeferredVaultSave = jest.fn();
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.lockAllKeyrings = jest.fn();
     wallet.checkRateLimit = jest.fn().mockResolvedValue(0);
@@ -381,6 +386,198 @@ describe('non-destructive account recovery boundaries', () => {
           ([action]) => action.type === 'vault/createAccount'
         )
       ).toBe(false);
+    }
+  );
+
+  it('does not revive an old keyring or save its old source snapshot after reset during existing-target setup', async () => {
+    currentState.vault = vault();
+    wallet.walletStateGeneration = 0;
+    const targetKeyring = {
+      isUnlocked: jest.fn().mockReturnValue(false),
+      setSignerNetwork: jest.fn(),
+    };
+    wallet.keyrings = new Map([
+      [57, keyring],
+      [60, targetKeyring],
+    ]);
+    wallet.getActiveKeyring.mockImplementation(() =>
+      wallet.keyrings.get(currentState.vaultGlobal.activeSlip44)
+    );
+    keyring.transferSessionTo.mockImplementation(() => {
+      keyring.isUnlocked.mockReturnValue(false);
+      targetKeyring.isUnlocked.mockReturnValue(true);
+    });
+    (store.dispatch as jest.Mock).mockImplementation((action: any) => {
+      if (action.type === 'vaultGlobal/setActiveSlip44')
+        currentState.vaultGlobal.activeSlip44 = action.payload;
+      return action;
+    });
+    jest
+      .spyOn(storeModule, 'loadAndActivateSlip44Vault')
+      .mockImplementation(async () => {
+        currentState.vault = {
+          ...vault(),
+          activeNetwork: SYSCOIN_MAINNET_NETWORK,
+        };
+        return true;
+      });
+    let finishSetup!: () => void;
+    const setup = new Promise<void>((resolve) => {
+      finishSetup = resolve;
+    });
+    let started!: () => void;
+    const setupStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    targetKeyring.setSignerNetwork.mockImplementation(() => {
+      started();
+      return setup;
+    });
+    wallet.performDeferredVaultSave = jest.fn();
+    const switching = wallet.switchActiveKeyring(SYSCOIN_MAINNET_NETWORK);
+    const rejected = expect(switching).rejects.toThrow(
+      'Wallet session changed'
+    );
+    await setupStarted;
+    wallet.walletSessionGeneration += 1;
+    wallet.walletStateGeneration += 1;
+    targetKeyring.isUnlocked.mockReturnValue(false);
+    const newKeyring = {
+      isUnlocked: jest.fn().mockReturnValue(true),
+      lockWallet: jest.fn(),
+    };
+    const newTargetKeyring = { isUnlocked: jest.fn().mockReturnValue(false) };
+    wallet.keyrings.clear();
+    wallet.keyrings.set(57, newKeyring);
+    wallet.keyrings.set(60, newTargetKeyring);
+    currentState.vault = vault();
+    currentState.vault.accounts.HDAccount[0].address = 'new-wallet-address';
+    currentState.vaultGlobal.activeSlip44 = 57;
+    const snapshot = JSON.stringify(currentState.vault);
+    finishSetup();
+    await rejected;
+    expect(wallet.keyrings.get(60)).toBe(newTargetKeyring);
+    expect(newKeyring.lockWallet).not.toHaveBeenCalled();
+    // The original source was safely queued before target I/O, once only.
+    expect(wallet.performDeferredVaultSave).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(currentState.vault)).toBe(snapshot);
+  });
+
+  it('restores the source when lock invalidates a hydrated target before activation commits', async () => {
+    const source = vault();
+    currentState.vault = source;
+    wallet.keyrings = new Map([
+      [57, keyring],
+      [60, { isUnlocked: () => false }],
+    ]);
+    jest
+      .spyOn(storeModule, 'loadAndActivateSlip44Vault')
+      .mockImplementation(async () => {
+        currentState.vault = {
+          ...vault(),
+          activeNetwork: SYSCOIN_MAINNET_NETWORK,
+        };
+        wallet.walletSessionGeneration += 1;
+        keyring.isUnlocked.mockReturnValue(false);
+        return true;
+      });
+    const rollback = jest
+      .spyOn(storeModule, 'restoreSourceVaultAfterUncommittedSwitch')
+      .mockImplementation((slip44, snapshot) => {
+        if (currentState.vaultGlobal.activeSlip44 !== slip44) return false;
+        currentState.vault = snapshot;
+        return true;
+      });
+    await expect(
+      wallet.switchActiveKeyring(SYSCOIN_MAINNET_NETWORK)
+    ).rejects.toThrow('Wallet session changed');
+    expect(rollback).toHaveBeenCalledWith(57, source);
+    expect(currentState.vault).toEqual(source);
+    expect(keyring.transferSessionTo).not.toHaveBeenCalled();
+  });
+
+  it('rejects the keyring provider failure verdict instead of reporting a successful network switch', async () => {
+    currentState.vault = vault();
+    wallet.keyrings = new Map([[57, keyring]]);
+    keyring.setSignerNetwork = jest.fn().mockResolvedValue({ success: false });
+    await expect(
+      wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
+    ).rejects.toThrow('Failed to configure the selected network');
+  });
+
+  it('allows a complete existing account collection to switch its provider successfully', async () => {
+    currentState.vault = vault();
+    wallet.keyrings = new Map([[57, keyring]]);
+    keyring.setSignerNetwork = jest.fn().mockResolvedValue({ success: true });
+    await expect(
+      wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
+    ).resolves.toBeUndefined();
+    expect(keyring.setSignerNetwork).toHaveBeenCalledWith(
+      SYSCOIN_UTXO_MAINNET_NETWORK
+    );
+    expect(keyring.createFirstAccount).not.toHaveBeenCalled();
+  });
+
+  it('drops a creation session and refuses its account when lock occurs during initialization', async () => {
+    wallet.resetWalletState = jest.fn().mockResolvedValue(undefined);
+    let complete!: (value: any) => void;
+    let started!: () => void;
+    const initializing = new Promise((resolve) => {
+      complete = resolve;
+    });
+    const initializationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    keyring.initializeWalletSecurely = jest.fn().mockImplementation(() => {
+      started();
+      return initializing;
+    });
+    const creating = wallet.createWallet('password', 'test seed');
+    const rejected = expect(creating).rejects.toThrow('Wallet session changed');
+    await initializationStarted;
+    wallet.walletSessionGeneration += 1;
+    keyring.isUnlocked.mockReturnValue(false);
+    complete({ id: 0, address: 'derived-address', xpub: 'derived-public-key' });
+    await rejected;
+    expect(keyring.lockWallet).toHaveBeenCalledTimes(1);
+    expect(wallet.saveWalletState).not.toHaveBeenCalled();
+    expect(
+      (store.dispatch as jest.Mock).mock.calls.some(
+        ([action]) => action.type === 'vault/createAccount'
+      )
+    ).toBe(false);
+    expect(wallet.isCreatingWallet).toBe(false);
+  });
+
+  it.each(['createWallet', 'forgetWallet'])(
+    'waits for pending secret authentication before %s can reset storage',
+    async (method) => {
+      let finish!: (value: string) => void;
+      let started!: () => void;
+      const authenticating = new Promise<string>((resolve) => {
+        finish = resolve;
+      });
+      const authenticationStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      keyring.getSeed = jest.fn().mockImplementation(() => {
+        started();
+        return authenticating;
+      });
+      const secret = wallet.getSeed('password');
+      await authenticationStarted;
+      const exclusive = jest.fn().mockResolvedValue(undefined);
+      wallet[`${method}Exclusive`] = exclusive;
+      const resetting =
+        method === 'createWallet'
+          ? wallet.createWallet('password', 'test seed')
+          : wallet.forgetWallet('password');
+      await Promise.resolve();
+      expect(exclusive).not.toHaveBeenCalled();
+      finish('test seed');
+      await secret;
+      await resetting;
+      expect(exclusive).toHaveBeenCalledTimes(1);
     }
   );
 });

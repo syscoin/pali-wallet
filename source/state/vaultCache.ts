@@ -66,11 +66,22 @@ function omitPasskeyCredentialProfile(slip44State: ISlip44State): ISlip44State {
  */
 class VaultCache {
   private slip44Cache: Map<number, ISlip44State> = new Map();
+  private readGeneration = 0;
 
   /**
    * Get slip44-specific vault state, loading it if not cached
    */
-  async getSlip44Vault(slip44: number): Promise<ISlip44State | null> {
+  async getSlip44Vault(
+    slip44: number,
+    isCurrent: () => boolean = () => true
+  ): Promise<ISlip44State | null> {
+    const readGeneration = this.readGeneration;
+    const assertCurrent = () => {
+      if (readGeneration !== this.readGeneration || !isCurrent()) {
+        throw new Error('Wallet state changed while loading account data');
+      }
+    };
+    assertCurrent();
     // Return from cache if already loaded
     if (this.slip44Cache.has(slip44)) {
       return this.slip44Cache.get(slip44)!;
@@ -78,6 +89,7 @@ class VaultCache {
 
     // Load from storage
     const slip44State = await loadSlip44State(slip44);
+    assertCurrent();
 
     if (slip44State) {
       this.slip44Cache.set(slip44, slip44State);
@@ -91,14 +103,19 @@ class VaultCache {
    */
   async setSlip44Vault(
     slip44: number,
-    slip44State: ISlip44State
+    slip44State: ISlip44State,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
+    if (!isCurrent())
+      throw new Error('Wallet state changed before saving account data');
     // Refresh the cache synchronously when the write is enqueued. A switch back
     // to this slip44 may read the cache while an older persistence operation is
     // still holding the mutex, and must observe this newest snapshot.
     const vaultState = this.prepareSlip44Vault(slip44, slip44State);
 
     return walletPersistenceMutex.runExclusive(async () => {
+      if (!isCurrent())
+        throw new Error('Wallet state changed before saving account data');
       // Save to storage immediately
       await saveSlip44State(slip44, vaultState);
     });
@@ -142,6 +159,7 @@ class VaultCache {
    * Clear cache (useful for logout/reset)
    */
   clearCache(): void {
+    this.readGeneration += 1;
     this.slip44Cache.clear();
     // activeSlip44 now managed by Redux global state
   }

@@ -110,6 +110,7 @@ import {
   fiatPriceMutex,
   networkSwitchMutex,
   accountSwitchMutex,
+  walletPersistenceMutex,
 } from 'utils/asyncMutex';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
@@ -231,6 +232,11 @@ class MainController {
   // Add a property to track network switching state
   private isNetworkSwitching = false;
   private walletSessionGeneration = 0;
+  // Session changes cancel in-flight work; only reset invalidates valid queued
+  // source-vault saves across ordinary network changes and locks.
+  private walletStateGeneration = 0;
+  private networkRequestGeneration = 0;
+  private isCreatingWallet = false;
   private authenticationMutex = new AsyncMutex();
 
   // Auto-lock timer management
@@ -331,6 +337,8 @@ class MainController {
   // Centralized reset routine used by both forgetWallet and createWallet(import)
   private async resetWalletState(options?: { resetNetworks?: boolean }) {
     this.walletSessionGeneration += 1;
+    this.walletStateGeneration += 1;
+    this.networkRequestGeneration += 1;
     const { resetNetworks = false } = options || {};
 
     // Clear all timers first to prevent any background operations
@@ -395,58 +403,62 @@ class MainController {
     clearFetchBackendAccountCache();
     clearRpcCaches();
 
-    // Clear all vault-related storage completely
-    try {
-      await chromeStorage.removeItem('sysweb3-vault');
-      await chromeStorage.removeItem('sysweb3-vault-keys');
-    } catch (error) {
-      console.error(
-        '[MainController] Error clearing vault storage during reset:',
-        error
-      );
-    }
-
-    // Clear all slip44-specific vault states and persisted Redux state
-    try {
-      const allItems = await new Promise<{ [key: string]: any }>(
-        (resolve, reject) => {
-          chrome.storage.local.get(null, (items) => {
-            if (chrome.runtime.lastError) {
-              reject(
-                new Error(
-                  `Failed to get all items: ${chrome.runtime.lastError.message}`
-                )
-              );
-              return;
-            }
-            resolve(items);
-          });
-        }
-      );
-
-      const keysToRemove = Object.keys(allItems).filter(
-        (key) =>
-          key.match(/^state-vault-\d+$/) ||
-          key.startsWith('sysweb3-vault-') ||
-          key.startsWith('pali-slh-dsa-state:') ||
-          key.startsWith('pali-slh-dsa-precompute:') ||
-          key.startsWith('pali-slh-dsa-smart-account-setup:') ||
-          key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
-          key === 'state' ||
-          key.startsWith('state-')
-      );
-
-      if (keysToRemove.length > 0) {
-        await Promise.all(
-          keysToRemove.map((key) => chromeStorage.removeItem(key))
+    await walletPersistenceMutex.runExclusive(async () => {
+      // Clear all vault-related storage completely
+      try {
+        await chromeStorage.removeItem('sysweb3-vault');
+        await chromeStorage.removeItem('sysweb3-vault-keys');
+      } catch (error) {
+        console.error(
+          '[MainController] Error clearing vault storage during reset:',
+          error
         );
       }
-    } catch (error) {
-      console.error(
-        '[MainController] Error clearing slip44 vault states during reset:',
-        error
-      );
-    }
+
+      // Clear all slip44-specific vault states and persisted Redux state
+      try {
+        const allItems = await new Promise<{ [key: string]: any }>(
+          (resolve, reject) => {
+            chrome.storage.local.get(null, (items) => {
+              if (chrome.runtime.lastError) {
+                reject(
+                  new Error(
+                    `Failed to get all items: ${chrome.runtime.lastError.message}`
+                  )
+                );
+                return;
+              }
+              resolve(items);
+            });
+          }
+        );
+
+        const keysToRemove = Object.keys(allItems).filter(
+          (key) =>
+            key.match(/^state-vault-\d+$/) ||
+            key.startsWith('sysweb3-vault-') ||
+            key.startsWith('pali-slh-dsa-state:') ||
+            key.startsWith('pali-slh-dsa-precompute:') ||
+            key.startsWith('pali-slh-dsa-smart-account-setup:') ||
+            key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
+            key === 'state' ||
+            key.startsWith('state-')
+        );
+
+        if (keysToRemove.length > 0) {
+          await Promise.all(
+            keysToRemove.map((key) => chromeStorage.removeItem(key))
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[MainController] Error clearing slip44 vault states during reset:',
+          error
+        );
+      }
+
+      store.dispatch(forgetWallet());
+    });
 
     // Clear global settings via Redux
     store.dispatch(setHasEncryptedVault(false));
@@ -862,10 +874,29 @@ class MainController {
     return keyring;
   }
   // Switch active keyring based on network
-  private async switchActiveKeyring(network: INetwork): Promise<void> {
+  private async switchActiveKeyring(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ): Promise<void> {
+    if (this.isCreatingWallet) {
+      throw new Error(
+        'Wallet creation is in progress. Retry the network change after it completes.'
+      );
+    }
     // Invalidate pending secret exports/unlocks, including an A -> B -> A switch.
     this.walletSessionGeneration += 1;
     const switchGeneration = this.walletSessionGeneration;
+    const walletStateGeneration = this.walletStateGeneration;
+    const isCurrentSwitch = () =>
+      switchGeneration === this.walletSessionGeneration && isCurrent();
+    const assertCurrentSwitch = () => {
+      this.assertCurrentWalletSession(switchGeneration);
+      if (!isCurrent())
+        throw new Error(
+          'Wallet session changed. Unlock the wallet and try again.'
+        );
+    };
+    assertCurrentSwitch();
     const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
@@ -934,6 +965,12 @@ class MainController {
             slip44: activeSlip44,
             vaultState: vaultStateCopy,
           };
+          // Preserve the source before any target awaits. Superseding a switch
+          // must not lose unsaved source data; only wallet reset cancels this.
+          this.performDeferredVaultSave(
+            stateTransaction.deferredSaveData,
+            walletStateGeneration
+          );
         }
 
         // Load vault state for target slip44
@@ -943,8 +980,10 @@ class MainController {
           hasExistingVaultState = await loadAndActivateSlip44Vault(
             slip44,
             network,
-            true // Defer activeSlip44 update until after session transfer
+            true, // Defer activeSlip44 update until after session transfer
+            isCurrentSwitch
           );
+          assertCurrentSwitch();
         } catch (vaultLoadError) {
           console.error(
             `[MainController] Failed to load vault for slip44 ${slip44}:`,
@@ -1000,6 +1039,7 @@ class MainController {
         throw new Error(`Failed to get keyring for slip44: ${slip44}`);
       }
 
+      assertCurrentSwitch();
       // Handle session transfer if needed
       if (needsSessionTransfer && stateTransaction.sourceKeyring) {
         try {
@@ -1047,6 +1087,7 @@ class MainController {
             // Create first account
             // Session data was already transferred, so we can create the first account directly
             const account = await targetKeyring.createFirstAccount();
+            assertCurrentSwitch();
             this.assertCurrentWalletSession(switchGeneration, targetKeyring);
             assertCompleteHDAccountData({ 0: account });
             // Derivation may await the backend. Never write into a changed or
@@ -1099,19 +1140,20 @@ class MainController {
         // For same slip44, the keyring should already be unlocked from previous operations
       }
 
-      await targetKeyring.setSignerNetwork(network);
+      assertCurrentSwitch();
+      const signerResult = await targetKeyring.setSignerNetwork(network);
+      assertCurrentSwitch();
+      if (!signerResult?.success) {
+        throw new Error('Failed to configure the selected network');
+      }
 
       // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
       this.keyrings.set(slip44, targetKeyring);
 
-      // Perform deferred save of previous vault state (non-blocking)
-      if (stateTransaction.deferredSaveData) {
-        this.performDeferredVaultSave(stateTransaction.deferredSaveData);
-      }
-
       // Lock all other keyrings for security AFTER everything is complete
       // Await to guarantee hardware transports are fully released
       for (const [keyringSlip44, keyring] of this.keyrings.entries()) {
+        assertCurrentSwitch();
         if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
           console.log(
             `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
@@ -1129,6 +1171,7 @@ class MainController {
     } catch (error) {
       const sourceVault = stateTransaction.deferredSaveData;
       if (
+        walletStateGeneration === this.walletStateGeneration &&
         isSwitchingSlip44 &&
         sourceVault &&
         restoreSourceVaultAfterUncommittedSwitch(
@@ -1682,16 +1725,20 @@ class MainController {
     return this.getActiveKeyring().isSeedValid(phrase);
   }
 
-  private async setSignerNetwork(network: INetwork) {
+  private async setSignerNetwork(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ) {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent network switches across all contexts
     return networkSwitchMutex.runExclusive(async () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
       // Set network switching flag for UI/logging purposes
       this.isNetworkSwitching = true;
 
       try {
         // switchActiveKeyring handles everything: creating keyring if needed and setting up network
-        await this.switchActiveKeyring(network);
+        await this.switchActiveKeyring(network, isCurrent);
 
         // Return the current wallet state from the keyring
         return {
@@ -1699,7 +1746,7 @@ class MainController {
         };
       } finally {
         // Clear network switching flag
-        this.isNetworkSwitching = false;
+        if (isCurrent()) this.isNetworkSwitching = false;
       }
     });
   }
@@ -1921,15 +1968,22 @@ class MainController {
   }
 
   // Perform deferred vault save in background (non-blocking)
-  private performDeferredVaultSave(deferredSaveData: {
-    slip44: number;
-    vaultState: IVaultState;
-  }) {
+  private performDeferredVaultSave(
+    deferredSaveData: {
+      slip44: number;
+      vaultState: IVaultState;
+    },
+    walletStateGeneration = this.walletStateGeneration
+  ) {
     // Enqueue immediately so a later switch back to this slip44 cannot commit
     // first and then be overwritten by this older snapshot. The promise remains
     // non-blocking, while VaultCache serializes the actual storage operation.
     void vaultCache
-      .setSlip44Vault(deferredSaveData.slip44, deferredSaveData.vaultState)
+      .setSlip44Vault(
+        deferredSaveData.slip44,
+        deferredSaveData.vaultState,
+        () => walletStateGeneration === this.walletStateGeneration
+      )
       .catch((error) => {
         console.error(
           `[MainController] Deferred save failed for slip44 ${deferredSaveData.slip44}:`,
@@ -2021,6 +2075,16 @@ class MainController {
   }
 
   public async forgetWallet(pwd: string) {
+    const walletStateGeneration = this.walletStateGeneration;
+    return this.authenticationMutex.runExclusive(() => {
+      if (walletStateGeneration !== this.walletStateGeneration) {
+        throw new Error('Wallet state changed before reset');
+      }
+      return this.forgetWalletExclusive(pwd);
+    });
+  }
+
+  private async forgetWalletExclusive(pwd: string) {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -2312,6 +2376,21 @@ class MainController {
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
+    const walletStateGeneration = this.walletStateGeneration;
+    return this.authenticationMutex.runExclusive(() => {
+      if (walletStateGeneration !== this.walletStateGeneration) {
+        throw new Error('Wallet state changed before reset');
+      }
+      return this.createWalletExclusive(password, phrase);
+    });
+  }
+
+  private async createWalletExclusive(
+    password: string,
+    phrase: string
+  ): Promise<void> {
+    let creationKeyring: KeyringManager | undefined;
+    this.isCreatingWallet = true;
     try {
       // Ensure a FULL reset before creating a new wallet (import/fresh create)
       await this.resetWalletState({ resetNetworks: true });
@@ -2355,11 +2434,15 @@ class MainController {
       }
 
       const keyring = this.getActiveKeyring();
+      creationKeyring = keyring;
+      const creationGeneration = this.walletSessionGeneration;
 
       // This now uses the separated approach internally:
       // 1. initializeSession() - creates session data only
       // 2. createFirstAccount() - creates account without signer setup
       const account = await keyring.initializeWalletSecurely(phrase, password);
+      this.assertCurrentWalletSession(creationGeneration, keyring);
+      assertCompleteHDAccountData({ 0: account });
 
       // Add account to Redux state FIRST (before signer setup)
       store.dispatch(
@@ -2385,6 +2468,7 @@ class MainController {
       // Save vault state to persistent storage after creating the first account
       // Use sync=true to ensure save completes before continuing
       await this.saveWalletState('create-wallet', true, true);
+      this.assertCurrentWalletSession(creationGeneration, keyring);
 
       // Start auto-lock timer if enabled (> 0)
       const { advancedSettings } = store.getState().vaultGlobal;
@@ -2393,10 +2477,12 @@ class MainController {
         const _minutes = Number(_raw);
         if (Number.isFinite(_minutes) && _minutes > 0) {
           await this.startAutoLockTimer();
+          this.assertCurrentWalletSession(creationGeneration, keyring);
         }
       }
 
       setTimeout(() => {
+        if (creationGeneration !== this.walletSessionGeneration) return;
         // Wrap in try-catch to prevent unhandled errors
         Promise.all([
           this.setFiat().catch((error) =>
@@ -2414,13 +2500,27 @@ class MainController {
         ]);
       }, 10);
     } catch (error) {
+      if (creationKeyring) {
+        try {
+          await creationKeyring.lockWallet();
+        } catch (lockError) {
+          console.error(
+            '[MainController] Creation session cleanup failed:',
+            lockError
+          );
+        }
+      }
       console.error('[MainController] Failed to create wallet:', error);
       throw error;
+    } finally {
+      this.isCreatingWallet = false;
     }
   }
 
   public lock() {
     this.walletSessionGeneration += 1;
+    this.networkRequestGeneration += 1;
+    this.isNetworkSwitching = false;
     const controller = getController();
 
     // Clear any pending timers before locking
@@ -3118,6 +3218,11 @@ class MainController {
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    const requestGeneration = ++this.networkRequestGeneration;
+    const isCurrent = () => requestGeneration === this.networkRequestGeneration;
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
+    };
     const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
     // Cancel the current promise if it exists
     if (this.currentPromise) {
@@ -3156,7 +3261,7 @@ class MainController {
       networkVersion: number;
     }>((resolve, reject) => {
       completeNetwork.kind;
-      this.setActiveNetworkLogic(completeNetwork, resolve, reject);
+      this.setActiveNetworkLogic(completeNetwork, resolve, reject, isCurrent);
     });
 
     this.currentPromise = promiseWrapper;
@@ -3164,11 +3269,14 @@ class MainController {
     // Return the promise chain with error handling attached
     return promiseWrapper.promise
       .then(async () => {
+        assertCurrent();
         await this.handleNetworkChangeSuccess(
           completeNetwork,
           syncUpdates,
-          previousSlip44
+          previousSlip44,
+          isCurrent
         );
+        assertCurrent();
 
         // Return the success result
         const isBitcoinBased = completeNetwork.kind === INetworkType.Syscoin;
@@ -3181,27 +3289,13 @@ class MainController {
       })
       .catch((error) => {
         // Handle the error
-        this.handleNetworkChangeError(error);
+        if (isCurrent()) this.handleNetworkChangeError(error);
 
-        // Don't re-throw cancellation errors
-        if (
-          error === 'Network change cancelled' ||
-          (error && error.message === 'Network change cancelled') ||
-          (error && typeof error === 'string' && error.includes('cancelled')) ||
-          (error &&
-            error.message &&
-            error.message.includes('Cancel by network changing'))
-        ) {
-          // Return a success-like result for cancellations to prevent navigation issues
-          return {
-            chainId: `0x${completeNetwork.chainId.toString(16)}`,
-            networkVersion: completeNetwork.chainId,
-            cancelled: true,
-          };
-        }
-
-        // Re-throw other errors so ChainErrorPage sees them
+        // Cancellation is not a successful switch to the requested chain.
         throw error;
+      })
+      .finally(() => {
+        if (this.currentPromise === promiseWrapper) this.currentPromise = null;
       });
   }
 
@@ -6488,13 +6582,17 @@ class MainController {
     // Users can click on it to go to the error page and retry manually
   };
 
-  private async configureNetwork(network: INetwork): Promise<{
+  private async configureNetwork(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ): Promise<{
     error?: any;
     success: boolean;
   }> {
     try {
       // setSignerNetwork will validate the network when setting up the provider
-      const { success } = await this.setSignerNetwork(network);
+      const { success } = await this.setSignerNetwork(network, isCurrent);
+      if (!isCurrent()) throw new Error('Network change cancelled');
 
       if (success) {
         return { success, error: null };
@@ -6582,8 +6680,13 @@ class MainController {
       network: INetwork;
       networkVersion: number;
     }) => void,
-    reject: (reason?: any) => void
+    reject: (reason?: any) => void,
+    isCurrent: () => boolean = () => true
   ) => {
+    if (!isCurrent()) {
+      reject(new Error('Network change cancelled'));
+      return;
+    }
     // Always dispatch startSwitchNetwork to ensure we're in the correct state
     store.dispatch(startSwitchNetwork(network));
 
@@ -6599,7 +6702,11 @@ class MainController {
 
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {
-      const { success, error } = await this.configureNetwork(network);
+      const { success, error } = await this.configureNetwork(
+        network,
+        isCurrent
+      );
+      if (!isCurrent()) throw new Error('Network change cancelled');
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
 
@@ -6627,8 +6734,13 @@ class MainController {
   private async handleNetworkChangeSuccess(
     network: INetwork,
     syncUpdates = false,
-    previousSlip44: number | null = null
+    previousSlip44: number | null = null,
+    isCurrent: () => boolean = () => true
   ) {
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
+    };
+    assertCurrent();
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
     const { activeAccount } = store.getState().vault;
@@ -6660,6 +6772,7 @@ class MainController {
     clearProviderCache();
     const dappStateChanged =
       await this.ensureActiveAccountCompatibleWithNetwork(network);
+    assertCurrent();
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
@@ -6679,13 +6792,18 @@ class MainController {
         dappStateChanged ||
         hadPendingWalletSave;
       try {
-        await persistCommittedWalletState(this.isNetworkSwitchMainStateDirty);
+        await persistCommittedWalletState(
+          this.isNetworkSwitchMainStateDirty,
+          false,
+          isCurrent
+        );
+        assertCurrent();
         this.isNetworkSwitchMainStateDirty = false;
       } catch (error) {
         // Keep the main state dirty across retries. This is necessary when an
         // earlier attempt removed incompatible dapps in memory but failed to
         // persist them; a later retry must still include the main state.
-        this.isNetworkSwitchMainStateDirty = true;
+        if (isCurrent()) this.isNetworkSwitchMainStateDirty = true;
         throw error;
       }
     }
@@ -6697,16 +6815,25 @@ class MainController {
     if (syncUpdates) {
       try {
         await this.setFiat();
+        assertCurrent();
         await this.getLatestUpdateForCurrentAccount(false);
+        assertCurrent();
       } finally {
-        await this.saveWalletState('network-switch-after-updates', false, true);
+        if (isCurrent())
+          await this.saveWalletState(
+            'network-switch-after-updates',
+            false,
+            true
+          );
       }
       // Don't throw error here - let the UI handle the network status
     } else {
       // Use Promise to ensure these operations complete even if popup closes
       Promise.resolve().then(async () => {
+        if (!isCurrent()) return;
         try {
           await this.setFiat();
+          if (!isCurrent()) return;
           await this.getLatestUpdateForCurrentAccount(false, true);
         } catch (error) {
           console.error(
@@ -6716,7 +6843,7 @@ class MainController {
           // Don't change network status here - it's already set to success
           // The error is just for balance updates, not the network switch itself
         } finally {
-          this.saveWalletState('network-switch-after-updates');
+          if (isCurrent()) this.saveWalletState('network-switch-after-updates');
         }
       });
     }
