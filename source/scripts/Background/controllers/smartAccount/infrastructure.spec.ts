@@ -563,4 +563,135 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       ).toBeUndefined();
     }
   );
+  it.each(['resolve', 'reject'])(
+    'clears a known-unsent reservation when its storage write settles late (%s)',
+    async (settlement) => {
+      state.vault.activeAccount = { id: 3, type: KeyringAccountType.Ledger };
+      state.vault.accounts.Ledger = {
+        3: { id: 3, address: '0xcccccccccccccccccccccccccccccccccccccccc' },
+      };
+      let settle!: () => void;
+      (chromeStorage.setItem as jest.Mock).mockImplementationOnce(
+        (key, value) =>
+          new Promise<void>((resolve, reject) => {
+            settle = () => {
+              journalStorage[key] = value;
+              if (settlement === 'resolve') resolve();
+              else reject(Error('late write failure'));
+            };
+          })
+      );
+      const deploying = controller.deploySmartAccountInfrastructure();
+      const rejected = expect(deploying).rejects.toThrow(
+        'Infrastructure RPC timed out'
+      );
+      await flush();
+      await jest.advanceTimersByTimeAsync(8001);
+      await rejected;
+      expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+      settle();
+      await flush();
+      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      const restarted = new SmartAccountController(deps);
+      await expect(
+        restarted.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        deployed: ['accountImplementation', 'factory'],
+      });
+    }
+  );
+
+  it('does not clear a newer attempt after an older unsent reservation write times out', async () => {
+    let settle!: () => void;
+    (chromeStorage.setItem as jest.Mock).mockImplementationOnce(
+      (key, value) =>
+        new Promise<void>((resolve) => {
+          settle = () => {
+            journalStorage[key] = value;
+            resolve();
+          };
+        })
+    );
+    const deploying = controller.deploySmartAccountInfrastructure();
+    const rejected = expect(deploying).rejects.toThrow(
+      'Infrastructure RPC timed out'
+    );
+    await flush();
+    await jest.advanceTimersByTimeAsync(8001);
+    await rejected;
+    settle();
+    const newer = {
+      contractId: 'factory',
+      attemptId: hash(98),
+      payerAddress: state.vault.accounts.HDAccount[0].address,
+    };
+    journalStorage['pali.infrastructure.pending.v1.1'] = newer;
+    await flush();
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(newer);
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('releases a reservation on the trusted pre-broadcast marker even for an unfamiliar error', async () => {
+    deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+      Object.assign(Error('Fee discovery unavailable'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+      'Fee discovery unavailable'
+    );
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+    await expect(
+      new SmartAccountController(deps).deploySmartAccountInfrastructure()
+    ).resolves.toMatchObject({
+      deployed: ['accountImplementation', 'factory'],
+    });
+  });
+
+  it.each([
+    'Wallet context changed',
+    'insufficient funds',
+    'Transaction Signature Failed. Error: [object Object]',
+  ])(
+    'retains an explicitly ambiguous broadcast reservation despite legacy rejection text: %s',
+    async (message) => {
+      state.vault.activeAccount = { id: 3, type: KeyringAccountType.Ledger };
+      state.vault.accounts.Ledger = {
+        3: { id: 3, address: '0xcccccccccccccccccccccccccccccccccccccccc' },
+      };
+      deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+        Object.assign(Error(message), { transactionNotBroadcast: false })
+      );
+      await expect(
+        controller.deploySmartAccountInfrastructure()
+      ).rejects.toThrow(message);
+      expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+        contractId: 'accountImplementation',
+      });
+      await expect(
+        new SmartAccountController(deps).deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        pending: { contractId: 'accountImplementation' },
+      });
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('keeps an acknowledged hash pending even if a rejection incorrectly carries the pre-broadcast marker', async () => {
+    deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+      Object.assign(Error('Fee discovery unavailable'), {
+        transactionNotBroadcast: true,
+        transactionHash: hash(1),
+      })
+    );
+    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+      'Fee discovery unavailable'
+    );
+    expect(controller.pendingInfrastructure.get(1)).toMatchObject({
+      transactionHash: hash(1),
+    });
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+      contractId: 'accountImplementation',
+    });
+  });
 });

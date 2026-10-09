@@ -24,6 +24,7 @@ jest.mock('utils/navigationState', () => ({
 import { getController } from '..';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 
 import MainController from './MainController';
 
@@ -45,6 +46,9 @@ describe('infrastructure transaction broadcast boundary', () => {
 
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation();
+    (getBlacklistTargetsForEvmCallWithContractType as jest.Mock)
+      .mockReset()
+      .mockResolvedValue([]);
     currentState = {
       vault: {
         activeNetwork: {
@@ -74,6 +78,75 @@ describe('infrastructure transaction broadcast boundary', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it.each(['blacklist discovery', 'context validation', 'keyring preparation'])(
+    'marks a %s failure as definitely before submission',
+    async (stage) => {
+      const error = new Error(`Arbitrary ${stage} failure`);
+      const assertCurrentContext = jest.fn();
+      if (stage === 'blacklist discovery') {
+        (
+          getBlacklistTargetsForEvmCallWithContractType as jest.Mock
+        ).mockRejectedValueOnce(error);
+      } else if (stage === 'context validation') {
+        assertCurrentContext.mockImplementationOnce(() => {
+          throw error;
+        });
+      } else {
+        wallet.getActiveKeyring.mockImplementationOnce(() => {
+          throw error;
+        });
+      }
+
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          { chainId: 1, nonce: 7 },
+          false,
+          account,
+          metadata,
+          { assertCurrentContext }
+        )
+      ).rejects.toMatchObject({
+        message: error.message,
+        transactionNotBroadcast: true,
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('preserves ambiguous failures after entering the sender without a pre-broadcast marker', async () => {
+    const error = Object.assign(
+      new Error('Transport failed after submission'),
+      {
+        code: 'NETWORK_ERROR',
+      }
+    );
+    send.mockRejectedValueOnce(error);
+    await expect(
+      wallet.sendAndSaveEthTransaction(
+        { chainId: 1, nonce: 7 },
+        false,
+        account,
+        metadata,
+        { assertCurrentContext: jest.fn() }
+      )
+    ).rejects.toBe(error);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveProperty('transactionNotBroadcast');
+  });
+
+  it('leaves non-infrastructure preflight errors unchanged', async () => {
+    const error = new Error('Preflight failed');
+    (
+      getBlacklistTargetsForEvmCallWithContractType as jest.Mock
+    ).mockRejectedValueOnce(error);
+    await expect(
+      wallet.sendAndSaveEthTransaction({ chainId: 1 }, false, account)
+    ).rejects.toBe(error);
+    expect(send).not.toHaveBeenCalled();
+    expect(error).not.toHaveProperty('transactionNotBroadcast');
+  });
 
   it('journals the original hash and refuses to file it in a different network after broadcast', async () => {
     let finishBroadcast!: (value: any) => void;

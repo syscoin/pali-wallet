@@ -4686,6 +4686,7 @@ class MainController {
     }
   ): Promise<IEvmTransactionResponse> {
     let txResponse: IEvmTransactionResponse | undefined;
+    let submissionStarted = false;
     try {
       const controller = getController();
 
@@ -4746,6 +4747,7 @@ class MainController {
             activeAccount: targetAccount,
           }));
         }
+        submissionStarted = true;
         txResponse =
           (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
             params,
@@ -4789,6 +4791,18 @@ class MainController {
             error?.message || 'Deployment submission persistence failed'
           ),
           { transactionHash: txResponse.hash }
+        );
+      }
+      if (
+        transactionMetadata?.smartAccountInfrastructureDeployment &&
+        !submissionStarted
+      ) {
+        throw Object.assign(
+          new Error(
+            error?.message ||
+              'Deployment rejected before transaction submission'
+          ),
+          { transactionNotBroadcast: true }
         );
       }
       throw error;

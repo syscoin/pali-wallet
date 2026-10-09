@@ -755,9 +755,22 @@ class SmartAccountController {
             ? nonce
             : undefined,
         };
-        await this.infrastructureDeadline(
-          writeInfrastructureJournal(context.chainId, reservation)
+        const reservationWrite = writeInfrastructureJournal(
+          context.chainId,
+          reservation
         );
+        try {
+          await this.infrastructureDeadline(reservationWrite);
+        } catch (error) {
+          // No sender has been invoked. Storage may finish after its deadline;
+          // release only this unsent attempt once the write actually settles.
+          const clearUnsentAttempt = () =>
+            clearInfrastructureJournal(context.chainId, reservation);
+          void reservationWrite
+            .then(clearUnsentAttempt, clearUnsentAttempt)
+            .catch(() => undefined);
+          throw error;
+        }
         this.pendingInfrastructure.set(context.chainId, reservation);
         this.infrastructureStatusCache.delete(context.key);
         let response: IEvmTransactionResponse;
@@ -818,22 +831,26 @@ class SmartAccountController {
           }
           // Definite pre-broadcast rejection is safe to release. Ambiguous
           // transport failures retain the reservation across worker restarts.
+          const transactionNotBroadcast = (error as any)
+            ?.transactionNotBroadcast;
           if (
             !hash &&
-            ((error as any)?.code === 'ACTION_REJECTED' ||
-              (error as any)?.code === 4001 ||
-              // Keyring hardware signers use this error only when signing
-              // fails, before their provider.sendTransaction call.
-              ([
-                PaliKeyringAccountType.Trezor,
-                PaliKeyringAccountType.Ledger,
-              ].includes(context.account.type) &&
-                /^Transaction Signature Failed\. Error: /.test(
-                  (error as Error)?.message || ''
-                )) ||
-              /insufficient funds|user rejected|user denied|denied transaction|rejected by user|wallet context changed|transaction blocked|target account .*not found/i.test(
-                (error as Error)?.message || ''
-              ))
+            (transactionNotBroadcast === true ||
+              (transactionNotBroadcast === undefined &&
+                ((error as any)?.code === 'ACTION_REJECTED' ||
+                  (error as any)?.code === 4001 ||
+                  // Keyring hardware signers use this error only when signing
+                  // fails, before their provider.sendTransaction call.
+                  ([
+                    PaliKeyringAccountType.Trezor,
+                    PaliKeyringAccountType.Ledger,
+                  ].includes(context.account.type) &&
+                    /^Transaction Signature Failed\. Error: /.test(
+                      (error as Error)?.message || ''
+                    )) ||
+                  /insufficient funds|user rejected|user denied|denied transaction|rejected by user|wallet context changed|transaction blocked|target account .*not found/i.test(
+                    (error as Error)?.message || ''
+                  ))))
           ) {
             await this.infrastructureDeadline(
               clearInfrastructureJournal(context.chainId, reservation)
