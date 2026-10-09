@@ -2452,8 +2452,7 @@ class MainController {
     password: string,
     phrase: string
   ): Promise<void> {
-    // Creation replaces the existing wallet. Reject a missing required crypto
-    // capability before the reset, not after the old vault has been removed.
+    // Check required crypto before any cleanup for the admitted new setup.
     if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues) {
       throw new Error('WebCrypto is required for wallet creation');
     }

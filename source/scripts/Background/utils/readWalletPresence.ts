@@ -6,8 +6,10 @@ export const readWalletPresence = async (): Promise<boolean> => {
     'sysweb3-vault',
     'sysweb3-vault-keys',
   ]);
-  const hasVault = records['sysweb3-vault'] != null;
-  const hasKeys = records['sysweb3-vault-keys'] != null;
+  const vault = records['sysweb3-vault'];
+  const keys = records['sysweb3-vault-keys'];
+  const hasVault = vault !== null && vault !== undefined;
+  const hasKeys = keys !== null && keys !== undefined;
   if (hasVault !== hasKeys) {
     throw new Error(
       'Wallet storage is incomplete. Reload the wallet to retry.'
