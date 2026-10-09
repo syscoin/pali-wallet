@@ -18,10 +18,12 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 jest.mock('./method-handlers', () => ({
   clearProviderCache: jest.fn(),
 }));
+jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 import { getController } from 'scripts/Background';
 import { KeyringAccountType } from 'types/network';
 
+import { popupPromise } from './popup-promise';
 import {
   accountSwitchingMiddleware,
   requestCoordinator,
@@ -98,6 +100,49 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  it.each([true, false])(
+    'requests the connected UTXO account when another account is active (accepted=%s)',
+    async (accepted) => {
+      const connected = { ...accountA, address: 'sys1connected-account' };
+      const active = { ...accountB, address: 'sys1active-account' };
+      getDappAccount.mockReturnValue(connected);
+      mockGetState.mockReturnValue({
+        vault: {
+          accounts: { HDAccount: { 0: connected, 1: active } },
+          activeAccount: { id: 1, type: KeyringAccountType.HDAccount },
+        },
+      });
+      jest.mocked(popupPromise).mockImplementation(async () => {
+        if (!accepted) throw new Error('user rejected');
+        return null;
+      });
+      jest
+        .spyOn(requestCoordinator, 'coordinatePopupRequest')
+        .mockImplementation(async (_context, openPopup) => openPopup());
+      const context = createContext();
+      context.originalRequest.method = 'sys_sign';
+      context.originalRequest.params = [
+        { psbt: 'opaque-psbt', address: active.address },
+      ];
+      const next = jest.fn();
+      if (accepted) await accountSwitchingMiddleware(context, next);
+      else
+        await expect(
+          accountSwitchingMiddleware(context, next)
+        ).rejects.toMatchObject({ code: 4100 });
+      expect(popupPromise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            connectedAccount: connected,
+            accountType: KeyringAccountType.HDAccount,
+          },
+        })
+      );
+      expect(next).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      expect(changeAccount).not.toHaveBeenCalled();
+    }
+  );
 
   it('updates the host connection after the user accepts a required account switch', async () => {
     mockGetState.mockReturnValue({

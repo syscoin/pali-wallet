@@ -18,7 +18,7 @@ describe('PSBT signing errors', () => {
       'Trezor changed an already-finalized input',
       'Trezor external input has an invalid prevout',
       'Trezor external input is missing its prevout',
-    ].map((message) => [
+    ].map((message): [Error, string] => [
       new Error(message),
       'transactions.psbtAccountScopeError',
     ]),
