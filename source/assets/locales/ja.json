@@ -714,6 +714,7 @@
     "enterContractToImport": "上記にコントラクトアドレスを入力してトークンをインポート",
     "yourTokens": "あなたのトークン",
     "addCustomTab": "カスタム追加",
+    "discoveryUnavailable": "このネットワークにはトークンの自動検出が設定されていません。コントラクトアドレスでトークンを追加するか、ネットワーク設定で互換性のあるエクスプローラーAPIを設定してください。",
     "enterAssetGuid": "アセットGUIDを入力（例：123456）",
     "enterAssetGuidToImport": "カスタムSPTトークンをインポートするためにアセットGUIDを入力してください",
     "assetGuid": "GUID",

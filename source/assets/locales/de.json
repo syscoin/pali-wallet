@@ -714,6 +714,7 @@
     "enterContractToImport": "Geben Sie oben eine Vertragsadresse ein, um einen Token zu importieren",
     "yourTokens": "Ihre Token",
     "addCustomTab": "Benutzerdefiniert hinzufügen",
+    "discoveryUnavailable": "Für dieses Netzwerk ist keine automatische Token-Erkennung eingerichtet. Fügen Sie Token über ihre Vertragsadresse hinzu oder richten Sie in den Netzwerkeinstellungen eine kompatible Explorer-API ein.",
     "enterAssetGuid": "Asset-GUID eingeben (z.B. 123456)",
     "enterAssetGuidToImport": "Geben Sie eine Asset-GUID ein, um einen benutzerdefinierten SPT-Token zu importieren",
     "assetGuid": "GUID",

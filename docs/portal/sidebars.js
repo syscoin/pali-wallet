@@ -17,6 +17,7 @@ const sidebars = {
       items: [
         'users/getting-started',
         'users/evm-and-utxo-modes',
+        'users/token-discovery-and-explorer-apis',
         'users/smart-account-validators',
         'users/post-quantum-signer',
         'users/recovery-and-backups',

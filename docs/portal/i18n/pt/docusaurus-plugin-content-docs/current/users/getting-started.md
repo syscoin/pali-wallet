@@ -41,6 +41,8 @@ Dapps EVM podem solicitar:
 - solicitações de adicionar/trocar chain
 - solicitações de chamadas em lote
 
+Para encontrar ou adicionar ativos, consulte [Descoberta de tokens e APIs de exploradores](./token-discovery-and-explorer-apis). O guia aborda a importação manual, os formatos de API compatíveis, as configurações de rede e os limites de acesso dos provedores.
+
 ## Contas UTXO
 
 Use contas UTXO para fluxos de transação Syscoin UTXO e no estilo Bitcoin. Dapps UTXO podem solicitar estado ciente de xpub, endereços de troco, assinatura PSBT e broadcast de transação.

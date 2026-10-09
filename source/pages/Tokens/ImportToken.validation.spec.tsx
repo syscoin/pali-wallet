@@ -129,7 +129,7 @@ describe('custom token validation cancellation', () => {
     (useSelector as jest.Mock).mockReturnValue({
       activeAccount: { type: 'HDAccount', id: 0 },
       accounts: { HDAccount: { 0: { address: ADDRESS } } },
-      activeNetwork: { chainId: 1 },
+      activeNetwork: { chainId: 1, apiUrl: 'https://explorer.test/api' },
       accountAssets: {},
     });
   });
@@ -138,6 +138,131 @@ describe('custom token validation cancellation', () => {
     jest.restoreAllMocks();
     jest.useRealTimers();
   });
+
+  it('attributes Routescan only on its owned-token discovery tab', () => {
+    (getCurrentTab as jest.Mock).mockReturnValue('owned');
+    (useSelector as jest.Mock).mockReturnValue({
+      activeAccount: { type: 'HDAccount', id: 0 },
+      accounts: { HDAccount: { 0: { address: ADDRESS } } },
+      activeNetwork: {
+        chainId: 1,
+        apiUrl:
+          'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api',
+      },
+      accountAssets: {},
+    });
+    const attribution = find(
+      render(),
+      (element) => element.props.href === 'https://routescan.io'
+    );
+    expect(attribution?.props.children).toBe('Routescan.io APIs');
+    expect(
+      find(
+        render(),
+        (element) => element.props.children === 'tokens.discoveryUnavailable'
+      )
+    ).toBeUndefined();
+    const customTab = find(
+      render(),
+      (element) => element.props.children === 'tokens.addCustomTab'
+    );
+    customTab!.props.onClick();
+    expect(
+      find(render(), (element) => element.props.href === 'https://routescan.io')
+    ).toBeUndefined();
+    expect(
+      find(
+        render(),
+        (element) => element.props.children === 'tokens.discoveryUnavailable'
+      )
+    ).toBeUndefined();
+  });
+
+  it.each([8453, 42161])(
+    'explains manual import when network %s has no discovery API',
+    (chainId) => {
+      (getCurrentTab as jest.Mock).mockReturnValue('owned');
+      (useSearchParams as jest.Mock).mockReturnValue([
+        new URLSearchParams('tab=owned'),
+        jest.fn(),
+      ]);
+      (useSelector as jest.Mock).mockReturnValue({
+        activeAccount: { type: 'HDAccount', id: 0 },
+        accounts: { HDAccount: { 0: { address: ADDRESS } } },
+        activeNetwork: { chainId },
+        accountAssets: {},
+      });
+      const tree = render();
+      expect(
+        find(
+          tree,
+          (element) => element.props.children === 'tokens.discoveryUnavailable'
+        )
+      ).toBeDefined();
+      expect(
+        find(tree, (element) => element.props.children === 'tokens.yourTokens')
+      ).toBeUndefined();
+      expect(
+        find(
+          tree,
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeDefined();
+      expect(emitter).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([1, 8453])(
+    'keeps the manual form accessible when network %s loses its API with an owned-tab URL',
+    (chainId) => {
+      (getCurrentTab as jest.Mock).mockReturnValue('owned');
+      const params = new URLSearchParams('tab=owned');
+      (useSearchParams as jest.Mock).mockReturnValue([params, jest.fn()]);
+      const state = {
+        activeAccount: { type: 'HDAccount', id: 0 },
+        accounts: { HDAccount: { 0: { address: ADDRESS } } },
+        activeNetwork: { chainId: 1, apiUrl: 'https://explorer.test/api' },
+        accountAssets: {},
+      };
+      (useSelector as jest.Mock).mockReturnValue(state);
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeUndefined();
+      expect(emitter).toHaveBeenCalledTimes(1);
+
+      (useSelector as jest.Mock).mockReturnValue({
+        ...state,
+        activeNetwork: { chainId },
+      });
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeDefined();
+      expect(emitter).toHaveBeenCalledTimes(1);
+      expect(params.get('tab')).toBe('owned');
+
+      (useSelector as jest.Mock).mockReturnValue(state);
+      render();
+      expect(
+        find(
+          render(),
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeUndefined();
+      expect(emitter).toHaveBeenCalledTimes(2);
+    }
+  );
 
   it('clears the spinner after a pending full address is shortened, without applying the cancelled result', async () => {
     changeAddress(TOKEN);

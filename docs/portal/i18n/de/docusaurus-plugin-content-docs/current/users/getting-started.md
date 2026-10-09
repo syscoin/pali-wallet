@@ -41,6 +41,8 @@ EVM-Dapps können Folgendes anfordern:
 - Anfragen zum Hinzufügen oder Wechseln einer Chain
 - Anfragen für gebündelte Aufrufe
 
+Informationen zum Finden und Hinzufügen von Vermögenswerten finden Sie unter [Token-Erkennung und Explorer-APIs](./token-discovery-and-explorer-apis). Die Anleitung behandelt den manuellen Import, unterstützte API-Formate, Netzwerkeinstellungen und die Zugriffsbeschränkungen der Anbieter.
+
 ## UTXO-Konten
 
 Verwenden Sie UTXO-Konten für Syscoin UTXO und Bitcoin-artige Transaktionsabläufe. UTXO-Dapps können xpub-bezogene Zustandsdaten, Wechselgeldadressen, PSBT-Signaturen und das Senden von Transaktionen anfordern.

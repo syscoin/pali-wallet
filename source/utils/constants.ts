@@ -189,7 +189,7 @@ export const PALI_NETWORKS_STATE = {
       default: true,
       currency: 'eth',
       explorer: 'https://etherscan.io',
-      apiUrl: 'https://eth.blockscout.com/api',
+      apiUrl: 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api',
       kind: INetworkType.Ethereum,
       slip44: 60, // Ethereum
       coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
@@ -201,7 +201,6 @@ export const PALI_NETWORKS_STATE = {
       default: true,
       label: 'Base',
       url: 'https://mainnet.base.org',
-      apiUrl: 'https://base.blockscout.com/api',
       explorer: 'https://basescan.org',
       kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44
@@ -214,7 +213,6 @@ export const PALI_NETWORKS_STATE = {
       default: true,
       label: 'Arbitrum One',
       url: 'https://arb1.arbitrum.io/rpc',
-      apiUrl: 'https://arbitrum.blockscout.com/api',
       explorer: 'https://arbiscan.io',
       kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44

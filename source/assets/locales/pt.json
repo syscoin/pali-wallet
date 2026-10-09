@@ -714,6 +714,7 @@
     "enterContractToImport": "Digite um endereço de contrato acima para importar um token",
     "yourTokens": "Seus Tokens",
     "addCustomTab": "Adicionar Personalizado",
+    "discoveryUnavailable": "A descoberta automática de tokens não está configurada para esta rede. Adicione tokens pelo endereço do contrato ou configure uma API de explorador compatível nas configurações de rede.",
     "enterAssetGuid": "Digite o GUID do ativo (ex., 123456)",
     "enterAssetGuidToImport": "Digite um GUID de ativo para importar um token SPT personalizado",
     "assetGuid": "GUID",

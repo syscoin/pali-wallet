@@ -26,6 +26,7 @@ import {
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { camelCaseToText } from 'utils/index';
+import { isRoutescanApiUrl } from 'utils/tokenDiscovery';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
@@ -153,14 +154,16 @@ export const EvmTransactionDetailsEnhanced = ({
       try {
         let enhancedData = null;
 
-        if (apiUrl) {
+        // Routescan's Etherscan API has no Blockscout gettxinfo action.
+        if (apiUrl && !isRoutescanApiUrl(apiUrl, chainId)) {
           // Use API method for networks with API URL (faster, but may miss some EIP-1559 fields)
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromAPI'],
             [hash, apiUrl]
           );
-        } else {
-          // Use provider method for networks without API URL (slower, but complete)
+        }
+        if (!enhancedData) {
+          // RPC also covers explorers that do not implement gettxinfo.
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
             [hash]
@@ -193,7 +196,7 @@ export const EvmTransactionDetailsEnhanced = ({
     return () => {
       fetchingRef.current = false;
     };
-  }, [hash, apiUrl]);
+  }, [hash, apiUrl, chainId]);
 
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {

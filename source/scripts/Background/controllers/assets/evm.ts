@@ -22,6 +22,7 @@ import {
 } from 'types/tokens';
 import { formatUnits, isAddress, parseUnits } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
+import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
 import {
   discoverNftTokens,
@@ -42,9 +43,12 @@ const discoveryCooldowns = new Map<string, number>();
 const DISCOVERY_COOLDOWN_MS = 60_000;
 const MAX_DISCOVERY_ENDPOINTS = 64;
 
-const coolDownDiscovery = (key: string) => {
+const coolDownDiscovery = (key: string, retryAfterMs = 0) => {
   discoveryCooldowns.delete(key);
-  discoveryCooldowns.set(key, Date.now() + DISCOVERY_COOLDOWN_MS);
+  discoveryCooldowns.set(
+    key,
+    Date.now() + Math.max(DISCOVERY_COOLDOWN_MS, retryAfterMs)
+  );
   if (discoveryCooldowns.size > MAX_DISCOVERY_ENDPOINTS) {
     discoveryCooldowns.delete(discoveryCooldowns.keys().next().value);
   }
@@ -93,7 +97,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const COINGECKO_DETECTION_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache for CoinGecko detection
 
   /**
-   * PATH 1: Get tokens held by user account via Blockscout API
+   * PATH 1: Get tokens held by user account via the configured discovery API
    * Shows what the user actually owns - much more practical than browsing thousands of tokens
    */
   const getUserOwnedTokens = async (
@@ -117,65 +121,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
       throw new Error('Token discovery API is temporarily unavailable');
     }
 
-    console.log(
-      `[EvmAssetsController] Fetching user tokens from API: ${apiUrl}`
-    );
-
-    // Parse API URL and construct tokenlist endpoint
-    const url = new URL(apiUrl);
-    const baseUrl = `${url.protocol}//${url.host}`;
-
-    // Build the token list URL using proper URL API
-    const tokenListUrl = new URL(`${baseUrl}/api`);
-
-    // Extract API key if it's already in the original URL
-    const existingApiKey =
-      url.searchParams.get('apikey') || url.searchParams.get('apiKey');
-
-    // Build the API request
-    tokenListUrl.searchParams.set('module', 'account');
-    tokenListUrl.searchParams.set('action', 'tokenlist');
-    tokenListUrl.searchParams.set('address', walletAddress);
-
-    // Preserve the API key if it was in the original URL
-    if (existingApiKey) {
-      tokenListUrl.searchParams.set('apikey', existingApiKey);
-    }
-
     try {
-      const response = await retryableFetch(tokenListUrl.toString(), {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (data.status !== '1') {
-        // A documented empty result is not the same as NOTOK/rate limiting.
-        if (
-          data.status === '0' &&
-          /^no tokens found$/i.test(String(data.message || data.result || ''))
-        ) {
-          discoveryCooldowns.delete(endpointKey);
-          return [];
-        }
-        throw new Error(
-          'Token discovery API returned an unsuccessful response'
-        );
-      }
-
-      if (!Array.isArray(data.result)) {
-        throw new Error('Token discovery API returned an invalid token list');
-      }
-
-      const tokens = data.result;
+      const tokens = await fetchOwnedTokenRows(
+        apiUrl,
+        walletAddress,
+        activeNetwork.chainId,
+        true
+      );
 
       // Helper function to detect tokens with invisible/funny characters in name
       const hasInvisibleChars = (name: string): boolean => {
@@ -195,7 +147,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             isAddress(token.contractAddress) &&
             !hasInvisibleChars(String(token.name || ''))
         ) // Filter malformed entries and names with invisible chars
-        .map((token: any) => {
+        .map((token: any): ITokenSearchResult | null => {
           try {
             // Check if it's an NFT based on type
             const tokenType = token.type || 'ERC-20';
@@ -264,7 +216,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
       discoveryCooldowns.delete(endpointKey);
       return results;
     } catch (error) {
-      coolDownDiscovery(endpointKey);
+      coolDownDiscovery(
+        endpointKey,
+        error instanceof TokenDiscoveryError ? error.retryAfterMs : 0
+      );
       throw error;
     }
   };
