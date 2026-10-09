@@ -270,6 +270,7 @@
     "gasPrice": "ガス価格",
     "internalError": "内部エラーが発生しました。",
     "transactionCreationFailed": "取引の作成に失敗しました：{{error}}。もう一度お試しください。",
+    "submissionStatusUnknown": "送信状況が不明です。二重送信を防ぐため、ここではこの呼び出しを再試行できません。このウィンドウは閉じてもかまいません。",
     "feeRateInsane": "手数料率 {{value}} {{currency}}/バイトが極めて高く、ネットワークで拒否される可能性があります。",
     "feeRateExtreme": "手数料率 {{value}} {{currency}}/バイトが高すぎて、非標準として拒否される可能性があります。",
     "feeRateHigh": "手数料率 {{value}} {{currency}}/バイトが非常に高いです。正しいかご確認ください。",

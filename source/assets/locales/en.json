@@ -270,6 +270,7 @@
     "gasPrice": "Gas Price",
     "internalError": "An internal error has occurred.",
     "transactionCreationFailed": "Failed to create transaction: {{error}}. Please try again.",
+    "submissionStatusUnknown": "Submission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.",
     "feeRateInsane": "Fee rate {{value}} {{currency}}/byte is extremely high and will likely be rejected by the network.",
     "feeRateExtreme": "Fee rate {{value}} {{currency}}/byte is too high and may be rejected as non-standard.",
     "feeRateHigh": "Fee rate {{value}} {{currency}}/byte is very high. Please verify this is correct.",

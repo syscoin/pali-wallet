@@ -270,6 +270,7 @@
     "gasPrice": "Gas价格",
     "internalError": "发生内部错误。",
     "transactionCreationFailed": "创建交易失败：{{error}}。请重试。",
+    "submissionStatusUnknown": "提交状态未知。为防止重复发送，无法在此重试此调用。您可以关闭此窗口。",
     "feeRateInsane": "费率 {{value}} {{currency}}/byte 极高，网络可能会拒绝。",
     "feeRateExtreme": "费率 {{value}} {{currency}}/byte 过高，可能被拒绝为非标准交易。",
     "feeRateHigh": "费率 {{value}} {{currency}}/byte 很高，请验证是否正确。",

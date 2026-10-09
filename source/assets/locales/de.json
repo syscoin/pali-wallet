@@ -270,6 +270,7 @@
     "gasPrice": "Gaspreis",
     "internalError": "Ein interner Fehler ist aufgetreten.",
     "transactionCreationFailed": "Transaktion konnte nicht erstellt werden: {{error}}. Bitte versuchen Sie es erneut.",
+    "submissionStatusUnknown": "Der Übermittlungsstatus ist unbekannt. Um ein doppeltes Senden zu verhindern, kann dieser Aufruf hier nicht erneut versucht werden. Sie können dieses Fenster schließen.",
     "feeRateInsane": "Die Gebührenrate {{value}} {{currency}}/Byte ist extrem hoch und wird wahrscheinlich vom Netzwerk abgelehnt.",
     "feeRateExtreme": "Die Gebührenrate {{value}} {{currency}}/Byte ist zu hoch und könnte als nicht standardkonform abgelehnt werden.",
     "feeRateHigh": "Die Gebührenrate {{value}} {{currency}}/Byte ist sehr hoch. Bitte überprüfen Sie, ob dies korrekt ist.",

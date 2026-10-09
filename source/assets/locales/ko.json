@@ -270,6 +270,7 @@
     "gasPrice": "가스 가격",
     "internalError": "내부 오류가 발생했습니다.",
     "transactionCreationFailed": "거래 생성 실패: {{error}}. 다시 시도해 주세요.",
+    "submissionStatusUnknown": "전송 상태를 알 수 없습니다. 중복 전송을 방지하기 위해 여기서는 이 호출을 다시 시도할 수 없습니다. 이 창을 닫아도 됩니다.",
     "feeRateInsane": "수수료율 {{value}} {{currency}}/바이트가 극도로 높아 네트워크에서 거부될 수 있습니다.",
     "feeRateExtreme": "수수료율 {{value}} {{currency}}/바이트가 너무 높아 비표준으로 거부될 수 있습니다.",
     "feeRateHigh": "수수료율 {{value}} {{currency}}/바이트가 매우 높습니다. 올바른지 확인해 주세요.",

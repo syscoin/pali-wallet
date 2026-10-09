@@ -270,6 +270,7 @@
     "gasPrice": "Preço do Gas",
     "internalError": "Ocorreu um erro interno.",
     "transactionCreationFailed": "Falha ao criar a transação: {{error}}. Tente novamente.",
+    "submissionStatusUnknown": "O estado do envio é desconhecido. Para evitar o envio em duplicidade, esta chamada não pode ser tentada novamente aqui. Você pode fechar esta janela.",
     "feeRateInsane": "A taxa de {{value}} {{currency}}/byte é extremamente alta e provavelmente será rejeitada pela rede.",
     "feeRateExtreme": "A taxa de {{value}} {{currency}}/byte é muito alta e pode ser rejeitada como não padrão.",
     "feeRateHigh": "A taxa de {{value}} {{currency}}/byte é muito alta. Verifique se está correta.",

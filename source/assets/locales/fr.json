@@ -270,6 +270,7 @@
     "gasPrice": "Prix du gaz",
     "internalError": "Une erreur interne s'est produite.",
     "transactionCreationFailed": "Échec de la création de la transaction: {{error}}. Veuillez réessayer.",
+    "submissionStatusUnknown": "Le statut de l’envoi est inconnu. Pour éviter un double envoi, cet appel ne peut pas être relancé ici. Vous pouvez fermer cette fenêtre.",
     "feeRateInsane": "Le taux de frais {{value}} {{currency}}/byte est extrêmement élevé et sera probablement rejeté par le réseau.",
     "feeRateExtreme": "Le taux de frais {{value}} {{currency}}/byte est trop élevé et peut être rejeté comme non standard.",
     "feeRateHigh": "Le taux de frais {{value}} {{currency}}/byte est très élevé. Veuillez vérifier que c'est correct.",
