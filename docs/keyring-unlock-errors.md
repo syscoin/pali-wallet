@@ -8,7 +8,7 @@ and eventually trigger the five-minute lockout. This is a confirmed mechanism
 and a plausible explanation for the report; the historical incident was not
 reproduced.
 
-The source fix and real WebCrypto regressions belong upstream: UPSTREAM_KEYRING_PR.
+The source fix and real WebCrypto regressions belong upstream: [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15).
 No local package patch is included in Pali. Pali 4.0.70 targets keyring 1.0.612. The package release will be published
 separately; validation uses the upstream source build until that artifact is
 available. The lockfile does not invent an integrity hash for an unpublished artifact. Successful normal login

@@ -4,7 +4,7 @@ Review date: 2026-10-08. Scope: the Chrome extension in this checkout, its insta
 
 ## Upstream keyring release
 
-Pali 4.0.70 targets keyring 1.0.612 from UPSTREAM_KEYRING_PR. No package patch is included here. The package will be published separately; until then validation uses its upstream source build. Earlier patched-dependency measurements below retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the new version.
+Pali 4.0.70 targets keyring 1.0.612 from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15). No package patch is included here. The package will be published separately; until then validation uses its upstream source build. Earlier patched-dependency measurements below retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the new version.
 
 ## Surgical containment of the two priority findings
 
@@ -47,7 +47,7 @@ Evidence: [request budget](../source/utils/requestPayloadBudget.ts), [typed-data
 
 The reported symptom has a plausible implementation cause. The published `@sidhujag/sysweb3-keyring` 1.0.610 and 1.0.611 `unlock()` caught every exception and returned `canLogin: false`. Pali then treated that result as an invalid password and charged a failed attempt. A temporary storage failure, KDF/platform failure or failure rebuilding a session after successful decryption could therefore consume an attempt with the correct password. The configured threshold is ten attempts followed by five minutes of lockout.
 
-The source fix is tracked in UPSTREAM_KEYRING_PR. It distinguishes operational errors from failed vault authentication and clears partially restored secrets. Genuine authentication failures still count. Encryption algorithms and stored key formats stay unchanged. Pali contains no package patch; Pali now targets the fixed 1.0.612 release, which will be published separately.
+The source fix is tracked in [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15). It distinguishes operational errors from failed vault authentication and clears partially restored secrets. Genuine authentication failures still count. Encryption algorithms and stored key formats stay unchanged. Pali contains no package patch; Pali now targets the fixed 1.0.612 release, which will be published separately.
 
 Upstream regressions exercise the implementation with real WebCrypto decryption: transient/missing storage, wrong passwords, legacy vaults, a failed second vault read, post-authentication failures, platform/key-import errors and malformed envelopes. Pali controller tests verify the expected error contract with controlled keyring results; they do not change the behavior of released 1.0.611.
 
