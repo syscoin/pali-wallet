@@ -221,11 +221,11 @@ The closed selector has zero mounted account rows. Keyboard opening, Escape/focu
 
 | Consent check (4x UI CPU) | Actionable (ms) | Search/select max (ms) | Confirm (ms) |
 | --- | ---: | ---: | ---: |
-| close while balance queue active | 600 | — | — |
+| close connection approval with cached balances | 600 | — | — |
 | select first/last and confirm while balances load | 571 | 343 | 205 |
 | request permissions with selected/current accounts pinned | 583 | 373 | 153 |
 
-These consent lists initially mount at most 52 accounts (50 results plus selected/current accounts) rather than all 500. Background balance reads remain independent of the usable consent controls.
+These consent lists initially mount at most 52 accounts (50 results plus selected/current accounts) rather than all 500. The first round used cached balances and verifies approval closure/rejection; the later rounds exercise arriving balance updates. Background balance reads remain independent of the usable consent controls.
 
 Fresh Start loads **1,494,440 bytes** of JavaScript, **37.2% less** than the original-checkout baseline. The unpacked extension is **8,522,724 bytes**; the background bundle is **4,277,963 bytes** against its 4,300,000-byte budget. These are local samples, not percentile or worst-case guarantees. Source/dependency fingerprints, fixtures and timings are in the `smartAccountFollowup` entry of [security-responsiveness-evidence.json](security-responsiveness-evidence.json).
 

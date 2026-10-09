@@ -3322,7 +3322,7 @@
         "rate": 4,
         "rounds": [
           {
-            "name": "close while balance queue active",
+            "name": "close connection approval with cached balances",
             "startedAt": 1791518811932,
             "actionableMs": 600,
             "route": "chrome-extension://phcnldabmgnmkfdogondmpdonngbnflj/external/connect-wallet?data=%7B%22chain%22%3A%22ethereum%22%2C%22chainId%22%3A31345%2C%22host%22%3A%22http%3A%2F%2F127.0.0.1%3A61601%22%2C%22eventName%22%3A%22connect%22%2C%22approvalId%22%3A%226547880c-a66d-442e-9385-9028e656eaae%22%7D",
