@@ -1,4 +1,7 @@
-import { hasExternalWalletPage } from './extensionContexts';
+import {
+  hasExternalWalletPage,
+  isExternalWalletUrl,
+} from './extensionContexts';
 import { WALLET_BOOTSTRAP_TIMEOUT_MS } from './requestWalletState';
 
 describe('live wallet window detection', () => {
@@ -11,7 +14,11 @@ describe('live wallet window detection', () => {
     getContexts = jest.fn();
     tabsQuery = jest.fn((_filter, reply) => reply([]));
     global.chrome = {
-      runtime: { id: 'pali-id', getContexts },
+      runtime: {
+        id: 'pali-id',
+        getURL: (path: string) => `chrome-extension://pali-id${path}`,
+        getContexts,
+      },
       tabs: { query: tabsQuery },
     } as unknown as typeof chrome;
   });
@@ -91,6 +98,40 @@ describe('live wallet window detection', () => {
           pendingUrl: 'chrome-extension://pali-id/external.html?route=hardware',
         },
       ])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+  });
+
+  it.each([
+    '/external.html?route=settings/account/hardware',
+    '/external/connect-wallet',
+    '/external/sign-eth',
+    '/?externalRoute=login',
+  ])('recognizes Firefox runtime URLs at %s', async (path) => {
+    // Firefox uses an internal UUID host, not the manifest/runtime ID.
+    chrome.runtime.getURL = (value) => `moz-extension://internal-uuid${value}`;
+    const url = `moz-extension://internal-uuid${path}`;
+    expect(isExternalWalletUrl(url)).toBe(true);
+    expect(isExternalWalletUrl(`moz-extension://other-uuid${path}`)).toBe(
+      false
+    );
+    expect(isExternalWalletUrl(`moz-extension://pali-id${path}`)).toBe(false);
+    expect(
+      isExternalWalletUrl(`moz-extension://internal-uuid:8443${path}`)
+    ).toBe(false);
+    expect(
+      isExternalWalletUrl(`moz-extension://internal-uuid.evil${path}`)
+    ).toBe(false);
+    expect(isExternalWalletUrl(`chrome-extension://internal-uuid${path}`)).toBe(
+      false
+    );
+    getContexts.mockImplementation((_filter, reply) =>
+      reply([{ documentUrl: url }])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+    delete (chrome.runtime as any).getContexts;
+    tabsQuery.mockImplementation((_filter, reply) =>
+      reply([{ pendingUrl: url }])
     );
     await expect(hasExternalWalletPage()).resolves.toBe(true);
   });

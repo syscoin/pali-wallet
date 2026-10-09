@@ -13,6 +13,7 @@ describe('external wallet creation admission', () => {
     global.chrome = {
       runtime: {
         id: 'pali',
+        getURL: (path: string) => `chrome-extension://pali${path}`,
         getContexts: jest.fn((_filter, reply) => reply(contexts)),
       },
       tabs: { query: jest.fn((_filter, reply) => reply(tabs)) },
@@ -79,6 +80,23 @@ describe('external wallet creation admission', () => {
     expect(create).toHaveBeenCalledTimes(1);
     finish({ id: 12 });
     await first;
+  });
+
+  it('blocks an existing Firefox hardware view and recovers after it closes', async () => {
+    chrome.runtime.getURL = (path) => `moz-extension://internal-uuid${path}`;
+    delete (chrome.runtime as any).getContexts;
+    tabs = [
+      {
+        pendingUrl:
+          'moz-extension://internal-uuid/external.html?route=settings/account/hardware',
+      },
+    ];
+    await expect(createExternalWalletView(create)).rejects.toMatchObject({
+      code: 4100,
+    });
+    expect(create).not.toHaveBeenCalled();
+    tabs = [{ url: 'moz-extension://other-uuid/external/sign-eth' }];
+    await expect(createExternalWalletView(create)).resolves.toEqual({ id: 12 });
   });
 
   it('releases the gate after Chrome creation fails', async () => {

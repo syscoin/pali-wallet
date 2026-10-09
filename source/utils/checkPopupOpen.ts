@@ -1,3 +1,5 @@
+import { isOwnExtensionUrl } from './extensionContexts';
+
 // Utility to check if the extension popup is open
 export const checkIfPopupIsOpen = async (): Promise<boolean> =>
   new Promise((resolve) => {
@@ -6,12 +8,11 @@ export const checkIfPopupIsOpen = async (): Promise<boolean> =>
       typeof chrome.runtime.getContexts === 'function'
     ) {
       // Use getContexts API (modern approach)
-      const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
       (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
         const popupOpen = contexts.some(
           (ctx) =>
             ctx.contextType === 'POPUP' &&
-            ctx.documentOrigin === ourExtensionOrigin
+            isOwnExtensionUrl(ctx.documentUrl || ctx.documentOrigin)
         );
         resolve(popupOpen);
       });

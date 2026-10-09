@@ -63,7 +63,10 @@ describe('main wallet external view lifecycle', () => {
     storageChanged.mockReset();
     (hasExternalWalletPage as jest.Mock).mockReset();
     global.chrome = {
-      runtime: { id: 'pali' },
+      runtime: {
+        id: 'pali',
+        getURL: (path: string) => `chrome-extension://pali${path}`,
+      },
       storage: {
         onChanged: { addListener: storageChanged, removeListener: jest.fn() },
       },
@@ -151,6 +154,27 @@ describe('main wallet external view lifecycle', () => {
     );
     await flush();
 
+    expect(viewName()).toBe('ExternalActiveMessage');
+  });
+
+  it('refreshes the main wallet guard for its Firefox pending external tab', async () => {
+    chrome.runtime.getURL = (path) => `moz-extension://internal-uuid${path}`;
+    (hasExternalWalletPage as jest.Mock).mockResolvedValueOnce(false);
+    render();
+    await flush();
+    updated.mock.calls[0][0](
+      19,
+      {},
+      { pendingUrl: 'moz-extension://other-uuid/external/sign-eth' }
+    );
+    expect(hasExternalWalletPage).toHaveBeenCalledTimes(1);
+    (hasExternalWalletPage as jest.Mock).mockResolvedValueOnce(true);
+    updated.mock.calls[0][0](
+      19,
+      {},
+      { pendingUrl: 'moz-extension://internal-uuid/external/sign-eth' }
+    );
+    await flush();
     expect(viewName()).toBe('ExternalActiveMessage');
   });
 });

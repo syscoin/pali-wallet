@@ -1,7 +1,22 @@
 import { WALLET_BOOTSTRAP_TIMEOUT_MS } from './requestWalletState';
 
-export const isExternalWalletUrl = (url?: string) => {
+export const isOwnExtensionUrl = (url?: string) => {
   if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const extension = new URL(chrome.runtime.getURL('/'));
+    // Custom extension schemes can have the opaque origin "null". Firefox's
+    // runtime ID also differs from its URL host, so compare the runtime URL.
+    return (
+      parsed.protocol === extension.protocol && parsed.host === extension.host
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const isExternalWalletUrl = (url?: string) => {
+  if (!url || !isOwnExtensionUrl(url)) return false;
   try {
     const parsed = new URL(url);
     const externalPath =
@@ -10,11 +25,7 @@ export const isExternalWalletUrl = (url?: string) => {
       parsed.pathname.startsWith('/external/') ||
       (parsed.pathname === '/' &&
         Boolean(parsed.searchParams.get('externalRoute')));
-    return (
-      parsed.protocol === 'chrome-extension:' &&
-      parsed.hostname === chrome.runtime.id &&
-      externalPath
-    );
+    return externalPath;
   } catch {
     return false;
   }
