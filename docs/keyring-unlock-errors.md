@@ -22,7 +22,7 @@ The upstream contract required by Pali is:
   propagate without consuming password attempts.
 - Partially initialized sessions are cleared after an operational failure.
 - Authentication failures carry an internal error identity. An unrelated storage or KDF error with a matching public error code must not consume a password attempt.
-- Interrupted legacy migration is retryable after the encrypted vault has been rewritten but before migration metadata is saved. GCM always uses the derived key; the raw legacy password is used only for legacy CBC data.
+- Interrupted legacy migration is retryable after the encrypted vault has been rewritten but before migration metadata is saved. GCM always uses the derived key. Legacy CBC data tries the legacy password and then the derived key, so retry also works when WebCrypto was unavailable during the interrupted rewrite.
 - Legacy double-encrypted secrets are validated before any replacement write. Empty or unrecoverable secrets preserve the original stored data. Secret-buffer cleanup does not depend on random-number generation succeeding.
 - GCM authentication failure remains indistinguishable from damaged ciphertext
   and still counts as a failed attempt. Malformed envelope metadata is an
@@ -34,7 +34,7 @@ results. Upstream regressions exercise the actual implementation with WebCrypto;
 those tests are owned by the keyring repository. The dependency upgrade must
 revalidate the contract against the released package.
 
-The adversarial follow-up on upstream commit `15dd94f` passes 28 targeted cases and the full 19-suite, 300-test keyring suite. These are source-package results; npm publication is still a separate step.
+Upstream commit `5e253bf` passes 30 targeted authentication cases, 13 transaction-submission boundary cases and the full 20-suite, 315-test keyring suite. Interrupted-migration regressions cover both WebCrypto and CBC fallback, reject a wrong password without rewriting stored records, and preserve operational decryption errors. These are source-package results; npm publication is still a separate step.
 
 The same planned 1.0.612 release also exposes `transactionNotBroadcast` on
 formatted EVM transaction errors. A per-call flag records whether the provider's

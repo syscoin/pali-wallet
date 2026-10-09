@@ -1626,20 +1626,20 @@
   "smartAccountFollowup": {
     "pullRequest": "https://github.com/syscoin/pali-wallet/pull/851",
     "build": {
-      "measuredAt": "2026-10-09T03:06:55.868Z",
+      "measuredAt": "2026-10-09T04:05:46.452Z",
       "snapshot": {
-        "measuredAt": "2026-10-09T03:05:49.113542+00:00",
-        "paliSourceCommit": "6e5f61084f38f7fb470bdd386f02efc897a6e7b6",
-        "runtimeSourceFingerprintSha256": "2a72b5ab2fbc7e745a677141b293f60d2beed5f14e96e2ed593635787f84258f",
+        "measuredAt": "2026-10-09T04:02:12.405181+00:00",
+        "paliSourceCommit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+        "runtimeSourceFingerprintSha256": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3",
         "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
-        "runtimeFileCount": 542,
+        "runtimeFileCount": 544,
         "paliVersion": "4.0.70",
         "keyringVersion": "1.0.612",
-        "keyringSourceCommit": "7f80edd0ff3d024fdc5d20480948760b06755a1f",
+        "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
         "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
         "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
-        "localDependencyTarballSha256": "49980dc845a243dc9de43586d04168117fca4edfd027f9001ddc14d214ba53b8",
-        "webpackStatsSha256": "9b733027fe6a5fcc6bd48dcfab8f08a8b239db30c7ccf2b7853cba759a5b507a",
+        "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce",
+        "webpackStatsSha256": "bf75c2c50dfbcb6b12bbef20082e723b8058460c553df3bc32b999e65654f5b2",
         "buildDirectory": "/tmp/pali-audit/optimized",
         "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamkeyring1.0.612 localpack, no local package patch."
       },
@@ -1683,18 +1683,18 @@
       },
       "optimized": {
         "app": {
-          "bytes": 1481981,
-          "gzipBytes": 453063,
+          "bytes": 1482906,
+          "gzipBytes": 453323,
           "budgetBytes": 1600000
         },
         "external": {
-          "bytes": 1478961,
-          "gzipBytes": 452148,
+          "bytes": 1479463,
+          "gzipBytes": 452271,
           "budgetBytes": 1600000
         },
         "background": {
-          "bytes": 4272191,
-          "gzipBytes": 1199707,
+          "bytes": 4277963,
+          "gzipBytes": 1201153,
           "budgetBytes": 4300000
         },
         "contentScript": {
@@ -1703,7 +1703,7 @@
           "budgetBytes": 16000
         },
         "package": {
-          "bytes": 8503580,
+          "bytes": 8522724,
           "budgetBytes": 9000000
         }
       },
@@ -1718,18 +1718,18 @@
           "totalJSBytes": 2379521
         },
         "optimized": {
-          "initialJSBytes": 1481981,
+          "initialJSBytes": 1482906,
           "lazyJSFiles": [
             "js/6542.bundle.js",
             "js/8289.bundle.js"
           ],
-          "lazyJSBytes": 11609,
-          "totalJSBytes": 1493590
+          "lazyJSBytes": 11534,
+          "totalJSBytes": 1494440
         }
       },
-      "firstRouteReductionPercent": 37.231484824046525,
-      "firstRouteLazyReductionPercent": 98.71391506455352,
-      "packageReductionPercent": 1.4988231748205405,
+      "firstRouteReductionPercent": 37.19576334901016,
+      "firstRouteLazyReductionPercent": 98.72222382242745,
+      "packageReductionPercent": 1.2770687456105767,
       "notes": [
         "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
         "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
@@ -1737,8 +1737,13 @@
       ]
     },
     "validation": {
-      "jestSuites": 127,
-      "jestTests": 1149,
+      "testSnapshot": {
+        "commit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+        "command": "yarn test source tests --runInBand --coverage=false",
+        "runtimeSourceFingerprintSha256": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3"
+      },
+      "jestSuites": 135,
+      "jestTests": 1263,
       "typescript": "passed",
       "eslint": "0 errors, 6 existing warnings",
       "translations": "No missing, extra, empty, or unused keys; no added inline translation defaults",
@@ -1749,90 +1754,90 @@
       "steps": [
         {
           "name": "open fresh wallet",
-          "durationMs": 181,
+          "durationMs": 176,
           "status": "passed"
         },
         {
           "name": "import disposable seed",
-          "durationMs": 143,
+          "durationMs": 168,
           "status": "passed"
         },
         {
           "name": "fill wallet password",
-          "durationMs": 44,
+          "durationMs": 17,
           "status": "passed"
         },
         {
           "name": "submit wallet creation",
-          "durationMs": 313,
+          "durationMs": 311,
           "status": "passed"
         },
         {
           "name": "wait for home route",
-          "durationMs": 189,
+          "durationMs": 180,
           "status": "passed"
         },
         {
           "name": "verify newly imported wallet unlocked",
-          "durationMs": 28,
+          "durationMs": 29,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 1157,
+          "durationMs": 1154,
           "status": "passed"
         },
         {
           "name": "switch to first isolated EVM",
-          "durationMs": 78,
+          "durationMs": 79,
           "status": "passed"
         },
         {
           "name": "slow status read gives feedback before two seconds",
-          "durationMs": 3121,
+          "durationMs": 3138,
           "status": "passed"
         },
         {
           "name": "start deployment on first chain with mining paused",
-          "durationMs": 1308,
+          "durationMs": 1314,
           "status": "passed"
         },
         {
           "name": "deploy all contracts on second chain while first chain remains pending",
-          "durationMs": 554,
+          "durationMs": 555,
           "status": "passed"
         },
         {
           "name": "revisit pending chain without submitting duplicates",
-          "durationMs": 1345,
+          "durationMs": 1337,
           "status": "passed"
         },
         {
           "name": "worker restart preserves pending deployment identity",
-          "durationMs": 683,
+          "durationMs": 672,
           "status": "passed"
         },
         {
           "name": "confirm first transaction then resume only remaining contracts",
-          "durationMs": 671,
+          "durationMs": 670,
           "status": "passed"
         },
         {
           "name": "switching networks during broadcast preserves the original transaction",
-          "durationMs": 2810,
+          "durationMs": 2894,
           "status": "passed"
         },
         {
           "name": "worker loss before RPC acknowledgment retains unknown submission and prevents resend",
-          "durationMs": 1841,
+          "durationMs": 1860,
           "status": "passed"
         }
       ],
       "build": "/tmp/pali-audit/optimized",
       "chromium": "149.0.7827.55",
       "contractCount": 10,
-      "statusFeedbackMs": 1326,
-      "deploymentFeedbackMs": 1302,
+      "statusFeedbackMs": 1329,
+      "deploymentFeedbackMs": 1308,
       "firstPending": {
         "contractId": "entryPoint",
         "hasTransactionHash": true
@@ -1857,12 +1862,12 @@
       "steps": [
         {
           "name": "open fresh wallet",
-          "durationMs": 140,
+          "durationMs": 142,
           "status": "passed"
         },
         {
           "name": "import disposable seed",
-          "durationMs": 165,
+          "durationMs": 168,
           "status": "passed"
         },
         {
@@ -1872,37 +1877,37 @@
         },
         {
           "name": "submit wallet creation",
-          "durationMs": 308,
+          "durationMs": 306,
           "status": "passed"
         },
         {
           "name": "wait for home route",
-          "durationMs": 186,
+          "durationMs": 182,
           "status": "passed"
         },
         {
           "name": "verify newly imported wallet unlocked",
-          "durationMs": 36,
+          "durationMs": 29,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 739,
+          "durationMs": 431,
           "status": "passed"
         },
         {
           "name": "lock using background controller",
-          "durationMs": 5,
+          "durationMs": 2,
           "status": "passed"
         },
         {
           "name": "stop extension service worker to simulate idle",
-          "durationMs": 3,
+          "durationMs": 1,
           "status": "passed"
         },
         {
           "name": "reload locked wallet",
-          "durationMs": 411,
+          "durationMs": 388,
           "status": "passed"
         },
         {
@@ -1912,7 +1917,7 @@
         },
         {
           "name": "unlock existing wallet",
-          "durationMs": 171,
+          "durationMs": 186,
           "status": "passed"
         },
         {
@@ -1922,7 +1927,7 @@
         },
         {
           "name": "remain on unlocked home after 2.2 seconds",
-          "durationMs": 2206,
+          "durationMs": 2203,
           "status": "passed"
         }
       ],
@@ -1942,7 +1947,7 @@
         "calls": [
           {
             "method": "wallet.isUnlocked",
-            "durationMs": 1,
+            "durationMs": 2,
             "result": false
           },
           {
@@ -1952,7 +1957,7 @@
           },
           {
             "method": "wallet.unlockFromController",
-            "durationMs": 151,
+            "durationMs": 163,
             "result": true
           },
           {
@@ -1972,7 +1977,7 @@
           },
           {
             "method": "wallet.isUnlocked",
-            "durationMs": 2,
+            "durationMs": 1,
             "result": true
           }
         ],
@@ -1985,22 +1990,22 @@
       "steps": [
         {
           "name": "open fresh wallet",
-          "durationMs": 141,
+          "durationMs": 178,
           "status": "passed"
         },
         {
           "name": "import disposable seed",
-          "durationMs": 164,
+          "durationMs": 177,
           "status": "passed"
         },
         {
           "name": "fill wallet password",
-          "durationMs": 15,
+          "durationMs": 16,
           "status": "passed"
         },
         {
           "name": "submit wallet creation",
-          "durationMs": 312,
+          "durationMs": 310,
           "status": "passed"
         },
         {
@@ -2010,72 +2015,72 @@
         },
         {
           "name": "verify newly imported wallet unlocked",
-          "durationMs": 32,
+          "durationMs": 30,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 1135,
+          "durationMs": 1132,
           "status": "passed"
         },
         {
           "name": "switch disposable wallet to Ethereum",
-          "durationMs": 813,
+          "durationMs": 812,
           "status": "passed"
         },
         {
           "name": "open disposable local dapp",
-          "durationMs": 82,
+          "durationMs": 101,
           "status": "passed"
         },
         {
           "name": "routed connect rejects main-view forgery then accepts user approval",
-          "durationMs": 910,
+          "durationMs": 955,
           "status": "passed"
         },
         {
           "name": "routed personal-sign returns verifiable signature",
-          "durationMs": 507,
+          "durationMs": 521,
           "status": "passed"
         },
         {
           "name": "routed typed-data returns verifiable signature",
-          "durationMs": 456,
+          "durationMs": 468,
           "status": "passed"
         },
         {
           "name": "closing routed approval rejects request",
-          "durationMs": 312,
+          "durationMs": 298,
           "status": "passed"
         },
         {
           "name": "lock disposable wallet",
-          "durationMs": 10,
+          "durationMs": 11,
           "status": "passed"
         },
         {
           "name": "locked approval survives login route and signing route",
-          "durationMs": 791,
+          "durationMs": 782,
           "status": "passed"
         },
         {
           "name": "locked typed-data preserves literal URL delimiters through login",
-          "durationMs": 800,
+          "durationMs": 826,
           "status": "passed"
         },
         {
           "name": "slow approval handshake offers recovery then accepts a valid late reply",
-          "durationMs": 3209,
+          "durationMs": 3215,
           "status": "passed"
         },
         {
           "name": "standalone hardware page bypasses approval authentication and blocks overlapping prompts",
-          "durationMs": 319,
+          "durationMs": 321,
           "status": "passed"
         },
         {
           "name": "dapp approval resumes after standalone hardware page closes",
-          "durationMs": 3222,
+          "durationMs": 3237,
           "status": "passed"
         }
       ],
@@ -2085,7 +2090,7 @@
       "clonedExternalWindowRejected": true,
       "signRoute": "/external/tx/ethSign",
       "lockedRoute": "/",
-      "slowHandshakeFeedbackMs": 1871.5999999046326,
+      "slowHandshakeFeedbackMs": 1881.9000000953674,
       "hardwarePageRoutedWithoutApproval": true,
       "hardwarePromptExclusion": true,
       "hardwareCloseRestoresDappApproval": true,
@@ -2093,18 +2098,18 @@
       "backgroundErrors": []
     },
     "payloadWork": {
-      "measuredAt": "2026-10-09T03:06:43.703Z",
+      "measuredAt": "2026-10-09T04:05:09.445Z",
       "build": "/tmp/pali-audit/optimized",
       "cases": {
         "results": [
           {
             "name": "liveness before hostile requests",
-            "durationMs": 1.8999996185302734,
+            "durationMs": 1.9000000953674316,
             "response": false
           },
           {
             "name": "100 KiB personal signing text",
-            "durationMs": 1.1999998092651367,
+            "durationMs": 1.0999999046325684,
             "response": {
               "error": {
                 "code": -32602,
@@ -2114,7 +2119,7 @@
           },
           {
             "name": "64-level request nesting",
-            "durationMs": 0.09999990463256836,
+            "durationMs": 0.7000002861022949,
             "response": {
               "error": {
                 "code": -32602,
@@ -2124,7 +2129,7 @@
           },
           {
             "name": "10001-value request array",
-            "durationMs": 1,
+            "durationMs": 0,
             "response": {
               "error": {
                 "code": -32602,
@@ -2134,7 +2139,7 @@
           },
           {
             "name": "51-call batch",
-            "durationMs": 0.5,
+            "durationMs": 0.9000000953674316,
             "response": {
               "error": {
                 "code": -32602,
@@ -2144,7 +2149,7 @@
           },
           {
             "name": "19-level typed schema expansion",
-            "durationMs": 5,
+            "durationMs": 4.5,
             "response": {
               "error": {
                 "message": "Request exceeds wallet work limits: maximum typed-data nesting depth 16",
@@ -2154,7 +2159,7 @@
           },
           {
             "name": "duplicate typed schema fields",
-            "durationMs": 0.8999996185302734,
+            "durationMs": 0.8000001907348633,
             "response": {
               "error": {
                 "message": "Request exceeds wallet work limits: duplicate typed-data field",
@@ -2164,7 +2169,7 @@
           },
           {
             "name": "oversized PSBT request",
-            "durationMs": 1.9000000953674316,
+            "durationMs": 2.0999999046325684,
             "response": {
               "error": {
                 "code": -32602,
@@ -2174,7 +2179,7 @@
           },
           {
             "name": "real 201-input PSBT",
-            "durationMs": 2,
+            "durationMs": 2.3000001907348633,
             "response": {
               "error": {
                 "message": "Request exceeds wallet work limits: maximum 200 PSBT inputs",
@@ -2184,7 +2189,7 @@
           },
           {
             "name": "liveness after hostile requests",
-            "durationMs": 0.8000001907348633,
+            "durationMs": 0.7999997138977051,
             "response": false
           }
         ],
@@ -2200,42 +2205,42 @@
       "steps": [
         {
           "name": "open disposable wallet",
-          "durationMs": 882,
+          "durationMs": 879,
           "status": "passed"
         },
         {
           "name": "import generated wallet",
-          "durationMs": 823,
+          "durationMs": 782,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 1157,
+          "durationMs": 1152,
           "status": "passed"
         },
         {
           "name": "open settings seed screen",
-          "durationMs": 76,
+          "durationMs": 61,
           "status": "passed"
         },
         {
           "name": "validate password and reveal generated phrase",
-          "durationMs": 181,
+          "durationMs": 193,
           "status": "passed"
         },
         {
           "name": "stop unlocked background and clear cached seed within deadline",
-          "durationMs": 4,
+          "durationMs": 5,
           "status": "passed"
         },
         {
           "name": "confirm restarted worker is locked without entering password",
-          "durationMs": 2374,
+          "durationMs": 2383,
           "status": "passed"
         },
         {
           "name": "reject seed route revisit without fresh password",
-          "durationMs": 2244,
+          "durationMs": 2240,
           "status": "passed"
         }
       ],
@@ -2243,7 +2248,7 @@
       "secretDeadlineMs": 2000,
       "chromium": "149.0.7827.55",
       "workerStopConfirmed": true,
-      "secretRemovalMs": 2,
+      "secretRemovalMs": 3,
       "afterDisconnect": {
         "route": "#/settings/seed",
         "seedPasswordInputPresent": false,
@@ -2251,7 +2256,7 @@
         "seedInDom": false,
         "generatedPasswordInDom": false,
         "monitor": {
-          "firstAbsentAt": 1791515209357,
+          "firstAbsentAt": 1791518715036,
           "reappeared": false,
           "present": false
         }
@@ -2265,7 +2270,7 @@
         "seedInDom": false,
         "generatedPasswordInDom": false,
         "monitor": {
-          "firstAbsentAt": 1791515209357,
+          "firstAbsentAt": 1791518715036,
           "reappeared": false,
           "present": false
         }
@@ -2277,28 +2282,1484 @@
         "seedInDom": false,
         "generatedPasswordInDom": false,
         "monitor": {
-          "firstAbsentAt": 1791515209357,
+          "firstAbsentAt": 1791518715036,
           "reappeared": false,
           "present": false
         }
       },
       "status": "passed"
     },
+    "sendCallsNavigation": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 140,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 138,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 43,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 310,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 185,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 28,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1143,
+          "status": "passed"
+        },
+        {
+          "name": "connect disposable dapp",
+          "durationMs": 413,
+          "status": "passed"
+        },
+        {
+          "name": "navigation during broadcast preserves duplicate protection",
+          "durationMs": 1357,
+          "status": "passed"
+        },
+        {
+          "name": "duplicate protection survives worker restart",
+          "durationMs": 1358,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "chromium": "149.0.7827.55",
+      "broadcastCaptured": true,
+      "broadcastHashObserved": true,
+      "navigationClosedPopup": true,
+      "inFlightRetry": {
+        "error": {
+          "code": 5720,
+          "message": "There is already a bundle submitted with this id (Duplicate ID)."
+        }
+      },
+      "restartedRetry": {
+        "error": {
+          "code": 5720,
+          "message": "There is already a bundle submitted with this id (Duplicate ID)."
+        }
+      },
+      "transactionCount": 1,
+      "workerRestartProtection": true,
+      "status": "passed"
+    },
+    "sendCallsUnknownOutcome": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 149,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 146,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 44,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 315,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 185,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 31,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1150,
+          "status": "passed"
+        },
+        {
+          "name": "connect disposable dapp",
+          "durationMs": 437,
+          "status": "passed"
+        },
+        {
+          "name": "navigation during broadcast preserves duplicate protection",
+          "durationMs": 596,
+          "status": "passed"
+        },
+        {
+          "name": "duplicate protection survives worker restart",
+          "durationMs": 1318,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "chromium": "149.0.7827.55",
+      "broadcastCaptured": true,
+      "broadcastHashObserved": true,
+      "unknownOutcomeRetryDisabled": true,
+      "unknownOutcomeText": "Pali\nWallet\n\nBatch Transaction\n\nExecuting 1 calls\n\nSubmission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.\n\nCall #1\nPending\n\nTo:\n\n0x7D303F5b...d0c52652bf\n\nError:\n\nSubmission status is unknown. To prevent sending twice, this...is window.\n\nReject\nSign\nSubmission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.",
+      "unknownOutcomeStatus": 100,
+      "restartedRetry": {
+        "error": {
+          "code": 5720,
+          "message": "There is already a bundle submitted with this id (Duplicate ID)."
+        }
+      },
+      "transactionCount": 1,
+      "workerRestartProtection": true,
+      "status": "passed"
+    },
+    "sendCallsInterruptedContext": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 175,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 139,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 43,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 315,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 183,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 32,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1147,
+          "status": "passed"
+        },
+        {
+          "name": "connect disposable dapp",
+          "durationMs": 418,
+          "status": "passed"
+        },
+        {
+          "name": "network switch after first batch broadcast stops remaining calls",
+          "durationMs": 2398,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "broadcastRequests": [
+        {
+          "rpcPort": 19637,
+          "at": 1791518736230
+        }
+      ],
+      "scenario": "network switch interrupts broadcast acknowledgment",
+      "chromium": "149.0.7827.55",
+      "firstBroadcastAccepted": true,
+      "originalChainTransactions": 1,
+      "otherChainTransactions": 0,
+      "ipcCalls": [
+        {
+          "method": "wallet.isUnlocked",
+          "durationMs": 25,
+          "result": true
+        },
+        {
+          "method": "wallet.sendAndSaveEthTransaction",
+          "durationMs": 64,
+          "result": {
+            "error": {
+              "message": "signal is aborted without reason",
+              "transactionNotBroadcast": false
+            }
+          }
+        },
+        {
+          "method": "wallet.isUnlocked",
+          "durationMs": 1,
+          "result": true
+        }
+      ],
+      "popupText": "Pali\nWallet\n\nBatch Transaction\n\nExecuting 2 calls\n\nSubmission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.\n\nCall #1\nPending\n\nTo:\n\n0x8B19A0D6...353FA2Fa5C\n\nError:\n\nSubmission status is unknown. To prevent sending twice, this...is window.\n\nCall #2\n\nTo:\n\n0x8B19A0D6...353FA2Fa5C\nReject\nSign\nSubmission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.",
+      "bundleStatus": 100,
+      "bundleChainId": "0x7a69",
+      "workerErrors": [],
+      "expectedStatus": 100,
+      "status": "passed"
+    },
+    "sendCallsApprovedContext": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 151,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 153,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 16,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 314,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 184,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 28,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1155,
+          "status": "passed"
+        },
+        {
+          "name": "connect disposable dapp",
+          "durationMs": 384,
+          "status": "passed"
+        },
+        {
+          "name": "network switch after first batch broadcast stops remaining calls",
+          "durationMs": 2434,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "broadcastRequests": [
+        {
+          "rpcPort": 19637,
+          "at": 1791518742511
+        }
+      ],
+      "scenario": "network switch after acknowledged first call",
+      "chromium": "149.0.7827.55",
+      "firstBroadcastAccepted": true,
+      "originalChainTransactions": 1,
+      "otherChainTransactions": 0,
+      "ipcCalls": [
+        {
+          "method": "wallet.isUnlocked",
+          "durationMs": 29,
+          "result": true
+        },
+        {
+          "method": "wallet.sendAndSaveEthTransaction",
+          "durationMs": 16,
+          "result": "omitted non-boolean"
+        },
+        {
+          "method": "wallet.sendAndSaveEthTransaction",
+          "durationMs": 2,
+          "result": {
+            "error": {
+              "message": "PALI_TRANSACTION_CONTEXT_CHANGED",
+              "transactionNotBroadcast": true
+            }
+          }
+        },
+        {
+          "method": "wallet.isUnlocked",
+          "durationMs": 1,
+          "result": true
+        }
+      ],
+      "popupText": "Pali\nWallet\n\nBatch Transaction\n\nExecuting 2 calls\n\nCall #1\n\u2713 Sent\n\nTo:\n\n0x4E0309e7...D59f30463d\nCall #2\n\u26a0 Failed\n\nTo:\n\n0x4E0309e7...D59f30463d\n\nError:\n\nFailed to send transaction\n\nReject\nSign\n1 of 2 transactions completed successfully",
+      "bundleStatus": 600,
+      "bundleChainId": "0x7a69",
+      "workerErrors": [],
+      "expectedStatus": 600,
+      "status": "passed"
+    },
+    "accountScale": {
+      "status": "passed",
+      "accountFixture": "Real disposable HD accounts derived and persisted serially through wallet.createAccount; zero balance, local isolated EVM; no synthetic Redux/storage injection.",
+      "environment": {
+        "platform": "darwin",
+        "architecture": "arm64",
+        "cpu": "Apple M5 Max",
+        "logicalCPUs": 18,
+        "totalMemoryBytes": 51539607552
+      },
+      "samplesPerCheckpoint": 3,
+      "creation": [
+        {
+          "accountCount": 500,
+          "incrementalDurationMs": 0,
+          "fixtureMethod": "wallet.createAccount",
+          "synthetic": false
+        }
+      ],
+      "measurements": [
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 207,
+          "browserDurationMs": 172,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 35074192,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 170,
+          "browserDurationMs": 170,
+          "longTasks": [],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 18669054,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 150,
+          "browserDurationMs": 150,
+          "longTasks": [],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 35591534,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 106,
+          "browserDurationMs": 106,
+          "longTasks": [],
+          "domNodes": 10107,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 29363682,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10107,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 199,
+          "browserDurationMs": 169,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 50011131,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 175,
+          "browserDurationMs": 175,
+          "longTasks": [],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 18782055,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 158,
+          "browserDurationMs": 158,
+          "longTasks": [],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 21961928,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 100,
+          "browserDurationMs": 99,
+          "longTasks": [],
+          "domNodes": 10102,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 38073093,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10102,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 200,
+          "browserDurationMs": 172,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 36862731,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 169,
+          "browserDurationMs": 169,
+          "longTasks": [],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 18860490,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 147,
+          "browserDurationMs": 147,
+          "longTasks": [],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 21882522,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 91,
+          "browserDurationMs": 90,
+          "longTasks": [],
+          "domNodes": 10107,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 38006420,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10107,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 394,
+          "browserDurationMs": 364,
+          "longTasks": [],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 36173350,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 1,
+          "durationMs": 250,
+          "browserDurationMs": 249,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 29094542,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 375,
+          "browserDurationMs": 345,
+          "longTasks": [],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 41410095,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 2,
+          "durationMs": 229,
+          "browserDurationMs": 228,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 29129282,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 379,
+          "browserDurationMs": 341,
+          "longTasks": [],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 31059779,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "sample": 3,
+          "durationMs": 228,
+          "browserDurationMs": 229,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 34762373,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 360,
+          "browserDurationMs": 321,
+          "longTasks": [
+            {
+              "startMs": 52,
+              "durationMs": 63
+            }
+          ],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 33016768,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 349,
+          "browserDurationMs": 348,
+          "longTasks": [
+            {
+              "startMs": 387,
+              "durationMs": 181
+            }
+          ],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 51326921,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 512,
+          "browserDurationMs": 511,
+          "longTasks": [
+            {
+              "startMs": 741,
+              "durationMs": 144
+            }
+          ],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 14624811,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 295,
+          "browserDurationMs": 293,
+          "longTasks": [
+            {
+              "startMs": 1351,
+              "durationMs": 88
+            }
+          ],
+          "domNodes": 10102,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 30879817,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10102,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 368,
+          "browserDurationMs": 331,
+          "longTasks": [
+            {
+              "startMs": 52,
+              "durationMs": 64
+            }
+          ],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 47008759,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 340,
+          "browserDurationMs": 338,
+          "longTasks": [
+            {
+              "startMs": 397,
+              "durationMs": 179
+            }
+          ],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 24590844,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 539,
+          "browserDurationMs": 539,
+          "longTasks": [
+            {
+              "startMs": 750,
+              "durationMs": 157
+            }
+          ],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 27725524,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 324,
+          "browserDurationMs": 322,
+          "longTasks": [
+            {
+              "startMs": 1356,
+              "durationMs": 72
+            },
+            {
+              "startMs": 1428,
+              "durationMs": 96
+            }
+          ],
+          "domNodes": 10107,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 52591511,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10107,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 395,
+          "browserDurationMs": 358,
+          "longTasks": [
+            {
+              "startMs": 50,
+              "durationMs": 61
+            }
+          ],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 59886304,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 364,
+          "browserDurationMs": 349,
+          "longTasks": [
+            {
+              "startMs": 428,
+              "durationMs": 176
+            }
+          ],
+          "domNodes": 7811,
+          "accountRows": 500,
+          "route": "#/home",
+          "heapUsedBytes": 53703104,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 560,
+          "browserDurationMs": 560,
+          "longTasks": [
+            {
+              "startMs": 825,
+              "durationMs": 149
+            }
+          ],
+          "domNodes": 243,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 59949795,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 295,
+          "browserDurationMs": 292,
+          "longTasks": [
+            {
+              "startMs": 1367,
+              "durationMs": 78
+            },
+            {
+              "startMs": 1448,
+              "durationMs": 109
+            }
+          ],
+          "domNodes": 10102,
+          "accountRows": 0,
+          "route": "#/settings/manage-accounts",
+          "heapUsedBytes": 54865767,
+          "heapLimitBytes": 4395630592,
+          "manageDom": {
+            "domNodes": 10102,
+            "removeButtons": 0
+          }
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 471,
+          "browserDurationMs": 435,
+          "longTasks": [
+            {
+              "startMs": 51,
+              "durationMs": 71
+            }
+          ],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 72843634,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 1,
+          "durationMs": 321,
+          "browserDurationMs": 321,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 28571717,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 445,
+          "browserDurationMs": 411,
+          "longTasks": [
+            {
+              "startMs": 48,
+              "durationMs": 62
+            }
+          ],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 36484511,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 2,
+          "durationMs": 323,
+          "browserDurationMs": 323,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 35181874,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 442,
+          "browserDurationMs": 407,
+          "longTasks": [
+            {
+              "startMs": 49,
+              "durationMs": 63
+            }
+          ],
+          "domNodes": 77,
+          "accountRows": 0,
+          "route": "#/",
+          "heapUsedBytes": 29642276,
+          "heapLimitBytes": 4395630592
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "sample": 3,
+          "durationMs": 321,
+          "browserDurationMs": 321,
+          "longTasks": [],
+          "domNodes": 272,
+          "accountRows": 0,
+          "route": "#/home",
+          "heapUsedBytes": 34159421,
+          "heapLimitBytes": 4395630592
+        }
+      ],
+      "sourceHead": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+      "runtimeSourceSnapshot": {
+        "measuredAt": "2026-10-09T04:02:12.405181+00:00",
+        "paliSourceCommit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+        "runtimeSourceFingerprintSha256": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
+        "runtimeFileCount": 544,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.612",
+        "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
+        "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
+        "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce"
+      },
+      "startedAt": "2026-10-09T04:05:51.348Z",
+      "runtimePreparation": {
+        "status": "passed",
+        "scope": "Unpacked extension update verification in retained disposable500-account profile. Disk copy alone did not update the registered Chrome service worker. Runtime reload was issued before opening the extension page to wake the new worker.",
+        "profile": "/tmp/pali-scale-profile-BDCXMf",
+        "paliSourceCommit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+        "runtimeSourceFingerprintSha256": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3",
+        "before": {
+          "executedWorkerSha256": "ee4f9d85b1f69102d1855c29d8cbe9ac39b7f4369b8ced581d79556f8b50896e",
+          "diskWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+          "matched": false,
+          "isSwitchingAccount": true
+        },
+        "extensionReloadPerformedDuringPreparation": true,
+        "after": {
+          "executedWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+          "diskWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+          "matched": true,
+          "publicState": {
+            "isSwitchingAccount": false,
+            "networkStatus": "idle",
+            "hdCount": 500,
+            "activeAccount": {
+              "id": 499,
+              "type": "HDAccount"
+            }
+          }
+        },
+        "evidenceFiles": [
+          "account-scale-worker-diagnostic.json",
+          "account-scale-worker-setup.json",
+          "account-scale-final-870.log"
+        ],
+        "limitation": "The initial post-reload attempt waited for a fresh worker before opening an extension page and hit its20-second setup deadline. The following setup opened the extension page, verified the updated executing source, and recovered the original stored500-account fixture without clearing flags manually."
+      },
+      "fixtureLimits": "500 accounts share one EVM vault and generated seed, zero balances, no funded/asset-rich/history-heavy accounts. Stable Home means actionable account header and settled native balance; independent transaction-history loading is excluded.",
+      "fixturePersistencePrecondition": "Before each cold-worker checkpoint, saveCurrentState(scale-benchmark-checkpoint, true) persists the selected account outside the timed phase. Normal sync=false account switches are pre-existing session-only selection behavior.",
+      "manifest": "4.0.70",
+      "backgroundBundleSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+      "chromium": "149.0.7827.55",
+      "initialExecutedWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+      "executedWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+      "executedWorkerMatchesDisk": true,
+      "initialBalance": "0x0",
+      "cpuThrottleScope": "4x throttles the extension UI renderer via CDP; background service worker and local RPC remain unthrottled.",
+      "menuLifecycle": {
+        "closedSelectorRows": 0,
+        "keyboardOpen": true,
+        "escapeFocusRestored": true,
+        "reopeningPreservesAllAccounts": true,
+        "firstAndLastAccountSelectionVerified": true,
+        "hardwareEntryRoutedWithoutApproval": true
+      },
+      "hardwareWindowOpened": true,
+      "approvalScale": {
+        "scope": "Separate500-account dapp connection approval;4x popup-page CPU throttle; expired/missing balances may queue independently of actionable UI.",
+        "accountCount": 500,
+        "rate": 4,
+        "rounds": [
+          {
+            "name": "close while balance queue active",
+            "startedAt": 1791518811932,
+            "actionableMs": 600,
+            "route": "chrome-extension://phcnldabmgnmkfdogondmpdonngbnflj/external/connect-wallet?data=%7B%22chain%22%3A%22ethereum%22%2C%22chainId%22%3A31345%2C%22host%22%3A%22http%3A%2F%2F127.0.0.1%3A61601%22%2C%22eventName%22%3A%22connect%22%2C%22approvalId%22%3A%226547880c-a66d-442e-9385-9028e656eaae%22%7D",
+            "trafficIndex": 4,
+            "accountRows": 51,
+            "skeletonRows": 0,
+            "domNodes": 1441,
+            "longTasks": [
+              {
+                "startMs": 140,
+                "durationMs": 68
+              }
+            ],
+            "balanceCalls": [],
+            "balanceRPCsBeforeClose": 0,
+            "uniqueBalanceAccountsBeforeClose": 0,
+            "closedApprovalRejected": true,
+            "balanceRPCsFirst250msAfterClose": 0,
+            "balanceRPCs250to2250msAfterClose": 0,
+            "nonActiveBalanceRPCs250to2250msAfterClose": 0
+          },
+          {
+            "name": "select first/last and confirm while balances load",
+            "startedAt": 1791518819803,
+            "actionableMs": 571,
+            "route": "chrome-extension://phcnldabmgnmkfdogondmpdonngbnflj/external/connect-wallet?data=%7B%22chain%22%3A%22ethereum%22%2C%22chainId%22%3A31345%2C%22host%22%3A%22http%3A%2F%2F127.0.0.1%3A61601%22%2C%22eventName%22%3A%22connect%22%2C%22approvalId%22%3A%22e4f52cb1-8497-4ddc-95eb-831c5f9ec9f9%22%7D",
+            "trafficIndex": 4,
+            "initial": {
+              "accountRows": 51,
+              "skeletonRows": 0,
+              "domNodes": 1441,
+              "longTasks": [
+                {
+                  "startMs": 127,
+                  "durationMs": 60
+                }
+              ],
+              "balanceCalls": []
+            },
+            "selection": [
+              {
+                "accountLabel": "Account 1",
+                "durationMs": 343
+              },
+              {
+                "accountLabel": "Scale account 500",
+                "durationMs": 68
+              }
+            ],
+            "selectionVisibleWithNoMatch": true,
+            "accountRows": 1,
+            "skeletonRows": 0,
+            "domNodes": 106,
+            "longTasks": [
+              {
+                "startMs": 127,
+                "durationMs": 60
+              }
+            ],
+            "balanceCalls": [
+              {
+                "accountId": 113,
+                "durationMs": 35
+              },
+              {
+                "accountId": 114,
+                "durationMs": 43
+              },
+              {
+                "accountId": 109,
+                "durationMs": 30
+              },
+              {
+                "accountId": 111,
+                "durationMs": 47
+              },
+              {
+                "accountId": 118,
+                "durationMs": 63
+              },
+              {
+                "accountId": 110,
+                "durationMs": 82
+              },
+              {
+                "accountId": 115,
+                "durationMs": 97
+              },
+              {
+                "accountId": 112,
+                "durationMs": 133
+              },
+              {
+                "accountId": 116,
+                "durationMs": 118
+              },
+              {
+                "accountId": 117,
+                "durationMs": 95
+              }
+            ],
+            "confirmationMs": 205,
+            "connected": true,
+            "balanceRPCs": 11,
+            "selectedAccountId": 499
+          },
+          {
+            "name": "request permissions with selected/current accounts pinned",
+            "startedAt": 1791518821685,
+            "actionableMs": 583,
+            "route": "chrome-extension://phcnldabmgnmkfdogondmpdonngbnflj/external/change-account?data=%7B%22currentAccountId%22%3A499%2C%22currentAccountType%22%3A%22HDAccount%22%2C%22network%22%3A%7B%22eth_accounts%22%3A%7B%7D%7D%2C%22params%22%3A%5B%7B%22eth_accounts%22%3A%7B%7D%7D%5D%2C%22host%22%3A%22http%3A%2F%2Flocalhost%3A61601%22%2C%22eventName%22%3A%22requestPermissions%22%2C%22approvalId%22%3A%220987f012-0479-4437-b75e-8e93357c38bc%22%7D",
+            "trafficIndex": 17,
+            "initial": {
+              "accountRows": 51,
+              "skeletonRows": 0,
+              "domNodes": 1438,
+              "longTasks": [
+                {
+                  "startMs": 134,
+                  "durationMs": 62
+                }
+              ],
+              "balanceCalls": []
+            },
+            "selectionMs": 373,
+            "selectionVisibleWithNoMatch": true,
+            "currentVisibleWithNoMatch": true,
+            "accountRows": 2,
+            "skeletonRows": 0,
+            "domNodes": 130,
+            "longTasks": [
+              {
+                "startMs": 134,
+                "durationMs": 62
+              }
+            ],
+            "balanceCalls": [
+              {
+                "accountId": 126,
+                "durationMs": 36
+              },
+              {
+                "accountId": 121,
+                "durationMs": 30
+              },
+              {
+                "accountId": 123,
+                "durationMs": 48
+              },
+              {
+                "accountId": 120,
+                "durationMs": 72
+              },
+              {
+                "accountId": 127,
+                "durationMs": 90
+              },
+              {
+                "accountId": 119,
+                "durationMs": 108
+              },
+              {
+                "accountId": 125,
+                "durationMs": 127
+              },
+              {
+                "accountId": 128,
+                "durationMs": 156
+              },
+              {
+                "accountId": 122,
+                "durationMs": 132
+              },
+              {
+                "accountId": 124,
+                "durationMs": 50
+              }
+            ],
+            "confirmationMs": 153,
+            "completed": true,
+            "selectedAccountId": 0
+          }
+        ],
+        "stage": "approval actionable",
+        "performanceBudget": {
+          "limitMs": 2000,
+          "exceeded": []
+        },
+        "status": "passed"
+      },
+      "finishedAt": "2026-10-09T04:07:02.855Z",
+      "previousHarnessAttempt": {
+        "status": "failed",
+        "failedStep": "separate500-account dapp approval scale check",
+        "error": "Approval scaling check failed: browserContext.waitForEvent: Timeout 20000ms exceeded while waiting for event \"page\"",
+        "explanation": "The optional wallet_requestPermissions check initially reused an already-connected origin and correctly received cached permissions without opening a popup. The separate final run used a fresh origin to exercise ChangeAccount."
+      },
+      "summaries": [
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 200,
+          "maxMs": 207,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 272,
+          "maxHeapUsedBytes": 50011131
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 170,
+          "maxMs": 175,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 7811,
+          "maxHeapUsedBytes": 18860490
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 150,
+          "maxMs": 158,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 243,
+          "maxHeapUsedBytes": 35591534
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 100,
+          "maxMs": 106,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 10107,
+          "maxHeapUsedBytes": 38073093
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 379,
+          "maxMs": 394,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 77,
+          "maxHeapUsedBytes": 41410095
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 1,
+          "samples": 3,
+          "medianMs": 229,
+          "maxMs": 250,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 272,
+          "maxHeapUsedBytes": 34762373
+        },
+        {
+          "name": "warm reopen to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 368,
+          "maxMs": 395,
+          "longTaskCount": 3,
+          "maxLongTaskMs": 64,
+          "maxDomNodes": 272,
+          "maxHeapUsedBytes": 59886304
+        },
+        {
+          "name": "open account selector",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 349,
+          "maxMs": 364,
+          "longTaskCount": 3,
+          "maxLongTaskMs": 181,
+          "maxDomNodes": 7811,
+          "maxHeapUsedBytes": 53703104
+        },
+        {
+          "name": "select another account to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 539,
+          "maxMs": 560,
+          "longTaskCount": 3,
+          "maxLongTaskMs": 157,
+          "maxDomNodes": 243,
+          "maxHeapUsedBytes": 59949795
+        },
+        {
+          "name": "open Manage Accounts",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 295,
+          "maxMs": 324,
+          "longTaskCount": 5,
+          "maxLongTaskMs": 109,
+          "maxDomNodes": 10107,
+          "maxHeapUsedBytes": 54865767
+        },
+        {
+          "name": "cold worker reopen to login ready",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 445,
+          "maxMs": 471,
+          "longTaskCount": 3,
+          "maxLongTaskMs": 71,
+          "maxDomNodes": 77,
+          "maxHeapUsedBytes": 72843634
+        },
+        {
+          "name": "correct password unlock to stable Home",
+          "accountCount": 500,
+          "cpuRate": 4,
+          "samples": 3,
+          "medianMs": 321,
+          "maxMs": 323,
+          "longTaskCount": 0,
+          "maxLongTaskMs": 0,
+          "maxDomNodes": 272,
+          "maxHeapUsedBytes": 35181874
+        }
+      ],
+      "performanceBudget": {
+        "limitMs": 2000,
+        "measurementCount": 36,
+        "exceeded": []
+      },
+      "validationSources": [
+        {
+          "scope": "Core36 timings and hardware abrupt-close followed by working connection popup",
+          "path": "/tmp/pali-audit/account-scale-core-and-connect-870.json",
+          "startedAt": "2026-10-09T04:05:51.348Z",
+          "finishedAt": "2026-10-09T04:06:37.880Z"
+        },
+        {
+          "scope": "All three consent scenarios, including fresh-origin wallet_requestPermissions, plus hardware abrupt-close",
+          "path": "/tmp/pali-audit/account-scale-consent-final.json",
+          "startedAt": "2026-10-09T04:06:49.228Z",
+          "finishedAt": "2026-10-09T04:07:02.855Z"
+        }
+      ],
+      "creationSummary": {
+        "createdAccounts": 0,
+        "reusedRealAccountFixture": true,
+        "finalAccountCount": 500,
+        "totalDurationMs": 0,
+        "maxDurationMs": 0
+      }
+    },
+    "coldStartupBeforeFix": {
+      "onDiskSourceCommit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+      "onDiskRuntimeFingerprint": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3",
+      "runtimeCaveat": "Chrome retained an older service-worker script despite an updated on-disk bundle. The final run forces extension reload and checks the executing worker hash. This pre-fix observation must not be attributed to the updated on-disk commit.",
+      "observedGlobalState": {
+        "isSwitchingAccount": true,
+        "networkStatus": "idle",
+        "activeSlip44": 60
+      },
+      "observedVaultIdentity": {
+        "activeAccount": {
+          "id": 499,
+          "type": "HDAccount"
+        },
+        "hdCount": 500,
+        "activeAccountFound": true,
+        "activeLabel": "Scale account 500",
+        "activeNetwork": {
+          "chainId": 31345,
+          "url": "https://127.0.0.1:19746"
+        }
+      },
+      "result": "Home identity remained blocked for 20 seconds after successful unlock, with all 500 accounts present."
+    },
     "keyring": {
-      "sourceCommit": "7f80edd0ff3d024fdc5d20480948760b06755a1f",
-      "localTarballSha256": "49980dc845a243dc9de43586d04168117fca4edfd027f9001ddc14d214ba53b8",
+      "sourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
+      "localTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce",
       "installedPackedFilesMatched": 116,
       "fullSuites": 20,
-      "fullTests": 313,
+      "fullTests": 315,
       "broadcastBoundaryTests": 13,
-      "authenticationTests": 28,
-      "note": "Full suite completed successfully; process then stopped because of existing hardware monitor handles."
+      "authenticationTests": 30,
+      "note": "Full suite completed successfully with --forceExit because of existing hardware monitor handles."
     },
     "limits": [
       "Measurements are individual local samples, not percentile or worst-case guarantees.",
       "No real Ledger/Trezor signing was performed; physical device testing remains.",
       "Unknown submissions remain pending until code, a receipt or a trusted mined nonce proves their outcome.",
       "Keyring 1.0.612 remains intentionally unpublished; publish upstream and rerun clean CI before merging or releasing."
-    ]
+    ],
+    "workerCacheVerification": {
+      "status": "passed",
+      "scope": "Unpacked extension update verification in retained disposable500-account profile. Disk copy alone did not update the registered Chrome service worker. Runtime reload was issued before opening the extension page to wake the new worker.",
+      "paliSourceCommit": "870845125220ca48b1d20efa3d964e35ccf7fbb2",
+      "runtimeSourceFingerprintSha256": "42edecd60b5f399531b90c52c0df27ba426fef5db9cf134535bf233e20ce99e3",
+      "before": {
+        "executedWorkerSha256": "ee4f9d85b1f69102d1855c29d8cbe9ac39b7f4369b8ced581d79556f8b50896e",
+        "diskWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+        "matched": false,
+        "isSwitchingAccount": true
+      },
+      "extensionReloadPerformedDuringPreparation": true,
+      "after": {
+        "executedWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+        "diskWorkerSha256": "e8d26e65fe3c0aa6bc08bf430055b7537485c24003cace4983ea826f3c774584",
+        "matched": true,
+        "publicState": {
+          "isSwitchingAccount": false,
+          "networkStatus": "idle",
+          "hdCount": 500,
+          "activeAccount": {
+            "id": 499,
+            "type": "HDAccount"
+          }
+        }
+      },
+      "limitation": "The initial post-reload attempt waited for a fresh worker before opening an extension page and hit its20-second setup deadline. The following setup opened the extension page, verified the updated executing source, and recovered the original stored500-account fixture without clearing flags manually."
+    }
   }
 }
