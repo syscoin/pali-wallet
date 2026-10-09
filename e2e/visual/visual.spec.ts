@@ -380,8 +380,18 @@ test.describe('visual baselines', () => {
           page.getByText('Smart account setup', { exact: true })
         ).toBeVisible({ timeout: 60_000 });
         await expect(
-          page.getByText(ready ? 'Ready' : 'Not ready', { exact: true })
+          page
+            .getByRole('status')
+            .getByText(
+              ready
+                ? 'Ready on this network.'
+                : 'Needed before smart accounts can be used here.',
+              { exact: true }
+            )
         ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Check status', exact: true })
+        ).toBeEnabled();
         const deploy = page.getByRole('button', {
           name: 'Deploy',
           exact: true,
