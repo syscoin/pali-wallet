@@ -2,7 +2,7 @@
 title: Bien démarrer comme utilisateur
 ---
 
-Pali vous permet de gérer des comptes EVM, des comptes Syscoin UTXO et des comptes intelligents passkey depuis une seule extension.
+Pali vous permet de gérer des comptes EVM, des comptes Syscoin UTXO et des comptes intelligents modulaires depuis une seule extension.
 
 ## Configuration de base
 
@@ -12,6 +12,14 @@ Pali vous permet de gérer des comptes EVM, des comptes Syscoin UTXO et des comp
 4. Sauvegardez votre phrase de récupération hors ligne.
 5. Choisissez le réseau que vous voulez utiliser.
 6. Connectez-vous uniquement aux dapps auxquelles vous faites confiance.
+
+## Configuration et chargement
+
+Gardez la configuration inachevée ouverte et visible. La quitter, la masquer ou la recharger efface les données sensibles saisies et peut vous obliger à recommencer. Conservez la phrase de récupération que vous avez sauvegardée.
+
+Si Pali ne peut pas confirmer que la création du portefeuille est terminée, laissez-le se recharger et vérifier le portefeuille. Si un écran de déverrouillage apparaît, utilisez le mot de passe que vous venez de définir. Ne supposez pas qu’une réponse interrompue signifie qu’aucun portefeuille n’a été créé et ne relancez pas immédiatement la création.
+
+Pendant une opération lente, Pali peut afficher des options de récupération tout en laissant la navigation disponible. Les actions sensibles attendent toujours que le compte et le réseau se stabilisent. Recevoir masque temporairement l’adresse, le code QR et le bouton de copie ; les demandes au faucet attendent également. Vérifiez à nouveau le compte et le réseau avant de continuer.
 
 ## Connexion à une dapp
 
@@ -37,6 +45,6 @@ Les dapps EVM peuvent demander :
 
 Utilisez les comptes UTXO pour Syscoin UTXO et les flux de transaction de style Bitcoin. Les dapps UTXO peuvent demander un état tenant compte du xpub, des adresses de rendu de monnaie, la signature PSBT et la diffusion de transactions.
 
-## Comptes intelligents passkey
+## Comptes intelligents
 
-Les comptes passkey sont des comptes intelligents contrôlés par des identifiants WebAuthn. Ils peuvent être utiles pour l'intégration gérée par des institutions, la récupération de compte et l'exécution sponsorisée. Certains comptes passkey sont contrefactuels jusqu'à leur première transaction de déploiement.
+Les comptes intelligents sont des comptes de contrat contrôlés par des modules. Pali peut créer des comptes contrôlés par un validateur de passkey, un validateur ECDSA du portefeuille ou une politique de gestion partagée. Ils sont utiles pour l’intégration aux dapps, les actions groupées et la récupération par des gardiens. Certains comptes intelligents sont contrefactuels jusqu’à leur première transaction de déploiement.

@@ -2,29 +2,109 @@
 title: スマートアカウントの作成と復元
 ---
 
-`wallet_prepareSmartAccount` はdapp onboarding用にPaliスマートアカウントを作成します。Paliはアカウントを導出し、設定済みfactoryでdeployし、必要に応じて要求されたvalidatorをインストールし、dappに接続し、永続メタデータをローカルに保存します。
+`wallet_prepareSmartAccount`は、dappへの導入用にPaliスマートアカウントを作成します。Paliはアカウントを導出し、設定されたファクトリーからデプロイし、必要に応じて要求されたバリデーターをインストールします。その後、要求元のdappにアカウントを接続し、永続的なアカウントメタデータをローカルのウォレット状態に書き込みます。
 
-## 構造
+ローカルのウォレット状態は、Paliが操作できるスマートアカウントを表します。スマートアカウントは、パスキーバリデーター、ECDSAバリデーター、複合バリデーター、または作成後にインストールされたガーディアン復旧モジュールで制御されます。
 
-- **Factory:** deterministic addressを計算し、アカウントをdeployします。
-- **Smart account:** callsを実行し、installed validatorsに確認します。
-- **Validators:** ECDSA、P-256 WebAuthn passkey、composite。
-- **Executors:** 遅延付き復元のためのguardian recovery。
+## スマートアカウントとファクトリーの構成
 
-## Recovery
+スマートアカウントシステムは、次の要素で構成されます。
+
+- **ファクトリー：**決定的なアドレスを計算し、初期モジュールデータを使ってアカウントをデプロイします。
+- **スマートアカウント：**呼び出しを実行し、インストール済みモジュールを追跡して、バリデーターモジュールに署名の承認を求めます。
+- **バリデーター：**操作を許可します。PaliはECDSA、P-256 WebAuthnパスキー、複合バリデーターに対応しています。
+- **エグゼキューター：**アカウントの機能を拡張します。Paliはガーディアン復旧をエグゼキューターモジュールとして使用します。
+
+ファクトリーのアカウントパラメーターには次のものがあります。
+
+| パラメーター | 意味 |
+| --- | --- |
+| `salt` | ウォレットのアンカー、アカウント番号、チェーン、アカウントのバージョンからPaliが導出する、決定的なデプロイ用ソルト。 |
+| `initialValidator` | 初期デプロイに使うバリデーターモジュール。Paliは決定的なセットアップのために、ウォレットが管理するECDSAバリデーターを使用します。 |
+| `initData` | エンコード済みのバリデーター初期化データ。 |
+
+デプロイ後、Paliは1回のスマートアカウントの一括処理で、要求されたバリデーターをインストールし、初期バリデーターを削除できます。この仕組みにより、dappがパスキー制御のアカウントを要求しても、Paliは初回のデプロイ経路を決定的に保てます。
+
+## パスキーで制御するアカウントの作成
+
+```js
+const smartAccount = await window.ethereum.request({
+  method: 'wallet_prepareSmartAccount',
+  params: [
+    {
+      label: 'Pali Wallet Passkey',
+      authenticator: { id: 'p256-webauthn' },
+    },
+  ],
+});
+```
+
+dappが`authenticator`を省略すると、Paliは既定でパスキーの処理を使用します。`{ id: 'p256-webauthn' }`のようにidだけを指定し、ウォレットが管理する認証情報の選択・作成をPaliに任せてください。外部のECDSA所有者には、引き続き以下の明示的な確認手順を使用します。
+
+## ECDSAスマートアカウントの作成
+
+```js
+const smartAccount = await window.ethereum.request({
+  method: 'wallet_prepareSmartAccount',
+  params: [
+    {
+      label: 'Team account',
+      authenticator: {
+        id: 'ecdsa',
+        config: {
+          owners: ['0xOwnerAddress'],
+          threshold: 1,
+        },
+      },
+    },
+  ],
+});
+```
+
+すでにローカルのPaliウォレットアカウントであるECDSA所有者は、ウォレット管理の所有者として扱われます。外部ECDSA所有者アドレスは、今後のスマートアカウント操作を承認できるため、明示的な警告と確認の後にだけ許可されます。
+
+## 作成とデプロイの動作
+
+dappがスマートアカウントを要求すると、次の処理が行われます。
+
+1. Paliは、アクティブなチェーンにPaliスマートアカウント基盤が設定されていることを確認します。
+2. 次の決定的なアカウント記述子とカウンターファクチュアルアドレスを導出します。
+3. 要求された認証器を作成または正規化します。
+4. dappのホスト、アカウントのラベル、認証器の種類、外部ECDSA所有者を表示します。
+5. アカウントをローカルに作成し、初期バリデーターと共にオンチェーンにデプロイします。
+6. 要求されたバリデーターが初期バリデーターと異なる場合、スマートアカウントの実行を通じて、要求されたバリデーターをインストールし、初期バリデーターをアンインストールします。
+7. 確認を待ち、永続的なスマートアカウントメタデータを保存して、アカウントをdappに接続します。
+
+生成されたアドレスがすでにローカルに存在する場合、Paliはそのローカルのスマートアカウントを再利用できます。
+
+## アドレスを決めるもの
+
+スマートアカウントのアドレスは、ファクトリー、アカウント実装、初期バリデーターの初期化データ、Paliの決定的なデプロイ用ソルトから導出されます。Paliはウォレットのアンカーとアカウント番号からソルトを導出するため、ランダムなローカル状態ではなく、ウォレットのメタデータからアカウントを復旧できます。
+
+## ローカルのPaliデータを失った場合
 
 <figure>
   <a className="pali-media-link" href="/img/screens/settings-smart-account-recover.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-smart-account-recover.png" alt="Pali settings screen for recovering smart accounts" />
+  <img src="/img/screens/settings-smart-account-recover.png" alt="スマートアカウントを復旧するPaliの設定画面" />
 </a>
-  <figcaption>リカバリー画面では、Paliが作成したアカウントの再構築、またはguardian recoveryによるアクティブvalidatorの置き換えにより、スマートアカウントへのアクセスを復元できます。</figcaption>
+  <figcaption>復旧画面では、Paliで作成したアカウントの再構築や、ガーディアン復旧による有効なバリデーターの置き換えを通じて、スマートアカウントへのアクセスを取り戻せます。</figcaption>
 </figure>
 
-復元はインストール済みモジュールに依存します。deterministic accountはwallet anchor、chain、index、factoryから再構築できます。Passkey validatorには対応するWebAuthn credentialが必要です。Guardian recoveryは設定されたdelay後にactive validatorを置き換えられます。
+ブラウザープロファイル、拡張機能のストレージ、ローカルのスマートアカウントメタデータを失った場合、復旧方法はアカウントの現在のモジュールによって異なります。
+
+- Paliで作成した決定的なアカウントは、ウォレットのアンカー、チェーン、アカウント番号、ファクトリー設定から再構築できます。
+- パスキーバリデーターは、今後の操作を許可するために、対応するWebAuthn認証情報を引き続き必要とします。
+- 元の承認方法が使えない場合、ガーディアン復旧により、設定された待機期間後に有効なバリデーターを置き換えられます。
+
+Paliの復旧は自己管理型です。サーバーのバックドアではなく、アカウントにインストールされたモジュールを回避することもできません。
+
+## RP IDと認証情報名
 
 <figure>
   <a className="pali-media-link" href="/img/screens/browser-passkey-assert.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/browser-passkey-assert.png" alt="Browser or operating system passkey assertion prompt" />
+  <img src="/img/screens/browser-passkey-assert.png" alt="ブラウザーまたはオペレーティングシステムのパスキーアサーション画面" />
 </a>
-  <figcaption>リカバリーと実行には、該当するpasskey credentialによるWebAuthnアサーションが必要です。</figcaption>
+  <figcaption>復旧と実行には、対象のパスキー認証情報によるWebAuthnアサーションが必要です。</figcaption>
 </figure>
+
+拡張機能オリジンのWebAuthnで実際に使われるRP IDは、ウォレット側の処理で指定されない限り、ブラウザーが決定します。Paliは既定の共有認証情報に`Pali Wallet Passkey`という名前を付け、要求されたアカウントのラベルをユーザー向けのアカウント関連付けに使用します。

@@ -42,3 +42,9 @@ try {
 | `5730` | Identifiant de bundle EIP-5792 inconnu dans `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Voir [Codes d'erreur](../reference/error-codes.md) pour la référence plus longue.
+
+## Réessayer des demandes interrompues
+
+Un délai dépassé, une fenêtre d’approbation fermée ou une connexion perdue ne prouvent pas toujours qu’une transaction n’a jamais été soumise. Avant de demander une autre signature ou un autre envoi, vérifiez tout hash de transaction connu, l’historique des transactions ou l’état du lot. Une diffusion dont l’envoi a été confirmé par le fournisseur reste réussie même si une mise à jour ultérieure de l’historique local échoue.
+
+Réessayez les lectures ordinaires lorsque cela convient, mais ne rejouez pas automatiquement les demandes de signature, de création de portefeuille ou de diffusion après un résultat incertain. Si le compte ou le réseau a changé, obtenez une nouvelle approbation pour le contexte actuel. Pour une configuration de compte intelligent en attente, vérifiez son état sur le réseau d’origine avant de tenter un autre déploiement.

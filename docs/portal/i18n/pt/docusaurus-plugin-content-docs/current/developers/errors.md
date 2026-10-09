@@ -42,3 +42,9 @@ try {
 | `5730` | Id de bundle EIP-5792 desconhecido em `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Veja [Códigos de erro](../reference/error-codes.md) para a referência mais longa.
+
+## Repetir solicitações interrompidas
+
+Um tempo limite excedido, uma janela de aprovação fechada ou uma conexão perdida nem sempre provam que uma transação nunca foi enviada. Antes de solicitar outra assinatura ou outro envio, confira qualquer hash de transação conhecido, o histórico de transações ou o status do lote. Um broadcast reconhecido pelo provedor continua sendo um envio bem-sucedido mesmo se uma atualização posterior do histórico local falhar.
+
+Repita leituras comuns quando for apropriado, mas não reproduza automaticamente solicitações de assinatura, criação de carteira ou broadcast após um resultado incerto. Se a conta ou a rede mudou, obtenha uma nova aprovação para o contexto atual. Se houver uma configuração de conta inteligente pendente, confira seu status na rede original antes de tentar outra implantação.

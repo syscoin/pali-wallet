@@ -42,3 +42,9 @@ try {
 | `5730` | Unknown EIP-5792 bundle id in `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 See [Error codes](../reference/error-codes.md) for the longer reference.
+
+## Retrying interrupted requests
+
+A timeout, closed approval window, or lost connection does not always prove that a transaction was never submitted. Before requesting another signature or submission, check any known transaction hash, transaction history, or bundle status. An acknowledged broadcast remains successful even if a later local history update fails.
+
+Retry ordinary reads when appropriate, but do not automatically replay signing, wallet creation, or broadcast requests after an uncertain outcome. If the account or network changed, obtain a fresh approval for the current context. For pending smart-account setup, check its status on the original network before attempting another deployment.

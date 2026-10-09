@@ -39,7 +39,7 @@ const smartAccount = await window.ethereum.request({
 });
 ```
 
-If the dapp omits `authenticator`, Pali uses the passkey path by default. Pali creates a WebAuthn credential when the request does not provide passkey public-key metadata.
+If the dapp omits `authenticator`, Pali uses the passkey path by default. Use an id-only request such as `{ id: 'p256-webauthn' }` and let Pali select or create the wallet-controlled credential. External ECDSA owners still use the explicit acknowledgement flow below.
 
 ## Create an ECDSA smart account
 

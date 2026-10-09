@@ -8,6 +8,12 @@ Los respaldos importan porque Pali es no custodial. La billetera no puede recupe
 
 Anota la frase semilla de tu billetera y mantenla offline. Cualquiera con la frase semilla puede controlar las cuentas derivadas.
 
+## Desbloqueo y cambios de passkey
+
+Un servicio del navegador no disponible, un problema de almacenamiento o una función criptográfica no compatible pueden impedir el desbloqueo sin que la contraseña sea incorrecta. Lee el error, restablece el servicio o la conexión necesarios y vuelve a intentar desbloquear. No elimines ni reimportes la billetera para solucionar un error operativo. Los errores operativos no cuentan como intentos fallidos de contraseña.
+
+Al reemplazar una passkey, tanto la credencial anterior como la nueva pueden seguir disponibles. La anterior aún puede controlar otra cadena o una política compartida. No elimines ninguna de las dos solo porque la configuración se canceló o falló; primero confirma qué credenciales siguen necesitando las cuentas correspondientes. Conserva los datos actuales de la billetera mientras investigas un cambio interrumpido.
+
 ## Estado de respaldo de passkey
 
 Las passkeys pueden estar vinculadas al dispositivo o sincronizadas por el proveedor de cuenta de la plataforma. Pali muestra estado relacionado con respaldos donde esté disponible, pero el comportamiento exacto depende del autenticador, navegador y sistema operativo.
@@ -25,16 +31,19 @@ Las passkeys sincronizadas en la nube siguen siendo seguras para uso normal: la 
 
 El estado de respaldo es una señal para ayudarte a elegir entre conveniencia y seguridad. No reemplaza tu respaldo de frase semilla y no significa que Pali o una institución puedan recuperar por ti un secreto passkey.
 
-## Recuperar cuentas passkey
+## Recuperar cuentas inteligentes
 
-La recuperación passkey de Pali usa metadatos de recuperación limitados a la billetera y descubrimiento de cuentas on-chain. El flujo de recuperación:
+La recuperación de cuentas inteligentes de Pali depende de los módulos instalados. Una cuenta controlada por passkey necesita la credencial WebAuthn correspondiente para aprobar acciones futuras. Un módulo de recuperación mediante guardianes puede reemplazar el validador activo tras el bloqueo temporal configurado si el umbral requerido de guardianes firma la intención de recuperación. El flujo de recuperación puede:
 
-1. Solicita una assertion WebAuthn descubrible.
-2. Busca cuentas inteligentes coincidentes desde el registro de fábrica y logs de creación.
-3. Omite cuentas que ya están en la billetera.
-4. Agrega cuentas recuperables cuando se pueden resolver metadatos de sponsor.
-5. Añade cuentas recuperables a la billetera.
+1. Reconstruir registros deterministas de cuentas Pali a partir de los metadatos de la billetera.
+2. Solicitar una aserción WebAuthn cuando un validador de passkey deba demostrar el control.
+3. Usar la recuperación mediante guardianes cuando sea necesario reemplazar el validador activo.
+4. Omitir cuentas que ya están en la billetera.
+5. Mostrar cuentas recuperables con indicaciones de saldo y actividad cuando estén disponibles.
+6. Importar las cuentas que seleccione el usuario.
 
-## Idempotencia de crear/recuperar desde dapp
+## Creación desde dapps y recuperación de la billetera
 
-Cuando una dapp llama `wallet_prepareSmartAccount`, Pali primero comprueba si una cuenta passkey on-chain existente coincide con la política de módulos solicitada. Si la cuenta coincidente ya existe localmente, Pali la reutiliza en vez de crear un duplicado. Si existe on-chain pero no localmente, Pali puede recuperarla en la billetera.
+Cuando una dapp llama `wallet_prepareSmartAccount`, Pali crea una cuenta inteligente y guarda metadatos duraderos localmente una vez completados el despliegue y la configuración de validadores solicitada. Pali también conserva registros locales de la configuración pendiente de passkeys antes de su instalación, para que un cambio interrumpido no descarte silenciosamente esos detalles de recuperación. Estos registros no sustituyen una copia de seguridad de la frase semilla ni el acceso a la passkey.
+
+Si una cuenta inteligente existe on-chain pero no aparece localmente, usa el flujo de recuperación de la billetera de Pali. Pali omite las cuentas que ya están presentes y permite al usuario elegir cuáles de las restantes desea importar.

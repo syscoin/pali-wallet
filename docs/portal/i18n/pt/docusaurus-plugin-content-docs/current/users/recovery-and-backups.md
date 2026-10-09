@@ -8,6 +8,12 @@ Backups importam porque a Pali é não custodial. A carteira não pode recuperar
 
 Anote a seed phrase da sua carteira e mantenha-a offline. Qualquer pessoa com a seed phrase pode controlar as contas derivadas.
 
+## Desbloqueio e alterações de passkey
+
+Um serviço do navegador indisponível, um problema de armazenamento ou um recurso criptográfico sem suporte podem impedir o desbloqueio sem que a senha esteja errada. Leia o erro, restabeleça o serviço ou a conexão necessários e tente desbloquear novamente. Não exclua nem reimporte a carteira para contornar um erro operacional. Erros operacionais não contam como tentativas de senha malsucedidas.
+
+Ao substituir uma passkey, tanto a credencial anterior quanto a nova podem continuar disponíveis. A anterior ainda pode controlar outra chain ou uma política compartilhada. Não exclua nenhuma delas apenas porque a configuração foi cancelada ou falhou; primeiro confirme quais credenciais as contas envolvidas ainda exigem. Preserve os dados atuais da carteira enquanto investiga uma alteração interrompida.
+
 ## Status de backup de passkey
 
 Passkeys podem estar vinculadas a um dispositivo ou sincronizadas pelo provedor da conta de plataforma. A Pali expõe status relacionado a backup quando disponível, mas o comportamento exato depende do authenticator, navegador e sistema operacional.
@@ -25,16 +31,19 @@ Passkeys sincronizadas em nuvem ainda são seguras para uso normal: a chave priv
 
 O status de backup é um sinal para ajudar você a escolher entre conveniência e segurança. Ele não substitui o backup da sua seed phrase e não significa que a Pali ou uma instituição possa recuperar um segredo de passkey para você.
 
-## Recuperar contas com passkey
+## Recuperar contas inteligentes
 
-A recuperação de passkey da Pali usa metadados de recuperação escopados à carteira e descoberta de contas on-chain. O fluxo de recuperação:
+A recuperação de contas inteligentes da Pali depende dos módulos instalados. Uma conta controlada por passkey precisa da credencial WebAuthn correspondente para aprovar ações futuras. Um módulo de recuperação por guardiões pode substituir o validador ativo após o bloqueio temporal configurado se o número exigido de guardiões assinar a intenção de recuperação. O fluxo de recuperação pode:
 
-1. Solicita uma asserção WebAuthn descobrível.
-2. Procura smart accounts correspondentes no registro da fábrica e nos logs de criação.
-3. Ignora contas que já estão na carteira.
-4. Adiciona contas recuperáveis quando os metadados de sponsor podem ser resolvidos.
-5. Avisa se metadados de URL de sponsor são necessários para uma política de módulos obrigatória.
+1. Reconstruir registros determinísticos de contas Pali a partir dos metadados da carteira.
+2. Solicitar uma asserção WebAuthn quando um validador de passkey precisar comprovar o controle.
+3. Usar a recuperação por guardiões quando for necessário substituir o validador ativo.
+4. Ignorar contas que já estão na carteira.
+5. Mostrar contas recuperáveis com indicações de saldo e atividade, quando disponíveis.
+6. Importar as contas selecionadas pelo usuário.
 
-## Idempotência de criação/recuperação por dapp
+## Criação por dapps e recuperação da carteira
 
-Quando uma dapp chama `wallet_prepareSmartAccount`, a Pali primeiro verifica se uma conta com passkey on-chain existente corresponde à política de módulos solicitada. Se a conta correspondente já existe localmente, a Pali a reutiliza em vez de criar uma duplicata. Se ela existe on-chain, mas não localmente, a Pali pode recuperá-la para a carteira.
+Quando uma dapp chama `wallet_prepareSmartAccount`, a Pali cria uma conta inteligente e salva metadados duráveis localmente após a conclusão da implantação e de qualquer configuração de validador solicitada. A Pali também mantém registros locais da configuração pendente de passkeys antes da instalação, para que uma alteração interrompida não descarte silenciosamente esses detalhes de recuperação. Esses registros não substituem o backup da seed phrase nem o acesso à passkey.
+
+Se uma conta inteligente existe on-chain, mas está ausente localmente, use o fluxo de recuperação da carteira da Pali. A Pali ignora as contas já presentes e permite que o usuário escolha quais das restantes deseja importar.

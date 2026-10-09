@@ -42,3 +42,9 @@ try {
 | `5730` | Id de bundle EIP-5792 desconocido en `wallet_getCallsStatus` / `wallet_showCallsStatus`. |
 
 Consulta [Códigos de error](../reference/error-codes.md) para la referencia más extensa.
+
+## Reintentar solicitudes interrumpidas
+
+Un tiempo de espera agotado, una ventana de aprobación cerrada o una conexión perdida no siempre demuestran que una transacción nunca se envió. Antes de solicitar otra firma u otro envío, comprueba cualquier hash de transacción conocido, el historial de transacciones o el estado del lote. Una transmisión confirmada por el proveedor sigue siendo un envío exitoso aunque falle una actualización posterior del historial local.
+
+Reintenta las lecturas ordinarias cuando corresponda, pero no repitas automáticamente solicitudes de firma, creación de billeteras o transmisión tras un resultado incierto. Si cambió la cuenta o la red, obtén una nueva aprobación para el contexto actual. Si hay una configuración de cuenta inteligente pendiente, comprueba su estado en la red original antes de intentar otro despliegue.

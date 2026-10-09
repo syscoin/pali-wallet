@@ -8,6 +8,12 @@ Les sauvegardes sont importantes parce que Pali est non dépositaire. Le portefe
 
 Notez la phrase de récupération de votre portefeuille et gardez-la hors ligne. Toute personne qui possède la phrase de récupération peut contrôler les comptes dérivés.
 
+## Déverrouillage et changements de passkey
+
+Un service du navigateur indisponible, un problème de stockage ou une fonctionnalité cryptographique non prise en charge peuvent empêcher le déverrouillage sans que votre mot de passe soit incorrect. Lisez l’erreur, rétablissez le service ou la connexion nécessaires, puis réessayez de déverrouiller le portefeuille. Ne supprimez pas et ne réimportez pas le portefeuille pour contourner une erreur de fonctionnement. Les erreurs de fonctionnement ne comptent pas comme des tentatives de mot de passe échouées.
+
+Le remplacement d’une passkey peut laisser disponibles l’ancienne et la nouvelle information d’identification. L’ancienne peut encore contrôler une autre chaîne ou une politique partagée. Ne supprimez aucune des deux simplement parce que la configuration a été annulée ou a échoué ; vérifiez d’abord lesquelles sont encore nécessaires aux comptes concernés. Conservez les données actuelles du portefeuille pendant l’examen d’un changement interrompu.
+
 ## État de sauvegarde des passkeys
 
 Les passkeys peuvent être liées à un appareil ou synchronisées par le fournisseur de compte de la plateforme. Pali expose l'état lié à la sauvegarde lorsqu'il est disponible, mais le comportement exact dépend de l'authenticator, du navigateur et du système d'exploitation.
@@ -25,16 +31,19 @@ Les passkeys synchronisées dans le cloud restent sûres pour un usage normal : 
 
 L'état de sauvegarde est un signal pour vous aider à choisir entre commodité et sécurité. Il ne remplace pas la sauvegarde de votre phrase de récupération, et il ne signifie pas que Pali ou une institution peut récupérer un secret passkey pour vous.
 
-## Récupérer des comptes passkey
+## Récupérer des comptes intelligents
 
-La récupération passkey de Pali utilise des métadonnées de récupération limitées au portefeuille et la découverte de comptes on-chain. Le flux de récupération :
+La récupération des comptes intelligents Pali dépend des modules installés. Un compte contrôlé par passkey a besoin de l’information d’identification WebAuthn correspondante pour approuver de futures actions. Un module de récupération par gardiens peut remplacer le validateur actif après le délai de verrouillage configuré si le seuil requis de gardiens signe l’intention de récupération. Le parcours de récupération peut :
 
-1. Demande une assertion WebAuthn découvrable.
-2. Recherche les comptes intelligents correspondants depuis le registre de factory et les journaux de création.
-3. Ignore les comptes déjà présents dans le portefeuille.
-4. Ajoute les comptes récupérables lorsque les métadonnées de sponsor peuvent être résolues.
-5. Avertit si des métadonnées d'URL de sponsor sont nécessaires pour une politique de sponsor requise.
+1. Reconstruire les enregistrements déterministes des comptes Pali à partir des métadonnées du portefeuille.
+2. Demander une assertion WebAuthn lorsqu’un validateur de passkey doit prouver le contrôle.
+3. Utiliser la récupération par gardiens lorsque le validateur actif doit être remplacé.
+4. Ignorer les comptes déjà présents dans le portefeuille.
+5. Afficher les comptes récupérables avec des indications de solde et d’activité lorsqu’elles sont disponibles.
+6. Importer les comptes sélectionnés par l’utilisateur.
 
-## Idempotence create/recover côté dapp
+## Création par une dapp et récupération du portefeuille
 
-Lorsqu'une dapp appelle `wallet_prepareSmartAccount`, Pali vérifie d'abord si un compte passkey on-chain existant correspond à la politique de sponsor demandée. Si le compte correspondant existe déjà localement, Pali le réutilise au lieu de créer un doublon. S'il existe on-chain mais pas localement, Pali peut le récupérer dans le portefeuille.
+Lorsqu’une dapp appelle `wallet_prepareSmartAccount`, Pali crée un compte intelligent et enregistre localement des métadonnées durables une fois le déploiement et toute configuration de validateur demandée terminés. Pali conserve également des enregistrements locaux de la configuration des passkeys en attente avant leur installation, afin qu’un changement interrompu ne supprime pas silencieusement ces informations de récupération. Ces enregistrements ne remplacent ni une sauvegarde de la phrase de récupération ni l’accès à la passkey.
+
+Si un compte intelligent existe sur la chaîne mais est absent localement, utilisez le parcours de récupération du portefeuille de Pali. Pali ignore les comptes déjà présents et laisse l’utilisateur choisir lesquels importer parmi les comptes restants.

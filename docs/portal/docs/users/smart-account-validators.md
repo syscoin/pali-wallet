@@ -54,6 +54,10 @@ Smart accounts require the Pali factory and module contracts to exist at the add
 
 Other compatible EVM chains can use the same contracts. When the active network has canonical CREATE2 support, Pali can deploy the missing smart-account setup from inside the wallet: open Settings, go to Advanced, and use the **Smart account setup** Deploy button. Passkey validators need P-256 WebAuthn verification support, which many modern EVM environments expose through a P-256/passkey precompile.
 
+### Pending setup
+
+Slow setup exposes a **Check status** action. Leaving the page or switching networks does not cancel a transaction already submitted. Return to the original network and check its setup status before trying another deployment. A timeout or missing reply does not prove that nothing was deployed.
+
 ## Recovery
 
 <figure>

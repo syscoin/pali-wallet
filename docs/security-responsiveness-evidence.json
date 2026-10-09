@@ -4370,7 +4370,7 @@
     "fixes": {
       "C1": "Onboarding secrets remain in document memory, never router history. Completion, exit and visibility/page lifecycle clear them. Lost creation acknowledgements cannot replay creation.",
       "C2": "Wallet-managed P256 setup rejects any externally supplied initial config before WebAuthn or installation; ECDSA external-owner consent remains explicit.",
-      "C3": "Validate approved-account paths/public keys/spent scripts, strip every foreign signing hint before private-key use, require at least one approved input when unfinished inputs exist, and restore only public metadata afterward. Joint transactions keep foreign inputs unsigned; root derivation remains restricted.",
+      "C3": "Validate approved-account paths/public keys/spent scripts, strip every foreign signing hint before private-key use, require at least one approved unfinished input when unfinished inputs exist, and restore only public metadata afterward. Joint transactions keep foreign inputs unsigned; root derivation remains restricted.",
       "C4": "New passkey registrations use independent random handles and preserve prior credentials still needed by another chain or composite policy.",
       "C5": "Pending or cancelled UI state never authorizes credential deletion; public pending records are persisted before installation and adoption precedes hydration.",
       "C6": "Core returns actual write/removal promises. Fresh creation conditionally commits the salt/ciphertext pair under a native origin/partition Web Lock or explicit backend-enforced atomic createItemsIfAbsent; concurrent losers and unsupported adapters cannot overwrite storage.",
@@ -4910,7 +4910,26 @@
       "staleUiRecovery": "Fixed: full document bootstrap after uncertain creation; Receive address/QR/copy unmounted and Faucet inert until context settles.",
       "hardwareFinalizedInputs": "Fixed: Trezor EXTERNAL and Ledger final-script/witness preservation; bound approved input scope and transaction validation before import.",
       "localReview": "Independent agent review of conditional creation and prior local Codex reviews of initializer, Receive and hardware found no remaining actionable defect in their scopes.",
-      "remoteReview": "Requested on current runtime0235f38f and upstream2a0f9bc; final completion recorded separately."
+      "remoteReview": {
+        "code": {
+          "pali": {
+            "status": "completed without actionable findings",
+            "reviewedCommit": "0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8",
+            "url": "https://github.com/syscoin/pali-wallet/pull/851#issuecomment-6074925880"
+          },
+          "sysweb3": {
+            "status": "completed without actionable findings",
+            "reviewedCommit": "2a0f9bcb6ac099286da93c99b8363ef900748305",
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6074929727"
+          }
+        },
+        "security": {
+          "status": "requested; current-runtime completion unconfirmed",
+          "paliRequest": "https://github.com/syscoin/pali-wallet/pull/851#issuecomment-6074890096",
+          "sysweb3Request": "https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6074890342",
+          "note": "Older security summaries are not a current-runtime sign-off."
+        }
+      }
     },
     "storageCreation": {
       "nativeRequirement": "Actual chrome.storage.local or browser.storage.local identity and navigator.locks; one same-origin/storage-partition exclusive lock spans absence read and native batch commit.",
@@ -4939,7 +4958,34 @@
       "Firefox runtime URL ownership has tests; the prior background-page transport incompatibility remains separate platform work.",
       "Native Web Locks coordinate one origin/storage partition; custom backends must supply their own atomic primitive.",
       "Passkey virtual-authenticator preservation is retained prior evidence; final component regressions were rerun."
-    ]
+    ],
+    "documentation": {
+      "updatedAt": "2026-10-09T05:34:50.440443+00:00",
+      "pages": 54,
+      "guidesPerLocale": 6,
+      "locales": [
+        "en",
+        "es",
+        "pt",
+        "fr",
+        "de",
+        "ru",
+        "zh",
+        "ja",
+        "ko"
+      ],
+      "sourceFingerprintSha256": "ede6fbdf36bd77951afd82e60fa34d3a7a442a7fa9c5db5d61e735a32e8ab6d6",
+      "scope": "Six affected UX/developer guides synchronized to current supported behavior in every configured locale; no removal or release-history notes.",
+      "translationReview": "Independent technical parity reviews plus structural/code/link/media checks.",
+      "productionBuild": "All 9 locales passed from an isolated lockfile install.",
+      "browser": "54 desktop production routes passed HTTP, article structure, language and runtime-error checks; recovery tables fit mobile pages in all 9 languages.",
+      "logs": {
+        "build": "/tmp/pali-audit/docs-all-locales-build-final.log",
+        "parity": "/tmp/pali-audit/docs-locale-parity.json",
+        "browser": "/tmp/pali-audit/docs-browser-check.json"
+      },
+      "published": false
+    }
   },
   "cryptoFollowupInitialSnapshot": {
     "measuredAt": "2026-10-09T04:58:12.071867+00:00",
