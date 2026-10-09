@@ -288,8 +288,15 @@ test.describe('visual baselines', () => {
     ).toHaveCount(0);
     await wallet.page.getByRole('button', { name: /next/i }).first().click();
     await expect(wallet.page).toHaveURL(/send\/confirm/, { timeout: 30_000 });
-    // Fee estimation needs a beat to resolve before the layout is final.
+    // Background fee estimation can outlast a fixed settle delay. Capture
+    // the resolved fee layout only; never click Confirm in this visual walk.
     await settle(3000);
+    await expect(
+      wallet.page.getByText('Calculating...', { exact: true })
+    ).toHaveCount(0, { timeout: E2E_CONFIG.slowActionTimeoutMs });
+    await expect(
+      wallet.page.getByRole('button', { name: 'Confirm', exact: true })
+    ).toBeEnabled({ timeout: E2E_CONFIG.slowActionTimeoutMs });
     await expect(wallet.page).toHaveScreenshot(['send-confirm.png'], {
       mask: [...commonMasks(), wallet.page.getByText(/gwei/i)],
     });
