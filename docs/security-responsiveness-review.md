@@ -229,6 +229,20 @@ These consent lists initially mount at most 52 accounts (50 results plus selecte
 
 Fresh Start loads **1,494,440 bytes** of JavaScript, **37.2% less** than the original-checkout baseline. The unpacked extension is **8,522,724 bytes**; the background bundle is **4,277,963 bytes** against its 4,300,000-byte budget. These are local samples, not percentile or worst-case guarantees. Source/dependency fingerprints, fixtures and timings are in the `smartAccountFollowup` entry of [security-responsiveness-evidence.json](security-responsiveness-evidence.json).
 
+## RPC identity and Firefox follow-up
+
+Runtime source `cbb54439bb714d07a16fac844e8fc3727413c514` has fingerprint `8b62c6f8df6958e6e656fff5317b46c98704df3266c655805b249f5da076a555`. The test-only follow-up `6b87318a` supplies Istanbul bookkeeping when the receiving-origin regression executes the real serialized browser callback in an isolated context.
+
+Window ownership now compares the URL protocol and host with `runtime.getURL('/')`, supporting Firefox's `moz-extension:` UUID host as well as Chrome. The 56 focused tests cover approval and hardware routes, live/pending tabs, foreign extensions, lookalike hosts and recovery after closure. These are Firefox-shaped browser mocks, not a live Firefox run. The existing recovery messages are translated in all nine locales without fallback text in the calls.
+
+Infrastructure jobs, pending attempts and durable v2 journals now include the exact RPC URL as well as chain ID. A different endpoint or fork with the same chain ID cannot consume or clear another endpoint's pending attempt. History reconciliation also requires matching RPC metadata. Legacy v1 pending records lack that identity and remain conservatively pending instead of guessing an endpoint. Seventy focused tests include endpoint switching, persisted worker recovery and stale completion/clear behavior.
+
+The combined suite passes **136 suites and 1,286 tests with coverage enabled**, plus TypeScript, scoped lint and the production Chrome build. Fresh disposable Chrome profiles repeat the four-chain infrastructure and approval/hardware tests on this build. All four chains finish with exactly ten deployment transactions; unknown acknowledgments and worker/network changes do not cause resubmission. Status feedback appears in **1,331 ms**, deployment feedback in **1,339 ms**, and delayed-approval recovery in **1,910 ms**. Personal/typed signatures, locked routing, hardware exclusion and approval recovery after hardware-tab closure pass with no recorded background errors.
+
+Fresh Start loads **1,494,522 bytes** of JavaScript, **37.2% less** than the original baseline. The background is **4,279,611 bytes** and the unpacked extension **8,524,454 bytes**; all size budgets pass. The 500-account timings above remain explicitly tied to runtime `87084512`; they were not rerun for these narrow changes. Detailed follow-up data is in `rpcAndFirefoxFollowup` in the evidence JSON.
+
+A separate focused cryptography and key-management review has open findings. This PR's regression results and prior review completions are not a clean cryptographic security sign-off. Those findings require separate remediation before release.
+
 ## Dependency findings
 
 The read-only production-dependency audit reported 381 dependency-path findings: 3 critical, 241 high, 131 moderate and 6 low; these represent 57 distinct GHSA URLs across 18 packages. Build/test tools are also listed under this project's `dependencies`. These counts are not counts of reachable extension exploits.
