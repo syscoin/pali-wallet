@@ -4,7 +4,7 @@ Review date: 2026-10-08. Scope: the Chrome extension in this checkout, its insta
 
 ## Upstream keyring release
 
-Keyring 1.0.612 is now published; the earlier E404/publication notes below describe their dated validation snapshots. The cryptography follow-up targets upstream core 1.0.29 and keyring 1.0.613 from [sidhujag/sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16). Those new packages require their own publication and clean-install validation. No package patch is included here. Earlier patched-dependency measurements retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the corrected version.
+Keyring 1.0.612 is now published; the earlier E404/publication notes below describe their dated validation snapshots. The cryptography follow-up targets upstream core 1.0.29 and keyring 1.0.613 from [sidhujag/sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16). Both new packages are now published and have passed clean-registry validation, recorded below. No package patch is included here. Earlier patched-dependency measurements retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the corrected version.
 
 ## Account-data and request-work containment
 
@@ -309,11 +309,21 @@ Every reported review thread was checked against source rather than relying on i
 | PR | Reconciled result |
 | --- | --- |
 | sysweb3 #16 | All five reported findings have source fixes and regression coverage: finalized hardware inputs, existing-record initialization, cross-context creation, finalized witness enrichment, and script-path metadata in inferred Taproot keys. |
-| Pali #851 | Eleven of thirteen findings are implemented. Package publication remains an applicable release prerequisite. The Firefox background-page approval transport is not implemented; the default base and current manifests/transports already lack that platform path, so this is recorded as a pre-existing unsupported path, not a completed fix. |
+| Pali #851 | Eleven source findings are implemented, and the publication/clean-install prerequisite is now satisfied. The Firefox background-page approval transport is not implemented; the default base and current manifests/transports already lack that platform path, so this is recorded as a pre-existing unsupported path, not a completed fix. |
 
 The fresh code review of sysweb3 `2a575108` [completed without reporting major issues](https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6075223604); all five reported threads are resolved. The exact head and result are recorded in `psbtCompatibilityFollowup.review` in [the evidence file](security-responsiveness-evidence.json). Earlier no-new-finding review responses are not evidence that all older comments were addressed. The separate security-review summary has no confirmed completion for this new head. The source/test matrices, failed-before/passed-after reports and latest package/build data are recorded separately from the previous snapshot.
 
-The refreshed registry check still returns E404 for core 1.0.29 and keyring 1.0.613. The owner must publish core first, then keyring, followed by clean registry CI. Neither a package publication nor a merge was performed.
+At that snapshot, the registry check returned E404 for core 1.0.29 and keyring 1.0.613. The subsequent registry validation below supersedes that publication gate. No package was published by this agent.
+
+## Published registry verification
+
+Core **1.0.29** and keyring **1.0.613** are now publicly downloadable. All **127 published payload files** (8 core, 119 keyring) are byte-identical to the reviewed source packages. The npm tarball container hashes differ from the earlier local archives; their extracted file contents match. Pali commit `ca5f8c44` records the registry-provided URLs, SHA-1 and SHA-512 integrity values in `yarn.lock`.
+
+A clean Git archive installed successfully with an empty dependency directory and dedicated empty cache using `yarn install --frozen-lockfile`. The lockfile remained unchanged and no local package patch was applied. All **148 suites / 1,424 tests** pass with coverage; TypeScript, translations and production Chrome build pass. Lint reports zero errors and two existing warnings, and all bundle budgets pass. A fresh production Chrome profile reaches interactive onboarding with no page errors.
+
+The first route loads **1,497,664 bytes** of JavaScript, **37.1% less** than the original baseline. Background JavaScript is **4,272,137 bytes** and the unpacked extension is **8,537,643 bytes**. These are measurements of the clean registry build; earlier browser matrices retain their own source boundaries.
+
+The package-publication and clean-install prerequisites are satisfied. GitHub-hosted CI status remains unverified here because the checks connector requires an account connection; these results are local clean-registry checks. Physical-device testing and the pre-existing Firefox background-page limitation remain unchanged. Full hashes and logs are recorded in `registryReleaseVerification` in [the evidence file](security-responsiveness-evidence.json).
 
 ## Dependency findings
 

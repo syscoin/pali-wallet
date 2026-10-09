@@ -11,9 +11,8 @@ reproduced.
 The source fix and real WebCrypto regressions belong upstream: [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15).
 Keyring 1.0.612 is now published. The subsequent migration/KDF fixes target
 core 1.0.29 and keyring 1.0.613. No local package patch is included in Pali.
-Validation against a local source package does not establish publication of
-those newer artifacts; their release and a clean registry install remain
-separate checks.
+Both versions are now publicly downloadable. Clean-registry installation and
+validation are recorded below; no local package patch is needed.
 
 The upstream contract required by Pali is:
 
@@ -94,7 +93,7 @@ stored mnemonic and session identity; it does not rewrite the vault. Pali reads
 both presence records in one native storage call and preserves malformed falsy
 values rather than treating them as an empty wallet.
 
-Current [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) validation uses
+The preceding [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) validation uses
 commit `2a0f9bcb6ac099286da93c99b8363ef900748305`: 31 workspace suites / 467
 tests pass, both packages build, and all 127 packed files match the Pali
 installation. Pali runtime `0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8`, with
@@ -107,8 +106,12 @@ demonstrate two winners with an unguarded check/write sequence, versus one
 winner and one matching pair with the atomic capability; a failed write releases
 the lock. Artifact hashes are recorded under `cryptoFollowup` in
 [the evidence file](security-responsiveness-evidence.json). The 05:26 UTC registry
-check returned E404 for core 1.0.29 and keyring 1.0.613. Owner publication of core
-first, then keyring, and clean registry CI remain pending.
+check returned E404 for core 1.0.29 and keyring 1.0.613. That dated publication
+gate is now satisfied: both public packages match all 127 reviewed payload
+files, and a clean frozen registry install passes all 148 suites / 1,424 tests,
+TypeScript, lint, translations, production build and startup smoke. See
+`registryReleaseVerification` in the evidence file. GitHub-hosted CI status is
+not verified by these local checks.
 
 A separate UI race is fixed in Pali: Home could read stale locked status after
 successful unlock or wallet creation and redirect back to login. Unlock, seed import and new-wallet creation now await a fresh
