@@ -89,6 +89,32 @@ const getMainStateForStorage = (state: any) => {
   return mainState;
 };
 
+const migrateBuiltInExplorerApi = (network?: INetwork) => {
+  const legacyApis: Record<number, string> = {
+    [CHAIN_IDS.ETHEREUM_MAINNET]: 'https://eth.blockscout.com/api',
+    [CHAIN_IDS.BASE_MAINNET]: 'https://base.blockscout.com/api',
+    [CHAIN_IDS.ARBITRUM_ONE]: 'https://arbitrum.blockscout.com/api',
+  };
+  const legacyApi = legacyApis[network?.chainId];
+  if (
+    network?.default !== true ||
+    !legacyApi ||
+    ![legacyApi, `${legacyApi}/`].includes(network.apiUrl)
+  ) {
+    return false;
+  }
+
+  // Change only retired built-in APIs, retaining RPC and user settings.
+  if (network.chainId === CHAIN_IDS.ETHEREUM_MAINNET) {
+    network.apiUrl =
+      PALI_NETWORKS_STATE.ethereum[CHAIN_IDS.ETHEREUM_MAINNET].apiUrl;
+  } else {
+    // Unsupported discovery falls back to manual import and on-chain reads.
+    delete network.apiUrl;
+  }
+  return true;
+};
+
 // Define migration entries in order
 const migrations: Array<{
   description: string;
@@ -162,6 +188,31 @@ const migrations: Array<{
       }
 
       console.log('[Migration 4.0.12] Built-in EVM defaults updated');
+    },
+  },
+  {
+    version: '4.0.71',
+    description:
+      'Use Routescan for Ethereum and remove retired Base and Arbitrum APIs',
+    handler: async (state: any) => {
+      // Evaluate each persisted location independently: an inactive network
+      // entry and the currently active vault may hold separate copies.
+      const changed = [
+        state?.vaultGlobal?.networks?.ethereum?.[CHAIN_IDS.ETHEREUM_MAINNET],
+        state?.vaultGlobal?.networks?.ethereum?.[CHAIN_IDS.BASE_MAINNET],
+        state?.vaultGlobal?.networks?.ethereum?.[CHAIN_IDS.ARBITRUM_ONE],
+        state?.vaultGlobal?.networkTarget,
+        state?.vault?.activeNetwork,
+      ].map(migrateBuiltInExplorerApi);
+
+      if (changed.some(Boolean)) {
+        await chromeStorage.setItem('state', getMainStateForStorage(state));
+      }
+
+      const evmVaultState = await chromeStorage.getItem('state-vault-60');
+      if (migrateBuiltInExplorerApi(evmVaultState?.activeNetwork)) {
+        await chromeStorage.setItem('state-vault-60', evmVaultState);
+      }
     },
   },
 ];

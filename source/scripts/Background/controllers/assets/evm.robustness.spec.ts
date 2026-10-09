@@ -21,7 +21,6 @@ jest.mock('utils/ethersV6Compat', () => ({
 }));
 jest.mock('./nft-utils', () => ({ verifyERC1155OwnershipHelper: jest.fn() }));
 
-import { retryableFetch } from '@sidhujag/sysweb3-network';
 import {
   contractChecker,
   getTokenStandardMetadata,
@@ -37,9 +36,11 @@ import { verifyERC1155OwnershipHelper } from './nft-utils';
 const TOKEN = `0x${'33'.repeat(20)}`;
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 let network: any;
+const originalFetch = global.fetch;
 const response = (data: any, status = 200) => ({
   ok: status === 200,
   status,
+  headers: { get: () => null },
   json: async () => data,
 });
 const deferred = () => {
@@ -53,6 +54,7 @@ const deferred = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers().setSystemTime(new Date('2030-01-01'));
+  global.fetch = jest.fn();
   network = {
     chainId: 1,
     url: 'https://rpc.test',
@@ -62,15 +64,74 @@ beforeEach(() => {
     vault: { activeNetwork: network },
   }));
 });
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  jest.useRealTimers();
+  global.fetch = originalFetch;
+});
 
 describe('discovery availability is not an empty wallet', () => {
+  it('converts Routescan raw holdings into the existing token search result', async () => {
+    network.apiUrl =
+      'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api';
+    (fetch as jest.Mock).mockResolvedValue(
+      response({
+        items: [
+          {
+            chainId: '1',
+            tokenAddress: TOKEN,
+            tokenName: 'Routescan token',
+            tokenSymbol: 'RST',
+            tokenDecimals: 6,
+            tokenQuantity: '1234567',
+          },
+        ],
+        link: {},
+      })
+    );
+    const result = EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+    await jest.advanceTimersByTimeAsync(1100);
+    await expect(result).resolves.toEqual([
+      {
+        id: `${TOKEN}-1`,
+        contractAddress: TOKEN,
+        name: 'Routescan token',
+        symbol: 'RST',
+        decimals: 6,
+        balance: 1.234567,
+        tokenStandard: 'ERC-20',
+      },
+    ]);
+  });
+
+  it('respects a longer server cooldown on the first rate limit', async () => {
+    network.apiUrl = 'https://retry-after.test/api';
+    (fetch as jest.Mock).mockResolvedValue({
+      ...response({}, 429),
+      headers: { get: () => '120' },
+    });
+    await expect(
+      EvmAssetsController().getUserOwnedTokens(ACCOUNT)
+    ).rejects.toThrow('API request failed');
+    await jest.advanceTimersByTimeAsync(60_001);
+    await expect(
+      EvmAssetsController().getUserOwnedTokens(ACCOUNT)
+    ).rejects.toThrow('temporarily unavailable');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(60_000);
+    (fetch as jest.Mock).mockResolvedValue(
+      response({ status: '1', result: [] })
+    );
+    await expect(
+      EvmAssetsController().getUserOwnedTokens(ACCOUNT)
+    ).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   // Unique endpoints avoid inter-test dependence on the intentionally shared cooldown.
   it.each([429, 503])(
     'rejects HTTP %i and cools down without another request',
     async (status) => {
       network.apiUrl = `https://http${status}.test/api`;
-      (retryableFetch as jest.Mock).mockResolvedValue(response({}, status));
+      (fetch as jest.Mock).mockResolvedValue(response({}, status));
       const controller = EvmAssetsController();
       await expect(controller.getUserOwnedTokens(ACCOUNT)).rejects.toThrow(
         'API request failed'
@@ -78,24 +139,22 @@ describe('discovery availability is not an empty wallet', () => {
       await expect(
         EvmAssetsController().getUserOwnedTokens(ACCOUNT)
       ).rejects.toThrow('temporarily unavailable');
-      expect(retryableFetch).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(1);
       await jest.advanceTimersByTimeAsync(60_001);
-      (retryableFetch as jest.Mock).mockResolvedValue(
+      (fetch as jest.Mock).mockResolvedValue(
         response({ status: '1', result: [] })
       );
       await expect(controller.getUserOwnedTokens(ACCOUNT)).resolves.toEqual([]);
-      expect(retryableFetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenCalledTimes(2);
     }
   );
   it('rejects network failures and HTTP-200 NOTOK envelopes', async () => {
     for (const kind of ['network', 'notok']) {
       network.apiUrl = `https://${kind}.test/api`;
       if (kind === 'network')
-        (retryableFetch as jest.Mock).mockRejectedValueOnce(
-          new Error('offline')
-        );
+        (fetch as jest.Mock).mockRejectedValueOnce(new Error('offline'));
       else
-        (retryableFetch as jest.Mock).mockResolvedValueOnce(
+        (fetch as jest.Mock).mockResolvedValueOnce(
           response({ status: '0', message: 'NOTOK', result: 'rate limit' })
         );
       await expect(
@@ -107,8 +166,8 @@ describe('discovery availability is not an empty wallet', () => {
     { status: '1', result: [] },
     { status: '0', message: 'No tokens found', result: [] },
   ])('accepts a genuine empty list', async (data) => {
-    network.apiUrl = 'https://empty.test/api';
-    (retryableFetch as jest.Mock).mockResolvedValue(response(data));
+    network.apiUrl = `https://empty${data.status}.test/api`;
+    (fetch as jest.Mock).mockResolvedValue(response(data));
     await expect(
       EvmAssetsController().getUserOwnedTokens(ACCOUNT)
     ).resolves.toEqual([]);
@@ -122,7 +181,7 @@ describe('discovery availability is not an empty wallet', () => {
       symbol: 'OK',
       name: 'Good',
     };
-    (retryableFetch as jest.Mock).mockResolvedValue(
+    (fetch as jest.Mock).mockResolvedValue(
       response({
         status: '1',
         result: [
@@ -148,7 +207,7 @@ describe('discovery availability is not an empty wallet', () => {
     await expect(
       EvmAssetsController().getUserOwnedTokens(ACCOUNT)
     ).resolves.toEqual([]);
-    expect(retryableFetch).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -180,7 +239,7 @@ it('uses RPC for tracked balances with a configured API and preserves a failed t
   expect(
     result.find((token) => token.contractAddress === second)?.balance
   ).toBe(9);
-  expect(retryableFetch).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
   expect(onBalanceRead).toHaveBeenCalledTimes(1);
   expect(onBalanceRead).toHaveBeenCalledWith({
     ...tokens[0],

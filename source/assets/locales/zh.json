@@ -714,6 +714,7 @@
     "enterContractToImport": "在上方输入合约地址以导入代币",
     "yourTokens": "您的代币",
     "addCustomTab": "添加自定义",
+    "discoveryUnavailable": "此网络尚未配置自动代币发现功能。请通过合约地址添加代币，或在网络设置中配置兼容的区块浏览器 API。",
     "enterAssetGuid": "输入资产 GUID（例如：123456）",
     "enterAssetGuidToImport": "输入资产 GUID 以导入自定义 SPT 代币",
     "assetGuid": "GUID",

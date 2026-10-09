@@ -32,6 +32,7 @@ import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { isRoutescanApiUrl } from 'utils/tokenDiscovery';
 
 export const ImportToken: React.FC = () => {
   const { controllerEmitter } = useController();
@@ -87,6 +88,10 @@ export const ImportToken: React.FC = () => {
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
 
+  useEffect(() => {
+    if (!activeNetwork.apiUrl) setActiveTab('custom');
+  }, [activeNetwork.apiUrl]);
+
   // Use deferred value for search optimization
   const deferredCustomAddress = useDeferredValue(customContractAddress);
   const deferredTokenId = useDeferredValue(customTokenId);
@@ -123,9 +128,9 @@ export const ImportToken: React.FC = () => {
 
   // PATH 1: Load tokens user actually owns
   const loadOwnedTokens = useCallback(async () => {
-    if (!activeAccount?.address) return;
+    if (!activeAccount?.address || !activeNetwork.apiUrl) return;
 
-    const requestKey = `${activeAccount.address}-${activeNetwork.chainId}`;
+    const requestKey = `${activeAccount.address}-${activeNetwork.chainId}-${activeNetwork.apiUrl}`;
     const requestId = ++ownedRequestIdRef.current;
     const isCurrent = () =>
       loadingKeyRef.current === requestKey &&
@@ -159,14 +164,15 @@ export const ImportToken: React.FC = () => {
     alert,
     t,
     activeNetwork.chainId,
+    activeNetwork.apiUrl,
   ]);
 
   // Load user's owned tokens - only once per account/network combination
   useEffect(() => {
-    if (!activeAccount?.address) return;
+    if (!activeAccount?.address || !activeNetwork.apiUrl) return;
 
     // Create a unique key for this account/network combination
-    const currentKey = `${activeAccount.address}-${activeNetwork.chainId}`;
+    const currentKey = `${activeAccount.address}-${activeNetwork.chainId}-${activeNetwork.apiUrl}`;
 
     // Only load if we haven't loaded for this specific combination
     if (loadingKeyRef.current !== currentKey) {
@@ -178,7 +184,7 @@ export const ImportToken: React.FC = () => {
       ownedRequestIdRef.current += 1;
       loadingKeyRef.current = '';
     };
-  }, [activeAccount?.address, activeNetwork.chainId]);
+  }, [activeAccount?.address, activeNetwork.chainId, activeNetwork.apiUrl]);
 
   // Create debounced validation function
   useEffect(() => {
@@ -598,17 +604,19 @@ export const ImportToken: React.FC = () => {
     <div className="flex flex-col h-full bg-bkg-3 text-brand-white font-poppins">
       {/* Tab Navigation */}
       <div className="h-10 relative flex items-end justify-center w-full bg-bkg-1 -mt-2">
-        <button
-          className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
-            activeTab === 'owned'
-              ? 'bg-bkg-3 text-brand-white rounded-tr-[2rem]'
-              : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
-          }`}
-          type="button"
-          onClick={() => handleTabChange('owned')}
-        >
-          {t('tokens.yourTokens')}
-        </button>
+        {activeNetwork.apiUrl && (
+          <button
+            className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
+              activeTab === 'owned'
+                ? 'bg-bkg-3 text-brand-white rounded-tr-[2rem]'
+                : 'bg-bkg-1 text-brand-gray200 hover:text-brand-white'
+            }`}
+            type="button"
+            onClick={() => handleTabChange('owned')}
+          >
+            {t('tokens.yourTokens')}
+          </button>
+        )}
 
         <button
           className={`w-[12.5rem] h-full px-4 font-medium text-base transition-all duration-300 ${
@@ -625,6 +633,22 @@ export const ImportToken: React.FC = () => {
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
+        {!activeNetwork.apiUrl && (
+          <p className="mb-4 text-sm text-brand-gray200">
+            {t('tokens.discoveryUnavailable')}
+          </p>
+        )}
+        {activeTab === 'owned' &&
+          isRoutescanApiUrl(activeNetwork.apiUrl, activeNetwork.chainId) && (
+            <a
+              className="block mb-3 text-xs text-brand-royalblue underline"
+              href="https://routescan.io"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Routescan.io APIs
+            </a>
+          )}
         {activeTab === 'owned' && ownedTokensUnavailable ? (
           <div role="alert">
             <p>{t('settings.apiConnectionError')}</p>

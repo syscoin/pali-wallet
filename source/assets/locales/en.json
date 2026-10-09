@@ -714,6 +714,7 @@
     "enterContractToImport": "Enter a contract address above to import a token",
     "yourTokens": "Your Tokens",
     "addCustomTab": "Add Custom",
+    "discoveryUnavailable": "Automatic token discovery is not configured for this network. Add tokens by contract address, or configure a compatible explorer API in network settings.",
     "enterAssetGuid": "Enter asset GUID (e.g., 123456)",
     "enterAssetGuidToImport": "Enter an asset GUID to import a custom SPT token",
     "assetGuid": "GUID",

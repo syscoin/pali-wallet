@@ -41,6 +41,8 @@ EVM dapps can request:
 - chain add/switch requests
 - batch call requests
 
+To find or add assets, see [Token discovery and explorer APIs](./token-discovery-and-explorer-apis.md). The guide covers manual imports, supported API formats, network settings, and provider access limits.
+
 ## UTXO accounts
 
 Use UTXO accounts for Syscoin UTXO and Bitcoin-style transaction flows. UTXO dapps may request xpub-aware state, change addresses, PSBT signing, and transaction broadcast.

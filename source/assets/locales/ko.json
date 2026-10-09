@@ -714,6 +714,7 @@
     "enterContractToImport": "토큰을 가져오려면 위에 계약 주소를 입력하세요",
     "yourTokens": "내 토큰",
     "addCustomTab": "사용자 정의 추가",
+    "discoveryUnavailable": "이 네트워크에는 자동 토큰 검색이 설정되어 있지 않습니다. 컨트랙트 주소로 토큰을 추가하거나 네트워크 설정에서 호환되는 탐색기 API를 설정하세요.",
     "enterAssetGuid": "자산 GUID 입력 (예: 123456)",
     "enterAssetGuidToImport": "커스텀 SPT 토큰을 가져오려면 자산 GUID를 입력하세요",
     "assetGuid": "GUID",

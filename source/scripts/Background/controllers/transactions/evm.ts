@@ -9,6 +9,7 @@ import {
   parseEvmInteger,
   type EvmTransactionHistorySource,
 } from 'utils/evmNonce';
+import { fetchRoutescan, isRoutescanApiUrl } from 'utils/tokenDiscovery';
 
 import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
@@ -16,6 +17,11 @@ import {
   findUserTxsInProviderByBlocksRange,
   validateAndManageUserTransactions,
 } from './utils';
+
+const fetchExplorerApi = (url: string, options?: RequestInit) =>
+  new URL(url).origin === 'https://api.routescan.io'
+    ? fetchRoutescan(url, options)
+    : retryableFetch(url, options);
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
@@ -53,7 +59,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         url.searchParams.set('apikey', existingApiKey);
       }
 
-      const blockResponse = await retryableFetch(url.toString(), {
+      const blockResponse = await fetchExplorerApi(url.toString(), {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -73,7 +79,15 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           if (errorMsg && errorMsg.toLowerCase().includes('api key')) {
             return { success: false, error: 'settings.missingApiKey' };
           }
-          return { success: false, error: errorMsg };
+          // Etherscan-compatible APIs may reject Blockscout's block action
+          // with HTTP 200. Try the standard proxy action in that case.
+          if (
+            !/invalid (?:action|module)|unknown (?:action|module)|unsupported/i.test(
+              String(errorMsg)
+            )
+          ) {
+            return { success: false, error: errorMsg };
+          }
         } else if (blockData.result) {
           return { success: true };
         }
@@ -85,7 +99,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('module', 'proxy');
       url.searchParams.set('action', 'eth_blockNumber');
 
-      const proxyResponse = await retryableFetch(url.toString(), {
+      const proxyResponse = await fetchExplorerApi(url.toString(), {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -141,6 +155,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     hasMore?: boolean;
     transactions: IEvmTransactionResponse[] | null;
   }> => {
+    // Routescan does not implement Blockscout's pendingtxlist action.
+    const fetchPending = includePending && !isRoutescanApiUrl(apiUrl, chainId);
     // Shared mapper for API items (txlist or tokentx) to internal shape
     const mapApiTx = (
       item: any,
@@ -261,11 +277,13 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     // Prepare fetch promises for parallel execution
-    const fetchPromises: Promise<Response>[] = [retryableFetch(url.toString())];
+    const fetchPromises: Promise<Response>[] = [
+      fetchExplorerApi(url.toString()),
+    ];
 
     // Add pending transactions fetch if requested
     let pendingUrl: URL | null = null;
-    if (includePending) {
+    if (fetchPending) {
       pendingUrl = new URL(apiUrl);
       pendingUrl.searchParams.set('module', 'account');
       pendingUrl.searchParams.set('action', 'pendingtxlist');
@@ -275,7 +293,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         pendingUrl.searchParams.set('apikey', existingApiKey);
       }
 
-      fetchPromises.push(retryableFetch(pendingUrl.toString()));
+      fetchPromises.push(fetchExplorerApi(pendingUrl.toString()));
     }
 
     // Token transfer endpoint (use tokentx only for Blockscout compatibility)
@@ -290,7 +308,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
     if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
 
-    fetchPromises.push(retryableFetch(token20Url.toString()));
+    fetchPromises.push(fetchExplorerApi(token20Url.toString()));
 
     // Execute all fetches in parallel (tolerate partial failures)
     const responses = await Promise.allSettled(fetchPromises);
@@ -301,12 +319,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     // Correctly map optional responses based on whether includePending was requested
     let nextIndex = 1;
-    const pendingResponse: Response | undefined = includePending
+    const pendingResponse: Response | undefined = fetchPending
       ? responses[nextIndex]?.status === 'fulfilled'
         ? (responses[nextIndex] as PromiseFulfilledResult<Response>).value
         : undefined
       : undefined;
-    if (includePending) {
+    if (fetchPending) {
       nextIndex += 1;
     }
 
@@ -352,7 +370,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     let pendingData: any;
     let token20Data: any;
     let parsedIndex = 1;
-    if (includePending && pendingResponse) {
+    if (fetchPending && pendingResponse) {
       pendingData = parsed[parsedIndex++];
     }
     if (token20Response && token20Response.ok) {
@@ -400,12 +418,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
 
     // Process pending transactions if they were fetched
-    if (
-      includePending &&
-      pendingResponse &&
-      pendingResponse.ok &&
-      pendingData
-    ) {
+    if (fetchPending && pendingResponse && pendingResponse.ok && pendingData) {
       try {
         // Check for pending API errors too
         if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
@@ -564,8 +577,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       if (existingApiKey) token20Url.searchParams.set('apikey', existingApiKey);
 
       const [response, token20Resp] = await Promise.all([
-        retryableFetch(url.toString()),
-        retryableFetch(token20Url.toString()),
+        fetchExplorerApi(url.toString()),
+        fetchExplorerApi(token20Url.toString()),
       ]);
 
       if (!response.ok) {
@@ -713,7 +726,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         apiKey ? `&apikey=${apiKey}` : ''
       }`;
 
-      const response = await retryableFetch(apiEndpoint);
+      const response = await fetchExplorerApi(apiEndpoint);
       const data = await response.json();
 
       if (data.status === '1' && data.result) {

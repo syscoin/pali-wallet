@@ -129,7 +129,7 @@ describe('custom token validation cancellation', () => {
     (useSelector as jest.Mock).mockReturnValue({
       activeAccount: { type: 'HDAccount', id: 0 },
       accounts: { HDAccount: { 0: { address: ADDRESS } } },
-      activeNetwork: { chainId: 1 },
+      activeNetwork: { chainId: 1, apiUrl: 'https://explorer.test/api' },
       accountAssets: {},
     });
   });
@@ -138,6 +138,77 @@ describe('custom token validation cancellation', () => {
     jest.restoreAllMocks();
     jest.useRealTimers();
   });
+
+  it('attributes Routescan only on its owned-token discovery tab', () => {
+    (getCurrentTab as jest.Mock).mockReturnValue('owned');
+    (useSelector as jest.Mock).mockReturnValue({
+      activeAccount: { type: 'HDAccount', id: 0 },
+      accounts: { HDAccount: { 0: { address: ADDRESS } } },
+      activeNetwork: {
+        chainId: 1,
+        apiUrl:
+          'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api',
+      },
+      accountAssets: {},
+    });
+    const attribution = find(
+      render(),
+      (element) => element.props.href === 'https://routescan.io'
+    );
+    expect(attribution?.props.children).toBe('Routescan.io APIs');
+    expect(
+      find(
+        render(),
+        (element) => element.props.children === 'tokens.discoveryUnavailable'
+      )
+    ).toBeUndefined();
+    const customTab = find(
+      render(),
+      (element) => element.props.children === 'tokens.addCustomTab'
+    );
+    customTab!.props.onClick();
+    expect(
+      find(render(), (element) => element.props.href === 'https://routescan.io')
+    ).toBeUndefined();
+    expect(
+      find(
+        render(),
+        (element) => element.props.children === 'tokens.discoveryUnavailable'
+      )
+    ).toBeUndefined();
+  });
+
+  it.each([8453, 42161])(
+    'explains manual import when network %s has no discovery API',
+    (chainId) => {
+      (getCurrentTab as jest.Mock).mockReturnValue('owned');
+      (useSelector as jest.Mock).mockReturnValue({
+        activeAccount: { type: 'HDAccount', id: 0 },
+        accounts: { HDAccount: { 0: { address: ADDRESS } } },
+        activeNetwork: { chainId },
+        accountAssets: {},
+      });
+      render();
+      const tree = render();
+      expect(
+        find(
+          tree,
+          (element) => element.props.children === 'tokens.discoveryUnavailable'
+        )
+      ).toBeDefined();
+      expect(
+        find(tree, (element) => element.props.children === 'tokens.yourTokens')
+      ).toBeUndefined();
+      expect(
+        find(
+          tree,
+          (element) =>
+            element.props.placeholder === 'tokens.enterContractAddress'
+        )
+      ).toBeDefined();
+      expect(emitter).not.toHaveBeenCalled();
+    }
+  );
 
   it('clears the spinner after a pending full address is shortened, without applying the cancelled result', async () => {
     changeAddress(TOKEN);
