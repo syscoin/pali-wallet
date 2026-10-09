@@ -344,29 +344,29 @@ export const ConnectWallet = () => {
       : null;
 
   // Memoize filtered accounts to prevent recomputation
-  const matchingAccounts = useMemo(() => {
+  const eligibleAccounts = useMemo(() => {
     if (!accounts) return [];
-    const query = search.trim().toLowerCase();
     return Object.entries(accounts).flatMap(([keyringType, accountList]) =>
       Object.values(accountList)
-        .filter(
-          (account) =>
-            isAccountValidForNetwork(account, keyringType) &&
-            (!query ||
-              `${account.label} ${account.address}`
-                .toLowerCase()
-                .includes(query))
-        )
+        .filter((account) => isAccountValidForNetwork(account, keyringType))
         .map((account) => ({ account, type: keyringType }))
     );
-  }, [accounts, isAccountValidForNetwork, search]);
+  }, [accounts, isAccountValidForNetwork]);
+  const matchingAccounts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return eligibleAccounts.filter(
+      ({ account }) =>
+        !query ||
+        `${account.label} ${account.address}`.toLowerCase().includes(query)
+    );
+  }, [eligibleAccounts, search]);
   const { visibleItems, hasMore, showMore } = useIncrementalList(
     matchingAccounts,
     `${selectionContext}:${search}`
   );
-  // Keep the selected account visible even when it lies beyond the first page.
+  // Keep the selection visible even outside the search results or first page.
   const filteredAccounts = useMemo(() => {
-    const selected = matchingAccounts.find(
+    const selected = eligibleAccounts.find(
       ({ account, type: keyringType }) =>
         account.id === accountId && keyringType === accountType
     );
@@ -383,7 +383,7 @@ export const ConnectWallet = () => {
         return groups;
       }, {} as Record<string, { accounts: (typeof accounts)[KeyringAccountType.HDAccount][number][]; type: string }>)
     );
-  }, [accountId, accountType, matchingAccounts, visibleItems]);
+  }, [accountId, accountType, eligibleAccounts, visibleItems]);
 
   return (
     <div className="flex flex-col w-full h-full">

@@ -56,20 +56,20 @@ describe('large connection approval account selection', () => {
   let stateIndex: number;
   let refs: any[];
   let refIndex: number;
-  let memos: Array<{ deps: any[]; value: any }>;
+  let memos: Array<{ deps: React.DependencyList; value: any }>;
   let memoIndex: number;
-  let effectDeps: any[][];
+  let effectDeps: Array<React.DependencyList | undefined>;
   let cleanups: Array<(() => void) | undefined>;
   let effectIndex: number;
   let effects: Array<() => void>;
-  const sameDeps = (a?: any[], b?: any[]) =>
+  const sameDeps = (a?: React.DependencyList, b?: React.DependencyList) =>
     Boolean(
       a &&
         b &&
         a.length === b.length &&
         a.every((value, index) => value === b[index])
     );
-  const memo = (factory: () => any, deps: any[]) => {
+  const memo = (factory: () => any, deps: React.DependencyList) => {
     const index = memoIndex++;
     if (!sameDeps(memos[index]?.deps, deps))
       memos[index] = { deps, value: factory() };
@@ -183,7 +183,8 @@ describe('large connection approval account selection', () => {
   it('searches every account and keeps selection after clearing the search', async () => {
     await initialize();
     search('Account 350');
-    expect(rows()).toHaveLength(1);
+    expect(rows()).toHaveLength(2);
+    expect(selected('Account 500')).toBe(true);
     row('Account 350').props.onClick();
     expect(selected('Account 350')).toBe(true);
     search('');
@@ -228,7 +229,8 @@ describe('large connection approval account selection', () => {
     await initialize();
     search('no-such-account');
     const view = render();
-    expect(rows(view)).toHaveLength(0);
+    expect(rows(view)).toHaveLength(1);
+    expect(selected('Account 500', view)).toBe(true);
     expect(
       allElements(view).find((element) => element.props.role === 'status')
         ?.props.children
