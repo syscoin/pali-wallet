@@ -31,6 +31,11 @@ const withRetries = async <T>(
   throw lastError;
 };
 
+// SYSCOIN: Chain identity is a prerequisite read, so apply the same bounded
+// transient-RPC retry policy as balance and infrastructure checks.
+export const getChainId = async (): Promise<number> =>
+  withRetries(async () => Number((await provider.getNetwork()).chainId));
+
 export const getInfrastructureContracts =
   (): readonly PaliInfrastructureContract[] =>
     getPaliInfrastructureContracts(E2E_CONFIG.chainId);
