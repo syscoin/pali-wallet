@@ -1,5 +1,5 @@
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: jest.fn() },
+  chromeStorage: { getItems: jest.fn() },
 }));
 
 import { chromeStorage } from 'utils/storageAPI';
@@ -11,23 +11,30 @@ describe('wallet presence detection', () => {
 
   it.each([
     [null, null, false],
+    [undefined, undefined, false],
     ['encrypted vault', { salt: 'salt' }, true],
+    ['', false, true],
+    [0, '', true],
   ])('recognizes empty and complete storage', async (vault, keys, expected) => {
-    (chromeStorage.getItem as jest.Mock)
-      .mockResolvedValueOnce(vault)
-      .mockResolvedValueOnce(keys);
+    (chromeStorage.getItems as jest.Mock).mockResolvedValueOnce({
+      'sysweb3-vault': vault,
+      'sysweb3-vault-keys': keys,
+    });
     await expect(readWalletPresence()).resolves.toBe(expected);
   });
 
   it.each([
     ['encrypted vault', null],
     [null, { salt: 'salt' }],
+    ['', null],
+    [null, false],
   ])(
     'refuses to classify partial storage as a new wallet',
     async (vault, keys) => {
-      (chromeStorage.getItem as jest.Mock)
-        .mockResolvedValueOnce(vault)
-        .mockResolvedValueOnce(keys);
+      (chromeStorage.getItems as jest.Mock).mockResolvedValueOnce({
+        'sysweb3-vault': vault,
+        'sysweb3-vault-keys': keys,
+      });
       await expect(readWalletPresence()).rejects.toThrow(
         'storage is incomplete'
       );
@@ -35,7 +42,7 @@ describe('wallet presence detection', () => {
   );
 
   it('propagates a storage read failure', async () => {
-    (chromeStorage.getItem as jest.Mock).mockRejectedValueOnce(
+    (chromeStorage.getItems as jest.Mock).mockRejectedValueOnce(
       new Error('read failed')
     );
     await expect(readWalletPresence()).rejects.toThrow('read failed');

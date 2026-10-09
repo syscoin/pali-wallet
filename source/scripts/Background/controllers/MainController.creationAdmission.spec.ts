@@ -11,7 +11,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: jest.fn() },
+  chromeStorage: { getItems: jest.fn() },
 }));
 
 import { AsyncMutex } from 'utils/asyncMutex';
@@ -25,9 +25,11 @@ describe('durable new-wallet admission', () => {
   beforeEach(() => {
     records = {};
     jest
-      .mocked(chromeStorage.getItem)
+      .mocked(chromeStorage.getItems)
       .mockReset()
-      .mockImplementation(async (key) => records[key] ?? null);
+      .mockImplementation(async (keys) =>
+        Object.fromEntries(keys.map((key) => [key, records[key]]))
+      );
     wallet = Object.create(MainController.prototype);
     wallet.walletStateGeneration = 0;
     wallet.authenticationMutex = new AsyncMutex();
@@ -55,6 +57,8 @@ describe('durable new-wallet admission', () => {
     },
     { 'sysweb3-vault': 'established ciphertext' },
     { 'sysweb3-vault-keys': { salt: 'established salt' } },
+    { 'sysweb3-vault': '', 'sysweb3-vault-keys': false },
+    { 'sysweb3-vault': 0 },
   ])('preserves existing or incomplete durable storage %p', async (stored) => {
     records = stored;
     const original = JSON.stringify(records);
@@ -68,7 +72,7 @@ describe('durable new-wallet admission', () => {
 
   it('does not reset storage when checking its existence fails', async () => {
     jest
-      .mocked(chromeStorage.getItem)
+      .mocked(chromeStorage.getItems)
       .mockRejectedValueOnce(new Error('storage unavailable'));
     await expect(wallet.createWallet('password', 'seed')).rejects.toThrow(
       'storage unavailable'
