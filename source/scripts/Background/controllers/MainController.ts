@@ -35,6 +35,7 @@ import {
   assertCompleteHDAccountData,
   assertEmptyHDAccountMetadata,
 } from '../utils/assertCompleteHDAccountData';
+import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -2426,7 +2427,17 @@ class MainController {
     this.isCreatingWallet = true;
     const walletStateGeneration = this.walletStateGeneration;
     try {
-      return await this.authenticationMutex.runExclusive(() => {
+      return await this.authenticationMutex.runExclusive(async () => {
+        if (walletStateGeneration !== this.walletStateGeneration) {
+          throw new Error('Wallet state changed before reset');
+        }
+        // Only onboarding calls this entry point. A stale document must not
+        // replace a wallet created elsewhere; explicit forgetting owns reset.
+        if (await readWalletPresence()) {
+          throw new Error(
+            'A wallet already exists. Unlock it or explicitly forget it before starting setup.'
+          );
+        }
         if (walletStateGeneration !== this.walletStateGeneration) {
           throw new Error('Wallet state changed before reset');
         }

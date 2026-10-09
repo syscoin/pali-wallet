@@ -13,6 +13,10 @@ let mockSubmit: (values: { password: string }) => Promise<void>;
 const mockNavigate = jest.fn();
 const mockAlert = jest.fn();
 const mockClear = jest.fn();
+const mockReload = jest.fn();
+jest.mock('utils/reloadWalletForRecovery', () => ({
+  reloadWalletForRecovery: () => mockReload(),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -53,6 +57,7 @@ describe('new wallet authentication navigation', () => {
     mockNavigate.mockClear();
     mockAlert.mockClear();
     mockClear.mockClear();
+    mockReload.mockClear();
     renderToStaticMarkup(<CreatePasswordImport />);
   });
   afterEach(() => {
@@ -92,9 +97,8 @@ describe('new wallet authentication navigation', () => {
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('Worker unavailable'));
     await mockSubmit({ password: 'test password' });
-    expect(mockNavigate).toHaveBeenCalledWith('/', {
-      state: { isWalletImported: true },
-    });
+    expect(mockReload).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
     expect(controllerEmitter).toHaveBeenCalledTimes(2);
   });
 
@@ -116,9 +120,10 @@ describe('new wallet authentication navigation', () => {
       10000,
       false
     );
-    expect(controllerEmitter).toHaveBeenCalledTimes(2);
+    expect(controllerEmitter).toHaveBeenCalledTimes(1);
     expect(mockClear).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockReload).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockAlert).toHaveBeenCalledWith('settings.walletSetupFailed');
   });
 });

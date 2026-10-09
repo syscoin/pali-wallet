@@ -19,6 +19,9 @@ jest.mock('./storageManager', () => ({
     getInstance: () => ({ ensureInitialized: async () => undefined }),
   },
 }));
+jest.mock('../utils/readWalletPresence', () => ({
+  readWalletPresence: jest.fn().mockResolvedValue(false),
+}));
 
 import { getController } from '..';
 import store, * as storeModule from 'state/store';

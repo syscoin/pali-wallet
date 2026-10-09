@@ -10,6 +10,10 @@ const mockRefresh = jest.fn();
 const mockClear = jest.fn();
 const mockNavigate = jest.fn();
 const mockAlert = jest.fn();
+const mockReload = jest.fn();
+jest.mock('utils/reloadWalletForRecovery', () => ({
+  reloadWalletForRecovery: () => mockReload(),
+}));
 let mockConfirm: () => Promise<void>;
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
@@ -73,8 +77,9 @@ describe('creation acknowledgement recovery', () => {
       false
     );
     expect(mockClear).toHaveBeenCalledTimes(1);
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockReload).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
     expect(mockAlert).toHaveBeenCalledWith('settings.walletSetupFailed');
     await waitFor(() => expect(screen.queryByText('Validate')).toBeNull());
   });

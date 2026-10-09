@@ -8,6 +8,7 @@ import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
+import { reloadWalletForRecovery } from 'utils/reloadWalletForRecovery';
 
 export const CreatePasswordImport = () => {
   const { controllerEmitter } = useController();
@@ -35,17 +36,18 @@ export const CreatePasswordImport = () => {
       // The worker may have finished despite a lost acknowledgement. Never
       // replay creation: recover through the authoritative wallet startup.
       alert.error(t('settings.walletSetupFailed'));
-      await refreshControllerStatus();
-      navigate('/', { replace: true });
+      reloadWalletForRecovery();
       return;
     }
     // Creation changes authentication just like unlock. Discard any cached
     // locked reply before entering protected routes. If confirmation fails,
     // recover through the existing-wallet screen, without repeating creation.
     const confirmed = await refreshControllerStatus();
-    navigate(confirmed ? '/home' : '/', {
-      state: { isWalletImported: true },
-    });
+    if (confirmed) {
+      navigate('/home', { state: { isWalletImported: true } });
+    } else {
+      reloadWalletForRecovery();
+    }
   };
 
   return created ? (

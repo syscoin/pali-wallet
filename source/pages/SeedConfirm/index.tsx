@@ -7,6 +7,7 @@ import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useController } from 'hooks/useController';
 import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { useUtils } from 'hooks/useUtils';
+import { reloadWalletForRecovery } from 'utils/reloadWalletForRecovery';
 
 import { ConfirmPhrase } from './ConfirmPhrase';
 import { CreatePhrase } from './CreatePhrase';
@@ -39,13 +40,13 @@ export const SeedConfirm = () => {
         );
       } catch {
         alert.error(t('settings.walletSetupFailed'));
-        await refreshControllerStatus();
-        navigate('/', { replace: true });
+        reloadWalletForRecovery();
         return;
       }
 
       const confirmed = await refreshControllerStatus();
-      navigate(confirmed ? '/home' : '/');
+      if (confirmed) navigate('/home');
+      else reloadWalletForRecovery();
     }
   };
   if (created) return <AppLoadingSkeleton />;
