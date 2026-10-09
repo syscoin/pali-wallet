@@ -203,6 +203,7 @@ const InfrastructurePanel = ({
           </div>
           <Button
             variant="neutral"
+            className="text-brand-royalblue"
             type="button"
             disabled={reading}
             onClick={() => void refresh()}
@@ -212,6 +213,7 @@ const InfrastructurePanel = ({
           {current?.create2Deployer.deployed && Boolean(missing?.length) && (
             <Button
               variant="neutral"
+              className="text-brand-royalblue"
               type="button"
               disabled={!canDeploy || deploying || Boolean(current.pending)}
               onClick={() => void deploy()}

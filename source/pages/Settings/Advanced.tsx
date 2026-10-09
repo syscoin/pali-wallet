@@ -146,7 +146,7 @@ const Advanced = () => {
 
       <Form
         validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center text-center w-full"
+        className="flex flex-col gap-6 items-center justify-center text-center w-full"
         name="autolock"
         id="autolock"
         onFinish={onSubmit}
@@ -156,7 +156,7 @@ const Advanced = () => {
           <Form.Item
             id="verify-address-switch"
             name={propName}
-            className="flex flex-col w-full text-center"
+            className="!mb-0 flex flex-col w-full text-center"
             rules={[
               {
                 required: false,
@@ -165,7 +165,7 @@ const Advanced = () => {
             ]}
             key={index}
           >
-            <div className="align-center flex flex-row gap-2 justify-center w-full text-center items-center">
+            <div className="align-center flex flex-row flex-wrap gap-2 justify-center w-full text-center items-center">
               <span className="text-sm">{settingsTitles[propName]}</span>
 
               {propName === 'autolock' ? (
@@ -265,7 +265,7 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        <div className="w-full px-4 pb-12">
           <Button
             variant="neutral"
             className="text-sm text-brand-royalblue"

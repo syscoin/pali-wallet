@@ -389,9 +389,11 @@ test.describe('visual baselines', () => {
               { exact: true }
             )
         ).toBeVisible();
-        await expect(
-          page.getByRole('button', { name: 'Check status', exact: true })
-        ).toBeEnabled();
+        const checkStatus = page.getByRole('button', {
+          name: 'Check status',
+          exact: true,
+        });
+        await expect(checkStatus).toBeEnabled();
         const deploy = page.getByRole('button', {
           name: 'Deploy',
           exact: true,
@@ -406,6 +408,56 @@ test.describe('visual baselines', () => {
             page.getByText('1 setup item(s) missing.', { exact: true })
           ).toBeVisible();
           await expect(deploy).toBeEnabled();
+        }
+        // A text locator can pass even when a button is white-on-white.
+        for (const action of [checkStatus, ...(ready ? [] : [deploy])]) {
+          const contrast = await action.evaluate((button) => {
+            const style = getComputedStyle(button);
+            const luminance = (color: string) => {
+              const channels = color
+                .match(/[\d.]+/g)!
+                .slice(0, 3)
+                .map(Number);
+              return channels.reduce((total, channel, index) => {
+                const value = channel / 255;
+                const linear =
+                  value <= 0.04045
+                    ? value / 12.92
+                    : ((value + 0.055) / 1.055) ** 2.4;
+                return total + linear * [0.2126, 0.7152, 0.0722][index];
+              }, 0);
+            };
+            const foreground = luminance(style.color);
+            const background = luminance(style.backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) /
+              (Math.min(foreground, background) + 0.05)
+            );
+          });
+          expect(
+            contrast,
+            'Infrastructure action text must be readable'
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+        // Both the popup and wider extension view must keep Save in flow.
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 600, height: 800 },
+        ]) {
+          await page.setViewportSize(viewport);
+          const save = page.getByRole('button', { name: 'Save', exact: true });
+          const autolock = page.getByRole('spinbutton');
+          const autolockRow = page
+            .locator('#autolock .ant-form-item')
+            .filter({ has: autolock });
+          await save.scrollIntoViewIfNeeded();
+          await expect(save).toBeInViewport({ ratio: 1 });
+          await expect(autolockRow).toBeInViewport({ ratio: 1 });
+          const saveBox = await save.boundingBox();
+          const autolockBox = await autolockRow.boundingBox();
+          expect(saveBox!.y).toBeGreaterThanOrEqual(
+            autolockBox!.y + autolockBox!.height
+          );
         }
         await settle(1500, page);
         await expect(page).toHaveURL(/#\/settings\/advanced$/);
