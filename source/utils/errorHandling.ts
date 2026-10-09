@@ -179,7 +179,13 @@ export const handleTransactionError = (
   // normalize Error objects to their message and omit custom properties.
   if (
     error?.code === 'PSBT_ACCOUNT_SCOPE_MISMATCH' ||
-    error?.message === 'PSBT input is outside the approved account'
+    [
+      'PSBT input is outside the approved account',
+      'Trezor returned a different unsigned transaction',
+      'Trezor changed an already-finalized input',
+      'Trezor external input has an invalid prevout',
+      'Trezor external input is missing its prevout',
+    ].includes(error?.message)
   ) {
     alert.error(t('transactions.psbtAccountScopeError'));
     return true;

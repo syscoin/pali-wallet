@@ -13,6 +13,15 @@ describe('PSBT signing errors', () => {
       new Error('PSBT input is outside the approved account'),
       'transactions.psbtAccountScopeError',
     ],
+    ...[
+      'Trezor returned a different unsigned transaction',
+      'Trezor changed an already-finalized input',
+      'Trezor external input has an invalid prevout',
+      'Trezor external input is missing its prevout',
+    ].map((message) => [
+      new Error(message),
+      'transactions.psbtAccountScopeError',
+    ]),
     [
       { code: 'PSBT_SIGNING_CONTEXT_CHANGED' },
       'transactions.psbtSigningContextChanged',
