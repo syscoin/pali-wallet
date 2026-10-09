@@ -33,7 +33,7 @@ An RPC URL, an explorer website, and an explorer API URL serve different purpose
 2. Select the pencil icon beside the EVM network you want to edit.
 3. Find **Block Explorer API URL (optional)**. Paste the appropriate API URL from the examples below. Keep your existing RPC URL and chain ID unless you intend to change those settings too.
 4. Choose **Save**. Pali checks the RPC and basic explorer API access before saving. A successful access check does not guarantee that every discovery or history endpoint is supported.
-5. Reopen **Import Token → Your Tokens** to load holdings with the new API.
+5. Switch to another network, then switch back to the network you edited. This refreshes its active API setting. Reopen **Import Token → Your Tokens** to load holdings with the new API.
 
 To add a new network instead, choose **Custom RPC** from the network selector. Its form includes the same optional explorer API field. To turn off indexed discovery for a network, clear that field and save.
 
