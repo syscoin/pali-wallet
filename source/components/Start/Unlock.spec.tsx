@@ -76,6 +76,10 @@ describe('Unlock authentication navigation', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+    chrome.runtime.connect = jest.fn(() => ({
+      onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+      disconnect: jest.fn(),
+    })) as any;
     jest.mocked(controllerEmitter).mockReset();
     mockNavigate.mockClear();
     global.window = { location: { pathname: '/app.html' } } as Window &
@@ -104,7 +108,8 @@ describe('Unlock authentication navigation', () => {
     expect(controllerEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'isUnlocked'],
       [],
-      1800
+      1800,
+      false
     );
 
     afterUnlock.resolve(true);

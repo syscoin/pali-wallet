@@ -18,6 +18,10 @@ let generation = 0;
 let pendingActivity: Promise<unknown> | undefined;
 let lastRouteActivity = '';
 let lastRouteActivityTime = 0;
+let statusPort: chrome.runtime.Port | undefined;
+let statusPortDisconnect: (() => void) | undefined;
+let lastResumeCheckAt: number | undefined;
+let resumeCheck: Promise<boolean> | undefined;
 
 const publish = (next: ControllerStatus) => {
   if (
@@ -42,6 +46,71 @@ const schedulePoll = () => {
   }
 };
 
+const invalidateConnection = () => {
+  generation += 1;
+  pendingCheck = undefined;
+  clearTimeout(pollTimer);
+  publish({ ...snapshot, connectionUnavailable: true, isLoading: false });
+};
+
+const closeStatusPort = () => {
+  const port = statusPort;
+  statusPort = undefined;
+  if (port && statusPortDisconnect) {
+    port.onDisconnect.removeListener(statusPortDisconnect);
+  }
+  statusPortDisconnect = undefined;
+  try {
+    port?.disconnect();
+  } catch {
+    // The worker may already have terminated.
+  }
+};
+
+const monitorConnection = () => {
+  if (statusPort || listeners.size === 0) return;
+  // This port only observes worker lifetime. It deliberately does not use the
+  // popup port name, whose disconnection triggers an emergency vault save.
+  const port = chrome.runtime.connect({ name: 'controller-status' });
+  const onDisconnect = () => {
+    // Consume Chrome's optional connection error before the callback returns.
+    void chrome.runtime.lastError;
+    if (statusPort !== port) return;
+    closeStatusPort();
+    lastResumeCheckAt = undefined;
+    invalidateConnection();
+    schedulePoll();
+  };
+  port.onDisconnect.addListener(onDisconnect);
+  statusPort = port;
+  statusPortDisconnect = onDisconnect;
+};
+
+const handleResume = () => {
+  if (document.visibilityState === 'hidden') return;
+  if (pendingCheck && pendingCheck === resumeCheck) return;
+  const now = Date.now();
+  // Visibility and focus commonly describe the same activation. One fresh
+  // read serves both without repeated protected-content or loading flashes.
+  if (lastResumeCheckAt !== undefined && now - lastResumeCheckAt < 100) return;
+  lastResumeCheckAt = now;
+  invalidateConnection();
+  const check = checkControllerStatus();
+  resumeCheck = check;
+  void check.finally(() => {
+    if (resumeCheck === check) resumeCheck = undefined;
+  });
+};
+
+const handlePause = () => {
+  lastResumeCheckAt = undefined;
+};
+
+const handleVisibility = () => {
+  if (document.visibilityState === 'hidden') handlePause();
+  else handleResume();
+};
+
 export const checkControllerStatus = (): Promise<boolean> => {
   if (pendingCheck) return pendingCheck;
   const requestGeneration = generation;
@@ -54,6 +123,7 @@ export const checkControllerStatus = (): Promise<boolean> => {
       }
       // A logout/forget event or a disposed subscription invalidates older replies.
       if (requestGeneration === generation) {
+        monitorConnection();
         publish({
           connectionUnavailable: false,
           isLoading: false,
@@ -114,8 +184,14 @@ export const subscribeControllerStatus = (listener: () => void) => {
   listeners.add(listener);
   if (listeners.size === 1) {
     generation += 1;
+    pendingCheck = undefined;
     publish({ ...snapshot, isLoading: true });
     chrome.runtime.onMessage.addListener(handleMessage);
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      window.addEventListener('focus', handleResume);
+      window.addEventListener('blur', handlePause);
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
     void checkControllerStatus();
   }
   return () => {
@@ -125,6 +201,14 @@ export const subscribeControllerStatus = (listener: () => void) => {
       clearTimeout(pollTimer);
       pendingCheck = undefined;
       chrome.runtime.onMessage.removeListener(handleMessage);
+      closeStatusPort();
+      lastResumeCheckAt = undefined;
+      resumeCheck = undefined;
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        window.removeEventListener('focus', handleResume);
+        window.removeEventListener('blur', handlePause);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      }
     }
   };
 };

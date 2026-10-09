@@ -21,6 +21,10 @@ describe('controller status transport deadline', () => {
       runtime: {
         id: 'pali',
         sendMessage,
+        connect: jest.fn(() => ({
+          onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+          disconnect: jest.fn(),
+        })),
         onMessage: { addListener: jest.fn(), removeListener: jest.fn() },
       },
     } as any;

@@ -36,6 +36,10 @@ describe('new wallet authentication navigation', () => {
   let unsubscribe: () => void;
   beforeEach(() => {
     jest.useFakeTimers();
+    chrome.runtime.connect = jest.fn(() => ({
+      onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+      disconnect: jest.fn(),
+    })) as any;
     jest.mocked(controllerEmitter).mockReset();
     mockNavigate.mockClear();
     renderToStaticMarkup(<CreatePasswordImport />);
@@ -60,7 +64,8 @@ describe('new wallet authentication navigation', () => {
     expect(controllerEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'isUnlocked'],
       [],
-      1800
+      1800,
+      false
     );
     expect(mockNavigate).toHaveBeenCalledWith('/home', {
       state: { isWalletImported: true },

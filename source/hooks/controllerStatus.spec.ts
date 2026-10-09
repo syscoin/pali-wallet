@@ -39,6 +39,10 @@ describe('shared controller status', () => {
     jest.useFakeTimers();
     disposers = [];
     jest.mocked(controllerEmitter).mockReset();
+    chrome.runtime.connect = jest.fn(() => ({
+      onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
+      disconnect: jest.fn(),
+    })) as any;
   });
   afterEach(() => {
     disposers.forEach((dispose) => dispose());
