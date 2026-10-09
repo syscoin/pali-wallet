@@ -40,8 +40,10 @@ guard, consumes failures with a translated message and always releases its
 spinner. Once creation is sent, its in-memory secrets are cleared and the UI does not
 replay the request after a timeout or lost acknowledgement. The background
 reserves creation before waiting for its authentication mutex, so a second
-request cannot queue another destructive reset. Recovery reads fresh status
-and returns through the root screen.
+request cannot queue another destructive reset. Inside that mutex, durable
+wallet presence prevents a stale setup page from replacing a completed wallet.
+An uncertain creation or failed confirmation reloads the whole app document;
+WalletBootstrap must hydrate fresh state before routing is available.
 
 Account preparation rejects externally supplied P256 ownership in the
 wallet-managed passkey flow. New or replacement credentials use independent

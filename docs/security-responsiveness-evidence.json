@@ -4334,6 +4334,617 @@
     ]
   },
   "cryptoFollowup": {
+    "measuredAt": "2026-10-09T05:12:48.129696+00:00",
+    "snapshot": {
+      "measuredAt": "2026-10-09T05:11:06.779038+00:00",
+      "paliSourceCommit": "fa34432c2e792a99559e6a8f37326b3db180556e",
+      "runtimeSourceFingerprintSha256": "d176b7df981bb05d12dcea8e83ca1ebe44669dde48c0e76efe3cb5555dee3790",
+      "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted path NUL file bytes NUL",
+      "runtimeFileCount": 546,
+      "paliVersion": "4.0.70",
+      "keyringVersion": "1.0.613",
+      "coreVersion": "1.0.29",
+      "keyringSourceCommit": "7eba1e9697d184451fba9830f4b43137b9551781",
+      "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/16",
+      "dependencyArtifact": "Exact upstream source npm packs; no npm publication",
+      "packages": [
+        {
+          "package": "core",
+          "version": "1.0.29",
+          "path": "/tmp/pali-audit/crypto/final2/sidhujag-sysweb3-core-1.0.29.tgz",
+          "sha256": "298fa976d6e86e012a00efcdb8d0078248497490544c1b6e899d0a807e9dc767",
+          "files": 8,
+          "mismatches": [],
+          "dependencies": {}
+        },
+        {
+          "package": "keyring",
+          "version": "1.0.613",
+          "path": "/tmp/pali-audit/crypto/final2/sidhujag-sysweb3-keyring-1.0.613.tgz",
+          "sha256": "2313e449938bbd206f3883ed3f08b9690f6bf66e33fe369d90f64905ca6c1a2e",
+          "files": 119,
+          "mismatches": [],
+          "dependencies": {
+            "@bitcoinerlab/secp256k1": "^1.2.0",
+            "@ledgerhq/hw-app-eth": "^6.47.1",
+            "@ledgerhq/hw-transport-webhid": "^6.30.5",
+            "@ledgerhq/logs": "^6.10.1",
+            "@metamask/eth-sig-util": "^8.2.0",
+            "@sidhujag/sysweb3-core": "^1.0.29",
+            "@sidhujag/sysweb3-network": "^1.0.109",
+            "@sidhujag/sysweb3-utils": "^1.1.278",
+            "@trezor/connect-web": "^9.7.1",
+            "@trezor/connect-webextension": "^9.7.1",
+            "@trezor/utxo-lib": "^1.0.12",
+            "bip32": "^5.0.1",
+            "bip32-path": "^0.4.2",
+            "bitcoin-ops": "^1.4.1",
+            "bitcoinjs-lib": "^7.0.1",
+            "bs58check": "^3.0.1",
+            "crypto-js": "^4.1.1",
+            "ethers": "^6.17.0"
+          }
+        }
+      ]
+    },
+    "upstreamTestCommit": "1f6b57666cc39b189e30e8601661a5e9ac3d6810",
+    "fixes": {
+      "C1": "Onboarding secrets remain in document memory, never router history. Completion, exit and visibility/page lifecycle clear them. Lost creation acknowledgements cannot replay creation.",
+      "C2": "Wallet-managed P256 setup rejects any externally supplied initial config before WebAuthn or installation; ECDSA external-owner consent remains explicit.",
+      "C3": "Validate approved-account paths/public keys/spent scripts, strip every foreign signing hint before private-key use, require at least one approved input when unfinished inputs exist, and restore only public metadata afterward. Joint transactions keep foreign inputs unsigned; root derivation remains restricted.",
+      "C4": "New passkey registrations use independent random handles and preserve prior credentials still needed by another chain or composite policy.",
+      "C5": "Pending or cancelled UI state never authorizes credential deletion; public pending records are persisted before installation and adoption precedes hydration.",
+      "C6": "Core returns actual storage write/removal promises; migrations await persistence and optional diagnostic failures are handled. Fresh-vault salt and ciphertext are encrypted first and committed in one native batch; sequential-only adapters fail before writing.",
+      "C7": "New writes require WebCrypto/AES-GCM; authenticated historical 20000-round profile is recorded before rewrap, retaining old account-key access and retry after interruption.",
+      "C8": "Trezor preserves locktime and sequence zero and verifies all unsigned transaction fields before accepting returned witnesses."
+    },
+    "validation": {
+      "pali": {
+        "suites": 148,
+        "tests": 1400,
+        "coverage": true,
+        "scope": "Exact git archive of runtimefa34432c linked to byte-verified upstream source-package installation",
+        "log": "/tmp/pali-audit/crypto/final2/pali-tests.log"
+      },
+      "upstream": {
+        "suites": 30,
+        "tests": 432,
+        "scope": "Three upstream workspace projects (keyring, network, utils), including 37 signing scope tests",
+        "log": "/tmp/pali-audit/crypto/final2/upstream-tests.log"
+      },
+      "typescript": "passed for Pali/core/keyring",
+      "lint": "Pali full snapshot: 0 errors, 2 existing warnings; changed upstream files pass with one existing Trezor warning",
+      "locales": 9,
+      "packageFilesVerified": 127,
+      "productionBuild": "passed",
+      "noPackagePatchShipped": true
+    },
+    "build": {
+      "measuredAt": "2026-10-09T05:11:31.254Z",
+      "snapshot": {
+        "measuredAt": "2026-10-09T05:11:06.779038+00:00",
+        "paliSourceCommit": "fa34432c2e792a99559e6a8f37326b3db180556e",
+        "runtimeSourceFingerprintSha256": "d176b7df981bb05d12dcea8e83ca1ebe44669dde48c0e76efe3cb5555dee3790",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted path NUL file bytes NUL",
+        "runtimeFileCount": 546,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.613",
+        "coreVersion": "1.0.29",
+        "keyringSourceCommit": "7eba1e9697d184451fba9830f4b43137b9551781",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/16",
+        "dependencyArtifact": "Exact upstream source npm packs; no npm publication",
+        "packages": [
+          {
+            "package": "core",
+            "version": "1.0.29",
+            "path": "/tmp/pali-audit/crypto/final2/sidhujag-sysweb3-core-1.0.29.tgz",
+            "sha256": "298fa976d6e86e012a00efcdb8d0078248497490544c1b6e899d0a807e9dc767",
+            "files": 8,
+            "mismatches": [],
+            "dependencies": {}
+          },
+          {
+            "package": "keyring",
+            "version": "1.0.613",
+            "path": "/tmp/pali-audit/crypto/final2/sidhujag-sysweb3-keyring-1.0.613.tgz",
+            "sha256": "2313e449938bbd206f3883ed3f08b9690f6bf66e33fe369d90f64905ca6c1a2e",
+            "files": 119,
+            "mismatches": [],
+            "dependencies": {
+              "@bitcoinerlab/secp256k1": "^1.2.0",
+              "@ledgerhq/hw-app-eth": "^6.47.1",
+              "@ledgerhq/hw-transport-webhid": "^6.30.5",
+              "@ledgerhq/logs": "^6.10.1",
+              "@metamask/eth-sig-util": "^8.2.0",
+              "@sidhujag/sysweb3-core": "^1.0.29",
+              "@sidhujag/sysweb3-network": "^1.0.109",
+              "@sidhujag/sysweb3-utils": "^1.1.278",
+              "@trezor/connect-web": "^9.7.1",
+              "@trezor/connect-webextension": "^9.7.1",
+              "@trezor/utxo-lib": "^1.0.12",
+              "bip32": "^5.0.1",
+              "bip32-path": "^0.4.2",
+              "bitcoin-ops": "^1.4.1",
+              "bitcoinjs-lib": "^7.0.1",
+              "bs58check": "^3.0.1",
+              "crypto-js": "^4.1.1",
+              "ethers": "^6.17.0"
+            }
+          }
+        ],
+        "webpackStatsSha256": "be133f234881c941e75de3accc9e5b63bddc2d13366f95039f775a8780f8a2e4",
+        "buildDirectory": "/tmp/pali-audit/optimized-crypto-final",
+        "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamcore1.0.29 and keyring1.0.613 localpacks, no local package patch."
+      },
+      "hardware": {
+        "model": "MacBook Pro Mac17,6",
+        "chip": "Apple M5 Max",
+        "cores": 18,
+        "coreTopology": "6 Super + 12 Performance",
+        "memoryGiB": 48
+      },
+      "software": {
+        "chromium": "149.0.7827.55",
+        "node": "v23.11.1",
+        "yarn": "1.22.22"
+      },
+      "baseline": {
+        "app": {
+          "bytes": 1476859,
+          "gzipBytes": 448969,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1469529,
+          "gzipBytes": 447303,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4202303,
+          "gzipBytes": 1177950,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 11094,
+          "gzipBytes": 3853,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8632973,
+          "budgetBytes": 9000000
+        }
+      },
+      "optimized": {
+        "app": {
+          "bytes": 1486592,
+          "gzipBytes": 453931,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1483068,
+          "gzipBytes": 452872,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4269215,
+          "gzipBytes": 1195949,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 14784,
+          "gzipBytes": 4948,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8533102,
+          "budgetBytes": 9000000
+        }
+      },
+      "firstRoute": {
+        "baseline": {
+          "initialJSBytes": 1476859,
+          "lazyJSFiles": [
+            "js/490.bundle.js",
+            "js/542.bundle.js"
+          ],
+          "lazyJSBytes": 902662,
+          "totalJSBytes": 2379521
+        },
+        "optimized": {
+          "initialJSBytes": 1486592,
+          "lazyJSFiles": [
+            "js/6386.bundle.js",
+            "js/1185.bundle.js"
+          ],
+          "lazyJSBytes": 11536,
+          "totalJSBytes": 1498128
+        }
+      },
+      "firstRouteReductionPercent": 37.0407741726171,
+      "firstRouteLazyReductionPercent": 98.7220022555508,
+      "packageReductionPercent": 1.1568552339964455,
+      "notes": [
+        "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
+        "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
+        "The 11-case startup matrix belongs to startup-matrix-build.json and runtime-build-metadata.json, an earlier snapshot before authentication navigation and surgical containment fixes."
+      ]
+    },
+    "browser": {
+      "onboarding": {
+        "build": "/tmp/pali-audit/optimized-crypto-final",
+        "cases": [
+          {
+            "mode": "import",
+            "walletCreated": true,
+            "historyContainsSecret": false,
+            "locked": true,
+            "diskMatches": [],
+            "status": "passed"
+          },
+          {
+            "mode": "create",
+            "walletCreated": true,
+            "historyContainsSecret": false,
+            "locked": true,
+            "diskMatches": [],
+            "status": "passed"
+          },
+          {
+            "mode": "create-reload",
+            "reloadRequiresNewSetup": true,
+            "walletCreated": true,
+            "historyContainsSecret": false,
+            "locked": true,
+            "diskMatches": [],
+            "status": "passed"
+          }
+        ],
+        "scope": "Disposable Chrome app.html tabs, synthetic unfunded secrets, real production UI and disk scan after closing; no physical device."
+      },
+      "approval": {
+        "steps": [
+          {
+            "name": "open fresh wallet",
+            "durationMs": 177,
+            "status": "passed"
+          },
+          {
+            "name": "import disposable seed",
+            "durationMs": 168,
+            "status": "passed"
+          },
+          {
+            "name": "fill wallet password",
+            "durationMs": 19,
+            "status": "passed"
+          },
+          {
+            "name": "submit wallet creation",
+            "durationMs": 310,
+            "status": "passed"
+          },
+          {
+            "name": "wait for home route",
+            "durationMs": 177,
+            "status": "passed"
+          },
+          {
+            "name": "verify newly imported wallet unlocked",
+            "durationMs": 30,
+            "status": "passed"
+          },
+          {
+            "name": "dismiss onboarding prompts",
+            "durationMs": 1133,
+            "status": "passed"
+          },
+          {
+            "name": "switch disposable wallet to Ethereum",
+            "durationMs": 805,
+            "status": "passed"
+          },
+          {
+            "name": "open disposable local dapp",
+            "durationMs": 100,
+            "status": "passed"
+          },
+          {
+            "name": "routed connect rejects main-view forgery then accepts user approval",
+            "durationMs": 898,
+            "status": "passed"
+          },
+          {
+            "name": "routed personal-sign returns verifiable signature",
+            "durationMs": 517,
+            "status": "passed"
+          },
+          {
+            "name": "routed typed-data returns verifiable signature",
+            "durationMs": 486,
+            "status": "passed"
+          },
+          {
+            "name": "closing routed approval rejects request",
+            "durationMs": 321,
+            "status": "passed"
+          },
+          {
+            "name": "lock disposable wallet",
+            "durationMs": 11,
+            "status": "passed"
+          },
+          {
+            "name": "locked approval survives login route and signing route",
+            "durationMs": 849,
+            "status": "passed"
+          },
+          {
+            "name": "locked typed-data preserves literal URL delimiters through login",
+            "durationMs": 850,
+            "status": "passed"
+          },
+          {
+            "name": "slow approval handshake offers recovery then accepts a valid late reply",
+            "durationMs": 3204,
+            "status": "passed"
+          },
+          {
+            "name": "standalone hardware page bypasses approval authentication and blocks overlapping prompts",
+            "durationMs": 344,
+            "status": "passed"
+          },
+          {
+            "name": "dapp approval resumes after standalone hardware page closes",
+            "durationMs": 3197,
+            "status": "passed"
+          }
+        ],
+        "build": "/tmp/pali-audit/optimized-crypto-final",
+        "chromium": "149.0.7827.55",
+        "connectRoute": "/external/connect-wallet",
+        "clonedExternalWindowRejected": true,
+        "signRoute": "/external/tx/ethSign",
+        "lockedRoute": "/",
+        "slowHandshakeFeedbackMs": 1873.5999999046326,
+        "hardwarePageRoutedWithoutApproval": true,
+        "hardwarePromptExclusion": true,
+        "hardwareCloseRestoresDappApproval": true,
+        "status": "passed",
+        "backgroundErrors": []
+      },
+      "infrastructure": {
+        "steps": [
+          {
+            "name": "open fresh wallet",
+            "durationMs": 183,
+            "status": "passed"
+          },
+          {
+            "name": "import disposable seed",
+            "durationMs": 166,
+            "status": "passed"
+          },
+          {
+            "name": "fill wallet password",
+            "durationMs": 17,
+            "status": "passed"
+          },
+          {
+            "name": "submit wallet creation",
+            "durationMs": 305,
+            "status": "passed"
+          },
+          {
+            "name": "wait for home route",
+            "durationMs": 175,
+            "status": "passed"
+          },
+          {
+            "name": "verify newly imported wallet unlocked",
+            "durationMs": 31,
+            "status": "passed"
+          },
+          {
+            "name": "dismiss onboarding prompts",
+            "durationMs": 1133,
+            "status": "passed"
+          },
+          {
+            "name": "switch to first isolated EVM",
+            "durationMs": 79,
+            "status": "passed"
+          },
+          {
+            "name": "slow status read gives feedback before two seconds",
+            "durationMs": 3119,
+            "status": "passed"
+          },
+          {
+            "name": "start deployment on first chain with mining paused",
+            "durationMs": 1317,
+            "status": "passed"
+          },
+          {
+            "name": "same-chain RPC alias cannot duplicate a pending deployment",
+            "durationMs": 20,
+            "status": "passed"
+          },
+          {
+            "name": "deploy all contracts on second chain while first chain remains pending",
+            "durationMs": 547,
+            "status": "passed"
+          },
+          {
+            "name": "revisit pending chain without submitting duplicates",
+            "durationMs": 1333,
+            "status": "passed"
+          },
+          {
+            "name": "worker restart preserves pending deployment identity",
+            "durationMs": 713,
+            "status": "passed"
+          },
+          {
+            "name": "confirm first transaction then resume only remaining contracts",
+            "durationMs": 666,
+            "status": "passed"
+          },
+          {
+            "name": "switching networks during broadcast preserves the original transaction",
+            "durationMs": 2918,
+            "status": "passed"
+          },
+          {
+            "name": "worker loss before RPC acknowledgment retains unknown submission and prevents resend",
+            "durationMs": 1680,
+            "status": "passed"
+          }
+        ],
+        "build": "/tmp/pali-audit/optimized-crypto",
+        "chromium": "149.0.7827.55",
+        "contractCount": 10,
+        "statusFeedbackMs": 1328,
+        "deploymentFeedbackMs": 1311,
+        "firstPending": {
+          "contractId": "entryPoint",
+          "hasTransactionHash": true
+        },
+        "sameChainRpcAliasBlocked": true,
+        "sameChainRpcAliasPendingTransactions": 1,
+        "secondChainReady": true,
+        "secondChainMissing": 0,
+        "firstChainStillPending": true,
+        "refreshDoesNotResubmit": true,
+        "pendingRestoredAfterRestart": true,
+        "workerRestartConfirmed": true,
+        "firstChainReady": true,
+        "firstChainMissing": 0,
+        "firstChainTransactionCount": 10,
+        "crossNetworkBroadcastRecovered": true,
+        "crossNetworkAcknowledgmentObserved": false,
+        "thirdChainTransactionCount": 10,
+        "unknownSubmissionRestored": true,
+        "sameChainRpcAliasUnknownAfterRestartBlocked": true,
+        "fourthChainTransactionCount": 10,
+        "status": "passed",
+        "validatedPaliSourceCommit": "363ab482dc6fd11388d93b18fd60907b7a8955b9",
+        "validatedUpstreamSourceCommit": "16baa93f4a87005e73746a2ef71aa26e1124a8ef",
+        "scope": "Retained four-chain run from runtime363ab482; not rerun on fa34432c."
+      },
+      "atomicCreation": {
+        "build": "/tmp/pali-audit/optimized-crypto-final",
+        "scope": "Disposable real Chrome profile; synthetic unfunded seeds; rejected batch and stale-document creation; no broadcast",
+        "failedBatchPreservesEmptyPair": true,
+        "freshPairSingleWrite": true,
+        "restartAfterFailedBatchUsable": true,
+        "staleDocumentCannotReplaceCompletedWallet": true,
+        "workerRestartCannotEnableReplacement": true,
+        "originalPasswordStillUnlocks": true,
+        "status": "passed"
+      },
+      "lostAcknowledgement": {
+        "build": "/tmp/pali-audit/optimized-crypto-final",
+        "scope": "Real Chrome setup UI; successful background create response withheld; fresh bootstrap must recover from real durable state",
+        "fullDocumentBootstrapRepeated": true,
+        "existingWalletLoginVisible": true,
+        "createdWalletUnlocks": true,
+        "status": "passed"
+      }
+    },
+    "primitives": {
+      "sourceRevision": "fa34432c2e792a99559e6a8f37326b3db180556e",
+      "fixtures": "published test vectors and deterministic public disposable values only",
+      "bip39VectorCases": 240,
+      "bip32VectorAssertions": 34,
+      "invalidExtendedKeyRejections": 14,
+      "bip340": {
+        "verifyCases": 15,
+        "signCases": 4,
+        "variableMessageVectorsExcludedBy32ByteAdapter": 4
+      },
+      "invalidScalarsRejected": 4,
+      "ecdsaDeterministicLowSValidCases": 128,
+      "ellipticSecp256k1ValidCases": 128,
+      "missingCsprngFailsClosed": true
+    },
+    "evmAndAead": {
+      "bip44Address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+      "bip44KnownVector": true,
+      "privateKeyOne": true,
+      "deterministic": true,
+      "lowS": true,
+      "digestRecovery": true,
+      "personalRecovery": true,
+      "eip712KnownDigest": true,
+      "eip712Recovery": true,
+      "txChain": "1",
+      "txRecovery": true,
+      "invalidPrivateKeysRejected": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "ivBytes": 12,
+      "tagAndCiphertextBytes": 124,
+      "aeadRejections": {
+        "ct": true,
+        "iv": true,
+        "wrongKey": true
+      }
+    },
+    "multisig": {
+      "cases": 12,
+      "result": "passed",
+      "evidence": "/tmp/pali-crypto-review/multisig-distinct-path-bitcoinjs.json",
+      "scope": "37 scope tests cover joint transactions, imported keys, three multisig forms, foreign hints and external cosigner continuation; independent old612/new-signer comparison confirms selected-account-only signatures."
+    },
+    "passkeyPreservation": {
+      "result": "passed",
+      "evidence": "/tmp/pali-crypto-review/passkey-preservation.json",
+      "scope": "Disposable Chromium virtual authenticator; both independently registered credentials remain usable"
+    },
+    "release": {
+      "paliVersion": "4.0.70",
+      "coreVersion": "1.0.29",
+      "keyringVersion": "1.0.613",
+      "upstreamPR": "https://github.com/sidhujag/sysweb3/pull/16",
+      "publishedByAgent": false,
+      "cleanRegistryValidation": "pending owner publication of core1.0.29 then keyring1.0.613"
+    },
+    "limits": [
+      "No physical hardware signing was performed.",
+      "Existing browser session files from older versions cannot be erased by this source fix.",
+      "Legacy account wrapping keys retain their authenticated historical KDF; this is not a full rekey.",
+      "No whole-library formal proof, constant-time assurance, complete SLH-DSA signature KAT or reproducible WASM provenance is claimed.",
+      "The 500-account timings remain bound to runtime87084512; current browser timings are local samples, not worst-case guarantees.",
+      "Firefox runtime URL ownership has tests; the prior background-page transport incompatibility remains separate platform work.",
+      "The library existing-key initialization API retains its prior behavior; Pali onboarding separately rejects existing complete or incomplete vault records."
+    ],
+    "jointTransactions": {
+      "evidence": "/tmp/pali-crypto-review/joint-input-compatibility.json",
+      "result": "passed",
+      "scope": "Real old612/new signer comparison; external and same-wallet foreign inputs remain unsigned under new guard."
+    },
+    "reviewFollowups": {
+      "atomicCreation": "Fixed: failed fresh writes leave no salt-only wallet. Chrome test confirms retry and restart recovery.",
+      "staleCreationReplay": "Fixed: durable presence check under authentication mutex before reset, complete/incomplete existing state preserved.",
+      "staleUiRecovery": "Fixed: full app document reload reruns authoritative bootstrap after uncertain creation.",
+      "localCodexReview": {
+        "status": "no actionable new findings",
+        "upstreamRange": "b91367e..1f6b576",
+        "paliRange": "363ab482..fa34432c",
+        "report": "/tmp/pali-audit/crypto/final2/codex-followup-review-result.md"
+      },
+      "remoteReview": "Requested on current runtime; report completion separately."
+    },
+    "storageBatch": {
+      "source": "https://github.com/chromium/chromium/blob/main/components/value_store/leveldb_value_store.cc",
+      "scope": "Native Chrome set(items) uses one LevelDB WriteBatch; sequential custom storage adapters are not treated as atomic.",
+      "customAdapterRequirement": "native set(items) or explicit atomic setItems; no sequential fallback."
+    }
+  },
+  "cryptoFollowupInitialSnapshot": {
     "measuredAt": "2026-10-09T04:58:12.071867+00:00",
     "snapshot": {
       "measuredAt": "2026-10-09T04:56:20.341404+00:00",
