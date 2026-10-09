@@ -4,7 +4,6 @@ import { ICustomEvent } from '../../../../types/index'; // need to use this rela
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { hasExternalWalletPage } from 'utils/extensionContexts';
 
 import {
   assertRequestActive,
@@ -84,11 +83,6 @@ const handleResponseEvent = async (
   }
 };
 
-// Ordinary wallet tabs may stay open while a dapp requests approval.
-// External approval/hardware views serialize prompts. Detection is bounded and
-// failure is handled by atomicCheckAndSetPopup without opening another window.
-const checkForAnyOpenPopupOrHardwareWallet = () => hasExternalWalletPage(2000);
-
 /**
  * Opens a popup and adds events listener to resolve a promise.
  *
@@ -119,14 +113,6 @@ export const popupPromise = async ({
   if (!(await isRequestDocumentLive(sender))) throw requestCancelledError();
   const { createPopup } = getController();
   const approvalId = crypto.randomUUID();
-
-  // Use atomic check-and-set to prevent race conditions
-  const canCreatePopup = await atomicCheckAndSetPopup();
-  if (!canCreatePopup) {
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized('Dapp already has a open window')
-    );
-  }
 
   // URLSearchParams in createPopup escapes the payload without changing it.
   data = data || {};
@@ -381,96 +367,3 @@ export const popupPromise = async ({
     }
   });
 };
-
-// Atomic check-and-set operation to prevent race conditions
-function atomicCheckAndSetPopup(): Promise<boolean> {
-  return new Promise((resolve) => {
-    // First check if there are any actual popup windows open (hardware wallet, etc.)
-    checkForAnyOpenPopupOrHardwareWallet()
-      .then((hasActualPopup) => {
-        if (hasActualPopup) {
-          resolve(false);
-          return;
-        }
-
-        // Then check storage flag
-        chrome.storage.local.get(
-          ['pali-popup-open', 'pali-popup-timestamp'],
-          (result) => {
-            if (chrome.runtime.lastError) {
-              console.error(
-                '[atomicCheckAndSetPopup] Storage error:',
-                chrome.runtime.lastError
-              );
-              resolve(false);
-              return;
-            }
-
-            const popupOpen = !!result['pali-popup-open'];
-            const timestamp = result['pali-popup-timestamp'];
-            const now = Date.now();
-
-            if (popupOpen && timestamp) {
-              // Check if timestamp is stale (older than 5 minutes)
-              const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
-              if (now - timestamp > STALE_TIMEOUT) {
-                console.warn(
-                  '[atomicCheckAndSetPopup] Stale popup flag detected, clearing and proceeding'
-                );
-                // Stale flag - clear it and set new one atomically
-                chrome.storage.local.set(
-                  {
-                    'pali-popup-open': true,
-                    'pali-popup-timestamp': now,
-                  },
-                  () => {
-                    if (chrome.runtime.lastError) {
-                      console.error(
-                        '[atomicCheckAndSetPopup] Failed to set flag:',
-                        chrome.runtime.lastError
-                      );
-                      resolve(false);
-                    } else {
-                      resolve(true);
-                    }
-                  }
-                );
-                return;
-              }
-
-              // Storage flag is valid and recent - popup already exists
-              resolve(false);
-              return;
-            }
-
-            // No storage flag - set it atomically
-            chrome.storage.local.set(
-              {
-                'pali-popup-open': true,
-                'pali-popup-timestamp': now,
-              },
-              () => {
-                if (chrome.runtime.lastError) {
-                  console.error(
-                    '[atomicCheckAndSetPopup] Failed to set flag:',
-                    chrome.runtime.lastError
-                  );
-                  resolve(false);
-                } else {
-                  resolve(true);
-                }
-              }
-            );
-          }
-        );
-      })
-      .catch((error) => {
-        console.error(
-          '[atomicCheckAndSetPopup] Error checking for actual popups:',
-          error
-        );
-        resolve(false);
-      });
-  });
-}

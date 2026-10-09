@@ -9,7 +9,7 @@ describe('live wallet window detection', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     getContexts = jest.fn();
-    tabsQuery = jest.fn();
+    tabsQuery = jest.fn((_filter, reply) => reply([]));
     global.chrome = {
       runtime: { id: 'pali-id', getContexts },
       tabs: { query: tabsQuery },
@@ -81,6 +81,28 @@ describe('live wallet window detection', () => {
     const rejected = expect(pending).rejects.toThrow('timed out');
     jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
     await rejected;
+  });
+
+  it('detects a loading external tab before it has a runtime context', async () => {
+    getContexts.mockImplementation((_filter, reply) => reply([]));
+    tabsQuery.mockImplementation((_filter, reply) =>
+      reply([
+        {
+          pendingUrl: 'chrome-extension://pali-id/external.html?route=hardware',
+        },
+      ])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+  });
+
+  it('fails closed if tabs cannot be checked after an empty contexts response', async () => {
+    getContexts.mockImplementation((_filter, reply) => reply([]));
+    tabsQuery.mockImplementation((_filter, reply) => {
+      (chrome.runtime as any).lastError = { message: 'Unavailable' };
+      reply([]);
+      delete (chrome.runtime as any).lastError;
+    });
+    await expect(hasExternalWalletPage()).rejects.toThrow('Could not check');
   });
 
   it('offers recovery instead of continuing when the query stalls', async () => {

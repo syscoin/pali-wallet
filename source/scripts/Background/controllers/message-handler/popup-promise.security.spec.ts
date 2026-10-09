@@ -3,6 +3,7 @@ jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: createPopupMock }),
 }));
 
+import { createExternalWalletView } from '../externalWalletCreation';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
 import { popupPromise } from './popup-promise';
@@ -16,7 +17,9 @@ describe('approval popup boundary', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    createPopupMock.mockResolvedValue({ id: 9 });
+    createPopupMock.mockImplementation(() =>
+      createExternalWalletView(async () => ({ id: 9 }))
+    );
     (crypto as any).randomUUID = jest
       .fn()
       .mockReturnValueOnce('random-approval-id')
@@ -32,6 +35,9 @@ describe('approval popup boundary', () => {
     (chrome.runtime as any).getContexts = jest.fn((_query, callback) =>
       callback([])
     );
+    (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
+    };
     (chrome.storage.local.get as jest.Mock).mockImplementation(
       (_keys, callback) => callback({})
     );
@@ -162,7 +168,7 @@ describe('approval popup boundary', () => {
         route: MethodRoute.EthSign,
       })
     ).rejects.toMatchObject({ code: 4100 });
-    expect(createPopupMock).not.toHaveBeenCalled();
+    expect(createPopupMock).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed within two seconds when window detection stalls', async () => {
@@ -179,7 +185,7 @@ describe('approval popup boundary', () => {
     const rejected = expect(pending).rejects.toMatchObject({ code: 4100 });
     await jest.advanceTimersByTimeAsync(2000);
     await rejected;
-    expect(createPopupMock).not.toHaveBeenCalled();
+    expect(createPopupMock).toHaveBeenCalledTimes(1);
     log.mockRestore();
   });
 
@@ -219,6 +225,7 @@ describe('approval popup boundary', () => {
 
   it('rejects a result when the originating iframe document has disappeared', async () => {
     (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
       sendMessage: jest.fn().mockResolvedValue({ documentActive: true }),
     };
     const sender = {
@@ -452,6 +459,7 @@ describe('approval popup boundary', () => {
   it('does not reject an authenticated response when the popup closes during liveness validation', async () => {
     let live!: (value: any) => void;
     (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
       sendMessage: jest.fn().mockResolvedValue({ documentActive: true }),
     };
     const { pending } = await begin(undefined, {
@@ -479,6 +487,7 @@ describe('approval popup boundary', () => {
   it('still rejects a stale response when the popup closes during liveness validation', async () => {
     let live!: (value: any) => void;
     (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
       sendMessage: jest.fn().mockResolvedValue({ documentActive: true }),
     };
     const { pending } = await begin(undefined, {

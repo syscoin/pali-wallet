@@ -23,11 +23,13 @@ import {
 } from 'utils/constants';
 
 import DAppController from './DAppController';
+import { createExternalWalletView } from './externalWalletCreation';
 import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   callGetLatestUpdateForAccount: (isPolling?: boolean) => Promise<boolean>;
+  createHardwareWalletTab: () => Promise<void>;
   createPopup: (
     route?: string,
     data?: object
@@ -184,59 +186,88 @@ const MasterController = (
     popUpRoute = '',
     data = {}
   ): Promise<chrome.windows.Window> =>
-    new Promise((resolve, reject) => {
-      chrome.windows.getCurrent((window) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-          return;
-        }
-
-        if (!window || !window.width) {
-          reject(new Error('No window available'));
-          return;
-        }
-
-        const params = new URLSearchParams();
-        if (popUpRoute) params.append('route', popUpRoute);
-        if (data) params.append('data', JSON.stringify(data));
-
-        chrome.windows.create(
-          {
-            url: '/external.html?' + params.toString(),
-            width: 400,
-            height: 620,
-            type: 'popup',
-            state: 'normal',
-          },
-          (newWindow) => {
+    createExternalWalletView(
+      () =>
+        new Promise((resolve, reject) => {
+          chrome.windows.getCurrent((window) => {
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
-            } else {
-              // Flag is already set by atomicCheckAndSetPopup - just listen for close
-              const handleWindowClose = (windowId: number) => {
-                if (windowId === newWindow!.id) {
-                  chrome.storage.local.remove(
-                    ['pali-popup-open', 'pali-popup-timestamp'],
-                    () => {
-                      if (chrome.runtime.lastError) {
-                        console.error(
-                          '[index] Failed to remove popup flags on window close:',
-                          chrome.runtime.lastError
-                        );
-                      }
-                    }
-                  );
-                  chrome.windows.onRemoved.removeListener(handleWindowClose);
-                }
-              };
-
-              chrome.windows.onRemoved.addListener(handleWindowClose);
-              resolve(newWindow!);
+              return;
             }
-          }
-        );
-      });
-    });
+
+            if (!window || !window.width) {
+              reject(new Error('No window available'));
+              return;
+            }
+
+            const params = new URLSearchParams();
+            if (popUpRoute) params.append('route', popUpRoute);
+            if (data) params.append('data', JSON.stringify(data));
+
+            chrome.windows.create(
+              {
+                url: '/external.html?' + params.toString(),
+                width: 400,
+                height: 620,
+                type: 'popup',
+                state: 'normal',
+              },
+              (newWindow) => {
+                if (chrome.runtime.lastError) {
+                  reject(chrome.runtime.lastError);
+                } else if (!newWindow) {
+                  reject(new Error('Approval window could not be created'));
+                } else {
+                  // Flags are advisory; live browser state controls exclusion.
+                  const handleWindowClose = (windowId: number) => {
+                    if (windowId === newWindow.id) {
+                      chrome.storage.local.remove(
+                        ['pali-popup-open', 'pali-popup-timestamp'],
+                        () => {
+                          if (chrome.runtime.lastError) {
+                            console.error(
+                              '[index] Failed to remove popup flags on window close:',
+                              chrome.runtime.lastError
+                            );
+                          }
+                        }
+                      );
+                      chrome.windows.onRemoved.removeListener(
+                        handleWindowClose
+                      );
+                    }
+                  };
+
+                  chrome.windows.onRemoved.addListener(handleWindowClose);
+                  resolve(newWindow);
+                }
+              }
+            );
+          });
+        })
+    );
+
+  const createHardwareWalletTab = async (): Promise<void> => {
+    await createExternalWalletView(
+      () =>
+        new Promise<chrome.tabs.Tab>((resolve, reject) => {
+          chrome.tabs.create(
+            {
+              url: chrome.runtime.getURL(
+                'external.html?route=settings/account/hardware'
+              ),
+            },
+            (tab) => {
+              if (chrome.runtime.lastError)
+                reject(new Error(chrome.runtime.lastError.message));
+              else if (!tab)
+                reject(new Error('Hardware wallet tab could not be created'));
+              else resolve(tab);
+            }
+          );
+        })
+    );
+  };
 
   const rehydrate = async () => {
     const storageState = await loadState();
@@ -252,6 +283,7 @@ const MasterController = (
     rehydrate,
     appRoute,
     createPopup,
+    createHardwareWalletTab,
     dapp,
     refresh,
     callGetLatestUpdateForAccount,

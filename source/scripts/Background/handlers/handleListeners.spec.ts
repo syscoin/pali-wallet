@@ -144,6 +144,7 @@ jest.mock('state/vault');
 const mockMasterController: jest.Mocked<IMasterController> = {
   appRoute: jest.fn(),
   callGetLatestUpdateForAccount: jest.fn(),
+  createHardwareWalletTab: jest.fn(),
   createPopup: jest.fn(),
   dapp: {
     setup: jest.fn(),

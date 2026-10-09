@@ -1,11 +1,15 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HashRouter, useNavigate } from 'react-router-dom';
 
 import { Container } from 'components/index';
 import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import { Router } from 'routers/index';
-import { hasExternalWalletPage } from 'utils/extensionContexts';
+import {
+  hasExternalWalletPage,
+  isExternalWalletUrl,
+} from 'utils/extensionContexts';
 import {
   startupFeedbackDelay,
   WALLET_FEEDBACK_TIMEOUT_MS,
@@ -109,7 +113,9 @@ const ExternalActiveMessage: FC = () => (
 );
 
 const App: FC = () => {
+  const { t } = useTranslation();
   const [isExternalActive, setIsExternalActive] = useState(false);
+  const externalActiveRef = useRef(false);
   const [isCheckingExternal, setIsCheckingExternal] = useState(true);
 
   const [externalCheckFailed, setExternalCheckFailed] = useState(false);
@@ -142,6 +148,7 @@ const App: FC = () => {
           abortController.signal
         );
         if (!active || current !== generation) return;
+        externalActiveRef.current = hasExternal;
         setIsExternalActive(hasExternal);
       } catch {
         if (!active || current !== generation) return;
@@ -161,11 +168,31 @@ const App: FC = () => {
       }
     };
     chrome.storage.onChanged.addListener(handleStorageChange);
+    const handleTabRemoved = () => {
+      if (externalActiveRef.current) void checkForExternalTabs();
+    };
+    const handleTabUpdated = (
+      _id: number,
+      changes: chrome.tabs.TabChangeInfo,
+      tab: chrome.tabs.Tab
+    ) => {
+      if (
+        isExternalWalletUrl(changes.url) ||
+        isExternalWalletUrl(tab.pendingUrl) ||
+        (externalActiveRef.current &&
+          (changes.url || changes.status === 'complete'))
+      )
+        void checkForExternalTabs();
+    };
+    chrome.tabs.onRemoved.addListener(handleTabRemoved);
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
     return () => {
       active = false;
       abortController?.abort();
       clearTimeout(feedbackTimer);
       chrome.storage.onChanged.removeListener(handleStorageChange);
+      chrome.tabs.onRemoved.removeListener(handleTabRemoved);
+      chrome.tabs.onUpdated.removeListener(handleTabUpdated);
     };
   }, [checkAttempt]);
 
@@ -173,14 +200,14 @@ const App: FC = () => {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center text-white">
         <p role="status" className="mb-4">
-          Wallet windows are taking longer to respond. Try checking again.
+          {t('settings.walletWindowCheckSlow')}
         </p>
         <button
           type="button"
           className="rounded-lg bg-[#4DA2CF] px-5 py-3 font-medium text-[#061120]"
           onClick={() => setCheckAttempt((attempt) => attempt + 1)}
         >
-          Retry window check
+          {t('settings.retryWalletWindowCheck')}
         </button>
       </div>
     );

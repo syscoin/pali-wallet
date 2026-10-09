@@ -4,6 +4,8 @@ import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 
 import { AccountMenu } from './AccountMenu';
 
+const mockControllerEmitter = jest.fn();
+
 jest.mock('@headlessui/react', () => ({ Menu: { Item: 'menu-item' } }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -17,7 +19,7 @@ jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: jest.fn(), alert: { error: jest.fn() } }),
 }));
 jest.mock('hooks/useController', () => ({
-  useController: () => ({ controllerEmitter: jest.fn() }),
+  useController: () => ({ controllerEmitter: mockControllerEmitter }),
 }));
 jest.mock('utils/navigationState', () => ({}));
 jest.mock('components/Icon/Icon', () => ({
@@ -53,11 +55,15 @@ const findElement = (
 
 describe('hardware setup extension tab launch', () => {
   const originalChrome = global.chrome;
+  const originalWindow = global.window;
   const url =
     'chrome-extension://pali/external.html?route=settings/account/hardware';
 
   beforeEach(() => {
     jest.useFakeTimers();
+    mockControllerEmitter.mockReset().mockResolvedValue(undefined);
+    global.window = { close: jest.fn() } as unknown as Window &
+      typeof globalThis;
     global.chrome = {
       runtime: { getURL: jest.fn().mockReturnValue(url) },
       tabs: { create: jest.fn() },
@@ -66,10 +72,12 @@ describe('hardware setup extension tab launch', () => {
   });
   afterEach(() => {
     global.chrome = originalChrome;
+    global.window = originalWindow;
+    jest.restoreAllMocks();
     jest.useRealTimers();
   });
 
-  it('uses the extension tab API from the account menu', () => {
+  it('uses the serialized background creation method from the account menu', async () => {
     const button = findElement(
       AccountMenu({}),
       (element) =>
@@ -82,18 +90,18 @@ describe('hardware setup extension tab launch', () => {
         )
     );
     expect(button).toBeDefined();
-    button!.props.onClick();
-    expect(chrome.tabs.create).toHaveBeenCalledWith(
-      { url },
-      expect.any(Function)
+    await button!.props.onClick();
+    expect(mockControllerEmitter).toHaveBeenCalledWith(
+      ['createHardwareWalletTab'],
+      [],
+      10000,
+      false
     );
-    expect(chrome.storage.local.set).toHaveBeenCalledWith(
-      expect.objectContaining({ 'pali-popup-open': true }),
-      expect.any(Function)
-    );
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
   });
 
-  it('uses the same extension tab API from the hardware warning dialog', () => {
+  it('closes the hardware warning only after background creation succeeds', async () => {
     const onClose = jest.fn();
     const view = ConnectHardwareWallet({ title: 'Hardware', onClose });
     const button = findElement(
@@ -101,11 +109,28 @@ describe('hardware setup extension tab launch', () => {
       (element) => element.props.id === 'hardware-connect-btn'
     );
     expect(button).toBeDefined();
-    button!.props.onClick();
-    expect(chrome.tabs.create).toHaveBeenCalledWith(
-      { url },
-      expect.any(Function)
+    await button!.props.onClick();
+    expect(mockControllerEmitter).toHaveBeenCalledWith(
+      ['createHardwareWalletTab'],
+      [],
+      10000,
+      false
     );
     expect(onClose).toHaveBeenCalledWith(true);
+    expect(window.close).toHaveBeenCalled();
+  });
+
+  it('keeps the warning open when another external view blocks creation', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockControllerEmitter.mockRejectedValue(new Error('View already open'));
+    const onClose = jest.fn();
+    const view = ConnectHardwareWallet({ title: 'Hardware', onClose });
+    const button = findElement(
+      view,
+      (element) => element.props.id === 'hardware-connect-btn'
+    );
+    await button!.props.onClick();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(window.close).not.toHaveBeenCalled();
   });
 });
