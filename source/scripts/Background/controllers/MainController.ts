@@ -237,6 +237,7 @@ class MainController {
   private walletStateGeneration = 0;
   private networkRequestGeneration = 0;
   private isCreatingWallet = false;
+  private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
 
   // Auto-lock timer management
@@ -336,6 +337,17 @@ class MainController {
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
   private async resetWalletState(options?: { resetNetworks?: boolean }) {
+    this.isResettingWallet = true;
+    try {
+      await this.resetWalletStateExclusive(options);
+    } finally {
+      this.isResettingWallet = false;
+    }
+  }
+
+  private async resetWalletStateExclusive(options?: {
+    resetNetworks?: boolean;
+  }) {
     this.walletSessionGeneration += 1;
     this.walletStateGeneration += 1;
     this.networkRequestGeneration += 1;
@@ -878,6 +890,11 @@ class MainController {
     network: INetwork,
     isCurrent: () => boolean = () => true
   ): Promise<void> {
+    if (this.isResettingWallet) {
+      throw new Error(
+        'Wallet reset is in progress. Retry the network change after it completes.'
+      );
+    }
     if (this.isCreatingWallet) {
       throw new Error(
         'Wallet creation is in progress. Retry the network change after it completes.'
@@ -3218,6 +3235,11 @@ class MainController {
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    if (this.isResettingWallet) {
+      throw new Error(
+        'Wallet reset is in progress. Retry the network change after it completes.'
+      );
+    }
     const requestGeneration = ++this.networkRequestGeneration;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {

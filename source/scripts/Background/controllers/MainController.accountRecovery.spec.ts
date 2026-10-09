@@ -505,6 +505,51 @@ describe('non-destructive account recovery boundaries', () => {
     ).rejects.toThrow('Failed to configure the selected network');
   });
 
+  it('rejects new network changes throughout a reset even after its generations advance', async () => {
+    wallet.keyrings = new Map([[57, keyring]]);
+    wallet.cancellablePromises = {};
+    wallet.clearAllTimers = jest.fn();
+    wallet.stopAllRapidPolling = jest.fn();
+    wallet.disposeAllKeyrings = jest.fn();
+    wallet.cleanupPersistentProviders = jest.fn();
+    wallet.cancelActiveBalanceUpdate = jest.fn();
+    let failReset!: (error: Error) => void;
+    wallet.stopAutoLockTimer = jest.fn(
+      () => new Promise<void>((_, reject) => (failReset = reject))
+    );
+    const loadTarget = jest.spyOn(storeModule, 'loadAndActivateSlip44Vault');
+    const snapshot = JSON.stringify(currentState);
+    const resetting = wallet.resetWalletState();
+    const failedReset = expect(resetting).rejects.toThrow('reset I/O failed');
+    expect(wallet.walletStateGeneration).toBe(1);
+    expect(wallet.networkRequestGeneration).toBe(1);
+    expect(wallet.isResettingWallet).toBe(true);
+
+    await expect(
+      wallet.setActiveNetwork(SYSCOIN_MAINNET_NETWORK)
+    ).rejects.toThrow('Wallet reset is in progress');
+    await expect(
+      wallet.switchActiveKeyring(SYSCOIN_MAINNET_NETWORK)
+    ).rejects.toThrow('Wallet reset is in progress');
+    expect(wallet.networkRequestGeneration).toBe(1);
+    expect(loadTarget).not.toHaveBeenCalled();
+    expect(store.dispatch).not.toHaveBeenCalled();
+    expect(JSON.stringify(currentState)).toBe(snapshot);
+
+    failReset(new Error('reset I/O failed'));
+    await failedReset;
+    expect(wallet.isResettingWallet).toBe(false);
+  });
+
+  it('clears the network reset gate after a successful reset', async () => {
+    wallet.resetWalletStateExclusive = jest.fn().mockResolvedValue(undefined);
+    await wallet.resetWalletState({ resetNetworks: true });
+    expect(wallet.resetWalletStateExclusive).toHaveBeenCalledWith({
+      resetNetworks: true,
+    });
+    expect(wallet.isResettingWallet).toBe(false);
+  });
+
   it('allows a complete existing account collection to switch its provider successfully', async () => {
     currentState.vault = vault();
     wallet.keyrings = new Map([[57, keyring]]);
