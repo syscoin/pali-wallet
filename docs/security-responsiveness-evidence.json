@@ -3764,11 +3764,11 @@
   },
   "rpcAndFirefoxFollowup": {
     "snapshot": {
-      "measuredAt": "2026-10-09T04:20:23.129279+00:00",
-      "paliSourceCommit": "cbb54439bb714d07a16fac844e8fc3727413c514",
-      "runtimeSourceFingerprintSha256": "8b62c6f8df6958e6e656fff5317b46c98704df3266c655805b249f5da076a555",
+      "measuredAt": "2026-10-09T04:26:09.638292+00:00",
+      "paliSourceCommit": "76e9f44dada1bae28b8b50ababf5ef49dc220c9a",
+      "runtimeSourceFingerprintSha256": "d72cae6d6e0b2a0836caa762d410c71e8d41cba13284802bbc0c75b7f315c9aa",
       "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
-      "runtimeFileCount": 544,
+      "runtimeFileCount": 543,
       "paliVersion": "4.0.70",
       "keyringVersion": "1.0.612",
       "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
@@ -3776,40 +3776,42 @@
       "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
       "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce"
     },
-    "testSourceCommit": "6b87318a",
+    "testSourceCommit": "76e9f44dada1bae28b8b50ababf5ef49dc220c9a",
     "changes": [
       "Extension window ownership compares protocol and host with runtime.getURL, including Firefox UUID hosts; foreign extensions and lookalike hosts reject.",
-      "Infrastructure attempts, jobs and v2 durable journals are bound to exact chain ID and RPC URL. Other endpoints cannot reconcile or clear them.",
+      "One unresolved infrastructure reservation owns each chain ID across RPC aliases. Flights, RAM and durable v2 journal admission serialize by chain ID.",
+      "The reservation records its exact original RPC URL; only that URL can reconcile or clear it. A foreign URL returns pending, never absence.",
       "Unscoped v1 pending records remain conservative and cannot be automatically settled using an assumed RPC.",
       "The serialized injected-function regression supplies only Istanbul bookkeeping to its isolated receiving-page context."
     ],
     "validation": {
       "suites": 136,
-      "tests": 1286,
+      "tests": 1291,
       "coverageEnabled": true,
       "typeScript": "passed",
       "scopedLint": "passed",
+      "independentAliasReview": "passed",
       "productionChromeBuild": "passed",
       "firefoxRuntimeTested": false,
       "firefoxShapedFocusedTests": 56,
-      "infrastructureFocusedTests": 70
+      "infrastructureFocusedTests": 75
     },
     "size": {
-      "measuredAt": "2026-10-09T04:21:48.523Z",
+      "measuredAt": "2026-10-09T04:27:38.819Z",
       "snapshot": {
-        "measuredAt": "2026-10-09T04:20:23.129279+00:00",
-        "paliSourceCommit": "cbb54439bb714d07a16fac844e8fc3727413c514",
-        "runtimeSourceFingerprintSha256": "8b62c6f8df6958e6e656fff5317b46c98704df3266c655805b249f5da076a555",
+        "measuredAt": "2026-10-09T04:26:09.638292+00:00",
+        "paliSourceCommit": "76e9f44dada1bae28b8b50ababf5ef49dc220c9a",
+        "runtimeSourceFingerprintSha256": "d72cae6d6e0b2a0836caa762d410c71e8d41cba13284802bbc0c75b7f315c9aa",
         "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
-        "runtimeFileCount": 544,
+        "runtimeFileCount": 543,
         "paliVersion": "4.0.70",
         "keyringVersion": "1.0.612",
         "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
         "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
         "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
         "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce",
-        "webpackStatsSha256": "3735de41c0e98bd6398576f67a6a2622bd1d521e51c6d0f0c3a480659cf597b9",
-        "buildDirectory": "/tmp/pali-audit/optimized-post-review",
+        "webpackStatsSha256": "35111d6d2271d92d152f8767b17555f10b116bb583c7013d6d5f22e3c7178a4b",
+        "buildDirectory": "/tmp/pali-audit/optimized-rpc-alias",
         "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamkeyring1.0.612 localpack, no local package patch."
       },
       "hardware": {
@@ -3852,18 +3854,18 @@
       },
       "optimized": {
         "app": {
-          "bytes": 1482988,
-          "gzipBytes": 453331,
+          "bytes": 1482851,
+          "gzipBytes": 453371,
           "budgetBytes": 1600000
         },
         "external": {
-          "bytes": 1479463,
-          "gzipBytes": 452271,
+          "bytes": 1479327,
+          "gzipBytes": 452314,
           "budgetBytes": 1600000
         },
         "background": {
-          "bytes": 4279611,
-          "gzipBytes": 1201363,
+          "bytes": 4279812,
+          "gzipBytes": 1201371,
           "budgetBytes": 4300000
         },
         "contentScript": {
@@ -3872,7 +3874,7 @@
           "budgetBytes": 16000
         },
         "package": {
-          "bytes": 8524454,
+          "bytes": 8524585,
           "budgetBytes": 9000000
         }
       },
@@ -3887,18 +3889,18 @@
           "totalJSBytes": 2379521
         },
         "optimized": {
-          "initialJSBytes": 1482988,
+          "initialJSBytes": 1482851,
           "lazyJSFiles": [
-            "js/6542.bundle.js",
-            "js/8289.bundle.js"
+            "js/6386.bundle.js",
+            "js/1185.bundle.js"
           ],
-          "lazyJSBytes": 11534,
-          "totalJSBytes": 1494522
+          "lazyJSBytes": 11536,
+          "totalJSBytes": 1494387
         }
       },
-      "firstRouteReductionPercent": 37.192317277300766,
-      "firstRouteLazyReductionPercent": 98.72222382242745,
-      "packageReductionPercent": 1.2570292991765375,
+      "firstRouteReductionPercent": 37.19799068804184,
+      "firstRouteLazyReductionPercent": 98.7220022555508,
+      "packageReductionPercent": 1.255511861325176,
       "notes": [
         "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
         "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
@@ -3909,94 +3911,101 @@
       "steps": [
         {
           "name": "open fresh wallet",
-          "durationMs": 183,
+          "durationMs": 180,
           "status": "passed"
         },
         {
           "name": "import disposable seed",
-          "durationMs": 258,
+          "durationMs": 194,
           "status": "passed"
         },
         {
           "name": "fill wallet password",
-          "durationMs": 16,
+          "durationMs": 43,
           "status": "passed"
         },
         {
           "name": "submit wallet creation",
-          "durationMs": 354,
+          "durationMs": 359,
           "status": "passed"
         },
         {
           "name": "wait for home route",
-          "durationMs": 188,
+          "durationMs": 182,
           "status": "passed"
         },
         {
           "name": "verify newly imported wallet unlocked",
-          "durationMs": 32,
+          "durationMs": 27,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 1186,
+          "durationMs": 1180,
           "status": "passed"
         },
         {
           "name": "switch to first isolated EVM",
-          "durationMs": 104,
+          "durationMs": 102,
           "status": "passed"
         },
         {
           "name": "slow status read gives feedback before two seconds",
-          "durationMs": 3118,
+          "durationMs": 3112,
           "status": "passed"
         },
         {
           "name": "start deployment on first chain with mining paused",
-          "durationMs": 1345,
+          "durationMs": 1356,
+          "status": "passed"
+        },
+        {
+          "name": "same-chain RPC alias cannot duplicate a pending deployment",
+          "durationMs": 16,
           "status": "passed"
         },
         {
           "name": "deploy all contracts on second chain while first chain remains pending",
-          "durationMs": 627,
+          "durationMs": 599,
           "status": "passed"
         },
         {
           "name": "revisit pending chain without submitting duplicates",
-          "durationMs": 1385,
+          "durationMs": 1394,
           "status": "passed"
         },
         {
           "name": "worker restart preserves pending deployment identity",
-          "durationMs": 653,
+          "durationMs": 648,
           "status": "passed"
         },
         {
           "name": "confirm first transaction then resume only remaining contracts",
-          "durationMs": 804,
+          "durationMs": 801,
           "status": "passed"
         },
         {
           "name": "switching networks during broadcast preserves the original transaction",
-          "durationMs": 3100,
+          "durationMs": 3130,
           "status": "passed"
         },
         {
           "name": "worker loss before RPC acknowledgment retains unknown submission and prevents resend",
-          "durationMs": 2125,
+          "durationMs": 1838,
           "status": "passed"
         }
       ],
-      "build": "/tmp/pali-audit/optimized-post-review",
+      "build": "/tmp/pali-audit/optimized-rpc-alias",
       "chromium": "149.0.7827.55",
       "contractCount": 10,
-      "statusFeedbackMs": 1331,
-      "deploymentFeedbackMs": 1339,
+      "statusFeedbackMs": 1322,
+      "deploymentFeedbackMs": 1351,
       "firstPending": {
         "contractId": "entryPoint",
         "hasTransactionHash": true
       },
+      "sameChainRpcAliasBlocked": true,
+      "sameChainRpcAliasPendingTransactions": 1,
       "secondChainReady": true,
       "secondChainMissing": 0,
       "firstChainStillPending": true,
@@ -4010,6 +4019,7 @@
       "crossNetworkAcknowledgmentObserved": false,
       "thirdChainTransactionCount": 10,
       "unknownSubmissionRestored": true,
+      "sameChainRpcAliasUnknownAfterRestartBlocked": true,
       "fourthChainTransactionCount": 10,
       "status": "passed"
     },
@@ -4017,12 +4027,12 @@
       "steps": [
         {
           "name": "open fresh wallet",
-          "durationMs": 193,
+          "durationMs": 190,
           "status": "passed"
         },
         {
           "name": "import disposable seed",
-          "durationMs": 219,
+          "durationMs": 251,
           "status": "passed"
         },
         {
@@ -4032,92 +4042,92 @@
         },
         {
           "name": "submit wallet creation",
-          "durationMs": 352,
+          "durationMs": 350,
           "status": "passed"
         },
         {
           "name": "wait for home route",
-          "durationMs": 195,
+          "durationMs": 189,
           "status": "passed"
         },
         {
           "name": "verify newly imported wallet unlocked",
-          "durationMs": 35,
+          "durationMs": 28,
           "status": "passed"
         },
         {
           "name": "dismiss onboarding prompts",
-          "durationMs": 1169,
+          "durationMs": 1158,
           "status": "passed"
         },
         {
           "name": "switch disposable wallet to Ethereum",
-          "durationMs": 911,
+          "durationMs": 947,
           "status": "passed"
         },
         {
           "name": "open disposable local dapp",
-          "durationMs": 90,
+          "durationMs": 96,
           "status": "passed"
         },
         {
           "name": "routed connect rejects main-view forgery then accepts user approval",
-          "durationMs": 1004,
+          "durationMs": 1045,
           "status": "passed"
         },
         {
           "name": "routed personal-sign returns verifiable signature",
-          "durationMs": 599,
+          "durationMs": 590,
           "status": "passed"
         },
         {
           "name": "routed typed-data returns verifiable signature",
-          "durationMs": 529,
+          "durationMs": 537,
           "status": "passed"
         },
         {
           "name": "closing routed approval rejects request",
-          "durationMs": 330,
+          "durationMs": 331,
           "status": "passed"
         },
         {
           "name": "lock disposable wallet",
-          "durationMs": 2,
+          "durationMs": 1,
           "status": "passed"
         },
         {
           "name": "locked approval survives login route and signing route",
-          "durationMs": 954,
+          "durationMs": 908,
           "status": "passed"
         },
         {
           "name": "locked typed-data preserves literal URL delimiters through login",
-          "durationMs": 818,
+          "durationMs": 893,
           "status": "passed"
         },
         {
           "name": "slow approval handshake offers recovery then accepts a valid late reply",
-          "durationMs": 3320,
+          "durationMs": 3328,
           "status": "passed"
         },
         {
           "name": "standalone hardware page bypasses approval authentication and blocks overlapping prompts",
-          "durationMs": 336,
+          "durationMs": 325,
           "status": "passed"
         },
         {
           "name": "dapp approval resumes after standalone hardware page closes",
-          "durationMs": 3238,
+          "durationMs": 3321,
           "status": "passed"
         }
       ],
-      "build": "/tmp/pali-audit/optimized-post-review",
+      "build": "/tmp/pali-audit/optimized-rpc-alias",
       "chromium": "149.0.7827.55",
       "connectRoute": "/external/connect-wallet",
       "clonedExternalWindowRejected": true,
       "signRoute": "/external/tx/ethSign",
       "lockedRoute": "/",
-      "slowHandshakeFeedbackMs": 1910.1000003814697,
+      "slowHandshakeFeedbackMs": 1897.7000002861023,
       "hardwarePageRoutedWithoutApproval": true,
       "hardwarePromptExclusion": true,
       "hardwareCloseRestoresDappApproval": true,
@@ -4125,10 +4135,49 @@
       "backgroundErrors": []
     },
     "limits": [
-      "Firefox behavior is covered by mocked browser responses; an actual Firefox release build/runtime was not exercised.",
+      "The Firefox-shaped window tests do not establish full Firefox support. The normal Firefox build and base revision both emit a service-worker-only background; base approval replies also require a service worker. A Firefox/background-page transport remains separate work.",
       "The 500-account timings above remain measurements of runtime commit 87084512, not a rerun on this follow-up.",
+      "No migration is provided for the never-shipped intermediate endpoint-qualified v2 journal format in cbb54439. The original v1 format remains fail-closed.",
       "The separate focused cryptography review has open findings and is not a clean security sign-off.",
       "Keyring 1.0.612 remains unpublished and a clean registry CI run is still required."
-    ]
+    ],
+    "validationSource": "Clean git archive of 76e9f44d, sharing the reviewed local node_modules; not a clean registry install. A concurrent local helper edit was excluded and later restored with user authorization.",
+    "firefoxCompatibility": {
+      "current": "76e9f44dada1bae28b8b50ababf5ef49dc220c9a",
+      "base": "94a1cde5be2041ae0486d2f2055f675c6e991b34",
+      "outputs": {
+        "working-tree:default": {
+          "manifestVersion": 3,
+          "background": {
+            "service_worker": "js/background.bundle.js"
+          }
+        },
+        "working-tree:MV2": {
+          "manifestVersion": 2,
+          "background": {
+            "scripts": [
+              "js/background.bundle.js"
+            ],
+            "persistent": true
+          }
+        },
+        "origin/master:default": {
+          "manifestVersion": 3,
+          "background": {
+            "service_worker": "js/background.bundle.js"
+          }
+        },
+        "origin/master:MV2": {
+          "manifestVersion": 2,
+          "background": {
+            "scripts": [
+              "js/background.bundle.js"
+            ],
+            "persistent": true
+          }
+        }
+      },
+      "note": "Actual generator evaluated with captured filesystem writes. Webpack manifest transform is JSON.parse/stringify without a browser-specific background conversion."
+    }
   }
 }
