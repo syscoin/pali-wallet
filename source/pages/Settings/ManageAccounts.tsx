@@ -205,6 +205,10 @@ const ManageAccountsView = React.memo(() => {
       ),
     [accounts]
   );
+  const hdAccountsCount = useMemo(
+    () => Object.keys(accounts.HDAccount).length,
+    [accounts.HDAccount]
+  );
   // Check if account can be removed
   const canRemoveAccount = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
@@ -218,13 +222,12 @@ const ManageAccountsView = React.memo(() => {
       if (accountType === KeyringAccountType.HDAccount) {
         if (account.id === 0) return false;
 
-        const hdAccountsCount = Object.keys(accounts.HDAccount).length;
         if (hdAccountsCount <= 1) return false;
       }
 
       return true;
     },
-    [accounts, isActiveAccount, totalAccounts]
+    [hdAccountsCount, isActiveAccount, totalAccounts]
   );
 
   const handleRemoveClick = useCallback(
