@@ -4,7 +4,7 @@ Review date: 2026-10-08. Scope: the Chrome extension in this checkout, its insta
 
 ## Upstream keyring release
 
-Pali 4.0.70 targets keyring 1.0.612 from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15). No package patch is included here. The package will be published separately; until then validation uses its upstream source build. Earlier patched-dependency measurements below retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the new version.
+Keyring 1.0.612 is now published; the earlier E404/publication notes below describe their dated validation snapshots. The cryptography follow-up targets upstream core 1.0.29 and keyring 1.0.613 from [sidhujag/sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16). Those new packages require their own publication and clean-install validation. No package patch is included here. Earlier patched-dependency measurements retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the corrected version.
 
 ## Account-data and request-work containment
 
@@ -47,7 +47,7 @@ Evidence: [request budget](../source/utils/requestPayloadBudget.ts), [typed-data
 
 The reported symptom has a plausible implementation cause. The published `@sidhujag/sysweb3-keyring` 1.0.610 and 1.0.611 `unlock()` caught every exception and returned `canLogin: false`. Pali then treated that result as an invalid password and charged a failed attempt. A temporary storage failure, KDF/platform failure or failure rebuilding a session after successful decryption could therefore consume an attempt with the correct password. The configured threshold is ten attempts followed by five minutes of lockout.
 
-The source fix is tracked in [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15). It distinguishes operational errors from failed vault authentication and clears partially restored secrets. Genuine authentication failures still count. Encryption algorithms and stored key formats stay unchanged. Pali contains no package patch; Pali now targets the fixed 1.0.612 release, which will be published separately.
+The initial source fix in [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15), now published as 1.0.612, distinguishes operational errors from failed vault authentication and clears partially restored secrets. Genuine authentication failures still count. That initial change preserved encryption algorithms and stored key formats. The later KDF and persistence correction described below targets core 1.0.29/keyring 1.0.613 and adds an explicit legacy profile and authenticated-encryption write policy. Pali contains no package patch.
 
 Upstream regressions exercise the implementation with real WebCrypto decryption: transient/missing storage, wrong passwords, legacy vaults, a failed second vault read, post-authentication failures, platform/key-import errors and malformed envelopes. Pali controller tests verify the expected error contract with controlled keyring results; they do not change the behavior of released 1.0.611.
 
@@ -126,7 +126,7 @@ An actual local dapp page exercised that snapshot’s content script and backgro
 
 ## Initial PR integration snapshot
 
-The ready Pali PR targets **4.0.70** and keyring **1.0.612**, rebased onto master `94a1cde5`. The dependency was built and locally packed from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15), commit `27e4409`; no local package patch or Git dependency workaround is shipped. Publication of the npm artifact is handled separately, and its future integrity hash is not fabricated in the lockfile.
+At this initial snapshot, the Pali PR targeted **4.0.70** and keyring **1.0.612**, rebased onto master `94a1cde5`. The dependency was built and locally packed from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15), commit `27e4409`; no local package patch or Git dependency workaround was shipped. Publication was still pending at that time, and a future integrity hash was not fabricated in the lockfile.
 
 The integrated suite passes **114 suites, 947 tests**, plus TypeScript and the production Chrome build. All bundle budgets pass: background JavaScript is 4,229,863 bytes, content script 14,784 bytes, and the unpacked extension 8,445,605 bytes. Fresh Start JavaScript remains 1,491,009 bytes; the historical original-checkout baseline above remains labelled separately.
 
@@ -158,7 +158,7 @@ Four disposable-profile Chrome checks pass for that snapshot. Routed connection,
 
 The local Codex loop reviewed the full PR, then found the interrupted-account-initialization race in a follow-up diff. The repair includes a reproducer using two public network-switch requests and the real serialization mutex; Codex's subsequent review found no actionable regression. The full test suite and Chrome checks above were rerun on the resulting source.
 
-**Publication remains a release blocker:** npm still returns E404 for keyring 1.0.612. The owner requested that version in advance and will publish it separately. The local package validates the reviewed source but does not make registry CI green. Publish the upstream artifact and rerun clean CI before merging or releasing Pali.
+**Publication status at that snapshot:** npm returned E404 for keyring 1.0.612. That version has since been published. The local package validated the reviewed source but did not establish a successful registry install. The newer core 1.0.29/keyring 1.0.613 follow-up has a separate publication and clean-install gate.
 
 ## Smart-account deployment follow-up
 
@@ -243,7 +243,7 @@ The combined suite passes **136 suites and 1,291 tests with coverage enabled**, 
 
 Fresh Start loads **1,494,387 bytes** of JavaScript, **37.2% less** than the original baseline. The background is **4,279,812 bytes** and the unpacked extension **8,524,585 bytes**; all size budgets pass. The 500-account timings above remain explicitly tied to runtime `87084512`; they were not rerun for these narrow changes. Detailed follow-up data is in `rpcAndFirefoxFollowup` in the evidence JSON.
 
-A separate focused cryptography and key-management review has open findings. This PR's regression results and prior review completions are not a clean cryptographic security sign-off. Those findings require separate remediation before release.
+At this snapshot, a separate focused cryptography and key-management review had eight open findings. Their subsequent remediation is described below. These regression results and prior review completions are not a cryptographic security sign-off.
 
 ## Network-removal follow-up
 
@@ -251,9 +251,39 @@ Source `70502d7d22ca518a8a29ba7f53596c2f58d862da` has runtime fingerprint `0aa24
 
 The background independently rejects removal during switches and refuses active-network or active-UTXO-vault deletion. Removal reserves synchronously, rechecks session and network identity at lock boundaries, and awaits vault cleanup under the network-switch and persistence mutexes. New switches, edits and additions cannot race that cleanup. An addition that was already awaiting metadata rechecks before committing. Storage errors propagate and the reservation always releases. The UI consumes failures, shows a neutral message translated in all nine locales, and clears only the completed request's selection.
 
-The final combined suite passes **138 suites and 1,337 tests with coverage enabled**, including 23 new backend removal regressions and nine network-management UI tests. TypeScript, scoped lint, translation consistency, independent review and the production Chrome build pass. Validation uses a clean Git archive and the same reviewed local dependency package.
+At this network-removal snapshot, the combined suite passes **138 suites and 1,337 tests with coverage enabled**, including 23 new backend removal regressions and nine network-management UI tests. TypeScript, scoped lint, translation consistency, independent review and the production Chrome build pass. Validation uses a clean Git archive and the same reviewed local dependency package.
 
-Fresh Start loads **1,494,543 bytes** of JavaScript, **37.2% less** than the original baseline. The background is **4,281,681 bytes** and the unpacked extension **8,528,108 bytes**; all budgets pass. The preceding four-chain/alias/approval browser checks remain bound to runtime `76e9f44d`; the 500-account measurements remain bound to `87084512`. They are not relabelled as reruns of this later guard change. The separate crypto findings remain open.
+Fresh Start loads **1,494,543 bytes** of JavaScript, **37.2% less** than the original baseline. The background is **4,281,681 bytes** and the unpacked extension **8,528,108 bytes**; all budgets pass. The preceding four-chain/alias/approval browser checks remain bound to runtime `76e9f44d`; the 500-account measurements remain bound to `87084512`. They are not relabelled as reruns of this later guard change. The separate crypto findings were still open at this snapshot.
+
+## Cryptography and key-management remediation
+
+The focused review identified eight concrete findings, using synthetic keys, offline signing and disposable browser profiles. All eight now have source fixes. The follow-up targets core **1.0.29** and keyring **1.0.613**; published **1.0.612** does not contain these newer library corrections. Final package and combined-build validation are recorded separately below.
+
+| Finding | Source correction |
+| --- | --- |
+| C1: onboarding secrets in browser history | Passwords and phrases stay in a short-lived React provider. Routes receive no secret state; completion, cancellation, route exit, hiding and page unload clear the provider. Current legacy history entries are scrubbed, but this cannot erase copies previously written to browser session files. Password submission is serialized. Once creation is requested, the UI clears its secrets and cannot replay it after a lost reply; the background also rejects a concurrent creation before entering its mutex. |
+| C2: unacknowledged external P256 ownership | Wallet-managed account preparation rejects dapp-supplied P256 configuration before any credential or account operation. An id-only passkey request creates a wallet-owned credential; standard local ECDSA ownership remains supported. |
+| C3: signing outside the approved UTXO account | Approval captures the connected account and network. Signing checks session/context at asynchronous boundaries and authenticates paths, public keys and actual spent scripts against the selected account. Full-root derivation remains bounded. Standard P2WSH, wrapped P2WSH and P2SH multisig can sign the selected member; foreign hints are hidden from the signer and restored only to non-finalized output PSBTs after signing, so another cosigner can continue. |
+| C4: destructive passkey replacement | A replacement uses an independent random user handle. It cannot replace the credential-manager entry still needed by an active composite policy. Failed rotations preserve the original credential and the pending replacement. |
+| C5: deleting a possibly installed passkey | Pending credential metadata is saved under the account before installation. Confirmed adoption is recorded before hydration, and completion clears only the matching creation slot. Cancelled, failed or restarted flows do not automatically signal credential deletion or prune older credentials. Persistence failure stops installation or retains recovery records. |
+| C6: swallowed asynchronous storage failures | Core storage methods return the actual write/removal promises. Keyring migration awaits them and orders profile/ciphertext writes so a rejected write remains retryable instead of silently discarding recovery metadata. |
+| C7: incompatible fallback derivation | New encrypted writes require WebCrypto and AES-GCM. Authenticated legacy data can select a persisted 20,000-round profile; new wallets use the existing 900,000-round profile. Profile persistence precedes rewrapping, rejected writes preserve readable state, and later successful unlock can retry a pending rewrap. Existing account-key wrapping is preserved; this is not a claim that every historical key has been re-encrypted with stronger parameters. |
+| C8: Trezor transaction-field loss | Conversion preserves locktime and explicit sequence zero without mutating the previous-transaction hash. Returned version, locktime, inputs, sequences and outputs must match the approved unsigned transaction before witness data is accepted. |
+
+Independent offline checks exercise the real new keyring/HD signer for all three multisig forms: only the selected account signs, same-wallet other-account hints gain no signature, foreign-only inputs reject, existing external signatures survive, and a standard external cosigner with a different derivation path can complete the returned partial PSBT. The passkey tests exercise real component handlers with synthetic controllers, and a disposable Chromium authenticator confirms that independent user handles preserve the old credential. No real wallet, live hardware signature or funded broadcast was used for these crypto regressions.
+
+Final validation uses Pali runtime `363ab482dc6fd11388d93b18fd60907b7a8955b9`, runtime fingerprint `f8832c0bbb010bd0925f6d3ae3aa81ce9ec7a8b83d848e52c6371dbee1180743`, and [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) production commit `16baa93f4a87005e73746a2ef71aa26e1124a8ef`. Upstream test-only follow-up `b91367e` replaces placeholder fixtures with real PSBT objects. All **127 packed package files** match the rebuilt upstream artifacts. No local dependency patch is shipped.
+
+- **146 Pali suites / 1,392 tests** pass with coverage, plus TypeScript, translation checks, production webpack and bundle budgets. Full-snapshot ESLint has zero errors and two existing warnings. **24 upstream suites / 382 tests** pass; both package builds pass.
+- Real Chrome creation, import and reload flows pass. After closing each disposable profile, the password and recovery phrase have no plaintext matches in the inspected profile files. These checks prevent new persistence; they cannot remove old filesystem copies.
+- Approval ownership, cloned-window rejection, personal/typed signatures, locked routing and hardware-window exclusion/recovery pass. Delayed approval feedback appears at **1,870 ms**, with no recorded background errors. This is window coordination, not physical-device signing.
+- Four isolated EVM chains each finish all ten deployments without duplicate sends. Pending chain A does not prevent B; switching RPC aliases, withholding acknowledgements and restarting the worker retain the original attempt. Status and deployment feedback appear at **1,328 ms** and **1,311 ms**.
+- Fresh Start loads **1,498,128 bytes** of JavaScript, **37.0% less** than the original baseline. Background JavaScript is **4,268,299 bytes**; the unpacked extension is **8,531,935 bytes**. All budgets pass.
+- Primitive checks on the installed graph repeat 240 BIP39 vector cases, 34 BIP32 assertions, 14 invalid extended-key cases, 15 BIP340 verification/four signing cases, 128 deterministic low-S ECDSA cases and 128 elliptic verification cases. EIP-191/EIP-712 recovery, known digests, invalid scalar rejection and AES-GCM tamper/wrong-key rejection pass. Variable-message BIP340 vectors beyond the adapter's 32-byte interface are explicitly excluded.
+
+The exact artifacts, timing scope and reports are recorded in `cryptoFollowup` in [security-responsiveness-evidence.json](security-responsiveness-evidence.json). Core **1.0.29** must be published before keyring **1.0.613**, then clean registry CI must be rerun before release. Local source-package validation does not satisfy that publication requirement.
+
+The earlier 500-account timings, 37.2% initial-loading reduction and prior suite counts retain their original snapshot boundaries. They do not become measurements of this cryptography follow-up. This work does not establish a whole-library proof, constant-time behavior, complete SLH-DSA known-answer coverage, reproducible WASM provenance, or physical-device compatibility. See [unlock and migration behavior](keyring-unlock-errors.md) and [loading strategy](loading-strategy.md).
 
 ## Dependency findings
 

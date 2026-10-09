@@ -28,6 +28,34 @@ A failed or malformed status response marks cached lock state unavailable. The l
 
 Unlock, seed import and new-wallet creation refresh the shared authentication status before entering Home. A stale locked response from before authentication cannot overwrite the fresh result. If creation succeeds but status confirmation fails, the UI returns to the existing-wallet recovery screen instead of repeating creation.
 
+## Onboarding secrets and signing ownership
+
+Onboarding passwords and phrases live only in a short-lived React provider.
+Navigation carries no secret route state. Leaving the allowed onboarding steps,
+completion, cancellation, hiding the page or unloading clears that state; a
+revisit with missing secrets returns to the safe entry screen. A current legacy
+history entry can be scrubbed, but already-written browser session files cannot
+be erased by this change. Password submission has one synchronous in-flight
+guard, consumes failures with a translated message and always releases its
+spinner. Once creation is sent, its in-memory secrets are cleared and the UI does not
+replay the request after a timeout or lost acknowledgement. The background
+reserves creation before waiting for its authentication mutex, so a second
+request cannot queue another destructive reset. Recovery reads fresh status
+and returns through the root screen.
+
+Account preparation rejects externally supplied P256 ownership in the
+wallet-managed passkey flow. New or replacement credentials use independent
+user handles, and pending public credential records are retained through
+uncertain installation or hydration outcomes. UI cancellation never implies
+that an authenticator credential is unused and safe to delete.
+
+UTXO approval binds signing to the approved account and network. A context
+change during validation, metadata retrieval or hardware interaction rejects
+stale work. Invalid or unverifiable account inputs produce translated feedback.
+The signing request does not automatically retry, and an acknowledged broadcast
+remains successful even if the later local history update fails. These checks
+do not impose a two-second completion deadline on cryptography or hardware.
+
 ## Smart-account infrastructure setup
 
 The Advanced settings card shows explanatory status after 1.2 seconds of waiting, leaving room for route transitions within the two-second feedback target. It distinguishes unavailable status from missing infrastructure and offers a read-only status check. New feedback is translated in every supported locale without inline translation defaults.
