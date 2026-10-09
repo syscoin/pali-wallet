@@ -167,9 +167,23 @@ describe('legacy dapp permission isolation', () => {
     await new Promise(setImmediate);
     const injection = (chrome.scripting.executeScript as jest.Mock).mock
       .calls[0][0];
+    const serialized = injection.func.toString();
+    // Jest adds file-scoped counters to the captured callback. Supply only
+    // their bookkeeping data; keep running the actual serialized function in
+    // a fresh page context without access to the controller's closure.
+    const coverage = (globalThis as any).__coverage__?.[
+      require.resolve('./DAppController')
+    ];
+    const coverageHelpers = Object.fromEntries(
+      [...serialized.matchAll(/\b(cov_[\w$]+)\(\)/g)].map(([, name]) => [
+        name,
+        () => coverage,
+      ])
+    );
     const receive = (origin: string) => {
       const dispatchEvent = jest.fn();
-      runInNewContext(`(${injection.func.toString()})(...args)`, {
+      runInNewContext(`(${serialized})(...args)`, {
+        ...coverageHelpers,
         args: injection.args,
         window: { location: { origin }, dispatchEvent },
         CustomEvent: class {
