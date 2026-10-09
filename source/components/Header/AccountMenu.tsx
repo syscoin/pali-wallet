@@ -124,7 +124,14 @@ export const AccountMenu: React.FC = () => {
             const url = chrome.runtime.getURL(
               'external.html?route=settings/account/hardware'
             );
-            window.open(url, '_blank');
+            chrome.tabs.create({ url }, () => {
+              if (chrome.runtime.lastError) {
+                console.error(
+                  '[AccountMenu] Failed to open hardware setup:',
+                  chrome.runtime.lastError
+                );
+              }
+            });
 
             // Set storage flag for detection
             chrome.storage.local.set(

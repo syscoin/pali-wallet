@@ -183,7 +183,14 @@ export const ConnectHardwareWallet = ({
     const url = chrome.runtime.getURL(
       'external.html?route=settings/account/hardware'
     );
-    window.open(url, '_blank');
+    chrome.tabs.create({ url }, () => {
+      if (chrome.runtime.lastError) {
+        console.error(
+          '[WarningBaseModal] Failed to open hardware setup:',
+          chrome.runtime.lastError
+        );
+      }
+    });
 
     // Set storage flag for detection
     chrome.storage.local.set(
