@@ -556,6 +556,7 @@
     "removeAccount": "アカウントを削除",
     "removeAccountConfirmation": "{{accountType}}アカウント \"{{accountName}}\" を削除してもよろしいですか？必要に応じて、いつでもアカウントを再作成できます。",
     "accountRemovalContextChanged": "アカウントの状態が変わりました。削除をもう一度確認してください。",
+    "networkRemovalIncomplete": "ネットワークの削除は完了していません。ネットワーク一覧を確認して、もう一度お試しください。",
     "accountRemovedSuccessfully": "アカウントが正常に削除されました",
     "failedToRemoveAccount": "アカウントの削除に失敗しました",
     "hardwareWalletSuccess": "ハードウェアウォレットが正常に接続されました！",

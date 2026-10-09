@@ -556,6 +556,7 @@
     "removeAccount": "Eliminar cuenta",
     "removeAccountConfirmation": "¿Estás seguro de que deseas eliminar la cuenta {{accountType}} \"{{accountName}}\"? Siempre puedes recrear la cuenta más tarde si es necesario.",
     "accountRemovalContextChanged": "El contexto de la cuenta ha cambiado. Confirma de nuevo la eliminación.",
+    "networkRemovalIncomplete": "La eliminación de la red no se completó. Revisa la lista de redes e inténtalo de nuevo.",
     "accountRemovedSuccessfully": "Cuenta eliminada exitosamente",
     "failedToRemoveAccount": "Error al eliminar la cuenta",
     "hardwareWalletSuccess": "¡Monedero hardware conectado exitosamente!",

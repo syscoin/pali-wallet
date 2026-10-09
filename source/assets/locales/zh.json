@@ -556,6 +556,7 @@
     "removeAccount": "移除账户",
     "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
     "accountRemovalContextChanged": "账户状态已更改。请再次确认删除。",
+    "networkRemovalIncomplete": "网络移除未完成。请检查网络列表后重试。",
     "accountRemovedSuccessfully": "账户删除成功",
     "failedToRemoveAccount": "删除账户失败",
     "hardwareWalletSuccess": "硬件钱包连接成功！",

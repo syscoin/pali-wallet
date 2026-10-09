@@ -9,6 +9,7 @@ let mockChanging = false;
 let mockUnavailable = false;
 const mockControllerEmitter = jest.fn();
 const mockNavigate = jest.fn();
+const mockAlert = { error: jest.fn() };
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockState },
@@ -21,7 +22,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({ navigate: mockNavigate }),
+  useUtils: () => ({ navigate: mockNavigate, alert: mockAlert }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
@@ -88,6 +89,7 @@ describe('network management transition safety', () => {
     mockChanging = false;
     mockUnavailable = false;
     mockControllerEmitter.mockReset().mockResolvedValue(undefined);
+    mockAlert.error.mockReset();
     mockState = {
       vault: { activeNetwork: { chainId: 57, url: 'https://active.example' } },
       vaultGlobal: {
@@ -113,7 +115,8 @@ describe('network management transition safety', () => {
       return [
         states[index],
         (value: any) => {
-          states[index] = value;
+          states[index] =
+            typeof value === 'function' ? value(states[index]) : value;
         },
       ] as any;
     });
@@ -134,6 +137,29 @@ describe('network management transition safety', () => {
       ['wallet', 'removeKeyringNetwork'],
       [INetworkType.Syscoin, 1, 'https://target.example', 'Target', undefined]
     );
+    expect(mockAlert.error).not.toHaveBeenCalled();
+  });
+
+  it('consumes a failed removal, clears its selection, and requires a fresh confirmation', async () => {
+    mockControllerEmitter.mockRejectedValueOnce(
+      new Error('internal storage details')
+    );
+    await expect(openRemoval().props.onClick()).resolves.toBeUndefined();
+    expect(mockAlert.error).toHaveBeenCalledTimes(1);
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'settings.networkRemovalIncomplete'
+    );
+    expect(dialog().props.show).toBe(false);
+    await dialog().props.onClick();
+    expect(mockControllerEmitter).toHaveBeenCalledTimes(1);
+
+    mockState.vaultGlobal.networks.syscoin[1].url = 'https://updated.example';
+    await openRemoval().props.onClick();
+    expect(mockControllerEmitter).toHaveBeenLastCalledWith(
+      ['wallet', 'removeKeyringNetwork'],
+      [INetworkType.Syscoin, 1, 'https://updated.example', 'Target', undefined]
+    );
+    expect(mockAlert.error).toHaveBeenCalledTimes(1);
   });
 
   it.each(['transition', 'disconnect'])(

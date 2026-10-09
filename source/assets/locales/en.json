@@ -556,6 +556,7 @@
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
     "accountRemovalContextChanged": "Account context changed. Please confirm removal again.",
+    "networkRemovalIncomplete": "Network removal did not complete. Check the network list and try again.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",

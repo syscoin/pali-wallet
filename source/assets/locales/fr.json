@@ -556,6 +556,7 @@
     "removeAccount": "Supprimer le compte",
     "removeAccountConfirmation": "Êtes-vous sûr de vouloir supprimer le compte {{accountType}} \"{{accountName}}\" ? Vous pouvez toujours recréer le compte plus tard si nécessaire.",
     "accountRemovalContextChanged": "Le contexte du compte a changé. Veuillez confirmer à nouveau la suppression.",
+    "networkRemovalIncomplete": "La suppression du réseau n’a pas abouti. Consultez la liste des réseaux et réessayez.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
     "failedToRemoveAccount": "Échec de la suppression du compte",
     "hardwareWalletSuccess": "Portefeuille matériel connecté avec succès !",

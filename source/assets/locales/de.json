@@ -556,6 +556,7 @@
     "removeAccount": "Konto entfernen",
     "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
     "accountRemovalContextChanged": "Der Kontokontext hat sich geändert. Bitte bestätige das Entfernen erneut.",
+    "networkRemovalIncomplete": "Das Entfernen des Netzwerks wurde nicht abgeschlossen. Prüfe die Netzwerkliste und versuche es erneut.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
     "failedToRemoveAccount": "Fehler beim Entfernen des Kontos",
     "hardwareWalletSuccess": "Hardware-Wallet erfolgreich verbunden!",

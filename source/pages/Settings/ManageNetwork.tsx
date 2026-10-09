@@ -31,7 +31,7 @@ const ManageNetworkView = () => {
   const { t } = useTranslation();
   const location = useLocation();
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const { controllerEmitter, connectionUnavailable } = useController();
   const { isContextChanging } = usePageLoadingState();
   const networkActionsBlocked = isContextChanging || connectionUnavailable;
@@ -106,20 +106,25 @@ const ManageNetworkView = () => {
     // Close modal first
     setShowConfirmModal(false);
 
-    // Proceed with removal
-    await controllerEmitter(
-      ['wallet', 'removeKeyringNetwork'],
-      [
-        networkToRemove.chain,
-        networkToRemove.chainId,
-        networkToRemove.rpcUrl,
-        networkToRemove.label,
-        networkToRemove.key,
-      ]
-    );
-
-    // Clear state
-    setNetworkToRemove(null);
+    try {
+      await controllerEmitter(
+        ['wallet', 'removeKeyringNetwork'],
+        [
+          networkToRemove.chain,
+          networkToRemove.chainId,
+          networkToRemove.rpcUrl,
+          networkToRemove.label,
+          networkToRemove.key,
+        ]
+      );
+    } catch {
+      alert.error(t('settings.networkRemovalIncomplete'));
+    } finally {
+      // A later selection must not be cleared by this request finishing.
+      setNetworkToRemove((current) =>
+        current === networkToRemove ? null : current
+      );
+    }
   };
 
   const handleCancelRemoval = () => {

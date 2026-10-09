@@ -556,6 +556,7 @@
     "removeAccount": "Удалить аккаунт",
     "removeAccountConfirmation": "Вы уверены, что хотите удалить {{accountType}} аккаунт \"{{accountName}}\"? Вы всегда можете пересоздать аккаунт позже при необходимости.",
     "accountRemovalContextChanged": "Контекст аккаунта изменился. Подтвердите удаление ещё раз.",
+    "networkRemovalIncomplete": "Удаление сети не завершено. Проверьте список сетей и попробуйте ещё раз.",
     "accountRemovedSuccessfully": "Аккаунт успешно удален",
     "failedToRemoveAccount": "Не удалось удалить аккаунт",
     "hardwareWalletSuccess": "Аппаратный кошелек успешно подключен!",
