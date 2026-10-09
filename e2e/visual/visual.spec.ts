@@ -47,6 +47,60 @@ const settle = async (ms = 1200, page = wallet.page) => {
   await page.waitForTimeout(150);
 };
 
+// Retry only this read-only preflight; never repeat account creation or a
+// submitted action because of a transport timeout.
+const refreshFixtureInfrastructure = async (page: Page) => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response: any = await page.evaluate(async () => {
+        let timer: number | undefined;
+        try {
+          return await Promise.race([
+            chrome.runtime.sendMessage({
+              type: 'CONTROLLER_ACTION',
+              data: {
+                methods: ['wallet', 'getSmartAccountInfrastructureStatus'],
+                params: [true],
+              },
+            }),
+            new Promise((_, reject) => {
+              timer = window.setTimeout(
+                () => reject(new Error('Infrastructure status read timed out')),
+                22000
+              );
+            }),
+          ]);
+        } finally {
+          window.clearTimeout(timer);
+        }
+      });
+      if (response?.error) {
+        throw new Error(
+          typeof response.error === 'string'
+            ? response.error
+            : response.error.message ||
+              response.message ||
+              'Infrastructure status read failed'
+        );
+      }
+      expect(
+        response?.chainId,
+        'Preflight must match the visual fixture network'
+      ).toBe(E2E_CONFIG.chainId);
+      return;
+    } catch (error: any) {
+      if (!error?.message?.includes('Infrastructure RPC timed out.'))
+        throw error;
+      if (attempt === 2) {
+        throw new Error(
+          'Visual fixture infrastructure RPC timed out after three read-only preflight attempts'
+        );
+      }
+      await page.waitForTimeout(1000 * (attempt + 1));
+    }
+  }
+};
+
 test.describe('visual baselines', () => {
   test.beforeAll(async () => {
     // SYSCOIN: These goldens describe the funded public QA fixture, not an
@@ -84,13 +138,18 @@ test.describe('visual baselines', () => {
       !smartAccountsUnavailable &&
       (await createSmartAccount.isVisible().catch(() => false))
     ) {
-      await createSmartAccount.click();
       const unavailableMessage = wallet.page.getByText(
         /smart accounts are not ready on this network yet/i
+      );
+      const rpcTimeoutMessage = wallet.page.getByText(
+        'Infrastructure RPC timed out. Refresh status before retrying.',
+        { exact: true }
       );
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
+      await refreshFixtureInfrastructure(wallet.page);
+      await createSmartAccount.click();
       const outcome = await Promise.race([
         unavailableMessage
           .waitFor({
@@ -98,6 +157,12 @@ test.describe('visual baselines', () => {
             timeout: E2E_CONFIG.slowActionTimeoutMs,
           })
           .then(() => 'unavailable' as const),
+        rpcTimeoutMessage
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'rpc-timeout' as const),
         okButton
           .waitFor({
             state: 'visible',
@@ -108,6 +173,11 @@ test.describe('visual baselines', () => {
           .waitForURL(/#\/home/, { timeout: E2E_CONFIG.slowActionTimeoutMs })
           .then(() => 'home' as const),
       ]);
+      if (outcome === 'rpc-timeout') {
+        throw new Error(
+          'Visual fixture infrastructure RPC timed out after preflight; account creation was not retried'
+        );
+      }
       if (outcome === 'dialog') {
         await okButton.click();
         await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
