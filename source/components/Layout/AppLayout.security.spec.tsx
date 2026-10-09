@@ -149,6 +149,35 @@ describe('wallet content safety during background changes', () => {
     }
   );
 
+  it.each(['/faucet', '/FAUCET/', '/%66aucet'])(
+    'keeps faucet claims at %s inert until the wallet context settles',
+    (path) => {
+      mockPath = path;
+      // The bounded loading overlay can already have stopped blocking while
+      // the account/network is still changing or the worker is unavailable.
+      mockOverlayLoading = false;
+      const content = <button>Request faucet tokens</button>;
+      for (const unavailable of [false, true]) {
+        mockUnavailable = unavailable;
+        mockChanging = !unavailable;
+        const markup = renderToStaticMarkup(<AppLayout>{content}</AppLayout>);
+        expect(markup).toContain('inert=""');
+        expect(markup.indexOf('</nav>')).toBeLessThan(
+          markup.indexOf('inert=""')
+        );
+        expect(markup.indexOf('inert=""')).toBeLessThan(
+          markup.indexOf('Request faucet tokens')
+        );
+      }
+
+      mockUnavailable = false;
+      mockChanging = false;
+      const settled = renderToStaticMarkup(<AppLayout>{content}</AppLayout>);
+      expect(settled).not.toContain('inert=""');
+      expect(settled).toContain('Request faucet tokens');
+    }
+  );
+
   it.each([
     '/settings/networks/edit',
     '/SETTINGS/NETWORKS/EDIT/',

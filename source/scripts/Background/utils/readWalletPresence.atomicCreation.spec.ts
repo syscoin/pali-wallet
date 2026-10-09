@@ -42,6 +42,27 @@ describe('fresh keyring creation persistence', () => {
       remove: jest.fn(async (key: string) => {
         delete records[key];
       }),
+      createItemsIfAbsent: jest.fn(
+        async (items: Record<string, string>): Promise<boolean> => {
+          if (
+            Object.keys(items).some(
+              (key) => records[key] !== undefined && records[key] !== null
+            )
+          )
+            return false;
+          // The test backend commits synchronously inside set before its
+          // promise settles, including the simulated rejection above.
+          await nativeArea.set(
+            Object.fromEntries(
+              Object.entries(items).map(([key, value]) => [
+                key,
+                JSON.parse(value),
+              ])
+            )
+          );
+          return true;
+        }
+      ),
     };
     const get = jest.spyOn(chrome.storage.local, 'get').mockImplementation(((
       keys: string[],
