@@ -111,6 +111,44 @@ describe('wallet content safety during background changes', () => {
     expect(markup).toContain('Wallet navigation');
   });
 
+  it.each(['/receive', '/RECEIVE/', '/%72eceive'])(
+    'hides receive addresses at %s until context is authoritative',
+    (path) => {
+      mockPath = path;
+      mockOverlayLoading = false;
+      const ReceiveContent = jest.fn(() => (
+        <div>
+          <svg aria-label="Receive QR code" />
+          <button>Copy old address</button>
+        </div>
+      ));
+      for (const unavailable of [false, true]) {
+        mockUnavailable = unavailable;
+        mockChanging = !unavailable;
+        const markup = renderToStaticMarkup(
+          <AppLayout>
+            <ReceiveContent />
+          </AppLayout>
+        );
+        expect(ReceiveContent).not.toHaveBeenCalled();
+        expect(markup).not.toContain('Receive QR code');
+        expect(markup).not.toContain('Copy old address');
+        expect(markup).toContain('Wallet navigation');
+        expect(markup).toContain('inert=""');
+      }
+      mockUnavailable = false;
+      mockChanging = false;
+      const settled = renderToStaticMarkup(
+        <AppLayout>
+          <ReceiveContent />
+        </AppLayout>
+      );
+      expect(settled).toContain('Receive QR code');
+      expect(settled).toContain('Copy old address');
+      expect(settled).not.toContain('inert=""');
+    }
+  );
+
   it.each([
     '/settings/networks/edit',
     '/SETTINGS/NETWORKS/EDIT/',

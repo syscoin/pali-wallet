@@ -329,8 +329,13 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   // views so their cached plaintext and password fields cannot remain visible
   // or reappear after reconnection without fresh authentication.
   const pageContent =
-    connectionUnavailable &&
-    SECRET_VIEW_ROUTES.has(normalizeWalletPathname(location.pathname)) ? (
+    (isContextChanging || connectionUnavailable) &&
+    normalizeWalletPathname(location.pathname) === '/receive' ? (
+      // A visible QR code can be used without clicking. Hide the old address
+      // as well as disabling controls until the account/network is confirmed.
+      <p role="status">{message || t('buttons.loading')}</p>
+    ) : connectionUnavailable &&
+      SECRET_VIEW_ROUTES.has(normalizeWalletPathname(location.pathname)) ? (
       <p role="status">
         Reconnect to your wallet to view sensitive information.
       </p>
