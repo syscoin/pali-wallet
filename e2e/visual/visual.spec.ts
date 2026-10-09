@@ -1,7 +1,13 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 
+import {
+  getChainId,
+  getInfrastructureState,
+  getNativeBalance,
+} from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+import { resetVisualScroll } from './scrollReset';
 
 // Pixel-baseline walk of the core screens. One onboarding, then every test
 // navigates and asserts a masked screenshot against the committed baseline.
@@ -28,23 +34,35 @@ const commonMasks = (page = wallet.page): Locator[] => [
 
 const settle = async (ms = 1200, page = wallet.page) => {
   await page.waitForLoadState('networkidle').catch(() => undefined);
+  // SYSCOIN: The last setup click can sit over the balance panel, whose
+  // normal hover style dims the dots. Capture the neutral, non-hover state.
+  await page.mouse.move(0, 0);
   await page.waitForTimeout(ms);
-  // Hash routing keeps one document alive across screens, so a scroll
-  // container can carry scroll offset from a previous test into the next
-  // capture. Pin every baseline to scroll-top for determinism.
-  await page
-    .evaluate(() => {
-      window.scrollTo(0, 0);
-      document
-        .querySelectorAll('*')
-        .forEach((el) => el.scrollTop > 0 && (el.scrollTop = 0));
-    })
-    .catch(() => undefined);
+  // SYSCOIN: Hash routing keeps one document alive across screens, so a scroll
+  // container can carry either scroll axis from a previous test into the next
+  // capture. Pin every baseline to its initial viewport for determinism.
+  await page.evaluate(resetVisualScroll).catch(() => undefined);
   await page.waitForTimeout(150);
 };
 
 test.describe('visual baselines', () => {
   test.beforeAll(async () => {
+    // SYSCOIN: These goldens describe the funded public QA fixture, not an
+    // empty replacement chain. Fail with the actual missing prerequisite
+    // before comparing different account/history states or skipping coverage.
+    expect(await getChainId()).toBe(E2E_CONFIG.chainId);
+    expect(
+      BigInt(await getNativeBalance(SELF_ADDRESS)),
+      'Fund the public QA fixture before running funded-state visual baselines'
+    ).toBeGreaterThan(BigInt('100000000000000'));
+    const missingInfrastructure = (await getInfrastructureState())
+      .filter(({ contract, deployed }) => !contract.optional && !deployed)
+      .map(({ contract }) => contract.id);
+    expect(
+      missingInfrastructure,
+      'Deploy the normal Pali smart-account infrastructure before visual QA'
+    ).toEqual([]);
+
     wallet = await PaliWallet.launch('visual');
     await wallet.importSeedAndCreatePassword();
     await wallet.switchNetwork(E2E_CONFIG.networkLabel);
@@ -106,6 +124,18 @@ test.describe('visual baselines', () => {
       }
     }
     await wallet.ensureOnHome();
+    expect(
+      smartAccountCreated,
+      'The funded visual fixture must have its local smart-account record'
+    ).toBe(true);
+    await expect(
+      wallet.page.getByText('0xfFC8...AD23822ca1A50C', { exact: true }),
+      'Visual baselines require the same public QA account identity'
+    ).toBeVisible();
+    await expect(
+      wallet.page.locator('#activity-panel-list'),
+      'Funded-state goldens require real confirmed fixture history'
+    ).toBeVisible({ timeout: 60_000 });
   });
 
   test.afterAll(async () => {
@@ -121,7 +151,7 @@ test.describe('visual baselines', () => {
   });
 
   test('settings menu', async () => {
-    test.skip(!smartAccountCreated, 'smart account was not created');
+    expect(smartAccountCreated).toBe(true);
     await wallet.ensureOnHome();
     await wallet.page.locator('#general-settings-button').click();
     await settle(600);
@@ -180,6 +210,10 @@ test.describe('visual baselines', () => {
       .first()
       .fill('0.0001');
     await wallet.page.waitForTimeout(2000);
+    await expect(
+      wallet.page.getByText(/insufficient funds/i),
+      'The public fixture must cover the send amount and the current fee'
+    ).toHaveCount(0);
     await wallet.page.getByRole('button', { name: /next/i }).first().click();
     await expect(wallet.page).toHaveURL(/send\/confirm/, { timeout: 30_000 });
     // Fee estimation needs a beat to resolve before the layout is final.
@@ -194,12 +228,9 @@ test.describe('visual baselines', () => {
   test('activity list', async () => {
     await wallet.gotoRoute('#/home?tab=activity');
     await wallet.ensureOnHome();
-    await expect(
-      wallet.page
-        .locator('#activity-panel-list')
-        .or(wallet.page.locator('#activity-panel-empty'))
-        .first()
-    ).toBeVisible({ timeout: 60_000 });
+    await expect(wallet.page.locator('#activity-panel-list')).toBeVisible({
+      timeout: 60_000,
+    });
     await settle();
     await expect(wallet.page).toHaveScreenshot(['activity.png'], {
       mask: commonMasks(),
@@ -214,10 +245,10 @@ test.describe('visual baselines', () => {
     const detailArrow = wallet.page
       .locator('#activity-panel-list svg.cursor-pointer')
       .first();
-    const hasRow = await detailArrow
-      .isVisible({ timeout: 30_000 })
-      .catch(() => false);
-    test.skip(!hasRow, 'no confirmed transaction history on this account');
+    await expect(
+      detailArrow,
+      'Transaction-details golden requires a real confirmed history row'
+    ).toBeVisible({ timeout: 30_000 });
     await detailArrow.click();
     await expect(wallet.page).toHaveURL(/home\/details/, { timeout: 30_000 });
     await expect(wallet.page.locator('#details-view-content')).toBeVisible({
@@ -232,7 +263,7 @@ test.describe('visual baselines', () => {
   });
 
   test('manage accounts', async () => {
-    test.skip(!smartAccountCreated, 'smart account was not created');
+    expect(smartAccountCreated).toBe(true);
     await wallet.gotoRoute('#/settings/manage-accounts');
     await expect(wallet.page.getByText(/^Account 1 \(/).first()).toBeVisible({
       timeout: 30_000,
@@ -264,10 +295,7 @@ test.describe('visual baselines', () => {
     const smartAccountRow = wallet.page
       .locator('li', { hasText: /Smart Account/ })
       .first();
-    const hasSmartAccount = await smartAccountRow
-      .isVisible()
-      .catch(() => false);
-    test.skip(!hasSmartAccount, 'smart account was not created');
+    await expect(smartAccountRow).toBeVisible();
     await smartAccountRow.locator('button').first().click();
     await expect(wallet.page).toHaveURL(/settings\/edit-account/, {
       timeout: 30_000,

@@ -17,6 +17,7 @@ import {
   getPaliCanonicalFactoryAddress,
   getPaliInfrastructureById,
   getPaliInfrastructureContracts,
+  getZkSysGasTankAddress,
 } from './deployment';
 
 const TEST_INTERFACE = new Interface([
@@ -297,6 +298,15 @@ describe('smart account RPC aggregation', () => {
     expect(getPaliInfrastructureContracts(57057)).toBe(
       PALI_INFRASTRUCTURE_CONTRACTS
     );
+  });
+
+  it('pins the v32 zkTanenbaum gas tank without enabling it on other chains', () => {
+    expect(getZkSysGasTankAddress(57057)).toBe(
+      '0xb49943ea232624dd4aa63e18186076c6c99a68ef'
+    );
+    expect(getZkSysGasTankAddress(57001)).toBeUndefined();
+    expect(getZkSysGasTankAddress(1)).toBeUndefined();
+    expect(getZkSysGasTankAddress()).toBeUndefined();
   });
 
   it('wires the SLH-DSA validator to the deterministic verifier', () => {
