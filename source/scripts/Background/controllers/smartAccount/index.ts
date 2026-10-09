@@ -334,11 +334,11 @@ class SmartAccountController {
     { status: SmartAccountInfrastructureStatus; timestamp: number }
   >();
   private readonly infrastructureDeployments = new Map<
-    number,
+    string,
     Promise<InfrastructureDeploymentResult>
   >();
   private readonly pendingInfrastructure = new Map<
-    number,
+    string,
     InfrastructurePending
   >();
   private readonly pendingDeploymentAddresses = new Set<string>();
@@ -461,6 +461,11 @@ class SmartAccountController {
           ) {
             pending.push({
               contractId: tx.smartAccountInfrastructureId,
+              rpcUrl:
+                typeof tx.smartAccountInfrastructureRpcUrl === 'string' &&
+                tx.smartAccountInfrastructureRpcUrl
+                  ? tx.smartAccountInfrastructureRpcUrl
+                  : undefined,
               transactionHash: tx.hash,
             });
           }
@@ -499,12 +504,12 @@ class SmartAccountController {
     };
     // Capture pending identities before probing; later submissions must never
     // be settled using code/receipts read before their reservation existed.
-    const observedMemory = this.pendingInfrastructure.get(context.chainId);
+    const observedMemory = this.pendingInfrastructure.get(context.key);
     const observedHistory = this.persistedInfrastructurePending(
       context.chainId
     );
     const journal = await withinDeadline(() =>
-      readInfrastructureJournal(context.chainId)
+      readInfrastructureJournal(context)
     );
     const infrastructureContracts = getPaliInfrastructureContracts(
       context.chainId
@@ -584,6 +589,13 @@ class SmartAccountController {
     let pending: InfrastructurePending | undefined;
     let journalCleared = false;
     for (const candidate of candidates) {
+      if (candidate.rpcUrl === undefined) {
+        // Legacy chain-only records have no trustworthy fork identity. Surface
+        // them as pending without probing or settling them on an arbitrary RPC.
+        pending = candidate;
+        break;
+      }
+      if (candidate.rpcUrl !== context.url) continue;
       if (
         !infrastructureContracts.some(
           (contract) => contract.id === candidate.contractId
@@ -634,18 +646,18 @@ class SmartAccountController {
           infrastructurePendingIdentity(journal)
       ) {
         await withinDeadline(() =>
-          clearInfrastructureJournal(context.chainId, candidate)
+          clearInfrastructureJournal(context, candidate)
         );
         journalCleared = true;
       }
       if (
         infrastructurePendingIdentity(
-          this.pendingInfrastructure.get(context.chainId)
+          this.pendingInfrastructure.get(context.key)
         ) === infrastructurePendingIdentity(candidate)
       )
-        this.pendingInfrastructure.delete(context.chainId);
+        this.pendingInfrastructure.delete(context.key);
     }
-    const latestPending = this.pendingInfrastructure.get(context.chainId);
+    const latestPending = this.pendingInfrastructure.get(context.key);
     if (
       latestPending &&
       (infrastructurePendingIdentity(latestPending) !==
@@ -671,7 +683,7 @@ class SmartAccountController {
       cached &&
       Date.now() - cached.timestamp < 5000 &&
       !cached.status.pending &&
-      !this.pendingInfrastructure.has(context.chainId)
+      !this.pendingInfrastructure.has(context.key)
     )
       return cached.status;
     return this.readInfrastructureStatus(context);
@@ -679,16 +691,16 @@ class SmartAccountController {
 
   public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
     const context = this.infrastructureContext();
-    const existing = this.infrastructureDeployments.get(context.chainId);
+    const existing = this.infrastructureDeployments.get(context.key);
     if (existing) return existing;
     const operation = this.deployInfrastructureForContext(context).finally(
       () => {
-        if (this.infrastructureDeployments.get(context.chainId) === operation)
-          this.infrastructureDeployments.delete(context.chainId);
+        if (this.infrastructureDeployments.get(context.key) === operation)
+          this.infrastructureDeployments.delete(context.key);
         this.infrastructureStatusCache.delete(context.key);
       }
     );
-    this.infrastructureDeployments.set(context.chainId, operation);
+    this.infrastructureDeployments.set(context.key, operation);
     return operation;
   }
 
@@ -746,6 +758,7 @@ class SmartAccountController {
           contractId: contract.id,
           attemptId: randomBytes32Hex(),
           payerAddress: context.address,
+          rpcUrl: context.url,
           // Hardware paths currently choose their own nonce. Trust theirs only
           // once an acknowledged response supplies it.
           nonce: [
@@ -756,7 +769,7 @@ class SmartAccountController {
             : undefined,
         };
         const reservationWrite = writeInfrastructureJournal(
-          context.chainId,
+          context,
           reservation
         );
         try {
@@ -765,13 +778,13 @@ class SmartAccountController {
           // No sender has been invoked. Storage may finish after its deadline;
           // release only this unsent attempt once the write actually settles.
           const clearUnsentAttempt = () =>
-            clearInfrastructureJournal(context.chainId, reservation);
+            clearInfrastructureJournal(context, reservation);
           void reservationWrite
             .then(clearUnsentAttempt, clearUnsentAttempt)
             .catch(() => undefined);
           throw error;
         }
-        this.pendingInfrastructure.set(context.chainId, reservation);
+        this.pendingInfrastructure.set(context.key, reservation);
         this.infrastructureStatusCache.delete(context.key);
         let response: IEvmTransactionResponse;
         try {
@@ -790,6 +803,7 @@ class SmartAccountController {
             {
               smartAccountInfrastructureDeployment: true,
               smartAccountInfrastructureId: contract.id,
+              smartAccountInfrastructureRpcUrl: context.url,
             },
             {
               clearNavigation: false,
@@ -806,10 +820,10 @@ class SmartAccountController {
                       ? broadcast.nonce
                       : reservation.nonce,
                 };
-                this.pendingInfrastructure.set(context.chainId, pending);
+                this.pendingInfrastructure.set(context.key, pending);
                 this.infrastructureStatusCache.delete(context.key);
                 await this.infrastructureDeadline(
-                  writeInfrastructureJournal(context.chainId, pending)
+                  writeInfrastructureJournal(context, pending)
                 );
               },
             }
@@ -817,9 +831,7 @@ class SmartAccountController {
         } catch (error) {
           const hash = (error as any)?.transactionHash;
           if (hash) {
-            const acknowledged = this.pendingInfrastructure.get(
-              context.chainId
-            );
+            const acknowledged = this.pendingInfrastructure.get(context.key);
             const pending = {
               ...reservation,
               ...(infrastructurePendingIdentity(acknowledged) ===
@@ -834,13 +846,13 @@ class SmartAccountController {
               acknowledgedNonce >= 0
             )
               pending.nonce = acknowledgedNonce;
-            this.pendingInfrastructure.set(context.chainId, pending);
+            this.pendingInfrastructure.set(context.key, pending);
             this.infrastructureStatusCache.delete(context.key);
             // The broadcast callback may have failed its first storage write.
             // Retry this same acknowledged attempt before reporting the error;
             // permanent storage failure keeps the existing reservation closed.
             await this.infrastructureDeadline(
-              writeInfrastructureJournal(context.chainId, pending)
+              writeInfrastructureJournal(context, pending)
             ).catch(() => undefined);
           }
           // Definite pre-broadcast rejection is safe to release. Ambiguous
@@ -867,17 +879,17 @@ class SmartAccountController {
                   ))))
           ) {
             const releaseRejectedAttempt = clearInfrastructureJournal(
-              context.chainId,
+              context,
               reservation
             ).then(() => {
               // A successful clear may arrive after its deadline. Settle the
               // same unsent in-memory attempt then, without touching a retry.
               if (
                 infrastructurePendingIdentity(
-                  this.pendingInfrastructure.get(context.chainId)
+                  this.pendingInfrastructure.get(context.key)
                 ) === reservation.attemptId
               )
-                this.pendingInfrastructure.delete(context.chainId);
+                this.pendingInfrastructure.delete(context.key);
             });
             await this.infrastructureDeadline(releaseRejectedAttempt);
           }
@@ -891,7 +903,7 @@ class SmartAccountController {
               ? response.nonce
               : reservation.nonce,
         };
-        this.pendingInfrastructure.set(context.chainId, pending);
+        this.pendingInfrastructure.set(context.key, pending);
         nextNonce = nonce + 1;
         const deadline = Date.now() + 15000;
         let receipt: any;
@@ -912,14 +924,14 @@ class SmartAccountController {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } while (true);
         await this.infrastructureDeadline(
-          clearInfrastructureJournal(context.chainId, pending)
+          clearInfrastructureJournal(context, pending)
         );
         if (
           infrastructurePendingIdentity(
-            this.pendingInfrastructure.get(context.chainId)
+            this.pendingInfrastructure.get(context.key)
           ) === infrastructurePendingIdentity(pending)
         )
-          this.pendingInfrastructure.delete(context.chainId);
+          this.pendingInfrastructure.delete(context.key);
         if (Number(receipt.status) !== 1)
           throw new Error(
             `${contract.displayName} deployment failed. Refresh status before retrying.`

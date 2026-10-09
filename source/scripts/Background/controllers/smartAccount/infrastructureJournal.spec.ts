@@ -9,14 +9,19 @@ import {
   InfrastructureJournalEntry,
   readInfrastructureJournal,
   writeInfrastructureJournal,
+  infrastructureJournalStorageKey,
 } from './infrastructureJournal';
 
+const network = { chainId: 1, url: 'https://rpc-a.example' };
+const otherChain = { chainId: 2, url: 'https://rpc-a.example' };
+const otherFork = { chainId: 1, url: 'https://rpc-b.example' };
 const hex32 = (byte: string) => `0x${byte.repeat(32)}`;
 const reservation: InfrastructureJournalEntry = {
   attemptId: hex32('11'),
   contractId: 'accountImplementation',
   nonce: 7,
   payerAddress: `0x${'aa'.repeat(20)}`,
+  rpcUrl: network.url,
 };
 const newer: InfrastructureJournalEntry = {
   ...reservation,
@@ -43,29 +48,88 @@ describe('durable infrastructure deployment journal', () => {
   });
 
   it('persists a no-hash attempt and upgrades that same attempt after acknowledgement', async () => {
-    await writeInfrastructureJournal(1, reservation);
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
+    await writeInfrastructureJournal(network, reservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
+    );
     const acknowledged = { ...reservation, transactionHash: hex32('33') };
-    await writeInfrastructureJournal(1, acknowledged);
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(acknowledged);
+    await writeInfrastructureJournal(network, acknowledged);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      acknowledged
+    );
   });
 
   it('refuses to overwrite a different unresolved attempt', async () => {
-    await writeInfrastructureJournal(1, reservation);
-    await expect(writeInfrastructureJournal(1, newer)).rejects.toThrow(
+    await writeInfrastructureJournal(network, reservation);
+    await expect(writeInfrastructureJournal(network, newer)).rejects.toThrow(
       'Another infrastructure deployment is pending'
     );
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
+    );
   });
 
+  it('keeps same-chain RPC journals and clearing independent', async () => {
+    const otherReservation = { ...newer, rpcUrl: otherFork.url };
+    await writeInfrastructureJournal(network, reservation);
+    await expect(readInfrastructureJournal(otherFork)).resolves.toBeUndefined();
+    await writeInfrastructureJournal(otherFork, otherReservation);
+    await clearInfrastructureJournal(otherFork, reservation);
+    await expect(readInfrastructureJournal(otherFork)).resolves.toEqual(
+      otherReservation
+    );
+    await clearInfrastructureJournal(otherFork, otherReservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
+    );
+  });
+
+  it('retains legacy chain-only entries without inferring or rewriting their RPC', async () => {
+    const legacy = { ...reservation };
+    delete legacy.rpcUrl;
+    persisted.set('pali.infrastructure.pending.v1.1', legacy);
+    for (const context of [network, otherFork]) {
+      await expect(readInfrastructureJournal(context)).resolves.toEqual(legacy);
+      await expect(
+        writeInfrastructureJournal(context, {
+          ...legacy,
+          rpcUrl: context.url,
+        })
+      ).rejects.toThrow('Another infrastructure deployment is pending');
+      await clearInfrastructureJournal(context, {
+        ...legacy,
+        rpcUrl: context.url,
+      });
+    }
+    expect(persisted.get('pali.infrastructure.pending.v1.1')).toEqual(legacy);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, otherFork.url])(
+    'fails closed on a scoped journal with mismatched RPC %s',
+    async (rpcUrl) => {
+      persisted.set(infrastructureJournalStorageKey(network), {
+        ...reservation,
+        rpcUrl,
+      });
+      await expect(readInfrastructureJournal(network)).rejects.toThrow(
+        'Deployment journal is unreadable'
+      );
+      await expect(
+        clearInfrastructureJournal(network, reservation)
+      ).rejects.toThrow('Deployment journal is unreadable');
+      expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    }
+  );
+
   it('does not let a stale completion erase a newer attempt', async () => {
-    await writeInfrastructureJournal(1, reservation);
-    await clearInfrastructureJournal(1, reservation);
-    await writeInfrastructureJournal(1, newer);
-    await clearInfrastructureJournal(1, reservation);
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(newer);
-    await clearInfrastructureJournal(1, newer);
-    await expect(readInfrastructureJournal(1)).resolves.toBeUndefined();
+    await writeInfrastructureJournal(network, reservation);
+    await clearInfrastructureJournal(network, reservation);
+    await writeInfrastructureJournal(network, newer);
+    await clearInfrastructureJournal(network, reservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(newer);
+    await clearInfrastructureJournal(network, newer);
+    await expect(readInfrastructureJournal(network)).resolves.toBeUndefined();
   });
 
   it('keeps different chains independent while one storage write is delayed', async () => {
@@ -78,38 +142,42 @@ describe('durable infrastructure deployment journal', () => {
     jest
       .mocked(chromeStorage.setItem)
       .mockImplementation(async (key, value) => {
-        if (key.endsWith('.1')) {
+        if (key === infrastructureJournalStorageKey(network)) {
           started();
           await firstWrite;
         }
         persisted.set(key, JSON.parse(JSON.stringify(value)));
       });
-    const chainOne = writeInfrastructureJournal(1, reservation);
+    const chainOne = writeInfrastructureJournal(network, reservation);
     await firstWriteStarted;
-    await writeInfrastructureJournal(2, newer);
-    await expect(readInfrastructureJournal(2)).resolves.toEqual(newer);
+    await writeInfrastructureJournal(otherChain, newer);
+    await expect(readInfrastructureJournal(otherChain)).resolves.toEqual(newer);
     release();
     await chainOne;
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
+    );
   });
 
   it.each(['read', 'write', 'clear'])(
     'fails closed when the storage read for %s rejects',
     async (operation) => {
-      await writeInfrastructureJournal(1, reservation);
+      await writeInfrastructureJournal(network, reservation);
       const writesBefore = jest.mocked(chromeStorage.setItem).mock.calls.length;
       jest
         .mocked(chromeStorage.getItem)
         .mockRejectedValueOnce(new Error('Storage read failed'));
       const result =
         operation === 'read'
-          ? readInfrastructureJournal(1)
+          ? readInfrastructureJournal(network)
           : operation === 'write'
-          ? writeInfrastructureJournal(1, newer)
-          : clearInfrastructureJournal(1, reservation);
+          ? writeInfrastructureJournal(network, newer)
+          : clearInfrastructureJournal(network, reservation);
       await expect(result).rejects.toThrow('Storage read failed');
       expect(chromeStorage.setItem).toHaveBeenCalledTimes(writesBefore);
-      await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
+      await expect(readInfrastructureJournal(network)).resolves.toEqual(
+        reservation
+      );
     }
   );
 
@@ -117,24 +185,28 @@ describe('durable infrastructure deployment journal', () => {
     jest
       .mocked(chromeStorage.setItem)
       .mockRejectedValueOnce(new Error('Storage write failed'));
-    await expect(writeInfrastructureJournal(1, reservation)).rejects.toThrow(
-      'Storage write failed'
+    await expect(
+      writeInfrastructureJournal(network, reservation)
+    ).rejects.toThrow('Storage write failed');
+    await expect(readInfrastructureJournal(network)).resolves.toBeUndefined();
+    await writeInfrastructureJournal(network, reservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
     );
-    await expect(readInfrastructureJournal(1)).resolves.toBeUndefined();
-    await writeInfrastructureJournal(1, reservation);
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
   });
 
   it('retains pending state when clearing storage fails', async () => {
-    await writeInfrastructureJournal(1, reservation);
+    await writeInfrastructureJournal(network, reservation);
     jest
       .mocked(chromeStorage.setItem)
       .mockRejectedValueOnce(new Error('Storage clear failed'));
-    await expect(clearInfrastructureJournal(1, reservation)).rejects.toThrow(
-      'Storage clear failed'
+    await expect(
+      clearInfrastructureJournal(network, reservation)
+    ).rejects.toThrow('Storage clear failed');
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
     );
-    await expect(readInfrastructureJournal(1)).resolves.toEqual(reservation);
-    await expect(writeInfrastructureJournal(1, newer)).rejects.toThrow(
+    await expect(writeInfrastructureJournal(network, newer)).rejects.toThrow(
       'Another infrastructure deployment is pending'
     );
   });

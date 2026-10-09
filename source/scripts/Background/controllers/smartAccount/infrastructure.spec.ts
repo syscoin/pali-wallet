@@ -30,6 +30,14 @@ import { PALI_CREATE2_DEPLOYER_ADDRESS } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
 
 import SmartAccountController from './index';
+import {
+  infrastructureJournalStorageKey,
+  infrastructureNetworkKey,
+} from './infrastructureJournal';
+
+const networkContext = { chainId: 1, url: 'https://chain-a.example' };
+const journalKey = infrastructureJournalStorageKey(networkContext);
+const networkKey = infrastructureNetworkKey(networkContext);
 
 const implementation = '0x0000000000000000000000000000000000000001';
 const factory = '0x0000000000000000000000000000000000000002';
@@ -159,6 +167,31 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps same-chain RPC flights and late rejection cleanup independent', async () => {
+    let rejectFirst!: (error: Error) => void;
+    deps.sendAndSaveEthTransaction.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectFirst = reject))
+    );
+    const first = controller.deploySmartAccountInfrastructure();
+    const firstRejected = expect(first).rejects.toThrow(
+      'Wallet context changed'
+    );
+    await flush();
+    const firstReservation = journalStorage[journalKey];
+    state.vault.activeNetwork.url = 'https://fork-b.example';
+    const second = controller.deploySmartAccountInfrastructure();
+    expect(second).not.toBe(first);
+    await expect(second).resolves.toMatchObject({
+      deployed: ['accountImplementation', 'factory'],
+    });
+    expect(journalStorage[journalKey]).toEqual(firstReservation);
+    rejectFirst(Error('Wallet context changed'));
+    await firstRejected;
+    expect(journalStorage[journalKey]).toBeNull();
+    expect(controller.infrastructureDeployments.size).toBe(0);
+    expect(controller.pendingInfrastructure.size).toBe(0);
+  });
+
   it('expires cached status and separates RPC endpoints on the same chain', async () => {
     expect(
       (await controller.getSmartAccountInfrastructureStatus()).missing
@@ -176,6 +209,106 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect((await controller.getSmartAccountInfrastructureStatus()).ready).toBe(
       true
     );
+  });
+
+  it.each(['code', 'receipt', 'nonce'])(
+    'does not settle another RPC fork pending deployment using its %s evidence',
+    async (evidence) => {
+      deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+        Object.assign(Error('Network request timed out'), {
+          transactionHash: hash(1),
+          transactionNonce: 0,
+        })
+      );
+      await expect(
+        controller.deploySmartAccountInfrastructure()
+      ).rejects.toThrow('Network request timed out');
+      const originalKey = Object.keys(journalStorage).find(
+        (key) => journalStorage[key]?.transactionHash === hash(1)
+      )!;
+      const originalPending = { ...journalStorage[originalKey] };
+      state.vault.activeNetwork.url = 'https://fork-b.example';
+      if (evidence === 'code') codes[implementation] = '0x11';
+      if (evidence === 'receipt')
+        receipts[hash(1)] = { status: 0, hash: hash(1) };
+      if (evidence === 'nonce') provider.send.mockResolvedValue('0x9');
+      await controller.getSmartAccountInfrastructureStatus(true);
+      expect(journalStorage[originalKey]).toEqual(originalPending);
+
+      state.vault.activeNetwork.url = 'https://chain-a.example';
+      codes[implementation] = '0x';
+      receipts[hash(1)] = null;
+      provider.send.mockImplementation(async (method, params) =>
+        method === 'eth_getTransactionCount' ? '0x0' : codes[params[0]]
+      );
+      const restarted = new SmartAccountController(deps);
+      await expect(
+        restarted.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        pending: { transactionHash: hash(1) },
+      });
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('retains an unscoped legacy journal without probing or settling it on the selected RPC', async () => {
+    const legacy = {
+      contractId: 'accountImplementation',
+      transactionHash: hash(1),
+      nonce: 0,
+      payerAddress: state.vault.accounts.HDAccount[0].address,
+    };
+    journalStorage['pali.infrastructure.pending.v1.1'] = legacy;
+    codes[implementation] = '0x11';
+    receipts[hash(1)] = { status: 1, hash: hash(1) };
+    provider.send.mockResolvedValue('0x9');
+    await expect(
+      controller.deploySmartAccountInfrastructure()
+    ).resolves.toMatchObject({
+      pending: legacy,
+    });
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(legacy);
+    expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, null, '', 3])(
+    'retains unscoped historical attempts without using current-fork evidence (RPC: %s)',
+    async (rpcUrl) => {
+      state.vault.accountTransactions.HDAccount[0].ethereum[1] = [
+        {
+          smartAccountInfrastructureDeployment: true,
+          smartAccountInfrastructureId: 'accountImplementation',
+          smartAccountInfrastructureRpcUrl: rpcUrl,
+          hash: hash(1),
+        },
+      ];
+      codes[implementation] = '0x11';
+      receipts[hash(1)] = { status: 1, hash: hash(1) };
+      await expect(
+        controller.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        pending: { transactionHash: hash(1) },
+      });
+      expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+      expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not probe another RPC historical deployment on the same chain', async () => {
+    state.vault.accountTransactions.HDAccount[0].ethereum[1] = [
+      {
+        smartAccountInfrastructureDeployment: true,
+        smartAccountInfrastructureId: 'accountImplementation',
+        smartAccountInfrastructureRpcUrl: 'https://fork-b.example',
+        hash: hash(1),
+      },
+    ];
+    await expect(
+      controller.getSmartAccountInfrastructureStatus(true)
+    ).resolves.not.toHaveProperty('pending');
+    expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
   });
 
   it('rejects malformed code probes instead of treating them as missing deployments', async () => {
@@ -235,6 +368,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(deployment).resolves.toMatchObject({
       pending: {
         contractId: 'accountImplementation',
+        rpcUrl: networkContext.url,
         transactionHash: hash(1),
       },
     });
@@ -263,15 +397,17 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   });
 
   it('recovers a journaled broadcast after restart even when no current-vault history was saved', async () => {
-    (chromeStorage.getItem as jest.Mock).mockResolvedValue({
+    journalStorage[journalKey] = {
       contractId: 'accountImplementation',
+      rpcUrl: networkContext.url,
       transactionHash: hash(9),
-    });
+    };
     await expect(
       controller.getSmartAccountInfrastructureStatus(true)
     ).resolves.toMatchObject({
       pending: {
         contractId: 'accountImplementation',
+        rpcUrl: networkContext.url,
         transactionHash: hash(9),
       },
     });
@@ -291,7 +427,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
       message
     );
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+    expect(journalStorage[journalKey]).toBeNull();
     expect(
       (await controller.getSmartAccountInfrastructureStatus(true)).pending
     ).toBeUndefined();
@@ -311,23 +447,18 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       };
       const rejection = 'Transaction Signature Failed. Error: [object Object]';
       deps.sendAndSaveEthTransaction.mockImplementationOnce(async () => {
-        expect(
-          journalStorage['pali.infrastructure.pending.v1.1']
-        ).toMatchObject({
+        expect(journalStorage[journalKey]).toMatchObject({
           contractId: 'accountImplementation',
+          rpcUrl: networkContext.url,
         });
-        expect(
-          journalStorage['pali.infrastructure.pending.v1.1'].transactionHash
-        ).toBeUndefined();
-        expect(
-          journalStorage['pali.infrastructure.pending.v1.1'].nonce
-        ).toBeUndefined();
+        expect(journalStorage[journalKey].transactionHash).toBeUndefined();
+        expect(journalStorage[journalKey].nonce).toBeUndefined();
         throw Error(rejection);
       });
       await expect(
         controller.deploySmartAccountInfrastructure()
       ).rejects.toThrow(rejection);
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      expect(journalStorage[journalKey]).toBeNull();
       expect(
         (await controller.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
@@ -362,13 +493,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
 
   it('persists an unknown reservation before submission and blocks blind resend after worker restart', async () => {
     deps.sendAndSaveEthTransaction.mockImplementationOnce(async () => {
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+      expect(journalStorage[journalKey]).toMatchObject({
         contractId: 'accountImplementation',
+        rpcUrl: networkContext.url,
         nonce: 0,
       });
-      expect(
-        journalStorage['pali.infrastructure.pending.v1.1'].attemptId
-      ).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(journalStorage[journalKey].attemptId).toMatch(/^0x[0-9a-f]{64}$/);
       throw Error('Network request timed out');
     });
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
@@ -410,9 +540,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
       'disk unavailable'
     );
-    expect(
-      journalStorage['pali.infrastructure.pending.v1.1'].transactionHash
-    ).toBeUndefined();
+    expect(journalStorage[journalKey].transactionHash).toBeUndefined();
     const restarted = new SmartAccountController(deps);
     await expect(
       restarted.deploySmartAccountInfrastructure()
@@ -457,7 +585,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       await expect(
         controller.deploySmartAccountInfrastructure()
       ).rejects.toThrow('disk temporarily unavailable');
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+      expect(journalStorage[journalKey]).toMatchObject({
         transactionHash: hash(1),
         nonce: 7,
       });
@@ -472,7 +600,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       expect(
         (await restarted.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      expect(journalStorage[journalKey]).toBeNull();
       await expect(
         restarted.deploySmartAccountInfrastructure()
       ).resolves.toMatchObject({
@@ -496,7 +624,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
       'Signing context restoration failed'
     );
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+    expect(journalStorage[journalKey]).toMatchObject({
       transactionHash: hash(1),
       nonce: 7,
     });
@@ -507,6 +635,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       {
         smartAccountInfrastructureDeployment: true,
         smartAccountInfrastructureId: 'accountImplementation',
+        smartAccountInfrastructureRpcUrl: networkContext.url,
         hash: hash(1),
       },
     ];
@@ -517,6 +646,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
             {
               smartAccountInfrastructureDeployment: true,
               smartAccountInfrastructureId: 'factory',
+              smartAccountInfrastructureRpcUrl: networkContext.url,
               hash: hash(2),
             },
           ],
@@ -527,7 +657,11 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(
       controller.deploySmartAccountInfrastructure()
     ).resolves.toMatchObject({
-      pending: { contractId: 'factory', transactionHash: hash(2) },
+      pending: {
+        contractId: 'factory',
+        rpcUrl: networkContext.url,
+        transactionHash: hash(2),
+      },
     });
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
@@ -535,8 +669,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
   it.each([true, false])(
     'releases a nonce-consumed reservation (known hash: %s) after cancellation/replacement',
     async (knownHash) => {
-      journalStorage['pali.infrastructure.pending.v1.1'] = {
+      journalStorage[journalKey] = {
         contractId: 'accountImplementation',
+        rpcUrl: networkContext.url,
         attemptId: hash(99),
         transactionHash: knownHash ? hash(1) : undefined,
         payerAddress: state.vault.accounts.HDAccount[0].address,
@@ -548,7 +683,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       expect(
         (await controller.getSmartAccountInfrastructureStatus(true)).pending
       ).toBeUndefined();
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      expect(journalStorage[journalKey]).toBeNull();
       await controller.deploySmartAccountInfrastructure();
       expect(deps.sendAndSaveEthTransaction.mock.calls[0][0].nonce).toBe(4);
     }
@@ -576,22 +711,24 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect(
       (await controller.getSmartAccountInfrastructureStatus(true)).pending
     ).toBeUndefined();
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+    expect(journalStorage[journalKey]).toBeNull();
   });
 
   it('does not let a delayed old receipt clear a newer attempt or its status', async () => {
     const oldPending = {
       contractId: 'accountImplementation',
+      rpcUrl: networkContext.url,
       attemptId: hash(90),
       transactionHash: hash(1),
     };
     const newPending = {
       contractId: 'factory',
+      rpcUrl: networkContext.url,
       attemptId: hash(91),
       transactionHash: hash(2),
     };
-    journalStorage['pali.infrastructure.pending.v1.1'] = oldPending;
-    controller.pendingInfrastructure.set(1, oldPending);
+    journalStorage[journalKey] = oldPending;
+    controller.pendingInfrastructure.set(networkKey, oldPending);
     let finish!: (receipt: any) => void;
     let started!: () => void;
     const readingReceipt = new Promise<void>((resolve) => {
@@ -605,26 +742,25 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     });
     const reading = controller.getSmartAccountInfrastructureStatus(true);
     await readingReceipt;
-    journalStorage['pali.infrastructure.pending.v1.1'] = newPending;
-    controller.pendingInfrastructure.set(1, newPending);
+    journalStorage[journalKey] = newPending;
+    controller.pendingInfrastructure.set(networkKey, newPending);
     finish({ status: 1, hash: hash(1) });
     await expect(reading).resolves.toMatchObject({ pending: newPending });
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(
-      newPending
-    );
+    expect(journalStorage[journalKey]).toEqual(newPending);
   });
 
   it('rejects a receipt for the wrong transaction without clearing the pending journal', async () => {
     const pending = {
       contractId: 'accountImplementation',
+      rpcUrl: networkContext.url,
       transactionHash: hash(1),
     };
-    journalStorage['pali.infrastructure.pending.v1.1'] = pending;
+    journalStorage[journalKey] = pending;
     receipts[hash(1)] = { status: 1, hash: hash(2) };
     await expect(
       controller.getSmartAccountInfrastructureStatus(true)
     ).rejects.toThrow('Invalid deployment receipt');
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(pending);
+    expect(journalStorage[journalKey]).toEqual(pending);
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
@@ -638,9 +774,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         controller.deploySmartAccountInfrastructure()
       ).rejects.toThrow('Invalid deployment nonce response');
       expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
-      expect(
-        journalStorage['pali.infrastructure.pending.v1.1']
-      ).toBeUndefined();
+      expect(journalStorage[journalKey]).toBeUndefined();
     }
   );
   it.each(['resolve', 'reject'])(
@@ -671,7 +805,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
       settle();
       await flush();
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      expect(journalStorage[journalKey]).toBeNull();
       const restarted = new SmartAccountController(deps);
       await expect(
         restarted.deploySmartAccountInfrastructure()
@@ -702,12 +836,13 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     settle();
     const newer = {
       contractId: 'factory',
+      rpcUrl: networkContext.url,
       attemptId: hash(98),
       payerAddress: state.vault.accounts.HDAccount[0].address,
     };
-    journalStorage['pali.infrastructure.pending.v1.1'] = newer;
+    journalStorage[journalKey] = newer;
     await flush();
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(newer);
+    expect(journalStorage[journalKey]).toEqual(newer);
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
@@ -720,7 +855,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
       'Fee discovery unavailable'
     );
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+    expect(journalStorage[journalKey]).toBeNull();
     await expect(
       new SmartAccountController(deps).deploySmartAccountInfrastructure()
     ).resolves.toMatchObject({
@@ -763,11 +898,16 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
       await jest.advanceTimersByTimeAsync(8001);
       await rejected;
-      const newer = { contractId: 'factory', attemptId: hash(98) };
-      if (hasNewerAttempt) controller.pendingInfrastructure.set(1, newer);
+      const newer = {
+        contractId: 'factory',
+        rpcUrl: networkContext.url,
+        attemptId: hash(98),
+      };
+      if (hasNewerAttempt)
+        controller.pendingInfrastructure.set(networkKey, newer);
       finishClear();
       await flush();
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      expect(journalStorage[journalKey]).toBeNull();
       const status = await controller.getSmartAccountInfrastructureStatus(true);
       if (hasNewerAttempt) {
         expect(status.pending).toEqual(newer);
@@ -804,13 +944,13 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await flush();
     await jest.advanceTimersByTimeAsync(8001);
     await rejected;
-    const reservation = controller.pendingInfrastructure.get(1);
+    const reservation = controller.pendingInfrastructure.get(networkKey);
     rejectClear();
     await flush();
-    expect(controller.pendingInfrastructure.get(1)).toEqual(reservation);
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toEqual(
+    expect(controller.pendingInfrastructure.get(networkKey)).toEqual(
       reservation
     );
+    expect(journalStorage[journalKey]).toEqual(reservation);
     expect(
       (await controller.getSmartAccountInfrastructureStatus(true)).pending
     ).toEqual(reservation);
@@ -834,8 +974,9 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       await expect(
         controller.deploySmartAccountInfrastructure()
       ).rejects.toThrow(message);
-      expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+      expect(journalStorage[journalKey]).toMatchObject({
         contractId: 'accountImplementation',
+        rpcUrl: networkContext.url,
       });
       await expect(
         new SmartAccountController(deps).deploySmartAccountInfrastructure()
@@ -856,11 +997,12 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
       'Fee discovery unavailable'
     );
-    expect(controller.pendingInfrastructure.get(1)).toMatchObject({
+    expect(controller.pendingInfrastructure.get(networkKey)).toMatchObject({
       transactionHash: hash(1),
     });
-    expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+    expect(journalStorage[journalKey]).toMatchObject({
       contractId: 'accountImplementation',
+      rpcUrl: networkContext.url,
     });
   });
 });

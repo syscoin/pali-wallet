@@ -28,6 +28,7 @@ import SmartAccountController from './index';
 import {
   readInfrastructureJournal,
   clearInfrastructureJournal,
+  infrastructureNetworkKey,
 } from './infrastructureJournal';
 
 const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
@@ -36,6 +37,7 @@ const delayed = <T>(value: T, delay: number) =>
 const history = (index: number) => ({
   smartAccountInfrastructureDeployment: true,
   smartAccountInfrastructureId: 'factory',
+  smartAccountInfrastructureRpcUrl: 'https://rpc.example',
   hash: hash(index),
   confirmations: 0,
 });
@@ -116,6 +118,7 @@ describe('infrastructure status aggregate deadline', () => {
   it('shares one eighteen-second budget across storage, fallback, receipt and journal clearing', async () => {
     const journal = {
       contractId: 'factory' as const,
+      rpcUrl: 'https://rpc.example',
       transactionHash: hash(1),
     };
     jest
@@ -188,13 +191,20 @@ describe('infrastructure status aggregate deadline', () => {
   it('clears the captured journal only once when memory and history repeat that submission', async () => {
     const journal = {
       contractId: 'factory' as const,
+      rpcUrl: 'https://rpc.example',
       transactionHash: hash(1),
     };
     jest.mocked(readInfrastructureJournal).mockResolvedValue(journal);
-    (controller as any).pendingInfrastructure.set(1, journal);
+    (controller as any).pendingInfrastructure.set(
+      infrastructureNetworkKey(state.vault.activeNetwork),
+      journal
+    );
     state.vault.accountTransactions.HDAccount[0].ethereum[1] = [history(1)];
     await controller.getSmartAccountInfrastructureStatus(true);
     expect(clearInfrastructureJournal).toHaveBeenCalledTimes(1);
-    expect(clearInfrastructureJournal).toHaveBeenCalledWith(1, journal);
+    expect(clearInfrastructureJournal).toHaveBeenCalledWith(
+      expect.objectContaining({ chainId: 1, url: 'https://rpc.example' }),
+      journal
+    );
   });
 });
