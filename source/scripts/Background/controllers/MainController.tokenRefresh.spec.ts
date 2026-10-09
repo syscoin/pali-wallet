@@ -193,6 +193,64 @@ it('a direct receipt refreshes only its token and native payer; retries are inde
   expect(provider.getBalance).toHaveBeenCalledTimes(1);
 });
 
+it('refreshes every account copy when the active imported address also exists as an HD account', async () => {
+  const imported = KeyringAccountType.Imported;
+  state.vault.accounts[imported] = { 0: { address: A } };
+  state.vault.accountAssets[imported] = {
+    0: { ethereum: [asset(T)], syscoin: [] },
+  };
+  state.vault.activeAccount = { type: imported, id: 0 };
+  controller.refreshBalancesAfterReceipt({
+    from: A,
+    to: T,
+    blockNumber: 10,
+    value: '0',
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(state.vault.accountAssets[imported][0].ethereum[0].balance).toBe(9);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+  expect(state.vault.accounts[imported][0].nativeBalance).toBe(1);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(1);
+  expect(balanceOf).toHaveBeenCalledTimes(2);
+  expect(provider.getBalance).toHaveBeenCalledTimes(2);
+});
+
+it('keeps in-flight freshness ownership independent for copies of the same address', async () => {
+  const imported = KeyringAccountType.Imported;
+  state.vault.accounts[imported] = { 0: { address: A } };
+  state.vault.accountAssets[imported] = {
+    0: { ethereum: [asset(T)], syscoin: [] },
+  };
+  state.vault.activeAccount = { type: imported, id: 0 };
+  const results: Array<(value: bigint) => void> = [];
+  balanceOf.mockImplementation(
+    () => new Promise((resolve) => results.push(resolve))
+  );
+  controller.refreshBalancesAfterReceipt({ from: A, to: T, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(results).toHaveLength(2);
+  results[1](BigInt(9));
+  await jest.advanceTimersByTimeAsync(0);
+  results[0](BigInt(9));
+  await jest.advanceTimersByTimeAsync(0);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+  expect(state.vault.accountAssets[imported][0].ethereum[0].balance).toBe(9);
+
+  const network = state.vault.activeNetwork;
+  const first = controller.accountBalanceKeyPrefix(network, { type, id: 0 }, A);
+  const second = controller.accountBalanceKeyPrefix(
+    network,
+    { type, id: 1 },
+    A
+  );
+  expect(first).not.toBe(second);
+  const current = controller.captureBalanceReadVersion(`${first}native`);
+  controller.beginTargetedBalanceRead(`${second}native`);
+  expect(current()).toBe(true);
+  controller.beginTargetedBalanceRead(`${first}native`);
+  expect(current()).toBe(false);
+});
+
 it('never commits after an account/chain change, including in-flight results', async () => {
   let resolve!: (value: bigint) => void;
   balanceOf.mockReturnValue(

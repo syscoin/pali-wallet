@@ -240,6 +240,18 @@ class MainController {
   private targetedBalanceVersions = new Map<string, object>();
   private targetedBalanceEvictions = 0;
 
+  // SYSCOIN: The same address may occupy multiple wallet records. Reads commit
+  // to one record, so both queued jobs and freshness versions need its identity.
+  private accountBalanceKeyPrefix(
+    network: INetwork,
+    account: { id: number; type: KeyringAccountType },
+    address: string
+  ): string {
+    return `${network.chainId}:${network.url}:${account.type}:${
+      account.id
+    }:${address.toLowerCase()}:`;
+  }
+
   private captureBalanceReadVersion(key: string): () => boolean {
     const version = this.targetedBalanceVersions.get(key);
     const evictions = this.targetedBalanceEvictions;
@@ -5337,9 +5349,11 @@ class MainController {
       return Promise.resolve();
     }
 
-    const balanceKeyPrefix = `${activeNetwork.chainId}:${
-      activeNetwork.url
-    }:${currentAccount.address.toLowerCase()}:`;
+    const balanceKeyPrefix = this.accountBalanceKeyPrefix(
+      activeNetwork,
+      activeAccount,
+      currentAccount.address
+    );
     // SYSCOIN: Snapshot only current-chain keys without inserting markers for
     // every token. A queued/retried target invalidates its key, not this poll.
     const balanceReadVersions = new Map(
@@ -5559,9 +5573,11 @@ class MainController {
       return Promise.resolve();
     }
 
-    const nativeKey = `${activeNetwork.chainId}:${
-      activeNetwork.url
-    }:${currentAccount.address.toLowerCase()}:native`;
+    const nativeKey = `${this.accountBalanceKeyPrefix(
+      activeNetwork,
+      activeAccount,
+      currentAccount.address
+    )}native`;
     const nativeReadIsCurrent = this.captureBalanceReadVersion(nativeKey);
 
     // No need to create a new provider - let the BalancesManager use its own provider
@@ -6354,7 +6370,11 @@ class MainController {
         const owner = account.address?.toLowerCase();
         if (!owner) return;
         const accountId = Number(id);
-        const keyPrefix = `${network.chainId}:${network.url}:${owner}:`;
+        const keyPrefix = this.accountBalanceKeyPrefix(
+          network,
+          { type, id: accountId },
+          owner
+        );
         const accountIsCurrent = () =>
           contextIsCurrent() &&
           store
@@ -7125,11 +7145,11 @@ class MainController {
     // SYSCOIN: One balanceOf, not four metadata calls; merge only this key into
     // the latest state after checking the initiating account/chain context.
     const latestRead = this.beginTargetedBalanceRead(
-      `${activeNetwork.chainId}:${
-        activeNetwork.url
-      }:${currentAccount.address.toLowerCase()}:${tokenBalanceKey(
-        existingAsset
-      )}`
+      `${this.accountBalanceKeyPrefix(
+        activeNetwork,
+        activeAccount,
+        currentAccount.address
+      )}${tokenBalanceKey(existingAsset)}`
     );
     const balance = await readTrackedTokenBalance(
       this.ethereumTransaction.web3Provider,
