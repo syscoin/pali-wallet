@@ -29,7 +29,9 @@ export const Start = (props: any) => {
   // Determine if this is an external request and what the route should be
   const isExternal = !!urlExternalRoute || props.isExternal;
   const externalRoute = urlExternalRoute
-    ? `/external/${urlExternalRoute}${urlData ? `?data=${urlData}` : ''}`
+    ? `/external/${urlExternalRoute}${
+        urlData ? `?data=${encodeURIComponent(urlData)}` : ''
+      }`
     : props.externalRoute;
 
   const isFirstStep = !hasAccount && !hasVault;
