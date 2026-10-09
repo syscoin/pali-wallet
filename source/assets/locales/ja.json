@@ -113,6 +113,8 @@
     "speedTxMessage": "本当にこの取引をスピードアップしますか？"
   },
   "connections": {
+    "searchAccounts": "アカウントを検索",
+    "noMatchingAccounts": "一致するアカウントがありません",
     "connectedAccount": "接続済みアカウント",
     "onlyConnect": "信頼できるサイトにのみ接続してください。",
     "learnMore": "詳細を見る。",

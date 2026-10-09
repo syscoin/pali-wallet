@@ -113,6 +113,8 @@
     "speedTxMessage": "Вы уверены, что хотите ускорить эту транзакцию?"
   },
   "connections": {
+    "searchAccounts": "Поиск аккаунтов",
+    "noMatchingAccounts": "Подходящих аккаунтов нет",
     "connectedAccount": "ПОДКЛЮЧЕННЫЙ АККАУНТ",
     "onlyConnect": "Подключайтесь только к доверенным сайтам.",
     "learnMore": "Узнать больше.",

@@ -13,10 +13,12 @@ import { useSelector } from 'react-redux';
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Modal, Tooltip } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { TokenIcon } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
@@ -136,11 +138,12 @@ export const ConnectWallet = () => {
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { activeAccount: activeAccountData, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
+  const activeAccountData = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
-  const { id, type } = activeAccountData;
-  const activeAccount = accounts?.[type]?.[id];
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -159,7 +162,20 @@ export const ConnectWallet = () => {
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [search, setSearch] = useState('');
+  const accountsRef = useRef(accounts);
+  const activeAccountRef = useRef(activeAccountData);
+  accountsRef.current = accounts;
+  activeAccountRef.current = activeAccountData;
   const date = Date.now();
+  const selectionContext = JSON.stringify([
+    host,
+    chain,
+    chainId,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+  ]);
 
   const isBridgeHost = useMemo(
     () =>
@@ -273,12 +289,23 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
+    let active = true;
+    setIsLoading(true);
+    setAccountId(null);
+    setAccountType(null);
+    setCurrentAccountId(null);
+    setCurrentAccountType(null);
     (async () => {
       try {
         const dapp: any = await controllerEmitter(['dapp', 'get'], [host]);
+        if (!active) return;
+        const latestAccounts = accountsRef.current;
+        const { id: activeId, type: activeType } = activeAccountRef.current;
+        const latestActiveAccount = latestAccounts?.[activeType]?.[activeId];
 
         if (dapp) {
-          const dappAccount = accounts?.[dapp.accountType]?.[dapp.accountId];
+          const dappAccount =
+            latestAccounts?.[dapp.accountType]?.[dapp.accountId];
           if (isAccountValidForNetwork(dappAccount, dapp.accountType)) {
             setCurrentAccountId(dapp.accountId);
             setCurrentAccountType(dapp.accountType);
@@ -286,22 +313,27 @@ export const ConnectWallet = () => {
             // Set the connected account as selected by default
             setAccountId(dapp.accountId);
             setAccountType(dapp.accountType);
-          } else if (isAccountValidForNetwork(activeAccount, type)) {
-            setAccountId(id);
-            setAccountType(type);
+          } else if (
+            isAccountValidForNetwork(latestActiveAccount, activeType)
+          ) {
+            setAccountId(activeId);
+            setAccountType(activeType);
           }
-        } else if (isAccountValidForNetwork(activeAccount, type)) {
+        } else if (isAccountValidForNetwork(latestActiveAccount, activeType)) {
           // If no existing connection, select the active account by default
-          setAccountId(id);
-          setAccountType(type);
+          setAccountId(activeId);
+          setAccountType(activeType);
         }
       } catch (error) {
         console.error('[ConnectWallet] Error fetching dapp data:', error);
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     })();
-  }, [accounts, activeAccount, host, id, isAccountValidForNetwork, type]);
+    return () => {
+      active = false;
+    };
+  }, [controllerEmitter, host, isAccountValidForNetwork, selectionContext]);
 
   // Remove the auto-close effect - let user make the choice
 
@@ -312,25 +344,46 @@ export const ConnectWallet = () => {
       : null;
 
   // Memoize filtered accounts to prevent recomputation
-  const filteredAccounts = useMemo(() => {
+  const matchingAccounts = useMemo(() => {
     if (!accounts) return [];
-
-    return Object.entries(accounts)
-      .map(([keyringAccountType, accountList]) => {
-        const isValidAccount = (currentAccount: any) =>
-          isAccountValidForNetwork(currentAccount, keyringAccountType);
-
-        const validAccounts = Object.values(accountList).filter(isValidAccount);
-
-        return {
-          type: keyringAccountType,
-          accounts: validAccounts,
-        };
-      })
-      .filter(
-        ({ accounts: keyringAccountsList }) => keyringAccountsList.length > 0
-      );
-  }, [accounts, isAccountValidForNetwork]);
+    const query = search.trim().toLowerCase();
+    return Object.entries(accounts).flatMap(([keyringType, accountList]) =>
+      Object.values(accountList)
+        .filter(
+          (account) =>
+            isAccountValidForNetwork(account, keyringType) &&
+            (!query ||
+              `${account.label} ${account.address}`
+                .toLowerCase()
+                .includes(query))
+        )
+        .map((account) => ({ account, type: keyringType }))
+    );
+  }, [accounts, isAccountValidForNetwork, search]);
+  const { visibleItems, hasMore, showMore } = useIncrementalList(
+    matchingAccounts,
+    `${selectionContext}:${search}`
+  );
+  // Keep the selected account visible even when it lies beyond the first page.
+  const filteredAccounts = useMemo(() => {
+    const selected = matchingAccounts.find(
+      ({ account, type: keyringType }) =>
+        account.id === accountId && keyringType === accountType
+    );
+    const displayed =
+      selected && !visibleItems.includes(selected)
+        ? [...visibleItems, selected]
+        : visibleItems;
+    return Object.values(
+      displayed.reduce((groups, entry) => {
+        (groups[entry.type] ||= {
+          type: entry.type,
+          accounts: [],
+        }).accounts.push(entry.account);
+        return groups;
+      }, {} as Record<string, { accounts: (typeof accounts)[KeyringAccountType.HDAccount][number][]; type: string }>)
+    );
+  }, [accountId, accountType, matchingAccounts, visibleItems]);
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -379,6 +432,19 @@ export const ConnectWallet = () => {
 
             {/* Accounts list */}
             <div className="px-4 py-4">
+              <input
+                type="search"
+                aria-label={t('connections.searchAccounts')}
+                placeholder={t('connections.searchAccounts')}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white"
+              />
+              {matchingAccounts.length === 0 && (
+                <p role="status" className="text-sm text-brand-graylight">
+                  {t('connections.noMatchingAccounts')}
+                </p>
+              )}
               <div className="space-y-4">
                 {filteredAccounts.map(
                   ({ type: keyringType, accounts: keyringAccounts }) => (
@@ -398,7 +464,7 @@ export const ConnectWallet = () => {
 
                           return (
                             <div
-                              key={`${acc.id}-${type}`}
+                              key={`${acc.id}-${keyringType}`}
                               className={`w-full p-4 rounded-lg border transition-all duration-200 text-left group cursor-pointer
                                 ${
                                   isSelected
@@ -508,6 +574,13 @@ export const ConnectWallet = () => {
                   )
                 )}
               </div>
+              {hasMore && (
+                <ListLoadMore
+                  onClick={showMore}
+                  shown={visibleItems.length}
+                  total={matchingAccounts.length}
+                />
+              )}
 
               {/* Info message with proper spacing from buttons */}
               <div className="mt-6 mb-4 px-2">

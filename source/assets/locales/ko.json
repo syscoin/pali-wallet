@@ -113,6 +113,8 @@
     "speedTxMessage": "정말로 이 거래를 가속하시겠습니까?"
   },
   "connections": {
+    "searchAccounts": "계정 검색",
+    "noMatchingAccounts": "일치하는 계정이 없습니다",
     "connectedAccount": "연결된 계정",
     "onlyConnect": "신뢰할 수 있는 사이트에만 연결하세요.",
     "learnMore": "자세히 알아보기.",

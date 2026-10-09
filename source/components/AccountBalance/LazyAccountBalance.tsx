@@ -44,7 +44,9 @@ export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   onBalanceLoad,
 }) => {
   const { controllerEmitter } = useController();
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const { getFiatAmount } = usePrice();
 
   const [balance, setBalance] = useState<string | null>(null);

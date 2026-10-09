@@ -113,6 +113,8 @@
     "speedTxMessage": "Are you sure that you want to speed up this transaction?"
   },
   "connections": {
+    "searchAccounts": "Search accounts",
+    "noMatchingAccounts": "No matching accounts",
     "connectedAccount": "CONNECTED ACCOUNT",
     "onlyConnect": "Only connect with sites you trust.",
     "learnMore": "Learn more.",

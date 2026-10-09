@@ -113,6 +113,8 @@
     "speedTxMessage": "您确定要加速此交易吗？"
   },
   "connections": {
+    "searchAccounts": "搜索账户",
+    "noMatchingAccounts": "没有匹配的账户",
     "connectedAccount": "已连接账户",
     "onlyConnect": "只连接您信任的网站。",
     "learnMore": "了解更多。",
