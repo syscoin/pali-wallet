@@ -6,7 +6,7 @@ Review date: 2026-10-08. Scope: the Chrome extension in this checkout, its insta
 
 Pali 4.0.70 targets keyring 1.0.612 from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15). No package patch is included here. The package will be published separately; until then validation uses its upstream source build. Earlier patched-dependency measurements below retain their historical snapshot labels. Released keyring 1.0.611 still collapses operational errors into authentication failures and must not be substituted for the new version.
 
-## Surgical containment of the two priority findings
+## Account-data and request-work containment
 
 ### Automatic account repair preserves saved data by failing closed
 
@@ -61,7 +61,7 @@ The browser smoke test also exposed a separate UI race: successful unlock naviga
 | --- | --- |
 | Site permissions | Permissions use the complete HTTP(S) origin, including scheme and non-default port. Trusted-site checks require an exact HTTPS host. Legacy hostname-only grants are inactive until the user reconnects the site; they remain removable. |
 | Response ownership | Provider results return through the originating runtime callback instead of a tab-wide broadcast. A response cannot be consumed by another frame/document merely because it shares the tab. |
-| Approval ownership | Approval responses require the exact extension approval-page source and a generated approval nonce. Request payloads preserve literal `#` characters; signing data is not altered during popup URL construction. |
+| Approval ownership | The created popup's browser window/document identity receives a private challenge that binds its ServiceWorker client before routing. Responses require that client, the nonce and the expected route. Cloned windows and reloaded documents cannot inherit approval authority. Login redirects encode the complete signing payload, including literal `#`, `&`, `+` and `%` characters. |
 | Request lifetime | Queued requests carry cancellation and document identity. Tab navigation/closure cancels work; approval pages check document liveness. Stale requests are rejected before approval/results. |
 | Admission control | Maximum four pending requests per origin and 64 overall, including read-only requests. Queues rotate between origins, expire after 30 seconds, and network-readiness waits stop after 15 seconds. These are resource bounds, not transaction completion promises. |
 | Delivery failures | Content-script requests retry only when Chrome confirms that no receiving listener exists. A closed response channel is ambiguous and must not replay signing or broadcasting. |
@@ -69,7 +69,7 @@ The browser smoke test also exposed a separate UI race: successful unlock naviga
 | Privileged fetches | Asset metadata requests validate the GUID and use the configured active UTXO backend. A site cannot supply an arbitrary privileged fetch URL. |
 | Signing worker | Offscreen signing messages require this extension's exact background-worker sender, with no sender tab. |
 | Secret access and locking | Password operations are serialized. Public unlock arguments cannot bypass the persisted attempt limit. Delayed unlock/seed/private-key results are rejected after lock, reset or network/keyring changes. Lock clears every cached keyring, not only the active one. |
-| Secret UI | Private-key validation results are bound to their account/network context. Unmounted password inputs discard late validation results. |
+| Secret UI | Private-key validation results are bound to their account/network context. Unmounted password inputs discard late validation results. Seed, private-key and wallet-removal views unmount when the worker becomes unavailable, removing cached secrets and requiring fresh authentication after reconnect. |
 | Storage isolation | Startup restricts `chrome.storage.local` to trusted extension contexts. Global/vault/profile read errors propagate; an unreadable vault is not treated as absent. An incomplete encrypted-vault/key pair enters recovery. |
 | Initialization recovery | UI routes wait for authoritative state. Reinitialization replaces stale controller handlers, so a degraded handler cannot keep answering after recovery. |
 | Token display | Metadata/cache identities include the transaction's chain and account context. A delayed metadata response from another network/account cannot relabel a transaction. |
@@ -124,15 +124,41 @@ That earlier production build including the surgical fixes and local dependency 
 
 An actual local dapp page exercised that snapshot’s content script and background at 4x CPU throttling. Eight hostile fixtures covered oversized personal signing, deep nesting, wide arrays, an oversized batch, deep typed-schema expansion, duplicate typed fields, an oversized PSBT body and a real 201-input PSBT. Each returned `-32602` in under 5 ms in this local sample, opened no approval page, and left liveness checks working. The page recorded no long tasks during these requests. Accepted-fixture regressions include EIP-712 Mail, Permit, 50 recipients/calls and real 200-input/output PSBTs. These measurements are local samples, not worst-case latency guarantees.
 
-## PR integration validation
+## Initial PR integration snapshot
 
 The ready Pali PR targets **4.0.70** and keyring **1.0.612**, rebased onto master `94a1cde5`. The dependency was built and locally packed from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15), commit `27e4409`; no local package patch or Git dependency workaround is shipped. Publication of the npm artifact is handled separately, and its future integrity hash is not fabricated in the lockfile.
 
 The integrated suite passes **114 suites, 947 tests**, plus TypeScript and the production Chrome build. All bundle budgets pass: background JavaScript is 4,229,863 bytes, content script 14,784 bytes, and the unpacked extension 8,445,605 bytes. Fresh Start JavaScript remains 1,491,009 bytes; the historical original-checkout baseline above remains labelled separately.
 
-Final disposable-profile Chrome checks using the upstream source package passed: correct-password unlock after confirmed worker restart took 184 ms and remained on Home after 2.2 seconds, with no background errors. Eight hostile dapp requests rejected within 4.3 ms at 4x page CPU throttling, opened no approval page and recorded no long tasks. These are individual local samples.
+That snapshot's disposable-profile Chrome checks using the upstream source package passed: correct-password unlock after confirmed worker restart took 184 ms and remained on Home after 2.2 seconds, with no background errors. Eight hostile dapp requests rejected within 4.3 ms at 4x page CPU throttling, opened no approval page and recorded no long tasks. These are individual local samples.
 
 Rebase review also found an interaction with master's receipt-refresh queue: reset now cancels queued/in-flight receipt work and invalidates balance freshness before any await. Three regressions verify that old receipt, token-preflight and ordinary native-balance results cannot commit after the same account/network context is restored.
+
+## Adversarial follow-up
+
+A second review and actual approval-flow testing found additional problems in the initial PR snapshot:
+
+- Approval responses checked the initial `external.html` path even after the same document routed to a signing screen. The popup now registers its browser window/document, receives a private challenge and binds its ServiceWorker client before routing. Only that client and approval nonce can complete the request. Authenticated responses survive an immediate popup close while the requesting document's liveness is checked. An abandoned, unbound popup expires after ten seconds; recovery controls appear near 1.8 seconds and valid late handshakes remain accepted.
+- Returning from login concatenated decoded signing data into a URL. Encoding that data preserves literal delimiters and Unicode through the login and signing routes.
+- Wallet creation could navigate using an older locked status, just as unlock could. Both import and new-wallet creation now confirm a fresh status before entering Home; a failed confirmation returns to the existing-wallet login path.
+- Home and account-consent controls now remain inert during context changes or worker unavailability. Seed/private-key/wallet-removal screens unmount on lost worker connectivity. Case, trailing-slash and encoded-path aliases receive the same guards as canonical routes. A shared lifecycle port detects worker disconnection immediately, and focus/visibility changes revalidate cached status rather than waiting for the periodic poll.
+- Controller status reads now disable the transport's additional connection retries. The shared poller owns recovery, so one status check has a 1.8-second deadline instead of extending that deadline with transport backoff. Other controller operations retain their existing retry behavior.
+- A tab could navigate after the background selected notification recipients. The injected notification now checks the exact approved origin again immediately before dispatching account or xpub data.
+- Delayed network activation, vault reads and queued persistence could restore old state after reset. Reset generations and ownership checks protect hydration, caches, persistence and completion callbacks. New network requests are rejected while reset is in progress. Reset drains serialized writes and clears the live vault before releasing the persistence lock. Valid source-vault snapshots are queued before target activation so ordinary cancellation does not discard unsaved source data. Cancelled switches and explicit keyring setup failures reject instead of returning a successful chain result. Ordinary cancellation can restore an uncommitted source vault; a reset can never trigger that stale rollback. If cancellation happens after session transfer during first-account derivation, a queued switch on that target completes guarded initialization before reporting success. Existing accounts and their metadata are preserved. Creation and reset serialize with authentication; creation also rejects stale completions and prevents a network switch from taking its partially initialized session.
+
+The upstream keyring follow-up also fixed retry after interrupted legacy migration, validated legacy inner-secret decoding before rewriting the vault, and made secret-buffer clearing independent of random-number generation. The final upstream source is `15dd94f`, with 28 focused WebCrypto regressions and 300 passing tests across 19 suites. Local and GitHub Codex code/security reviews found no remaining issues on that upstream commit. Pali's installed validation package matches all 116 files from its local npm pack; this is not an npm publication.
+
+### Final validation snapshot
+
+The final source commit is `dd73ffb927fcb60260f989d08379aad00b5af5ed`, with runtime-source fingerprint `aec0d3cf52578c4765998753486f83ad98cb79d061bfd1ff8380869a98648413` (scope and dependency artifact recorded in the evidence JSON). The scoped suite passes **120 suites, 1,052 tests**. TypeScript and the isolated production Chrome webpack build pass; ESLint reports zero errors and six existing warnings. This build uses the final upstream keyring package and omits ZIP packaging and the bundle visualizer.
+
+All size budgets pass. Final app JavaScript is 1,481,546 bytes, external-page JavaScript 1,478,526 bytes, background JavaScript 4,235,977 bytes, and content-script JavaScript 14,784 bytes. The unpacked extension is 8,458,621 bytes. Fresh Start loads 1,493,155 bytes of JavaScript, **37.25% less than the original-checkout baseline** above; this is not a comparison against current master.
+
+Four final disposable-profile Chrome checks pass. Routed connection, personal signing and typed signing return verified results; a forged main-view response and a cloned approval URL in another window cannot complete the request. Locked approval routing preserves literal URL delimiters. A delayed handshake displays recovery in 1,862 ms and accepts its valid late reply. Correct-password unlock after confirmed worker restart takes 185 ms and remains on Home after 2.2 seconds. Terminating an unlocked worker removes a revealed seed in 4 ms; it never reappears after reconnect or protected-route revisit without authentication. Eight hostile dapp fixtures at 4x page CPU throttling reject within 4.9 ms, open no approval and record no page long tasks. These are individual local samples on the hardware stated above, not percentile or worst-case guarantees.
+
+The local Codex loop reviewed the full PR, then found the interrupted-account-initialization race in a follow-up diff. The repair includes a reproducer using two public network-switch requests and the real serialization mutex; Codex's subsequent review found no actionable regression. The full test suite and Chrome checks above were rerun on the resulting source.
+
+**Publication remains a release blocker:** npm still returns E404 for keyring 1.0.612. The owner requested that version in advance and will publish it separately. The local package validates the reviewed source but does not make registry CI green. Publish the upstream artifact and rerun clean CI before merging or releasing Pali.
 
 ## Dependency findings
 
@@ -150,7 +176,7 @@ No blanket dependency upgrade was applied. The dependency assessment distinguish
 
 ## Limits and release follow-up
 
-The two high-priority findings have surgical containment fixes. Corrupted data still needs a deliberate recovery implementation, and unusually large valid requests may exceed wallet policy. Dependency updates and real-device release testing remain follow-up work. Hardware prompts, slow RPCs, cryptographic operations and chain confirmation can legitimately take more than two seconds. Feedback and safe navigation are the target; an arbitrary timer must never authorize, cancel an already broadcast transaction, invent a successful network switch, or imply that an unknown submission failed.
+Account-data preservation, bounded request work and the additional findings above have targeted fixes. Corrupted data still needs a deliberate recovery implementation, and unusually large valid requests may exceed wallet policy. Dependency updates and real-device release testing remain follow-up work. Hardware prompts, slow RPCs, cryptographic operations and chain confirmation can legitimately take more than two seconds. Feedback and safe navigation are the target; an arbitrary timer must never authorize, cancel an already broadcast transaction, invent a successful network switch, or imply that an unknown submission failed.
 
 Expand release testing to real Ledger/Trezor devices, older supported Chrome versions, low-memory devices, large restored wallets and malicious payload fixtures. Initial rendering was bounded and measured, but every combination of account/network/hardware state has not been exercised. Keep the size check in the production release process:
 

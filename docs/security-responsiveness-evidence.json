@@ -1056,5 +1056,571 @@
       "status": "passed"
     },
     "dependencyPublication": "Keyring1.0.612 is targeted; validation used local npm pack from upstream source commit27e4409. npm publication is handled separately. No local package patch is shipped."
+  },
+  "adversarialFollowup": {
+    "pullRequest": "https://github.com/syscoin/pali-wallet/pull/851",
+    "baseRevision": "94a1cde5be2041ae0486d2f2055f675c6e991b34",
+    "build": {
+      "measuredAt": "2026-10-09T02:30:17.839Z",
+      "snapshot": {
+        "measuredAt": "2026-10-09T02:30:12.555820+00:00",
+        "paliSourceCommit": "dd73ffb927fcb60260f989d08379aad00b5af5ed",
+        "runtimeSourceFingerprintSha256": "aec0d3cf52578c4765998753486f83ad98cb79d061bfd1ff8380869a98648413",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
+        "runtimeFileCount": 540,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.612",
+        "keyringSourceCommit": "15dd94fced70c7a5bc3f454ac5eee0089934274e",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
+        "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
+        "localDependencyTarballSha256": "dcc1dfd5b3b6060d721af310c1c5edc007922489aa7a0bde9bd3eb200072761e",
+        "webpackStatsSha256": "a0a836e8baa4aeeb6a0e6920668a5ded729fbf70d0055f4a066a90b8944c6e8d",
+        "buildDirectory": "/tmp/pali-audit/optimized",
+        "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamkeyring1.0.612 localpack, no local package patch."
+      },
+      "hardware": {
+        "model": "MacBook Pro Mac17,6",
+        "chip": "Apple M5 Max",
+        "cores": 18,
+        "coreTopology": "6 Super + 12 Performance",
+        "memoryGiB": 48
+      },
+      "software": {
+        "chromium": "149.0.7827.55",
+        "node": "v23.11.1",
+        "yarn": "1.22.22"
+      },
+      "baseline": {
+        "app": {
+          "bytes": 1476859,
+          "gzipBytes": 448969,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1469529,
+          "gzipBytes": 447303,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4202303,
+          "gzipBytes": 1177950,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 11094,
+          "gzipBytes": 3853,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8632973,
+          "budgetBytes": 9000000
+        }
+      },
+      "optimized": {
+        "app": {
+          "bytes": 1481546,
+          "gzipBytes": 452936,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1478526,
+          "gzipBytes": 452021,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4235977,
+          "gzipBytes": 1187248,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 14784,
+          "gzipBytes": 4948,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8458621,
+          "budgetBytes": 9000000
+        }
+      },
+      "firstRoute": {
+        "baseline": {
+          "initialJSBytes": 1476859,
+          "lazyJSFiles": [
+            "js/490.bundle.js",
+            "js/542.bundle.js"
+          ],
+          "lazyJSBytes": 902662,
+          "totalJSBytes": 2379521
+        },
+        "optimized": {
+          "initialJSBytes": 1481546,
+          "lazyJSFiles": [
+            "js/6542.bundle.js",
+            "js/8289.bundle.js"
+          ],
+          "lazyJSBytes": 11609,
+          "totalJSBytes": 1493155
+        }
+      },
+      "firstRouteReductionPercent": 37.24976581421219,
+      "firstRouteLazyReductionPercent": 98.71391506455352,
+      "packageReductionPercent": 2.0196055287095227,
+      "notes": [
+        "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
+        "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
+        "The 11-case startup matrix belongs to startup-matrix-build.json and runtime-build-metadata.json, an earlier snapshot before authentication navigation and surgical containment fixes."
+      ]
+    },
+    "validation": {
+      "jestSuites": 120,
+      "jestTests": 1052,
+      "typescript": "passed",
+      "eslint": "0 errors, 6 existing warnings",
+      "build": "Isolated production Chrome webpack build; ZIP packaging and bundle visualizer omitted",
+      "sizeBudgets": "passed"
+    },
+    "authenticationAfterWorkerRestart": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 153,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 159,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 17,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 306,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 174,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 33,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 743,
+          "status": "passed"
+        },
+        {
+          "name": "lock using background controller",
+          "durationMs": 6,
+          "status": "passed"
+        },
+        {
+          "name": "stop extension service worker to simulate idle",
+          "durationMs": 3,
+          "status": "passed"
+        },
+        {
+          "name": "reload locked wallet",
+          "durationMs": 408,
+          "status": "passed"
+        },
+        {
+          "name": "confirm extension service worker restarted",
+          "durationMs": 2,
+          "status": "passed"
+        },
+        {
+          "name": "unlock existing wallet",
+          "durationMs": 185,
+          "status": "passed"
+        },
+        {
+          "name": "verify background remains unlocked",
+          "durationMs": 30,
+          "status": "passed"
+        },
+        {
+          "name": "remain on unlocked home after 2.2 seconds",
+          "durationMs": 2204,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "chromium": "149.0.7827.55",
+      "idleSimulation": {
+        "workerStopConfirmed": true,
+        "workerRestartConfirmed": true,
+        "inMemoryMarkerCleared": true
+      },
+      "afterUnlock": {
+        "route": "#/home",
+        "homeBalanceVisible": true,
+        "homeBalanceLoading": false,
+        "passwordVisible": false,
+        "alerts": [],
+        "calls": [
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 1,
+            "result": false
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 1,
+            "result": false
+          },
+          {
+            "method": "wallet.unlockFromController",
+            "durationMs": 163,
+            "result": true
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 1,
+            "result": true
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 2,
+            "result": true
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 2,
+            "result": true
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 4,
+            "result": true
+          },
+          {
+            "method": "wallet.isUnlocked",
+            "durationMs": 1,
+            "result": true
+          }
+        ],
+        "unlocked": true
+      },
+      "status": "passed",
+      "backgroundErrors": []
+    },
+    "approvalRouting": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 154,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 117,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 44,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 307,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 176,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 29,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1137,
+          "status": "passed"
+        },
+        {
+          "name": "switch disposable wallet to Ethereum",
+          "durationMs": 790,
+          "status": "passed"
+        },
+        {
+          "name": "open disposable local dapp",
+          "durationMs": 157,
+          "status": "passed"
+        },
+        {
+          "name": "routed connect rejects main-view forgery then accepts user approval",
+          "durationMs": 923,
+          "status": "passed"
+        },
+        {
+          "name": "routed personal-sign returns verifiable signature",
+          "durationMs": 514,
+          "status": "passed"
+        },
+        {
+          "name": "routed typed-data returns verifiable signature",
+          "durationMs": 454,
+          "status": "passed"
+        },
+        {
+          "name": "closing routed approval rejects request",
+          "durationMs": 280,
+          "status": "passed"
+        },
+        {
+          "name": "lock disposable wallet",
+          "durationMs": 12,
+          "status": "passed"
+        },
+        {
+          "name": "locked approval survives login route and signing route",
+          "durationMs": 857,
+          "status": "passed"
+        },
+        {
+          "name": "locked typed-data preserves literal URL delimiters through login",
+          "durationMs": 800,
+          "status": "passed"
+        },
+        {
+          "name": "slow approval handshake offers recovery then accepts a valid late reply",
+          "durationMs": 3175,
+          "status": "passed"
+        }
+      ],
+      "build": "/tmp/pali-audit/optimized",
+      "chromium": "149.0.7827.55",
+      "connectRoute": "/external/connect-wallet",
+      "clonedExternalWindowRejected": true,
+      "signRoute": "/external/tx/ethSign",
+      "lockedRoute": "/",
+      "slowHandshakeFeedbackMs": 1862.3000001907349,
+      "status": "passed",
+      "backgroundErrors": []
+    },
+    "payloadWork": {
+      "measuredAt": "2026-10-09T02:29:38.154Z",
+      "build": "/tmp/pali-audit/optimized",
+      "cases": {
+        "results": [
+          {
+            "name": "liveness before hostile requests",
+            "durationMs": 1.4000000953674316,
+            "response": false
+          },
+          {
+            "name": "100 KiB personal signing text",
+            "durationMs": 0.8000001907348633,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 65536 bytes"
+              }
+            }
+          },
+          {
+            "name": "64-level request nesting",
+            "durationMs": 0.6999998092651367,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum depth 32"
+              }
+            }
+          },
+          {
+            "name": "10001-value request array",
+            "durationMs": 0.09999990463256836,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 10000 values"
+              }
+            }
+          },
+          {
+            "name": "51-call batch",
+            "durationMs": 0.6999998092651367,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 50 calls"
+              }
+            }
+          },
+          {
+            "name": "19-level typed schema expansion",
+            "durationMs": 4.900000095367432,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: maximum typed-data nesting depth 16",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "duplicate typed schema fields",
+            "durationMs": 1,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: duplicate typed-data field",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "oversized PSBT request",
+            "durationMs": 3.200000286102295,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 1048576 bytes"
+              }
+            }
+          },
+          {
+            "name": "real 201-input PSBT",
+            "durationMs": 2.3999996185302734,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: maximum 200 PSBT inputs",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "liveness after hostile requests",
+            "durationMs": 0.7000002861022949,
+            "response": false
+          }
+        ],
+        "longTasks": []
+      },
+      "chromium": "149.0.7827.55",
+      "cpuThrottleRate": 4,
+      "newApprovalPages": 0,
+      "status": "passed"
+    },
+    "secretWorkerDisconnect": {
+      "build": "/tmp/pali-audit/optimized",
+      "steps": [
+        {
+          "name": "open disposable wallet",
+          "durationMs": 890,
+          "status": "passed"
+        },
+        {
+          "name": "import generated wallet",
+          "durationMs": 743,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 1146,
+          "status": "passed"
+        },
+        {
+          "name": "open settings seed screen",
+          "durationMs": 57,
+          "status": "passed"
+        },
+        {
+          "name": "validate password and reveal generated phrase",
+          "durationMs": 183,
+          "status": "passed"
+        },
+        {
+          "name": "stop unlocked background and clear cached seed within deadline",
+          "durationMs": 5,
+          "status": "passed"
+        },
+        {
+          "name": "confirm restarted worker is locked without entering password",
+          "durationMs": 2373,
+          "status": "passed"
+        },
+        {
+          "name": "reject seed route revisit without fresh password",
+          "durationMs": 2233,
+          "status": "passed"
+        }
+      ],
+      "manuallyLocked": false,
+      "secretDeadlineMs": 2000,
+      "chromium": "149.0.7827.55",
+      "workerStopConfirmed": true,
+      "secretRemovalMs": 4,
+      "afterDisconnect": {
+        "route": "#/settings/seed",
+        "seedPasswordInputPresent": false,
+        "unlockInputPresent": false,
+        "seedInDom": false,
+        "generatedPasswordInDom": false,
+        "monitor": {
+          "firstAbsentAt": 1791512983733,
+          "reappeared": false,
+          "present": false
+        }
+      },
+      "inMemoryMarkerCleared": true,
+      "workerRestartConfirmed": true,
+      "afterReconnect": {
+        "route": "#/",
+        "seedPasswordInputPresent": false,
+        "unlockInputPresent": true,
+        "seedInDom": false,
+        "generatedPasswordInDom": false,
+        "monitor": {
+          "firstAbsentAt": 1791512983733,
+          "reappeared": false,
+          "present": false
+        }
+      },
+      "afterProtectedRouteRevisit": {
+        "route": "#/",
+        "seedPasswordInputPresent": false,
+        "unlockInputPresent": true,
+        "seedInDom": false,
+        "generatedPasswordInDom": false,
+        "monitor": {
+          "firstAbsentAt": 1791512983733,
+          "reappeared": false,
+          "present": false
+        }
+      },
+      "status": "passed"
+    },
+    "keyring": {
+      "pullRequest": "https://github.com/sidhujag/sysweb3/pull/15",
+      "sourceCommit": "15dd94fced70c7a5bc3f454ac5eee0089934274e",
+      "localTarballSha256": "dcc1dfd5b3b6060d721af310c1c5edc007922489aa7a0bde9bd3eb200072761e",
+      "installedPackedFilesMatched": 116,
+      "targetedTests": 28,
+      "fullSuites": 19,
+      "fullTests": 300,
+      "localCodexReview": "No findings",
+      "githubCodeReview": "https://github.com/sidhujag/sysweb3/pull/15#issuecomment-6072855776",
+      "githubSecurityReview": "https://github.com/sidhujag/sysweb3/pull/15#issuecomment-6072858666"
+    },
+    "dependencyPublication": "Registry version1.0.612 is not yet published (E404). Validation uses the locally packed upstream source. Owner will publish; clean CI must be rerun before merge.",
+    "localCodexReviewLoop": {
+      "fullDiffBase": "94a1cde5be2041ae0486d2f2055f675c6e991b34",
+      "fullDiffReview": "No findings before the follow-up changes",
+      "followupFinding": "P2: a superseding same-slip44 switch could report success with interrupted first-account initialization",
+      "fixCommit": "dd73ffb927fcb60260f989d08379aad00b5af5ed",
+      "fixReview": "No actionable regressions identified; separately validated by the full Jest suite and production Chrome checks"
+    }
   }
 }

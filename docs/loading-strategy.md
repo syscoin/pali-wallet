@@ -14,15 +14,19 @@ Vault read errors and an incomplete vault/key pair fail initialization. They mus
 
 `usePageLoadingState` observes real account/network state. `PageLoadingOverlay` delays the spinner for 150 ms and the blocking backdrop for 500 ms to avoid flicker. After two seconds it changes to a nonblocking status message. The underlying operation continues with its actual status.
 
-`AppLayout` keeps navigation available but makes transaction and account-editing content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. No timer changes the network to idle or declares a connection failure merely because it is slow.
+`AppLayout` keeps header navigation available but makes Home, transaction, account-editing and account-consent content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. Case, trailing-slash and encoded-path aliases receive the same guards. No timer changes the network to idle or declares a connection failure merely because it is slow.
 
 Approval pages retain their own user-consent and transaction lifecycle. A pending approval is never accepted automatically to meet a responsiveness target.
+
+Before routing an approval, the initial external document registers through Chrome's runtime channel. The background checks the created popup's window, top frame, document and nonce, then binds a one-time challenge to its service-worker client identity. Same-document routing and locked-wallet login preserve that identity; another window, reload or stale nonce cannot answer the approval. The gate shows recovery controls at the startup feedback deadline while permitting a valid late handshake until its separate ten-second deadline. Closing a popup cannot overtake an already authenticated response awaiting the requesting document's liveness check.
 
 ## Shared controller status
 
 `controllerStatus` owns one runtime listener and one status poller per extension page. Mounted `useController` consumers share that subscription. Identical in-flight status requests and activity updates are coalesced. A logout event invalidates older status replies, preventing a delayed unlocked response from restoring the UI after lock.
 
-A failed or malformed status response marks cached lock state unavailable. The layout shows a reconnect message, keeps sensitive content inert, and polls again after two seconds. A valid response clears the unavailable state. Read-only status requests have an independent 1.8-second timeout; loss of the worker must not silently look like a healthy unlocked wallet.
+A failed or malformed status response marks cached lock state unavailable. The layout shows a reconnect message, keeps sensitive actions inert, and polls again after two seconds. Seed, private-key and wallet-forget views unmount on disconnection, clearing their cached plaintext and requiring fresh authentication after reconnection. Header navigation stays available. A shared lifecycle port marks status unavailable immediately if the worker disconnects. Returning focus or visibility revalidates cached status; late replies from before disconnection cannot restore it. A valid response clears the unavailable state. Read-only status requests have an independent 1.8-second timeout and disable transport backoff because the shared poller owns retries; loss of the worker must not silently look like a healthy unlocked wallet.
+
+Unlock, seed import and new-wallet creation refresh the shared authentication status before entering Home. A stale locked response from before authentication cannot overwrite the fresh result. If creation succeeds but status confirmation fails, the UI returns to the existing-wallet recovery screen instead of repeating creation.
 
 ## Lists and stale data
 
