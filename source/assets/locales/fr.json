@@ -427,6 +427,8 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "walletWindowCheckSlow": "Les fenêtres du portefeuille mettent plus de temps à répondre. Réessayez de les vérifier.",
+    "retryWalletWindowCheck": "Vérifier à nouveau les fenêtres",
     "bgError": "Erreur en arrière-plan",
     "bgErrorMessage": "Nous allons verrouiller votre portefeuille pour résoudre ce problème. Ne vous inquiétez pas, toutes vos données resteront en sécurité.",
     "ledgerBlindSigning": "Veuillez activer la signature aveugle dans les paramètres de l'application Ledger",

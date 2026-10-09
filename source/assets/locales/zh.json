@@ -427,6 +427,8 @@
     "receipts": "收据"
   },
   "settings": {
+    "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
+    "retryWalletWindowCheck": "重新检查窗口",
     "bgError": "背景错误",
     "bgErrorMessage": "我们将锁定您的钱包以解决此问题。别担心，您的所有数据都将保持安全。",
     "ledgerBlindSigning": "请在Ledger应用设置中启用盲签",

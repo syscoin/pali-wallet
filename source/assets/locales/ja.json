@@ -427,6 +427,8 @@
     "receipts": "レシート"
   },
   "settings": {
+    "walletWindowCheckSlow": "ウォレットのウィンドウの応答に時間がかかっています。もう一度確認してください。",
+    "retryWalletWindowCheck": "ウィンドウを再確認",
     "bgError": "バックグラウンドエラー",
     "bgErrorMessage": "この問題を解決するためにウォレットをロックします。ご心配なく、すべてのデータは安全に保たれます。",
     "ledgerBlindSigning": "Ledger アプリの設定でブラインドサイニングを有効にしてください",

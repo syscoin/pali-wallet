@@ -427,6 +427,8 @@
     "receipts": "Belege"
   },
   "settings": {
+    "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",
+    "retryWalletWindowCheck": "Fenster erneut prüfen",
     "bgError": "Hintergrundfehler",
     "bgErrorMessage": "Wir werden Ihre Wallet sperren, um dieses Problem zu beheben. Keine Sorge, alle Ihre Daten bleiben sicher.",
     "ledgerBlindSigning": "Bitte aktivieren Sie Blind Signing in den Ledger App-Einstellungen",

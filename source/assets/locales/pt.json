@@ -427,6 +427,8 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",
+    "retryWalletWindowCheck": "Verificar as janelas novamente",
     "bgError": "Erro em segundo plano",
     "bgErrorMessage": "Vamos bloquear sua carteira para corrigir este problema. Não se preocupe, todos os seus dados permanecerão seguros.",
     "ledgerBlindSigning": "Por favor, ative a Assinatura Cega nas configurações do aplicativo Ledger",

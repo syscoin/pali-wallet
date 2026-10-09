@@ -427,6 +427,8 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletWindowCheckSlow": "Las ventanas de la billetera tardan más en responder. Intenta comprobarlas de nuevo.",
+    "retryWalletWindowCheck": "Volver a comprobar las ventanas",
     "bgError": "Error de Fondo",
     "bgErrorMessage": "Bloquearemos tu cartera para resolver este problema. No te preocupes, todos tus datos permanecerán seguros.",
     "ledgerBlindSigning": "Por favor, activa el Blind Signing en la configuración de la aplicación Ledger",

@@ -427,6 +427,8 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",
+    "retryWalletWindowCheck": "Retry window check",
     "bgError": "Background Error",
     "bgErrorMessage": "We will lock your wallet to fix this issue. Don't worry, all your data will remain safe.",
     "ledgerBlindSigning": "Please, enable Blind Signing in the Ledger app Settings",
