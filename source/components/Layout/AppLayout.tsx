@@ -27,6 +27,12 @@ interface IAppLayout {
   children?: React.ReactNode;
 }
 
+const SECRET_VIEW_ROUTES = new Set([
+  '/settings/seed',
+  '/settings/account/private-key',
+  '/settings/forget-wallet',
+]);
+
 export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -318,6 +324,18 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     [location.pathname]
   );
 
+  // An unavailable worker may have restarted in a locked state. Unmount secret
+  // views so their cached plaintext and password fields cannot remain visible
+  // or reappear after reconnection without fresh authentication.
+  const pageContent =
+    connectionUnavailable && SECRET_VIEW_ROUTES.has(location.pathname) ? (
+      <p role="status">
+        Reconnect to your wallet to view sensitive information.
+      </p>
+    ) : (
+      children || <Outlet />
+    );
+
   return (
     <div
       className={`remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white ${bgColor} overflow-x-hidden ${
@@ -416,7 +434,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           className="animate-fadeIn h-full"
           {...contextSafetyProps}
         >
-          {children || <Outlet />}
+          {pageContent}
         </div>
       ) : hideHeader ? (
         // Hardware wallet and other hideHeader pages get a minimal wrapper
@@ -425,7 +443,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           className="animate-fadeIn h-full"
           {...contextSafetyProps}
         >
-          {children || <Outlet />}
+          {pageContent}
         </div>
       ) : (
         // Other pages get the standard content wrapper
@@ -438,7 +456,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             isConnectPage ? '' : 'md:max-w-sm'
           } text-brand-white sm:max-w-full`}
         >
-          {children || <Outlet />}
+          {pageContent}
         </div>
       )}
     </div>

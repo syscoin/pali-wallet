@@ -550,13 +550,16 @@ const DAppController = (): IDAppController => {
               return await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 world: 'MAIN',
-                func: (eventData) => {
+                func: (eventData, approvedOrigin) => {
+                  // The tab can navigate after tabs.query returns. Check in
+                  // the receiving document before exposing account events.
+                  if (window.location.origin !== approvedOrigin) return;
                   const event = new CustomEvent('paliNotification', {
                     detail: JSON.stringify(eventData),
                   });
                   window.dispatchEvent(event);
                 },
-                args: [{ id, data }],
+                args: [{ id, data }, origin],
               });
             } catch (error) {
               // Don't let individual tab failures crash the service worker

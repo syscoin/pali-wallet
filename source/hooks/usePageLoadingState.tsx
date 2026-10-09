@@ -20,6 +20,7 @@ export const isPageLoadingOverlayExcluded = (pathname: string): boolean =>
 // Navigation stays available during slow reads, but actions tied to the active
 // account/network must not submit while that context is changing.
 export const isContextSensitiveWalletRoute = (pathname: string): boolean =>
+  pathname === '/home' ||
   /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
   /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|forget-wallet$|seed$)/.test(
     pathname

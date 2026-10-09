@@ -29,10 +29,18 @@ export const hasExternalWalletPage = (
       if (!url) return false;
       try {
         const parsed = new URL(url);
+        // External uses BrowserRouter: routing changes the same document's
+        // pathname, including to / while an approval waits for login.
+        const externalPath =
+          parsed.pathname === '/external.html' ||
+          parsed.pathname === '/external' ||
+          parsed.pathname.startsWith('/external/') ||
+          (parsed.pathname === '/' &&
+            Boolean(parsed.searchParams.get('externalRoute')));
         return (
           parsed.protocol === 'chrome-extension:' &&
           parsed.hostname === chrome.runtime.id &&
-          parsed.pathname === '/external.html'
+          externalPath
         );
       } catch {
         return false;

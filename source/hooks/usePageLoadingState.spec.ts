@@ -20,6 +20,7 @@ describe('isPageLoadingOverlayExcluded', () => {
 
 describe('context-sensitive actions', () => {
   it.each([
+    '/home',
     '/send/eth',
     '/external/tx/sign',
     '/tokens/add',
@@ -37,7 +38,6 @@ describe('context-sensitive actions', () => {
     expect(isContextSensitiveWalletRoute(route)).toBe(true);
   });
   it.each([
-    '/home',
     '/receive',
     '/settings/manage-accounts',
     '/switch-network',

@@ -27,12 +27,18 @@ describe('live wallet window detection', () => {
     await expect(hasExternalWalletPage()).resolves.toBe(false);
   });
 
-  it('recognizes only this extension exact external page', async () => {
+  it('recognizes this extension external document and rejects lookalike URLs', async () => {
     getContexts.mockImplementationOnce((_filter, reply) => {
       reply([
         { documentUrl: 'https://example.com/external.html' },
         { documentUrl: 'chrome-extension://other-id/external.html' },
         { documentUrl: 'chrome-extension://pali-id/app.html?external.html' },
+        { documentUrl: 'chrome-extension://pali-id/external.html-other' },
+        { documentUrl: 'chrome-extension://pali-id/external-other/sign' },
+        {
+          documentUrl: 'chrome-extension://pali-id/app.html?externalRoute=sign',
+        },
+        { documentUrl: 'chrome-extension://pali-id/' },
       ]);
     });
     await expect(hasExternalWalletPage()).resolves.toBe(false);
@@ -43,6 +49,26 @@ describe('live wallet window detection', () => {
     });
     await expect(hasExternalWalletPage()).resolves.toBe(true);
   });
+
+  it.each([
+    '/external/connect-wallet?data=%7B%7D',
+    '/external/sign-eth',
+    '/external/hardware',
+    '/?externalRoute=login&data=%7B%7D',
+  ])(
+    'keeps detecting an external document after SPA routing to %s',
+    async (path) => {
+      getContexts.mockImplementation((_filter, reply) => {
+        reply([{ documentUrl: `chrome-extension://pali-id${path}` }]);
+      });
+      await expect(hasExternalWalletPage()).resolves.toBe(true);
+      delete (chrome.runtime as any).getContexts;
+      tabsQuery.mockImplementation((_filter, reply) => {
+        reply([{ url: `chrome-extension://pali-id${path}` }]);
+      });
+      await expect(hasExternalWalletPage()).resolves.toBe(true);
+    }
+  );
 
   it('uses a bounded tabs fallback before Chrome 116', async () => {
     delete (chrome.runtime as any).getContexts;

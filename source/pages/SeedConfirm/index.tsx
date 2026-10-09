@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 
@@ -25,7 +26,8 @@ export const SeedConfirm = () => {
         [password, createdSeed]
       );
 
-      navigate('/home');
+      const confirmed = await refreshControllerStatus();
+      navigate(confirmed ? '/home' : '/');
     }
   };
   useEffect(() => {

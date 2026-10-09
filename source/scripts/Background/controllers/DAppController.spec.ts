@@ -21,6 +21,8 @@ jest.mock('./message-handler/provider-cache', () => ({
   clearProviderCache: jest.fn(),
 }));
 
+import { runInNewContext } from 'vm';
+
 import { KeyringAccountType } from 'types/network';
 
 import DAppController from './DAppController';
@@ -140,5 +142,45 @@ describe('legacy dapp permission isolation', () => {
       { url: 'https://example.com/*' },
       expect.any(Function)
     );
+  });
+
+  it('rechecks the receiving origin after a queried tab navigates', async () => {
+    getStateMock.mockReturnValue({
+      vault: {
+        accounts: { HDAccount: { 0: { address: '0x1234', xpub: 'xpub' } } },
+        isBitcoinBased: false,
+      },
+    });
+    (chrome as any).tabs = {
+      query: jest.fn((_query, callback) =>
+        callback([{ id: 7, url: 'https://example.com/approved-page' }])
+      ),
+    };
+    (chrome as any).scripting = {
+      executeScript: jest.fn().mockResolvedValue([]),
+    };
+    DAppController().connect({
+      host: 'https://example.com',
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+    } as any);
+    await new Promise(setImmediate);
+    const injection = (chrome.scripting.executeScript as jest.Mock).mock
+      .calls[0][0];
+    const receive = (origin: string) => {
+      const dispatchEvent = jest.fn();
+      runInNewContext(`(${injection.func.toString()})(...args)`, {
+        args: injection.args,
+        window: { location: { origin }, dispatchEvent },
+        CustomEvent: class {
+          constructor(public type: string, public options: unknown) {}
+        },
+      });
+      return dispatchEvent;
+    };
+    expect(receive('https://attacker.example')).not.toHaveBeenCalled();
+    expect(receive('http://example.com')).not.toHaveBeenCalled();
+    expect(receive('https://example.com:8443')).not.toHaveBeenCalled();
+    expect(receive('https://example.com')).toHaveBeenCalledTimes(1);
   });
 });
