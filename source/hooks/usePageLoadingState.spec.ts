@@ -9,6 +9,7 @@ describe('isPageLoadingOverlayExcluded', () => {
     '/external/add-EthChain',
     '/external/switch-EthChain',
     '/external/switch-UtxoEvm',
+    '/EXTERNAL/SWITCH-ETHCHAIN/',
   ])('keeps the global overlay off dapp switch approval %s', (pathname) => {
     expect(isPageLoadingOverlayExcluded(pathname)).toBe(true);
   });
@@ -34,6 +35,12 @@ describe('context-sensitive actions', () => {
     '/external/smart-account',
     '/external/smart-account-modules',
     '/external/watch-asset',
+    '/HOME/',
+    '/SEND/ETH/',
+    '/Settings/Seed/',
+    '/settings/forget-wallet/',
+    '/%73ettings/account/private-key',
+    '/EXTERNAL/SMART-ACCOUNT/',
   ])('guards %s during account/network transitions', (route) => {
     expect(isContextSensitiveWalletRoute(route)).toBe(true);
   });

@@ -9,26 +9,41 @@ const LOADING_OVERLAY_EXCLUDED_PAGES = new Set([
   '/settings/networks/custom-rpc',
   // Dapp approval pages own their pending state.
   '/external/switch-network',
-  '/external/add-EthChain',
-  '/external/switch-EthChain',
-  '/external/switch-UtxoEvm',
+  '/external/add-ethchain',
+  '/external/switch-ethchain',
+  '/external/switch-utxoevm',
 ]);
 
+// Router paths are case-insensitive and accept trailing slashes and encoded
+// segments. Safety guards must cover those aliases of the same rendered page.
+export const normalizeWalletPathname = (pathname: string): string => {
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    // A malformed escape must not throw while rendering recovery controls.
+  }
+  return pathname.toLowerCase().replace(/\/+$/, '') || '/';
+};
+
 export const isPageLoadingOverlayExcluded = (pathname: string): boolean =>
-  LOADING_OVERLAY_EXCLUDED_PAGES.has(pathname);
+  LOADING_OVERLAY_EXCLUDED_PAGES.has(normalizeWalletPathname(pathname));
 
 // Navigation stays available during slow reads, but actions tied to the active
 // account/network must not submit while that context is changing.
-export const isContextSensitiveWalletRoute = (pathname: string): boolean =>
-  pathname === '/home' ||
-  /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
-  /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|forget-wallet$|seed$)/.test(
-    pathname
-  ) ||
-  pathname === '/home/smart-account' ||
-  /^\/external\/(?:smart-account|smart-account-modules|watch-asset)$/.test(
-    pathname
+export const isContextSensitiveWalletRoute = (pathname: string): boolean => {
+  pathname = normalizeWalletPathname(pathname);
+  return (
+    pathname === '/home' ||
+    /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
+    /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|forget-wallet$|seed$)/.test(
+      pathname
+    ) ||
+    pathname === '/home/smart-account' ||
+    /^\/external\/(?:smart-account|smart-account-modules|watch-asset)$/.test(
+      pathname
+    )
   );
+};
 
 export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []

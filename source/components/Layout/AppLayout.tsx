@@ -11,6 +11,7 @@ import { useAppReady } from 'hooks/useAppReady';
 import { useController } from 'hooks/useController';
 import {
   isContextSensitiveWalletRoute,
+  normalizeWalletPathname,
   usePageLoadingState,
 } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
@@ -328,7 +329,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   // views so their cached plaintext and password fields cannot remain visible
   // or reappear after reconnection without fresh authentication.
   const pageContent =
-    connectionUnavailable && SECRET_VIEW_ROUTES.has(location.pathname) ? (
+    connectionUnavailable &&
+    SECRET_VIEW_ROUTES.has(normalizeWalletPathname(location.pathname)) ? (
       <p role="status">
         Reconnect to your wallet to view sensitive information.
       </p>

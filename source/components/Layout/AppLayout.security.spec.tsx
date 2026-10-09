@@ -58,6 +58,13 @@ describe('wallet content safety during background changes', () => {
     '/settings/seed',
     '/settings/account/private-key',
     '/settings/forget-wallet',
+    '/settings/seed/',
+    '/Settings/Seed',
+    '/settings/account/private-key/',
+    '/SETTINGS/ACCOUNT/PRIVATE-KEY',
+    '/settings/forget-wallet/',
+    '/SETTINGS/FORGET-WALLET',
+    '/%73ettings/%73eed',
   ])('unmounts secret content at %s while preserving navigation', (path) => {
     mockPath = path;
     mockUnavailable = true;
@@ -73,19 +80,23 @@ describe('wallet content safety during background changes', () => {
     expect(markup).toContain('Reconnect to your wallet');
   });
 
-  it('makes Home actions inert during a transition but keeps the header outside', () => {
-    mockChanging = true;
-    const markup = renderToStaticMarkup(
-      <AppLayout>
-        <button>Delete token</button>
-      </AppLayout>
-    );
-    expect(markup).toContain('inert=""');
-    expect(markup.indexOf('</nav>')).toBeLessThan(markup.indexOf('inert=""'));
-    expect(markup.indexOf('inert=""')).toBeLessThan(
-      markup.indexOf('Delete token')
-    );
-  });
+  it.each(['/home', '/HOME/', '/%68ome'])(
+    'makes Home actions inert at %s during a transition but keeps the header outside',
+    (path) => {
+      mockPath = path;
+      mockChanging = true;
+      const markup = renderToStaticMarkup(
+        <AppLayout>
+          <button>Delete token</button>
+        </AppLayout>
+      );
+      expect(markup).toContain('inert=""');
+      expect(markup.indexOf('</nav>')).toBeLessThan(markup.indexOf('inert=""'));
+      expect(markup.indexOf('inert=""')).toBeLessThan(
+        markup.indexOf('Delete token')
+      );
+    }
+  );
 
   it('keeps ordinary wallet content visible during reconnection', () => {
     mockUnavailable = true;
