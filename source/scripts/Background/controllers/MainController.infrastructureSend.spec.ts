@@ -216,7 +216,7 @@ describe('infrastructure transaction broadcast boundary', () => {
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
     releaseJournal();
     await expect(sending).resolves.toMatchObject({ ...response, ...metadata });
-    expect(assertCurrentContext).toHaveBeenCalledTimes(2);
+    expect(assertCurrentContext).toHaveBeenCalledTimes(3);
     expect(wallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1);
   });
 

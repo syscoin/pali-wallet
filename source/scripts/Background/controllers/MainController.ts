@@ -825,8 +825,16 @@ class MainController {
         ),
       saveWalletState: (operation, isUserActivity, sync) =>
         this.saveWalletState(operation, isUserActivity, sync),
-      signSmartAccountActionDigestInternal: (params, targetAccount) =>
-        this.signSmartAccountActionDigestInternal(params, targetAccount),
+      signSmartAccountActionDigestInternal: (
+        params,
+        targetAccount,
+        executionContextId
+      ) =>
+        this.signSmartAccountActionDigestInternal(
+          params,
+          targetAccount,
+          executionContextId
+        ),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
       createSmartAccountRecord: (params) =>
@@ -2893,6 +2901,7 @@ class MainController {
     }>,
     accountId?: number,
     options?: {
+      expectedContext?: IEvmTransactionContext;
       feeOverrides?: {
         maxFeePerGas?: string;
         maxPriorityFeePerGas?: string;
@@ -2908,6 +2917,7 @@ class MainController {
       value: string;
     };
     executionCalldata: string;
+    executionContextId: string;
     executions: Array<{
       data: string;
       nonce: string;
@@ -2935,12 +2945,14 @@ class MainController {
   public async submitSmartAccountExecution(params: {
     accountId?: number;
     executionCalldata?: string;
+    executionContextId?: string;
     executions?: Array<{
       data: string;
       nonce?: string;
       target: string;
       value: string;
     }>;
+    expectedContext?: IEvmTransactionContext;
     gasPayer?: {
       address: string;
       id: number;
@@ -3070,7 +3082,8 @@ class MainController {
     return accountSwitchMutex.runExclusive(async () => {
       let ownsSwitchingAccount = false;
       try {
-        const { accounts, activeNetwork } = store.getState().vault;
+        const { accounts, activeAccount, activeNetwork } =
+          store.getState().vault;
         const account = accounts[type]?.[id];
         if (!account) {
           throw new Error('Account not found');
@@ -3078,6 +3091,8 @@ class MainController {
         if (!isAccountCompatibleWithNetwork(account, type, activeNetwork)) {
           throw new Error('Account is not available on the active network');
         }
+        if (activeAccount.id !== id || activeAccount.type !== type)
+          this.walletSessionGeneration += 1;
 
         // Account context changed; rapid polling should not continue against the old active account.
         this.stopAllRapidPolling();
@@ -4818,6 +4833,8 @@ class MainController {
         vault.accounts?.[vault.activeAccount.type]?.[vault.activeAccount.id];
       if (
         this.walletSessionGeneration !== sessionGeneration ||
+        (expectedContext.sessionGeneration !== undefined &&
+          this.walletSessionGeneration !== expectedContext.sessionGeneration) ||
         this.isResettingWallet ||
         vault.isBitcoinBased ||
         vault.activeNetwork.chainId !== expectedContext.chainId ||
@@ -4903,6 +4920,7 @@ class MainController {
         }
         // No asynchronous work may intervene between this check and the
         // keyring's synchronous capture of the account and network.
+        saveOptions?.assertCurrentContext?.();
         assertExpectedContext();
         submissionStarted = true;
         txResponse =
@@ -4948,6 +4966,7 @@ class MainController {
       }
       if (
         (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          transactionMetadata?.smartAccountExecution ||
           expectedContext) &&
         txResponse?.hash
       ) {
@@ -4957,7 +4976,9 @@ class MainController {
           ),
           {
             transactionHash: txResponse.hash,
-            ...(expectedContext ? { transactionNotBroadcast: false } : {}),
+            ...(expectedContext || transactionMetadata?.smartAccountExecution
+              ? { transactionNotBroadcast: false }
+              : {}),
             transactionNonce:
               Number.isSafeInteger(txResponse.nonce) && txResponse.nonce >= 0
                 ? txResponse.nonce
@@ -4967,6 +4988,7 @@ class MainController {
       }
       if (
         (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          transactionMetadata?.smartAccountExecution ||
           expectedContext) &&
         !submissionStarted
       ) {
@@ -4984,8 +5006,14 @@ class MainController {
 
   public async signSmartAccountActionDigestInternal(
     params: string[],
-    targetAccount: { id: number; type: KeyringAccountType }
+    targetAccount: { id: number; type: KeyringAccountType },
+    executionContextId?: string
   ): Promise<string> {
+    const assertContext = () => {
+      if (executionContextId)
+        this.assertSmartAccountExecutionContext(executionContextId, params[1]);
+    };
+    assertContext();
     const { accounts, activeAccount } = store.getState().vault;
     const targetAccountExists =
       accounts[targetAccount.type]?.[targetAccount.id];
@@ -5007,12 +5035,30 @@ class MainController {
         }));
       }
 
-      return await getController().wallet.ethereumTransaction.ethSign(params);
+      assertContext();
+      const signature =
+        await getController().wallet.ethereumTransaction.ethSign(params);
+      assertContext();
+      return signature;
     } finally {
       if (shouldUseTargetAccount) {
         keyring.setVaultStateGetter(() => store.getState().vault);
       }
     }
+  }
+
+  public getWalletSessionGeneration(): number {
+    return this.walletSessionGeneration;
+  }
+
+  public assertSmartAccountExecutionContext(
+    executionContextId: string,
+    actionHash?: string
+  ): void {
+    this.smartAccount.assertSmartAccountExecutionContext(
+      executionContextId,
+      actionHash
+    );
   }
 
   public async getSLHDSASmartAccountSetupStatus(params: {
@@ -5208,20 +5254,39 @@ class MainController {
   }
 
   public async signSLHDSAActionHash(
-    params: SLHDSASignActionHashParams
+    params: SLHDSASignActionHashParams & { executionContextId?: string }
   ): Promise<string> {
+    const assertContext = () => {
+      if (params.executionContextId)
+        this.assertSmartAccountExecutionContext(
+          params.executionContextId,
+          params.actionHash
+        );
+    };
+    assertContext();
     this.configureSLHDSASessionStateCrypto();
     const sessionGeneration = getSLHDSASessionGeneration();
     try {
-      return await signSLHDSAActionHashLocal(params, sessionGeneration);
+      const signature = await signSLHDSAActionHashLocal(
+        params,
+        sessionGeneration
+      );
+      assertContext();
+      return signature;
     } catch (error: any) {
       const message = error?.message || String(error);
       if (!message.includes('not available in this unlocked session')) {
         throw error;
       }
       await this.hydrateActiveSLHDSAStateForSigning(params, sessionGeneration);
+      assertContext();
       try {
-        return await signSLHDSAActionHashLocal(params, sessionGeneration);
+        const signature = await signSLHDSAActionHashLocal(
+          params,
+          sessionGeneration
+        );
+        assertContext();
+        return signature;
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(

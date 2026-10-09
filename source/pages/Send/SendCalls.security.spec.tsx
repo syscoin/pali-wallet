@@ -445,6 +445,77 @@ describe('sendCalls submission lifecycle', () => {
     expect(records().some((record) => record.submissionCompleted)).toBe(false);
   });
 
+  it('uses the captured smart account even when another account is active before first render', async () => {
+    const captured = {
+      id: 0,
+      address: `0x${'1'.repeat(40)}`,
+      isSmartAccount: true,
+      smartAccount: { chainId: 1 },
+    };
+    const other = {
+      ...captured,
+      id: 1,
+      address: `0x${'4'.repeat(40)}`,
+    };
+    mockState.vault.accounts.SmartAccount = { 0: captured, 1: other };
+    mockState.vault.activeAccount = { type: 'SmartAccount', id: 1 };
+    mockQuery.approvedContext.account = {
+      address: captured.address,
+      id: 0,
+      type: 'SmartAccount',
+    };
+    mockQuery.from = captured.address;
+    const view = initialize();
+    expect(
+      findElement(view, (element) =>
+        Array.isArray(element.props.children)
+          ? element.props.children.includes(captured.address)
+          : false
+      )
+    ).toBeDefined();
+    await signButton(view).props.onClick();
+    expect(mockSmartSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountAddress: captured.address,
+        accountId: captured.id,
+        expectedContext: mockQuery.approvedContext,
+        smartAccount: captured.smartAccount,
+      })
+    );
+  });
+
+  it('keeps a captured EOA request on the EOA path when a smart account becomes active', async () => {
+    mockState.vault.accounts.SmartAccount = {
+      1: {
+        id: 1,
+        address: `0x${'4'.repeat(40)}`,
+        isSmartAccount: true,
+        smartAccount: { chainId: 1 },
+      },
+    };
+    mockState.vault.activeAccount = { type: 'SmartAccount', id: 1 };
+    await signButton(initialize()).props.onClick();
+    expect(mockSmartSubmit).not.toHaveBeenCalled();
+    expect(sends()).toHaveLength(2);
+    expect(sends()[0][1][0].from).toBe(
+      mockQuery.approvedContext.account.address
+    );
+  });
+
+  it('asks for a new approval when the background rejects a stale smart-account context', async () => {
+    makeSmart();
+    mockSmartSubmit.mockRejectedValue(
+      Object.assign(Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    await signButton(initialize()).props.onClick();
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'transactions.psbtSigningContextChanged'
+    );
+    expect(records().some((record) => record.submissionStarted)).toBe(false);
+  });
+
   it('allows smart-account preparation failures to retry before the sender boundary', async () => {
     makeSmart();
     mockSmartSubmit.mockRejectedValue(new Error('Authenticator unavailable'));

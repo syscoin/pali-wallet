@@ -421,6 +421,7 @@ export const PrepareSmartAccount = () => {
 
       await signAndSubmitSmartAccountExecutions({
         accountAddress: account.address,
+        accountId: account.id,
         authenticatorContexts: {
           ecdsa: {
             localOwners: [
@@ -430,12 +431,13 @@ export const PrepareSmartAccount = () => {
                 type: localOwner.type,
               },
             ],
-            signActionHash: ({ actionHash, owner }) =>
+            signActionHash: ({ actionHash, executionContextId, owner }) =>
               controllerEmitter(
                 ['wallet', 'signSmartAccountActionDigestInternal'],
                 [
                   [owner.address, actionHash],
                   { id: owner.id, type: owner.type },
+                  executionContextId,
                 ],
                 300000
               ) as Promise<string>,

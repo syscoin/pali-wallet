@@ -152,9 +152,13 @@ const decodeCommonCallData = (data?: string) => {
   }
 };
 
-const getSafeSmartAccountCallErrorMessage = (error: any, fallback: string) => {
+const getSafeSmartAccountCallErrorMessage = (
+  error: any,
+  fallback: string,
+  contextChangedMessage: string
+) => {
   const message = error?.message ? String(error.message) : '';
-  if (message === EVM_TRANSACTION_CONTEXT_CHANGED) return fallback;
+  if (message === EVM_TRANSACTION_CONTEXT_CHANGED) return contextChangedMessage;
   const normalized = message.toLowerCase();
   const isRawRpcError =
     normalized.includes('"jsonrpc"') ||
@@ -176,16 +180,15 @@ export const SendCalls = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   // Get data from query parameters or location state
   const { host, eventName, ...externalData } = useQueryData();
 
   const callsData: ISendCallsData = externalData;
   const [approvedContext] = useState(() => callsData.approvedContext);
+  const approvedAccount =
+    accounts[approvedContext.account.type]?.[approvedContext.account.id];
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -211,8 +214,8 @@ export const SendCalls = () => {
   const [progressSubmissionId, setProgressSubmissionId] = useState<string>();
   const [requestSmartAccount] = useState(() => ({
     supportsAtomicBatch: Boolean(
-      activeAccount?.isSmartAccount &&
-        activeAccount.smartAccount?.chainId === activeNetwork.chainId
+      approvedAccount?.isSmartAccount &&
+        approvedAccount.smartAccount?.chainId === approvedContext.chainId
     ),
   }));
 
@@ -520,6 +523,15 @@ export const SendCalls = () => {
       setConfirmed(false); // Reset confirmed state for each attempt
 
       if (
+        approvedAccount?.address?.toLowerCase() !==
+          approvedContext.account.address.toLowerCase() ||
+        (callsData.from &&
+          callsData.from.toLowerCase() !==
+            approvedContext.account.address.toLowerCase())
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+
+      if (
         callsData.atomicRequired &&
         !requestSmartAccount.supportsAtomicBatch
       ) {
@@ -643,14 +655,15 @@ export const SendCalls = () => {
           }
 
           const response = (await signAndSubmitSmartAccountExecutions({
-            accountAddress: activeAccount.address,
-            accountId: activeAccount.id,
+            accountAddress: approvedContext.account.address,
+            accountId: approvedContext.account.id,
             authenticatorContexts: getSmartAccountLocalOwnerContexts({
               accounts,
               controllerEmitter,
             }),
             controllerEmitter,
             executions: smartAccountCalls,
+            expectedContext: approvedContext,
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
                 setTransactionStatuses((prev) => {
@@ -674,7 +687,7 @@ export const SendCalls = () => {
               await markSubmissionStarted();
               smartSubmissionInvoked = true;
             },
-            smartAccount: activeAccount.smartAccount,
+            smartAccount: approvedAccount.smartAccount,
           })) as any;
           const txHash = response.hash || response;
 
@@ -726,7 +739,11 @@ export const SendCalls = () => {
           }
           const errorMessage = unknown
             ? t('send.submissionStatusUnknown')
-            : getSafeSmartAccountCallErrorMessage(error, t('send.sendError'));
+            : getSafeSmartAccountCallErrorMessage(
+                error,
+                t('send.sendError'),
+                t('transactions.psbtSigningContextChanged')
+              );
           selectedIndices.forEach((index) => {
             setTransactionStatuses((prev) => {
               const newStatuses = [...prev];
@@ -898,7 +915,7 @@ export const SendCalls = () => {
               undefined,
               { expectedContext: approvedContext },
             ],
-            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+            approvedAccount.isTrezorWallet || approvedAccount.isLedgerWallet
               ? 300000
               : 10000,
             false
@@ -971,7 +988,11 @@ export const SendCalls = () => {
             await markSubmissionNotBroadcast();
           const errorMessage = unknown
             ? t('send.submissionStatusUnknown')
-            : getSafeSmartAccountCallErrorMessage(error, t('send.sendError'));
+            : getSafeSmartAccountCallErrorMessage(
+                error,
+                t('send.sendError'),
+                t('transactions.psbtSigningContextChanged')
+              );
           receipts.push({
             status: '0x0',
             error: errorMessage,
@@ -1032,7 +1053,13 @@ export const SendCalls = () => {
       setLoading(false);
       setConfirmed(false);
       setProcessingIndex(-1);
-      alert.error(t('send.sendError'));
+      alert.error(
+        t(
+          error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+            ? 'transactions.psbtSigningContextChanged'
+            : 'send.sendError'
+        )
+      );
     } finally {
       submissionInFlightRef.current = false;
     }
@@ -1081,6 +1108,9 @@ export const SendCalls = () => {
     <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="bg-brand-blue600 p-4">
+        <p className="text-sm text-brand-white break-all">
+          {t('send.from')}: {approvedContext.account.address}
+        </p>
         <p className="text-brand-gray200 text-sm mt-1">
           {callsData.atomicRequired
             ? t('send.atomicBatchRequired')
