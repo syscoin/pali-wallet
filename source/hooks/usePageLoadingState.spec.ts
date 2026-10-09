@@ -29,8 +29,13 @@ describe('context-sensitive actions', () => {
     '/settings/account/private-key',
     '/settings/account/import',
     '/settings/edit-account',
+    '/settings/manage-accounts',
+    '/SETTINGS/MANAGE-ACCOUNTS/',
+    '/%73ettings/manage-accounts',
     '/settings/forget-wallet',
     '/settings/seed',
+    '/settings/advanced',
+    '/SETTINGS/ADVANCED/',
     '/external/settings/account/hardware',
     '/external/smart-account',
     '/external/smart-account-modules',
@@ -48,12 +53,10 @@ describe('context-sensitive actions', () => {
   ])('guards %s during account/network transitions', (route) => {
     expect(isContextSensitiveWalletRoute(route)).toBe(true);
   });
-  it.each([
-    '/receive',
-    '/settings/manage-accounts',
-    '/switch-network',
-    '/settings/networks/custom-rpc',
-  ])('keeps navigation and recovery route %s available', (route) => {
-    expect(isContextSensitiveWalletRoute(route)).toBe(false);
-  });
+  it.each(['/receive', '/switch-network', '/settings/networks/custom-rpc'])(
+    'keeps navigation and recovery route %s available',
+    (route) => {
+      expect(isContextSensitiveWalletRoute(route)).toBe(false);
+    }
+  );
 });

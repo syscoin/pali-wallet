@@ -1,6 +1,9 @@
 jest.mock('..', () => ({
   getController: jest.fn(),
-  notificationManager: { cleanup: jest.fn() },
+  notificationManager: {
+    cleanup: jest.fn(),
+    notifyNetworkChange: jest.fn(),
+  },
 }));
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
@@ -325,10 +328,20 @@ describe('non-destructive account recovery boundaries', () => {
     wallet.assetUpdateRequestId = 0;
     wallet.cancelActiveBalanceUpdate = jest.fn();
     wallet.handleNetworkChangeError = jest.fn();
+    wallet.ensureActiveAccountCompatibleWithNetwork = jest
+      .fn()
+      .mockResolvedValue(false);
+    wallet.isStartingUp = true;
+    let persistedMainSlip44 = 57;
     const committedVaults: any[] = [];
-    wallet.handleNetworkChangeSuccess = jest.fn(async () => {
-      committedVaults.push(JSON.parse(JSON.stringify(currentState.vault)));
-    });
+    const persist = jest
+      .spyOn(storeModule, 'persistCommittedWalletState')
+      .mockImplementation(async (includeMainState) => {
+        committedVaults.push(JSON.parse(JSON.stringify(currentState.vault)));
+        if (includeMainState) {
+          persistedMainSlip44 = currentState.vaultGlobal.activeSlip44;
+        }
+      });
     // Keep public request cancellation and the production network-switch mutex;
     // omit unrelated network-quality/notification work around configuration.
     wallet.setActiveNetworkLogic = (
@@ -410,6 +423,11 @@ describe('non-destructive account recovery boundaries', () => {
     expect(currentState.vault.accounts.HDAccount).toEqual({ 0: firstAccount });
     expect(committedVaults).toHaveLength(1);
     expect(committedVaults[0].accounts.HDAccount).toEqual({ 0: firstAccount });
+    // The retry began after the first request already set activeSlip44=60;
+    // its own previousSlip44 cannot tell that the persisted pointer is still 57.
+    expect(persist).toHaveBeenCalledWith(true, false, expect.any(Function));
+    expect(persistedMainSlip44).toBe(60);
+    expect(wallet.isNetworkSwitchMainStateDirty).toBe(false);
   });
 
   it.each([

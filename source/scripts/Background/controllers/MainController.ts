@@ -201,6 +201,13 @@ import {
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
+export type AccountRemovalContext = {
+  activeAccount: { address: string; id: number; type: KeyringAccountType };
+  address: string;
+  network: Pick<INetwork, 'chainId' | 'kind' | 'url'>;
+  slip44: number | null;
+};
+
 // Default slip44 values for fallback cases
 
 class MainController {
@@ -793,6 +800,7 @@ class MainController {
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
+      getWalletSessionGeneration: () => this.walletSessionGeneration,
       getLatestUpdateForCurrentAccount: (
         isPolling,
         forceUpdate,
@@ -1073,6 +1081,10 @@ class MainController {
           // CRITICAL FIX: Only update activeSlip44 AFTER successful session transfer
           // This ensures atomic state change to prevent race conditions
           if (isSwitchingSlip44) {
+            // A newer request may start after this pointer changes but before
+            // this switch reaches persistence. Preserve the global-state commit
+            // requirement for that request even if it stays on this slip44.
+            this.isNetworkSwitchMainStateDirty = true;
             store.dispatch(setActiveSlip44(slip44));
           }
         } catch (error) {
@@ -2795,8 +2807,8 @@ class MainController {
     return this.smartAccount.assertSmartAccountSupported();
   }
 
-  public getSmartAccountInfrastructureStatus() {
-    return this.smartAccount.getSmartAccountInfrastructureStatus();
+  public getSmartAccountInfrastructureStatus(forceRefresh = false) {
+    return this.smartAccount.getSmartAccountInfrastructureStatus(forceRefresh);
   }
 
   public deploySmartAccountInfrastructure() {
@@ -3634,9 +3646,34 @@ class MainController {
 
   public async removeAccount(
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: AccountRemovalContext
   ) {
-    const { accounts, activeAccount } = store.getState().vault;
+    const state = store.getState();
+    const { accounts, activeAccount, activeNetwork } = state.vault;
+
+    // A confirmation from another window/context must never remove an account
+    // that happens to reuse the same id/type in the newly active vault. Keep
+    // this check and the removal synchronous, before any notification or save.
+    if (
+      expectedContext !== undefined &&
+      (this.isResettingWallet ||
+        state.vaultGlobal.isSwitchingAccount ||
+        state.vaultGlobal.networkStatus === 'switching' ||
+        state.vaultGlobal.networkStatus === 'connecting' ||
+        expectedContext?.slip44 !== state.vaultGlobal.activeSlip44 ||
+        expectedContext?.network?.kind !== activeNetwork.kind ||
+        expectedContext?.network?.chainId !== activeNetwork.chainId ||
+        expectedContext?.network?.url !== activeNetwork.url ||
+        expectedContext?.activeAccount?.id !== activeAccount.id ||
+        expectedContext?.activeAccount?.type !== activeAccount.type ||
+        expectedContext?.activeAccount?.address !==
+          accounts[activeAccount.type]?.[activeAccount.id]?.address ||
+        !expectedContext?.address ||
+        expectedContext.address !== accounts[accountType]?.[accountId]?.address)
+    ) {
+      throw new Error('Account context changed. Please confirm removal again.');
+    }
 
     // Safety check: Don't allow removing the active account
     if (activeAccount.id === accountId && activeAccount.type === accountType) {
@@ -4640,12 +4677,15 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertCurrentContext?: () => void;
       clearNavigation?: boolean;
+      onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
       transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
     }
   ): Promise<IEvmTransactionResponse> {
+    let txResponse: IEvmTransactionResponse | undefined;
     try {
       const controller = getController();
 
@@ -4678,6 +4718,7 @@ class MainController {
         }
       }
 
+      saveOptions?.assertCurrentContext?.();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
         targetAccount &&
@@ -4697,7 +4738,7 @@ class MainController {
       // override only the keyring's state getter for the signing call. Do not
       // dispatch setActiveAccount here; that briefly changes the visible UI.
       const keyring = this.getActiveKeyring();
-      let txResponse: IEvmTransactionResponse;
+
       try {
         if (shouldUseTargetAccount) {
           keyring.setVaultStateGetter(() => ({
@@ -4716,6 +4757,11 @@ class MainController {
         }
       }
 
+      // Preserve a deployment's acknowledged hash independently of whichever
+      // wallet/network the UI selects while the broadcast is in flight.
+      if (saveOptions?.onBroadcast) await saveOptions.onBroadcast(txResponse);
+      saveOptions?.assertCurrentContext?.();
+
       // Save the transaction (this will also clear navigation state)
       const txToSave = transactionMetadata
         ? ({ ...txResponse, ...transactionMetadata } as IEvmTransactionResponse)
@@ -4732,6 +4778,17 @@ class MainController {
         console.error(
           '[MainController] Failed to clear navigation state on error:',
           e
+        );
+      }
+      if (
+        transactionMetadata?.smartAccountInfrastructureDeployment &&
+        txResponse?.hash
+      ) {
+        throw Object.assign(
+          new Error(
+            error?.message || 'Deployment submission persistence failed'
+          ),
+          { transactionHash: txResponse.hash }
         );
       }
       throw error;

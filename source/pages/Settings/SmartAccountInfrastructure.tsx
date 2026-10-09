@@ -57,7 +57,7 @@ const InfrastructurePanel = ({
     const request = controllerEmitter(
       ['wallet', 'getSmartAccountInfrastructureStatus'],
       [true],
-      10000,
+      20000,
       false
     )
       .then((result) => {

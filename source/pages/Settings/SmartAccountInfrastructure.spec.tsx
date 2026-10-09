@@ -8,6 +8,8 @@ import {
 
 let mockChanging = false;
 let mockDisconnected = false;
+const mockControllerEmitter = jest.fn();
+let mockStateSetters: jest.Mock[];
 jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({
@@ -26,7 +28,7 @@ jest.mock('react-i18next', () => ({
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
-    controllerEmitter: jest.fn(),
+    controllerEmitter: mockControllerEmitter,
     connectionUnavailable: mockDisconnected,
     isUnlocked: true,
   }),
@@ -50,9 +52,11 @@ const status = {
 const render = (values: any[]) => {
   values.splice(5, 0, false);
   const state = jest.spyOn(React, 'useState');
-  values.forEach((value) =>
-    state.mockImplementationOnce(() => [value, jest.fn()])
-  );
+  values.forEach((value) => {
+    const setter = jest.fn();
+    mockStateSetters.push(setter);
+    state.mockImplementationOnce(() => [value, setter]);
+  });
   return renderToStaticMarkup(<SmartAccountInfrastructure />);
 };
 
@@ -60,6 +64,8 @@ describe('smart account setup status safety', () => {
   beforeEach(() => {
     mockChanging = false;
     mockDisconnected = false;
+    mockStateSetters = [];
+    mockControllerEmitter.mockReset();
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -74,6 +80,40 @@ describe('smart account setup status safety', () => {
     const markup = render([null, false, true, false, true, '']);
     expect(markup).toContain('settings.smartAccountInfrastructureCheckingSlow');
     expect(markup).not.toContain('settings.smartAccountCreate2Missing');
+  });
+
+  it('keeps the twenty-second transport deadline separate from 1.2-second visible feedback', () => {
+    jest.useFakeTimers();
+    const previousWindow = global.window;
+    global.window = {
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    } as any;
+    const effects: Array<() => any> = [];
+    jest.spyOn(React, 'useEffect').mockImplementation((effect) => {
+      effects.push(effect);
+    });
+    mockControllerEmitter.mockReturnValue(new Promise(() => undefined));
+    try {
+      render([null, false, true, false, false, '']);
+      const stopSubscription = effects[0]();
+      const stopFeedback = effects[2]();
+      expect(mockControllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'getSmartAccountInfrastructureStatus'],
+        [true],
+        20000,
+        false
+      );
+      jest.advanceTimersByTime(1199);
+      expect(mockStateSetters[4]).toHaveBeenLastCalledWith(false);
+      jest.advanceTimersByTime(1);
+      expect(mockStateSetters[4]).toHaveBeenLastCalledWith(true);
+      stopSubscription();
+      stopFeedback();
+    } finally {
+      global.window = previousWindow;
+      jest.useRealTimers();
+    }
   });
 
   it('does not offer deployment based on stale status after a failed refresh', () => {

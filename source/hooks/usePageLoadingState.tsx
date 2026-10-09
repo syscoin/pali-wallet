@@ -34,8 +34,9 @@ export const isContextSensitiveWalletRoute = (pathname: string): boolean => {
   pathname = normalizeWalletPathname(pathname);
   return (
     pathname === '/home' ||
+    pathname === '/settings/advanced' ||
     /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
-    /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|forget-wallet$|seed$)/.test(
+    /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|manage-accounts$|forget-wallet$|seed$)/.test(
       pathname
     ) ||
     pathname === '/home/smart-account' ||
