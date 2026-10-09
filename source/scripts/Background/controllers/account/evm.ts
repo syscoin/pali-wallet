@@ -52,6 +52,8 @@ const EthAccountController = (): IEthAccountController | any => {
     try {
       const tokenExists = activeAccountAssets.ethereum.find(
         (asset: ITokenEthProps) => {
+          // SYSCOIN: The same address may name different assets on other chains.
+          if (asset.chainId !== chainId) return false;
           // For ERC-1155 tokens, check both contract address and tokenId
           if (
             asset.tokenStandard === 'ERC-1155' &&
@@ -87,8 +89,10 @@ const EthAccountController = (): IEthAccountController | any => {
         // For ERC-1155, include tokenId in the id to make it unique
         id:
           token.tokenStandard === 'ERC-1155' && token.tokenId
-            ? `${token.contractAddress.toLowerCase()}_${token.tokenId}`
-            : token.contractAddress.toLowerCase(),
+            ? `${token.contractAddress.toLowerCase()}-${chainId}-${
+                token.tokenId
+              }`
+            : `${token.contractAddress.toLowerCase()}-${chainId}`,
         chainId,
       };
 

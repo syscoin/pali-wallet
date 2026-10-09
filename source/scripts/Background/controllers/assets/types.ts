@@ -29,7 +29,8 @@ export interface IAssetsManagerUtils {
     activeNetworkUrl: string,
     networkChainId: number,
     web3Provider: CustomJsonRpcProvider,
-    currentAssets: IAccountAssets
+    currentAssets: IAccountAssets,
+    onBalanceRead?: (token: ITokenEthProps) => void
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
 
@@ -159,7 +160,8 @@ export interface IEvmAssetsController {
     account: IKeyringAccountState,
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
-    accountAssets: ITokenEthProps[]
+    accountAssets: ITokenEthProps[],
+    onBalanceRead?: (token: ITokenEthProps) => void
   ) => Promise<ITokenEthProps[]>;
 
   // Simplified ERC-20 validation with minimal ETH calls

@@ -2,18 +2,20 @@ import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEqual from 'lodash/isEqual';
+import omit from 'lodash/omit';
 import sortBy from 'lodash/sortBy';
 import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
 import { IAccountAssets } from 'state/vault/types';
-import { IKeyringAccountState, INetwork } from 'types/network';
+import { IKeyringAccountState, INetwork, INetworkType } from 'types/network';
 import { ITokenEthProps } from 'types/tokens';
 
 import { ISysTokensAssetReponse } from './types';
 
 export const canCommitAssetUpdate = ({
   account,
+  allowBalanceChanges = false,
   assets,
   latestAccount,
   latestAssets,
@@ -23,6 +25,7 @@ export const canCommitAssetUpdate = ({
   requestId,
 }: {
   account: IKeyringAccountState;
+  allowBalanceChanges?: boolean;
   assets: IAccountAssets;
   latestAccount?: IKeyringAccountState;
   latestAssets?: IAccountAssets;
@@ -41,7 +44,21 @@ export const canCommitAssetUpdate = ({
   // Redux/Immer preserves this nested reference until that account's asset
   // state changes. This O(1) snapshot check catches imports/deletes without a
   // second deep comparison on every polling cycle.
-  latestAssets === assets;
+  (latestAssets === assets ||
+    // SYSCOIN: Receipt reads may update balances during a later regular poll.
+    // Only that narrow change is safe; imports, deletion, order and metadata
+    // changes still invalidate the snapshot, as does every context check above.
+    (allowBalanceChanges &&
+      network.kind === INetworkType.Ethereum &&
+      !!latestAssets &&
+      latestAssets.syscoin === assets.syscoin &&
+      latestAssets.ethereum.length === assets.ethereum.length &&
+      assets.ethereum.every((token, index) =>
+        isEqual(
+          omit(token, ['balance', 'rawBalance']),
+          omit(latestAssets.ethereum[index], ['balance', 'rawBalance'])
+        )
+      )));
 
 export const validateAndManageUserAssets = (
   isForEvm: boolean,
@@ -124,6 +141,8 @@ export const validateAndManageUserAssets = (
       if (isForEvm) {
         const aEvm = a as ITokenEthProps;
         const bEvm = b as ITokenEthProps;
+        // SYSCOIN: Never collapse the same deployment address across chains.
+        if (aEvm.chainId !== bEvm.chainId) return false;
         const sameContract =
           (aEvm.contractAddress || '').toLowerCase() ===
           (bEvm.contractAddress || '').toLowerCase();

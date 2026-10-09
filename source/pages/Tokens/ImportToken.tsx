@@ -53,6 +53,7 @@ export const ImportToken: React.FC = () => {
   // PATH 1: Your Tokens state
   const [ownedTokens, setOwnedTokens] = useState<ITokenSearchResult[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(false);
+  const [ownedTokensUnavailable, setOwnedTokensUnavailable] = useState(false);
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customContractAddress, setCustomContractAddress] = useState(
@@ -95,6 +96,7 @@ export const ImportToken: React.FC = () => {
     null
   );
   const loadingKeyRef = useRef<string>('');
+  const ownedRequestIdRef = useRef(0);
 
   // Calculate imported asset IDs for efficient lookup - must match the token ID format
   const importedAssetIds = useMemo(() => {
@@ -123,7 +125,13 @@ export const ImportToken: React.FC = () => {
   const loadOwnedTokens = useCallback(async () => {
     if (!activeAccount?.address) return;
 
+    const requestKey = `${activeAccount.address}-${activeNetwork.chainId}`;
+    const requestId = ++ownedRequestIdRef.current;
+    const isCurrent = () =>
+      loadingKeyRef.current === requestKey &&
+      ownedRequestIdRef.current === requestId;
     setIsLoadingOwned(true);
+    setOwnedTokensUnavailable(false);
     try {
       const results = (await controllerEmitter(
         ['wallet', 'getUserOwnedTokens'],
@@ -136,12 +144,14 @@ export const ImportToken: React.FC = () => {
         return !importedAssetIds.has(tokenId);
       });
 
-      setOwnedTokens(filteredResults);
+      if (isCurrent()) setOwnedTokens(filteredResults);
     } catch (error) {
       console.error('Error loading owned tokens:', error);
-      setOwnedTokens([]);
+      if (isCurrent()) {
+        setOwnedTokensUnavailable(true);
+      }
     } finally {
-      setIsLoadingOwned(false);
+      if (isCurrent()) setIsLoadingOwned(false);
     }
   }, [
     activeAccount?.address,
@@ -161,14 +171,22 @@ export const ImportToken: React.FC = () => {
     // Only load if we haven't loaded for this specific combination
     if (loadingKeyRef.current !== currentKey) {
       loadingKeyRef.current = currentKey;
+      setOwnedTokens([]);
       loadOwnedTokens();
     }
+    return () => {
+      ownedRequestIdRef.current += 1;
+      loadingKeyRef.current = '';
+    };
   }, [activeAccount?.address, activeNetwork.chainId]);
 
   // Create debounced validation function
   useEffect(() => {
+    let current = true;
     const validateCustomToken = async (contractAddress: string) => {
       if (!contractAddress || contractAddress.length < 42) {
+        // SYSCOIN: A cancelled validation cannot clear this input's spinner.
+        setIsValidatingCustom(false);
         setCustomTokenDetails(null);
         return;
       }
@@ -183,6 +201,7 @@ export const ImportToken: React.FC = () => {
         ).catch(() => null);
 
         // If enhanced validation fails, try NFT validation
+        if (!current) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateNftContract'],
@@ -191,6 +210,7 @@ export const ImportToken: React.FC = () => {
         }
 
         // If NFT validation fails, try basic ERC-20
+        if (!current) return;
         if (!details) {
           details = await controllerEmitter(
             ['wallet', 'validateERC20Only'],
@@ -198,6 +218,7 @@ export const ImportToken: React.FC = () => {
           );
         }
 
+        if (!current) return;
         if (details) {
           setCustomTokenDetails(details as ITokenDetails);
         } else {
@@ -205,9 +226,9 @@ export const ImportToken: React.FC = () => {
         }
       } catch (error) {
         console.error('Validation error:', error);
-        setCustomTokenDetails(null);
+        if (current) setCustomTokenDetails(null);
       } finally {
-        setIsValidatingCustom(false);
+        if (current) setIsValidatingCustom(false);
       }
     };
 
@@ -216,12 +237,14 @@ export const ImportToken: React.FC = () => {
 
     // Cleanup function to cancel any pending debounced calls
     return () => {
+      // SYSCOIN: Cancellation must also reject already-running async results.
+      current = false;
       if (debouncedValidationRef.current) {
         debouncedValidationRef.current.cancel();
         debouncedValidationRef.current = null;
       }
     };
-  }, [activeAccount?.address, activeAccountAssets, activeNetwork.chainId]);
+  }, [activeAccount?.address, activeNetwork.chainId, deferredCustomAddress]);
 
   // Handle custom contract input change
   useEffect(() => {
@@ -229,8 +252,9 @@ export const ImportToken: React.FC = () => {
       debouncedValidationRef.current(deferredCustomAddress.trim());
     } else if (!deferredCustomAddress) {
       setCustomTokenDetails(null);
+      setIsValidatingCustom(false);
     }
-  }, [deferredCustomAddress]);
+  }, [deferredCustomAddress, activeAccount?.address, activeNetwork.chainId]);
 
   // Verify ERC1155 token ID balance
   const verifyERC1155TokenId = useCallback(
@@ -601,7 +625,19 @@ export const ImportToken: React.FC = () => {
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
-        {activeTab === 'owned' ? (
+        {activeTab === 'owned' && ownedTokensUnavailable ? (
+          <div role="alert">
+            <p>{t('settings.apiConnectionError')}</p>
+            {/* SYSCOIN: Retry only on user action; the API cooldown still applies. */}
+            <button
+              className="mt-2 text-brand-royalblue underline"
+              onClick={loadOwnedTokens}
+              type="button"
+            >
+              {t('receive.retry')}
+            </button>
+          </div>
+        ) : activeTab === 'owned' ? (
           <ImportableAssetsList
             key={`owned-${currentlyImporting || 'none'}`}
             assets={ownedAssetsForList}

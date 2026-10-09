@@ -1354,6 +1354,24 @@ class SmartAccountController {
         {
           smartAccountExecution: true,
           smartAccountExecutionFrom: active.account.address,
+          // SYSCOIN: The outer handleOps recipient is not the affected token.
+          balanceRefreshTokenAddresses: (params.executions || []).map(
+            (execution) => execution.target
+          ),
+          balanceRefreshNativeAddresses: [
+            gasPayer.address,
+            ...(!requiredPrefund.isZero() ||
+            (params.executions || []).some(
+              (execution) => !BigNumber.from(execution.value || '0').isZero()
+            )
+              ? [active.account.address]
+              : []),
+            ...(params.executions || [])
+              .filter(
+                (execution) => !BigNumber.from(execution.value || '0').isZero()
+              )
+              .map((execution) => execution.target),
+          ],
         },
         {
           clearNavigation: true,
