@@ -157,7 +157,8 @@ describe('shared controller status', () => {
     expect(controllerEmitter).toHaveBeenLastCalledWith(
       ['wallet', 'isUnlocked'],
       [],
-      1800
+      1800,
+      false
     );
 
     jest.mocked(controllerEmitter).mockResolvedValueOnce(true);

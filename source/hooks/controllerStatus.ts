@@ -45,7 +45,9 @@ const schedulePoll = () => {
 export const checkControllerStatus = (): Promise<boolean> => {
   if (pendingCheck) return pendingCheck;
   const requestGeneration = generation;
-  const request = controllerEmitter(['wallet', 'isUnlocked'], [], 1800)
+  // This shared poller owns recovery retries. Per-call backoff would extend
+  // the 1.8-second status deadline and keep stale controls active too long.
+  const request = controllerEmitter(['wallet', 'isUnlocked'], [], 1800, false)
     .then((unlocked) => {
       if (typeof unlocked !== 'boolean') {
         throw new Error('Invalid wallet lock status response');
