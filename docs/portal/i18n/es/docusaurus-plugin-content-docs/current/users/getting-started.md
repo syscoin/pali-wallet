@@ -41,6 +41,8 @@ Las dapps EVM pueden solicitar:
 - solicitudes de agregar/cambiar cadena
 - solicitudes de llamadas por lotes
 
+Para buscar o añadir activos, consulta [Detección de tokens y API de exploradores](./token-discovery-and-explorer-apis). La guía cubre las importaciones manuales, los formatos de API compatibles, la configuración de redes y los límites de acceso de los proveedores.
+
 ## Cuentas UTXO
 
 Usa cuentas UTXO para Syscoin UTXO y flujos de transacciones de estilo Bitcoin. Las dapps UTXO pueden solicitar estado con xpub, direcciones de cambio, firma PSBT y transmisión de transacciones.

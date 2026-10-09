@@ -41,6 +41,8 @@ EVM dapp 可以请求：
 - 添加或切换链
 - 批量调用
 
+要查找或添加资产，请参阅[代币发现与区块浏览器 API](./token-discovery-and-explorer-apis)。本指南介绍手动导入、支持的 API 格式、网络设置以及服务提供商的访问限制。
+
 ## UTXO 账户
 
 UTXO 账户适用于 Syscoin UTXO 和 Bitcoin 风格的交易流程。UTXO dapp 可以请求支持 xpub 的状态信息、找零地址、PSBT 签名和交易广播。

@@ -41,6 +41,8 @@ EVM dapp은 다음을 요청할 수 있습니다.
 - 체인 추가 또는 전환
 - 일괄 호출
 
+자산을 찾거나 추가하려면 [토큰 검색 및 탐색기 API](./token-discovery-and-explorer-apis)를 참조하세요. 이 가이드는 수동 가져오기, 지원하는 API 형식, 네트워크 설정, 제공업체의 접근 제한을 설명합니다.
+
 ## UTXO 계정
 
 UTXO 계정은 Syscoin UTXO 및 Bitcoin 방식의 트랜잭션 흐름에 사용합니다. UTXO dapp은 xpub를 지원하는 상태 정보, 잔돈 주소, PSBT 서명, 트랜잭션 전파를 요청할 수 있습니다.
