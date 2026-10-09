@@ -334,11 +334,11 @@ class SmartAccountController {
     { status: SmartAccountInfrastructureStatus; timestamp: number }
   >();
   private readonly infrastructureDeployments = new Map<
-    string,
-    Promise<InfrastructureDeploymentResult>
+    number,
+    { contextKey: string; operation: Promise<InfrastructureDeploymentResult> }
   >();
   private readonly pendingInfrastructure = new Map<
-    string,
+    number,
     InfrastructurePending
   >();
   private readonly pendingDeploymentAddresses = new Set<string>();
@@ -504,7 +504,7 @@ class SmartAccountController {
     };
     // Capture pending identities before probing; later submissions must never
     // be settled using code/receipts read before their reservation existed.
-    const observedMemory = this.pendingInfrastructure.get(context.key);
+    const observedMemory = this.pendingInfrastructure.get(context.chainId);
     const observedHistory = this.persistedInfrastructurePending(
       context.chainId
     );
@@ -595,7 +595,12 @@ class SmartAccountController {
         pending = candidate;
         break;
       }
-      if (candidate.rpcUrl !== context.url) continue;
+      if (candidate.rpcUrl !== context.url) {
+        // An endpoint alias may serve the same chain. Keep admission closed, but
+        // never use this endpoint's state to settle another RPC's submission.
+        pending = candidate;
+        break;
+      }
       if (
         !infrastructureContracts.some(
           (contract) => contract.id === candidate.contractId
@@ -652,12 +657,12 @@ class SmartAccountController {
       }
       if (
         infrastructurePendingIdentity(
-          this.pendingInfrastructure.get(context.key)
+          this.pendingInfrastructure.get(context.chainId)
         ) === infrastructurePendingIdentity(candidate)
       )
-        this.pendingInfrastructure.delete(context.key);
+        this.pendingInfrastructure.delete(context.chainId);
     }
-    const latestPending = this.pendingInfrastructure.get(context.key);
+    const latestPending = this.pendingInfrastructure.get(context.chainId);
     if (
       latestPending &&
       (infrastructurePendingIdentity(latestPending) !==
@@ -683,7 +688,7 @@ class SmartAccountController {
       cached &&
       Date.now() - cached.timestamp < 5000 &&
       !cached.status.pending &&
-      !this.pendingInfrastructure.has(context.key)
+      !this.pendingInfrastructure.has(context.chainId)
     )
       return cached.status;
     return this.readInfrastructureStatus(context);
@@ -691,16 +696,29 @@ class SmartAccountController {
 
   public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
     const context = this.infrastructureContext();
-    const existing = this.infrastructureDeployments.get(context.key);
-    if (existing) return existing;
+    const existing = this.infrastructureDeployments.get(context.chainId);
+    if (existing) {
+      if (existing.contextKey === context.key) return existing.operation;
+      return Promise.reject(
+        new Error(
+          'Another infrastructure deployment is pending on this network.'
+        )
+      );
+    }
     const operation = this.deployInfrastructureForContext(context).finally(
       () => {
-        if (this.infrastructureDeployments.get(context.key) === operation)
-          this.infrastructureDeployments.delete(context.key);
+        if (
+          this.infrastructureDeployments.get(context.chainId)?.operation ===
+          operation
+        )
+          this.infrastructureDeployments.delete(context.chainId);
         this.infrastructureStatusCache.delete(context.key);
       }
     );
-    this.infrastructureDeployments.set(context.key, operation);
+    this.infrastructureDeployments.set(context.chainId, {
+      contextKey: context.key,
+      operation,
+    });
     return operation;
   }
 
@@ -784,7 +802,7 @@ class SmartAccountController {
             .catch(() => undefined);
           throw error;
         }
-        this.pendingInfrastructure.set(context.key, reservation);
+        this.pendingInfrastructure.set(context.chainId, reservation);
         this.infrastructureStatusCache.delete(context.key);
         let response: IEvmTransactionResponse;
         try {
@@ -820,7 +838,7 @@ class SmartAccountController {
                       ? broadcast.nonce
                       : reservation.nonce,
                 };
-                this.pendingInfrastructure.set(context.key, pending);
+                this.pendingInfrastructure.set(context.chainId, pending);
                 this.infrastructureStatusCache.delete(context.key);
                 await this.infrastructureDeadline(
                   writeInfrastructureJournal(context, pending)
@@ -831,7 +849,9 @@ class SmartAccountController {
         } catch (error) {
           const hash = (error as any)?.transactionHash;
           if (hash) {
-            const acknowledged = this.pendingInfrastructure.get(context.key);
+            const acknowledged = this.pendingInfrastructure.get(
+              context.chainId
+            );
             const pending = {
               ...reservation,
               ...(infrastructurePendingIdentity(acknowledged) ===
@@ -846,7 +866,7 @@ class SmartAccountController {
               acknowledgedNonce >= 0
             )
               pending.nonce = acknowledgedNonce;
-            this.pendingInfrastructure.set(context.key, pending);
+            this.pendingInfrastructure.set(context.chainId, pending);
             this.infrastructureStatusCache.delete(context.key);
             // The broadcast callback may have failed its first storage write.
             // Retry this same acknowledged attempt before reporting the error;
@@ -886,10 +906,10 @@ class SmartAccountController {
               // same unsent in-memory attempt then, without touching a retry.
               if (
                 infrastructurePendingIdentity(
-                  this.pendingInfrastructure.get(context.key)
+                  this.pendingInfrastructure.get(context.chainId)
                 ) === reservation.attemptId
               )
-                this.pendingInfrastructure.delete(context.key);
+                this.pendingInfrastructure.delete(context.chainId);
             });
             await this.infrastructureDeadline(releaseRejectedAttempt);
           }
@@ -903,7 +923,7 @@ class SmartAccountController {
               ? response.nonce
               : reservation.nonce,
         };
-        this.pendingInfrastructure.set(context.key, pending);
+        this.pendingInfrastructure.set(context.chainId, pending);
         nextNonce = nonce + 1;
         const deadline = Date.now() + 15000;
         let receipt: any;
@@ -928,10 +948,10 @@ class SmartAccountController {
         );
         if (
           infrastructurePendingIdentity(
-            this.pendingInfrastructure.get(context.key)
+            this.pendingInfrastructure.get(context.chainId)
           ) === infrastructurePendingIdentity(pending)
         )
-          this.pendingInfrastructure.delete(context.key);
+          this.pendingInfrastructure.delete(context.chainId);
         if (Number(receipt.status) !== 1)
           throw new Error(
             `${contract.displayName} deployment failed. Refresh status before retrying.`

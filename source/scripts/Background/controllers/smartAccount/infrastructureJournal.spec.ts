@@ -69,17 +69,58 @@ describe('durable infrastructure deployment journal', () => {
     );
   });
 
-  it('keeps same-chain RPC journals and clearing independent', async () => {
+  it('shares one chain reservation across RPC aliases but permits only the owning RPC to update or clear it', async () => {
     const otherReservation = { ...newer, rpcUrl: otherFork.url };
     await writeInfrastructureJournal(network, reservation);
-    await expect(readInfrastructureJournal(otherFork)).resolves.toBeUndefined();
-    await writeInfrastructureJournal(otherFork, otherReservation);
-    await clearInfrastructureJournal(otherFork, reservation);
     await expect(readInfrastructureJournal(otherFork)).resolves.toEqual(
+      reservation
+    );
+    await expect(
+      writeInfrastructureJournal(otherFork, otherReservation)
+    ).rejects.toThrow('Another infrastructure deployment is pending');
+    await clearInfrastructureJournal(otherFork, reservation);
+    await clearInfrastructureJournal(otherFork, {
+      ...reservation,
+      rpcUrl: otherFork.url,
+    });
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+      reservation
+    );
+    await clearInfrastructureJournal(network, reservation);
+    await writeInfrastructureJournal(otherFork, otherReservation);
+    await expect(readInfrastructureJournal(network)).resolves.toEqual(
       otherReservation
     );
-    await clearInfrastructureJournal(otherFork, otherReservation);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+  });
+
+  it('serializes same-chain RPC reservation writes before the first storage write settles', async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const firstWriteStarted = new Promise<void>(
+      (resolve) => (started = resolve)
+    );
+    const firstWrite = new Promise<void>((resolve) => (release = resolve));
+    jest
+      .mocked(chromeStorage.setItem)
+      .mockImplementationOnce(async (key, value) => {
+        started();
+        await firstWrite;
+        persisted.set(key, value);
+      });
+    const first = writeInfrastructureJournal(network, reservation);
+    await firstWriteStarted;
+    const second = writeInfrastructureJournal(otherFork, {
+      ...newer,
+      rpcUrl: otherFork.url,
+    });
+    const rejected = expect(second).rejects.toThrow(
+      'Another infrastructure deployment is pending'
+    );
+    release();
+    await first;
+    await rejected;
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+    await expect(readInfrastructureJournal(otherFork)).resolves.toEqual(
       reservation
     );
   });
@@ -105,8 +146,8 @@ describe('durable infrastructure deployment journal', () => {
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, otherFork.url])(
-    'fails closed on a scoped journal with mismatched RPC %s',
+  it.each([undefined, null, ''])(
+    'fails closed on a scoped journal without a valid owning RPC %s',
     async (rpcUrl) => {
       persisted.set(infrastructureJournalStorageKey(network), {
         ...reservation,

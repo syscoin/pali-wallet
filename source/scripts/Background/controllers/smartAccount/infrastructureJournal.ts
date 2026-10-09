@@ -17,20 +17,14 @@ export type InfrastructureJournalEntry = {
   transactionHash?: string;
 };
 
-const mutexes = new Map<string, AsyncMutex>();
-export const infrastructureNetworkKey = (
-  context: InfrastructureNetworkContext
-) => `${context.chainId}:${context.url}`;
+const mutexes = new Map<number, AsyncMutex>();
 export const infrastructureJournalStorageKey = (
   context: InfrastructureNetworkContext
-) =>
-  `pali.infrastructure.pending.v2.${context.chainId}.${encodeURIComponent(
-    context.url
-  )}`;
+) => `pali.infrastructure.pending.v2.${context.chainId}`;
 const legacyStorageKey = (chainId: number) =>
   `pali.infrastructure.pending.v1.${chainId}`;
 const mutexForNetwork = (context: InfrastructureNetworkContext) => {
-  const key = infrastructureNetworkKey(context);
+  const key = context.chainId;
   let mutex = mutexes.get(key);
   if (!mutex) {
     mutex = new AsyncMutex();
@@ -75,7 +69,7 @@ const readNetworkEntry = async (context: InfrastructureNetworkContext) => {
   // pending on every endpoint; never migrate or clear it using unrelated RPCs.
   if (legacy) return { ...legacy, rpcUrl: undefined };
   const current = await readEntry(infrastructureJournalStorageKey(context));
-  if (current && current.rpcUrl !== context.url)
+  if (current && current.rpcUrl === undefined)
     throw new Error(
       'Deployment journal is unreadable. Refresh status before retrying.'
     );
@@ -86,8 +80,8 @@ export const infrastructurePendingIdentity = (
   entry?: InfrastructureJournalEntry
 ) => entry?.attemptId || entry?.transactionHash;
 
-// Public on-chain identifiers survive worker/wallet changes. Never treat failed
-// storage reads as absence, or let another RPC or stale receipt clear a submission.
+// One unresolved deployment owns a chain ID across RPC aliases. Only its exact
+// RPC may reconcile it; failed reads and stale receipts never authorize a send.
 export const readInfrastructureJournal = (
   context: InfrastructureNetworkContext
 ) => mutexForNetwork(context).runExclusive(() => readNetworkEntry(context));

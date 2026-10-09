@@ -30,14 +30,11 @@ import { PALI_CREATE2_DEPLOYER_ADDRESS } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
 
 import SmartAccountController from './index';
-import {
-  infrastructureJournalStorageKey,
-  infrastructureNetworkKey,
-} from './infrastructureJournal';
+import { infrastructureJournalStorageKey } from './infrastructureJournal';
 
 const networkContext = { chainId: 1, url: 'https://chain-a.example' };
 const journalKey = infrastructureJournalStorageKey(networkContext);
-const networkKey = infrastructureNetworkKey(networkContext);
+const networkKey = networkContext.chainId;
 
 const implementation = '0x0000000000000000000000000000000000000001';
 const factory = '0x0000000000000000000000000000000000000002';
@@ -167,7 +164,23 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps same-chain RPC flights and late rejection cleanup independent', async () => {
+  it('rejects an alias start before the original reservation is written', async () => {
+    jest.mocked(chromeStorage.setItem).mockClear();
+    const first = controller.deploySmartAccountInfrastructure();
+    const firstRejected = expect(first).rejects.toThrow(
+      'Wallet context changed'
+    );
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    state.vault.activeNetwork.url = 'https://alias-b.example';
+    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+      'Another infrastructure deployment is pending'
+    );
+    await firstRejected;
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    expect(controller.infrastructureDeployments.size).toBe(0);
+  });
+
+  it('keeps genuinely different chain deployments and late rejection cleanup independent', async () => {
     let rejectFirst!: (error: Error) => void;
     deps.sendAndSaveEthTransaction.mockImplementationOnce(
       () => new Promise((_resolve, reject) => (rejectFirst = reject))
@@ -178,19 +191,92 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     );
     await flush();
     const firstReservation = journalStorage[journalKey];
-    state.vault.activeNetwork.url = 'https://fork-b.example';
-    const second = controller.deploySmartAccountInfrastructure();
-    expect(second).not.toBe(first);
-    await expect(second).resolves.toMatchObject({
-      deployed: ['accountImplementation', 'factory'],
-    });
+    state.vault.activeNetwork = {
+      ...state.vault.activeNetwork,
+      chainId: 2,
+      url: 'https://chain-b.example',
+    };
+    deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+      Object.assign(Error('Second chain submission acknowledgement lost'), {
+        transactionNotBroadcast: false,
+      })
+    );
+    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+      'Second chain submission acknowledgement lost'
+    );
+    expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(2);
     expect(journalStorage[journalKey]).toEqual(firstReservation);
+    const secondKey = infrastructureJournalStorageKey(
+      state.vault.activeNetwork
+    );
+    expect(journalStorage[secondKey]).toMatchObject({
+      rpcUrl: 'https://chain-b.example',
+    });
     rejectFirst(Error('Wallet context changed'));
     await firstRejected;
     expect(journalStorage[journalKey]).toBeNull();
+    expect(journalStorage[secondKey]).toMatchObject({
+      rpcUrl: 'https://chain-b.example',
+    });
     expect(controller.infrastructureDeployments.size).toBe(0);
-    expect(controller.pendingInfrastructure.size).toBe(0);
   });
+
+  it.each([false, true])(
+    'blocks another RPC alias after an ambiguous broadcast across restart (known hash: %s)',
+    async (knownHash) => {
+      state.vault.activeNetwork.url = 'https://alias-b.example';
+      await controller.getSmartAccountInfrastructureStatus();
+      state.vault.activeNetwork.url = networkContext.url;
+      const broadcastNonces: number[] = [];
+      deps.sendAndSaveEthTransaction.mockImplementationOnce(async (params) => {
+        broadcastNonces.push(params.nonce);
+        throw Object.assign(Error('Network request timed out'), {
+          transactionNotBroadcast: false,
+          ...(knownHash
+            ? { transactionHash: hash(1), transactionNonce: 0 }
+            : {}),
+        });
+      });
+      await expect(
+        controller.deploySmartAccountInfrastructure()
+      ).rejects.toThrow('Network request timed out');
+      const original = { ...journalStorage[journalKey] };
+      // Alias B sees the SAME chain's pending nonce and absent runtime code.
+      state.vault.activeNetwork.url = 'https://alias-b.example';
+      provider.send.mockImplementation(async (method, params) =>
+        method === 'eth_getTransactionCount'
+          ? params[1] === 'pending'
+            ? '0x1'
+            : '0x0'
+          : codes[params[0]]
+      );
+      provider.getTransactionReceipt.mockClear();
+      provider.send.mockClear();
+      await expect(
+        controller.getSmartAccountInfrastructureStatus()
+      ).resolves.toMatchObject({ pending: original });
+      const restarted = new SmartAccountController(deps);
+      await expect(
+        restarted.getSmartAccountInfrastructureStatus(true)
+      ).resolves.toMatchObject({ pending: original });
+      await expect(
+        restarted.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({ pending: original });
+      expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+      expect(broadcastNonces).toEqual([0]);
+      expect(journalStorage[journalKey]).toEqual(original);
+
+      state.vault.activeNetwork.url = networkContext.url;
+      if (knownHash) receipts[hash(1)] = { hash: hash(1), status: 0 };
+      else provider.send.mockResolvedValue('0x1');
+      await expect(
+        restarted.getSmartAccountInfrastructureStatus(true)
+      ).resolves.not.toHaveProperty('pending');
+      expect(journalStorage[journalKey]).toBeNull();
+    }
+  );
 
   it('expires cached status and separates RPC endpoints on the same chain', async () => {
     expect(
@@ -296,7 +382,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     }
   );
 
-  it('does not probe another RPC historical deployment on the same chain', async () => {
+  it('blocks but does not probe another RPC historical deployment on the same chain', async () => {
     state.vault.accountTransactions.HDAccount[0].ethereum[1] = [
       {
         smartAccountInfrastructureDeployment: true,
@@ -307,8 +393,14 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     ];
     await expect(
       controller.getSmartAccountInfrastructureStatus(true)
-    ).resolves.not.toHaveProperty('pending');
+    ).resolves.toMatchObject({
+      pending: { transactionHash: hash(1), rpcUrl: 'https://fork-b.example' },
+    });
+    await expect(
+      controller.deploySmartAccountInfrastructure()
+    ).resolves.toMatchObject({ pending: { transactionHash: hash(1) } });
     expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects malformed code probes instead of treating them as missing deployments', async () => {

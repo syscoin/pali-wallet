@@ -28,7 +28,6 @@ import SmartAccountController from './index';
 import {
   readInfrastructureJournal,
   clearInfrastructureJournal,
-  infrastructureNetworkKey,
 } from './infrastructureJournal';
 
 const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
@@ -196,7 +195,7 @@ describe('infrastructure status aggregate deadline', () => {
     };
     jest.mocked(readInfrastructureJournal).mockResolvedValue(journal);
     (controller as any).pendingInfrastructure.set(
-      infrastructureNetworkKey(state.vault.activeNetwork),
+      state.vault.activeNetwork.chainId,
       journal
     );
     state.vault.accountTransactions.HDAccount[0].ethereum[1] = [history(1)];
