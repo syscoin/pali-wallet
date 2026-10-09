@@ -124,6 +124,16 @@ That earlier production build including the surgical fixes and local dependency 
 
 An actual local dapp page exercised that snapshot’s content script and background at 4x CPU throttling. Eight hostile fixtures covered oversized personal signing, deep nesting, wide arrays, an oversized batch, deep typed-schema expansion, duplicate typed fields, an oversized PSBT body and a real 201-input PSBT. Each returned `-32602` in under 5 ms in this local sample, opened no approval page, and left liveness checks working. The page recorded no long tasks during these requests. Accepted-fixture regressions include EIP-712 Mail, Permit, 50 recipients/calls and real 200-input/output PSBTs. These measurements are local samples, not worst-case latency guarantees.
 
+## PR integration validation
+
+The ready Pali PR targets **4.0.70** and keyring **1.0.612**, rebased onto master `94a1cde5`. The dependency was built and locally packed from [sidhujag/sysweb3#15](https://github.com/sidhujag/sysweb3/pull/15), commit `27e4409`; no local package patch or Git dependency workaround is shipped. Publication of the npm artifact is handled separately, and its future integrity hash is not fabricated in the lockfile.
+
+The integrated suite passes **114 suites, 947 tests**, plus TypeScript and the production Chrome build. All bundle budgets pass: background JavaScript is 4,229,863 bytes, content script 14,784 bytes, and the unpacked extension 8,445,605 bytes. Fresh Start JavaScript remains 1,491,009 bytes; the historical original-checkout baseline above remains labelled separately.
+
+Final disposable-profile Chrome checks using the upstream source package passed: correct-password unlock after confirmed worker restart took 184 ms and remained on Home after 2.2 seconds, with no background errors. Eight hostile dapp requests rejected within 4.3 ms at 4x page CPU throttling, opened no approval page and recorded no long tasks. These are individual local samples.
+
+Rebase review also found an interaction with master's receipt-refresh queue: reset now cancels queued/in-flight receipt work and invalidates balance freshness before any await. Three regressions verify that old receipt, token-preflight and ordinary native-balance results cannot commit after the same account/network context is restored.
+
 ## Dependency findings
 
 The read-only production-dependency audit reported 381 dependency-path findings: 3 critical, 241 high, 131 moderate and 6 low; these represent 57 distinct GHSA URLs across 18 packages. Build/test tools are also listed under this project's `dependencies`. These counts are not counts of reachable extension exploits.

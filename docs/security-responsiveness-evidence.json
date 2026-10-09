@@ -387,7 +387,7 @@
       "unlocked": true
     }
   },
-  "evidenceLayout": "Top-level measurements are the earlier broad-pass snapshot. The containment object contains the final production build and validation after surgical account/payload fixes; earlier startup-matrix and authentication samples retain their original snapshot labels.",
+  "evidenceLayout": "Top-level measurements are the original broad-pass snapshot. containment records the pre-rebase surgical snapshot with a temporary dependency patch, which is not shipped. prIntegration records the ready Pali4.0.70 PR using the upstream1.0.612 source package without a local patch. All earlier measurements retain their source fingerprints.",
   "containment": {
     "measuredAt": "2026-10-09T01:52:25.111Z",
     "build": {
@@ -739,5 +739,322 @@
       "Limits are wallet policy and may reject unusually large protocol-valid requests; data is never silently truncated.",
       "Browser cloning, scheduling, cryptographic and hardware/network operations are not covered by a universal two-second completion guarantee."
     ]
+  },
+  "prIntegration": {
+    "pullRequest": "https://github.com/syscoin/pali-wallet/pull/851",
+    "baseRevision": "94a1cde5",
+    "build": {
+      "measuredAt": "2026-10-09T02:01:46.705Z",
+      "snapshot": {
+        "measuredAt": "2026-10-09T02:01:41.742648+00:00",
+        "runtimeSourceFingerprintSha256": "408b155f8cfe8bd16aa26a525a605ec1ae839e782fe738fb69157360e913febd",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
+        "runtimeFileCount": 539,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.612",
+        "keyringSourceCommit": "27e4409",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
+        "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
+        "localDependencyTarballSha256": "6b1ea312ce275c23b40530402c91da7d51567f3783985762a3ccb612f7ab5a0f",
+        "webpackStatsSha256": "01d51287b68c31ea852754a86da62f687537c07cddb933a0f9289eaf2e7bb790",
+        "buildDirectory": "/tmp/pali-audit/optimized",
+        "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamkeyring1.0.612 localpack, no local package patch."
+      },
+      "hardware": {
+        "model": "MacBook Pro Mac17,6",
+        "chip": "Apple M5 Max",
+        "cores": 18,
+        "coreTopology": "6 Super + 12 Performance",
+        "memoryGiB": 48
+      },
+      "software": {
+        "chromium": "149.0.7827.55",
+        "node": "v23.11.1",
+        "yarn": "1.22.22"
+      },
+      "baseline": {
+        "app": {
+          "bytes": 1476859,
+          "gzipBytes": 448969,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1469529,
+          "gzipBytes": 447303,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4202303,
+          "gzipBytes": 1177950,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 11094,
+          "gzipBytes": 3853,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8632973,
+          "budgetBytes": 9000000
+        }
+      },
+      "optimized": {
+        "app": {
+          "bytes": 1479420,
+          "gzipBytes": 452318,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1471897,
+          "gzipBytes": 450341,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4229863,
+          "gzipBytes": 1185576,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 14784,
+          "gzipBytes": 4948,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8445605,
+          "budgetBytes": 9000000
+        }
+      },
+      "firstRoute": {
+        "baseline": {
+          "initialJSBytes": 1476859,
+          "lazyJSFiles": [
+            "js/490.bundle.js",
+            "js/542.bundle.js"
+          ],
+          "lazyJSBytes": 902662,
+          "totalJSBytes": 2379521
+        },
+        "optimized": {
+          "initialJSBytes": 1479420,
+          "lazyJSFiles": [
+            "js/6542.bundle.js",
+            "js/8289.bundle.js"
+          ],
+          "lazyJSBytes": 11589,
+          "totalJSBytes": 1491009
+        }
+      },
+      "firstRouteReductionPercent": 37.33995203236281,
+      "firstRouteLazyReductionPercent": 98.7161307333199,
+      "packageReductionPercent": 2.1703763002618004,
+      "notes": [
+        "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
+        "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
+        "The 11-case startup matrix belongs to startup-matrix-build.json and runtime-build-metadata.json, an earlier snapshot before authentication navigation and surgical containment fixes."
+      ]
+    },
+    "validation": {
+      "testSuites": 114,
+      "tests": 947,
+      "typescript": "passed",
+      "eslintErrors": 0,
+      "eslintWarnings": 6,
+      "productionBuild": "passed",
+      "bundleBudgets": "passed",
+      "diffWhitespace": "passed"
+    },
+    "authenticationAfterWorkerRestart": {
+      "steps": [
+        {
+          "name": "open fresh wallet",
+          "durationMs": 193,
+          "status": "passed"
+        },
+        {
+          "name": "import disposable seed",
+          "durationMs": 173,
+          "status": "passed"
+        },
+        {
+          "name": "fill wallet password",
+          "durationMs": 18,
+          "status": "passed"
+        },
+        {
+          "name": "submit wallet creation",
+          "durationMs": 307,
+          "status": "passed"
+        },
+        {
+          "name": "wait for home route",
+          "durationMs": 181,
+          "status": "passed"
+        },
+        {
+          "name": "verify newly imported wallet unlocked",
+          "durationMs": 86,
+          "status": "passed"
+        },
+        {
+          "name": "dismiss onboarding prompts",
+          "durationMs": 3,
+          "status": "passed"
+        },
+        {
+          "name": "lock using background controller",
+          "durationMs": 3,
+          "status": "passed"
+        },
+        {
+          "name": "stop extension service worker to simulate idle",
+          "durationMs": 3,
+          "status": "passed"
+        },
+        {
+          "name": "reload locked wallet",
+          "durationMs": 369,
+          "status": "passed"
+        },
+        {
+          "name": "confirm extension service worker restarted",
+          "durationMs": 1,
+          "status": "passed"
+        },
+        {
+          "name": "unlock existing wallet",
+          "durationMs": 184,
+          "status": "passed"
+        },
+        {
+          "name": "verify background remains unlocked",
+          "durationMs": 32,
+          "status": "passed"
+        },
+        {
+          "name": "remain on unlocked home after 2.2 seconds",
+          "durationMs": 2203,
+          "status": "passed"
+        }
+      ],
+      "chromium": "149.0.7827.55",
+      "idleSimulation": {
+        "workerStopConfirmed": true,
+        "workerRestartConfirmed": true,
+        "inMemoryMarkerCleared": true
+      },
+      "afterUnlock": {
+        "route": "#/home",
+        "homeBalanceVisible": true,
+        "homeBalanceLoading": false,
+        "passwordVisible": false,
+        "alerts": [],
+        "unlocked": true
+      },
+      "status": "passed",
+      "backgroundErrors": []
+    },
+    "payloadWork": {
+      "measuredAt": "2026-10-09T02:01:45.184Z",
+      "cases": {
+        "results": [
+          {
+            "name": "liveness before hostile requests",
+            "durationMs": 1.9000000953674316,
+            "response": false
+          },
+          {
+            "name": "100 KiB personal signing text",
+            "durationMs": 1.3999996185302734,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 65536 bytes"
+              }
+            }
+          },
+          {
+            "name": "64-level request nesting",
+            "durationMs": 0.9000000953674316,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum depth 32"
+              }
+            }
+          },
+          {
+            "name": "10001-value request array",
+            "durationMs": 0.09999990463256836,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 10000 values"
+              }
+            }
+          },
+          {
+            "name": "51-call batch",
+            "durationMs": 0.7000002861022949,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 50 calls"
+              }
+            }
+          },
+          {
+            "name": "19-level typed schema expansion",
+            "durationMs": 4.299999713897705,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: maximum typed-data nesting depth 16",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "duplicate typed schema fields",
+            "durationMs": 1.1000003814697266,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: duplicate typed-data field",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "oversized PSBT request",
+            "durationMs": 2.0999999046325684,
+            "response": {
+              "error": {
+                "code": -32602,
+                "message": "Request exceeds wallet work limits: maximum 1048576 bytes"
+              }
+            }
+          },
+          {
+            "name": "real 201-input PSBT",
+            "durationMs": 1.9000000953674316,
+            "response": {
+              "error": {
+                "message": "Request exceeds wallet work limits: maximum 200 PSBT inputs",
+                "code": -32602
+              }
+            }
+          },
+          {
+            "name": "liveness after hostile requests",
+            "durationMs": 0.7999997138977051,
+            "response": false
+          }
+        ],
+        "longTasks": []
+      },
+      "chromium": "149.0.7827.55",
+      "cpuThrottleRate": 4,
+      "newApprovalPages": 0,
+      "status": "passed"
+    },
+    "dependencyPublication": "Keyring1.0.612 is targeted; validation used local npm pack from upstream source commit27e4409. npm publication is handled separately. No local package patch is shipped."
   }
 }
