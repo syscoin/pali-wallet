@@ -294,6 +294,7 @@ it('carries actual router receipt Transfer logs through direct confirmation into
   provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
   const transaction = await controller.getEvmTransactionFromProvider(hash);
   expect(transaction.logs).toBe(logs);
+  expect(transaction.balanceRefreshBlockNumber).toBe(11);
   controller.updateTrackedEvmTransactionCopies(hash, 1, transaction);
   await jest.advanceTimersByTimeAsync(100);
   expect(balanceOf).toHaveBeenCalledTimes(1);
@@ -301,6 +302,43 @@ it('carries actual router receipt Transfer logs through direct confirmation into
   expect((Contract as jest.Mock).mock.calls.at(-1)?.[0]).toBe(T);
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
   expect(state.vault.accountAssets[type][0].ethereum[1].balance).toBe(5);
+});
+
+it('waits for the actual receipt height when a different RPC backend reports an older head', async () => {
+  const hash = `0x${'bb'.repeat(32)}`;
+  state.vault.accountTransactions[type][0].ethereum[1] = [
+    { hash, blockNumber: null },
+  ];
+  provider.getTransaction = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: T,
+    value: BigInt(0),
+    chainId: 1,
+    data: '0x1234',
+  });
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    blockNumber: 10,
+    status: 1,
+    logs: [],
+  });
+  provider.getBlockNumber = jest.fn().mockResolvedValue(9);
+  provider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+  provider.send.mockResolvedValue('0x9');
+
+  const transaction = await controller.getEvmTransactionFromProvider(hash);
+  expect(transaction.balanceRefreshBlockNumber).toBe(10);
+  controller.updateTrackedEvmTransactionCopies(hash, 1, transaction);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(balanceOf).not.toHaveBeenCalled();
+  expect(provider.getBalance).not.toHaveBeenCalled();
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(5);
+
+  provider.send.mockResolvedValue('0xa');
+  await jest.advanceTimersByTimeAsync(250);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 10 });
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
 });
 
 it('does not let an older same-key read overwrite a newer response', async () => {

@@ -7267,7 +7267,10 @@ class MainController {
         to: tx.to,
         value: this.convertHexValue(tx.value) || '0',
         blockNumber: blockNumber,
-        balanceRefreshBlockNumber: receipt ? latestBlock : null,
+        // SYSCOIN: A different RPC backend may report a head behind this receipt.
+        balanceRefreshBlockNumber: receipt
+          ? Math.max(latestBlock, Number(blockNumber))
+          : null,
         blockHash: receipt ? receipt.blockHash : null,
         timestamp: timestamp,
         confirmations,
