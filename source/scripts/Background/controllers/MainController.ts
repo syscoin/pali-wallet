@@ -242,6 +242,7 @@ class MainController {
   private isAccountSwitching = false;
   // Add a property to track network switching state
   private isNetworkSwitching = false;
+  private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
   // Session changes cancel in-flight work; only reset invalidates valid queued
   // source-vault saves across ordinary network changes and locks.
@@ -902,6 +903,11 @@ class MainController {
     network: INetwork,
     isCurrent: () => boolean = () => true
   ): Promise<void> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry the network change after it completes.'
+      );
+    }
     if (this.isResettingWallet) {
       throw new Error(
         'Wallet reset is in progress. Retry the network change after it completes.'
@@ -3256,6 +3262,11 @@ class MainController {
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry the network change after it completes.'
+      );
+    }
     if (this.isResettingWallet) {
       throw new Error(
         'Wallet reset is in progress. Retry the network change after it completes.'
@@ -3551,6 +3562,11 @@ class MainController {
   }
 
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     const { networks } = store.getState().vaultGlobal;
 
     // Validate required fields
@@ -3617,6 +3633,12 @@ class MainController {
       }
     }
 
+    // CoinGecko discovery may have yielded while a removal acquired ownership.
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
     // Save wallet state after adding custom network
@@ -3627,6 +3649,11 @@ class MainController {
   }
 
   public async editCustomRpc(network: INetwork): Promise<INetwork> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     // Update the network in the global networks store
     // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
     store.dispatch(setNetwork({ network, isEdit: true }));
@@ -3746,35 +3773,84 @@ class MainController {
     label: string,
     key?: string
   ) {
-    // For UTXO networks, also remove the keyring and vault state since addresses might be different
-    // when a new testnet/network with the same slip44 is added later
-    if (chain === INetworkType.Syscoin) {
-      const { networks } = store.getState().vaultGlobal;
-      const networkToRemove = networks.syscoin[chainId];
-
-      if (networkToRemove && networkToRemove.slip44 !== undefined) {
-        const slip44ToRemove = networkToRemove.slip44;
-        console.log(
-          `[MainController] Removing keyring and vault state for slip44: ${slip44ToRemove} when removing network: ${label}`
+    const generation = this.walletSessionGeneration;
+    const walletStateGeneration = this.walletStateGeneration;
+    const originalNetwork =
+      store.getState().vaultGlobal.networks[chain]?.[chainId];
+    const assertCanRemove = () => {
+      const { vault, vaultGlobal } = store.getState();
+      if (
+        this.currentPromise ||
+        this.isNetworkSwitching ||
+        this.isResettingWallet ||
+        this.isCreatingWallet ||
+        vaultGlobal.networkStatus === 'switching' ||
+        vaultGlobal.networkStatus === 'connecting'
+      ) {
+        throw new Error(
+          'Network change is in progress. Retry network removal after it completes.'
         );
-
-        // Remove the keyring for this slip44
-        this.keyrings.delete(slip44ToRemove);
-
-        // Also clear the persisted vault state for this slip44
-        this.clearSlip44VaultState(slip44ToRemove).catch((error) => {
-          console.error(
-            `[MainController] Failed to clear vault state for slip44 ${slip44ToRemove}:`,
-            error
-          );
-        });
       }
+      if (
+        generation !== this.walletSessionGeneration ||
+        walletStateGeneration !== this.walletStateGeneration
+      ) {
+        throw new Error(
+          'Wallet session changed. Please confirm removal again.'
+        );
+      }
+      const network = vaultGlobal.networks[chain]?.[chainId];
+      if (
+        !network ||
+        network.url !== rpcUrl ||
+        network.slip44 !== originalNetwork?.slip44
+      ) {
+        throw new Error('Network changed. Please confirm removal again.');
+      }
+      if (
+        (vault.activeNetwork.kind === chain &&
+          vault.activeNetwork.chainId === chainId) ||
+        (chain === INetworkType.Syscoin &&
+          network?.slip44 !== undefined &&
+          network.slip44 === vaultGlobal.activeSlip44)
+      ) {
+        throw new Error('Cannot remove the currently active network.');
+      }
+    };
+
+    if (this.isRemovingNetwork) {
+      throw new Error('Network removal is already in progress.');
     }
+    // Reject before queueing; never let an in-flight switch turn its target
+    // into an eligible deletion. Reserve synchronously before any await.
+    assertCanRemove();
+    this.isRemovingNetwork = true;
+    try {
+      await networkSwitchMutex.runExclusive(async () => {
+        assertCanRemove();
+        const networkToRemove =
+          store.getState().vaultGlobal.networks[chain]?.[chainId];
+        // UTXO networks have separate vaults. Finish deleting storage while
+        // holding switch/persistence ownership, before publishing the removal.
+        if (
+          chain === INetworkType.Syscoin &&
+          networkToRemove?.slip44 !== undefined
+        ) {
+          const slip44ToRemove = networkToRemove.slip44;
+          await walletPersistenceMutex.runExclusive(async () => {
+            assertCanRemove();
+            await this.clearSlip44VaultState(slip44ToRemove);
+          });
+          assertCanRemove();
+          this.keyrings.delete(slip44ToRemove);
+        }
 
-    store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
-
-    // Save wallet state after removing network
-    await this.saveWalletState('remove-network', true, true);
+        store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
+        await this.saveWalletState('remove-network', true, true);
+      });
+    } finally {
+      this.isRemovingNetwork = false;
+    }
   }
 
   private async clearSlip44VaultState(slip44: number): Promise<void> {
