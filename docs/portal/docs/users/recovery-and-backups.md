@@ -8,6 +8,12 @@ Backups matter because Pali is non-custodial. The wallet cannot recover a seed p
 
 Write down your wallet seed phrase and keep it offline. Anyone with the seed phrase can control the derived accounts.
 
+## Unlocking and passkey changes
+
+An unavailable browser service, storage problem, or unsupported cryptographic capability can prevent unlocking without meaning that your password is wrong. Read the error, restore the required service or connection, and retry unlocking. Do not delete or reimport the wallet to work around an operational error. Operational errors do not count as failed password attempts.
+
+Replacing a passkey can leave both the previous and replacement credentials available. The previous credential may still control another chain or a shared policy. Do not delete either credential just because setup was cancelled or failed; first confirm which credentials the relevant accounts still require. Keep the current wallet data while investigating an interrupted change.
+
 ## Passkey backup status
 
 Passkeys can be device-bound or synced by the platform account provider. Pali surfaces backup-related status where available, but the exact behavior depends on the authenticator, browser, and operating system.
@@ -38,6 +44,6 @@ Pali smart-account recovery depends on the installed modules. A passkey-controll
 
 ## Dapp creation and wallet recovery
 
-When a dapp calls `wallet_prepareSmartAccount`, Pali creates a smart account and saves durable metadata locally after deployment and any requested validator setup completes.
+When a dapp calls `wallet_prepareSmartAccount`, Pali creates a smart account and saves durable metadata locally after deployment and any requested validator setup completes. Pali also keeps local records of pending passkey setup before installation, so an interrupted change does not silently discard those recovery details. These records do not replace a seed backup or access to the passkey.
 
 If a smart account exists on-chain and is missing locally, use Pali's wallet recovery flow. Pali skips accounts already present locally and lets the user choose which remaining accounts to import.

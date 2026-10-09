@@ -2,7 +2,7 @@
 title: Primeros pasos para usuarios
 ---
 
-Pali te permite administrar cuentas EVM, cuentas Syscoin UTXO y cuentas inteligentes passkey desde una sola extensión.
+Pali te permite administrar cuentas EVM, cuentas Syscoin UTXO y cuentas inteligentes modulares desde una sola extensión.
 
 ## Configuración básica
 
@@ -12,6 +12,14 @@ Pali te permite administrar cuentas EVM, cuentas Syscoin UTXO y cuentas intelige
 4. Haz una copia de seguridad offline de tu frase semilla.
 5. Elige la red que quieres usar.
 6. Conéctate solo a dapps en las que confíes.
+
+## Configuración y carga
+
+Mantén abierta y visible la configuración mientras no haya terminado. Salir de ella, ocultarla o recargarla borra los datos sensibles introducidos y puede obligarte a empezar de nuevo. Conserva la frase semilla de la que hiciste una copia de seguridad.
+
+Si Pali no puede confirmar que la creación de la billetera terminó, deja que se recargue y compruebe la billetera. Si aparece una pantalla de desbloqueo, usa la contraseña que acabas de establecer. No supongas que una respuesta interrumpida significa que no se creó ninguna billetera ni repitas inmediatamente la creación.
+
+Durante una operación lenta, Pali puede mostrar opciones de recuperación y mantener disponible la navegación. Las acciones sensibles siguen esperando a que la cuenta y la red se estabilicen. Recibir oculta temporalmente la dirección, el código QR y el control para copiar; las solicitudes al faucet también esperan. Comprueba de nuevo la cuenta y la red antes de continuar.
 
 ## Conectarse a una dapp
 
@@ -37,6 +45,6 @@ Las dapps EVM pueden solicitar:
 
 Usa cuentas UTXO para Syscoin UTXO y flujos de transacciones de estilo Bitcoin. Las dapps UTXO pueden solicitar estado con xpub, direcciones de cambio, firma PSBT y transmisión de transacciones.
 
-## Cuentas inteligentes passkey
+## Cuentas inteligentes
 
-Las cuentas passkey son cuentas inteligentes controladas por credenciales WebAuthn. Pueden ser útiles para onboarding administrado por instituciones, recuperación de cuentas y ejecución patrocinada. Algunas cuentas passkey son contrafactuales hasta su primera transacción de despliegue.
+Las cuentas inteligentes son cuentas de contrato controladas por módulos. Pali puede crear cuentas controladas por un validador de passkey, un validador ECDSA de la billetera o una política de gestión compartida. Son útiles para la incorporación a dapps, las acciones por lotes y la recuperación mediante guardianes. Algunas cuentas inteligentes son contrafactuales hasta su primera transacción de despliegue.

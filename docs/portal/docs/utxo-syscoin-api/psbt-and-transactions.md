@@ -67,3 +67,10 @@ const valid = await window.pali.request({
 
 Pali signs what the user approves. Your application is responsible for constructing sane PSBT inputs, outputs, fees, change, and asset metadata before requesting a signature.
 
+## Account selection
+
+Signing is bound to the account connected to the requesting dapp and the approved network. PSBT metadata cannot select another wallet account. If Pali is displaying a different account, it can ask the user to switch to the connected account before approval. To use another account, change the dapp connection and request a new approval.
+
+For a PSBT with unfinished inputs, at least one unfinished input must belong to that approved account. Pali signs only that account's inputs. Shared and multisig transactions can therefore return partially signed; other participants must complete their own inputs or signatures. Existing external signatures and supported finalized inputs are preserved. A completely finalized PSBT can be returned without adding signatures. Hardware-wallet support still depends on the device and transaction format.
+
+A change of account or network invalidates the pending signing context. Rebuild or recheck the request and obtain a fresh approval instead of replaying the old request.

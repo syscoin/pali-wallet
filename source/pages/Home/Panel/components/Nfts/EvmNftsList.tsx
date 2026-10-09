@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
@@ -8,10 +8,12 @@ import {
   RiShareForward2Line as DetailsIcon,
 } from 'components/Icon/Icon';
 import { IconButton, TokenIcon } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { truncate, navigateWithContext, ellipsis } from 'utils/index';
@@ -32,7 +34,9 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
-  const { assets: accountAssets } = useSelector(selectActiveAccountWithAssets);
+  const { account, assets: accountAssets } = useSelector(
+    selectActiveAccountWithAssets
+  );
   const {
     activeNetwork: { chainId },
   } = useSelector((rootState: RootState) => rootState.vault);
@@ -44,6 +48,11 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     tokenId?: string;
     type: 'collection' | 'nft';
   } | null>(null);
+
+  useEffect(() => {
+    setShowDeleteConfirmation(false);
+    setItemToDelete(null);
+  }, [account?.address, chainId]);
 
   // NFTs now come through regular asset updates, no need for separate fetching
 
@@ -106,6 +115,42 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     [nftAssets]
   );
 
+  const filteredCollections = useMemo(() => {
+    const search = state.searchValue.trim().toLowerCase();
+    const filtered = search
+      ? collections.filter((collection) =>
+          [
+            collection.name,
+            collection.symbol,
+            collection.contractAddress,
+            collection.tokenId,
+          ].some((value) =>
+            String(value ?? '')
+              .toLowerCase()
+              .includes(search)
+          )
+        )
+      : collections;
+    if (state.sortByValue === 'Name') {
+      return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    if (state.sortByValue === 'Balance') {
+      return [...filtered].sort(
+        (a, b) => Number(b.totalBalance) - Number(a.totalBalance)
+      );
+    }
+    return filtered;
+  }, [collections, state.searchValue, state.sortByValue]);
+  const { visibleItems, hasMore, showMore } = useIncrementalList(
+    filteredCollections,
+    JSON.stringify([
+      account?.address,
+      chainId,
+      state.searchValue,
+      state.sortByValue,
+    ])
+  );
+
   // NFTs are automatically updated through regular asset polling
 
   const handleNftClick = useCallback(
@@ -130,7 +175,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     [navigate, searchParams, state]
   );
 
-  if (collections.length === 0) {
+  if (filteredCollections.length === 0) {
     // Parent AssetsPanel renders the Import Token link below this list
     return (
       <div className="flex mt-4 items-center justify-center p-3 text-brand-white text-sm">
@@ -141,7 +186,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
   return (
     <>
-      {collections.map((collection) => (
+      {visibleItems.map((collection) => (
         <li
           key={collection.id}
           className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
@@ -250,6 +295,13 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
         </li>
       ))}
 
+      {hasMore && (
+        <ListLoadMore
+          onClick={showMore}
+          shown={visibleItems.length}
+          total={filteredCollections.length}
+        />
+      )}
       <ConfirmationModal
         show={showDeleteConfirmation}
         onClick={handleConfirmDelete}

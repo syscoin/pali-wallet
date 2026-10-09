@@ -113,6 +113,8 @@
     "speedTxMessage": "本当にこの取引をスピードアップしますか？"
   },
   "connections": {
+    "searchAccounts": "アカウントを検索",
+    "noMatchingAccounts": "一致するアカウントがありません",
     "connectedAccount": "接続済みアカウント",
     "onlyConnect": "信頼できるサイトにのみ接続してください。",
     "learnMore": "詳細を見る。",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "このサイトは、ローカルの Pali アカウントではない ECDSA 所有者アドレスを要求しています。設定後、これらの所有者はスマートアカウントを制御できます。",
     "prepareSmartAccountExternalEcdsaConfirm": "これらの外部所有者がスマートアカウントの操作を承認できることを理解しています。",
     "prepareSmartAccountExternalEcdsaRequired": "続行する前に、外部 ECDSA 所有者の警告を確認してください。",
+    "smartAccountExternalPasskeyUnsupported": "このサイトは外部のパスキーを指定しました。アカウントの管理権を保つには、代わりに Pali で新しいパスキーの作成をリクエストしてください。",
+    "smartAccountPasskeySaveFailed": "Pali はパスキーの復元情報を保存できませんでした。認証情報マネージャーにパスキーを残して、もう一度お試しください。",
     "prepareSmartAccountDetailsKnownSigner": "署名者がすでに分かっている場合、Pali はアカウント作成時にそれを使用できます。",
     "prepareSmartAccountDetailsPasskey": "passkey の場合、Pali は先にアカウントを作成し、その後新しい passkey を追加します。",
     "prepareSmartAccountStepCredential": "ログイン方法を確認中...",
@@ -270,6 +274,7 @@
     "gasPrice": "ガス価格",
     "internalError": "内部エラーが発生しました。",
     "transactionCreationFailed": "取引の作成に失敗しました：{{error}}。もう一度お試しください。",
+    "submissionStatusUnknown": "送信状況が不明です。二重送信を防ぐため、ここではこの呼び出しを再試行できません。このウィンドウは閉じてもかまいません。",
     "feeRateInsane": "手数料率 {{value}} {{currency}}/バイトが極めて高く、ネットワークで拒否される可能性があります。",
     "feeRateExtreme": "手数料率 {{value}} {{currency}}/バイトが高すぎて、非標準として拒否される可能性があります。",
     "feeRateHigh": "手数料率 {{value}} {{currency}}/バイトが非常に高いです。正しいかご確認ください。",
@@ -424,6 +429,9 @@
     "receipts": "レシート"
   },
   "settings": {
+    "walletSetupFailed": "ウォレットの設定が完了したか確認できませんでした。リカバリーフレーズを保管し、ウォレットの状態を確認してください。",
+    "walletWindowCheckSlow": "ウォレットのウィンドウの応答に時間がかかっています。もう一度確認してください。",
+    "retryWalletWindowCheck": "ウィンドウを再確認",
     "bgError": "バックグラウンドエラー",
     "bgErrorMessage": "この問題を解決するためにウォレットをロックします。ご心配なく、すべてのデータは安全に保たれます。",
     "ledgerBlindSigning": "Ledger アプリの設定でブラインドサイニングを有効にしてください",
@@ -550,6 +558,8 @@
     "allYourSettings": "このデバイス上のすべての設定（カスタムトークンおよびインポートしたアカウント）は削除されます。オンチェーンの資産が移動または削除されることはありませんが、インポートしたアカウントの暗号化された秘密鍵はこのデバイスから消去されます。シークレットリカバリーフレーズやその秘密鍵がない場合、これらの資産へのアクセスを永久に失う可能性があります。",
     "removeAccount": "アカウントを削除",
     "removeAccountConfirmation": "{{accountType}}アカウント \"{{accountName}}\" を削除してもよろしいですか？必要に応じて、いつでもアカウントを再作成できます。",
+    "accountRemovalContextChanged": "アカウントの状態が変わりました。削除をもう一度確認してください。",
+    "networkRemovalIncomplete": "ネットワークの削除は完了していません。ネットワーク一覧を確認して、もう一度お試しください。",
     "accountRemovedSuccessfully": "アカウントが正常に削除されました",
     "failedToRemoveAccount": "アカウントの削除に失敗しました",
     "hardwareWalletSuccess": "ハードウェアウォレットが正常に接続されました！",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "利用可能",
     "smartAccountInfrastructureNotReadyStatus": "未設定",
     "smartAccountInfrastructureInsufficientGas": "このウォレットにネイティブガスを追加してから、スマートアカウント設定をもう一度デプロイしてください。",
-    "smartAccountInfrastructureDeployFailed": "スマートアカウント設定をデプロイできませんでした。",
-    "smartAccountInfrastructureSubmitted": "スマートアカウント設定のデプロイを送信しました。",
+    "smartAccountInfrastructureCheckBeforeRetry": "セットアップが停止したか、まだ保留中です。続行する前に最新の状態を確認してください。送信済みのトランザクションは今後承認される場合があります。",
+    "smartAccountInfrastructureCheckingSlow": "状態の確認に通常より時間がかかっています。再確認するか、このページを離れることができます。",
+    "smartAccountInfrastructurePending": "デプロイは保留中です。状態は自動的に更新されるため、このページを離れてもかまいません。",
+    "smartAccountInfrastructureCheckStatus": "状態を確認",
     "deploySmartAccountInfrastructure": "デプロイ",
     "installed": "インストール済み",
     "supported": "対応",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "（トークンの存在を確認）"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali は、この取引の入力が承認されたアカウントに対応していることを確認できませんでした。アカウントを確認し、新しい取引をリクエストしてください。",
+    "psbtSigningContextChanged": "ウォレットのアカウントまたはネットワークが変更されました。もう一度承認をリクエストしてください。",
     "messageCopied": "メッセージが正常にコピーされました",
     "signatureFailed": "署名リクエストが失敗しました",
     "sorryWeCould": "申し訳ありません。リクエストを送信できませんでした。後でもう一度お試しください。",

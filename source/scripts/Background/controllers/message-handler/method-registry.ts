@@ -1353,7 +1353,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
 
 // Helper function to get method config
 export function getMethodConfig(method: string): IMethodConfig | undefined {
-  return METHOD_REGISTRY[method];
+  return typeof method === 'string' &&
+    Object.prototype.hasOwnProperty.call(METHOD_REGISTRY, method)
+    ? METHOD_REGISTRY[method]
+    : undefined;
 }
 
 // Helper function to check if method requires authentication

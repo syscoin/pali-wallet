@@ -113,6 +113,8 @@
     "speedTxMessage": "Tem certeza de que deseja acelerar esta transação?"
   },
   "connections": {
+    "searchAccounts": "Pesquisar contas",
+    "noMatchingAccounts": "Nenhuma conta correspondente",
     "connectedAccount": "CONTA CONECTADA",
     "onlyConnect": "Conecte apenas com sites em que você confia.",
     "learnMore": "Saiba mais.",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Este site solicitou endereços de proprietários ECDSA que não são contas locais da Pali. Esses proprietários podem controlar a conta inteligente após a configuração.",
     "prepareSmartAccountExternalEcdsaConfirm": "Entendo que esses proprietários externos podem aprovar ações da conta inteligente.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirme o aviso sobre proprietários ECDSA externos antes de continuar.",
+    "smartAccountExternalPasskeyUnsupported": "Este site forneceu uma chave de acesso externa. Solicite uma nova chave de acesso no Pali para manter o controle da sua conta.",
+    "smartAccountPasskeySaveFailed": "O Pali não conseguiu salvar o registro de recuperação da chave de acesso. Mantenha a chave de acesso no seu gerenciador de credenciais e tente novamente.",
     "prepareSmartAccountDetailsKnownSigner": "Se o assinante já for conhecido, a Pali pode usá-lo ao criar a conta.",
     "prepareSmartAccountDetailsPasskey": "Para passkeys, a Pali cria a conta primeiro e depois adiciona a nova passkey.",
     "prepareSmartAccountStepCredential": "Verificando método de login...",
@@ -270,6 +274,7 @@
     "gasPrice": "Preço do Gas",
     "internalError": "Ocorreu um erro interno.",
     "transactionCreationFailed": "Falha ao criar a transação: {{error}}. Tente novamente.",
+    "submissionStatusUnknown": "O estado do envio é desconhecido. Para evitar o envio em duplicidade, esta chamada não pode ser tentada novamente aqui. Você pode fechar esta janela.",
     "feeRateInsane": "A taxa de {{value}} {{currency}}/byte é extremamente alta e provavelmente será rejeitada pela rede.",
     "feeRateExtreme": "A taxa de {{value}} {{currency}}/byte é muito alta e pode ser rejeitada como não padrão.",
     "feeRateHigh": "A taxa de {{value}} {{currency}}/byte é muito alta. Verifique se está correta.",
@@ -424,6 +429,9 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletSetupFailed": "Não foi possível confirmar a configuração da carteira. Guarde sua frase de recuperação e verifique o estado da carteira.",
+    "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",
+    "retryWalletWindowCheck": "Verificar as janelas novamente",
     "bgError": "Erro em segundo plano",
     "bgErrorMessage": "Vamos bloquear sua carteira para corrigir este problema. Não se preocupe, todos os seus dados permanecerão seguros.",
     "ledgerBlindSigning": "Por favor, ative a Assinatura Cega nas configurações do aplicativo Ledger",
@@ -550,6 +558,8 @@
     "allYourSettings": "Todas as configurações neste dispositivo (tokens personalizados e contas importadas) serão removidas. Isso não move nem exclui fundos on-chain, mas as chaves privadas criptografadas das contas importadas serão apagadas deste dispositivo. Se você não tiver a Frase de Recuperação Secreta ou essas chaves privadas, poderá perder permanentemente o acesso a esses ativos.",
     "removeAccount": "Remover conta",
     "removeAccountConfirmation": "Tem certeza de que deseja remover a conta {{accountType}} \"{{accountName}}\"? Você sempre pode recriar a conta mais tarde se necessário.",
+    "accountRemovalContextChanged": "O contexto da conta mudou. Confirme a remoção novamente.",
+    "networkRemovalIncomplete": "A remoção da rede não foi concluída. Verifique a lista de redes e tente novamente.",
     "accountRemovedSuccessfully": "Conta removida com sucesso",
     "failedToRemoveAccount": "Falha ao remover conta",
     "hardwareWalletSuccess": "Carteira de hardware conectada com sucesso!",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "Pronta",
     "smartAccountInfrastructureNotReadyStatus": "Não pronta",
     "smartAccountInfrastructureInsufficientGas": "Adicione gas nativo a esta carteira e tente configurar a conta inteligente novamente.",
-    "smartAccountInfrastructureDeployFailed": "Falha ao implantar a configuração da conta inteligente.",
-    "smartAccountInfrastructureSubmitted": "Implantação da configuração da conta inteligente enviada.",
+    "smartAccountInfrastructureCheckBeforeRetry": "A configuração parou ou ainda está pendente. Confira o estado atualizado antes de continuar; as transações enviadas ainda podem ser confirmadas.",
+    "smartAccountInfrastructureCheckingSlow": "A consulta do estado está demorando mais que o esperado. Você pode verificar novamente ou sair desta página.",
+    "smartAccountInfrastructurePending": "A implantação está pendente. O estado é atualizado automaticamente; você pode sair desta página.",
+    "smartAccountInfrastructureCheckStatus": "Verificar estado",
     "deploySmartAccountInfrastructure": "Implantar",
     "installed": "Instalado",
     "supported": "Suportado",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "(verificar se o token existe)"
   },
   "transactions": {
+    "psbtAccountScopeError": "A Pali não conseguiu verificar as entradas desta transação para a conta aprovada. Verifique a conta e solicite uma nova transação.",
+    "psbtSigningContextChanged": "A conta ou a rede da sua carteira mudou. Solicite a aprovação novamente.",
     "messageCopied": "Mensagem copiada com sucesso",
     "signatureFailed": "Solicitação de assinatura falhou",
     "sorryWeCould": "Desculpe, não conseguimos enviar sua solicitação. Tente novamente mais tarde.",

@@ -113,6 +113,8 @@
     "speedTxMessage": "Are you sure that you want to speed up this transaction?"
   },
   "connections": {
+    "searchAccounts": "Search accounts",
+    "noMatchingAccounts": "No matching accounts",
     "connectedAccount": "CONNECTED ACCOUNT",
     "onlyConnect": "Only connect with sites you trust.",
     "learnMore": "Learn more.",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "This site requested ECDSA owner addresses that are not local Pali accounts. Those owners can control the smart account after setup.",
     "prepareSmartAccountExternalEcdsaConfirm": "I understand these external owners can approve smart-account actions.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirm the external ECDSA owner warning before continuing.",
+    "smartAccountExternalPasskeyUnsupported": "This site supplied an external passkey. Request a new passkey in Pali instead to keep control of your account.",
+    "smartAccountPasskeySaveFailed": "Pali could not save the passkey recovery record. Keep the passkey in your credential manager and try again.",
     "prepareSmartAccountDetailsKnownSigner": "If the signer is already known, Pali can use it when creating the account.",
     "prepareSmartAccountDetailsPasskey": "For passkeys, Pali creates the account first, then adds the new passkey.",
     "prepareSmartAccountStepCredential": "Checking sign-in method...",
@@ -270,6 +274,7 @@
     "gasPrice": "Gas Price",
     "internalError": "An internal error has occurred.",
     "transactionCreationFailed": "Failed to create transaction: {{error}}. Please try again.",
+    "submissionStatusUnknown": "Submission status is unknown. To prevent sending twice, this call cannot be retried here. You can close this window.",
     "feeRateInsane": "Fee rate {{value}} {{currency}}/byte is extremely high and will likely be rejected by the network.",
     "feeRateExtreme": "Fee rate {{value}} {{currency}}/byte is too high and may be rejected as non-standard.",
     "feeRateHigh": "Fee rate {{value}} {{currency}}/byte is very high. Please verify this is correct.",
@@ -424,6 +429,9 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "walletSetupFailed": "Could not confirm wallet setup. Keep your recovery phrase and check the wallet status.",
+    "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",
+    "retryWalletWindowCheck": "Retry window check",
     "bgError": "Background Error",
     "bgErrorMessage": "We will lock your wallet to fix this issue. Don't worry, all your data will remain safe.",
     "ledgerBlindSigning": "Please, enable Blind Signing in the Ledger app Settings",
@@ -550,6 +558,8 @@
     "allYourSettings": "All settings on this device (custom tokens and imported accounts) will be removed. This does not move or delete on-chain funds, but the encrypted private keys for imported accounts will be erased from this device. If you do not have the Secret Recovery Phrase or those private keys, you may permanently lose access to those assets.",
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
+    "accountRemovalContextChanged": "Account context changed. Please confirm removal again.",
+    "networkRemovalIncomplete": "Network removal did not complete. Check the network list and try again.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "Ready",
     "smartAccountInfrastructureNotReadyStatus": "Not ready",
     "smartAccountInfrastructureInsufficientGas": "Add native gas to this wallet, then try deploying smart account setup again.",
-    "smartAccountInfrastructureDeployFailed": "Failed to deploy smart account setup.",
-    "smartAccountInfrastructureSubmitted": "Smart account setup deployment submitted.",
+    "smartAccountInfrastructureCheckBeforeRetry": "Setup stopped or is still pending. Check the updated status before continuing; submitted transactions may still confirm.",
+    "smartAccountInfrastructureCheckingSlow": "Setup status is taking longer than expected. You can check again or leave this page.",
+    "smartAccountInfrastructurePending": "Deployment is pending. Status updates automatically; you can leave this page.",
+    "smartAccountInfrastructureCheckStatus": "Check status",
     "deploySmartAccountInfrastructure": "Deploy",
     "installed": "Installed",
     "supported": "Supported",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "(verify token exists)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali could not verify this transaction’s inputs for the approved account. Check the account and request a new transaction.",
+    "psbtSigningContextChanged": "Your wallet account or network changed. Please request approval again.",
     "messageCopied": "Message successfully copied",
     "signatureFailed": "Signature request failed",
     "sorryWeCould": "Sorry, we could not submit your request. Try again later.",

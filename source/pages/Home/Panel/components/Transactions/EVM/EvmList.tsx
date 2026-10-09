@@ -14,7 +14,9 @@ import { ConfirmationModal } from 'components/Modal';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
+import { useContextualState } from 'hooks/useContextualState';
 import { usePrice } from 'hooks/usePrice';
+import { useRequestScope } from 'hooks/useRequestScope';
 import { useUtils } from 'hooks/useUtils';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
@@ -36,6 +38,8 @@ import {
   handleUpdateTransaction,
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
 
 type EvmPageResponse = {
   error?: string;
@@ -59,6 +63,7 @@ const TransactionValueSkeleton = () => (
 const EvmTransactionItem = React.memo(
   ({
     tx,
+    chainId,
     currentAccount,
     getTxStatusIcons,
     getTxType,
@@ -72,6 +77,7 @@ const EvmTransactionItem = React.memo(
     tokenMeta,
     ensCache,
   }: {
+    chainId: number;
     currency: string;
     currentAccount: any;
     ensCache?: any;
@@ -134,22 +140,13 @@ const EvmTransactionItem = React.memo(
     });
 
     // Create a stable cache key for memoization
-    const cacheKey = useMemo(() => {
-      const tm = tokenMeta || ({} as any);
-      const tmSig = `${tm.contractAddress || ''}-${tm.decimals ?? ''}-${
-        tm.tokenSymbol || tm.symbol || ''
-      }`;
-      return `${tx.hash}-${tx.value}-${tx.to}-${tx.input}-${tmSig}`;
-    }, [
-      tx.hash,
-      tx.value,
-      tx.to,
-      tx.input,
-      tokenMeta?.contractAddress,
-      tokenMeta?.decimals,
-      tokenMeta?.tokenSymbol,
-      tokenMeta?.symbol,
-    ]);
+    const cacheKey = getTransactionDisplayCacheKey({
+      accountAddress: currentAccount?.address,
+      chainId,
+      currency,
+      transaction: displayTx,
+      tokenMeta,
+    });
 
     // Effect to get proper transaction display info
     React.useEffect(() => {
@@ -158,7 +155,7 @@ const EvmTransactionItem = React.memo(
       const getDisplayInfo = async () => {
         setIsLoadingDisplayInfo(true);
         try {
-          const cacheKeyLocal = tx.hash || (tx as any).txid || cacheKey;
+          const cacheKeyLocal = cacheKey;
           const now = Date.now();
           const cached = cacheKeyLocal
             ? txDisplayInfoCache.get(cacheKeyLocal)
@@ -176,7 +173,11 @@ const EvmTransactionItem = React.memo(
             currency,
             true // Skip fetching unknown tokens in transaction list
           );
-          if (cacheKeyLocal) {
+          if (!cancelled && cacheKeyLocal) {
+            if (txDisplayInfoCache.size >= 500) {
+              const oldestKey = txDisplayInfoCache.keys().next().value;
+              if (oldestKey !== undefined) txDisplayInfoCache.delete(oldestKey);
+            }
             txDisplayInfoCache.set(cacheKeyLocal, { data: info, ts: now });
           }
           if (!cancelled) {
@@ -524,7 +525,8 @@ const EvmTransactionItem = React.memo(
   },
   (prevProps, nextProps) =>
     // Custom comparison function - only re-render if the transaction data actually changed
-    prevProps.tx.hash === nextProps.tx.hash &&
+    prevProps.tx === nextProps.tx &&
+    prevProps.chainId === nextProps.chainId &&
     prevProps.tx.confirmations === nextProps.tx.confirmations &&
     prevProps.tx.isCanceled === nextProps.tx.isCanceled &&
     (prevProps.tx as any).txreceipt_status ===
@@ -534,6 +536,13 @@ const EvmTransactionItem = React.memo(
     (prevProps.tx as any).isSpeedUp === (nextProps.tx as any).isSpeedUp &&
     (prevProps.tx as any).isCancel === (nextProps.tx as any).isCancel &&
     prevProps.tx.value === nextProps.tx.value &&
+    prevProps.tx.chainId === nextProps.tx.chainId &&
+    prevProps.tx.input === nextProps.tx.input &&
+    prevProps.tx.to === nextProps.tx.to &&
+    prevProps.getFiatAmount === nextProps.getFiatAmount &&
+    prevProps.getTxOptions === nextProps.getTxOptions &&
+    prevProps.tokenMeta?.decimals === nextProps.tokenMeta?.decimals &&
+    prevProps.tokenMeta?.isNft === nextProps.tokenMeta?.isNft &&
     prevProps.currentAccount?.address === nextProps.currentAccount?.address &&
     prevProps.currency === nextProps.currency &&
     prevProps.t === nextProps.t &&
@@ -571,11 +580,17 @@ export const EvmTransactionsList = ({
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
+  const paginationContext = JSON.stringify([
+    currentAccount?.address,
+    chainId,
+    apiUrl,
+  ]);
+  const beginPageRequest = useRequestScope(paginationContext);
 
   // Combine base transactions with any paged transactions we load from API
-  const [extraTransactions, setExtraTransactions] = useState<
+  const [extraTransactions, setExtraTransactions] = useContextualState<
     ITransactionInfoEvm[]
-  >([]);
+  >(paginationContext, []);
   const combinedTransactions = useMemo(() => {
     if (!extraTransactions.length) return userTransactions;
     // Prefer base txlist entries over earlier tokentx placeholders when hashes collide
@@ -705,14 +720,27 @@ export const EvmTransactionsList = ({
   );
 
   // Server-backed pagination via explorer API (fallbacks to local slicing when no API)
-  const [nextPage, setNextPage] = useState<number>(2);
-  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const [hasMoreServer, setHasMoreServer] = useState<boolean>(true);
-  const [visibleCount, setVisibleCount] = useState<number>(50); // fallback only
+  const [nextPage, setNextPage] = useContextualState<number>(
+    paginationContext,
+    2
+  );
+  const [isLoadingMore, setIsLoadingMore] = useContextualState<boolean>(
+    paginationContext,
+    false
+  );
+  const [hasMoreServer, setHasMoreServer] = useContextualState<boolean>(
+    paginationContext,
+    true
+  );
+  const [visibleCount, setVisibleCount] = useContextualState<number>(
+    paginationContext,
+    50
+  ); // fallback only
 
   // Reset pagination state when switching account, network, or API endpoint
   useEffect(() => {
     setExtraTransactions([]);
+    setIsLoadingMore(false);
     setNextPage(2);
     setHasMoreServer(true);
     setVisibleCount(50);
@@ -720,9 +748,7 @@ export const EvmTransactionsList = ({
 
   const groupedTransactions = useMemo(() => {
     const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
-    const sourceList = apiUrl
-      ? filteredTransactions
-      : filteredTransactions.slice(0, visibleCount);
+    const sourceList = filteredTransactions.slice(0, visibleCount);
     sourceList.forEach((tx) => {
       const formattedDate = formatTimeStamp(tx?.timestamp);
       if (!grouped[formattedDate]) {
@@ -751,7 +777,7 @@ export const EvmTransactionsList = ({
   // metadata lookups key off the actual contract, not the EntryPoint.
   const innerTargetByHash = useMemo(() => {
     const map = new Map<string, string>();
-    for (const tx of filteredTransactions) {
+    for (const tx of filteredTransactions.slice(0, visibleCount)) {
       const hash = (tx as any)?.hash;
       if (!hash) continue;
       const inner = getSmartAccountDisplayTransaction(tx);
@@ -760,7 +786,7 @@ export const EvmTransactionsList = ({
       }
     }
     return map;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, visibleCount]);
 
   // Invalidate cached display info when the assets list changes so decimals/symbols refresh immediately
   useEffect(() => {
@@ -798,6 +824,7 @@ export const EvmTransactionsList = ({
                 <EvmTransactionItem
                   key={txKey}
                   tx={tx}
+                  chainId={chainId}
                   currentAccount={currentAccount}
                   getTxStatusIcons={getTxStatusIcons}
                   getTxType={getTxType}
@@ -818,24 +845,31 @@ export const EvmTransactionsList = ({
       )}
       {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
       {apiUrl
-        ? hasMoreServer && (
+        ? (hasMoreServer || filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
                 disabled={isLoadingMore}
                 onClick={async () => {
+                  if (filteredTransactions.length > visibleCount) {
+                    setVisibleCount((count) => count + 50);
+                    return;
+                  }
+                  const isCurrentRequest = beginPageRequest();
                   try {
                     setIsLoadingMore(true);
                     const res = (await controllerEmitter(
                       ['wallet', 'getEvmTransactionsPage'],
                       [currentAccount?.address, chainId, apiUrl, nextPage, 30]
                     )) as EvmPageResponse;
+                    if (!isCurrentRequest()) return;
                     if (res?.error) {
                       alert.warning(res.error);
                     } else if (Array.isArray(res?.transactions)) {
                       const newTxs = res.transactions as ITransactionInfoEvm[];
                       if (newTxs.length > 0) {
                         setExtraTransactions((prev) => [...prev, ...newTxs]);
+                        setVisibleCount((count) => count + newTxs.length);
                         setNextPage((p) => p + 1);
                         if (res?.hasMore === false) setHasMoreServer(false);
                       } else {
@@ -845,9 +879,10 @@ export const EvmTransactionsList = ({
                       setHasMoreServer(false);
                     }
                   } catch (e: any) {
-                    alert.error(String(e?.message || e));
+                    if (isCurrentRequest())
+                      alert.error(String(e?.message || e));
                   } finally {
-                    setIsLoadingMore(false);
+                    if (isCurrentRequest()) setIsLoadingMore(false);
                   }
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"

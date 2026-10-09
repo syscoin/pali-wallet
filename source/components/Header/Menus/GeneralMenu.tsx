@@ -18,6 +18,7 @@ import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { getDappOrigin } from 'utils/dappOrigin';
 import { truncate } from 'utils/index';
 import {
   createNavigationContext,
@@ -69,7 +70,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
         currentWindow: true,
       });
       if (tabs[0]?.url) {
-        const { host } = new URL(tabs[0].url);
+        const host = getDappOrigin(tabs[0].url) || '';
         const isConnected = !!dapps[host];
         setCurrentTab({ host, isConnected });
       }
@@ -159,7 +160,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
               static
             >
               <div className="remove-scrollbar h-full overflow-y-auto overscroll-contain pb-24">
-                <AccountMenu />
+                {open && <AccountMenu />}
                 <div className="flex flex-col justify-start items-start">
                   <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
                     {t('generalMenu.wallet')}

@@ -105,6 +105,8 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
         eventName: 'switchNetwork',
         host,
         route: MethodRoute.SwitchNetwork,
+        sender: context.originalRequest.sender,
+        signal: context.originalRequest.signal,
       });
       expect(next).toHaveBeenCalledTimes(1);
     }
@@ -139,6 +141,8 @@ describe('networkCompatibilityMiddleware connection enforcement', () => {
       eventName: 'switchNetwork',
       host,
       route: MethodRoute.SwitchNetwork,
+      sender: context.originalRequest.sender,
+      signal: context.originalRequest.signal,
     });
     expect(next).toHaveBeenCalledTimes(1);
   });

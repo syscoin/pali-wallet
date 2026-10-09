@@ -1,10 +1,14 @@
 let inputProps: any;
+let effectCleanups: Array<() => void> = [];
 
 jest.mock('react', () => {
   const actual = jest.requireActual('react');
   return {
     ...actual,
-    useEffect: (effect: () => void) => effect(),
+    useEffect: (effect: () => void | (() => void)) => {
+      const cleanup = effect();
+      if (cleanup) effectCleanups.push(cleanup);
+    },
   };
 });
 
@@ -35,11 +39,35 @@ describe('ValidatedPasswordInput explicit validation', () => {
 
   beforeEach(() => {
     inputProps = undefined;
+    effectCleanups = [];
     errorSpy = jest.spyOn(console, 'error').mockImplementation();
   });
 
   afterEach(() => {
+    effectCleanups.forEach((cleanup) => cleanup());
     errorSpy.mockRestore();
+  });
+
+  it('discards a secret lookup result after the screen unmounts', async () => {
+    let resolve!: (value: string) => void;
+    const onValidationSuccess = jest.fn();
+    renderToStaticMarkup(
+      <ValidatedPasswordInput
+        onValidate={() =>
+          new Promise((res) => {
+            resolve = res;
+          })
+        }
+        onValidationSuccess={onValidationSuccess}
+        validationTrigger="submit"
+      />
+    );
+    inputProps.onChange({ target: { value: 'password' } });
+    inputProps.onPressEnter({ preventDefault: jest.fn() });
+    effectCleanups.forEach((cleanup) => cleanup());
+    resolve('sensitive result');
+    await Promise.resolve();
+    expect(onValidationSuccess).not.toHaveBeenCalled();
   });
 
   it('does not validate partial passwords while typing', async () => {

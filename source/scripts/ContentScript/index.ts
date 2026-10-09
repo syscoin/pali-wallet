@@ -4,104 +4,15 @@ import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
+import {
+  assertJsonWorkBudget,
+  assertProviderRequestBudget,
+} from 'utils/requestPayloadBudget';
 
+import { sendToBackground } from './backgroundMessaging';
 import { isAllowedPageProviderMessageType } from './pageMessageAuthorization';
 
 const emitter = new EventEmitter();
-
-// Simple error logging rate limiting
-let lastConnectionAttempt = 0;
-const CONNECTION_CHECK_INTERVAL = 5000; // 5 seconds
-
-// Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAYS = [100, 500, 1000]; // Progressive delays in ms
-
-/**
- * Send message to background script with retry logic and error handling
- */
-const sendToBackground = async (
-  message: any,
-  handleResponse?: (response: any) => void,
-  retryCount = 0
-): Promise<void> =>
-  new Promise((resolve) => {
-    try {
-      chrome.runtime.sendMessage(message, (response) => {
-        // Capture error immediately to avoid race conditions
-        const currentError = chrome.runtime.lastError
-          ? { ...chrome.runtime.lastError }
-          : null;
-
-        if (currentError) {
-          const errorMessage = currentError.message || '';
-
-          // Check if this is a connection error
-          const isConnectionError =
-            errorMessage.includes('message port closed') ||
-            errorMessage.includes('Receiving end does not exist') ||
-            errorMessage.includes('Extension context invalidated');
-
-          if (isConnectionError && retryCount < MAX_RETRIES) {
-            // Service worker might be starting up, retry with delay
-            const delay = RETRY_DELAYS[retryCount] || 1000;
-            console.debug(
-              `[Content Script] Background not ready, retrying in ${delay}ms (attempt ${
-                retryCount + 1
-              }/${MAX_RETRIES})`
-            );
-
-            setTimeout(() => {
-              sendToBackground(message, handleResponse, retryCount + 1)
-                .then(resolve)
-                .catch(() => resolve()); // Prevent unhandled rejection
-            }, delay);
-            return;
-          }
-
-          // Rate-limit error logging to reduce spam
-          if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
-            console.error('Content script connection error:', currentError);
-            lastConnectionAttempt = Date.now();
-          }
-
-          // Call response handler with error
-          if (handleResponse) {
-            handleResponse({
-              error: {
-                message: `Pali: ${
-                  isConnectionError
-                    ? 'Background script temporarily unavailable'
-                    : 'Message processing failed'
-                }.`,
-                code: -32603,
-              },
-            });
-          }
-          resolve();
-          return;
-        }
-
-        // Success - call response handler
-        if (handleResponse) {
-          handleResponse(response);
-        }
-        resolve();
-      });
-    } catch (error) {
-      // Handle any synchronous errors
-      console.error('[Content Script] Error sending message:', error);
-      if (handleResponse) {
-        handleResponse({
-          error: {
-            message: 'Pali: Message processing failed.',
-            code: -32603,
-          },
-        });
-      }
-      resolve();
-    }
-  });
 
 const handleEthInjection = (message: any) => {
   const isInjected = message?.isInjected;
@@ -148,11 +59,27 @@ const start = () => {
 
       const { id, type, data } = event.data;
 
-      if (!id || !type) return;
+      if (
+        typeof id !== 'string' ||
+        !id ||
+        id.length > 200 ||
+        typeof type !== 'string'
+      )
+        return;
       if (!isAllowedPageProviderMessageType(type)) return;
 
       // listen for the response
       checkForPaliRegisterEvent(id);
+
+      try {
+        if (type === 'METHOD_REQUEST') assertProviderRequestBudget(data);
+        else assertJsonWorkBudget(data);
+      } catch (error) {
+        emitter.emit(id, {
+          error: { code: -32602, message: error.message },
+        });
+        return;
+      }
 
       sendToBackground(
         {
@@ -162,11 +89,7 @@ const start = () => {
         },
         (response) => {
           // Handle response or error from background
-          if (response && response.error) {
-            // Emit error back to the page
-            emitter.emit(id, response);
-          }
-          // Normal responses are handled by backgroundMessageListener
+          emitter.emit(id, response);
         }
       );
     },
@@ -292,7 +215,11 @@ export const injectScriptFile = (file: string, id: string) => {
 };
 
 // listen for messages from background
-const backgroundMessageListener = (message) => {
+const backgroundMessageListener = (message, _sender, sendResponse) => {
+  if (message?.type === 'PALI_PROVIDER_DOCUMENT_CHECK') {
+    sendResponse({ documentActive: true });
+    return false;
+  }
   const { id, data } = message;
 
   if (data?.params?.type) {

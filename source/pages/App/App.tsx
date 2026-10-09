@@ -1,10 +1,19 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { HashRouter, useNavigate } from 'react-router-dom';
 
 import { Container } from 'components/index';
 import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import { Router } from 'routers/index';
+import {
+  hasExternalWalletPage,
+  isExternalWalletUrl,
+} from 'utils/extensionContexts';
+import {
+  startupFeedbackDelay,
+  WALLET_FEEDBACK_TIMEOUT_MS,
+} from 'utils/requestWalletState';
 
 // Wrapper component to provide navigate function to error boundary
 const AppWithErrorBoundary: FC = () => {
@@ -104,118 +113,105 @@ const ExternalActiveMessage: FC = () => (
 );
 
 const App: FC = () => {
+  const { t } = useTranslation();
   const [isExternalActive, setIsExternalActive] = useState(false);
+  const externalActiveRef = useRef(false);
   const [isCheckingExternal, setIsCheckingExternal] = useState(true);
 
+  const [externalCheckFailed, setExternalCheckFailed] = useState(false);
+  const [externalCheckSlow, setExternalCheckSlow] = useState(false);
+  const [checkAttempt, setCheckAttempt] = useState(0);
+
   useEffect(() => {
-    // Check for any extension tabs/windows using storage + context detection
+    let active = true;
+    let generation = 0;
+    let abortController: AbortController;
+    let feedbackTimer: ReturnType<typeof setTimeout>;
     const checkForExternalTabs = async () => {
+      const isInitialCheck = generation === 0 && checkAttempt === 0;
+      const current = ++generation;
+      abortController?.abort();
+      clearTimeout(feedbackTimer);
+      abortController = new AbortController();
+      setIsCheckingExternal(true);
+      setExternalCheckFailed(false);
+      setExternalCheckSlow(false);
+      feedbackTimer = setTimeout(
+        () => {
+          if (active && current === generation) setExternalCheckSlow(true);
+        },
+        isInitialCheck ? startupFeedbackDelay() : WALLET_FEEDBACK_TIMEOUT_MS
+      );
       try {
-        // First check storage flags for immediate response
-        chrome.storage.local.get(
-          ['pali-popup-open', 'pali-popup-timestamp'],
-          (result) => {
-            if (chrome.runtime.lastError) {
-              console.error(
-                '[App] Failed to get popup flags:',
-                chrome.runtime.lastError
-              );
-              setIsCheckingExternal(false);
-              return;
-            }
-
-            const popupOpen = !!result['pali-popup-open'];
-            const timestamp = result['pali-popup-timestamp'];
-            const now = Date.now();
-
-            if (popupOpen && timestamp) {
-              // Check if timestamp is stale (older than 5 minutes)
-              const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
-              if (now - timestamp > STALE_TIMEOUT) {
-                // Stale flag - clear it and fall back to context check
-                chrome.storage.local.remove(
-                  ['pali-popup-open', 'pali-popup-timestamp'],
-                  () => {
-                    if (chrome.runtime.lastError) {
-                      console.error(
-                        '[App] Failed to remove stale popup flags:',
-                        chrome.runtime.lastError
-                      );
-                    }
-                  }
-                );
-              } else {
-                // Valid recent flag - external popup is active
-                setIsExternalActive(true);
-                setIsCheckingExternal(false);
-                return;
-              }
-            }
-
-            // If no storage flag or stale flag was cleared, check contexts as fallback
-            if (
-              'getContexts' in chrome.runtime &&
-              typeof chrome.runtime.getContexts === 'function'
-            ) {
-              (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
-                const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
-
-                // Only dapp popups (external.html) should block the main app.
-                // app.html itself may legitimately run in a TAB context (e.g.
-                // opened in a full browser tab), and must not block itself.
-                const hasExternalTab = contexts.some((ctx) => {
-                  const isExternalExtensionTab =
-                    ctx.contextType === 'TAB' &&
-                    ctx.documentOrigin === ourExtensionOrigin &&
-                    typeof ctx.documentUrl === 'string' &&
-                    ctx.documentUrl.includes('external.html');
-                  return isExternalExtensionTab;
-                });
-
-                setIsExternalActive(hasExternalTab);
-                setIsCheckingExternal(false);
-              });
-            } else {
-              setIsExternalActive(false);
-              setIsCheckingExternal(false);
-            }
-          }
+        const hasExternal = await hasExternalWalletPage(
+          undefined,
+          abortController.signal
         );
-      } catch (error) {
-        console.warn('[App] Could not check for external tabs:', error);
-        setIsExternalActive(false);
-        setIsCheckingExternal(false);
-      }
-    };
-
-    checkForExternalTabs();
-
-    // Listen for storage changes for external state
-    const handleStorageChange = async (changes: any) => {
-      if (changes['pali-popup-open'] || changes['pali-popup-timestamp']) {
-        try {
-          // Re-run the external tab check when storage changes
-          checkForExternalTabs();
-        } catch (error) {
-          console.warn(
-            '[App] Error checking external tabs on storage change:',
-            error
-          );
+        if (!active || current !== generation) return;
+        externalActiveRef.current = hasExternal;
+        setIsExternalActive(hasExternal);
+      } catch {
+        if (!active || current !== generation) return;
+        setExternalCheckFailed(true);
+      } finally {
+        if (active && current === generation) {
+          clearTimeout(feedbackTimer);
+          setIsCheckingExternal(false);
+          setExternalCheckSlow(false);
         }
       }
     };
-
-    chrome.storage.onChanged.addListener(handleStorageChange);
-
-    // Skip ALL background connections when external tabs are active
-    // This prevents any interference with external popups
-
-    // Cleanup: remove listeners when the component unmounts
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange);
+    void checkForExternalTabs();
+    const handleStorageChange = (changes: any) => {
+      if (changes['pali-popup-open'] || changes['pali-popup-timestamp']) {
+        void checkForExternalTabs();
+      }
     };
-  }, []);
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    const handleTabRemoved = () => {
+      if (externalActiveRef.current) void checkForExternalTabs();
+    };
+    const handleTabUpdated = (
+      _id: number,
+      changes: chrome.tabs.TabChangeInfo,
+      tab: chrome.tabs.Tab
+    ) => {
+      if (
+        isExternalWalletUrl(changes.url) ||
+        isExternalWalletUrl(tab.pendingUrl) ||
+        (externalActiveRef.current &&
+          (changes.url || changes.status === 'complete'))
+      )
+        void checkForExternalTabs();
+    };
+    chrome.tabs.onRemoved.addListener(handleTabRemoved);
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+    return () => {
+      active = false;
+      abortController?.abort();
+      clearTimeout(feedbackTimer);
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+      chrome.tabs.onRemoved.removeListener(handleTabRemoved);
+      chrome.tabs.onUpdated.removeListener(handleTabUpdated);
+    };
+  }, [checkAttempt]);
+
+  if (externalCheckFailed || externalCheckSlow) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-white">
+        <p role="status" className="mb-4">
+          {t('settings.walletWindowCheckSlow')}
+        </p>
+        <button
+          type="button"
+          className="rounded-lg bg-[#4DA2CF] px-5 py-3 font-medium text-[#061120]"
+          onClick={() => setCheckAttempt((attempt) => attempt + 1)}
+        >
+          {t('settings.retryWalletWindowCheck')}
+        </button>
+      </div>
+    );
+  }
 
   // Show branded skeleton while checking (matches the HTML loader)
   if (isCheckingExternal) {

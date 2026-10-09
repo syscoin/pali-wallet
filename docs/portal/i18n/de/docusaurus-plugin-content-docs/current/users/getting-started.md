@@ -2,7 +2,7 @@
 title: Erste Schritte für Benutzer
 ---
 
-Mit Pali können Sie EVM-Accounts, Syscoin UTXO-Accounts und Passkey Smart Accounts aus einer Erweiterung verwalten.
+Pali ermöglicht es Ihnen, EVM-Konten, Syscoin-UTXO-Konten und modulare Smart Accounts in einer einzigen Erweiterung zu verwalten.
 
 ## Grundeinrichtung
 
@@ -11,32 +11,40 @@ Mit Pali können Sie EVM-Accounts, Syscoin UTXO-Accounts und Passkey Smart Accou
 3. Legen Sie ein starkes Passwort fest.
 4. Sichern Sie Ihre Seed-Phrase offline.
 5. Wählen Sie das Netzwerk, das Sie verwenden möchten.
-6. Verbinden Sie sich nur mit dapps, denen Sie vertrauen.
+6. Verbinden Sie sich nur mit Dapps, denen Sie vertrauen.
 
-## Verbindung mit einer dapp
+## Einrichtung und Laden
 
-Wenn eine Site Zugriff anfordert, öffnet Pali ein Verbindungspopup, das die Site zeigt und Sie den Account auswählen lässt. Eine dapp erhält nur die verbundene Account-Adresse und den freigegebenen Provider-Zustand.
+Lassen Sie eine noch nicht abgeschlossene Einrichtung geöffnet und sichtbar. Wenn Sie sie verlassen, ausblenden oder neu laden, werden sensible Eingaben zur Einrichtung gelöscht, und Sie müssen möglicherweise von vorn beginnen. Bewahren Sie die gesicherte Wiederherstellungsphrase auf.
 
-Pali speichert Verbindungen nach Site. Sie können verschiedene Sites mit verschiedenen Accounts verbinden, aber jede Site hat jeweils nur einen aktiven Account.
+Falls Pali nicht bestätigen kann, dass die Wallet-Erstellung abgeschlossen wurde, lassen Sie die Anwendung neu laden und prüfen Sie die Wallet. Wenn der Entsperrbildschirm erscheint, verwenden Sie das gerade festgelegte Passwort. Gehen Sie bei einer unterbrochenen Antwort nicht davon aus, dass keine Wallet erstellt wurde, und wiederholen Sie die Erstellung nicht sofort.
 
-## EVM-Accounts
+Bei einem langsamen Vorgang kann Pali Wiederherstellungsoptionen anzeigen, während die Navigation verfügbar bleibt. Sicherheitsrelevante Aktionen warten weiterhin, bis Konto und Netzwerk feststehen. Unter Empfangen werden Adresse, QR-Code und Kopierfunktion vorübergehend ausgeblendet; auch Faucet-Anforderungen müssen warten. Prüfen Sie Konto und Netzwerk erneut, bevor Sie fortfahren.
 
-Verwenden Sie EVM-Accounts für Ethereum-kompatible Chains, Rollux, Syscoin NEVM und dapps, die Wallet-Verhalten im MetaMask-Stil erwarten.
+## Verbindung mit einer Dapp
 
-EVM-dapps können Folgendes anfordern:
+Wenn eine Website Zugriff anfordert, öffnet Pali ein Verbindungsfenster, das die Website anzeigt und Sie das Konto auswählen lässt. Eine Dapp erhält nur die Adresse des verbundenen Kontos und den freigegebenen Provider-Zustand.
 
-- Account-Zugriff
+Pali speichert Verbindungen pro Website. Sie können verschiedene Websites mit verschiedenen Konten verbinden, aber jede Website hat jeweils nur ein aktives Konto.
+
+## EVM-Konten
+
+Verwenden Sie EVM-Konten für Ethereum-kompatible Chains, Rollux, Syscoin NEVM und Dapps, die ein Wallet-Verhalten wie bei MetaMask erwarten.
+
+EVM-Dapps können Folgendes anfordern:
+
+- Kontozugriff
 - Transaktionen
 - persönliche Signaturen
-- typed data-Signaturen
-- Token-Watch-Requests
-- Chain-Add/Switch-Requests
-- Batch-Call-Requests
+- Signaturen für strukturierte Daten
+- Anfragen zum Beobachten von Token
+- Anfragen zum Hinzufügen oder Wechseln einer Chain
+- Anfragen für gebündelte Aufrufe
 
-## UTXO-Accounts
+## UTXO-Konten
 
-Verwenden Sie UTXO-Accounts für Syscoin UTXO und Bitcoin-artige Transaktions-Flows. UTXO-dapps können xpub-bewussten Zustand, Wechselgeldadressen, PSBT-Signatur und Transaktions-Broadcast anfordern.
+Verwenden Sie UTXO-Konten für Syscoin UTXO und Bitcoin-artige Transaktionsabläufe. UTXO-Dapps können xpub-bezogene Zustandsdaten, Wechselgeldadressen, PSBT-Signaturen und das Senden von Transaktionen anfordern.
 
-## Passkey Smart Accounts
+## Smart Accounts
 
-Passkey-Accounts sind Smart Accounts, die durch WebAuthn-Credentials kontrolliert werden. Sie können für institutionell verwaltetes Onboarding, Account-Wiederherstellung und gesponserte Ausführung nützlich sein. Einige Passkey-Accounts sind counterfactual bis zu ihrer ersten Deployment-Transaktion.
+Smart Accounts sind Vertragskonten, die von Modulen kontrolliert werden. Pali kann Konten erstellen, die von einem Passkey-Validator, einem von der Wallet kontrollierten ECDSA-Validator oder einer gemeinsam verwalteten Richtlinie kontrolliert werden. Sie eignen sich für Dapp-Onboarding, gebündelte Aktionen und Guardian-Recovery. Einige Smart Accounts sind bis zu ihrer ersten Deployment-Transaktion kontrafaktisch.

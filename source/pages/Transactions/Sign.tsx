@@ -88,13 +88,15 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           [
             {
               psbt: data,
+              expectedContext: data.approvedContext,
               isTrezor: activeAccount.isTrezorWallet,
               isLedger: activeAccount.isLedgerWallet,
             },
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
-            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
+            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
+          false
         );
       } else {
         // Sign-only flow
@@ -103,13 +105,15 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           [
             {
               psbt: data,
+              expectedContext: data.approvedContext,
               isTrezor: activeAccount.isTrezorWallet,
               isLedger: activeAccount.isLedgerWallet,
             },
           ],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
-            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS
+            : SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
+          false
         );
       }
       // Show success toast

@@ -113,6 +113,8 @@
     "speedTxMessage": "Êtes-vous sûr de vouloir accélérer cette transaction ?"
   },
   "connections": {
+    "searchAccounts": "Rechercher des comptes",
+    "noMatchingAccounts": "Aucun compte correspondant",
     "connectedAccount": "COMPTE CONNECTÉ",
     "onlyConnect": "Ne vous connectez qu'aux sites de confiance.",
     "learnMore": "En savoir plus.",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Ce site a demandé des adresses de propriétaires ECDSA qui ne sont pas des comptes Pali locaux. Ces propriétaires peuvent contrôler le smart account après la configuration.",
     "prepareSmartAccountExternalEcdsaConfirm": "Je comprends que ces propriétaires externes peuvent approuver des actions du smart account.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirmez l’avertissement concernant les propriétaires ECDSA externes avant de continuer.",
+    "smartAccountExternalPasskeyUnsupported": "Ce site a fourni une clé d’accès externe. Demandez plutôt une nouvelle clé d’accès dans Pali pour garder le contrôle de votre compte.",
+    "smartAccountPasskeySaveFailed": "Pali n’a pas pu enregistrer les données de récupération de la clé d’accès. Conservez la clé d’accès dans votre gestionnaire d’identifiants et réessayez.",
     "prepareSmartAccountDetailsKnownSigner": "Si le signataire est déjà connu, Pali peut l’utiliser lors de la création du compte.",
     "prepareSmartAccountDetailsPasskey": "Pour les passkeys, Pali crée d’abord le compte, puis ajoute la nouvelle passkey.",
     "prepareSmartAccountStepCredential": "Vérification de la méthode de connexion...",
@@ -270,6 +274,7 @@
     "gasPrice": "Prix du gaz",
     "internalError": "Une erreur interne s'est produite.",
     "transactionCreationFailed": "Échec de la création de la transaction: {{error}}. Veuillez réessayer.",
+    "submissionStatusUnknown": "Le statut de l’envoi est inconnu. Pour éviter un double envoi, cet appel ne peut pas être relancé ici. Vous pouvez fermer cette fenêtre.",
     "feeRateInsane": "Le taux de frais {{value}} {{currency}}/byte est extrêmement élevé et sera probablement rejeté par le réseau.",
     "feeRateExtreme": "Le taux de frais {{value}} {{currency}}/byte est trop élevé et peut être rejeté comme non standard.",
     "feeRateHigh": "Le taux de frais {{value}} {{currency}}/byte est très élevé. Veuillez vérifier que c'est correct.",
@@ -424,6 +429,9 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "walletSetupFailed": "Impossible de confirmer la configuration du portefeuille. Conservez votre phrase de récupération et vérifiez l’état du portefeuille.",
+    "walletWindowCheckSlow": "Les fenêtres du portefeuille mettent plus de temps à répondre. Réessayez de les vérifier.",
+    "retryWalletWindowCheck": "Vérifier à nouveau les fenêtres",
     "bgError": "Erreur en arrière-plan",
     "bgErrorMessage": "Nous allons verrouiller votre portefeuille pour résoudre ce problème. Ne vous inquiétez pas, toutes vos données resteront en sécurité.",
     "ledgerBlindSigning": "Veuillez activer la signature aveugle dans les paramètres de l'application Ledger",
@@ -550,6 +558,8 @@
     "allYourSettings": "Tous les paramètres sur cet appareil (jetons personnalisés et comptes importés) seront supprimés. Cela ne déplace ni ne supprime les fonds on-chain, mais les clés privées chiffrées des comptes importés seront effacées de cet appareil. Sans la phrase de récupération secrète ou ces clés privées, vous pourriez perdre définitivement l'accès à ces actifs.",
     "removeAccount": "Supprimer le compte",
     "removeAccountConfirmation": "Êtes-vous sûr de vouloir supprimer le compte {{accountType}} \"{{accountName}}\" ? Vous pouvez toujours recréer le compte plus tard si nécessaire.",
+    "accountRemovalContextChanged": "Le contexte du compte a changé. Veuillez confirmer à nouveau la suppression.",
+    "networkRemovalIncomplete": "La suppression du réseau n’a pas abouti. Consultez la liste des réseaux et réessayez.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
     "failedToRemoveAccount": "Échec de la suppression du compte",
     "hardwareWalletSuccess": "Portefeuille matériel connecté avec succès !",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "Prêt",
     "smartAccountInfrastructureNotReadyStatus": "Pas prêt",
     "smartAccountInfrastructureInsufficientGas": "Ajoutez du gas natif à ce portefeuille, puis réessayez la configuration du compte intelligent.",
-    "smartAccountInfrastructureDeployFailed": "Impossible de déployer la configuration du compte intelligent.",
-    "smartAccountInfrastructureSubmitted": "Déploiement de la configuration du compte intelligent envoyé.",
+    "smartAccountInfrastructureCheckBeforeRetry": "La configuration s’est arrêtée ou est toujours en attente. Vérifiez le statut actualisé avant de continuer ; les transactions envoyées peuvent encore être confirmées.",
+    "smartAccountInfrastructureCheckingSlow": "La vérification du statut prend plus de temps que prévu. Vous pouvez réessayer ou quitter cette page.",
+    "smartAccountInfrastructurePending": "Le déploiement est en attente. Le statut se met à jour automatiquement ; vous pouvez quitter cette page.",
+    "smartAccountInfrastructureCheckStatus": "Vérifier le statut",
     "deploySmartAccountInfrastructure": "Déployer",
     "installed": "Installé",
     "supported": "Pris en charge",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "(vérifier l'existence du token)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali n’a pas pu vérifier les entrées de cette transaction pour le compte approuvé. Vérifiez le compte et demandez une nouvelle transaction.",
+    "psbtSigningContextChanged": "Le compte ou le réseau de votre portefeuille a changé. Veuillez demander une nouvelle approbation.",
     "messageCopied": "Message copié avec succès",
     "signatureFailed": "La demande de signature a échoué",
     "sorryWeCould": "Désolé, nous n'avons pas pu soumettre votre demande. Réessayez plus tard.",

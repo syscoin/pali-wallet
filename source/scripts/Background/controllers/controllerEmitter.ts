@@ -20,7 +20,7 @@ const isRuntimeAvailable = (): boolean => {
 export async function controllerEmitter<
   T extends IMasterController,
   P extends Methods<T>
->(methods: P, params?: any[], timeout = 10000) {
+>(methods: P, params?: any[], timeout = 10000, retryConnection = true) {
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 500; // Start with 500ms to reduce spam
@@ -105,6 +105,7 @@ export async function controllerEmitter<
       // If this is a connection error and we have retries left, wait and retry
       // Don't retry on network timeouts - we already waited 10 seconds
       if (
+        retryConnection &&
         attempt < MAX_RETRIES - 1 &&
         !error.message?.includes('Network request timed out') &&
         (error.message?.includes('Could not establish connection') ||

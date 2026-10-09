@@ -5,9 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import { Button, SeedPhraseDisplay } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { useController } from 'hooks/useController';
+import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 
-export const CreatePhrase = ({ password }: { password: string }) => {
+export const CreatePhrase = () => {
   const { controllerEmitter } = useController();
+  const { setCreatedPhrase } = useOnboardingSecrets();
   const [seed, setSeed] = useState('');
   const [wordCount, setWordCount] = useState<number>(12);
   const { t } = useTranslation();
@@ -26,11 +28,12 @@ export const CreatePhrase = ({ password }: { password: string }) => {
 
   const handleNext = useCallback(() => {
     if (isTermsConfirmed) {
+      setCreatedPhrase(seed);
       navigate('/phrase', {
-        state: { password, next: true, createdSeed: seed },
+        state: { next: true },
       });
     }
-  }, [isTermsConfirmed, navigate, password, seed]);
+  }, [isTermsConfirmed, navigate, setCreatedPhrase, seed]);
 
   return (
     <OnboardingLayout title={t('createPhrase.recoveryPhrase')}>

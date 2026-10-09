@@ -1,4 +1,11 @@
 export const chromeStorage = {
+  getItems: (keys: string[]): Promise<Record<string, unknown>> =>
+    new Promise((resolve, reject) => {
+      chrome.storage.local.get(keys, (result) => {
+        if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
+        else resolve(result);
+      });
+    }),
   getItem: (key: string): Promise<any> =>
     new Promise((resolve, reject) => {
       // Use Chrome Storage API

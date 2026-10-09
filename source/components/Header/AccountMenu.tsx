@@ -120,27 +120,21 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => {
-            const url = chrome.runtime.getURL(
-              'external.html?route=settings/account/hardware'
-            );
-            window.open(url, '_blank');
-
-            // Set storage flag for detection
-            chrome.storage.local.set(
-              {
-                'pali-popup-open': true,
-                'pali-popup-timestamp': Date.now(),
-              },
-              () => {
-                if (chrome.runtime.lastError) {
-                  console.error(
-                    '[AccountMenu] Failed to set popup flag:',
-                    chrome.runtime.lastError
-                  );
-                }
-              }
-            );
+          onClick={async () => {
+            try {
+              await controllerEmitter(
+                ['createHardwareWalletTab'],
+                [],
+                10000,
+                false
+              );
+            } catch (error) {
+              console.error(
+                '[AccountMenu] Failed to open hardware setup:',
+                error
+              );
+              alert.error(t('send.sendError'));
+            }
           }}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { FaucetChainIds } from '../../types/faucet';
+import { BalanceLoadingStatus } from 'components/AccountBalance/BalanceLoadingStatus';
 import { ArrowUpSvg, ArrowDownLoadSvg } from 'components/Icon/Icon';
 import {
   Button,
@@ -46,9 +47,15 @@ const BalanceDisplay = memo(
   }) => {
     if (isLoadingBalance) {
       return (
-        <div className="flex items-center justify-center gap-2">
-          <SkeletonLoader width="200px" height="48px" />
-          <SkeletonLoader width="60px" height="35px" />
+        <div className="flex flex-col items-center justify-center gap-2">
+          <div
+            className="flex items-center justify-center gap-2"
+            aria-hidden="true"
+          >
+            <SkeletonLoader width="200px" height="48px" />
+            <SkeletonLoader width="60px" height="35px" />
+          </div>
+          <BalanceLoadingStatus />
         </div>
       );
     }
@@ -336,6 +343,7 @@ export const Home = () => {
                 }`}
               >
                 <BalanceDisplay
+                  key={`${balanceCacheKey}:${activeNetwork.url}`}
                   actualBalance={actualBalance}
                   isLoadingBalance={isLoadingBalance}
                   currency={activeNetwork.currency}

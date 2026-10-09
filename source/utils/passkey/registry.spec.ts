@@ -110,6 +110,37 @@ describe('passkey registry', () => {
     expect(getPendingCreationPasskey()).toBeNull();
   });
 
+  it('does not clear a newer creation record when an earlier flow completes', () => {
+    setPendingCreationPasskey(profileFixture('first'));
+    setPendingCreationPasskey(profileFixture('second'));
+    clearPendingCreationPasskey('credential-first');
+    expect(getPendingCreationPasskey()?.profile.credentialId).toBe(
+      'credential-second'
+    );
+    clearPendingCreationPasskey('credential-second');
+    expect(getPendingCreationPasskey()).toBeNull();
+  });
+
+  it('reports storage failures while preserving previously recorded credentials', () => {
+    const previous = profileFixture('active');
+    expect(setActivePasskeyRecord(ACCOUNT, previous)).toBe(true);
+    const write = jest.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('Quota exceeded');
+    });
+    try {
+      expect(setPendingPasskeyRecord(ACCOUNT, profileFixture('pending'))).toBe(
+        false
+      );
+      expect(
+        setActivePasskeyRecord(ACCOUNT, profileFixture('replacement'))
+      ).toBe(false);
+      expect(setPendingCreationPasskey(profileFixture('creation'))).toBe(false);
+      expect(getPasskeyAccountRecords(ACCOUNT).active).toEqual(previous);
+    } finally {
+      write.mockRestore();
+    }
+  });
+
   it('survives corrupted storage payloads', () => {
     storageBacking.set(
       `pali-smart-account-passkey:v1:${ACCOUNT.toLowerCase()}`,

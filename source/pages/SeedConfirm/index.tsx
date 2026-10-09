@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Navigate, useLocation } from 'react-router-dom';
 
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
+import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useController } from 'hooks/useController';
+import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { useUtils } from 'hooks/useUtils';
+import { reloadWalletForRecovery } from 'utils/reloadWalletForRecovery';
 
 import { ConfirmPhrase } from './ConfirmPhrase';
 import { CreatePhrase } from './CreatePhrase';
@@ -10,38 +15,44 @@ import { CreatePhrase } from './CreatePhrase';
 export const SeedConfirm = () => {
   const { controllerEmitter } = useController();
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
+  const { t } = useTranslation();
 
   const [passed, setPassed] = useState<boolean>(false);
-
-  const {
-    state: { password, next, createdSeed },
-  }: any = useLocation();
+  const [created, setCreated] = useState(false);
+  const creationRequested = useRef(false);
+  const { secrets, clear } = useOnboardingSecrets();
+  const { password, phrase: createdSeed } = secrets;
+  const { state } = useLocation();
+  const next = state?.next === true;
 
   const handleConfirm = async () => {
-    if (passed) {
-      await controllerEmitter(
-        ['wallet', 'createWallet'],
-        [password, createdSeed]
-      );
+    if (passed && !creationRequested.current) {
+      creationRequested.current = true;
+      setCreated(true);
+      clear();
+      try {
+        await controllerEmitter(
+          ['wallet', 'createWallet'],
+          [password, createdSeed],
+          10000,
+          false
+        );
+      } catch {
+        alert.error(t('settings.walletSetupFailed'));
+        reloadWalletForRecovery();
+        return;
+      }
 
-      navigate('/home');
+      const confirmed = await refreshControllerStatus();
+      if (confirmed) navigate('/home');
+      else reloadWalletForRecovery();
     }
   };
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // If the document becomes hidden, navigate to the home page
-      if (document.visibilityState === 'hidden') {
-        navigate('/home');
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [navigate]);
+  if (created) return <AppLoadingSkeleton />;
+  if (secrets.kind !== 'create' || !password || (next && !createdSeed)) {
+    return <Navigate to="/create-password" replace />;
+  }
 
   return (
     <>
@@ -53,7 +64,7 @@ export const SeedConfirm = () => {
           setPassed={setPassed}
         />
       ) : (
-        <CreatePhrase password={password} />
+        <CreatePhrase />
       )}
     </>
   );

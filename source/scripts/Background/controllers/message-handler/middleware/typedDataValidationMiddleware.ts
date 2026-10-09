@@ -2,6 +2,7 @@ import { ethErrors } from 'helpers/errors';
 
 import { Middleware } from '../request-pipeline';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { assertTypedDataParamsWorkBudget } from 'utils/typedDataWorkBudget';
 import { isValidEthereumAddress } from 'utils/validations';
 
 /**
@@ -36,6 +37,7 @@ export const typedDataValidationMiddleware: Middleware = async (
   }
 
   try {
+    assertTypedDataParamsWorkBudget(method, params);
     // Extract typed data from params
     let typedData: any;
 

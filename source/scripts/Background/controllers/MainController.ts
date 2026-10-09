@@ -30,6 +30,12 @@ import * as syscoinjs from 'syscoinjs-lib';
 import { getController, notificationManager } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
+import {
+  AccountRecoveryRequiredError,
+  assertCompleteHDAccountData,
+  assertEmptyHDAccountMetadata,
+} from '../utils/assertCompleteHDAccountData';
+import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -101,9 +107,11 @@ import {
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
+  AsyncMutex,
   fiatPriceMutex,
   networkSwitchMutex,
   accountSwitchMutex,
+  walletPersistenceMutex,
 } from 'utils/asyncMutex';
 import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
@@ -118,6 +126,10 @@ import {
   getEoaNonceFromHistoryTransaction,
   needsEoaNonceHistoryVerification,
 } from 'utils/evmNonce';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { logError } from 'utils/logger';
 import {
   getFreshNativeBalance,
@@ -159,6 +171,10 @@ import {
   isTransactionInBlock,
   getTransactionBlockInfo,
 } from 'utils/transactionUtils';
+import {
+  IUtxoSigningContext,
+  UTXO_SIGNING_CONTEXT_CHANGED,
+} from 'utils/utxoSigningContext';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
@@ -194,6 +210,13 @@ import {
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
+export type AccountRemovalContext = {
+  activeAccount: { address: string; id: number; type: KeyringAccountType };
+  address: string;
+  network: Pick<INetwork, 'chainId' | 'kind' | 'url'>;
+  slip44: number | null;
+};
+
 // Default slip44 values for fallback cases
 
 class MainController {
@@ -224,6 +247,15 @@ class MainController {
   private isAccountSwitching = false;
   // Add a property to track network switching state
   private isNetworkSwitching = false;
+  private isRemovingNetwork = false;
+  private walletSessionGeneration = 0;
+  // Session changes cancel in-flight work; only reset invalidates valid queued
+  // source-vault saves across ordinary network changes and locks.
+  private walletStateGeneration = 0;
+  private networkRequestGeneration = 0;
+  private isCreatingWallet = false;
+  private isResettingWallet = false;
+  private authenticationMutex = new AsyncMutex();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -322,10 +354,27 @@ class MainController {
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
   private async resetWalletState(options?: { resetNetworks?: boolean }) {
+    this.isResettingWallet = true;
+    try {
+      await this.resetWalletStateExclusive(options);
+    } finally {
+      this.isResettingWallet = false;
+    }
+  }
+
+  private async resetWalletStateExclusive(options?: {
+    resetNetworks?: boolean;
+  }) {
+    this.walletSessionGeneration += 1;
+    this.walletStateGeneration += 1;
+    this.networkRequestGeneration += 1;
     const { resetNetworks = false } = options || {};
 
     // Clear all timers first to prevent any background operations
     this.clearAllTimers();
+    // Receipt jobs have their own queue and in-flight freshness markers. Stop
+    // them before reset I/O so restoring the same account cannot revive reads.
+    this.stopAllRapidPolling();
 
     // Clean up notification manager to prevent memory leaks
     notificationManager.cleanup();
@@ -383,58 +432,62 @@ class MainController {
     clearFetchBackendAccountCache();
     clearRpcCaches();
 
-    // Clear all vault-related storage completely
-    try {
-      await chromeStorage.removeItem('sysweb3-vault');
-      await chromeStorage.removeItem('sysweb3-vault-keys');
-    } catch (error) {
-      console.error(
-        '[MainController] Error clearing vault storage during reset:',
-        error
-      );
-    }
-
-    // Clear all slip44-specific vault states and persisted Redux state
-    try {
-      const allItems = await new Promise<{ [key: string]: any }>(
-        (resolve, reject) => {
-          chrome.storage.local.get(null, (items) => {
-            if (chrome.runtime.lastError) {
-              reject(
-                new Error(
-                  `Failed to get all items: ${chrome.runtime.lastError.message}`
-                )
-              );
-              return;
-            }
-            resolve(items);
-          });
-        }
-      );
-
-      const keysToRemove = Object.keys(allItems).filter(
-        (key) =>
-          key.match(/^state-vault-\d+$/) ||
-          key.startsWith('sysweb3-vault-') ||
-          key.startsWith('pali-slh-dsa-state:') ||
-          key.startsWith('pali-slh-dsa-precompute:') ||
-          key.startsWith('pali-slh-dsa-smart-account-setup:') ||
-          key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
-          key === 'state' ||
-          key.startsWith('state-')
-      );
-
-      if (keysToRemove.length > 0) {
-        await Promise.all(
-          keysToRemove.map((key) => chromeStorage.removeItem(key))
+    await walletPersistenceMutex.runExclusive(async () => {
+      // Clear all vault-related storage completely
+      try {
+        await chromeStorage.removeItem('sysweb3-vault');
+        await chromeStorage.removeItem('sysweb3-vault-keys');
+      } catch (error) {
+        console.error(
+          '[MainController] Error clearing vault storage during reset:',
+          error
         );
       }
-    } catch (error) {
-      console.error(
-        '[MainController] Error clearing slip44 vault states during reset:',
-        error
-      );
-    }
+
+      // Clear all slip44-specific vault states and persisted Redux state
+      try {
+        const allItems = await new Promise<{ [key: string]: any }>(
+          (resolve, reject) => {
+            chrome.storage.local.get(null, (items) => {
+              if (chrome.runtime.lastError) {
+                reject(
+                  new Error(
+                    `Failed to get all items: ${chrome.runtime.lastError.message}`
+                  )
+                );
+                return;
+              }
+              resolve(items);
+            });
+          }
+        );
+
+        const keysToRemove = Object.keys(allItems).filter(
+          (key) =>
+            key.match(/^state-vault-\d+$/) ||
+            key.startsWith('sysweb3-vault-') ||
+            key.startsWith('pali-slh-dsa-state:') ||
+            key.startsWith('pali-slh-dsa-precompute:') ||
+            key.startsWith('pali-slh-dsa-smart-account-setup:') ||
+            key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:') ||
+            key === 'state' ||
+            key.startsWith('state-')
+        );
+
+        if (keysToRemove.length > 0) {
+          await Promise.all(
+            keysToRemove.map((key) => chromeStorage.removeItem(key))
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[MainController] Error clearing slip44 vault states during reset:',
+          error
+        );
+      }
+
+      store.dispatch(forgetWallet());
+    });
 
     // Clear global settings via Redux
     store.dispatch(setHasEncryptedVault(false));
@@ -757,6 +810,7 @@ class MainController {
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
+      getWalletSessionGeneration: () => this.walletSessionGeneration,
       getLatestUpdateForCurrentAccount: (
         isPolling,
         forceUpdate,
@@ -850,7 +904,39 @@ class MainController {
     return keyring;
   }
   // Switch active keyring based on network
-  private async switchActiveKeyring(network: INetwork): Promise<void> {
+  private async switchActiveKeyring(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ): Promise<void> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry the network change after it completes.'
+      );
+    }
+    if (this.isResettingWallet) {
+      throw new Error(
+        'Wallet reset is in progress. Retry the network change after it completes.'
+      );
+    }
+    if (this.isCreatingWallet) {
+      throw new Error(
+        'Wallet creation is in progress. Retry the network change after it completes.'
+      );
+    }
+    // Invalidate pending secret exports/unlocks, including an A -> B -> A switch.
+    this.walletSessionGeneration += 1;
+    const switchGeneration = this.walletSessionGeneration;
+    const walletStateGeneration = this.walletStateGeneration;
+    const isCurrentSwitch = () =>
+      switchGeneration === this.walletSessionGeneration && isCurrent();
+    const assertCurrentSwitch = () => {
+      this.assertCurrentWalletSession(switchGeneration);
+      if (!isCurrent())
+        throw new Error(
+          'Wallet session changed. Unlock the wallet and try again.'
+        );
+    };
+    assertCurrentSwitch();
     const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
@@ -919,6 +1005,12 @@ class MainController {
             slip44: activeSlip44,
             vaultState: vaultStateCopy,
           };
+          // Preserve the source before any target awaits. Superseding a switch
+          // must not lose unsaved source data; only wallet reset cancels this.
+          this.performDeferredVaultSave(
+            stateTransaction.deferredSaveData,
+            walletStateGeneration
+          );
         }
 
         // Load vault state for target slip44
@@ -928,8 +1020,10 @@ class MainController {
           hasExistingVaultState = await loadAndActivateSlip44Vault(
             slip44,
             network,
-            true // Defer activeSlip44 update until after session transfer
+            true, // Defer activeSlip44 update until after session transfer
+            isCurrentSwitch
           );
+          assertCurrentSwitch();
         } catch (vaultLoadError) {
           console.error(
             `[MainController] Failed to load vault for slip44 ${slip44}:`,
@@ -950,7 +1044,6 @@ class MainController {
       // Ensure the target keyring exists
       let targetKeyring = this.keyrings.get(slip44);
       let keyringWasJustCreated = false;
-      let needsAccountRepair = false;
 
       if (!targetKeyring) {
         console.log('[MainController] Creating new keyring on demand');
@@ -962,18 +1055,16 @@ class MainController {
 
       stateTransaction.targetKeyring = targetKeyring;
 
-      // Check if we need to repair corrupted accounts (using the flag we set earlier)
-      if (hasExistingVaultState) {
-        const { accounts } = store.getState().vault;
-
-        // Quick check for missing xpub in HD accounts
-        if (accounts.HDAccount) {
-          for (const account of Object.values(accounts.HDAccount)) {
-            if (!account.xpub || account.xpub === '') {
-              needsAccountRepair = true;
-              break;
-            }
-          }
+      // Validate persisted identities before transferring the unlocked session.
+      // A failed target must leave the source wallet and its metadata intact.
+      if (hasExistingVaultState || !isSwitchingSlip44) {
+        const targetVault = store.getState().vault;
+        assertCompleteHDAccountData(targetVault.accounts.HDAccount);
+        if (
+          hasExistingVaultState &&
+          Object.keys(targetVault.accounts.HDAccount).length === 0
+        ) {
+          assertEmptyHDAccountMetadata(targetVault);
         }
       }
 
@@ -988,6 +1079,7 @@ class MainController {
         throw new Error(`Failed to get keyring for slip44: ${slip44}`);
       }
 
+      assertCurrentSwitch();
       // Handle session transfer if needed
       if (needsSessionTransfer && stateTransaction.sourceKeyring) {
         try {
@@ -1004,56 +1096,11 @@ class MainController {
           // CRITICAL FIX: Only update activeSlip44 AFTER successful session transfer
           // This ensures atomic state change to prevent race conditions
           if (isSwitchingSlip44) {
+            // A newer request may start after this pointer changes but before
+            // this switch reaches persistence. Preserve the global-state commit
+            // requirement for that request even if it stays on this slip44.
+            this.isNetworkSwitchMainStateDirty = true;
             store.dispatch(setActiveSlip44(slip44));
-          }
-
-          // Create accounts if no existing vault state OR if vault exists but has no accounts
-          let shouldCreateFirstAccount = !hasExistingVaultState;
-
-          if (hasExistingVaultState) {
-            // Check if the vault has any HD accounts
-            const { accounts } = store.getState().vault;
-            const hasHDAccounts =
-              accounts.HDAccount && Object.keys(accounts.HDAccount).length > 0;
-
-            if (!hasHDAccounts) {
-              console.log(
-                '[MainController] Existing vault state found but no HD accounts exist, will create first account'
-              );
-              shouldCreateFirstAccount = true;
-            }
-          }
-
-          if (shouldCreateFirstAccount) {
-            // Ensure the keyring is properly unlocked before creating account
-            if (!targetKeyring.isUnlocked()) {
-              throw new Error(
-                `Target keyring is not unlocked after session transfer! This should not happen.`
-              );
-            }
-
-            // Create first account
-            // Session data was already transferred, so we can create the first account directly
-            const account = await targetKeyring.createFirstAccount();
-            console.log(
-              '[MainController] Created new keyring account',
-              account.address
-            );
-
-            store.dispatch(
-              createAccount({
-                account: account,
-                accountType: KeyringAccountType.HDAccount,
-              })
-            );
-
-            // This ensures setSignerNetwork() finds the correct account
-            store.dispatch(
-              setActiveAccount({
-                id: account.id,
-                type: KeyringAccountType.HDAccount,
-              })
-            );
           }
         } catch (error) {
           console.error(`[MainController] Error transferring session:`, error);
@@ -1077,38 +1124,80 @@ class MainController {
         // For same slip44, the keyring should already be unlocked from previous operations
       }
 
-      await targetKeyring.setSignerNetwork(network);
+      // A superseded switch may have transferred the sole session and committed
+      // activeSlip44 before its first derivation finished. The next request must
+      // finish that genuinely empty HD0 target before configuring its provider.
+      const targetVault = store.getState().vault;
+      assertCompleteHDAccountData(targetVault.accounts.HDAccount);
+      const expectedSelection = targetVault.activeAccount;
+      const selectedAccount =
+        targetVault.accounts[expectedSelection.type]?.[expectedSelection.id];
+      const shouldCreateFirstAccount =
+        Object.keys(targetVault.accounts.HDAccount).length === 0 &&
+        (needsSessionTransfer ||
+          (!isSwitchingSlip44 &&
+            targetVault.activeAccount.type === KeyringAccountType.HDAccount &&
+            targetVault.activeAccount.id === 0));
+
+      if (
+        Object.keys(targetVault.accounts.HDAccount).length === 0 &&
+        !shouldCreateFirstAccount &&
+        (!selectedAccount ||
+          selectedAccount.id !== expectedSelection.id ||
+          typeof selectedAccount.address !== 'string' ||
+          selectedAccount.address.trim() === '')
+      ) {
+        throw new AccountRecoveryRequiredError();
+      }
+
+      if (shouldCreateFirstAccount) {
+        assertCurrentSwitch();
+        this.assertCurrentWalletSession(switchGeneration, targetKeyring);
+        assertEmptyHDAccountMetadata(targetVault);
+        const account = await targetKeyring.createFirstAccount();
+        assertCurrentSwitch();
+        this.assertCurrentWalletSession(switchGeneration, targetKeyring);
+        assertCompleteHDAccountData({ 0: account });
+        // Never assign a delayed identity to newly arrived records or metadata.
+        const currentVault = store.getState().vault;
+        assertCompleteHDAccountData(currentVault.accounts.HDAccount);
+        if (
+          Object.keys(currentVault.accounts.HDAccount).length > 0 ||
+          currentVault.activeAccount.type !== expectedSelection.type ||
+          currentVault.activeAccount.id !== expectedSelection.id
+        ) {
+          throw new AccountRecoveryRequiredError();
+        }
+        assertEmptyHDAccountMetadata(currentVault);
+
+        store.dispatch(
+          createAccount({
+            account,
+            accountType: KeyringAccountType.HDAccount,
+          })
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: account.id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      }
+
+      assertCurrentSwitch();
+      const signerResult = await targetKeyring.setSignerNetwork(network);
+      assertCurrentSwitch();
+      if (!signerResult?.success) {
+        throw new Error('Failed to configure the selected network');
+      }
 
       // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
       this.keyrings.set(slip44, targetKeyring);
 
-      // Repair corrupted accounts if needed (after session transfer is complete)
-      if (needsAccountRepair && targetKeyring.isUnlocked()) {
-        console.log(
-          `[MainController] Starting account repair for slip44 ${slip44} after network switch`
-        );
-
-        try {
-          // We need the password to repair accounts, but we don't have it here
-          // Instead, we can try to repair using the existing session
-          await this.repairCorruptedAccountsWithSession(targetKeyring);
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to repair accounts during network switch:`,
-            error
-          );
-          // Don't throw - continue with network switch even if repair fails
-        }
-      }
-
-      // Perform deferred save of previous vault state (non-blocking)
-      if (stateTransaction.deferredSaveData) {
-        this.performDeferredVaultSave(stateTransaction.deferredSaveData);
-      }
-
       // Lock all other keyrings for security AFTER everything is complete
       // Await to guarantee hardware transports are fully released
       for (const [keyringSlip44, keyring] of this.keyrings.entries()) {
+        assertCurrentSwitch();
         if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
           console.log(
             `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
@@ -1126,6 +1215,7 @@ class MainController {
     } catch (error) {
       const sourceVault = stateTransaction.deferredSaveData;
       if (
+        walletStateGeneration === this.walletStateGeneration &&
         isSwitchingSlip44 &&
         sourceVault &&
         restoreSourceVaultAfterUncommittedSwitch(
@@ -1161,7 +1251,12 @@ class MainController {
     this.keyrings.forEach((keyring, slip44) => {
       try {
         if (keyring.isUnlocked()) {
-          keyring.lockWallet();
+          Promise.resolve(keyring.lockWallet()).catch((error) => {
+            console.error(
+              `[MainController] Error cleaning up locked keyring ${slip44}:`,
+              error
+            );
+          });
         }
 
         // Clean up some Web3 provider listeners during normal lock to prevent accumulation
@@ -1383,6 +1478,15 @@ class MainController {
   }
 
   public async getSeed(pwd: string) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.getSeedForCurrentSession(pwd, generation)
+    );
+  }
+
+  private async getSeedForCurrentSession(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -1392,9 +1496,11 @@ class MainController {
     }
 
     try {
-      const seed = await this.getActiveKeyring().getSeed(pwd);
+      const seed = await keyring.getSeed(pwd);
+      this.assertCurrentWalletSession(generation, keyring);
       // Reset rate limit on success
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
       return seed;
     } catch (error) {
       // Record failed attempt if it's a password error
@@ -1410,6 +1516,20 @@ class MainController {
     accountType: any,
     pwd: string
   ) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.getPrivateKeyForCurrentSession(id, accountType, pwd, generation)
+    );
+  }
+
+  private async getPrivateKeyForCurrentSession(
+    id: number,
+    accountType: any,
+    pwd: string,
+    generation: number
+  ) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -1419,13 +1539,15 @@ class MainController {
     }
 
     try {
-      const privateKey = await this.getActiveKeyring().getPrivateKeyByAccountId(
+      const privateKey = await keyring.getPrivateKeyByAccountId(
         id,
         accountType,
         pwd
       );
+      this.assertCurrentWalletSession(generation, keyring);
       // Reset rate limit on success
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
       return privateKey;
     } catch (error) {
       // Record failed attempt if it's a password error
@@ -1554,50 +1676,76 @@ class MainController {
   // End Rate Limiting Methods
   // =============================================
 
-  public async unlock(pwd: string, skipRateLimit = false) {
+  private assertCurrentWalletSession(
+    generation: number,
+    keyring?: KeyringManager
+  ) {
+    if (
+      generation !== this.walletSessionGeneration ||
+      (keyring &&
+        (keyring !== this.getActiveKeyring() || !keyring.isUnlocked()))
+    ) {
+      throw new Error(
+        'Wallet session changed. Unlock the wallet and try again.'
+      );
+    }
+  }
+
+  private async unlockKeyring(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
+    const result = await keyring.unlock(pwd);
+    if (
+      generation !== this.walletSessionGeneration ||
+      keyring !== this.getActiveKeyring()
+    ) {
+      // KDF/decryption cannot be aborted. Drop the session it created if a
+      // lock/reset/network change happened while it was running.
+      await keyring.lockWallet();
+      throw new Error(
+        'Wallet session changed. Unlock the wallet and try again.'
+      );
+    }
+    return result;
+  }
+
+  public async unlock(pwd: string) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.unlockWithRateLimit(pwd, generation)
+    );
+  }
+
+  private async unlockWithRateLimit(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
     console.log('[MainController] Attempting to unlock wallet');
 
-    // Check rate limiting (skip for internal dry-run checks)
-    if (!skipRateLimit) {
-      const remainingLockout = await this.checkRateLimit();
-      if (remainingLockout > 0) {
-        throw new Error(
-          `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
-        );
-      }
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
     }
 
     try {
-      const keyring = this.getActiveKeyring();
-      const result = await keyring.unlock(pwd);
+      const result = await this.unlockKeyring(pwd, generation);
 
       if (result.canLogin) {
         console.log('[MainController] Wallet unlocked successfully');
         // Reset rate limit on successful login
-        if (!skipRateLimit) {
-          await this.resetRateLimit();
-        }
+        await this.resetRateLimit();
+        this.assertCurrentWalletSession(generation, this.getActiveKeyring());
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
         // Record failed attempt
-        if (!skipRateLimit) {
-          await this.recordFailedAttempt();
-        }
+        await this.recordFailedAttempt();
       }
 
       return result;
     } catch (error) {
       console.error('[MainController] Error during wallet unlock:', error);
-      // Record failed attempt only for password errors (avoid locking users out on transient/system failures)
-      if (!skipRateLimit) {
-        const msg =
-          (error as any)?.message ??
-          (error as any)?.errorMessage ??
-          (typeof error === 'string' ? error : '');
-        if (String(msg) === 'Invalid password') {
-          await this.recordFailedAttempt();
-        }
-      }
+      // Requires the upstream keyring contract: canLogin=false only for
+      // authentication failure; operational errors must propagate.
       throw error;
     }
   }
@@ -1621,20 +1769,20 @@ class MainController {
     return this.getActiveKeyring().isSeedValid(phrase);
   }
 
-  private logout() {
-    return this.getActiveKeyring().logout();
-  }
-
-  private async setSignerNetwork(network: INetwork) {
+  private async setSignerNetwork(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ) {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent network switches across all contexts
     return networkSwitchMutex.runExclusive(async () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
       // Set network switching flag for UI/logging purposes
       this.isNetworkSwitching = true;
 
       try {
         // switchActiveKeyring handles everything: creating keyring if needed and setting up network
-        await this.switchActiveKeyring(network);
+        await this.switchActiveKeyring(network, isCurrent);
 
         // Return the current wallet state from the keyring
         return {
@@ -1642,7 +1790,7 @@ class MainController {
         };
       } finally {
         // Clear network switching flag
-        this.isNetworkSwitching = false;
+        if (isCurrent()) this.isNetworkSwitching = false;
       }
     });
   }
@@ -1864,15 +2012,22 @@ class MainController {
   }
 
   // Perform deferred vault save in background (non-blocking)
-  private performDeferredVaultSave(deferredSaveData: {
-    slip44: number;
-    vaultState: IVaultState;
-  }) {
+  private performDeferredVaultSave(
+    deferredSaveData: {
+      slip44: number;
+      vaultState: IVaultState;
+    },
+    walletStateGeneration = this.walletStateGeneration
+  ) {
     // Enqueue immediately so a later switch back to this slip44 cannot commit
     // first and then be overwritten by this older snapshot. The promise remains
     // non-blocking, while VaultCache serializes the actual storage operation.
     void vaultCache
-      .setSlip44Vault(deferredSaveData.slip44, deferredSaveData.vaultState)
+      .setSlip44Vault(
+        deferredSaveData.slip44,
+        deferredSaveData.vaultState,
+        () => walletStateGeneration === this.walletStateGeneration
+      )
       .catch((error) => {
         console.error(
           `[MainController] Deferred save failed for slip44 ${deferredSaveData.slip44}:`,
@@ -1964,6 +2119,16 @@ class MainController {
   }
 
   public async forgetWallet(pwd: string) {
+    const walletStateGeneration = this.walletStateGeneration;
+    return this.authenticationMutex.runExclusive(() => {
+      if (walletStateGeneration !== this.walletStateGeneration) {
+        throw new Error('Wallet state changed before reset');
+      }
+      return this.forgetWalletExclusive(pwd);
+    });
+  }
+
+  private async forgetWalletExclusive(pwd: string) {
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -2005,8 +2170,21 @@ class MainController {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.unlockFromControllerExclusive(pwd, generation)
+    );
+  }
+
+  private async unlockFromControllerExclusive(
+    pwd: string,
+    generation: number
+  ): Promise<boolean> {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting for failed unlock attempts (uses persisted state)
     const remainingLockout = await this.checkRateLimit();
+    this.assertCurrentWalletSession(generation);
     if (remainingLockout > 0) {
       throw new Error(
         `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
@@ -2016,6 +2194,8 @@ class MainController {
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
     const controller = getController();
+    let invalidPassword = false;
+    let authenticated = false;
 
     try {
       console.log('[MainController] Attempting unlock...');
@@ -2023,6 +2203,7 @@ class MainController {
       // Ensure storage is initialized before attempting unlock
       const storageManager = StorageManager.getInstance();
       await storageManager.ensureInitialized();
+      this.assertCurrentWalletSession(generation);
       console.log(
         '[MainController] Storage initialized, proceeding with unlock...'
       );
@@ -2055,27 +2236,54 @@ class MainController {
 
       this.lockAllKeyrings();
       // Skip rate limiting here since it's handled above in unlockFromController
-      const { canLogin, needsAccountCreation } = await this.unlock(pwd, true);
+      const { canLogin, needsAccountCreation } = await this.unlockKeyring(
+        pwd,
+        generation
+      );
 
       if (!canLogin) {
+        invalidPassword = true;
         console.error('[MainController] Unlock failed - invalid password');
         throw new Error('Invalid password');
       }
+      authenticated = true;
+      this.assertCurrentWalletSession(generation, keyring);
 
       console.log('[MainController] Unlock successful');
 
       // Reset failed attempts on successful unlock (persisted)
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
+        const assertSafeFirstAccountCreation = () => {
+          const migrationVault = store.getState().vault;
+          assertCompleteHDAccountData(migrationVault.accounts.HDAccount);
+          // The keyring flag also covers a stale/missing active selection. It is
+          // not permission to replace an existing default account or its data.
+          if (
+            Object.keys(migrationVault.accounts.HDAccount).length > 0 ||
+            migrationVault.activeAccount.type !==
+              KeyringAccountType.HDAccount ||
+            migrationVault.activeAccount.id !== 0
+          ) {
+            throw new AccountRecoveryRequiredError();
+          }
+          assertEmptyHDAccountMetadata(migrationVault);
+        };
+        assertSafeFirstAccountCreation();
+
         console.log(
           '[MainController] Detected migration from old vault format - creating first account'
         );
 
         try {
-          const keyring = this.getActiveKeyring();
           const account = await keyring.createFirstAccount();
+          this.assertCurrentWalletSession(generation, keyring);
+          assertCompleteHDAccountData({ 0: account });
+          // Recheck after asynchronous derivation, immediately before commit.
+          assertSafeFirstAccountCreation();
 
           console.log(
             '[MainController] Created first account after migration:',
@@ -2108,8 +2316,9 @@ class MainController {
         }
       }
 
-      // REPAIR CHECK: Detect and fix accounts with missing xpub/xprv
-      await this.repairCorruptedAccounts();
+      // Never rebuild persisted accounts as a side effect of authentication.
+      assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
+      this.assertCurrentWalletSession(generation, keyring);
 
       // Set flags to indicate we just unlocked and are starting up
       this.justUnlocked = true;
@@ -2140,6 +2349,7 @@ class MainController {
 
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
+        if (generation !== this.walletSessionGeneration) return;
         // Fetch fresh fiat prices immediately after successful unlock
         Promise.all([
           this.setFiat().catch((error) =>
@@ -2170,6 +2380,7 @@ class MainController {
 
       // Clear startup flags after 2 seconds
       setTimeout(() => {
+        if (generation !== this.walletSessionGeneration) return;
         this.justUnlocked = false;
         this.isStartingUp = false;
 
@@ -2177,12 +2388,30 @@ class MainController {
         store.dispatch(clearNetworkQualityIfStale());
       }, 2000); // 2 seconds - enough time for all initialization
 
+      this.assertCurrentWalletSession(generation, keyring);
       return canLogin;
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
 
-      // Record failed attempt if it's a password error (persisted)
-      if (error.message === 'Invalid password') {
+      if (
+        authenticated &&
+        generation === this.walletSessionGeneration &&
+        keyring === this.getActiveKeyring()
+      ) {
+        // Authentication succeeded, but this session must not remain usable
+        // after the UI reports a startup failure. This is not a bad password.
+        this.justUnlocked = false;
+        this.isStartingUp = false;
+        try {
+          await keyring.lockWallet();
+        } catch (lockError) {
+          console.error('[MainController] Session cleanup failed:', lockError);
+        }
+      }
+
+      // Count the keyring's explicit authentication rejection, never arbitrary
+      // storage/session errors whose message happens to mention a password.
+      if (invalidPassword) {
         await this.recordFailedAttempt();
       }
 
@@ -2190,294 +2419,45 @@ class MainController {
     }
   }
 
-  /**
-   * Repair corrupted accounts using an already-unlocked keyring (no password needed)
-   * This is used during network switches when we already have session data
-   */
-  private async repairCorruptedAccountsWithSession(
-    keyring: KeyringManager
-  ): Promise<void> {
-    try {
-      const { accounts } = store.getState().vault;
-
-      if (!keyring || !keyring.isUnlocked()) {
-        console.log(
-          '[MainController] Keyring not unlocked, skipping account repair'
-        );
-        return;
-      }
-
-      // Check if any HD accounts have missing xpub or a missing index 0.
-      let hasCorruptedAccounts = false;
-      if (accounts.HDAccount) {
-        hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
-        for (const account of Object.values(accounts.HDAccount)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedAccounts = true;
-            break;
-          }
-        }
-      }
-
-      if (!hasCorruptedAccounts) {
-        console.log(
-          '[MainController] No corrupted accounts found, skipping repair'
-        );
-        return;
-      }
-
-      console.log(
-        '[MainController] Found corrupted HD accounts, recreating all accounts...'
-      );
-
-      // Store old account data for labels and metadata
-      const oldAccounts = { ...accounts.HDAccount };
-      const maxAccountId = Math.max(
-        ...Object.keys(oldAccounts).map((id) => parseInt(id))
-      );
-
-      console.log(
-        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
-      );
-
-      // Store accounts to recreate in a transaction array
-      const recreatedAccounts: Array<{
-        account: IKeyringAccountState;
-        accountType: KeyringAccountType;
-      }> = [];
-
-      // First, validate we can recreate all accounts before modifying state
-      for (let i = 0; i <= maxAccountId; i++) {
-        try {
-          const oldAccount = oldAccounts[i];
-          const label =
-            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
-
-          let newAccount;
-          if (i === 0) {
-            // First account
-            newAccount = await keyring.createFirstAccount();
-            // Update the label if needed
-            if (label !== 'Account 1') {
-              newAccount.label = label;
-            }
-          } else {
-            // Subsequent accounts
-            newAccount = await keyring.addNewAccount(label);
-          }
-
-          console.log(`[MainController] Recreated HD account ${i}:`, {
-            address: newAccount.address,
-            xpub: newAccount.xpub ? 'present' : 'missing',
-            label: newAccount.label,
-            oldAddress: oldAccount?.address,
-            addressMatch: newAccount.address === oldAccount?.address,
-          });
-
-          // Store for later commit
-          recreatedAccounts.push({
-            account: newAccount,
-            accountType: KeyringAccountType.HDAccount,
-          });
-
-          // Warn if address changed (shouldn't happen with same seed)
-          if (oldAccount && newAccount.address !== oldAccount.address) {
-            console.error(
-              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to recreate HD account ${i}:`,
-            error
-          );
-          throw error; // Stop the repair process on error
-        }
-      }
-
-      // Now commit all changes atomically
-      // Clear all HD accounts from Redux
-      Object.keys(oldAccounts).forEach((idStr) => {
-        const id = parseInt(idStr);
-        store.dispatch(
-          removeAccount({
-            id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-      });
-
-      // Add all recreated accounts
-      recreatedAccounts.forEach(({ account, accountType }) => {
-        store.dispatch(
-          createAccount({
-            account,
-            accountType,
-          })
-        );
-      });
-
-      // Save the repaired wallet state
-      this.saveWalletState('repair-corrupted-accounts');
-
-      console.log('[MainController] Account repair completed successfully');
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to repair corrupted accounts:',
-        error
-      );
-      // Don't throw - we don't want to prevent network switch if repair fails
-    }
-  }
-
-  /**
-   * Detect and repair accounts with missing xpub/xprv by recreating them from the seed
-   * This handles slip44 mismatches and corrupted account states
-   */
-  private async repairCorruptedAccounts(): Promise<void> {
-    try {
-      const { accounts, activeNetwork } = store.getState().vault;
-      const keyring = this.getActiveKeyring();
-
-      if (!keyring || !keyring.isUnlocked()) {
-        console.log(
-          '[MainController] Keyring not unlocked, skipping account repair'
-        );
-        return;
-      }
-
-      // Check if any HD accounts have missing xpub or a missing index 0.
-      let hasCorruptedAccounts = false;
-      if (accounts.HDAccount) {
-        hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
-        for (const account of Object.values(accounts.HDAccount)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedAccounts = true;
-            break;
-          }
-        }
-      }
-
-      if (!hasCorruptedAccounts) {
-        console.log(
-          '[MainController] No corrupted accounts found, skipping repair'
-        );
-        return;
-      }
-
-      console.log(
-        '[MainController] Found corrupted HD accounts, recreating all accounts...'
-      );
-
-      // Store old account data for labels and metadata
-      const oldAccounts = { ...accounts.HDAccount };
-      const maxAccountId = Math.max(
-        ...Object.keys(oldAccounts).map((id) => parseInt(id))
-      );
-
-      console.log(
-        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
-      );
-
-      // Clear all HD accounts from Redux
-      Object.keys(oldAccounts).forEach((idStr) => {
-        const id = parseInt(idStr);
-        store.dispatch(
-          removeAccount({
-            id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-      });
-
-      // Recreate all accounts in order
-      for (let i = 0; i <= maxAccountId; i++) {
-        try {
-          const oldAccount = oldAccounts[i];
-          const label =
-            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
-
-          let newAccount;
-          if (i === 0) {
-            // First account
-            newAccount = await keyring.createFirstAccount();
-            // Update the label if needed
-            if (label !== 'Account 1') {
-              newAccount.label = label;
-            }
-          } else {
-            // Subsequent accounts
-            newAccount = await keyring.addNewAccount(label);
-          }
-
-          console.log(`[MainController] Recreated HD account ${i}:`, {
-            address: newAccount.address,
-            xpub: newAccount.xpub ? 'present' : 'missing',
-            label: newAccount.label,
-            oldAddress: oldAccount?.address,
-            addressMatch: newAccount.address === oldAccount?.address,
-          });
-
-          // Add the recreated account to Redux
-          store.dispatch(
-            createAccount({
-              account: newAccount,
-              accountType: KeyringAccountType.HDAccount,
-            })
-          );
-
-          // Warn if address changed (shouldn't happen with same seed)
-          if (oldAccount && newAccount.address !== oldAccount.address) {
-            console.error(
-              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to recreate HD account ${i}:`,
-            error
-          );
-          throw error; // Stop the repair process on error
-        }
-      }
-
-      // Handle imported accounts separately - we can't repair these without private keys
-      if (accounts.Imported) {
-        let hasCorruptedImported = false;
-        for (const account of Object.values(accounts.Imported)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedImported = true;
-            break;
-          }
-        }
-
-        if (hasCorruptedImported) {
-          console.warn(
-            '[MainController] Found corrupted imported accounts - these cannot be auto-repaired without private keys'
-          );
-        }
-      }
-
-      // Ensure the active keyring network matches the current network
-      await keyring.setSignerNetwork(activeNetwork);
-
-      // Save the repaired wallet state
-      this.saveWalletState('repair-corrupted-accounts');
-
-      console.log('[MainController] Account repair completed successfully');
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to repair corrupted accounts:',
-        error
-      );
-      // Don't throw - we don't want to prevent unlock if repair fails
-      // The wallet might still be usable even with some corrupted accounts
-    }
-  }
-
   public async createWallet(password: string, phrase: string): Promise<void> {
+    if (this.isCreatingWallet)
+      throw new Error('Wallet creation is already in progress');
+    // Reserve before the mutex await so a lost reply cannot queue a second
+    // destructive reset behind the original creation.
+    this.isCreatingWallet = true;
+    const walletStateGeneration = this.walletStateGeneration;
+    try {
+      return await this.authenticationMutex.runExclusive(async () => {
+        if (walletStateGeneration !== this.walletStateGeneration) {
+          throw new Error('Wallet state changed before reset');
+        }
+        // Only onboarding calls this entry point. A stale document must not
+        // replace a wallet created elsewhere; explicit forgetting owns reset.
+        if (await readWalletPresence()) {
+          throw new Error(
+            'A wallet already exists. Unlock it or explicitly forget it before starting setup.'
+          );
+        }
+        if (walletStateGeneration !== this.walletStateGeneration) {
+          throw new Error('Wallet state changed before reset');
+        }
+        return this.createWalletExclusive(password, phrase);
+      });
+    } finally {
+      this.isCreatingWallet = false;
+    }
+  }
+
+  private async createWalletExclusive(
+    password: string,
+    phrase: string
+  ): Promise<void> {
+    // Check required crypto before any cleanup for the admitted new setup.
+    if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues) {
+      throw new Error('WebCrypto is required for wallet creation');
+    }
+    let creationKeyring: KeyringManager | undefined;
+    this.isCreatingWallet = true;
     try {
       // Ensure a FULL reset before creating a new wallet (import/fresh create)
       await this.resetWalletState({ resetNetworks: true });
@@ -2521,11 +2501,15 @@ class MainController {
       }
 
       const keyring = this.getActiveKeyring();
+      creationKeyring = keyring;
+      const creationGeneration = this.walletSessionGeneration;
 
       // This now uses the separated approach internally:
       // 1. initializeSession() - creates session data only
       // 2. createFirstAccount() - creates account without signer setup
       const account = await keyring.initializeWalletSecurely(phrase, password);
+      this.assertCurrentWalletSession(creationGeneration, keyring);
+      assertCompleteHDAccountData({ 0: account });
 
       // Add account to Redux state FIRST (before signer setup)
       store.dispatch(
@@ -2551,6 +2535,7 @@ class MainController {
       // Save vault state to persistent storage after creating the first account
       // Use sync=true to ensure save completes before continuing
       await this.saveWalletState('create-wallet', true, true);
+      this.assertCurrentWalletSession(creationGeneration, keyring);
 
       // Start auto-lock timer if enabled (> 0)
       const { advancedSettings } = store.getState().vaultGlobal;
@@ -2559,10 +2544,12 @@ class MainController {
         const _minutes = Number(_raw);
         if (Number.isFinite(_minutes) && _minutes > 0) {
           await this.startAutoLockTimer();
+          this.assertCurrentWalletSession(creationGeneration, keyring);
         }
       }
 
       setTimeout(() => {
+        if (creationGeneration !== this.walletSessionGeneration) return;
         // Wrap in try-catch to prevent unhandled errors
         Promise.all([
           this.setFiat().catch((error) =>
@@ -2580,12 +2567,27 @@ class MainController {
         ]);
       }, 10);
     } catch (error) {
+      if (creationKeyring) {
+        try {
+          await creationKeyring.lockWallet();
+        } catch (lockError) {
+          console.error(
+            '[MainController] Creation session cleanup failed:',
+            lockError
+          );
+        }
+      }
       console.error('[MainController] Failed to create wallet:', error);
       throw error;
+    } finally {
+      this.isCreatingWallet = false;
     }
   }
 
   public lock() {
+    this.walletSessionGeneration += 1;
+    this.networkRequestGeneration += 1;
+    this.isNetworkSwitching = false;
     const controller = getController();
 
     // Clear any pending timers before locking
@@ -2596,7 +2598,7 @@ class MainController {
 
     void cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
-    this.logout();
+    this.lockAllKeyrings();
 
     // Stop auto-lock timer when wallet is locked
     // This is best-effort - don't let timer cleanup failures prevent wallet lock
@@ -2843,8 +2845,8 @@ class MainController {
     return this.smartAccount.assertSmartAccountSupported();
   }
 
-  public getSmartAccountInfrastructureStatus() {
-    return this.smartAccount.getSmartAccountInfrastructureStatus();
+  public getSmartAccountInfrastructureStatus(forceRefresh = false) {
+    return this.smartAccount.getSmartAccountInfrastructureStatus(forceRefresh);
   }
 
   public deploySmartAccountInfrastructure() {
@@ -3066,6 +3068,7 @@ class MainController {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
+      let ownsSwitchingAccount = false;
       try {
         const { accounts, activeNetwork } = store.getState().vault;
         const account = accounts[type]?.[id];
@@ -3096,6 +3099,7 @@ class MainController {
 
         // Set switching account loading state
         store.dispatch(setIsSwitchingAccount(true));
+        ownsSwitchingAccount = true;
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
@@ -3122,6 +3126,7 @@ class MainController {
         // balance refresh continues in the background. Account selection is
         // session state; avoid full vault serialization on this hot path.
         store.dispatch(setIsSwitchingAccount(false));
+        ownsSwitchingAccount = false;
 
         // Defer heavy operations to prevent blocking the UI
         if (sync) {
@@ -3133,6 +3138,8 @@ class MainController {
         console.error('Failed to set active account:', error);
         // Re-throw to let the UI handle the error
         throw error;
+      } finally {
+        if (ownsSwitchingAccount) store.dispatch(setIsSwitchingAccount(false));
       }
     });
   }
@@ -3283,6 +3290,21 @@ class MainController {
     network: INetwork,
     syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry the network change after it completes.'
+      );
+    }
+    if (this.isResettingWallet) {
+      throw new Error(
+        'Wallet reset is in progress. Retry the network change after it completes.'
+      );
+    }
+    const requestGeneration = ++this.networkRequestGeneration;
+    const isCurrent = () => requestGeneration === this.networkRequestGeneration;
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
+    };
     const previousSlip44 = store.getState().vaultGlobal.activeSlip44;
     // Cancel the current promise if it exists
     if (this.currentPromise) {
@@ -3321,7 +3343,7 @@ class MainController {
       networkVersion: number;
     }>((resolve, reject) => {
       completeNetwork.kind;
-      this.setActiveNetworkLogic(completeNetwork, resolve, reject);
+      this.setActiveNetworkLogic(completeNetwork, resolve, reject, isCurrent);
     });
 
     this.currentPromise = promiseWrapper;
@@ -3329,11 +3351,14 @@ class MainController {
     // Return the promise chain with error handling attached
     return promiseWrapper.promise
       .then(async () => {
+        assertCurrent();
         await this.handleNetworkChangeSuccess(
           completeNetwork,
           syncUpdates,
-          previousSlip44
+          previousSlip44,
+          isCurrent
         );
+        assertCurrent();
 
         // Return the success result
         const isBitcoinBased = completeNetwork.kind === INetworkType.Syscoin;
@@ -3346,27 +3371,13 @@ class MainController {
       })
       .catch((error) => {
         // Handle the error
-        this.handleNetworkChangeError(error);
+        if (isCurrent()) this.handleNetworkChangeError(error);
 
-        // Don't re-throw cancellation errors
-        if (
-          error === 'Network change cancelled' ||
-          (error && error.message === 'Network change cancelled') ||
-          (error && typeof error === 'string' && error.includes('cancelled')) ||
-          (error &&
-            error.message &&
-            error.message.includes('Cancel by network changing'))
-        ) {
-          // Return a success-like result for cancellations to prevent navigation issues
-          return {
-            chainId: `0x${completeNetwork.chainId.toString(16)}`,
-            networkVersion: completeNetwork.chainId,
-            cancelled: true,
-          };
-        }
-
-        // Re-throw other errors so ChainErrorPage sees them
+        // Cancellation is not a successful switch to the requested chain.
         throw error;
+      })
+      .finally(() => {
+        if (this.currentPromise === promiseWrapper) this.currentPromise = null;
       });
   }
 
@@ -3579,6 +3590,11 @@ class MainController {
   }
 
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     const { networks } = store.getState().vaultGlobal;
 
     // Validate required fields
@@ -3645,6 +3661,12 @@ class MainController {
       }
     }
 
+    // CoinGecko discovery may have yielded while a removal acquired ownership.
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
     // Save wallet state after adding custom network
@@ -3655,6 +3677,11 @@ class MainController {
   }
 
   public async editCustomRpc(network: INetwork): Promise<INetwork> {
+    if (this.isRemovingNetwork) {
+      throw new Error(
+        'Network removal is in progress. Retry after it completes.'
+      );
+    }
     // Update the network in the global networks store
     // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
     store.dispatch(setNetwork({ network, isEdit: true }));
@@ -3683,9 +3710,34 @@ class MainController {
 
   public async removeAccount(
     accountId: number,
-    accountType: KeyringAccountType
+    accountType: KeyringAccountType,
+    expectedContext?: AccountRemovalContext
   ) {
-    const { accounts, activeAccount } = store.getState().vault;
+    const state = store.getState();
+    const { accounts, activeAccount, activeNetwork } = state.vault;
+
+    // A confirmation from another window/context must never remove an account
+    // that happens to reuse the same id/type in the newly active vault. Keep
+    // this check and the removal synchronous, before any notification or save.
+    if (
+      expectedContext !== undefined &&
+      (this.isResettingWallet ||
+        state.vaultGlobal.isSwitchingAccount ||
+        state.vaultGlobal.networkStatus === 'switching' ||
+        state.vaultGlobal.networkStatus === 'connecting' ||
+        expectedContext?.slip44 !== state.vaultGlobal.activeSlip44 ||
+        expectedContext?.network?.kind !== activeNetwork.kind ||
+        expectedContext?.network?.chainId !== activeNetwork.chainId ||
+        expectedContext?.network?.url !== activeNetwork.url ||
+        expectedContext?.activeAccount?.id !== activeAccount.id ||
+        expectedContext?.activeAccount?.type !== activeAccount.type ||
+        expectedContext?.activeAccount?.address !==
+          accounts[activeAccount.type]?.[activeAccount.id]?.address ||
+        !expectedContext?.address ||
+        expectedContext.address !== accounts[accountType]?.[accountId]?.address)
+    ) {
+      throw new Error('Account context changed. Please confirm removal again.');
+    }
 
     // Safety check: Don't allow removing the active account
     if (activeAccount.id === accountId && activeAccount.type === accountType) {
@@ -3749,35 +3801,84 @@ class MainController {
     label: string,
     key?: string
   ) {
-    // For UTXO networks, also remove the keyring and vault state since addresses might be different
-    // when a new testnet/network with the same slip44 is added later
-    if (chain === INetworkType.Syscoin) {
-      const { networks } = store.getState().vaultGlobal;
-      const networkToRemove = networks.syscoin[chainId];
-
-      if (networkToRemove && networkToRemove.slip44 !== undefined) {
-        const slip44ToRemove = networkToRemove.slip44;
-        console.log(
-          `[MainController] Removing keyring and vault state for slip44: ${slip44ToRemove} when removing network: ${label}`
+    const generation = this.walletSessionGeneration;
+    const walletStateGeneration = this.walletStateGeneration;
+    const originalNetwork =
+      store.getState().vaultGlobal.networks[chain]?.[chainId];
+    const assertCanRemove = () => {
+      const { vault, vaultGlobal } = store.getState();
+      if (
+        this.currentPromise ||
+        this.isNetworkSwitching ||
+        this.isResettingWallet ||
+        this.isCreatingWallet ||
+        vaultGlobal.networkStatus === 'switching' ||
+        vaultGlobal.networkStatus === 'connecting'
+      ) {
+        throw new Error(
+          'Network change is in progress. Retry network removal after it completes.'
         );
-
-        // Remove the keyring for this slip44
-        this.keyrings.delete(slip44ToRemove);
-
-        // Also clear the persisted vault state for this slip44
-        this.clearSlip44VaultState(slip44ToRemove).catch((error) => {
-          console.error(
-            `[MainController] Failed to clear vault state for slip44 ${slip44ToRemove}:`,
-            error
-          );
-        });
       }
+      if (
+        generation !== this.walletSessionGeneration ||
+        walletStateGeneration !== this.walletStateGeneration
+      ) {
+        throw new Error(
+          'Wallet session changed. Please confirm removal again.'
+        );
+      }
+      const network = vaultGlobal.networks[chain]?.[chainId];
+      if (
+        !network ||
+        network.url !== rpcUrl ||
+        network.slip44 !== originalNetwork?.slip44
+      ) {
+        throw new Error('Network changed. Please confirm removal again.');
+      }
+      if (
+        (vault.activeNetwork.kind === chain &&
+          vault.activeNetwork.chainId === chainId) ||
+        (chain === INetworkType.Syscoin &&
+          network?.slip44 !== undefined &&
+          network.slip44 === vaultGlobal.activeSlip44)
+      ) {
+        throw new Error('Cannot remove the currently active network.');
+      }
+    };
+
+    if (this.isRemovingNetwork) {
+      throw new Error('Network removal is already in progress.');
     }
+    // Reject before queueing; never let an in-flight switch turn its target
+    // into an eligible deletion. Reserve synchronously before any await.
+    assertCanRemove();
+    this.isRemovingNetwork = true;
+    try {
+      await networkSwitchMutex.runExclusive(async () => {
+        assertCanRemove();
+        const networkToRemove =
+          store.getState().vaultGlobal.networks[chain]?.[chainId];
+        // UTXO networks have separate vaults. Finish deleting storage while
+        // holding switch/persistence ownership, before publishing the removal.
+        if (
+          chain === INetworkType.Syscoin &&
+          networkToRemove?.slip44 !== undefined
+        ) {
+          const slip44ToRemove = networkToRemove.slip44;
+          await walletPersistenceMutex.runExclusive(async () => {
+            assertCanRemove();
+            await this.clearSlip44VaultState(slip44ToRemove);
+          });
+          assertCanRemove();
+          this.keyrings.delete(slip44ToRemove);
+        }
 
-    store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
-
-    // Save wallet state after removing network
-    await this.saveWalletState('remove-network', true, true);
+        store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
+        await this.saveWalletState('remove-network', true, true);
+      });
+    } finally {
+      this.isRemovingNetwork = false;
+    }
   }
 
   private async clearSlip44VaultState(slip44: number): Promise<void> {
@@ -4633,6 +4734,7 @@ class MainController {
    * This ensures the transaction completes even if the popup window loses focus
    */
   public async signSendAndSaveTransaction(params: {
+    expectedContext?: IUtxoSigningContext;
     isLedger?: boolean; // For UTXO transactions
     isTrezor?: boolean;
     psbt?: any;
@@ -4642,23 +4744,30 @@ class MainController {
     try {
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
-        const controller = getController();
+        const signing = this.captureUtxoSigningContext(params.expectedContext);
 
         // Step 1: Sign the PSBT
         const signedPsbt = await this.signSyscoinPsbt({
           psbt: params.psbt,
           isTrezor: params.isTrezor,
           isLedger: params.isLedger,
+          expectedContext: signing.context,
         });
+        signing.assertCurrent();
 
         // Step 2: Send the transaction
-        const txResult =
-          await controller.wallet.syscoinTransaction.sendTransaction(
-            signedPsbt
+        const txResult = await signing.transactions.sendTransaction(signedPsbt);
+        // Broadcast acknowledgement is authoritative even if the user changes
+        // context or local history persistence fails afterward.
+        try {
+          signing.assertCurrent();
+          await this.sendAndSaveTransaction(txResult, signing.context.account);
+        } catch (error) {
+          console.warn(
+            '[MainController] Transaction broadcast succeeded; local history update was skipped or failed:',
+            error
           );
-
-        // Step 3: Save the transaction (this will also clear navigation state)
-        await this.sendAndSaveTransaction(txResult);
+        }
 
         return txResult;
       } else {
@@ -4689,13 +4798,49 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertCurrentContext?: () => void;
       clearNavigation?: boolean;
+      expectedContext?: IEvmTransactionContext;
+      onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
       transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
     }
   ): Promise<IEvmTransactionResponse> {
+    let txResponse: IEvmTransactionResponse | undefined;
+    let submissionStarted = false;
+    const expectedContext = saveOptions?.expectedContext;
+    const sessionGeneration = this.walletSessionGeneration;
+    const assertExpectedContext = () => {
+      if (!expectedContext) return;
+      const { vault, vaultGlobal } = store.getState();
+      const currentAccount =
+        vault.accounts?.[vault.activeAccount.type]?.[vault.activeAccount.id];
+      if (
+        this.walletSessionGeneration !== sessionGeneration ||
+        this.isResettingWallet ||
+        vault.isBitcoinBased ||
+        vault.activeNetwork.chainId !== expectedContext.chainId ||
+        vault.activeNetwork.url !== expectedContext.rpcUrl ||
+        vaultGlobal.activeSlip44 !== expectedContext.slip44 ||
+        vault.activeAccount.id !== expectedContext.account.id ||
+        vault.activeAccount.type !== expectedContext.account.type ||
+        currentAccount?.address?.toLowerCase() !==
+          expectedContext.account.address.toLowerCase() ||
+        (params.chainId !== undefined &&
+          params.chainId !== null &&
+          Number(params.chainId) !== expectedContext.chainId) ||
+        (params.from &&
+          params.from.toLowerCase() !==
+            expectedContext.account.address.toLowerCase()) ||
+        (targetAccount &&
+          (targetAccount.id !== expectedContext.account.id ||
+            targetAccount.type !== expectedContext.account.type))
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
     try {
+      assertExpectedContext();
       const controller = getController();
 
       // Check the call target and obvious calldata recipients/spenders.
@@ -4727,6 +4872,8 @@ class MainController {
         }
       }
 
+      saveOptions?.assertCurrentContext?.();
+      assertExpectedContext();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
         targetAccount &&
@@ -4746,7 +4893,7 @@ class MainController {
       // override only the keyring's state getter for the signing call. Do not
       // dispatch setActiveAccount here; that briefly changes the visible UI.
       const keyring = this.getActiveKeyring();
-      let txResponse: IEvmTransactionResponse;
+
       try {
         if (shouldUseTargetAccount) {
           keyring.setVaultStateGetter(() => ({
@@ -4754,9 +4901,19 @@ class MainController {
             activeAccount: targetAccount,
           }));
         }
+        // No asynchronous work may intervene between this check and the
+        // keyring's synchronous capture of the account and network.
+        assertExpectedContext();
+        submissionStarted = true;
         txResponse =
           (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
-            params,
+            expectedContext
+              ? {
+                  ...params,
+                  chainId: expectedContext.chainId,
+                  from: expectedContext.account.address,
+                }
+              : params,
             isLegacy
           )) as unknown as IEvmTransactionResponse;
       } finally {
@@ -4764,6 +4921,12 @@ class MainController {
           keyring.setVaultStateGetter(() => store.getState().vault);
         }
       }
+
+      // Preserve a deployment's acknowledged hash independently of whichever
+      // wallet/network the UI selects while the broadcast is in flight.
+      if (saveOptions?.onBroadcast) await saveOptions.onBroadcast(txResponse);
+      saveOptions?.assertCurrentContext?.();
+      assertExpectedContext();
 
       // Save the transaction (this will also clear navigation state)
       const txToSave = transactionMetadata
@@ -4781,6 +4944,38 @@ class MainController {
         console.error(
           '[MainController] Failed to clear navigation state on error:',
           e
+        );
+      }
+      if (
+        (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          expectedContext) &&
+        txResponse?.hash
+      ) {
+        throw Object.assign(
+          new Error(
+            error?.message || 'Deployment submission persistence failed'
+          ),
+          {
+            transactionHash: txResponse.hash,
+            ...(expectedContext ? { transactionNotBroadcast: false } : {}),
+            transactionNonce:
+              Number.isSafeInteger(txResponse.nonce) && txResponse.nonce >= 0
+                ? txResponse.nonce
+                : undefined,
+          }
+        );
+      }
+      if (
+        (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          expectedContext) &&
+        !submissionStarted
+      ) {
+        throw Object.assign(
+          new Error(
+            error?.message ||
+              'Deployment rejected before transaction submission'
+          ),
+          { transactionNotBroadcast: true }
         );
       }
       throw error;
@@ -5205,7 +5400,7 @@ class MainController {
   /**
    * Persist an EIP-5792 bundle record for a dapp-provided wallet_sendCalls id
    * so wallet_getCallsStatus / wallet_showCallsStatus can resolve it later.
-   * Called by the SendCalls popup after the batch has been broadcast.
+   * Called by the SendCalls popup before submission and as hashes arrive.
    */
   public async recordSendCallsBundle(
     host: string,
@@ -5213,7 +5408,13 @@ class MainController {
     bundle: {
       atomic: boolean;
       chainId: number;
+      previousSubmissionId?: string;
+      reservationId: string;
       smartAccount: boolean;
+      submissionCompleted?: boolean;
+      submissionId?: string;
+      submissionNotBroadcast?: boolean;
+      submissionStarted?: boolean;
       txHashes: string[];
     }
   ): Promise<void> {
@@ -6653,13 +6854,17 @@ class MainController {
     // Users can click on it to go to the error page and retry manually
   };
 
-  private async configureNetwork(network: INetwork): Promise<{
+  private async configureNetwork(
+    network: INetwork,
+    isCurrent: () => boolean = () => true
+  ): Promise<{
     error?: any;
     success: boolean;
   }> {
     try {
       // setSignerNetwork will validate the network when setting up the provider
-      const { success } = await this.setSignerNetwork(network);
+      const { success } = await this.setSignerNetwork(network, isCurrent);
+      if (!isCurrent()) throw new Error('Network change cancelled');
 
       if (success) {
         return { success, error: null };
@@ -6747,8 +6952,13 @@ class MainController {
       network: INetwork;
       networkVersion: number;
     }) => void,
-    reject: (reason?: any) => void
+    reject: (reason?: any) => void,
+    isCurrent: () => boolean = () => true
   ) => {
+    if (!isCurrent()) {
+      reject(new Error('Network change cancelled'));
+      return;
+    }
     // Always dispatch startSwitchNetwork to ensure we're in the correct state
     store.dispatch(startSwitchNetwork(network));
 
@@ -6764,7 +6974,11 @@ class MainController {
 
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {
-      const { success, error } = await this.configureNetwork(network);
+      const { success, error } = await this.configureNetwork(
+        network,
+        isCurrent
+      );
+      if (!isCurrent()) throw new Error('Network change cancelled');
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
 
@@ -6792,8 +7006,13 @@ class MainController {
   private async handleNetworkChangeSuccess(
     network: INetwork,
     syncUpdates = false,
-    previousSlip44: number | null = null
+    previousSlip44: number | null = null,
+    isCurrent: () => boolean = () => true
   ) {
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('Network change cancelled');
+    };
+    assertCurrent();
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
     const { activeAccount } = store.getState().vault;
@@ -6825,6 +7044,7 @@ class MainController {
     clearProviderCache();
     const dappStateChanged =
       await this.ensureActiveAccountCompatibleWithNetwork(network);
+    assertCurrent();
 
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
@@ -6844,13 +7064,18 @@ class MainController {
         dappStateChanged ||
         hadPendingWalletSave;
       try {
-        await persistCommittedWalletState(this.isNetworkSwitchMainStateDirty);
+        await persistCommittedWalletState(
+          this.isNetworkSwitchMainStateDirty,
+          false,
+          isCurrent
+        );
+        assertCurrent();
         this.isNetworkSwitchMainStateDirty = false;
       } catch (error) {
         // Keep the main state dirty across retries. This is necessary when an
         // earlier attempt removed incompatible dapps in memory but failed to
         // persist them; a later retry must still include the main state.
-        this.isNetworkSwitchMainStateDirty = true;
+        if (isCurrent()) this.isNetworkSwitchMainStateDirty = true;
         throw error;
       }
     }
@@ -6862,16 +7087,25 @@ class MainController {
     if (syncUpdates) {
       try {
         await this.setFiat();
+        assertCurrent();
         await this.getLatestUpdateForCurrentAccount(false);
+        assertCurrent();
       } finally {
-        await this.saveWalletState('network-switch-after-updates', false, true);
+        if (isCurrent())
+          await this.saveWalletState(
+            'network-switch-after-updates',
+            false,
+            true
+          );
       }
       // Don't throw error here - let the UI handle the network status
     } else {
       // Use Promise to ensure these operations complete even if popup closes
       Promise.resolve().then(async () => {
+        if (!isCurrent()) return;
         try {
           await this.setFiat();
+          if (!isCurrent()) return;
           await this.getLatestUpdateForCurrentAccount(false, true);
         } catch (error) {
           console.error(
@@ -6881,7 +7115,7 @@ class MainController {
           // Don't change network status here - it's already set to success
           // The error is just for balance updates, not the network switch itself
         } finally {
-          this.saveWalletState('network-switch-after-updates');
+          if (isCurrent()) this.saveWalletState('network-switch-after-updates');
         }
       });
     }
@@ -6968,14 +7202,80 @@ class MainController {
     return { psbt, summary };
   };
 
-  public signSyscoinPsbt = async (params: {
+  private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
+    const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    const { vault, vaultGlobal } = store.getState();
+    const selected = { ...vault.activeAccount };
+    const account = vault.accounts[selected.type]?.[selected.id];
+    if (!vault.isBitcoinBased || !account)
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const context: IUtxoSigningContext = {
+      account: {
+        id: selected.id,
+        type: selected.type,
+        address: account.address,
+        xpub: account.xpub,
+      },
+      chainId: vault.activeNetwork.chainId,
+      kind: vault.activeNetwork.kind,
+      rpcUrl: vault.activeNetwork.url,
+      slip44: vaultGlobal.activeSlip44,
+    };
+    const matches = (value: IUtxoSigningContext) =>
+      value &&
+      value.account?.id === context.account.id &&
+      value.account?.type === context.account.type &&
+      value.account?.address === context.account.address &&
+      value.account?.xpub === context.account.xpub &&
+      value.chainId === context.chainId &&
+      value.kind === context.kind &&
+      value.rpcUrl === context.rpcUrl &&
+      value.slip44 === context.slip44;
+    if (expected && !matches(expected))
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const assertCurrent = () => {
+      try {
+        this.assertCurrentWalletSession(generation, keyring);
+      } catch {
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      }
+      const current = store.getState();
+      const currentAccount =
+        current.vault.accounts[selected.type]?.[selected.id];
+      if (
+        !current.vault.isBitcoinBased ||
+        current.vault.activeAccount.id !== selected.id ||
+        current.vault.activeAccount.type !== selected.type ||
+        currentAccount?.address !== context.account.address ||
+        currentAccount?.xpub !== context.account.xpub ||
+        current.vault.activeNetwork.chainId !== context.chainId ||
+        current.vault.activeNetwork.kind !== context.kind ||
+        current.vault.activeNetwork.url !== context.rpcUrl ||
+        current.vaultGlobal.activeSlip44 !== context.slip44
+      )
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    return { context, assertCurrent, transactions: keyring.syscoinTransaction };
+  }
+
+  public async signSyscoinPsbt(params: {
+    expectedContext?: IUtxoSigningContext;
     isLedger?: boolean;
     isTrezor?: boolean;
     psbt: any;
-  }) => {
-    await this.verifySyscoinPsbt(params.psbt);
-    return this.syscoinTransaction.signPSBT(params);
-  };
+  }) {
+    const signing = this.captureUtxoSigningContext(params.expectedContext);
+    const verified = await this.verifySyscoinPsbt(params.psbt);
+    signing.assertCurrent();
+    const signed = await signing.transactions.signPSBT({
+      ...params,
+      psbt: PsbtUtils.toPali(verified.psbt),
+    });
+    signing.assertCurrent();
+    return signed;
+  }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = async (psbtOrHex: any, isRawHex = false) => {

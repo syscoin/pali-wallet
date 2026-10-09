@@ -154,9 +154,12 @@ export async function saveMainState() {
  */
 export async function persistCommittedWalletState(
   includeMainState: boolean,
-  skipUnchangedMainState = false
+  skipUnchangedMainState = false,
+  isCurrent: () => boolean = () => true
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
+    if (!isCurrent())
+      throw new Error('Wallet state changed before persistence');
     const state = store.getState();
     const activeSlip44 = state.vaultGlobal.activeSlip44;
 
@@ -174,7 +177,7 @@ export async function persistCommittedWalletState(
 
     await saveCommittedWalletState(activeSlip44, vaultState, mainState);
 
-    if (mainState) {
+    if (mainState && isCurrent()) {
       lastPersistedState = mainState;
     }
   });
@@ -184,8 +187,13 @@ export async function persistCommittedWalletState(
 export async function loadAndActivateSlip44Vault(
   slip44: number,
   targetNetwork?: INetwork,
-  deferActiveSlip44Update = false
+  deferActiveSlip44Update = false,
+  isCurrent: () => boolean = () => true
 ): Promise<boolean> {
+  const assertCurrent = () => {
+    if (!isCurrent())
+      throw new Error('Wallet state changed while loading account data');
+  };
   // If a non-deferred storage/migration step fails, this is still the vault
   // Redux actually contains. Re-align the global pointer to it in the catch so
   // mismatch suppression cannot strand background state delivery.
@@ -194,6 +202,7 @@ export async function loadAndActivateSlip44Vault(
   try {
     console.log(`[Store] Loading slip44 vault: ${slip44}`);
 
+    assertCurrent();
     // Only set activeSlip44 immediately if not deferred
     // When deferred, the caller will set it after session transfer
     if (!deferActiveSlip44Update) {
@@ -205,7 +214,8 @@ export async function loadAndActivateSlip44Vault(
       );
     }
 
-    const slip44VaultState = await vaultCache.getSlip44Vault(slip44);
+    const slip44VaultState = await vaultCache.getSlip44Vault(slip44, isCurrent);
+    assertCurrent();
 
     if (slip44VaultState) {
       console.log(`[Store] Loading existing vault state for slip44: ${slip44}`);
@@ -213,6 +223,7 @@ export async function loadAndActivateSlip44Vault(
       const passkeyProfileState = await loadPasskeyCredentialProfileState(
         slip44
       );
+      assertCurrent();
       const embeddedPasskeyCredentialProfile =
         slip44VaultState.passkeyCredentialProfile;
       const vaultStateWithoutPasskeyProfile = { ...slip44VaultState };
@@ -220,15 +231,21 @@ export async function loadAndActivateSlip44Vault(
 
       if (embeddedPasskeyCredentialProfile) {
         if (!passkeyProfileState?.passkeyCredentialProfile) {
-          await savePasskeyCredentialProfileState(
-            slip44,
-            embeddedPasskeyCredentialProfile
-          );
+          await walletPersistenceMutex.runExclusive(async () => {
+            assertCurrent();
+            await savePasskeyCredentialProfileState(
+              slip44,
+              embeddedPasskeyCredentialProfile
+            );
+          });
+          assertCurrent();
         }
         await vaultCache.setSlip44Vault(
           slip44,
-          vaultStateWithoutPasskeyProfile
+          vaultStateWithoutPasskeyProfile,
+          isCurrent
         );
+        assertCurrent();
       }
 
       const passkeyCredentialProfile =
@@ -241,7 +258,8 @@ export async function loadAndActivateSlip44Vault(
           }
         : vaultStateWithoutPasskeyProfile;
 
-      // Load vault state into Redux
+      // Load vault state into Redux only while this activation still owns it.
+      assertCurrent();
       store.dispatch(vaultRehydrate(vaultStateWithPasskeyProfile));
 
       console.log(`[Store] Successfully loaded slip44 vault: ${slip44}`);
@@ -255,6 +273,7 @@ export async function loadAndActivateSlip44Vault(
       // This prevents copying accounts from previous slip44 when saving later
       const networkToUse =
         targetNetwork || store.getState().vault.activeNetwork;
+      assertCurrent();
       store.dispatch(initializeCleanVaultForSlip44(networkToUse));
 
       console.log(
@@ -264,6 +283,7 @@ export async function loadAndActivateSlip44Vault(
     }
   } catch (error) {
     if (
+      isCurrent() &&
       !deferActiveSlip44Update &&
       loadedVaultSlip44 !== null &&
       loadedVaultSlip44 !== undefined

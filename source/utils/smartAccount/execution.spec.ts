@@ -121,6 +121,90 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     expect(submitCalls).toHaveLength(2);
     expect(signActionHash).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    { marker: undefined, acknowledged: false, expected: 1 },
+    { marker: false, acknowledged: false, expected: 1 },
+    { marker: true, acknowledged: false, expected: 2 },
+    { marker: true, acknowledged: true, expected: 1 },
+  ])(
+    'retries a submitted signature error only when proven unsent: %j',
+    async ({ marker, acknowledged, expected }) => {
+      const executions = [{ data: '0x', target: ENTRY_TARGET, value: '0x0' }];
+      const events: string[] = [];
+      let submits = 0;
+      const error = Object.assign(Error('AA24 signature error'), {
+        transactionNotBroadcast: marker,
+        transactionHash: acknowledged ? `0x${'12'.repeat(32)}` : undefined,
+      });
+      const emitter = jest.fn(async ([, method]: string[]) => {
+        if (method === 'prepareSmartAccountExecutions')
+          return {
+            actionHash: `0x${'01'.repeat(32)}`,
+            executions,
+            smartAccount,
+            userOperation: {},
+          };
+        events.push('submit');
+        submits += 1;
+        if (submits === 1) throw error;
+        return { hash: 'retried' };
+      });
+      const submitting = signAndSubmitSmartAccountExecutions({
+        accountAddress: ACCOUNT_ADDRESS,
+        accountId: 0,
+        smartAccount,
+        authenticatorContexts: {
+          'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
+        },
+        controllerEmitter: emitter,
+        executions,
+        onBeforeSubmit: async () => {
+          events.push('durable begin');
+        },
+      });
+      if (expected === 2)
+        await expect(submitting).resolves.toEqual({ hash: 'retried' });
+      else await expect(submitting).rejects.toBe(error);
+      const calls = emitter.mock.calls.filter(
+        ([[, method]]) => method === 'submitSmartAccountExecution'
+      );
+      expect(calls).toHaveLength(expected);
+      for (const call of calls) expect(call.slice(2)).toEqual([300000, false]);
+      expect(events).toEqual(
+        Array.from({ length: expected }, () => [
+          'durable begin',
+          'submit',
+        ]).flat()
+      );
+    }
+  );
+
+  it('does not invoke smart submission if its durable boundary fails', async () => {
+    const emitter = jest.fn().mockResolvedValue({
+      actionHash: `0x${'01'.repeat(32)}`,
+      executions: [],
+      smartAccount,
+    });
+    await expect(
+      signAndSubmitSmartAccountExecutions({
+        accountAddress: ACCOUNT_ADDRESS,
+        accountId: 0,
+        smartAccount,
+        authenticatorContexts: {
+          'slh-dsa': { signActionHash: async () => validSlhDsaSignature },
+        },
+        controllerEmitter: emitter,
+        executions: [],
+        onBeforeSubmit: async () => {
+          throw Error('Persistence failed');
+        },
+      })
+    ).rejects.toThrow('Persistence failed');
+    expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
+      'prepareSmartAccountExecutions',
+    ]);
+  });
 });
 
 describe('getSmartAccountLocalOwnerContexts', () => {

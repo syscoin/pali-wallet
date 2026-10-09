@@ -80,6 +80,13 @@ import {
 } from 'utils/smartAccount';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
+import {
+  infrastructurePendingIdentity,
+  InfrastructureJournalEntry,
+  readInfrastructureJournal,
+  writeInfrastructureJournal,
+  clearInfrastructureJournal,
+} from './infrastructureJournal';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
@@ -95,6 +102,7 @@ export interface ISmartAccountControllerDependencies {
     isAssetPolling?: boolean,
     skipCache?: boolean
   ) => Promise<boolean>;
+  getWalletSessionGeneration?: () => number;
   saveWalletState: (
     operation: string,
     isUserActivity?: boolean,
@@ -106,7 +114,9 @@ export interface ISmartAccountControllerDependencies {
     targetAccount?: { id: number; type: PaliKeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertCurrentContext?: () => void;
       clearNavigation?: boolean;
+      onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
       transactionAccounts?: Array<{ id: number; type: PaliKeyringAccountType }>;
@@ -147,6 +157,14 @@ type GuardianRecoveryStatusForAccount = {
   threshold: number;
 };
 
+type InfrastructurePending = InfrastructureJournalEntry;
+
+type InfrastructureDeploymentResult = {
+  deployed: PaliInfrastructureContractId[];
+  pending?: InfrastructurePending;
+  skipped: PaliInfrastructureContractId[];
+};
+
 type SmartAccountInfrastructureStatus = {
   chainId: number;
   contracts: Array<{
@@ -162,6 +180,7 @@ type SmartAccountInfrastructureStatus = {
     deployed: boolean;
   };
   missing: PaliInfrastructureContractId[];
+  pending?: InfrastructurePending;
   ready: boolean;
 };
 
@@ -310,10 +329,18 @@ const hasSmartAccountSignatureFailure = (error: unknown): boolean => {
 };
 
 class SmartAccountController {
-  private infrastructureStatusCache?: {
-    chainId: number;
-    status: SmartAccountInfrastructureStatus;
-  };
+  private readonly infrastructureStatusCache = new Map<
+    string,
+    { status: SmartAccountInfrastructureStatus; timestamp: number }
+  >();
+  private readonly infrastructureDeployments = new Map<
+    number,
+    { contextKey: string; operation: Promise<InfrastructureDeploymentResult> }
+  >();
+  private readonly pendingInfrastructure = new Map<
+    number,
+    InfrastructurePending
+  >();
   private readonly pendingDeploymentAddresses = new Set<string>();
   private readonly hydratedMetadataCache = new Map<
     string,
@@ -345,148 +372,599 @@ class SmartAccountController {
     return true;
   }
 
-  public async getSmartAccountInfrastructureStatus(
-    forceRefresh = false
-  ): Promise<SmartAccountInfrastructureStatus> {
-    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+  private infrastructureContext() {
+    const { vault, vaultGlobal } = store.getState();
+    const { activeNetwork, activeAccount, accounts, isBitcoinBased } = vault;
     if (isBitcoinBased || activeNetwork.kind !== INetworkType.Ethereum) {
       throw new Error('Smart accounts are only available on EVM networks');
     }
+    const transaction = this.ethereumTransaction;
+    const provider = transaction?.web3Provider;
+    if (!provider) throw new Error('Web3 provider not available');
+    const payer = accounts?.[activeAccount.type]?.[activeAccount.id];
+    return {
+      chainId: activeNetwork.chainId,
+      url: activeNetwork.url,
+      key: `${activeNetwork.chainId}:${activeNetwork.url}`,
+      provider,
+      transaction,
+      slip44: vaultGlobal?.activeSlip44,
+      generation: this.deps.getWalletSessionGeneration?.(),
+      account: { ...activeAccount },
+      address: payer?.address,
+    };
+  }
+
+  private assertInfrastructureContext(
+    context: ReturnType<SmartAccountController['infrastructureContext']>
+  ) {
+    const current = this.infrastructureContext();
     if (
-      !forceRefresh &&
-      this.infrastructureStatusCache?.chainId === activeNetwork.chainId
-    ) {
-      return this.infrastructureStatusCache.status;
-    }
+      current.key !== context.key ||
+      current.provider !== context.provider ||
+      current.transaction !== context.transaction ||
+      current.slip44 !== context.slip44 ||
+      current.generation !== context.generation ||
+      current.account.id !== context.account.id ||
+      current.account.type !== context.account.type ||
+      current.address !== context.address
+    )
+      throw new Error(
+        'Wallet context changed. Reopen deployment on the selected network.'
+      );
+  }
 
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error('Web3 provider not available');
+  private async infrastructureDeadline<T>(
+    operation: Promise<T>,
+    timeoutMs = 8000
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'Infrastructure RPC timed out. Refresh status before retrying.'
+                )
+              ),
+            timeoutMs
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer!);
     }
+  }
 
-    // One batched eth_getCode round trip for the CREATE2 deployer plus every
-    // infrastructure contract (falls back to parallel single calls when the
-    // RPC rejects batches).
-    const infrastructureContracts = getPaliInfrastructureContracts(
-      activeNetwork.chainId
+  private persistedInfrastructurePending(
+    chainId: number
+  ): InfrastructurePending[] {
+    const pending: InfrastructurePending[] = [];
+    const histories = store.getState().vault.accountTransactions || {};
+    for (const accounts of Object.values(histories)) {
+      for (const history of Object.values(accounts)) {
+        // The vault reducer stores newest transactions first.
+        for (const transaction of history.ethereum?.[chainId] || []) {
+          const tx = transaction as typeof transaction & Record<string, any>;
+          if (
+            tx.smartAccountInfrastructureDeployment === true &&
+            typeof tx.hash === 'string' &&
+            !tx.isCanceled &&
+            !tx.isReplaced &&
+            !tx.blockNumber &&
+            !Number(tx.confirmations) &&
+            tx.status !== 'confirmed' &&
+            tx.status !== 'failed'
+          ) {
+            pending.push({
+              contractId: tx.smartAccountInfrastructureId,
+              rpcUrl:
+                typeof tx.smartAccountInfrastructureRpcUrl === 'string' &&
+                tx.smartAccountInfrastructureRpcUrl
+                  ? tx.smartAccountInfrastructureRpcUrl
+                  : undefined,
+              transactionHash: tx.hash,
+            });
+          }
+        }
+      }
+    }
+    return pending;
+  }
+
+  private validInfrastructureReceipt(receipt: any, hash: string): boolean {
+    return Boolean(
+      receipt &&
+        [0, 1, '0x0', '0x1'].includes(receipt.status) &&
+        (receipt.hash || receipt.transactionHash)?.toLowerCase() ===
+          hash.toLowerCase()
     );
-    const probeAddresses = [
+  }
+
+  private async readInfrastructureStatus(
+    context: ReturnType<SmartAccountController['infrastructureContext']>
+  ): Promise<SmartAccountInfrastructureStatus> {
+    const deadline = Date.now() + 18000;
+    const withinDeadline = <T>(
+      operation: () => Promise<T>,
+      maximumWait = 8000
+    ): Promise<T> => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        throw new Error(
+          'Infrastructure RPC timed out. Refresh status before retrying.'
+        );
+      return this.infrastructureDeadline(
+        operation(),
+        Math.min(maximumWait, remaining)
+      );
+    };
+    // Capture pending identities before probing; later submissions must never
+    // be settled using code/receipts read before their reservation existed.
+    const observedMemory = this.pendingInfrastructure.get(context.chainId);
+    const observedHistory = this.persistedInfrastructurePending(
+      context.chainId
+    );
+    const journal = await withinDeadline(() =>
+      readInfrastructureJournal(context)
+    );
+    const infrastructureContracts = getPaliInfrastructureContracts(
+      context.chainId
+    );
+    const addresses = [
       PALI_CREATE2_DEPLOYER_ADDRESS,
       ...infrastructureContracts.map((contract) => contract.address),
     ];
+    const validCodes = (codes: unknown): codes is string[] =>
+      Array.isArray(codes) &&
+      codes.length === addresses.length &&
+      codes.every(
+        (code) =>
+          typeof code === 'string' && /^0x(?:[0-9a-fA-F]{2})*$/.test(code)
+      );
     let codes: string[];
     try {
-      if (typeof provider.sendBatch !== 'function') {
-        throw new Error('Provider does not support JSON-RPC batching');
-      }
-      codes = await provider.sendBatch(
-        'eth_getCode',
-        probeAddresses.map((address) => [address, 'latest'])
+      const batched = await withinDeadline(
+        () =>
+          context.provider.sendBatch(
+            'eth_getCode',
+            addresses.map((address) => [address, 'latest'])
+          ),
+        1800
       );
+      if (!validCodes(batched))
+        throw new Error('Invalid infrastructure code response');
+      codes = batched;
     } catch {
-      codes = await Promise.all(
-        probeAddresses.map((address) => provider.getCode(address))
+      const individual = await withinDeadline(() =>
+        Promise.all(
+          addresses.map((address) => context.provider.getCode(address))
+        )
       );
+      if (!validCodes(individual))
+        throw new Error(
+          'Invalid infrastructure code response. Refresh status before deploying.'
+        );
+      codes = individual;
     }
-    const create2Code = codes[0];
-    const contracts = infrastructureContracts.map((contract, index) => {
-      const code = codes[index + 1];
-      const isDeployed = Boolean(code) && code !== '0x';
-      const initialized = contract.id !== 'factory' || isDeployed;
-      return {
-        address: contract.address,
-        deployed: isDeployed,
-        displayName: contract.displayName,
-        externallyDeployed: Boolean(contract.externallyDeployed),
-        id: contract.id,
-        initialized,
-        optional: Boolean(contract.optional),
-      };
-    });
-    const missing = contracts
-      .filter((contract) => !contract.deployed)
-      .map((contract) => contract.id);
-    const missingRequired = contracts
-      .filter((contract) => !contract.deployed && !contract.optional)
-      .map((contract) => contract.id);
-    const factoryInitialized =
-      contracts.find((contract) => contract.id === 'factory')?.initialized ??
-      false;
-
-    const status = {
-      chainId: activeNetwork.chainId,
+    const contracts = infrastructureContracts.map((contract, index) => ({
+      address: contract.address,
+      deployed: codes[index + 1] !== '0x',
+      displayName: contract.displayName,
+      externallyDeployed: Boolean(contract.externallyDeployed),
+      id: contract.id,
+      optional: Boolean(contract.optional),
+    }));
+    const status: SmartAccountInfrastructureStatus = {
+      chainId: context.chainId,
       contracts,
       create2Deployer: {
         address: PALI_CREATE2_DEPLOYER_ADDRESS,
         deployed:
-          create2Code !== '0x' &&
-          (create2Code.length - 2) / 2 >=
-            PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
+          (codes[0].length - 2) / 2 >=
+          PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
       },
-      missing,
-      // Optional contracts (e.g. Multicall3) never gate smart-account
-      // readiness; they are deployed opportunistically.
-      ready: missingRequired.length === 0 && factoryInitialized,
+      missing: contracts
+        .filter((contract) => !contract.deployed)
+        .map((contract) => contract.id),
+      ready: contracts.every(
+        (contract) => contract.deployed || contract.optional
+      ),
     };
-    this.infrastructureStatusCache = {
-      chainId: activeNetwork.chainId,
+    if (
+      journal &&
+      !infrastructureContracts.some(
+        (contract) => contract.id === journal.contractId
+      )
+    )
+      throw new Error(
+        'Deployment journal contains an unknown contract. Refresh status before retrying.'
+      );
+    const candidates = [observedMemory, journal, ...observedHistory].filter(
+      (entry): entry is InfrastructurePending => Boolean(entry)
+    );
+    let pending: InfrastructurePending | undefined;
+    let journalCleared = false;
+    for (const candidate of candidates) {
+      if (candidate.rpcUrl === undefined) {
+        // Legacy chain-only records have no trustworthy fork identity. Surface
+        // them as pending without probing or settling them on an arbitrary RPC.
+        pending = candidate;
+        break;
+      }
+      if (candidate.rpcUrl !== context.url) {
+        // An endpoint alias may serve the same chain. Keep admission closed, but
+        // never use this endpoint's state to settle another RPC's submission.
+        pending = candidate;
+        break;
+      }
+      if (
+        !infrastructureContracts.some(
+          (contract) => contract.id === candidate.contractId
+        )
+      )
+        continue;
+      let settled = !status.missing.includes(candidate.contractId);
+      if (!settled && candidate.transactionHash) {
+        const receipt = await withinDeadline(
+          () =>
+            context.provider.getTransactionReceipt(candidate.transactionHash),
+          1800
+        );
+        if (
+          receipt &&
+          !this.validInfrastructureReceipt(receipt, candidate.transactionHash)
+        )
+          throw new Error(
+            'Invalid deployment receipt. Refresh status before retrying.'
+          );
+        settled = Boolean(receipt);
+      }
+      if (!settled && candidate.payerAddress && candidate.nonce !== undefined) {
+        const latestNonce = await withinDeadline(
+          () =>
+            context.provider.send('eth_getTransactionCount', [
+              candidate.payerAddress,
+              'latest',
+            ]),
+          1800
+        );
+        if (
+          typeof latestNonce !== 'string' ||
+          !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(latestNonce) ||
+          !Number.isSafeInteger(Number(latestNonce))
+        )
+          throw new Error('Invalid deployment nonce response');
+        settled = Number(latestNonce) > candidate.nonce;
+      }
+      if (!settled) {
+        pending = candidate;
+        break;
+      }
+      if (
+        journal &&
+        !journalCleared &&
+        infrastructurePendingIdentity(candidate) ===
+          infrastructurePendingIdentity(journal)
+      ) {
+        await withinDeadline(() =>
+          clearInfrastructureJournal(context, candidate)
+        );
+        journalCleared = true;
+      }
+      if (
+        infrastructurePendingIdentity(
+          this.pendingInfrastructure.get(context.chainId)
+        ) === infrastructurePendingIdentity(candidate)
+      )
+        this.pendingInfrastructure.delete(context.chainId);
+    }
+    const latestPending = this.pendingInfrastructure.get(context.chainId);
+    if (
+      latestPending &&
+      (infrastructurePendingIdentity(latestPending) !==
+        infrastructurePendingIdentity(observedMemory) ||
+        latestPending.transactionHash !== observedMemory?.transactionHash)
+    )
+      pending = latestPending;
+    if (pending) status.pending = pending;
+    this.infrastructureStatusCache.set(context.key, {
+      timestamp: Date.now(),
       status,
-    };
+    });
     return status;
   }
 
-  public async deploySmartAccountInfrastructure(): Promise<{
-    deployed: PaliInfrastructureContractId[];
-    skipped: PaliInfrastructureContractId[];
-  }> {
-    const status = await this.getSmartAccountInfrastructureStatus(true);
-    if (!status.create2Deployer.deployed) {
+  public async getSmartAccountInfrastructureStatus(
+    forceRefresh = false
+  ): Promise<SmartAccountInfrastructureStatus> {
+    const context = this.infrastructureContext();
+    const cached = this.infrastructureStatusCache.get(context.key);
+    if (
+      !forceRefresh &&
+      cached &&
+      Date.now() - cached.timestamp < 5000 &&
+      !cached.status.pending &&
+      !this.pendingInfrastructure.has(context.chainId)
+    )
+      return cached.status;
+    return this.readInfrastructureStatus(context);
+  }
+
+  public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
+    const context = this.infrastructureContext();
+    const existing = this.infrastructureDeployments.get(context.chainId);
+    if (existing) {
+      if (existing.contextKey === context.key) return existing.operation;
+      return Promise.reject(
+        new Error(
+          'Another infrastructure deployment is pending on this network.'
+        )
+      );
+    }
+    const operation = this.deployInfrastructureForContext(context).finally(
+      () => {
+        if (
+          this.infrastructureDeployments.get(context.chainId)?.operation ===
+          operation
+        )
+          this.infrastructureDeployments.delete(context.chainId);
+        this.infrastructureStatusCache.delete(context.key);
+      }
+    );
+    this.infrastructureDeployments.set(context.chainId, {
+      contextKey: context.key,
+      operation,
+    });
+    return operation;
+  }
+
+  private async deployInfrastructureForContext(
+    context: ReturnType<SmartAccountController['infrastructureContext']>
+  ): Promise<InfrastructureDeploymentResult> {
+    const deployed: PaliInfrastructureContractId[] = [];
+    const skipped: PaliInfrastructureContractId[] = [];
+    const status = await this.readInfrastructureStatus(context);
+    this.assertInfrastructureContext(context);
+    if (status.pending) return { deployed, skipped, pending: status.pending };
+    if (!status.create2Deployer.deployed)
       throw new Error(
         'Cannot deploy Pali smart account infrastructure because this network is missing the canonical CREATE2 deployer.'
       );
-    }
-
-    const deployed: PaliInfrastructureContractId[] = [];
-    const skipped = status.contracts
-      .filter((contract) => contract.deployed)
-      .map((contract) => contract.id);
-
-    const infrastructureContracts = getPaliInfrastructureContracts(
-      status.chainId
-    );
-    for (const contract of infrastructureContracts) {
-      if (!status.missing.includes(contract.id)) {
-        continue;
-      }
-      if (contract.externallyDeployed || !contract.deployCalldata) {
-        throw new Error(
-          `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
+    if (!context.address)
+      throw new Error('Deployment gas payer is unavailable');
+    let nextNonce = 0;
+    try {
+      for (const contract of getPaliInfrastructureContracts(context.chainId)) {
+        this.assertInfrastructureContext(context);
+        const code = await this.infrastructureDeadline(
+          context.provider.send('eth_getCode', [contract.address, 'latest'])
         );
+        this.assertInfrastructureContext(context);
+        if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
+          throw new Error(
+            'Invalid infrastructure code response. Refresh status before deploying.'
+          );
+        if (code !== '0x') {
+          skipped.push(contract.id);
+          continue;
+        }
+        if (contract.externallyDeployed || !contract.deployCalldata)
+          throw new Error(
+            `${contract.displayName} must be deployed by the zkSYS launch flow before Pali smart account infrastructure can be deployed.`
+          );
+        const pendingNonce = await this.infrastructureDeadline(
+          context.provider.send('eth_getTransactionCount', [
+            context.address,
+            'pending',
+          ])
+        );
+        this.assertInfrastructureContext(context);
+        if (
+          typeof pendingNonce !== 'string' ||
+          !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(pendingNonce)
+        )
+          throw new Error('Invalid deployment nonce response');
+        const parsedNonce = Number(pendingNonce);
+        if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
+          throw new Error('Invalid deployment nonce response');
+        const nonce = Math.max(nextNonce, parsedNonce);
+        const reservation: InfrastructurePending = {
+          contractId: contract.id,
+          attemptId: randomBytes32Hex(),
+          payerAddress: context.address,
+          rpcUrl: context.url,
+          // Hardware paths currently choose their own nonce. Trust theirs only
+          // once an acknowledged response supplies it.
+          nonce: [
+            PaliKeyringAccountType.HDAccount,
+            PaliKeyringAccountType.Imported,
+          ].includes(context.account.type)
+            ? nonce
+            : undefined,
+        };
+        const reservationWrite = writeInfrastructureJournal(
+          context,
+          reservation
+        );
+        try {
+          await this.infrastructureDeadline(reservationWrite);
+        } catch (error) {
+          // No sender has been invoked. Storage may finish after its deadline;
+          // release only this unsent attempt once the write actually settles.
+          const clearUnsentAttempt = () =>
+            clearInfrastructureJournal(context, reservation);
+          void reservationWrite
+            .then(clearUnsentAttempt, clearUnsentAttempt)
+            .catch(() => undefined);
+          throw error;
+        }
+        this.pendingInfrastructure.set(context.chainId, reservation);
+        this.infrastructureStatusCache.delete(context.key);
+        let response: IEvmTransactionResponse;
+        try {
+          this.assertInfrastructureContext(context);
+          response = await this.deps.sendAndSaveEthTransaction(
+            {
+              chainId: context.chainId,
+              from: context.address,
+              nonce,
+              data: contract.deployCalldata,
+              to: PALI_CREATE2_DEPLOYER_ADDRESS,
+              value: '0x0',
+            },
+            false,
+            context.account,
+            {
+              smartAccountInfrastructureDeployment: true,
+              smartAccountInfrastructureId: contract.id,
+              smartAccountInfrastructureRpcUrl: context.url,
+            },
+            {
+              clearNavigation: false,
+              persist: true,
+              assertCurrentContext: () =>
+                this.assertInfrastructureContext(context),
+              onBroadcast: async (broadcast) => {
+                const pending = {
+                  ...reservation,
+                  transactionHash: broadcast.hash,
+                  nonce:
+                    Number.isSafeInteger(broadcast.nonce) &&
+                    broadcast.nonce >= 0
+                      ? broadcast.nonce
+                      : reservation.nonce,
+                };
+                this.pendingInfrastructure.set(context.chainId, pending);
+                this.infrastructureStatusCache.delete(context.key);
+                await this.infrastructureDeadline(
+                  writeInfrastructureJournal(context, pending)
+                );
+              },
+            }
+          );
+        } catch (error) {
+          const hash = (error as any)?.transactionHash;
+          if (hash) {
+            const acknowledged = this.pendingInfrastructure.get(
+              context.chainId
+            );
+            const pending = {
+              ...reservation,
+              ...(infrastructurePendingIdentity(acknowledged) ===
+              reservation.attemptId
+                ? acknowledged
+                : {}),
+              transactionHash: hash,
+            };
+            const acknowledgedNonce = (error as any)?.transactionNonce;
+            if (
+              Number.isSafeInteger(acknowledgedNonce) &&
+              acknowledgedNonce >= 0
+            )
+              pending.nonce = acknowledgedNonce;
+            this.pendingInfrastructure.set(context.chainId, pending);
+            this.infrastructureStatusCache.delete(context.key);
+            // The broadcast callback may have failed its first storage write.
+            // Retry this same acknowledged attempt before reporting the error;
+            // permanent storage failure keeps the existing reservation closed.
+            await this.infrastructureDeadline(
+              writeInfrastructureJournal(context, pending)
+            ).catch(() => undefined);
+          }
+          // Definite pre-broadcast rejection is safe to release. Ambiguous
+          // transport failures retain the reservation across worker restarts.
+          const transactionNotBroadcast = (error as any)
+            ?.transactionNotBroadcast;
+          if (
+            !hash &&
+            (transactionNotBroadcast === true ||
+              (transactionNotBroadcast === undefined &&
+                ((error as any)?.code === 'ACTION_REJECTED' ||
+                  (error as any)?.code === 4001 ||
+                  // Keyring hardware signers use this error only when signing
+                  // fails, before their provider.sendTransaction call.
+                  ([
+                    PaliKeyringAccountType.Trezor,
+                    PaliKeyringAccountType.Ledger,
+                  ].includes(context.account.type) &&
+                    /^Transaction Signature Failed\. Error: /.test(
+                      (error as Error)?.message || ''
+                    )) ||
+                  /insufficient funds|user rejected|user denied|denied transaction|rejected by user|wallet context changed|transaction blocked|target account .*not found/i.test(
+                    (error as Error)?.message || ''
+                  ))))
+          ) {
+            const releaseRejectedAttempt = clearInfrastructureJournal(
+              context,
+              reservation
+            ).then(() => {
+              // A successful clear may arrive after its deadline. Settle the
+              // same unsent in-memory attempt then, without touching a retry.
+              if (
+                infrastructurePendingIdentity(
+                  this.pendingInfrastructure.get(context.chainId)
+                ) === reservation.attemptId
+              )
+                this.pendingInfrastructure.delete(context.chainId);
+            });
+            await this.infrastructureDeadline(releaseRejectedAttempt);
+          }
+          throw error;
+        }
+        const pending = {
+          ...reservation,
+          transactionHash: response.hash,
+          nonce:
+            Number.isSafeInteger(response.nonce) && response.nonce >= 0
+              ? response.nonce
+              : reservation.nonce,
+        };
+        this.pendingInfrastructure.set(context.chainId, pending);
+        nextNonce = nonce + 1;
+        const deadline = Date.now() + 15000;
+        let receipt: any;
+        do {
+          receipt = await this.infrastructureDeadline(
+            context.provider.getTransactionReceipt(response.hash),
+            Math.max(1, Math.min(1800, deadline - Date.now()))
+          ).catch(() => null);
+          if (
+            receipt &&
+            !this.validInfrastructureReceipt(receipt, response.hash)
+          )
+            throw new Error(
+              'Invalid deployment receipt. Refresh status before retrying.'
+            );
+          if (receipt) break;
+          if (Date.now() >= deadline) return { deployed, skipped, pending };
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        } while (true);
+        await this.infrastructureDeadline(
+          clearInfrastructureJournal(context, pending)
+        );
+        if (
+          infrastructurePendingIdentity(
+            this.pendingInfrastructure.get(context.chainId)
+          ) === infrastructurePendingIdentity(pending)
+        )
+          this.pendingInfrastructure.delete(context.chainId);
+        if (Number(receipt.status) !== 1)
+          throw new Error(
+            `${contract.displayName} deployment failed. Refresh status before retrying.`
+          );
+        deployed.push(contract.id);
+        if (contract.id === 'multicall3')
+          clearMulticall3AddressCache(context.chainId);
       }
-      const response = await this.deps.sendAndSaveEthTransaction(
-        {
-          data: contract.deployCalldata,
-          to: PALI_CREATE2_DEPLOYER_ADDRESS,
-          value: '0x0',
-        },
-        false,
-        undefined,
-        {
-          smartAccountInfrastructureDeployment: true,
-          smartAccountInfrastructureId: contract.id,
-        },
-        { clearNavigation: false, persist: true }
-      );
-      await response.wait();
-      deployed.push(contract.id);
+      await this.readInfrastructureStatus(context);
+      return { deployed, skipped };
+    } finally {
+      this.infrastructureStatusCache.delete(context.key);
     }
-
-    if (deployed.includes('multicall3')) {
-      clearMulticall3AddressCache(status.chainId);
-    }
-    await this.getSmartAccountInfrastructureStatus(true);
-
-    return { deployed, skipped };
   }
 
   public async prepareSmartAccount(params: {
@@ -1394,11 +1872,28 @@ class SmartAccountController {
       }
       return response;
     } catch (error) {
-      if (hasNativeGasFailure(error)) {
-        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
-      }
-      if (hasSmartAccountSignatureFailure(error)) {
-        throw new Error(SMART_ACCOUNT_SIGNATURE_ERROR);
+      const normalizedMessage = hasNativeGasFailure(error)
+        ? NATIVE_GAS_REQUIRED_ERROR
+        : hasSmartAccountSignatureFailure(error)
+        ? SMART_ACCOUNT_SIGNATURE_ERROR
+        : undefined;
+      if (normalizedMessage) {
+        const normalizedError = new Error(normalizedMessage);
+        // Keep trusted submission facts when replacing provider text with a
+        // UI sentinel. Losing false could permit an unsafe retry; losing true
+        // would strand a definite rejection as an unknown submission.
+        if (typeof error?.transactionNotBroadcast === 'boolean')
+          Object.assign(normalizedError, {
+            transactionNotBroadcast: error.transactionNotBroadcast,
+          });
+        if (
+          typeof error?.transactionHash === 'string' &&
+          /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)
+        )
+          Object.assign(normalizedError, {
+            transactionHash: error.transactionHash,
+          });
+        throw normalizedError;
       }
       throw error;
     }

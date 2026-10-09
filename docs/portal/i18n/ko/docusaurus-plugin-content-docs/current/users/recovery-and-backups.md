@@ -2,41 +2,48 @@
 title: 복구 및 백업
 ---
 
-Pali는 non-custodial이므로 백업이 중요합니다. wallet은 seed phrase, password, private key 또는 passkey authenticator secret을 대신 복구할 수 없습니다.
+Pali는 비수탁형 지갑이므로 백업이 중요합니다. 지갑은 시드 구문, 비밀번호, 개인 키 또는 패스키 인증기의 비밀 정보를 대신 복구할 수 없습니다.
 
-## Seed phrase 백업
+## 시드 구문 백업
 
-wallet seed phrase를 적어 offline으로 보관하세요. seed phrase를 가진 사람은 derived account를 제어할 수 있습니다.
+지갑의 시드 구문을 적어 오프라인으로 보관하세요. 시드 구문을 가진 사람은 그 구문에서 파생된 계정을 제어할 수 있습니다.
 
-## Passkey backup status
+## 잠금 해제 및 패스키 변경
 
-Passkey는 device-bound일 수도 있고 platform account provider에 의해 동기화될 수도 있습니다. Pali는 가능한 경우 backup 관련 status를 표시하지만, 정확한 동작은 authenticator, browser, operating system에 따라 달라집니다.
+브라우저 서비스 중단, 저장소 문제 또는 지원되지 않는 암호화 기능 때문에 잠금을 해제하지 못할 수 있으며, 이것이 반드시 비밀번호 오류를 뜻하지는 않습니다. 오류를 확인하고 필요한 서비스나 연결을 복구한 뒤 잠금 해제를 다시 시도하세요. 실행 환경 오류를 우회하려고 지갑을 삭제하거나 다시 가져오지 마세요. 실행 환경 오류는 비밀번호 실패 횟수에 포함되지 않습니다.
 
-passkey가 device-bound인지, backup-eligible인지, 또는 backed up/synced인지 암시하는 status가 표시될 수 있습니다. synced passkey는 Apple, Google, Microsoft 같은 platform account를 통해 따라올 수 있으므로 일반적으로 더 편리합니다. device-bound passkey 또는 hardware security key는 더 엄격할 수 있지만, 해당 device를 잃으면 복구가 더 어려워질 수 있습니다.
+패스키를 교체하면 이전 자격 증명과 새 자격 증명이 모두 남아 있을 수 있습니다. 이전 자격 증명이 다른 체인이나 공유 정책을 여전히 제어할 수 있기 때문입니다. 설정이 취소되거나 실패했다는 이유만으로 어느 자격 증명도 삭제하지 마세요. 먼저 관련 계정에 어떤 자격 증명이 계속 필요한지 확인하세요. 중단된 변경을 조사하는 동안에는 현재 지갑 데이터를 보관하세요.
 
-| 표시될 수 있는 status | 의미 | 편의성 | 보안 tradeoff | 적합한 용도 |
+## 패스키 백업 상태
+
+패스키는 기기에 귀속되거나 플랫폼 계정 제공업체를 통해 동기화될 수 있습니다. Pali는 확인 가능한 백업 관련 상태를 표시하지만, 실제 동작은 인증기, 브라우저, 운영체제에 따라 다릅니다.
+
+패스키가 기기에 귀속되었는지, 백업 가능한지, 백업 또는 동기화되었는지를 나타내는 상태가 표시될 수 있습니다. 동기화된 패스키는 Apple, Google, Microsoft 등의 플랫폼 계정을 통해 다른 기기에서도 사용할 수 있어 대체로 편리합니다. 기기 귀속 패스키나 하드웨어 보안 키는 더 엄격하게 관리할 수 있지만, 기기를 잃으면 복구가 어려워질 수 있습니다.
+
+| 표시될 수 있는 상태 | 의미 | 편의성 | 보안상 고려 사항 | 적합한 용도 |
 | --- | --- | --- | --- | --- |
-| Backed up or synced | passkey가 platform passkey provider에 저장되어 있고 다른 trusted device로 sync될 수 있어 보입니다. | 가장 높음. phone 또는 laptop을 교체한 뒤 platform account에 다시 로그인해 복구할 수 있는 경우가 많습니다. | passkey secret은 여전히 platform passkey system으로 보호되지만, security boundary에는 platform account, account recovery process, synced device가 포함됩니다. | 일상 wallet, dapp account, institution onboarding, 작은 balance. |
-| Backup eligible | authenticator는 passkey가 backup 또는 sync될 수 있다고 말하지만, 현재 sync 중이 아닐 수 있습니다. | sync 활성화 여부에 따라 중간에서 높음. | 향후 platform setting이 credential을 cloud sync로 이동시킬 수 있습니다. 이것이 중요하다면 provider 및 device setting을 검토하세요. | recovery flexibility를 원하지만 sync 활성 여부도 확인하려는 사용자. |
-| Device-bound or not backed up | passkey가 하나의 authenticator 또는 device에 묶여 있어 보입니다. | 낮음. device를 잃고 다른 recovery path가 없으면 복구가 더 어렵거나 불가능할 수 있습니다. | cloud-synced account 대신 해당 authenticator에 control이 집중되므로 isolation이 더 강합니다. | 큰 balance, 더 높은 보안 계정, hardware security key, cold-wallet-style usage. |
-| Unknown or unavailable | browser, OS 또는 authenticator가 충분한 backup information을 노출하지 않았습니다. | 알 수 없음. | cloud recovery 또는 device-bound isolation 중 어느 쪽도 가정하지 마세요. authenticator setup을 확인할 때까지 모호한 것으로 취급하세요. | 임시 사용, testing, 또는 passkey provider를 독립적으로 확인할 수 있는 경우. |
+| 백업됨 또는 동기화됨 | 패스키가 플랫폼 패스키 제공업체에 저장되어 있으며, 다른 신뢰할 수 있는 기기에 동기화될 수 있습니다. | 가장 높습니다. 휴대전화나 노트북을 교체해도 플랫폼 계정에 다시 로그인하여 복구할 수 있는 경우가 많습니다. | 패스키 비밀 정보는 여전히 플랫폼 패스키 시스템으로 보호되지만, 보안 경계에는 플랫폼 계정, 계정 복구 절차, 동기화된 기기도 포함됩니다. | 일상용 지갑, dapp 계정, 기관 온보딩, 소액 잔액. |
+| 백업 가능 | 인증기가 패스키를 백업하거나 동기화할 수 있다고 알리지만, 현재는 동기화되지 않았을 수 있습니다. | 동기화 설정에 따라 보통에서 높음 수준입니다. | 향후 플랫폼 설정에 따라 자격 증명이 클라우드 동기화에 포함될 수 있습니다. 중요하다면 제공업체와 기기 설정을 확인하세요. | 복구의 유연성을 원하면서 동기화 활성화 여부도 확인하려는 사용자. |
+| 기기 귀속 또는 백업되지 않음 | 패스키가 하나의 인증기 또는 기기에 귀속된 것으로 보입니다. | 낮은 편입니다. 기기를 잃고 다른 복구 수단이 없다면 복구가 어렵거나 불가능할 수 있습니다. | 클라우드 동기화 계정 대신 해당 인증기에 제어 권한을 집중하므로 격리가 더 강합니다. | 큰 잔액, 높은 보안이 필요한 계정, 하드웨어 보안 키, 콜드 월렛 방식의 사용. |
+| 알 수 없음 또는 확인 불가 | 브라우저, OS 또는 인증기가 충분한 백업 정보를 제공하지 않았습니다. | 알 수 없습니다. | 클라우드 복구나 기기 귀속 격리를 어느 쪽도 가정하지 마세요. 인증기 설정을 확인할 때까지 불확실한 상태로 취급하세요. | 임시 사용, 테스트, 패스키 제공업체를 별도로 확인할 수 있는 경우. |
 
-Cloud-synced passkey는 일반적인 사용에는 여전히 안전합니다. private key는 Pali나 dapp에 전달되지 않고, WebAuthn은 origin-bound로 유지되며, user verification도 platform authenticator가 수행합니다. tradeoff는 platform account가 wallet security model의 일부가 된다는 점입니다. cold storage, treasury fund 또는 큰 장기 balance에는 device-bound authenticator 또는 hardware security key를 선호하고, synced smart account에는 더 작은 operational fund만 보관하세요.
+클라우드 동기화 패스키도 일반적인 용도에서는 안전합니다. 개인 키는 Pali나 dapp에 전달되지 않고, WebAuthn은 여전히 출처에 연결되며, 사용자 확인도 플랫폼 인증기가 수행합니다. 다만 플랫폼 계정이 지갑 보안 모델의 일부가 됩니다. 콜드 스토리지, 조직 자금, 장기간 보유할 큰 잔액에는 기기 귀속 인증기나 하드웨어 보안 키를 우선 사용하고, 동기화 패스키가 제어하는 계정에는 소액의 운영 자금만 보관하세요.
 
-Backup status는 편의성과 보안 사이에서 선택하는 데 도움이 되는 signal입니다. seed phrase backup을 대체하지 않으며, Pali나 기관이 passkey secret을 복구할 수 있다는 의미도 아닙니다.
+백업 상태는 편의성과 보안 사이에서 선택하는 데 도움이 되는 신호입니다. 시드 구문 백업을 대신하지 않으며, Pali나 기관이 패스키의 비밀 정보를 대신 복구할 수 있다는 뜻도 아닙니다.
 
-## Passkey 계정 복구
+## 스마트 계정 복구
 
-Pali passkey recovery는 credential-scoped이며 on-chain account discovery를 사용합니다. 같은 passkey credential에서 WebAuthn assertion을 받을 수 있는 모든 Pali 설치는 일치하는 deployed smart account를 import할 수 있습니다. recovery flow는 다음과 같습니다.
+Pali 스마트 계정의 복구 방식은 설치된 모듈에 따라 다릅니다. 패스키가 제어하는 계정에서 향후 작업을 승인하려면 해당 WebAuthn 자격 증명이 필요합니다. 임계값을 충족하는 가디언이 복구 의도에 서명하면, 가디언 복구 모듈은 설정된 타임록 후에 활성 검증기를 교체할 수 있습니다. 복구 흐름에는 다음 작업이 포함될 수 있습니다.
 
-1. discoverable WebAuthn assertion을 요청합니다.
-2. factory registry와 creation log에서 일치하는 smart account를 조회합니다.
-3. 이미 wallet에 있는 account는 건너뜁니다.
-4. sponsor metadata를 해석할 수 있으면 recoverable account를 추가합니다.
-5. recoverable account를 wallet에 추가합니다.
+1. 지갑 메타데이터에서 결정적으로 생성된 Pali 계정 기록을 재구성합니다.
+2. 패스키 검증기가 제어 권한을 증명해야 할 때 WebAuthn 어서션을 요청합니다.
+3. 활성 검증기를 교체해야 하면 가디언 복구를 사용합니다.
+4. 지갑에 이미 있는 계정은 건너뜁니다.
+5. 확인 가능한 경우 복구 가능한 계정에 잔액과 활동 정보를 표시합니다.
+6. 사용자가 선택한 계정을 가져옵니다.
 
-## Dapp create/recover idempotence
+## dapp 생성과 지갑 복구
 
-dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 smart account를 생성하고 deployment transaction이 confirm되며 on-chain metadata가 준비된 passkey credential과 일치한 후 local에 저장합니다.
+dapp이 `wallet_prepareSmartAccount`를 호출하면 Pali는 스마트 계정을 만들고, 배포와 요청된 검증기 설정이 모두 끝난 뒤 영구 메타데이터를 로컬에 저장합니다. Pali는 패스키를 설치하기 전에 대기 중인 설정 정보도 로컬에 기록하므로, 변경이 중단되어도 복구에 필요한 정보가 아무 알림 없이 사라지지 않습니다. 이 기록은 시드 백업이나 패스키에 대한 접근을 대신하지 않습니다.
 
-Smart account가 on-chain에 존재하지만 local에 없으면 Pali의 wallet recovery flow를 사용합니다. Recovery는 account discovery가 factory registry와 creation log에서 나오기 때문에 같은 credential의 여러 deployed account를 import할 수 있습니다.
+스마트 계정이 온체인에는 존재하지만 로컬에 없다면 Pali의 지갑 복구 흐름을 사용하세요. Pali는 로컬에 이미 있는 계정을 건너뛰고, 나머지 중 어떤 계정을 가져올지 사용자가 선택하게 합니다.

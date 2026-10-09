@@ -113,6 +113,8 @@
     "speedTxMessage": "Sind Sie sicher, dass Sie diese Transaktion beschleunigen möchten?"
   },
   "connections": {
+    "searchAccounts": "Konten suchen",
+    "noMatchingAccounts": "Keine passenden Konten",
     "connectedAccount": "VERBUNDENES KONTO",
     "onlyConnect": "Verbinden Sie sich nur mit vertrauenswürdigen Seiten.",
     "learnMore": "Mehr erfahren.",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Diese Website hat ECDSA-Inhaberadressen angefordert, die keine lokalen Pali-Konten sind. Diese Inhaber können das Smart Account nach der Einrichtung kontrollieren.",
     "prepareSmartAccountExternalEcdsaConfirm": "Ich verstehe, dass diese externen Inhaber Smart-Account-Aktionen genehmigen können.",
     "prepareSmartAccountExternalEcdsaRequired": "Bestätigen Sie die Warnung zu externen ECDSA-Inhabern, bevor Sie fortfahren.",
+    "smartAccountExternalPasskeyUnsupported": "Diese Website hat einen externen Passkey bereitgestellt. Fordere stattdessen einen neuen Passkey in Pali an, um die Kontrolle über dein Konto zu behalten.",
+    "smartAccountPasskeySaveFailed": "Pali konnte den Wiederherstellungseintrag für den Passkey nicht speichern. Behalte den Passkey in deiner Anmeldeinformationsverwaltung und versuche es erneut.",
     "prepareSmartAccountDetailsKnownSigner": "Wenn der Signierer bereits bekannt ist, kann Pali ihn beim Erstellen des Kontos verwenden.",
     "prepareSmartAccountDetailsPasskey": "Bei Passkeys erstellt Pali zuerst das Konto und fügt danach den neuen Passkey hinzu.",
     "prepareSmartAccountStepCredential": "Anmeldemethode wird geprüft...",
@@ -270,6 +274,7 @@
     "gasPrice": "Gaspreis",
     "internalError": "Ein interner Fehler ist aufgetreten.",
     "transactionCreationFailed": "Transaktion konnte nicht erstellt werden: {{error}}. Bitte versuchen Sie es erneut.",
+    "submissionStatusUnknown": "Der Übermittlungsstatus ist unbekannt. Um ein doppeltes Senden zu verhindern, kann dieser Aufruf hier nicht erneut versucht werden. Sie können dieses Fenster schließen.",
     "feeRateInsane": "Die Gebührenrate {{value}} {{currency}}/Byte ist extrem hoch und wird wahrscheinlich vom Netzwerk abgelehnt.",
     "feeRateExtreme": "Die Gebührenrate {{value}} {{currency}}/Byte ist zu hoch und könnte als nicht standardkonform abgelehnt werden.",
     "feeRateHigh": "Die Gebührenrate {{value}} {{currency}}/Byte ist sehr hoch. Bitte überprüfen Sie, ob dies korrekt ist.",
@@ -424,6 +429,9 @@
     "receipts": "Belege"
   },
   "settings": {
+    "walletSetupFailed": "Die Wallet-Einrichtung konnte nicht bestätigt werden. Bewahre deine Wiederherstellungsphrase auf und prüfe den Status der Wallet.",
+    "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",
+    "retryWalletWindowCheck": "Fenster erneut prüfen",
     "bgError": "Hintergrundfehler",
     "bgErrorMessage": "Wir werden Ihre Wallet sperren, um dieses Problem zu beheben. Keine Sorge, alle Ihre Daten bleiben sicher.",
     "ledgerBlindSigning": "Bitte aktivieren Sie Blind Signing in den Ledger App-Einstellungen",
@@ -550,6 +558,8 @@
     "allYourSettings": "Alle Einstellungen auf diesem Gerät (benutzerdefinierte Token und importierte Konten) werden entfernt. Dies verschiebt oder löscht keine On-Chain-Gelder, aber die verschlüsselten privaten Schlüssel für importierte Konten werden von diesem Gerät gelöscht. Wenn Sie die Secret Recovery Phrase oder diese privaten Schlüssel nicht besitzen, können Sie den Zugriff auf diese Vermögenswerte dauerhaft verlieren.",
     "removeAccount": "Konto entfernen",
     "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
+    "accountRemovalContextChanged": "Der Kontokontext hat sich geändert. Bitte bestätige das Entfernen erneut.",
+    "networkRemovalIncomplete": "Das Entfernen des Netzwerks wurde nicht abgeschlossen. Prüfe die Netzwerkliste und versuche es erneut.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
     "failedToRemoveAccount": "Fehler beim Entfernen des Kontos",
     "hardwareWalletSuccess": "Hardware-Wallet erfolgreich verbunden!",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "Bereit",
     "smartAccountInfrastructureNotReadyStatus": "Nicht bereit",
     "smartAccountInfrastructureInsufficientGas": "Fügen Sie dieser Wallet natives Gas hinzu und versuchen Sie die Smart-Account-Einrichtung erneut.",
-    "smartAccountInfrastructureDeployFailed": "Smart-Account-Einrichtung konnte nicht bereitgestellt werden.",
-    "smartAccountInfrastructureSubmitted": "Bereitstellung der Smart-Account-Einrichtung gesendet.",
+    "smartAccountInfrastructureCheckBeforeRetry": "Die Einrichtung wurde angehalten oder steht noch aus. Prüfe vor dem Fortfahren den aktuellen Status; gesendete Transaktionen können noch bestätigt werden.",
+    "smartAccountInfrastructureCheckingSlow": "Die Statusabfrage dauert länger als erwartet. Du kannst erneut prüfen oder diese Seite verlassen.",
+    "smartAccountInfrastructurePending": "Die Bereitstellung steht noch aus. Der Status wird automatisch aktualisiert; du kannst diese Seite verlassen.",
+    "smartAccountInfrastructureCheckStatus": "Status prüfen",
     "deploySmartAccountInfrastructure": "Bereitstellen",
     "installed": "Installiert",
     "supported": "Unterstützt",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "(Token-Existenz überprüfen)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali konnte die Eingänge dieser Transaktion für das genehmigte Konto nicht überprüfen. Prüfe das Konto und fordere eine neue Transaktion an.",
+    "psbtSigningContextChanged": "Das Konto oder Netzwerk deiner Wallet hat sich geändert. Bitte fordere die Genehmigung erneut an.",
     "messageCopied": "Nachricht erfolgreich kopiert",
     "signatureFailed": "Signaturanfrage fehlgeschlagen",
     "sorryWeCould": "Entschuldigung, wir konnten Ihre Anfrage nicht übermitteln. Versuchen Sie es später erneut.",

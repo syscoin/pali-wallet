@@ -34,7 +34,9 @@
 }
 
 .theme-doc-markdown table {
-  display: table;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
   width: 100%;
 }
 

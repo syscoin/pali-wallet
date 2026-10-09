@@ -12,9 +12,11 @@ import { useSelector } from 'react-redux';
 import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton, Tooltip } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
@@ -167,8 +169,16 @@ TokenIconStack.displayName = 'TokenIconStack';
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();
   const dapp = useSelector((state: RootState) => state.dapp.dapps);
-  const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
-    useSelector((state: RootState) => state.vault);
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const accountAssets = useSelector(selectAccountAssets);
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
@@ -185,21 +195,22 @@ export const ChangeAccount = () => {
   }, [host]);
 
   // Helper to check if account is valid for current network type
-  const isAccountValidForNetwork = (
-    account: any,
-    keyringAccountType?: KeyringAccountType
-  ) => {
-    if (!account) return false;
-    if (keyringAccountType === KeyringAccountType.SmartAccount) {
-      return (
-        !isBitcoinBased &&
-        Number(account?.smartAccount?.chainId) === Number(activeNetwork.chainId)
-      );
-    }
-    return isBitcoinBased
-      ? !isHexString(account.address)
-      : isHexString(account.address);
-  };
+  const isAccountValidForNetwork = useCallback(
+    (account: any, keyringAccountType?: KeyringAccountType | string) => {
+      if (!account) return false;
+      if (keyringAccountType === KeyringAccountType.SmartAccount) {
+        return (
+          !isBitcoinBased &&
+          Number(account?.smartAccount?.chainId) ===
+            Number(activeNetwork.chainId)
+        );
+      }
+      return isBitcoinBased
+        ? !isHexString(account.address)
+        : isHexString(account.address);
+    },
+    [activeNetwork.chainId, isBitcoinBased]
+  );
 
   // Get current account from query data (passed from popup), fallback to dapp state, then active account
   // But validate that the account is appropriate for the current network type
@@ -246,6 +257,7 @@ export const ChangeAccount = () => {
       currentAccountType !== undefined ? currentAccountType : null
     );
   const [isChanging, setIsChanging] = useState<boolean>(false);
+  const [search, setSearch] = useState('');
 
   const showTrezorUtxoDisclaimer = React.useMemo(
     () =>
@@ -270,37 +282,60 @@ export const ChangeAccount = () => {
     [accountAssets, isBitcoinBased]
   );
 
-  // Memoize filtered accounts to prevent recomputation
-  const filteredAccounts = useMemo(() => {
+  const eligibleAccounts = useMemo(() => {
     if (!accounts) return [];
-
-    return Object.entries(accounts)
-      .map(([keyringAccountType, accountList]) => {
-        const isValidAccount = (currentAccount: any) => {
-          if (keyringAccountType === KeyringAccountType.SmartAccount) {
-            return (
-              !isBitcoinBased &&
-              Number(currentAccount?.smartAccount?.chainId) ===
-                Number(activeNetwork.chainId)
-            );
-          }
-
-          return isBitcoinBased
-            ? !isHexString(currentAccount.address)
-            : isHexString(currentAccount.address);
-        };
-
-        const validAccounts = Object.values(accountList).filter(isValidAccount);
-
-        return {
-          type: keyringAccountType,
-          accounts: validAccounts,
-        };
-      })
-      .filter(
-        ({ accounts: keyringAccountsList }) => keyringAccountsList.length > 0
-      );
-  }, [accounts, activeNetwork.chainId, isBitcoinBased]);
+    return Object.entries(accounts).flatMap(([keyringType, accountList]) =>
+      Object.values(accountList)
+        .filter((account) => isAccountValidForNetwork(account, keyringType))
+        .map((account) => ({ account, type: keyringType }))
+    );
+  }, [accounts, isAccountValidForNetwork]);
+  const matchingAccounts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return eligibleAccounts.filter(
+      ({ account }) =>
+        !query ||
+        `${account.label} ${account.address}`.toLowerCase().includes(query)
+    );
+  }, [eligibleAccounts, search]);
+  const { visibleItems, hasMore, showMore } = useIncrementalList(
+    matchingAccounts,
+    JSON.stringify([
+      host,
+      activeNetwork.kind,
+      activeNetwork.chainId,
+      activeNetwork.url,
+      search,
+    ])
+  );
+  const filteredAccounts = useMemo(() => {
+    // Keep both the existing connection and proposed selection visible.
+    const pinned = eligibleAccounts.filter(
+      ({ account, type }) =>
+        (account.id === accountId && type === accountType) ||
+        (account.id === currentAccountId && type === currentAccountType)
+    );
+    const displayed = [
+      ...visibleItems,
+      ...pinned.filter((entry) => !visibleItems.includes(entry)),
+    ];
+    return Object.values(
+      displayed.reduce((groups, entry) => {
+        (groups[entry.type] ||= {
+          type: entry.type,
+          accounts: [],
+        }).accounts.push(entry.account);
+        return groups;
+      }, {} as Record<string, { accounts: (typeof accounts)[KeyringAccountType.HDAccount][number][]; type: string }>)
+    );
+  }, [
+    accountId,
+    accountType,
+    currentAccountId,
+    currentAccountType,
+    eligibleAccounts,
+    visibleItems,
+  ]);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
     setAccountId(id);
@@ -397,6 +432,19 @@ export const ChangeAccount = () => {
 
         {/* Accounts list */}
         <div className="px-4 py-4">
+          <input
+            type="search"
+            aria-label={t('connections.searchAccounts')}
+            placeholder={t('connections.searchAccounts')}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="w-full mb-4 rounded-lg border border-brand-gray300 bg-bkg-2 p-3 text-sm text-brand-white"
+          />
+          {matchingAccounts.length === 0 && (
+            <p role="status" className="text-sm text-brand-graylight">
+              {t('connections.noMatchingAccounts')}
+            </p>
+          )}
           {accounts && Object.keys(accounts).length > 0 ? (
             <div className="space-y-4">
               {filteredAccounts.map(
@@ -546,6 +594,14 @@ export const ChangeAccount = () => {
                 </p>
               </div>
             </div>
+          )}
+
+          {hasMore && (
+            <ListLoadMore
+              onClick={showMore}
+              shown={visibleItems.length}
+              total={matchingAccounts.length}
+            />
           )}
 
           {/* Info message with proper spacing from buttons */}

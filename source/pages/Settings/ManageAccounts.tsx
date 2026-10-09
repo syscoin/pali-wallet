@@ -14,9 +14,12 @@ import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { RiUserReceivedLine } from 'components/Icon/Icon';
 import { LockIconSvg, PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon, IconButton } from 'components/index';
+import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import type { AccountRemovalContext } from 'scripts/Background/controllers/MainController';
+import store, { RootState } from 'state/store';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
@@ -97,8 +100,12 @@ const ManageAccountsView = React.memo(() => {
   const activeAccountRef = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal.activeSlip44
+  );
   const { navigate, alert } = useUtils();
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, connectionUnavailable } = useController();
+  const { isContextChanging } = usePageLoadingState();
   const { t } = useTranslation();
   const location = useLocation();
 
@@ -126,8 +133,38 @@ const ManageAccountsView = React.memo(() => {
   const [accountToRemove, setAccountToRemove] = useState<{
     account: IKeyringAccountState;
     accountType: KeyringAccountType;
+    context: string;
+    expectedContext: AccountRemovalContext;
   } | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const removalContext = useMemo(
+    () => ({
+      activeAccount: {
+        ...activeAccountRef,
+        address:
+          accounts[activeAccountRef.type]?.[activeAccountRef.id]?.address,
+      },
+      network: {
+        kind: activeNetwork.kind,
+        chainId: activeNetwork.chainId,
+        url: activeNetwork.url,
+      },
+      slip44: activeSlip44,
+    }),
+    [activeAccountRef, accounts, activeNetwork, activeSlip44]
+  );
+  const context = JSON.stringify(removalContext);
+  const canConfirmRemoval =
+    !isContextChanging &&
+    !connectionUnavailable &&
+    accountToRemove?.context === context &&
+    accountToRemove.expectedContext.address ===
+      accounts[accountToRemove.accountType]?.[accountToRemove.account.id]
+        ?.address;
+
+  useEffect(() => {
+    if (accountToRemove && !canConfirmRemoval) setAccountToRemove(null);
+  }, [accountToRemove, canConfirmRemoval]);
 
   const editAccount = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
@@ -168,6 +205,10 @@ const ManageAccountsView = React.memo(() => {
       ),
     [accounts]
   );
+  const hdAccountsCount = useMemo(
+    () => Object.keys(accounts.HDAccount).length,
+    [accounts.HDAccount]
+  );
   // Check if account can be removed
   const canRemoveAccount = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
@@ -181,30 +222,68 @@ const ManageAccountsView = React.memo(() => {
       if (accountType === KeyringAccountType.HDAccount) {
         if (account.id === 0) return false;
 
-        const hdAccountsCount = Object.keys(accounts.HDAccount).length;
         if (hdAccountsCount <= 1) return false;
       }
 
       return true;
     },
-    [accounts, isActiveAccount, totalAccounts]
+    [hdAccountsCount, isActiveAccount, totalAccounts]
   );
 
   const handleRemoveClick = useCallback(
     (account: IKeyringAccountState, accountType: KeyringAccountType) => {
-      setAccountToRemove({ account, accountType });
+      if (isContextChanging || connectionUnavailable) return;
+      setAccountToRemove({
+        account,
+        accountType,
+        context,
+        expectedContext: { ...removalContext, address: account.address },
+      });
     },
-    []
+    [isContextChanging, connectionUnavailable, context, removalContext]
   );
 
   const handleConfirmRemove = useCallback(async () => {
     if (!accountToRemove) return;
 
+    const state = store.getState();
+    const {
+      activeNetwork: network,
+      activeAccount,
+      accounts: currentAccounts,
+    } = state.vault;
+    const expected = accountToRemove.expectedContext;
+    if (
+      !canConfirmRemoval ||
+      getControllerStatus().connectionUnavailable ||
+      state.vaultGlobal.isSwitchingAccount ||
+      state.vaultGlobal.networkStatus === 'switching' ||
+      state.vaultGlobal.networkStatus === 'connecting' ||
+      state.vaultGlobal.activeSlip44 !== expected.slip44 ||
+      network.kind !== expected.network.kind ||
+      network.chainId !== expected.network.chainId ||
+      network.url !== expected.network.url ||
+      activeAccount.id !== expected.activeAccount.id ||
+      activeAccount.type !== expected.activeAccount.type ||
+      currentAccounts[activeAccount.type]?.[activeAccount.id]?.address !==
+        expected.activeAccount.address ||
+      currentAccounts[accountToRemove.accountType]?.[accountToRemove.account.id]
+        ?.address !== expected.address
+    ) {
+      setAccountToRemove(null);
+      alert.error(t('settings.accountRemovalContextChanged'));
+      return;
+    }
+
     setIsRemoving(true);
     try {
       await controllerEmitter(
         ['wallet', 'removeAccount'],
-        [accountToRemove.account.id, accountToRemove.accountType]
+        [
+          accountToRemove.account.id,
+          accountToRemove.accountType,
+          accountToRemove.expectedContext,
+        ]
       );
 
       alert.success(t('settings.accountRemovedSuccessfully'));
@@ -214,7 +293,7 @@ const ManageAccountsView = React.memo(() => {
     } finally {
       setIsRemoving(false);
     }
-  }, [accountToRemove, alert, controllerEmitter, t]);
+  }, [accountToRemove, canConfirmRemoval, alert, controllerEmitter, t]);
 
   const handleCancelRemove = useCallback(() => {
     setAccountToRemove(null);
@@ -332,7 +411,7 @@ const ManageAccountsView = React.memo(() => {
       </div>
 
       {/* Confirmation Modal */}
-      {accountToRemove && (
+      {accountToRemove && canConfirmRemoval && (
         <ConfirmationModal
           show={true}
           onClose={handleCancelRemove}

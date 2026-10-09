@@ -144,6 +144,7 @@ jest.mock('state/vault');
 const mockMasterController: jest.Mocked<IMasterController> = {
   appRoute: jest.fn(),
   callGetLatestUpdateForAccount: jest.fn(),
+  createHardwareWalletTab: jest.fn(),
   createPopup: jest.fn(),
   dapp: {
     setup: jest.fn(),
@@ -261,6 +262,24 @@ describe('Background: handleListeners', () => {
 
     beforeEach(() => {
       sendResponse.mockClear();
+    });
+
+    it('does not expose default state from a degraded controller', () => {
+      handleListeners({} as IMasterController);
+      const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      listener({ type: 'getCurrentState' }, sender, sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith({
+        error: 'Wallet initialization has not completed.',
+      });
+
+      // Reusing the listeners after recovery must use the new controller.
+      handleListeners(mockMasterController);
+      sendResponse.mockClear();
+      listener({ type: 'getCurrentState' }, sender, sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith(
+        expect.objectContaining({ vault: expect.any(Object) })
+      );
+      expect(chrome.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
     });
 
     it('should call dapp.setup for pw-msg-background/isInjected message', () => {

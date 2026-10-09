@@ -1,10 +1,10 @@
-import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { assertDappRequestWorkBudget } from 'utils/dappRequestWorkBudget';
 import {
   getBlacklistTargetsForEvmCallWithContractType,
   IEvmCallBlacklistTarget,
@@ -19,6 +19,7 @@ import {
 import { spamFilterMiddleware } from './middleware/spamFilterMiddleware';
 import { typedDataValidationMiddleware } from './middleware/typedDataValidationMiddleware';
 import { popupPromise } from './popup-promise';
+import { assertRequestActive, requestCancelledError } from './request-lifetime';
 import {
   IEnhancedRequestContext,
   NetworkPreference,
@@ -33,7 +34,11 @@ export type RequestExecutor = (
     method: string;
     network?: string;
     params?: any;
-  }
+  },
+  requestContext?: Pick<
+    IEnhancedRequestContext['originalRequest'],
+    'sender' | 'signal'
+  >
 ) => Promise<any>;
 
 // Global request coordination to prevent multiple popups
@@ -41,6 +46,7 @@ class RequestCoordinator {
   private static instance: RequestCoordinator;
   private activePopupRequest: Promise<any> | null = null;
   private activePopupRoute: MethodRoute | null = null;
+  private activePopupOrigin: string | null = null;
   private requestExecutor: RequestExecutor | null = null;
   private requestQueue: Array<{
     context: IEnhancedRequestContext;
@@ -65,6 +71,7 @@ class RequestCoordinator {
     popupFunction: () => Promise<any>,
     explicitRoute?: MethodRoute
   ): Promise<any> {
+    assertRequestActive(context.originalRequest.signal);
     // Use explicit route if provided, otherwise fall back to context route
     const currentRoute = explicitRoute || context.methodConfig.popupRoute;
 
@@ -73,6 +80,7 @@ class RequestCoordinator {
       // For connection popups, return the existing popup's result instead of rejecting
       if (
         this.activePopupRoute === currentRoute &&
+        this.activePopupOrigin === context.originalRequest.host &&
         currentRoute === MethodRoute.Connect
       ) {
         console.log(
@@ -125,6 +133,7 @@ class RequestCoordinator {
     // Execute the popup request
     this.activePopupRequest = this.executePopupRequest(popupFunction);
     this.activePopupRoute = currentRoute;
+    this.activePopupOrigin = context.originalRequest.host;
 
     try {
       const result = await this.activePopupRequest;
@@ -135,6 +144,7 @@ class RequestCoordinator {
       // Clean up active request tracking
       this.activePopupRequest = null;
       this.activePopupRoute = null;
+      this.activePopupOrigin = null;
 
       // Process next request in queue
       this.processQueue();
@@ -182,11 +192,15 @@ class RequestCoordinator {
 
       // Add delay to ensure previous popup is fully closed
       setTimeout(() => {
-        this.requestExecutor(originalRequest.host, {
-          method: originalRequest.method,
-          params: originalRequest.params,
-          network: originalRequest.network,
-        })
+        this.requestExecutor(
+          originalRequest.host,
+          {
+            method: originalRequest.method,
+            params: originalRequest.params,
+            network: originalRequest.network,
+          },
+          { sender: originalRequest.sender, signal: originalRequest.signal }
+        )
           .then(nextRequest.resolve)
           .catch(nextRequest.reject);
       }, 100);
@@ -226,15 +240,26 @@ export type Middleware = (
   next: NextFunction
 ) => Promise<any>;
 
-// Request pipeline for processing messages
+// Limits include queued and executing requests, including read-only RPC calls.
+export const MAX_REQUESTS_PER_ORIGIN = 4;
+export const MAX_PENDING_REQUESTS = 64;
+export const REQUEST_QUEUE_TIMEOUT_MS = 30_000;
+export const NETWORK_READY_TIMEOUT_MS = 15_000;
+
+interface IQueuedRequest {
+  context: IEnhancedRequestContext;
+  dispose: () => void;
+  reject: (error: any) => void;
+  resolve: (value: any) => void;
+}
+
 export class RequestPipeline {
   private middlewares: Middleware[] = [];
   private isProcessing = false;
-  private requestQueue: Array<{
-    context: IEnhancedRequestContext;
-    reject: (error: any) => void;
-    resolve: (value: any) => void;
-  }> = [];
+  private requestQueue: IQueuedRequest[] = [];
+  private pendingByOrigin = new Map<string, number>();
+  private pendingCount = 0;
+  private lastOrigin = '';
 
   use(middleware: Middleware): RequestPipeline {
     this.middlewares.push(middleware);
@@ -242,70 +267,89 @@ export class RequestPipeline {
   }
 
   async execute(context: IEnhancedRequestContext): Promise<any> {
-    const { methodConfig } = context;
+    assertRequestActive(context.originalRequest.signal);
+    const origin = context.originalRequest.host;
+    const originCount = this.pendingByOrigin.get(origin) || 0;
+    if (
+      originCount >= MAX_REQUESTS_PER_ORIGIN ||
+      this.pendingCount >= MAX_PENDING_REQUESTS
+    ) {
+      throw ethErrors.rpc.custom({
+        code: -32005,
+        message:
+          'Too many pending wallet requests. Wait for an existing request to finish.',
+      });
+    }
+    // A saturated origin is rejected before parsing more data. Otherwise
+    // validate before admission/queues, network changes or approvals.
+    assertDappRequestWorkBudget({
+      method: context.originalRequest.method,
+      params: context.originalRequest.params,
+    });
+    this.pendingByOrigin.set(origin, originCount + 1);
+    this.pendingCount += 1;
+    try {
+      return await this.executeAdmitted(context);
+    } finally {
+      const remaining = (this.pendingByOrigin.get(origin) || 1) - 1;
+      if (remaining) this.pendingByOrigin.set(origin, remaining);
+      else this.pendingByOrigin.delete(origin);
+      this.pendingCount -= 1;
+    }
+  }
 
-    // Check if this is a non-blocking, read-only request that can bypass the queue
+  private async executeAdmitted(
+    context: IEnhancedRequestContext
+  ): Promise<any> {
+    assertRequestActive(context.originalRequest.signal);
+    const { methodConfig } = context;
     const canBypassQueue =
       !methodConfig.hasPopup &&
       !methodConfig.isBlocking &&
       !methodConfig.requiresAuth &&
       !methodConfig.requiresConnection;
-
-    // If it's a read-only request and we're processing something else, let it through
-    if (canBypassQueue && this.isProcessing) {
+    if (canBypassQueue && this.isProcessing)
       return this.runMiddlewares(context);
-    }
 
-    // If already processing a request, queue this one
     if (this.isProcessing) {
-      console.log(
-        `[Pipeline] Request ${context.originalRequest.method} queued, another request is in progress`
-      );
       return new Promise((resolve, reject) => {
-        const queueEntry = { context, resolve, reject };
-        this.requestQueue.push(queueEntry);
-
-        // Determine appropriate timeout based on method type
-        const timeoutMs = 60000; // 60 seconds default
-
-        console.log(
-          `[Pipeline] Queue timeout for ${context.originalRequest.method}: ${
-            timeoutMs / 1000
-          }s`
-        );
-
-        // Set a timeout for QUEUED requests only (not the executing one)
-        setTimeout(() => {
-          const index = this.requestQueue.indexOf(queueEntry);
-          if (index !== -1) {
-            // This request is STILL in the queue after timeout (not being processed)
-            this.requestQueue.splice(index, 1);
-            console.warn(
-              `[Pipeline] Request ${
-                context.originalRequest.method
-              } timed out waiting in queue after ${timeoutMs / 1000}s`
-            );
-            reject(
-              cleanErrorStack(
-                ethErrors.provider.userRejectedRequest(
-                  `Request timed out waiting in queue. Please try again.`
-                )
+        const signal = context.originalRequest.signal;
+        const removeAndReject = (error: any) => {
+          const index = this.requestQueue.indexOf(entry);
+          if (index === -1) return;
+          this.requestQueue.splice(index, 1);
+          entry.dispose();
+          reject(error);
+        };
+        const onAbort = () => removeAndReject(requestCancelledError());
+        const timer = setTimeout(
+          () =>
+            removeAndReject(
+              ethErrors.provider.userRejectedRequest(
+                'Request timed out waiting for another wallet request. Please try again.'
               )
-            );
-          }
-          // If index === -1, the request has been dequeued and is being processed, so we do nothing
-        }, timeoutMs);
+            ),
+          REQUEST_QUEUE_TIMEOUT_MS
+        );
+        const entry: IQueuedRequest = {
+          context,
+          resolve,
+          reject,
+          dispose: () => {
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
+          },
+        };
+        this.requestQueue.push(entry);
+        signal?.addEventListener('abort', onAbort, { once: true });
       });
     }
 
-    // Mark as processing
     this.isProcessing = true;
-
+    this.lastOrigin = context.originalRequest.host;
     try {
-      const result = await this.runMiddlewares(context);
-      return result;
+      return await this.runMiddlewares(context);
     } finally {
-      // Mark as not processing and handle next request
       this.isProcessing = false;
       this.processNextRequest();
     }
@@ -313,65 +357,73 @@ export class RequestPipeline {
 
   private async runMiddlewares(context: IEnhancedRequestContext): Promise<any> {
     let index = 0;
-
     const next = async (): Promise<any> => {
-      if (index >= this.middlewares.length) {
-        // All middleware passed, but no result returned
-        // This should not happen as the final middleware should handle the request
+      assertRequestActive(context.originalRequest.signal);
+      if (index >= this.middlewares.length)
         throw new Error('No handler found for request');
-      }
-
-      const middleware = this.middlewares[index++];
-      return middleware(context, next);
+      return this.middlewares[index++](context, next);
     };
-
     return next();
   }
 
   private processNextRequest(): void {
-    if (this.requestQueue.length === 0) return;
-
-    const nextRequest = this.requestQueue.shift();
-    if (nextRequest) {
-      // Process the next request
-      this.execute(nextRequest.context)
-        .then(nextRequest.resolve)
-        .catch(nextRequest.reject);
-    }
+    if (!this.requestQueue.length) return;
+    // Let another origin proceed before draining a burst from the same site.
+    const otherOrigin = this.requestQueue.findIndex(
+      (entry) => entry.context.originalRequest.host !== this.lastOrigin
+    );
+    const [entry] = this.requestQueue.splice(
+      otherOrigin === -1 ? 0 : otherOrigin,
+      1
+    );
+    entry.dispose();
+    this.executeAdmitted(entry.context).then(entry.resolve, entry.reject);
   }
 
-  // Debug methods
   getQueueLength(): number {
     return this.requestQueue.length;
   }
-
   isCurrentlyProcessing(): boolean {
     return this.isProcessing;
   }
-
   getQueuedMethods(): string[] {
-    return this.requestQueue.map((item) => item.context.originalRequest.method);
+    return this.requestQueue.map(
+      (entry) => entry.context.originalRequest.method
+    );
   }
 }
 
-// Middleware: Network Status Check
 export const networkStatusMiddleware: Middleware = async (context, next) => {
-  const { networkStatus } = store.getState().vaultGlobal;
-  if (networkStatus !== 'idle') {
-    // Wait for network to be idle - no timeout
-    // User can cancel by closing tab/popup or navigating away
-    await new Promise<void>((resolve) => {
-      const checkInterval = setInterval(() => {
-        const currentStatus = store.getState().vaultGlobal.networkStatus;
-
-        if (currentStatus === 'idle') {
-          clearInterval(checkInterval);
+  assertRequestActive(context.originalRequest.signal);
+  if (store.getState().vaultGlobal.networkStatus !== 'idle') {
+    await new Promise<void>((resolve, reject) => {
+      const signal = context.originalRequest.signal;
+      const cleanup = () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', onAbort);
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(requestCancelledError());
+      };
+      const interval = setInterval(() => {
+        if (store.getState().vaultGlobal.networkStatus === 'idle') {
+          cleanup();
           resolve();
         }
-      }, 100); // Check every 100ms
+      }, 100);
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(
+          ethErrors.rpc.internal(
+            'Wallet network is still changing. Please retry when the network is ready.'
+          )
+        );
+      }, NETWORK_READY_TIMEOUT_MS);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   }
-
   return next();
 };
 
@@ -469,6 +521,8 @@ export const networkCompatibilityMiddleware: Middleware = async (
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host: originalRequest.host,
             route: MethodRoute.SwitchNetwork,
             eventName: 'switchNetwork',
@@ -588,6 +642,8 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
       context,
       () =>
         popupPromise({
+          signal: context.originalRequest.signal,
+          sender: context.originalRequest.sender,
           host: originalRequest.host,
           route: MethodRoute.SwitchUtxoEvm,
           eventName,
@@ -675,6 +731,8 @@ export const connectionMiddleware: Middleware = async (context, next) => {
           context,
           () =>
             popupPromise({
+              signal: context.originalRequest.signal,
+              sender: context.originalRequest.sender,
               host: originalRequest.host,
               route: MethodRoute.Connect, // Always use Connect route for connection
               eventName: 'connect', // Always use connect event for connection
@@ -752,62 +810,6 @@ const extractEvmAddressFromParams = (
   return undefined;
 };
 
-const extractUtxoAddressFromPsbt = async (
-  psbtData: any,
-  accounts: any
-): Promise<string | undefined> => {
-  if (!psbtData || typeof psbtData !== 'object' || !psbtData.psbt) {
-    return undefined;
-  }
-
-  try {
-    const psbtObj = PsbtUtils.fromPali(
-      psbtData,
-      store.getState().vault.activeNetwork
-    );
-
-    // Look through inputs to find the first unsigned input that belongs to our wallet
-    if (psbtObj?.data?.inputs) {
-      for (let i = 0; i < psbtObj.data.inputs.length; i++) {
-        const dataInput = psbtObj.data.inputs[i];
-
-        // Check if this input is already signed (skip if signed)
-        if (dataInput.partialSig && dataInput.partialSig.length > 0) {
-          continue;
-        }
-
-        // Extract address from unknownKeyVals if available
-        if (dataInput.unknownKeyVals && dataInput.unknownKeyVals.length > 0) {
-          // Look for the address in unknownKeyVals
-          for (const kv of dataInput.unknownKeyVals) {
-            if (kv.key?.equals?.(Buffer.from('address'))) {
-              const inputAddress = kv.value.toString();
-
-              // Check if this address belongs to any of our accounts
-              const accountExists = Object.values(accounts).some(
-                (accountsOfType: any) =>
-                  accountsOfType &&
-                  Object.values(accountsOfType).some(
-                    (account: any) => account.address === inputAddress
-                  )
-              );
-
-              if (accountExists) {
-                // Found the first unsigned input that belongs to our wallet
-                return inputAddress;
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('[Pipeline] Error decoding PSBT:', error);
-  }
-
-  return undefined;
-};
-
 const findAccountByAddress = (
   address: string,
   accounts: any
@@ -841,6 +843,8 @@ const promptAccountSwitch = async (
     context,
     () =>
       popupPromise({
+        signal: context.originalRequest.signal,
+        sender: context.originalRequest.sender,
         host: context.originalRequest.host,
         route: MethodRoute.ChangeActiveConnectedAccount,
         eventName: 'changeActiveConnected',
@@ -897,25 +901,13 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   }
 
   // Check if the request has a 'from' address that we need to validate
-  let requiredFromAddress: string | undefined;
-
-  // Extract 'from' address based on method type
-  requiredFromAddress = extractEvmAddressFromParams(
+  const requiredFromAddress = extractEvmAddressFromParams(
     originalRequest.method,
     originalRequest.params
   );
 
-  // If not EVM, check for UTXO transactions
-  if (
-    !requiredFromAddress &&
-    (originalRequest.method === 'sys_signAndSend' ||
-      originalRequest.method === 'sys_sign')
-  ) {
-    requiredFromAddress = await extractUtxoAddressFromPsbt(
-      originalRequest.params?.[0],
-      accounts
-    );
-  }
+  // PSBT proprietary address/path metadata is untrusted. UTXO requests stay
+  // bound to the site's selected account; the signer authenticates each input.
 
   // If we have a required from address, validate it exists and switch to it if needed
   if (requiredFromAddress) {
@@ -1042,6 +1034,8 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
       context,
       () =>
         popupPromise({
+          signal: context.originalRequest.signal,
+          sender: context.originalRequest.sender,
           host: originalRequest.host,
           route: MethodRoute.Login,
           eventName: 'login',

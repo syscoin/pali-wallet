@@ -13,6 +13,14 @@ Pali lets you manage EVM accounts, Syscoin UTXO accounts, and modular smart acco
 5. Choose the network you want to use.
 6. Connect only to dapps you trust.
 
+## Setup and loading
+
+Keep unfinished setup open and visible. Leaving, hiding, or reloading it clears sensitive setup inputs and may require you to start again. Keep the recovery phrase you backed up.
+
+If Pali cannot confirm that wallet creation finished, let it reload and check the wallet. If an unlock screen appears, use the password you just set. Do not assume an interrupted response means no wallet was created or immediately repeat creation.
+
+During a slow operation, Pali can show recovery options while keeping navigation available. Sensitive actions still wait for the account and network to settle. Receive temporarily hides its address, QR code, and copy control; faucet claims also wait. Check the account and network again before continuing.
+
 ## Connecting to a dapp
 
 When a site requests access, Pali opens a connection popup that shows the site and lets you choose the account. A dapp receives only the connected account address and approved provider state.

@@ -15,7 +15,7 @@ import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 
 import { AntdProvider } from 'components/AntdProvider';
-import { rehydrateStore } from 'state/rehydrate';
+import { WalletBootstrap } from 'components/WalletBootstrap/WalletBootstrap';
 import store from 'state/store';
 
 // Initialize i18n for the app
@@ -45,79 +45,7 @@ if (window.__PALI_OFFSCREEN__) {
       try {
         console.log('[App] Starting React app initialization...');
 
-        // Create a wrapper component that manages the loading state
         const AppWrapper = () => {
-          const [isReady, setIsReady] = React.useState(false);
-
-          React.useEffect(() => {
-            // Initialize store and state
-            const initializeState = async () => {
-              // Architecture: Single source of truth state management
-              //
-              // State Flow:
-              // 1. Initial Load: App.tsx requests state from background via getCurrentState
-              // 2. Ongoing Updates: Background broadcasts CONTROLLER_STATE_CHANGE messages
-              //    which are handled by useRouterLogic for real-time updates
-              // 3. Visibility Changes: App.tsx re-syncs when popup becomes visible
-              //
-              // Benefits:
-              // - No double rehydration on startup
-              // - Background is the authoritative source
-              // - Consistent state across all contexts
-              // - Efficient - no duplicate blockchain calls
-
-              try {
-                // Request state from background (the source of truth).
-                // First paint is gated on this callback so we never flash
-                // default state before rehydration completes.
-                chrome.runtime.sendMessage(
-                  { type: 'getCurrentState' },
-                  (backgroundState) => {
-                    if (chrome.runtime.lastError) {
-                      console.error(
-                        '[App] Error getting state from background:',
-                        chrome.runtime.lastError
-                      );
-                      // Fall back to defaults rather than hanging on the loader
-                      setIsReady(true);
-                      return;
-                    }
-
-                    if (backgroundState) {
-                      console.log(
-                        '[App] Received state from background, rehydrating'
-                      );
-                      // Rehydrate with background state
-                      rehydrateStore(store, backgroundState);
-
-                      console.log('[App] Rendered with background state');
-                    } else {
-                      console.log(
-                        '[App] No state from background, using defaults'
-                      );
-                    }
-                    setIsReady(true);
-                  }
-                );
-
-                // Also ensure polling is running for future updates
-                // This doesn't trigger immediate blockchain calls, just ensures the schedule is set
-                chrome.runtime.sendMessage({ type: 'startPolling' });
-              } catch (error) {
-                console.error('[App] Error during initialization:', error);
-                // Fallback: allow render with default state
-                setIsReady(true);
-              }
-            };
-
-            initializeState();
-          }, []);
-
-          // Keep showing loading state while initializing
-          if (!isReady) {
-            return null; // The vanilla JS loading screen is still visible
-          }
-
           const toastOptions = {
             position: 'bottom-center' as const,
             autoClose: 2 * 1000,
@@ -136,8 +64,10 @@ if (window.__PALI_OFFSCREEN__) {
           return (
             <Provider store={store}>
               <AntdProvider>
-                <App />
-                <ToastContainer {...toastOptions} />
+                <WalletBootstrap>
+                  <App />
+                  <ToastContainer {...toastOptions} />
+                </WalletBootstrap>
               </AntdProvider>
             </Provider>
           );

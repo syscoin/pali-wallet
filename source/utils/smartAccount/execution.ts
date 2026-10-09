@@ -21,7 +21,8 @@ import { getInstalledValidatorModule } from './modules';
 type ControllerEmitter = (
   methods: string[],
   payload?: any[],
-  timeout?: number
+  timeout?: number,
+  retryConnection?: boolean
 ) => Promise<any>;
 
 const SMART_ACCOUNT_ROTATE_VALIDATOR_SELECTOR =
@@ -284,6 +285,7 @@ export type SubmitSmartAccountExecutionsParams = {
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
+  onBeforeSubmit?: () => Promise<void>;
   onPrepared?: () => void;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
@@ -831,6 +833,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     onAssertionResolved,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
+    onBeforeSubmit,
     onPrepared,
     skipRapidPolling,
     smartAccount,
@@ -850,7 +853,9 @@ export const signAndSubmitSmartAccountExecutions = async (
       })
     : '';
 
+  let submissionStarted = false;
   const prepareSignAndSubmit = async (useCachedMetadataOverride?: boolean) => {
+    submissionStarted = false;
     const prepared = (await controllerEmitter(
       ['wallet', 'prepareSmartAccountExecutions'],
       [
@@ -880,6 +885,8 @@ export const signAndSubmitSmartAccountExecutions = async (
     });
     onAssertionResolved?.();
 
+    await onBeforeSubmit?.();
+    submissionStarted = true;
     return controllerEmitter(
       ['wallet', 'submitSmartAccountExecution'],
       [
@@ -898,7 +905,8 @@ export const signAndSubmitSmartAccountExecutions = async (
           waitForConfirmation,
         },
       ],
-      300000
+      300000,
+      false
     );
   };
 
@@ -906,7 +914,13 @@ export const signAndSubmitSmartAccountExecutions = async (
     try {
       return await prepareSignAndSubmit(useCachedMetadata);
     } catch (error) {
-      if (useCachedMetadata !== false && isSmartAccountSignatureError(error)) {
+      if (
+        useCachedMetadata !== false &&
+        isSmartAccountSignatureError(error) &&
+        !(error as any)?.transactionHash &&
+        (error as any)?.transactionNotBroadcast !== false &&
+        (!submissionStarted || (error as any)?.transactionNotBroadcast === true)
+      ) {
         return await prepareSignAndSubmit(false);
       }
       throw error;

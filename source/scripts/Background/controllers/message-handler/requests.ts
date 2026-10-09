@@ -2,6 +2,7 @@ import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { assertProviderRequestBudget } from 'utils/requestPayloadBudget';
 
 import {
   clearProviderCache as clearMethodHandlerCache,
@@ -16,6 +17,11 @@ import {
   setPipelineInstance,
 } from './request-pipeline';
 import { IEnhancedRequestContext } from './types';
+
+type RequestContext = Pick<
+  IEnhancedRequestContext['originalRequest'],
+  'sender' | 'signal'
+>;
 
 // Export clearProviderCache for backward compatibility
 export const clearProviderCache = () => {
@@ -54,8 +60,10 @@ pipeline.use(finalMethodHandlerMiddleware);
  */
 export const methodRequest = async (
   host: string,
-  data: { method: string; network?: string; params?: any[] }
+  data: { method: string; network?: string; params?: any[] },
+  requestContext?: RequestContext
 ) => {
+  assertProviderRequestBudget(data);
   // Never expose raw digest signing to connected sites. ECDSA smart accounts
   // can share an owner with a dapp-facing EOA, so an eth_sign signature over a
   // UserOperation hash could otherwise be replayed as account authorization.
@@ -97,7 +105,8 @@ export const methodRequest = async (
       method: data.method,
       params: data.params,
       host,
-      sender: {} as chrome.runtime.MessageSender, // Will be populated by message handler
+      sender: requestContext?.sender || {},
+      signal: requestContext?.signal,
       network: data.network,
     },
     methodConfig,
@@ -125,10 +134,14 @@ requestCoordinator.setRequestExecutor(methodRequest as RequestExecutor);
 /**
  * Enable/connect wallet - for backward compatibility
  */
-export const enable = async (host: string, isSyscoinDapp = false) => {
+export const enable = async (
+  host: string,
+  isSyscoinDapp = false,
+  requestContext?: RequestContext
+) => {
   // Route through the main method request handler
   const method = isSyscoinDapp ? 'sys_requestAccounts' : 'eth_requestAccounts';
-  return methodRequest(host, { method });
+  return methodRequest(host, { method }, requestContext);
 };
 
 /**

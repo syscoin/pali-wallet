@@ -985,9 +985,7 @@ const EthSign: React.FC<ISign> = () => {
               <div key={index} className="flex flex-col">
                 <span className="text-xs text-gray-400">params[{index}]:</span>
                 <pre className="text-xs text-gray-300 whitespace-pre-wrap break-all">
-                  {typeof param === 'string'
-                    ? param
-                    : JSON.stringify(param, null, 2)}
+                  {typeof param === 'string' ? param : JSON.stringify(param)}
                 </pre>
               </div>
             ))}
@@ -1005,7 +1003,8 @@ const EthSign: React.FC<ISign> = () => {
             </div>
             <div className="max-h-80 overflow-auto">
               <pre className="text-xs text-gray-300 whitespace-pre-wrap">
-                {JSON.stringify(typedData, null, 2)}
+                {/* Full compact data avoids whitespace expansion at depth. */}
+                {JSON.stringify(typedData)}
               </pre>
             </div>
           </div>

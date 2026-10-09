@@ -113,6 +113,8 @@
     "speedTxMessage": "您确定要加速此交易吗？"
   },
   "connections": {
+    "searchAccounts": "搜索账户",
+    "noMatchingAccounts": "没有匹配的账户",
     "connectedAccount": "已连接账户",
     "onlyConnect": "只连接您信任的网站。",
     "learnMore": "了解更多。",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "此网站请求了不是本地 Pali 账户的 ECDSA 所有者地址。设置完成后，这些所有者可以控制该智能账户。",
     "prepareSmartAccountExternalEcdsaConfirm": "我理解这些外部所有者可以批准智能账户操作。",
     "prepareSmartAccountExternalEcdsaRequired": "请先确认外部 ECDSA 所有者警告，然后继续。",
+    "smartAccountExternalPasskeyUnsupported": "此网站提供了外部通行密钥。请改为在 Pali 中请求创建新的通行密钥，以保留对账户的控制权。",
+    "smartAccountPasskeySaveFailed": "Pali 无法保存通行密钥恢复记录。请在凭据管理器中保留该通行密钥，然后重试。",
     "prepareSmartAccountDetailsKnownSigner": "如果签名者已知，Pali 可以在创建账户时使用它。",
     "prepareSmartAccountDetailsPasskey": "对于 passkey，Pali 会先创建账户，然后添加新的 passkey。",
     "prepareSmartAccountStepCredential": "正在检查登录方式...",
@@ -270,6 +274,7 @@
     "gasPrice": "Gas价格",
     "internalError": "发生内部错误。",
     "transactionCreationFailed": "创建交易失败：{{error}}。请重试。",
+    "submissionStatusUnknown": "提交状态未知。为防止重复发送，无法在此重试此调用。您可以关闭此窗口。",
     "feeRateInsane": "费率 {{value}} {{currency}}/byte 极高，网络可能会拒绝。",
     "feeRateExtreme": "费率 {{value}} {{currency}}/byte 过高，可能被拒绝为非标准交易。",
     "feeRateHigh": "费率 {{value}} {{currency}}/byte 很高，请验证是否正确。",
@@ -424,6 +429,9 @@
     "receipts": "收据"
   },
   "settings": {
+    "walletSetupFailed": "无法确认钱包设置是否完成。请保管好恢复助记词并检查钱包状态。",
+    "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
+    "retryWalletWindowCheck": "重新检查窗口",
     "bgError": "背景错误",
     "bgErrorMessage": "我们将锁定您的钱包以解决此问题。别担心，您的所有数据都将保持安全。",
     "ledgerBlindSigning": "请在Ledger应用设置中启用盲签",
@@ -550,6 +558,8 @@
     "allYourSettings": "此设备上的所有设置（自定义代币和导入的账户）都将被移除。这不会移动或删除链上资金，但导入账户的加密私钥将从此设备中清除。如果您没有密钥恢复短语或这些私钥，您可能会永久失去对这些资产的访问权限。",
     "removeAccount": "移除账户",
     "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
+    "accountRemovalContextChanged": "账户状态已更改。请再次确认删除。",
+    "networkRemovalIncomplete": "网络移除未完成。请检查网络列表后重试。",
     "accountRemovedSuccessfully": "账户删除成功",
     "failedToRemoveAccount": "删除账户失败",
     "hardwareWalletSuccess": "硬件钱包连接成功！",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "已就绪",
     "smartAccountInfrastructureNotReadyStatus": "未就绪",
     "smartAccountInfrastructureInsufficientGas": "请向此钱包添加原生 Gas，然后再次尝试部署智能账户设置。",
-    "smartAccountInfrastructureDeployFailed": "无法部署智能账户设置。",
-    "smartAccountInfrastructureSubmitted": "智能账户设置部署已提交。",
+    "smartAccountInfrastructureCheckBeforeRetry": "设置已停止或仍在等待完成。继续前请检查最新状态；已提交的交易仍可能获得确认。",
+    "smartAccountInfrastructureCheckingSlow": "状态检查用时比预期更长。你可以再次检查或离开此页面。",
+    "smartAccountInfrastructurePending": "部署正在等待完成。状态会自动更新，你可以离开此页面。",
+    "smartAccountInfrastructureCheckStatus": "检查状态",
     "deploySmartAccountInfrastructure": "部署",
     "installed": "已安装",
     "supported": "支持",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "（验证代币存在）"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali 无法验证此交易的输入是否适用于已批准的账户。请检查账户并请求新的交易。",
+    "psbtSigningContextChanged": "您的钱包账户或网络已更改。请重新请求批准。",
     "messageCopied": "消息复制成功",
     "signatureFailed": "签名请求失败",
     "sorryWeCould": "抱歉，我们无法提交您的请求。请稍后再试。",

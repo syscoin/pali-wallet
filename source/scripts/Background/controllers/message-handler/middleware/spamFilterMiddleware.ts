@@ -68,6 +68,8 @@ export const spamFilterMiddleware: Middleware = async (context, next) => {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: 'spam-warning' as any,
             eventName: 'spamWarningResponse',

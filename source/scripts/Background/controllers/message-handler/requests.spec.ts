@@ -10,6 +10,14 @@ import { getMethodConfig } from './method-registry';
 import { methodRequest } from './requests';
 
 describe('provider-facing signing methods', () => {
+  it('rejects an excessive request before method dispatch', async () => {
+    await expect(
+      methodRequest('https://malicious.example', {
+        method: 'personal_sign',
+        params: ['a'.repeat(65537)],
+      })
+    ).rejects.toMatchObject({ code: -32602 });
+  });
   it('rejects eth_sign as an unsupported provider method', async () => {
     expect(getMethodConfig('eth_sign')).toBeUndefined();
 

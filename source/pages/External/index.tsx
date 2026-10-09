@@ -1,15 +1,17 @@
 /* eslint-disable import/no-extraneous-dependencies */
 
-import React from 'react';
+import React, { PropsWithChildren, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { AntdProvider } from 'components/AntdProvider';
-import { rehydrateStore } from 'state/rehydrate';
+import { WalletBootstrap } from 'components/WalletBootstrap/WalletBootstrap';
 import store from 'state/store';
+import { connectApprovalClient } from 'utils/approvalClient';
 import { clearNavigationState } from 'utils/navigationState';
+import { startupFeedbackDelay } from 'utils/requestWalletState';
 import 'assets/styles/index.css';
 import 'assets/styles/antd-overrides.css';
 import 'assets/styles/custom-checkbox.css';
@@ -21,6 +23,78 @@ import 'utils/i18n';
 import External from './External';
 
 const externalRootElement = document.getElementById('external-root');
+
+// Complete the document binding while the URL is still external.html. Routing
+// may then change its path without making legitimate approval replies stale.
+const ApprovalClientBootstrap = ({ children }: PropsWithChildren) => {
+  const [attempt, setAttempt] = useState(0);
+  const [status, setStatus] = useState<'connecting' | 'ready' | 'error'>(
+    'connecting'
+  );
+  const [error, setError] = useState('');
+  const [isSlow, setIsSlow] = useState(false);
+  useEffect(() => {
+    const abort = new AbortController();
+    let active = true;
+    setStatus('connecting');
+    setIsSlow(false);
+    window.dispatchEvent(new CustomEvent('pali-app-ready'));
+    const feedback = setTimeout(
+      () => setIsSlow(true),
+      attempt === 0 ? startupFeedbackDelay() : 1800
+    );
+    connectApprovalClient(abort.signal, 10000).then(
+      () => {
+        if (active) {
+          clearTimeout(feedback);
+          setStatus('ready');
+        }
+      },
+      (reason) => {
+        if (active) {
+          setError(reason.message);
+          setStatus('error');
+        }
+      }
+    );
+    return () => {
+      active = false;
+      clearTimeout(feedback);
+      abort.abort();
+    };
+  }, [attempt]);
+  if (status === 'ready') return <>{children}</>;
+  return (
+    <div className="flex h-full flex-col items-center justify-center bg-[#061120] p-6 text-center text-white">
+      <h1 className="mb-5 font-poppins text-3xl text-[#4DA2CF]">Pali Wallet</h1>
+      <p role="status" aria-live="polite" className="mb-4 text-sm">
+        {status === 'error'
+          ? error
+          : isSlow
+          ? 'Your approval is taking longer to connect. You can retry or close this window.'
+          : 'Connecting your approval…'}
+      </p>
+      {(status === 'error' || isSlow) && (
+        <div className="flex gap-4">
+          <button
+            type="button"
+            onClick={() => setAttempt((value) => value + 1)}
+            className="rounded-lg bg-[#4DA2CF] px-5 py-3 font-medium text-[#061120]"
+          >
+            Retry connection
+          </button>
+          <button
+            type="button"
+            onClick={() => window.close()}
+            className="rounded-lg border border-white px-5 py-3"
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const toastOptions = {
   position: 'bottom-center' as const,
@@ -38,56 +112,23 @@ const toastOptions = {
 };
 
 if (externalRootElement) {
-  // Clear navigation state for external popups to ensure they don't restore state
-  clearNavigationState()
-    .then(() => {
-      console.log('[External] Cleared navigation state for external popup');
-
-      // Prefer fast-path: request current state from background (authoritative)
-      return new Promise<any>((resolve) => {
-        try {
-          chrome.runtime.sendMessage({ type: 'getCurrentState' }, (bgState) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                '[External] Failed to get state from background:',
-                chrome.runtime.lastError
-              );
-              resolve(null);
-              return;
-            }
-            resolve(bgState || null);
-          });
-        } catch (e) {
-          console.warn('[External] Error sending getCurrentState:', e);
-          resolve(null);
-        }
-      });
-    })
-    .then((backgroundState) => {
-      if (backgroundState) {
-        return rehydrateStore(store, backgroundState);
-      }
-      // Fallback to storage-based rehydrate if background did not respond
-      return rehydrateStore(store);
-    })
-    .then(() => {
-      // Ensure background polling is running for updates (no immediate cost)
-      try {
-        chrome.runtime.sendMessage({ type: 'startPolling' });
-      } catch {}
-
-      const root = ReactDOM.createRoot(externalRootElement);
-      root.render(
-        <React.StrictMode>
-          <Provider store={store}>
-            <AntdProvider>
+  // Navigation cleanup is best-effort and must not block the approval UI.
+  void clearNavigationState();
+  const root = ReactDOM.createRoot(externalRootElement);
+  root.render(
+    <React.StrictMode>
+      <Provider store={store}>
+        <AntdProvider>
+          <ApprovalClientBootstrap>
+            <WalletBootstrap>
               <External />
               <ToastContainer {...toastOptions} />
-            </AntdProvider>
-          </Provider>
-        </React.StrictMode>
-      );
-    });
+            </WalletBootstrap>
+          </ApprovalClientBootstrap>
+        </AntdProvider>
+      </Provider>
+    </React.StrictMode>
+  );
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");
 }

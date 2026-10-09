@@ -237,6 +237,8 @@ export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
 
     // Cleanup function to cancel any pending debounced calls
     return () => {
+      // A completed secret lookup must not invoke a replaced screen's callbacks.
+      validationRunIdRef.current += 1;
       if (debouncedValidationRef.current) {
         debouncedValidationRef.current.cancel();
         debouncedValidationRef.current = null;

@@ -90,6 +90,8 @@ export const EthProvider = (
         context,
         () =>
           popupPromise({
+            signal: context?.originalRequest.signal,
+            sender: context?.originalRequest.sender,
             host,
             data: { tx, decodedTx, txMetadata, external: true },
             route,
@@ -99,6 +101,8 @@ export const EthProvider = (
       );
     } else {
       return popupPromise({
+        signal: context?.originalRequest.signal,
+        sender: context?.originalRequest.sender,
         host,
         data: { tx, decodedTx, txMetadata, external: true },
         route,

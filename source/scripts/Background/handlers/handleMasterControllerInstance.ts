@@ -1,16 +1,24 @@
+import { readWalletPresence } from '../utils/readWalletPresence';
 import MasterController from 'scripts/Background/controllers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
-import { loadState } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
-import { setHasEncryptedVault } from 'state/vaultGlobal';
+import {
+  resetLoadingStates,
+  setHasEncryptedVault,
+  setNetworkRuntimeState,
+} from 'state/vaultGlobal';
+import { chromeStorage } from 'utils/storageAPI';
+
+let hasCreatedController = false;
 
 export const handleMasterControllerInstance = async () => {
   // Add performance timing
   const startTime = performance.now();
 
-  const storageState = await loadState();
+  // Distinguish an absent state from a failed read before creating controllers.
+  const storageState = await chromeStorage.getItem('state');
 
   if (storageState) {
     // Run migrations before rehydrating state
@@ -22,43 +30,17 @@ export const handleMasterControllerInstance = async () => {
       '[handleMasterControllerInstance] Rehydrating with slip44 support...'
     );
     const activeSlip44 = storageState?.vaultGlobal?.activeSlip44;
-    await rehydrateStore(store, null, activeSlip44);
+    // Migrations mutate the global state. Keep legacy inline vault data out of
+    // this argument so rehydration still loads the isolated slip44 vault.
+    const globalState = { ...storageState };
+    delete globalState.vault;
+    await rehydrateStore(store, globalState, activeSlip44);
   }
 
   // 🔥 FIX: Initialize hasEncryptedVault flag based on actual vault existence
   // This prevents the "wallet was forgotten" false positive on startup
   try {
-    const [vault, vaultKeys] = await Promise.all([
-      new Promise<any>((resolve, reject) => {
-        chrome.storage.local.get('sysweb3-vault', (result) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                `Failed to get vault: ${chrome.runtime.lastError.message}`
-              )
-            );
-            return;
-          }
-          resolve(result['sysweb3-vault']);
-        });
-      }),
-      new Promise<any>((resolve, reject) => {
-        chrome.storage.local.get('sysweb3-vault-keys', (result) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                `Failed to get vault-keys: ${chrome.runtime.lastError.message}`
-              )
-            );
-            return;
-          }
-          resolve(result['sysweb3-vault-keys']);
-        });
-      }),
-    ]);
-
-    // Check if vault exists
-    const hasVault = !!(vault && vaultKeys);
+    const hasVault = await readWalletPresence();
 
     // Set the flag in Redux to match actual vault existence
     store.dispatch(setHasEncryptedVault(hasVault));
@@ -67,11 +49,31 @@ export const handleMasterControllerInstance = async () => {
       '[handleMasterControllerInstance] Error checking vault:',
       error
     );
-    // If we can't check, assume no vault (safe default)
-    store.dispatch(setHasEncryptedVault(false));
+    // Startup retry/recovery must handle the error; treating it as an empty
+    // wallet would expose the destructive create/import flow.
+    throw error;
+  }
+
+  if (!hasCreatedController) {
+    // Disk may capture an in-flight operation just before the old worker exits.
+    // No operation from that worker survives cold startup. Do this only here:
+    // frontend rehydration and same-worker retries must retain live guards.
+    store.dispatch(
+      setNetworkRuntimeState({
+        isPollingUpdate: false,
+        isPostNetworkSwitchLoading: false,
+        isSwitchingAccount: false,
+        networkStatus: 'idle',
+        networkTarget: undefined,
+      })
+    );
+    store.dispatch(resetLoadingStates());
   }
 
   const controller = MasterController(store);
+  // Construction is synchronous: a failed constructor remains recoverable on
+  // retry, and a successfully created controller is never normalized again.
+  hasCreatedController = true;
 
   // 🔥 FIX: Start periodic saves on startup if wallet is already unlocked
   // This ensures periodic saves survive service worker restarts

@@ -194,6 +194,93 @@ describe('SmartAccountController smart account execution fees', () => {
       sender: ACCOUNT_ADDRESS,
     });
 
+  describe.each([
+    ['native gas', 'insufficient funds', 'PALI_NATIVE_GAS_REQUIRED'],
+    ['signature', 'AA24 signature error', 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR'],
+  ])('%s submission error normalization', (_kind, senderMessage, message) => {
+    const submitRejected = async (error: unknown) => {
+      const { controller, sendAndSaveEthTransaction } = buildController();
+      sendAndSaveEthTransaction.mockRejectedValueOnce(error);
+      return controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      });
+    };
+
+    it.each([true, false])(
+      'preserves validated submission facts with transactionNotBroadcast=%s',
+      async (transactionNotBroadcast) => {
+        const transactionHash = `0x${'aB'.repeat(32)}`;
+        const error = Object.freeze(
+          Object.assign(new Error(senderMessage), {
+            arbitraryPrivateData: 'must not be forwarded',
+            transactionHash,
+            transactionNotBroadcast,
+          })
+        );
+        const normalized = await submitRejected(error).catch(
+          (failure) => failure
+        );
+
+        expect(normalized).toBeInstanceOf(Error);
+        expect(normalized.message).toBe(message);
+        expect(Object.keys(normalized).sort()).toEqual([
+          'transactionHash',
+          'transactionNotBroadcast',
+        ]);
+        expect(normalized).toMatchObject({
+          transactionHash,
+          transactionNotBroadcast,
+        });
+        expect(error.message).toBe(senderMessage);
+      }
+    );
+
+    it('preserves a valid hash independently of an invalid boolean', async () => {
+      const transactionHash = `0x${'12'.repeat(32)}`;
+      const normalized = await submitRejected({
+        message: senderMessage,
+        transactionHash,
+        transactionNotBroadcast: 'true',
+      }).catch((failure) => failure);
+
+      expect(normalized.message).toBe(message);
+      expect(Object.keys(normalized)).toEqual(['transactionHash']);
+      expect(normalized.transactionHash).toBe(transactionHash);
+    });
+
+    it('drops invalid submission metadata and keeps the normalized ordinary error shape', async () => {
+      const normalized = await submitRejected({
+        message: senderMessage,
+        transactionHash: `0x${'12'.repeat(31)}`,
+        transactionNotBroadcast: 1,
+      }).catch((failure) => failure);
+
+      expect(normalized).toBeInstanceOf(Error);
+      expect(normalized.message).toBe(message);
+      expect(Object.keys(normalized)).toEqual([]);
+    });
+  });
+
+  it('preserves an ordinary submission error without normalizing or cloning it', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+    const error = Object.assign(new Error('RPC connection closed'), {
+      transactionNotBroadcast: false,
+    });
+    sendAndSaveEthTransaction.mockRejectedValueOnce(error);
+
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      })
+    ).rejects.toBe(error);
+  });
+
   it('does not add EIP-1559 outer fees when legacy preparation has no priority fee', async () => {
     const { controller, sendAndSaveEthTransaction } = buildController();
 

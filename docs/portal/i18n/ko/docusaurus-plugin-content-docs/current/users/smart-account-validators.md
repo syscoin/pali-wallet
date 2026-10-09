@@ -1,40 +1,125 @@
 ---
-title: 스마트 계정과 passkeys
+title: 스마트 계정과 검증기
 ---
 
-Pali 스마트 계정은 module로 제어되는 EVM contract account입니다. Passkey는 지원되는 제어 방식 중 하나이며 ECDSA와 composite policy도 사용할 수 있습니다.
+Pali 스마트 계정은 모듈이 제어할 수 있는 EVM 컨트랙트 계정입니다. 패스키는 스마트 계정을 제어하는 지원 방식 중 하나입니다. 일반 EOA 개인 키로 매번 서명하는 대신, 브라우저나 운영체제의 패스키 화면에서 작업을 승인할 수 있습니다.
+
+WebAuthn 패스키는 내부적으로 P-256 서명을 사용합니다. Pali의 패스키 검증기는 스마트 계정이 이 P-256 증명을 검증할 수 있도록 설계되어 있습니다. 따라서 생체 인증이나 플랫폼 패스키 승인으로 온체인 작업을 허가하면서도, 패스키 개인 키를 Pali나 dapp에 노출하지 않을 수 있습니다.
+
+## 스마트 계정을 사용하는 이유
+
+- 일상적인 사용을 위한 모듈형 승인 방식.
+- 일반 지갑 키가 계정을 소유해야 할 때 사용할 수 있는 지갑 소유 ECDSA 제어.
+- 복합 검증기를 통한 공동 관리 정책.
+- 한 번의 사용자 승인으로 일괄 실행.
+- 타임록 이후 가디언 복구.
+- Pali가 계정 기록을 재구성할 수 있는 결정적 계정 생성.
+
+## 패스키, ECDSA, 공동 관리 계정
 
 <figure>
   <a className="pali-media-link" href="/img/screens/settings-smart-account-create.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-smart-account-create.png" alt="Pali settings screen for creating a smart account" />
+  <img src="/img/screens/settings-smart-account-create.png" alt="스마트 계정을 만드는 Pali 설정 화면" />
 </a>
-  <figcaption>사용자는 설정 또는 dapp 요청에서 모듈형 스마트 계정을 만들고, 승인을 제어할 validator를 선택할 수 있습니다.</figcaption>
+  <figcaption>사용자는 설정 화면이나 dapp 요청에서 모듈형 스마트 계정을 만든 뒤, 승인을 제어할 검증기를 선택할 수 있습니다.</figcaption>
 </figure>
 
-validator는 "이 계정의 action을 누가 승인할 수 있는가?"에 대한 답이라고 생각하세요. 중요한 점은 계정을 바꾸지 않고도 그 답을 바꿀 수 있다는 것입니다.
+Pali는 세 가지 검증기 방식을 지원합니다.
 
-- **내 로그인 수단 중 아무거나 하나**(1-of-N): 손에 있는 passkey나 키 중 어느 것으로든 승인합니다.
-- **우리 중 몇 명이 함께**(t-of-N): 사람이나 기기의 정족수가 동의해야 하며, 공동 자금에 이상적입니다.
-- **우리 모두가 함께**(N-of-N): 설정된 모든 로그인 수단이 승인해야 하며, 가장 민감한 계정에 적합합니다.
+- **패스키:** 브라우저 또는 운영체제가 WebAuthn 승인을 요청합니다.
+- **ECDSA:** 설정된 EVM 소유자 주소가 계정 작업을 승인합니다.
+- **복합:** 패스키나 ECDSA 같은 하위 검증기를 임계값에 따라 조합합니다.
 
-policy는 다른 policy를 포함할 수도 있으므로 팀은 "리드의 키와 데스크 passkey 중 임의의 2개" 같은 구성을 표현할 수 있습니다. policy가 바뀌어도 주소, 잔액, 내역은 그대로 유지됩니다. 또한 서명이 modular하기 때문에 (post-quantum을 포함한) 미래의 signature 유형도 나중에 같은 계정에서 채택할 수 있습니다.
+검증기는 “누가 이 계정의 작업을 승인할 수 있는가?”에 대한 답이라고 생각하면 됩니다. 유용한 점은 계정을 바꾸지 않고도 그 답을 변경할 수 있다는 것입니다.
 
-guardian은 의도적으로 이 목록에 **포함되지 않습니다**. guardian은 transaction을 절대 승인할 수 없으며, 접근 권한을 잃었을 때 느리고 눈에 보이는 recovery를 시작하는 것이 그들의 유일한 권한입니다. 이 분리는 누구에게도 일상적인 통제권을 주지 않으면서 접근 상실로부터 사용자를 보호합니다.
+- **내 인증 수단 중 하나**(1-of-N): 사용할 수 있는 패스키나 키 중 하나로 승인합니다.
+- **여럿이 함께 승인**(t-of-N): 정해진 수의 사람이나 기기가 동의해야 하므로 공유 자금에 적합합니다.
+- **모두 함께 승인**(N-of-N): 설정된 모든 인증 수단이 승인해야 하므로 가장 민감한 계정에 적합합니다.
 
-Passkey approval, team owner, batched action, guardian recovery에 유용합니다. Pali는 factory를 통해 deterministic하게 deploy하고 durable metadata를 저장합니다. Guardian recovery는 즉시 실행되지 않습니다. Guardian이 intent에 서명하고 module이 delay와 함께 schedule한 뒤 validator를 교체할 수 있습니다.
+정책 안에 다른 정책을 포함할 수도 있으므로, 팀은 “책임자의 키와 데스크 패스키 중 임의의 두 개” 같은 조건을 표현할 수 있습니다. 정책이 바뀌어도 주소, 잔액, 기록은 그대로 유지됩니다. 또한 서명이 모듈형이므로 향후 양자 내성 서명을 포함한 새로운 서명 방식도 같은 계정에서 사용할 수 있습니다.
 
-on-chain에서 guardian은 일반 키에 한정되지 않습니다. guardian 승인은 ECDSA 또는 ERC-1271로 검증되므로, guardian은 배포된 contract account일 수도 있습니다. 예를 들어 composite·custom·post-quantum validator를 policy로 가진 다른 스마트 계정도 guardian이 될 수 있으며, 이 경우 recovery 경로는 그 guardian의 signature scheme을 상속합니다. 현재 Pali의 guardian 화면은 키 기반 승인을 수집하지만, 배포된 module이 이미 지원하므로 contract account guardian 플로우는 나중에 추가할 수 있습니다.
+가디언은 의도적으로 이 목록에 **포함하지 않습니다**. 가디언은 트랜잭션을 승인할 수 없으며, 접근을 잃었을 때 시간이 걸리고 공개적으로 확인 가능한 복구를 시작하는 권한만 가집니다. 이렇게 역할을 분리하면 다른 사람에게 일상적인 제어 권한을 주지 않으면서 접근 상실에 대비할 수 있습니다.
+
+Pali는 공유 지갑 패스키 프로필을 사용하거나, 계정별로 별도의 패스키 자격 증명을 만들 수 있습니다. 공유 패스키는 지갑이 제어하는 하나의 패스키를 쓰려는 사용자에게 편리합니다. 별도의 패스키는 서비스나 정책별로 자격 증명을 분리하는 데 도움이 됩니다.
+
+## 배포
+
+Pali가 생성을 준비하는 동안 스마트 계정은 카운터팩추얼 주소로 존재할 수 있습니다. Pali는 결정적인 팩토리 입력값에서 주소를 파생하고, Pali 팩토리를 통해 배포하며, 영구 계정 메타데이터를 로컬에 저장합니다.
+
+계정은 결정적 배포를 위해 지갑이 소유한 부트스트랩 검증기로 시작합니다. 사용자나 dapp이 패스키 또는 다른 검증기를 선택하면, Pali는 스마트 계정 실행을 통해 해당 검증기를 설치하고 부트스트랩 검증기를 제거합니다.
+
+## 네트워크 지원
+
+스마트 계정을 사용하려면 활성 체인에서 Pali가 사용하는 주소에 Pali 팩토리와 모듈 컨트랙트가 있어야 합니다. 이 Pali 빌드에는 `zkTanenbaum` 테스트넷의 스마트 계정 생성이 설정되어 있으며, zkSYS 운영 환경도 운영용 팩토리와 모듈 주소가 설정되면 같은 모델을 사용합니다.
+
+다른 EVM 호환 체인도 동일한 컨트랙트를 사용할 수 있습니다. 활성 네트워크가 표준 CREATE2 배포를 지원하면, Pali는 지갑 안에서 누락된 스마트 계정 기반 컨트랙트를 배포할 수 있습니다. 설정의 고급 메뉴로 이동한 뒤 **스마트 계정 설정**의 배포 버튼을 사용하세요. 패스키 검증기에는 P-256 WebAuthn 검증 지원이 필요하며, 많은 최신 EVM 환경에서는 P-256/패스키 프리컴파일을 통해 이 기능을 제공합니다.
+
+### 대기 중인 설정
+
+설정이 느려지면 **상태 확인** 작업이 표시됩니다. 페이지를 벗어나거나 네트워크를 전환해도 이미 제출한 트랜잭션은 취소되지 않습니다. 다시 배포하기 전에 원래 네트워크로 돌아가 설정 상태를 확인하세요. 시간 초과나 응답 누락이 아무것도 배포되지 않았다는 뜻은 아닙니다.
+
+## 복구
 
 <figure>
   <a className="pali-media-link" href="/img/screens/settings-smart-account-policy.png" target="_blank" rel="noreferrer">
-  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali smart-account policy settings screen" />
+  <img src="/img/screens/settings-smart-account-policy.png" alt="Pali 스마트 계정 정책 설정 화면" />
 </a>
-  <figcaption>스마트 계정 policy 화면에는 설치된 모듈, 활성 validator 세부 정보, guardian recovery, 모듈 관리가 표시됩니다.</figcaption>
+  <figcaption>스마트 계정 정책 화면에는 설치된 모듈, 활성 검증기 세부 정보, 가디언 복구, 모듈 관리가 표시됩니다.</figcaption>
 </figure>
 
-## 표준 참고 자료
+로컬 지갑 상태가 삭제되거나 새 기기에 Pali를 설치한 경우, 결정적으로 생성된 Pali 스마트 계정은 지갑 메타데이터와 체인 설정에서 재구성할 수 있습니다. 패스키 검증기를 사용하는 계정은 작업을 승인할 때 해당 패스키 자격 증명에 계속 접근할 수 있어야 합니다.
 
-- [ERC-4337 account abstraction](https://eips.ethereum.org/EIPS/eip-4337)
-- [ERC-7579 modular smart accounts](https://eips.ethereum.org/EIPS/eip-7579)
-- [ERC-1271 contract signature validation](https://eips.ethereum.org/EIPS/eip-1271)
-- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)
+하나의 패스키 자격 증명으로 여러 스마트 계정을 제어할 수 있습니다. Pali는 패스키 자격 증명 프로필과 배포된 각 계정의 스마트 계정 메타데이터를 분리하여 관리합니다.
+
+## 가디언 복구
+
+Pali는 스마트 계정 복구에 자체 관리형 복구 가디언을 사용합니다. 가디언은 사용자가 활성 검증기와 별도로 제어하는 EVM 주소입니다. 보통 백업 EVM 지갑, 가져온 계정 또는 하드웨어 지갑을 사용하지만, 온체인에서는 컨트랙트 계정을 포함하여 **서명을 증명할 수 있는 모든 계정**이 가디언이 될 수 있습니다. 계정에 정상적으로 접근할 수 있을 때 정책 화면에서 가디언을 추가·제거하고 복구 대기 기간을 변경할 수 있습니다.
+
+복구 모듈은 표준 서명 검증으로 가디언 승인을 확인합니다. 일반 주소는 ECDSA 서명을 사용하고, 가디언 주소 자체가 컨트랙트이면 ERC-1271 컨트랙트 서명 검증을 사용합니다. 따라서 복합 정책, 사용자 정의 검증기 또는 향후 양자 내성 검증기로 서명하는 다른 스마트 계정도 가디언이 될 수 있습니다. 복구 경로는 가디언 계정이 적용하는 서명 방식을 따르므로, 복구 보안은 기존 ECDSA 키에만 한정되지 않습니다.
+
+현재 한 가지 제약이 있습니다. Pali의 가디언 화면은 지갑, 가져온 계정, 하드웨어 계정 등 키 기반 가디언의 승인을 수집합니다. 배포된 복구 모듈은 컨트랙트 계정 가디언을 완전히 지원하지만, 해당 ERC-1271 승인을 생성하는 절차는 아직 Pali의 안내형 흐름에 포함되지 않습니다. 또한 컨트랙트 가디언이 서명 확인에 응답하려면 먼저 온체인에 배포되어 있어야 합니다. 이러한 유연성은 현재 계정 모델에 이미 포함되어 있으므로, 나중에 지갑이 이런 가디언 유형을 지원해도 계정을 다시 배포하거나 변경할 필요가 없습니다.
+
+가디언 복구는 즉시 완료되지 않습니다. 복구를 시작하면 대체 복구 대상을 만들고, 설정된 가디언에게 복구 의도에 서명하도록 요청한 뒤, 타임록이 적용된 복구 요청을 제출합니다. 대기 기간이 지나면 누구나 복구 트랜잭션을 완료할 수 있습니다. 이후 사용자는 교체된 검증기로 계정을 사용할 수 있습니다.
+
+가디언 서명은 체인, 계정 주소, 복구 모듈, 복구 솔트, 실행 모드, 복구 호출 데이터를 함께 결합합니다. Pali는 복구를 시도할 때마다 새 솔트를 사용하며, 모듈은 계정마다 하나의 활성 복구만 허용합니다.
+
+기술 참고: 가디언 복구 실행기는 계정별 가디언 집합, 임계값, 지연 시간, 만료 시간, 대기 중인 복구를 저장합니다. Pali는 화면을 명확하게 유지하기 위해 단순한 가디언 흐름을 제공하지만, 모듈은 1-of-N 또는 M-of-N 같은 임계값 정책을 지원합니다.
+
+## dapp이 생성한 계정
+
+dapp은 `wallet_prepareSmartAccount`로 스마트 계정을 요청할 수 있습니다.
+
+```
+{
+  "label": "Trading desk",
+  "authenticator": {
+    "id": "p256-webauthn"
+  }
+}
+```
+
+dapp은 ECDSA 검증기도 요청할 수 있습니다.
+
+```
+{
+  "label": "Trading desk",
+  "authenticator": {
+    "id": "ecdsa",
+    "config": {
+      "owners": ["0x..."],
+      "threshold": 1
+    }
+  }
+}
+```
+
+요청한 ECDSA 소유자가 로컬 Pali 계정이 아니면, Pali는 경고를 표시하고 명시적인 확인을 받아야 계속 진행합니다.
+
+## 표준 참조
+
+Pali 스마트 계정은 다음과 같은 공개 스마트 계정 표준을 기반으로 합니다.
+
+- [ERC-4337 계정 추상화](https://eips.ethereum.org/EIPS/eip-4337): UserOperation 방식의 계정 실행.
+- [ERC-7579 모듈형 스마트 계정](https://eips.ethereum.org/EIPS/eip-7579): 검증기 및 실행기 모듈.
+- [ERC-1271 컨트랙트 서명 검증](https://eips.ethereum.org/EIPS/eip-1271): 컨트랙트 계정의 서명.
+- [WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/): 패스키 승인.

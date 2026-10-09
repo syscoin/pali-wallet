@@ -2,41 +2,49 @@
 title: 사용자 시작하기
 ---
 
-Pali를 사용하면 하나의 extension에서 EVM 계정, Syscoin UTXO 계정, Pali smart account를 관리할 수 있습니다.
+Pali에서는 하나의 확장 프로그램으로 EVM 계정, Syscoin UTXO 계정, 모듈형 스마트 계정을 관리할 수 있습니다.
 
 ## 기본 설정
 
-1. Pali extension을 설치합니다.
-2. 새 wallet을 만들거나 기존 seed phrase를 가져옵니다.
-3. 강력한 password를 설정합니다.
-4. seed phrase를 offline으로 백업합니다.
-5. 사용할 network를 선택합니다.
+1. Pali 확장 프로그램을 설치합니다.
+2. 새 지갑을 만들거나 기존 시드 구문을 가져옵니다.
+3. 강력한 비밀번호를 설정합니다.
+4. 시드 구문을 오프라인으로 백업합니다.
+5. 사용할 네트워크를 선택합니다.
 6. 신뢰하는 dapp에만 연결합니다.
 
-## dapp에 연결하기
+## 설정 및 로딩
 
-사이트가 access를 요청하면 Pali는 site를 보여주고 계정을 선택할 수 있는 connection popup을 엽니다. dapp은 연결된 account address와 승인된 provider state만 받습니다.
+설정이 끝날 때까지 설정 화면을 열어 둔 채 표시해 두세요. 화면을 벗어나거나 숨기거나 새로고침하면 입력한 민감한 설정 정보가 지워져 처음부터 다시 시작해야 할 수 있습니다. 백업한 복구 구문은 보관하세요.
 
-Pali는 연결을 site별로 저장합니다. 서로 다른 site를 서로 다른 계정에 연결할 수 있지만, 각 site는 한 번에 하나의 active account만 가집니다.
+Pali가 지갑 생성 완료 여부를 확인하지 못하면 새로고침하여 지갑을 확인하도록 두세요. 잠금 해제 화면이 나타나면 방금 설정한 비밀번호를 사용하세요. 응답이 중단되었다고 지갑이 생성되지 않았다고 단정하거나 곧바로 생성을 반복하지 마세요.
+
+작업이 느리면 Pali는 탐색 기능을 유지하면서 복구 옵션을 표시할 수 있습니다. 민감한 작업은 계정과 네트워크 상태가 안정될 때까지 계속 대기합니다. 받기 화면에서는 주소, QR 코드, 복사 기능이 잠시 숨겨지며, 파우셋 토큰 요청도 대기합니다. 계속하기 전에 계정과 네트워크를 다시 확인하세요.
+
+## dapp에 연결
+
+사이트가 접근을 요청하면 Pali는 사이트를 표시하고 계정을 선택할 수 있는 연결 팝업을 엽니다. dapp은 연결된 계정 주소와 승인된 공급자 상태만 받습니다.
+
+Pali는 사이트별로 연결을 저장합니다. 서로 다른 사이트를 서로 다른 계정에 연결할 수 있지만, 각 사이트에서 한 번에 활성화할 수 있는 계정은 하나입니다.
 
 ## EVM 계정
 
-EVM 계정은 Ethereum-compatible chain, Rollux, Syscoin NEVM, 그리고 MetaMask-style wallet behavior를 기대하는 dapp에 사용하세요.
+EVM 계정은 Ethereum 호환 체인, Rollux, Syscoin NEVM, MetaMask 방식의 지갑 동작을 사용하는 dapp에 적합합니다.
 
 EVM dapp은 다음을 요청할 수 있습니다.
 
-- account access
-- transaction
-- personal signature
-- typed data signature
-- token watch request
-- chain add/switch request
-- batch call request
+- 계정 접근
+- 트랜잭션
+- 개인 메시지 서명
+- 구조화된 데이터 서명
+- 토큰 모니터링 등록
+- 체인 추가 또는 전환
+- 일괄 호출
 
 ## UTXO 계정
 
-UTXO 계정은 Syscoin UTXO 및 Bitcoin-style transaction flow에 사용하세요. UTXO dapp은 xpub-aware state, change address, PSBT signing, transaction broadcast를 요청할 수 있습니다.
+UTXO 계정은 Syscoin UTXO 및 Bitcoin 방식의 트랜잭션 흐름에 사용합니다. UTXO dapp은 xpub를 지원하는 상태 정보, 잔돈 주소, PSBT 서명, 트랜잭션 전파를 요청할 수 있습니다.
 
-## Pali smart account
+## 스마트 계정
 
-Passkey 계정은 WebAuthn credential로 제어되는 smart account입니다. 기관 관리 onboarding, account recovery, sponsored execution에 유용할 수 있습니다. 일부 passkey 계정은 첫 deployment transaction 전까지 counterfactual 상태입니다.
+스마트 계정은 모듈이 제어하는 컨트랙트 계정입니다. Pali는 패스키 검증기, 지갑이 소유한 ECDSA 검증기 또는 공동 관리 정책이 제어하는 계정을 만들 수 있습니다. dapp 온보딩, 일괄 작업, 가디언 복구에 유용합니다. 일부 스마트 계정은 첫 배포 트랜잭션 전까지 카운터팩추얼 상태로 존재합니다.

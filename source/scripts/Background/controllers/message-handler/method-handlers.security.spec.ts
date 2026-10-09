@@ -180,6 +180,66 @@ describe('origin-scoped provider data', () => {
     expect(result.xpub).toBeNull();
   });
 
+  it('does not expose a connected xpub from provider initialization while locked', async () => {
+    const state = getStateMock();
+    state.vault.isBitcoinBased = true;
+    getStateMock.mockReturnValue(state);
+    isUnlocked.mockReturnValue(false);
+    getAccount.mockReturnValue(connectedAccount);
+    const result = await new WalletMethodHandler().handle(
+      makeContext(
+        'wallet_getSysProviderState',
+        'https://connected.example',
+        MethodHandlerType.Wallet
+      )
+    );
+    expect(result.accounts).toEqual([]);
+    expect(result.xpub).toBeNull();
+    isUnlocked.mockReturnValue(true);
+  });
+
+  it.each([
+    'wallet_getAccount',
+    'wallet_getPublicKey',
+    'wallet_getAddress',
+    'wallet_getBalance',
+  ])('does not expose %s while locked', async (method) => {
+    isUnlocked.mockReturnValue(false);
+    getAccount.mockReturnValue(connectedAccount);
+    await expect(
+      new WalletMethodHandler().handle(
+        makeContext(
+          method,
+          'https://connected.example',
+          MethodHandlerType.Wallet
+        )
+      )
+    ).resolves.toBeNull();
+    isUnlocked.mockReturnValue(true);
+  });
+
+  it('does not fetch asset metadata from a page-selected backend URL', async () => {
+    const state = getStateMock();
+    state.vault.isBitcoinBased = true;
+    const fetchMetadata = jest.fn().mockResolvedValue({ symbol: 'SPT' });
+    getControllerMock().wallet.getSysAssetMetadata = fetchMetadata;
+    const context = makeContext(
+      'wallet_getSysAssetMetadata',
+      'https://unconnected.example',
+      MethodHandlerType.Wallet
+    );
+    context.originalRequest.params = ['123', 'https://localhost/private?path='];
+    await expect(
+      new WalletMethodHandler().handle(context)
+    ).rejects.toMatchObject({ code: -32602 });
+    expect(fetchMetadata).not.toHaveBeenCalled();
+    context.originalRequest.params = ['123', 'https://rpc.example/'];
+    await expect(new WalletMethodHandler().handle(context)).resolves.toEqual({
+      symbol: 'SPT',
+    });
+    expect(fetchMetadata).toHaveBeenCalledWith('123', 'https://rpc.example');
+  });
+
   it('returns assets for the origin-connected account, not the globally active account', async () => {
     getAccount.mockReturnValue(connectedAccount);
     getDapp.mockReturnValue({ accountId: 1, accountType: 'HDAccount' });

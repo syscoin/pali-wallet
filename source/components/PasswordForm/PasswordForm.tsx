@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
@@ -22,6 +22,8 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
     repassword: '',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const submitting = useRef(false);
+  const [submitFailed, setSubmitFailed] = useState(false);
 
   const buttonIsValidStyle = useMemo(
     () =>
@@ -46,9 +48,18 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   }, []);
 
   const handleSubmit = async (values: any) => {
+    if (submitting.current) return;
+    submitting.current = true;
+    setSubmitFailed(false);
     setIsLoading(true);
-    await onSubmit(values);
-    setIsLoading(false);
+    try {
+      await onSubmit(values);
+    } catch {
+      setSubmitFailed(true);
+    } finally {
+      submitting.current = false;
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -122,6 +133,12 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         <span className="px-3 text-center text-brand-gray200 text-xs">
           {t('components.doNotForget')}
         </span>
+
+        {submitFailed && (
+          <p role="alert" className="text-warning-error text-sm">
+            {t('settings.walletSetupFailed')}
+          </p>
+        )}
 
         <div className="absolute bottom-12 md:bottom-32">
           <Button

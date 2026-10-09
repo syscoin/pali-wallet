@@ -4,9 +4,11 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
+import { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
 import { popupPromise } from './popup-promise';
 import { executeMethodWithCache } from './provider-cache';
@@ -113,6 +115,8 @@ export class WalletMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute!,
             eventName: methodConfig.popupEventName!,
@@ -129,6 +133,32 @@ export class WalletMethodHandler implements IMethodHandler {
     ) {
       if (methodName === 'sendCalls') {
         const sendCallsRequest = params?.[0] || {};
+        const connection = dapp.get(host);
+        if (
+          !account?.address ||
+          !connection ||
+          (sendCallsRequest.from &&
+            sendCallsRequest.from.toLowerCase() !==
+              account.address.toLowerCase()) ||
+          (sendCallsRequest.chainId !== undefined &&
+            sendCallsRequest.chainId !== null &&
+            Number(sendCallsRequest.chainId) !== activeNetwork?.chainId)
+        )
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'The requested account or network is no longer selected'
+            )
+          );
+        const approvedContext = {
+          account: {
+            address: account.address,
+            id: connection.accountId,
+            type: connection.accountType,
+          },
+          chainId: activeNetwork.chainId,
+          rpcUrl: activeNetwork.url,
+          slip44: vaultGlobal.activeSlip44,
+        };
         const smartAccountAtomicSupported =
           account?.isSmartAccount &&
           account.smartAccount?.chainId === activeNetwork?.chainId;
@@ -164,13 +194,19 @@ export class WalletMethodHandler implements IMethodHandler {
         // rejected (5720) instead of racing the post-broadcast record.
         const bundleId: string =
           sendCallsRequest.id ?? generateWalletBundleId();
-        const reserved = await reserveSendCallsBundle(host, bundleId, {
-          atomic:
-            Boolean(smartAccountAtomicSupported) ||
-            sendCallsRequest.atomicRequired === true,
-          chainId: activeNetwork?.chainId,
-          smartAccount: Boolean(smartAccountAtomicSupported),
-        });
+        const reservationId = generateWalletBundleId();
+        const reserved = await reserveSendCallsBundle(
+          host,
+          bundleId,
+          {
+            atomic:
+              Boolean(smartAccountAtomicSupported) ||
+              sendCallsRequest.atomicRequired === true,
+            chainId: activeNetwork?.chainId,
+            smartAccount: Boolean(smartAccountAtomicSupported),
+          },
+          reservationId
+        );
         if (!reserved) {
           throw cleanErrorStack(
             ethErrors.rpc.custom({
@@ -186,17 +222,29 @@ export class WalletMethodHandler implements IMethodHandler {
             context,
             () =>
               popupPromise({
+                signal: context.originalRequest.signal,
+                sender: context.originalRequest.sender,
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
-                data: { ...sendCallsRequest, bundleId },
+                data: {
+                  ...sendCallsRequest,
+                  from: account.address,
+                  approvedContext,
+                  bundleId,
+                  reservationId,
+                },
               }),
             methodConfig.popupRoute! // Explicit route parameter
           );
         } catch (error) {
-          // The request never broadcast (rejected/failed): free the id so the
-          // dapp can retry with it. Finalized bundles are never deleted here.
-          await releaseSendCallsBundleReservation(host, bundleId);
+          // Release only approvals that never entered submission. Navigation
+          // can reject the popup while its controller action keeps sending.
+          await releaseSendCallsBundleReservation(
+            host,
+            bundleId,
+            reservationId
+          );
           throw error;
         }
       }
@@ -223,6 +271,8 @@ export class WalletMethodHandler implements IMethodHandler {
             context,
             () =>
               popupPromise({
+                signal: context.originalRequest.signal,
+                sender: context.originalRequest.sender,
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
@@ -238,6 +288,8 @@ export class WalletMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
@@ -262,19 +314,19 @@ export class WalletMethodHandler implements IMethodHandler {
           return wallet.getChangeAddress(account.id);
 
         case 'getAccount':
-          return account || null;
+          return wallet.isUnlocked() ? account || null : null;
 
         case 'getBalance':
-          return account.balances[networkChain()];
+          return wallet.isUnlocked() ? account.balances[networkChain()] : null;
 
         case 'getNetwork':
           return dapp.getNetwork();
 
         case 'getPublicKey':
-          return account.xpub;
+          return wallet.isUnlocked() ? account.xpub : null;
 
         case 'getAddress':
-          return account.address;
+          return wallet.isUnlocked() ? account.address : null;
 
         case 'getTokens': {
           const connectedDapp = dapp.get(host);
@@ -406,21 +458,44 @@ export class WalletMethodHandler implements IMethodHandler {
           }
           return {
             accounts: providerAccounts,
-            xpub: account?.xpub || null,
+            xpub:
+              wallet.isUnlocked() && isBitcoinBased
+                ? account?.xpub || null
+                : null,
             blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,
             isUnlocked: wallet.isUnlocked(),
             isBitcoinBased,
           };
 
         case 'getSysAssetMetadata':
-          if (!params || params.length < 2) {
+          if (
+            !params ||
+            typeof params[0] !== 'string' ||
+            !/^\d{1,20}$/.test(params[0])
+          ) {
             throw cleanErrorStack(
               ethErrors.rpc.invalidParams(
-                'getSysAssetMetadata requires assetGuid and networkUrl parameters'
+                'getSysAssetMetadata requires a numeric asset GUID'
               )
             );
           }
-          return wallet.getSysAssetMetadata(params[0], params[1]);
+          if (!isBitcoinBased) return null;
+          // The page must not turn this public metadata method into a
+          // privileged cross-origin fetch proxy. The provider may echo the
+          // selected backend, but cannot choose a different request URL.
+          if (
+            params[1] !== undefined &&
+            (typeof params[1] !== 'string' ||
+              params[1].replace(/\/$/, '') !==
+                activeNetwork.url.replace(/\/$/, ''))
+          ) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams(
+                'Asset metadata is only available from the selected network'
+              )
+            );
+          }
+          return wallet.getSysAssetMetadata(params[0], activeNetwork.url);
 
         case 'getSmartAccountModules': {
           // Read-only module inventory for the connected smart account.
@@ -656,6 +731,8 @@ export class EthMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
@@ -733,11 +810,47 @@ export class SysMethodHandler implements IMethodHandler {
       methodConfig.popupEventName
     ) {
       // For sys methods, params are usually in array form already
-      const popupData = params?.[0] || params;
+      let popupData = params?.[0] || params;
+      if (methodName === 'sign' || methodName === 'signAndSend') {
+        const { dapp } = getController();
+        const connection = dapp.get(host);
+        const account = dapp.getAccount(host);
+        const { vault, vaultGlobal } = store.getState();
+        if (
+          !connection ||
+          !account ||
+          !vault.isBitcoinBased ||
+          vault.activeNetwork.kind !== INetworkType.Syscoin ||
+          vault.activeAccount.id !== connection.accountId ||
+          vault.activeAccount.type !== connection.accountType
+        ) {
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'The connected account is no longer selected'
+            )
+          );
+        }
+        const approvedContext: IUtxoSigningContext = {
+          account: {
+            id: connection.accountId,
+            type: connection.accountType,
+            address: account.address,
+            xpub: account.xpub,
+          },
+          chainId: vault.activeNetwork.chainId,
+          kind: vault.activeNetwork.kind,
+          rpcUrl: vault.activeNetwork.url,
+          slip44: vaultGlobal.activeSlip44,
+        };
+        // Never accept a site's same-named authorization object.
+        popupData = { ...popupData, approvedContext };
+      }
       return requestCoordinator.coordinatePopupRequest(
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,

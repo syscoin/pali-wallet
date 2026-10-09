@@ -1,0 +1,167 @@
+import {
+  hasExternalWalletPage,
+  isExternalWalletUrl,
+} from './extensionContexts';
+import { WALLET_BOOTSTRAP_TIMEOUT_MS } from './requestWalletState';
+
+describe('live wallet window detection', () => {
+  const originalChrome = global.chrome;
+  let getContexts: jest.Mock;
+  let tabsQuery: jest.Mock;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    getContexts = jest.fn();
+    tabsQuery = jest.fn((_filter, reply) => reply([]));
+    global.chrome = {
+      runtime: {
+        id: 'pali-id',
+        getURL: (path: string) => `chrome-extension://pali-id${path}`,
+        getContexts,
+      },
+      tabs: { query: tabsQuery },
+    } as unknown as typeof chrome;
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    global.chrome = originalChrome;
+  });
+
+  it('ignores stale flags and the current main wallet page', async () => {
+    getContexts.mockImplementation((_filter, reply) => {
+      reply([{ documentUrl: 'chrome-extension://pali-id/app.html' }]);
+    });
+    await expect(hasExternalWalletPage()).resolves.toBe(false);
+  });
+
+  it('recognizes this extension external document and rejects lookalike URLs', async () => {
+    getContexts.mockImplementationOnce((_filter, reply) => {
+      reply([
+        { documentUrl: 'https://example.com/external.html' },
+        { documentUrl: 'chrome-extension://other-id/external.html' },
+        { documentUrl: 'chrome-extension://pali-id/app.html?external.html' },
+        { documentUrl: 'chrome-extension://pali-id/external.html-other' },
+        { documentUrl: 'chrome-extension://pali-id/external-other/sign' },
+        {
+          documentUrl: 'chrome-extension://pali-id/app.html?externalRoute=sign',
+        },
+        { documentUrl: 'chrome-extension://pali-id/' },
+      ]);
+    });
+    await expect(hasExternalWalletPage()).resolves.toBe(false);
+    getContexts.mockImplementationOnce((_filter, reply) => {
+      reply([
+        { documentUrl: 'chrome-extension://pali-id/external.html?route=sign' },
+      ]);
+    });
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+  });
+
+  it.each([
+    '/external/connect-wallet?data=%7B%7D',
+    '/external/sign-eth',
+    '/external/hardware',
+    '/?externalRoute=login&data=%7B%7D',
+  ])(
+    'keeps detecting an external document after SPA routing to %s',
+    async (path) => {
+      getContexts.mockImplementation((_filter, reply) => {
+        reply([{ documentUrl: `chrome-extension://pali-id${path}` }]);
+      });
+      await expect(hasExternalWalletPage()).resolves.toBe(true);
+      delete (chrome.runtime as any).getContexts;
+      tabsQuery.mockImplementation((_filter, reply) => {
+        reply([{ url: `chrome-extension://pali-id${path}` }]);
+      });
+      await expect(hasExternalWalletPage()).resolves.toBe(true);
+    }
+  );
+
+  it('uses a bounded tabs fallback before Chrome 116', async () => {
+    delete (chrome.runtime as any).getContexts;
+    tabsQuery.mockImplementation((_filter, reply) => {
+      reply([{ url: 'chrome-extension://pali-id/external.html' }]);
+    });
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+    tabsQuery.mockImplementation(() => undefined);
+    const pending = hasExternalWalletPage();
+    const rejected = expect(pending).rejects.toThrow('timed out');
+    jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
+    await rejected;
+  });
+
+  it('detects a loading external tab before it has a runtime context', async () => {
+    getContexts.mockImplementation((_filter, reply) => reply([]));
+    tabsQuery.mockImplementation((_filter, reply) =>
+      reply([
+        {
+          pendingUrl: 'chrome-extension://pali-id/external.html?route=hardware',
+        },
+      ])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+  });
+
+  it.each([
+    '/external.html?route=settings/account/hardware',
+    '/external/connect-wallet',
+    '/external/sign-eth',
+    '/?externalRoute=login',
+  ])('recognizes Firefox runtime URLs at %s', async (path) => {
+    // Firefox uses an internal UUID host, not the manifest/runtime ID.
+    chrome.runtime.getURL = (value) => `moz-extension://internal-uuid${value}`;
+    const url = `moz-extension://internal-uuid${path}`;
+    expect(isExternalWalletUrl(url)).toBe(true);
+    expect(isExternalWalletUrl(`moz-extension://other-uuid${path}`)).toBe(
+      false
+    );
+    expect(isExternalWalletUrl(`moz-extension://pali-id${path}`)).toBe(false);
+    expect(
+      isExternalWalletUrl(`moz-extension://internal-uuid:8443${path}`)
+    ).toBe(false);
+    expect(
+      isExternalWalletUrl(`moz-extension://internal-uuid.evil${path}`)
+    ).toBe(false);
+    expect(isExternalWalletUrl(`chrome-extension://internal-uuid${path}`)).toBe(
+      false
+    );
+    getContexts.mockImplementation((_filter, reply) =>
+      reply([{ documentUrl: url }])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+    delete (chrome.runtime as any).getContexts;
+    tabsQuery.mockImplementation((_filter, reply) =>
+      reply([{ pendingUrl: url }])
+    );
+    await expect(hasExternalWalletPage()).resolves.toBe(true);
+  });
+
+  it('fails closed if tabs cannot be checked after an empty contexts response', async () => {
+    getContexts.mockImplementation((_filter, reply) => reply([]));
+    tabsQuery.mockImplementation((_filter, reply) => {
+      (chrome.runtime as any).lastError = { message: 'Unavailable' };
+      reply([]);
+      delete (chrome.runtime as any).lastError;
+    });
+    await expect(hasExternalWalletPage()).rejects.toThrow('Could not check');
+  });
+
+  it('offers recovery instead of continuing when the query stalls', async () => {
+    const pending = hasExternalWalletPage();
+    const rejected = expect(pending).rejects.toThrow('timed out');
+    jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
+    await rejected;
+  });
+
+  it('accepts a valid context reply after the feedback deadline', async () => {
+    jest.advanceTimersByTime(2000);
+    let reply: (contexts: unknown[]) => void;
+    getContexts.mockImplementation((_filter, callback) => {
+      reply = callback;
+    });
+    const pending = hasExternalWalletPage();
+    jest.advanceTimersByTime(2000);
+    reply([]);
+    await expect(pending).resolves.toBe(false);
+  });
+});

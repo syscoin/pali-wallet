@@ -8,7 +8,12 @@ import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
 import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
 import { useAppReady } from 'hooks/useAppReady';
-import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import { useController } from 'hooks/useController';
+import {
+  isContextSensitiveWalletRoute,
+  normalizeWalletPathname,
+  usePageLoadingState,
+} from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
 import { navigateBack, clearNavigationState } from 'utils/navigationState';
 
@@ -23,6 +28,12 @@ interface IAppLayout {
   children?: React.ReactNode;
 }
 
+const SECRET_VIEW_ROUTES = new Set([
+  '/settings/seed',
+  '/settings/account/private-key',
+  '/settings/forget-wallet',
+]);
+
 export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -32,7 +43,13 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   );
 
   // Use the new page loading state hook
-  const { isLoading, hasTimedOut } = usePageLoadingState();
+  const { isLoading, isContextChanging, message } = usePageLoadingState();
+  const { connectionUnavailable } = useController();
+  const contextSafetyProps =
+    (isContextChanging || connectionUnavailable) &&
+    isContextSensitiveWalletRoute(location.pathname)
+      ? { inert: '', 'aria-busy': true as const }
+      : {};
 
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
@@ -308,6 +325,24 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     [location.pathname]
   );
 
+  // An unavailable worker may have restarted in a locked state. Unmount secret
+  // views so their cached plaintext and password fields cannot remain visible
+  // or reappear after reconnection without fresh authentication.
+  const pageContent =
+    (isContextChanging || connectionUnavailable) &&
+    normalizeWalletPathname(location.pathname) === '/receive' ? (
+      // A visible QR code can be used without clicking. Hide the old address
+      // as well as disabling controls until the account/network is confirmed.
+      <p role="status">{message || t('buttons.loading')}</p>
+    ) : connectionUnavailable &&
+      SECRET_VIEW_ROUTES.has(normalizeWalletPathname(location.pathname)) ? (
+      <p role="status">
+        Reconnect to your wallet to view sensitive information.
+      </p>
+    ) : (
+      children || <Outlet />
+    );
+
   return (
     <div
       className={`remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white ${bgColor} overflow-x-hidden ${
@@ -316,8 +351,13 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     >
       {/* Loading overlay - shows after delay for content area only */}
       <PageLoadingOverlay
-        isLoading={isLoading}
-        hasTimedOut={hasTimedOut}
+        isLoading={isLoading || connectionUnavailable}
+        message={
+          connectionUnavailable
+            ? 'Wallet service is unavailable. Reconnecting…'
+            : message
+        }
+        nonBlocking={connectionUnavailable}
         hasHeader={!hideHeader && !titleOnly}
         hasBanner={showBanner}
       />
@@ -396,25 +436,34 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Content area - keyed by route so each navigation gets a short fade-in */}
       {location.pathname === '/home' ? (
         // Home page gets a minimal wrapper - it has its own layout
-        <div key={location.pathname} className="animate-fadeIn h-full">
-          {children || <Outlet />}
+        <div
+          key={location.pathname}
+          className="animate-fadeIn h-full"
+          {...contextSafetyProps}
+        >
+          {pageContent}
         </div>
       ) : hideHeader ? (
         // Hardware wallet and other hideHeader pages get a minimal wrapper
-        <div key={location.pathname} className="animate-fadeIn h-full">
-          {children || <Outlet />}
+        <div
+          key={location.pathname}
+          className="animate-fadeIn h-full"
+          {...contextSafetyProps}
+        >
+          {pageContent}
         </div>
       ) : (
         // Other pages get the standard content wrapper
         <div
           key={location.pathname}
+          {...contextSafetyProps}
           className={`animate-fadeIn flex flex-col items-center justify-center md:mx-auto ${
             showBanner ? 'pt-8' : 'pt-4'
           } px-[24px] w-full page-content ${
             isConnectPage ? '' : 'md:max-w-sm'
           } text-brand-white sm:max-w-full`}
         >
-          {children || <Outlet />}
+          {pageContent}
         </div>
       )}
     </div>

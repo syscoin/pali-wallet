@@ -8,6 +8,8 @@ import {
   SheetPanel,
 } from 'components/Dialog/Dialog';
 import { Button } from 'components/index';
+import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 
 // Bottom-sheet modal variants, rebuilt as declarative compositions over the
 // Dialog primitive (components/Dialog). Unused legacy sheets were deleted;
@@ -177,37 +179,18 @@ export const ConnectHardwareWallet = ({
   title,
 }: IDefaultModal) => {
   const { t } = useTranslation();
+  const { controllerEmitter } = useController();
+  const { alert } = useUtils();
 
-  const handleConnectHardwareWallet = () => {
-    // Open hardware wallet setup in a new tab instead of popup window
-    const url = chrome.runtime.getURL(
-      'external.html?route=settings/account/hardware'
-    );
-    window.open(url, '_blank');
-
-    // Set storage flag for detection
-    chrome.storage.local.set(
-      {
-        'pali-popup-open': true,
-        'pali-popup-timestamp': Date.now(),
-      },
-      () => {
-        if (chrome.runtime.lastError) {
-          console.error(
-            '[WarningBaseModal] Failed to set popup flag:',
-            chrome.runtime.lastError
-          );
-        }
-      }
-    );
-
-    // Close the modal
-    if (onClose) onClose(true);
-
-    // Close the extension popup window after a short delay to ensure the new tab opens
-    setTimeout(() => {
+  const handleConnectHardwareWallet = async () => {
+    try {
+      await controllerEmitter(['createHardwareWalletTab'], [], 10000, false);
+      if (onClose) onClose(true);
       window.close();
-    }, 100);
+    } catch (error) {
+      console.error('[WarningBaseModal] Failed to open hardware setup:', error);
+      alert.error(t('send.sendError'));
+    }
   };
 
   return (

@@ -14,6 +14,10 @@ import { getMethodName } from 'utils/commonMethodSignatures';
 import { formatEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
 import {
@@ -22,6 +26,7 @@ import {
 } from 'utils/smartAccount';
 
 interface ISendCallsData {
+  approvedContext: IEvmTransactionContext;
   atomicRequired: boolean;
   // Bundle id reserved by the background handler before this popup opened
   // (the app-provided id when the dapp supplied one, otherwise a random
@@ -39,6 +44,7 @@ interface ISendCallsData {
   from?: string;
   // Original EIP-5792 app-provided bundle id field from the request.
   id?: string;
+  reservationId: string;
   version: string;
 }
 
@@ -148,6 +154,7 @@ const decodeCommonCallData = (data?: string) => {
 
 const getSafeSmartAccountCallErrorMessage = (error: any, fallback: string) => {
   const message = error?.message ? String(error.message) : '';
+  if (message === EVM_TRANSACTION_CONTEXT_CHANGED) return fallback;
   const normalized = message.toLowerCase();
   const isRawRpcError =
     normalized.includes('"jsonrpc"') ||
@@ -178,6 +185,7 @@ export const SendCalls = () => {
   const { host, eventName, ...externalData } = useQueryData();
 
   const callsData: ISendCallsData = externalData;
+  const [approvedContext] = useState(() => callsData.approvedContext);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -188,10 +196,19 @@ export const SendCalls = () => {
   const [transactionStatuses, setTransactionStatuses] = useState<
     Array<{
       error?: string;
-      status: 'pending' | 'signing' | 'sending' | 'success' | 'error';
+      status:
+        | 'pending'
+        | 'signing'
+        | 'sending'
+        | 'success'
+        | 'error'
+        | 'unknown';
       txHash?: string;
     }>
   >();
+  const submissionInFlightRef = React.useRef(false);
+  const lastStartedSubmissionRef = React.useRef<string>();
+  const [progressSubmissionId, setProgressSubmissionId] = useState<string>();
   const [requestSmartAccount] = useState(() => ({
     supportsAtomicBatch: Boolean(
       activeAccount?.isSmartAccount &&
@@ -244,15 +261,19 @@ export const SendCalls = () => {
   }, [transactionStatuses, callsData.calls]);
 
   // Check if there are any selected transactions that haven't succeeded yet
+  const hasUnknownSubmission = transactionStatuses?.some(
+    (status) => status?.status === 'unknown'
+  );
   const hasUnsuccessfulSelected = useMemo(
     () =>
+      !hasUnknownSubmission &&
       effectiveSelectedCalls.some(
         (selected, index) =>
           selected &&
           (!transactionStatuses?.[index] ||
             transactionStatuses[index].status !== 'success')
       ),
-    [effectiveSelectedCalls, transactionStatuses]
+    [effectiveSelectedCalls, hasUnknownSubmission, transactionStatuses]
   );
 
   // Persist broadcast tx hashes (and any pre-broadcast failure) incrementally
@@ -262,6 +283,114 @@ export const SendCalls = () => {
   // popup is closed mid-flight. The registry record is an idempotent
   // overwrite; the final all-success pass rewrites it with failed: false.
   const lastRecordedBundleRef = React.useRef<string>('');
+  const markSubmissionStarted = async () => {
+    try {
+      const submissionId = uuidv4();
+      await controllerEmitter(
+        ['wallet', 'recordSendCallsBundle'],
+        [
+          host,
+          callsData.bundleId,
+          {
+            atomic:
+              requestSmartAccount.supportsAtomicBatch ||
+              callsData.atomicRequired,
+            chainId: approvedContext.chainId,
+            smartAccount: requestSmartAccount.supportsAtomicBatch,
+            reservationId: callsData.reservationId,
+            previousSubmissionId: lastStartedSubmissionRef.current,
+            submissionId,
+            submissionStarted: true,
+            txHashes: [],
+          },
+        ]
+      );
+      lastStartedSubmissionRef.current = submissionId;
+      setProgressSubmissionId(submissionId);
+    } catch (error) {
+      console.error('Failed to persist sendCalls submission boundary', error);
+      throw new Error(t('send.sendError'));
+    }
+  };
+  const markSubmissionNotBroadcast = async () => {
+    try {
+      await controllerEmitter(
+        ['wallet', 'recordSendCallsBundle'],
+        [
+          host,
+          callsData.bundleId,
+          {
+            atomic:
+              requestSmartAccount.supportsAtomicBatch ||
+              callsData.atomicRequired,
+            chainId: approvedContext.chainId,
+            reservationId: callsData.reservationId,
+            submissionId: lastStartedSubmissionRef.current,
+            smartAccount: requestSmartAccount.supportsAtomicBatch,
+            submissionNotBroadcast: true,
+            txHashes: [],
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Failed to record definite sendCalls rejection', error);
+    }
+  };
+  const recordCompletedSubmission = async (
+    failed: boolean,
+    txHashes: string[]
+  ) => {
+    await controllerEmitter(
+      ['wallet', 'recordSendCallsBundle'],
+      [
+        host,
+        callsData.bundleId,
+        {
+          atomic:
+            requestSmartAccount.supportsAtomicBatch || callsData.atomicRequired,
+          chainId: approvedContext.chainId,
+          reservationId: callsData.reservationId,
+          smartAccount: requestSmartAccount.supportsAtomicBatch,
+          submissionCompleted: true,
+          submissionId: lastStartedSubmissionRef.current,
+          failed,
+          txHashes,
+        },
+      ]
+    );
+  };
+  const recordBroadcastHash = (txHash: string) =>
+    controllerEmitter(
+      ['wallet', 'recordSendCallsBundle'],
+      [
+        host,
+        callsData.bundleId,
+        {
+          atomic:
+            requestSmartAccount.supportsAtomicBatch || callsData.atomicRequired,
+          chainId: approvedContext.chainId,
+          reservationId: callsData.reservationId,
+          smartAccount: requestSmartAccount.supportsAtomicBatch,
+          submissionId: lastStartedSubmissionRef.current,
+          txHashes: [txHash],
+        },
+      ]
+    );
+  const stopUnknownSubmission = (indices: number[], txHash?: string) => {
+    setTransactionStatuses((prev) => {
+      const statuses = [...prev];
+      for (const index of indices)
+        statuses[index] = {
+          status: 'unknown',
+          txHash,
+          error: t('send.submissionStatusUnknown'),
+        };
+      return statuses;
+    });
+    setLoading(false);
+    setProcessingIndex(-1);
+    alert.error(t('send.submissionStatusUnknown'));
+  };
   useEffect(() => {
     if (!transactionStatuses || !callsData.bundleId) return;
     const smartAccount = requestSmartAccount.supportsAtomicBatch;
@@ -279,9 +408,12 @@ export const SendCalls = () => {
     if (txHashes.length === 0 && !failed) return;
     const bundleDescriptor = {
       atomic: smartAccount ? true : callsData.atomicRequired,
-      chainId: activeNetwork.chainId,
+      chainId: approvedContext.chainId,
       failed,
       smartAccount,
+      reservationId: callsData.reservationId,
+      submissionCompleted: allTransactionsSuccessful,
+      submissionId: progressSubmissionId,
       txHashes,
     };
     const serialized = JSON.stringify(bundleDescriptor);
@@ -296,11 +428,14 @@ export const SendCalls = () => {
       console.error('Failed to record sendCalls bundle progress', error);
     });
   }, [
-    activeNetwork.chainId,
+    approvedContext.chainId,
+    allTransactionsSuccessful,
     callsData.atomicRequired,
     callsData.bundleId,
+    callsData.reservationId,
     controllerEmitter,
     host,
+    progressSubmissionId,
     requestSmartAccount.supportsAtomicBatch,
     transactionStatuses,
   ]);
@@ -325,9 +460,12 @@ export const SendCalls = () => {
       );
       const bundleDescriptor = {
         atomic: smartAccount ? true : callsData.atomicRequired,
-        chainId: activeNetwork.chainId,
+        chainId: approvedContext.chainId,
         failed: false,
         smartAccount,
+        reservationId: callsData.reservationId,
+        submissionCompleted: true,
+        submissionId: progressSubmissionId,
         txHashes,
       };
       const id = callsData.bundleId || `0x${uuidv4().replace(/-/g, '')}`;
@@ -359,19 +497,23 @@ export const SendCalls = () => {
       }, 2000);
     }
   }, [
-    activeNetwork.chainId,
+    approvedContext.chainId,
     allTransactionsSuccessful,
     callsData.atomicRequired,
     callsData.bundleId,
+    callsData.reservationId,
     confirmed,
     controllerEmitter,
     eventName,
     host,
+    progressSubmissionId,
     requestSmartAccount.supportsAtomicBatch,
     transactionStatuses,
   ]);
 
   const handleApprove = async () => {
+    if (submissionInFlightRef.current || hasUnknownSubmission) return;
+    submissionInFlightRef.current = true;
     try {
       setIsPqSigning(false);
       setLoading(true);
@@ -398,7 +540,7 @@ export const SendCalls = () => {
         .filter((index) => shouldSubmitCall(callsData.calls[index], index));
 
       const receipts: any[] = [];
-      const from = callsData.from || activeAccount.address;
+      const from = callsData.from || approvedContext.account.address;
 
       // Pre-resolve ENS names in batch when multiple ENS destinations are present
       let batchEnsMap: Record<string, string | null> = {};
@@ -442,6 +584,7 @@ export const SendCalls = () => {
       });
 
       if (requestSmartAccount.supportsAtomicBatch) {
+        let smartSubmissionInvoked = false;
         try {
           const smartAccountCalls = [];
           for (let i = 0; i < selectedCallsData.length; i++) {
@@ -527,9 +670,21 @@ export const SendCalls = () => {
                 setIsPqSigning(true);
               }
             },
+            onBeforeSubmit: async () => {
+              await markSubmissionStarted();
+              smartSubmissionInvoked = true;
+            },
             smartAccount: activeAccount.smartAccount,
           })) as any;
           const txHash = response.hash || response;
+
+          try {
+            await recordCompletedSubmission(false, [txHash]);
+          } catch (error) {
+            console.error('Failed to persist acknowledged smart batch', error);
+            stopUnknownSubmission(selectedIndices, txHash);
+            return;
+          }
 
           selectedIndices.forEach((index) => {
             setTransactionStatuses((prev) => {
@@ -544,23 +699,48 @@ export const SendCalls = () => {
           return;
         } catch (error) {
           console.error('Failed to process smart account batch calls', error);
-          const errorMessage = getSafeSmartAccountCallErrorMessage(
-            error,
-            t('send.sendError')
-          );
+          const txHash = /^0x[0-9a-fA-F]{64}$/.test(
+            error?.transactionHash || ''
+          )
+            ? error.transactionHash
+            : undefined;
+          const unknown =
+            !txHash &&
+            smartSubmissionInvoked &&
+            error?.transactionNotBroadcast !== true;
+          if (!txHash && error?.transactionNotBroadcast === true)
+            await markSubmissionNotBroadcast();
+          if (!unknown && smartSubmissionInvoked) {
+            try {
+              await recordCompletedSubmission(!txHash, txHash ? [txHash] : []);
+            } catch (persistenceError) {
+              console.error(
+                'Failed to persist smart batch outcome',
+                persistenceError
+              );
+              if (txHash) {
+                stopUnknownSubmission(selectedIndices, txHash);
+                return;
+              }
+            }
+          }
+          const errorMessage = unknown
+            ? t('send.submissionStatusUnknown')
+            : getSafeSmartAccountCallErrorMessage(error, t('send.sendError'));
           selectedIndices.forEach((index) => {
             setTransactionStatuses((prev) => {
               const newStatuses = [...prev];
               newStatuses[index] = {
-                status: 'error',
-                error: errorMessage,
+                status: txHash ? 'success' : unknown ? 'unknown' : 'error',
+                ...(txHash ? { txHash } : { error: errorMessage }),
               };
               return newStatuses;
             });
           });
           setLoading(false);
           setProcessingIndex(-1);
-          alert.error(errorMessage);
+          if (txHash) alert.success(t('send.txSuccessfull'));
+          else alert.error(errorMessage);
           return;
         } finally {
           setIsPqSigning(false);
@@ -569,6 +749,7 @@ export const SendCalls = () => {
 
       // Sign and send each transaction with incremented nonces
       for (let i = 0; i < selectedCallsData.length; i++) {
+        let submissionInvoked = false;
         const call = selectedCallsData[i];
         const originalIndex = selectedIndices[i];
         setProcessingIndex(originalIndex);
@@ -641,6 +822,7 @@ export const SendCalls = () => {
                     } as any;
                     return newStatuses;
                   });
+                  receipts.push({ status: '0x0' });
                   continue;
                 }
                 toResolved = resolved;
@@ -676,6 +858,7 @@ export const SendCalls = () => {
                   } as any;
                   return newStatuses;
                 });
+                receipts.push({ status: '0x0' });
                 continue;
               }
             }
@@ -689,6 +872,7 @@ export const SendCalls = () => {
 
           const tx: any = {
             from,
+            chainId: approvedContext.chainId,
             value: call.value || '0x0',
             data: call.data || '0x',
             nonce: currentNonce, // Increment only when a tx is actually sent to avoid gaps
@@ -703,13 +887,33 @@ export const SendCalls = () => {
           });
 
           // Use the same method as SendTransaction
+          await markSubmissionStarted();
+          submissionInvoked = true;
           const response = (await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
-            [tx, false] // false = not legacy transaction
+            [
+              tx,
+              false,
+              undefined,
+              undefined,
+              { expectedContext: approvedContext },
+            ],
+            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+              ? 300000
+              : 10000,
+            false
           )) as any;
 
           const txHash = response.hash || response;
 
+          try {
+            // Persist each acknowledged hash before the next sender can start.
+            await recordBroadcastHash(txHash);
+          } catch (error) {
+            console.error('Failed to persist acknowledged call', error);
+            stopUnknownSubmission([originalIndex], txHash);
+            return;
+          }
           receipts.push({
             transactionHash: txHash,
             status: '0x1',
@@ -728,10 +932,46 @@ export const SendCalls = () => {
           // No delay needed - using incremented nonces prevents conflicts
         } catch (error) {
           console.error(`Failed to process call ${i}:`, error);
-          const errorMessage = getSafeSmartAccountCallErrorMessage(
-            error,
-            t('send.sendError')
-          );
+          const txHash = /^0x[0-9a-fA-F]{64}$/.test(
+            error?.transactionHash || ''
+          )
+            ? error.transactionHash
+            : undefined;
+          if (txHash) {
+            try {
+              await recordBroadcastHash(txHash);
+            } catch (persistenceError) {
+              console.error(
+                'Failed to persist acknowledged call error',
+                persistenceError
+              );
+              stopUnknownSubmission([originalIndex], txHash);
+              return;
+            }
+            receipts.push({ transactionHash: txHash, status: '0x1' });
+            setTransactionStatuses((prev) => {
+              const newStatuses = [...prev];
+              newStatuses[originalIndex] = { status: 'success', txHash };
+              return newStatuses;
+            });
+            currentNonce += 1;
+            if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) {
+              if (i + 1 < selectedCallsData.length)
+                receipts.push({
+                  status: '0x0',
+                  error: EVM_TRANSACTION_CONTEXT_CHANGED,
+                });
+              break;
+            }
+            continue;
+          }
+          const unknown =
+            submissionInvoked && error?.transactionNotBroadcast !== true;
+          if (error?.transactionNotBroadcast === true)
+            await markSubmissionNotBroadcast();
+          const errorMessage = unknown
+            ? t('send.submissionStatusUnknown')
+            : getSafeSmartAccountCallErrorMessage(error, t('send.sendError'));
           receipts.push({
             status: '0x0',
             error: errorMessage,
@@ -741,11 +981,18 @@ export const SendCalls = () => {
           setTransactionStatuses((prev) => {
             const newStatuses = [...prev];
             newStatuses[originalIndex] = {
-              status: 'error',
+              status: unknown ? 'unknown' : 'error',
               error: errorMessage,
             };
             return newStatuses;
           });
+          if (unknown) {
+            setLoading(false);
+            setProcessingIndex(-1);
+            alert.error(errorMessage);
+            return;
+          }
+          if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) break;
         }
       }
 
@@ -755,6 +1002,12 @@ export const SendCalls = () => {
       // Check if any transactions succeeded
       const successCount = receipts.filter((r) => r.status === '0x1').length;
       const hasErrors = receipts.some((r) => r.status === '0x0');
+      await recordCompletedSubmission(
+        hasErrors,
+        receipts
+          .map((receipt) => receipt.transactionHash)
+          .filter((txHash): txHash is string => Boolean(txHash))
+      );
 
       if (successCount > 0) {
         if (hasErrors) {
@@ -780,6 +1033,8 @@ export const SendCalls = () => {
       setConfirmed(false);
       setProcessingIndex(-1);
       alert.error(t('send.sendError'));
+    } finally {
+      submissionInFlightRef.current = false;
     }
   };
 
@@ -836,6 +1091,11 @@ export const SendCalls = () => {
       </div>
 
       {/* Warning for atomic requirement */}
+      {hasUnknownSubmission && (
+        <p role="status" className="p-4 text-sm text-brand-yellow">
+          {t('send.submissionStatusUnknown')}
+        </p>
+      )}
       {callsData.atomicRequired &&
         !requestSmartAccount.supportsAtomicBatch &&
         !loading && (
@@ -890,7 +1150,8 @@ export const SendCalls = () => {
                         callsData.atomicRequired ||
                         loading ||
                         (transactionStatuses &&
-                          transactionStatuses[index]?.status === 'success')
+                          transactionStatuses[index]?.status === 'success') ||
+                        transactionStatuses?.[index]?.status === 'unknown'
                       }
                     />
                     <label
@@ -929,6 +1190,11 @@ export const SendCalls = () => {
                         {transactionStatuses[index].status === 'error' && (
                           <span className="text-xs text-brand-red ml-2">
                             ⚠ {t('send.failed')}
+                          </span>
+                        )}
+                        {transactionStatuses[index].status === 'unknown' && (
+                          <span className="text-xs text-brand-yellow ml-2">
+                            {t('send.pending')}
                           </span>
                         )}
                       </>

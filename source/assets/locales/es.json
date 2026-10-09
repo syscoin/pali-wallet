@@ -113,6 +113,8 @@
     "speedTxMessage": "¿Estás seguro de que quieres acelerar esta transacción?"
   },
   "connections": {
+    "searchAccounts": "Buscar cuentas",
+    "noMatchingAccounts": "No hay cuentas coincidentes",
     "connectedAccount": "CUENTA CONECTADA",
     "onlyConnect": "Conéctate solo con sitios en los que confíes.",
     "learnMore": "Aprende más.",
@@ -139,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Este sitio solicitó direcciones propietarias ECDSA que no son cuentas locales de Pali. Esos propietarios pueden controlar la cuenta inteligente después de la configuración.",
     "prepareSmartAccountExternalEcdsaConfirm": "Entiendo que estos propietarios externos pueden aprobar acciones de la cuenta inteligente.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirma la advertencia sobre propietarios ECDSA externos antes de continuar.",
+    "smartAccountExternalPasskeyUnsupported": "Este sitio proporcionó una clave de acceso externa. Solicita una nueva clave de acceso en Pali para mantener el control de tu cuenta.",
+    "smartAccountPasskeySaveFailed": "Pali no pudo guardar el registro de recuperación de la clave de acceso. Conserva la clave de acceso en tu gestor de credenciales e inténtalo de nuevo.",
     "prepareSmartAccountDetailsKnownSigner": "Si el firmante ya es conocido, Pali puede usarlo al crear la cuenta.",
     "prepareSmartAccountDetailsPasskey": "Para passkeys, Pali crea primero la cuenta y luego agrega la nueva passkey.",
     "prepareSmartAccountStepCredential": "Comprobando método de inicio de sesión...",
@@ -270,6 +274,7 @@
     "gasPrice": "Precio del Gas",
     "internalError": "Ha ocurrido un error interno.",
     "transactionCreationFailed": "Error al crear la transacción: {{error}}. Por favor, inténtalo de nuevo.",
+    "submissionStatusUnknown": "Se desconoce el estado del envío. Para evitar enviarlo dos veces, no se puede reintentar esta llamada aquí. Puedes cerrar esta ventana.",
     "feeRateInsane": "La tarifa {{value}} {{currency}}/byte es extremadamente alta y probablemente será rechazada por la red.",
     "feeRateExtreme": "La tarifa {{value}} {{currency}}/byte es demasiado alta y puede ser rechazada como no estándar.",
     "feeRateHigh": "La tarifa {{value}} {{currency}}/byte es muy alta. Por favor verifica que sea correcta.",
@@ -424,6 +429,9 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletSetupFailed": "No se pudo confirmar la configuración de la billetera. Conserva tu frase de recuperación y comprueba el estado de la billetera.",
+    "walletWindowCheckSlow": "Las ventanas de la billetera tardan más en responder. Intenta comprobarlas de nuevo.",
+    "retryWalletWindowCheck": "Volver a comprobar las ventanas",
     "bgError": "Error de Fondo",
     "bgErrorMessage": "Bloquearemos tu cartera para resolver este problema. No te preocupes, todos tus datos permanecerán seguros.",
     "ledgerBlindSigning": "Por favor, activa el Blind Signing en la configuración de la aplicación Ledger",
@@ -550,6 +558,8 @@
     "allYourSettings": "Todos los ajustes en este dispositivo (tokens personalizados y cuentas importadas) serán eliminados. Esto no mueve ni elimina fondos en la cadena, pero las claves privadas cifradas de las cuentas importadas se borrarán de este dispositivo. Si no tienes la Frase de Recuperación Secreta o esas claves privadas, podrías perder el acceso a esos activos de forma permanente.",
     "removeAccount": "Eliminar cuenta",
     "removeAccountConfirmation": "¿Estás seguro de que deseas eliminar la cuenta {{accountType}} \"{{accountName}}\"? Siempre puedes recrear la cuenta más tarde si es necesario.",
+    "accountRemovalContextChanged": "El contexto de la cuenta ha cambiado. Confirma de nuevo la eliminación.",
+    "networkRemovalIncomplete": "La eliminación de la red no se completó. Revisa la lista de redes e inténtalo de nuevo.",
     "accountRemovedSuccessfully": "Cuenta eliminada exitosamente",
     "failedToRemoveAccount": "Error al eliminar la cuenta",
     "hardwareWalletSuccess": "¡Monedero hardware conectado exitosamente!",
@@ -579,8 +589,10 @@
     "smartAccountInfrastructureReadyStatus": "Lista",
     "smartAccountInfrastructureNotReadyStatus": "No lista",
     "smartAccountInfrastructureInsufficientGas": "Agrega gas nativo a esta billetera y vuelve a intentar la configuración de cuenta inteligente.",
-    "smartAccountInfrastructureDeployFailed": "No se pudo implementar la configuración de cuenta inteligente.",
-    "smartAccountInfrastructureSubmitted": "Implementación de configuración de cuenta inteligente enviada.",
+    "smartAccountInfrastructureCheckBeforeRetry": "La configuración se detuvo o sigue pendiente. Consulta el estado actualizado antes de continuar; las transacciones enviadas aún pueden confirmarse.",
+    "smartAccountInfrastructureCheckingSlow": "La consulta del estado está tardando más de lo esperado. Puedes volver a comprobarlo o salir de esta página.",
+    "smartAccountInfrastructurePending": "La implementación está pendiente. El estado se actualiza automáticamente; puedes salir de esta página.",
+    "smartAccountInfrastructureCheckStatus": "Consultar estado",
     "deploySmartAccountInfrastructure": "Implementar",
     "installed": "Instalado",
     "supported": "Compatible",
@@ -714,6 +726,8 @@
     "verifyTokenExists": "(verificar que existe el token)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali no pudo verificar las entradas de esta transacción para la cuenta aprobada. Comprueba la cuenta y solicita una nueva transacción.",
+    "psbtSigningContextChanged": "La cuenta o la red de tu cartera ha cambiado. Vuelve a solicitar la aprobación.",
     "messageCopied": "Mensaje copiado con éxito",
     "signatureFailed": "La solicitud de firma falló",
     "sorryWeCould": "Lo siento, no pudimos enviar su solicitud. Intente de nuevo más tarde.",

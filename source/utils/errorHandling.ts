@@ -7,6 +7,7 @@ import {
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
 import { sanitizeSyscoinError } from 'utils/syscoinErrorSanitizer';
+import { UTXO_SIGNING_CONTEXT_CHANGED } from 'utils/utxoSigningContext';
 
 export { isSmartAccountPrefundError } from 'utils/smartAccountErrors';
 
@@ -174,6 +175,29 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
+  // The exact upstream messages are retained for IPC implementations that
+  // normalize Error objects to their message and omit custom properties.
+  if (
+    error?.code === 'PSBT_ACCOUNT_SCOPE_MISMATCH' ||
+    [
+      'PSBT input is outside the approved account',
+      'Trezor returned a different unsigned transaction',
+      'Trezor changed an already-finalized input',
+      'Trezor external input has an invalid prevout',
+      'Trezor external input is missing its prevout',
+    ].includes(error?.message)
+  ) {
+    alert.error(t('transactions.psbtAccountScopeError'));
+    return true;
+  }
+  if (
+    error?.code === 'PSBT_SIGNING_CONTEXT_CHANGED' ||
+    error?.message === UTXO_SIGNING_CONTEXT_CHANGED ||
+    error?.message === 'Wallet signing context changed'
+  ) {
+    alert.error(t('transactions.psbtSigningContextChanged'));
+    return true;
+  }
   // Handle structured errors from syscoinjs-lib first
   if (isSyscoinLibError(error) && activeNetwork) {
     const sanitizedError = sanitizeSyscoinError(error);
