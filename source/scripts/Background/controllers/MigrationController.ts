@@ -191,7 +191,7 @@ const migrations: Array<{
     },
   },
   {
-    version: '4.0.71',
+    version: '4.0.72',
     description:
       'Use Routescan for Ethereum and remove retired Base and Arbitrum APIs',
     handler: async (state: any) => {

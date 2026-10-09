@@ -117,7 +117,7 @@ describe('built-in explorer API upgrade', () => {
     expect(state.vaultGlobal.networks.ethereum[42161]).toEqual(
       expectedArbitrum
     );
-    expect(persisted.get('4.0.71')).toBe('migrated');
+    expect(persisted.get('4.0.72')).toBe('migrated');
   });
 
   it.each([
@@ -145,7 +145,7 @@ describe('built-in explorer API upgrade', () => {
     expect(state).toEqual(original);
     expect(persisted.get('state-vault-60')).toEqual({ activeNetwork: network });
     expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
-    expect(chromeStorage.setItem).toHaveBeenCalledWith('4.0.71', 'migrated');
+    expect(chromeStorage.setItem).toHaveBeenCalledWith('4.0.72', 'migrated');
   });
 
   it('accepts the exact legacy API with a trailing slash', async () => {
