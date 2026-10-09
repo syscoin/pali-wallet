@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "이 사이트가 로컬 Pali 계정이 아닌 ECDSA 소유자 주소를 요청했습니다. 설정 후 해당 소유자는 스마트 계정을 제어할 수 있습니다.",
     "prepareSmartAccountExternalEcdsaConfirm": "이 외부 소유자가 스마트 계정 작업을 승인할 수 있음을 이해합니다.",
     "prepareSmartAccountExternalEcdsaRequired": "계속하기 전에 외부 ECDSA 소유자 경고를 확인하세요.",
+    "smartAccountExternalPasskeyUnsupported": "이 사이트에서 외부 패스키를 제공했습니다. 계정 제어권을 유지하려면 대신 Pali에서 새 패스키 생성을 요청하세요.",
+    "smartAccountPasskeySaveFailed": "Pali에서 패스키 복구 기록을 저장하지 못했습니다. 자격 증명 관리자에 패스키를 보관한 채 다시 시도하세요.",
     "prepareSmartAccountDetailsKnownSigner": "서명자가 이미 알려져 있으면 Pali가 계정 생성 시 사용할 수 있습니다.",
     "prepareSmartAccountDetailsPasskey": "passkey의 경우 Pali가 먼저 계정을 만들고, 그다음 새 passkey를 추가합니다.",
     "prepareSmartAccountStepCredential": "로그인 방법 확인 중...",
@@ -427,6 +429,7 @@
     "receipts": "영수증"
   },
   "settings": {
+    "walletSetupFailed": "지갑 설정이 완료되지 않았습니다. 복구 구문을 보관하고 다시 시도하세요.",
     "walletWindowCheckSlow": "지갑 창이 응답하는 데 시간이 더 걸리고 있습니다. 다시 확인해 주세요.",
     "retryWalletWindowCheck": "창 다시 확인",
     "bgError": "백그라운드 오류",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "(토큰 존재 확인)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali에서 이 거래의 입력이 승인된 계정에 해당하는지 확인하지 못했습니다. 계정을 확인하고 새 거래를 요청하세요.",
+    "psbtSigningContextChanged": "지갑 계정 또는 네트워크가 변경되었습니다. 승인을 다시 요청하세요.",
     "messageCopied": "메시지가 성공적으로 복사되었습니다",
     "signatureFailed": "서명 요청 실패",
     "sorryWeCould": "죄송합니다. 요청을 제출할 수 없습니다. 나중에 다시 시도해 주세요.",

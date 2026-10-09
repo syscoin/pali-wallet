@@ -170,6 +170,10 @@ import {
   isTransactionInBlock,
   getTransactionBlockInfo,
 } from 'utils/transactionUtils';
+import {
+  IUtxoSigningContext,
+  UTXO_SIGNING_CONTEXT_CHANGED,
+} from 'utils/utxoSigningContext';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
@@ -2428,6 +2432,11 @@ class MainController {
     password: string,
     phrase: string
   ): Promise<void> {
+    // Creation replaces the existing wallet. Reject a missing required crypto
+    // capability before the reset, not after the old vault has been removed.
+    if (!globalThis.crypto?.subtle || !globalThis.crypto?.getRandomValues) {
+      throw new Error('WebCrypto is required for wallet creation');
+    }
     let creationKeyring: KeyringManager | undefined;
     this.isCreatingWallet = true;
     try {
@@ -4706,6 +4715,7 @@ class MainController {
    * This ensures the transaction completes even if the popup window loses focus
    */
   public async signSendAndSaveTransaction(params: {
+    expectedContext?: IUtxoSigningContext;
     isLedger?: boolean; // For UTXO transactions
     isTrezor?: boolean;
     psbt?: any;
@@ -4715,23 +4725,30 @@ class MainController {
     try {
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
-        const controller = getController();
+        const signing = this.captureUtxoSigningContext(params.expectedContext);
 
         // Step 1: Sign the PSBT
         const signedPsbt = await this.signSyscoinPsbt({
           psbt: params.psbt,
           isTrezor: params.isTrezor,
           isLedger: params.isLedger,
+          expectedContext: signing.context,
         });
+        signing.assertCurrent();
 
         // Step 2: Send the transaction
-        const txResult =
-          await controller.wallet.syscoinTransaction.sendTransaction(
-            signedPsbt
+        const txResult = await signing.transactions.sendTransaction(signedPsbt);
+        // Broadcast acknowledgement is authoritative even if the user changes
+        // context or local history persistence fails afterward.
+        try {
+          signing.assertCurrent();
+          await this.sendAndSaveTransaction(txResult, signing.context.account);
+        } catch (error) {
+          console.warn(
+            '[MainController] Transaction broadcast succeeded; local history update was skipped or failed:',
+            error
           );
-
-        // Step 3: Save the transaction (this will also clear navigation state)
-        await this.sendAndSaveTransaction(txResult);
+        }
 
         return txResult;
       } else {
@@ -7166,14 +7183,80 @@ class MainController {
     return { psbt, summary };
   };
 
-  public signSyscoinPsbt = async (params: {
+  private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
+    const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    const { vault, vaultGlobal } = store.getState();
+    const selected = { ...vault.activeAccount };
+    const account = vault.accounts[selected.type]?.[selected.id];
+    if (!vault.isBitcoinBased || !account)
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const context: IUtxoSigningContext = {
+      account: {
+        id: selected.id,
+        type: selected.type,
+        address: account.address,
+        xpub: account.xpub,
+      },
+      chainId: vault.activeNetwork.chainId,
+      kind: vault.activeNetwork.kind,
+      rpcUrl: vault.activeNetwork.url,
+      slip44: vaultGlobal.activeSlip44,
+    };
+    const matches = (value: IUtxoSigningContext) =>
+      value &&
+      value.account?.id === context.account.id &&
+      value.account?.type === context.account.type &&
+      value.account?.address === context.account.address &&
+      value.account?.xpub === context.account.xpub &&
+      value.chainId === context.chainId &&
+      value.kind === context.kind &&
+      value.rpcUrl === context.rpcUrl &&
+      value.slip44 === context.slip44;
+    if (expected && !matches(expected))
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const assertCurrent = () => {
+      try {
+        this.assertCurrentWalletSession(generation, keyring);
+      } catch {
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      }
+      const current = store.getState();
+      const currentAccount =
+        current.vault.accounts[selected.type]?.[selected.id];
+      if (
+        !current.vault.isBitcoinBased ||
+        current.vault.activeAccount.id !== selected.id ||
+        current.vault.activeAccount.type !== selected.type ||
+        currentAccount?.address !== context.account.address ||
+        currentAccount?.xpub !== context.account.xpub ||
+        current.vault.activeNetwork.chainId !== context.chainId ||
+        current.vault.activeNetwork.kind !== context.kind ||
+        current.vault.activeNetwork.url !== context.rpcUrl ||
+        current.vaultGlobal.activeSlip44 !== context.slip44
+      )
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
+    assertCurrent();
+    return { context, assertCurrent, transactions: keyring.syscoinTransaction };
+  }
+
+  public async signSyscoinPsbt(params: {
+    expectedContext?: IUtxoSigningContext;
     isLedger?: boolean;
     isTrezor?: boolean;
     psbt: any;
-  }) => {
-    await this.verifySyscoinPsbt(params.psbt);
-    return this.syscoinTransaction.signPSBT(params);
-  };
+  }) {
+    const signing = this.captureUtxoSigningContext(params.expectedContext);
+    const verified = await this.verifySyscoinPsbt(params.psbt);
+    signing.assertCurrent();
+    const signed = await signing.transactions.signPSBT({
+      ...params,
+      psbt: PsbtUtils.toPali(verified.psbt),
+    });
+    signing.assertCurrent();
+    return signed;
+  }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = async (psbtOrHex: any, isRawHex = false) => {

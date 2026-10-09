@@ -79,6 +79,26 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     jest.restoreAllMocks();
   });
 
+  it('does not change a PSBT account using caller-provided proprietary address metadata', async () => {
+    mockGetState.mockReturnValue({
+      vault: {
+        accounts: { HDAccount: { 0: accountA, 1: accountB } },
+        activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      },
+    });
+    const context = createContext();
+    context.originalRequest.method = 'sys_sign';
+    context.originalRequest.params = [
+      { psbt: 'opaque-psbt', address: accountB.address },
+    ];
+    const popupSpy = jest.spyOn(requestCoordinator, 'coordinatePopupRequest');
+    const next = jest.fn();
+    await accountSwitchingMiddleware(context, next);
+    expect(popupSpy).not.toHaveBeenCalled();
+    expect(changeAccount).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it('updates the host connection after the user accepts a required account switch', async () => {
     mockGetState.mockReturnValue({
       vault: {

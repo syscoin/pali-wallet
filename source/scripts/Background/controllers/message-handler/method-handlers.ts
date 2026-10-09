@@ -4,9 +4,11 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
+import { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
 import { popupPromise } from './popup-promise';
 import { executeMethodWithCache } from './provider-cache';
@@ -808,7 +810,41 @@ export class SysMethodHandler implements IMethodHandler {
       methodConfig.popupEventName
     ) {
       // For sys methods, params are usually in array form already
-      const popupData = params?.[0] || params;
+      let popupData = params?.[0] || params;
+      if (methodName === 'sign' || methodName === 'signAndSend') {
+        const { dapp } = getController();
+        const connection = dapp.get(host);
+        const account = dapp.getAccount(host);
+        const { vault, vaultGlobal } = store.getState();
+        if (
+          !connection ||
+          !account ||
+          !vault.isBitcoinBased ||
+          vault.activeNetwork.kind !== INetworkType.Syscoin ||
+          vault.activeAccount.id !== connection.accountId ||
+          vault.activeAccount.type !== connection.accountType
+        ) {
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'The connected account is no longer selected'
+            )
+          );
+        }
+        const approvedContext: IUtxoSigningContext = {
+          account: {
+            id: connection.accountId,
+            type: connection.accountType,
+            address: account.address,
+            xpub: account.xpub,
+          },
+          chainId: vault.activeNetwork.chainId,
+          kind: vault.activeNetwork.kind,
+          rpcUrl: vault.activeNetwork.url,
+          slip44: vaultGlobal.activeSlip44,
+        };
+        // Never accept a site's same-named authorization object.
+        popupData = { ...popupData, approvedContext };
+      }
       return requestCoordinator.coordinatePopupRequest(
         context,
         () =>

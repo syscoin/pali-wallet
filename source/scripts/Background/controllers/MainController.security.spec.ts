@@ -49,6 +49,31 @@ describe('wallet authentication session boundaries', () => {
 
   afterEach(() => errorSpy.mockRestore());
 
+  it('does not reset an existing wallet when required cryptography is unavailable', async () => {
+    const originalCrypto = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'crypto'
+    );
+    wallet.resetWalletState = jest.fn();
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined,
+    });
+    try {
+      await expect(
+        wallet.createWalletExclusive('password', 'test seed')
+      ).rejects.toThrow('WebCrypto is required');
+      expect(wallet.resetWalletState).not.toHaveBeenCalled();
+      expect(wallet.getActiveKeyring).not.toHaveBeenCalled();
+    } finally {
+      if (originalCrypto) {
+        Object.defineProperty(globalThis, 'crypto', originalCrypto);
+      } else {
+        delete (globalThis as any).crypto;
+      }
+    }
+  });
+
   it('does not allow the old skip-rate-limit argument to bypass lockout', async () => {
     wallet.checkRateLimit.mockResolvedValue(120);
     await expect(wallet.unlock('wrong password', true)).rejects.toThrow(

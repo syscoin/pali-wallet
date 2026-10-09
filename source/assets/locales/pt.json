@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Este site solicitou endereços de proprietários ECDSA que não são contas locais da Pali. Esses proprietários podem controlar a conta inteligente após a configuração.",
     "prepareSmartAccountExternalEcdsaConfirm": "Entendo que esses proprietários externos podem aprovar ações da conta inteligente.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirme o aviso sobre proprietários ECDSA externos antes de continuar.",
+    "smartAccountExternalPasskeyUnsupported": "Este site forneceu uma chave de acesso externa. Solicite uma nova chave de acesso no Pali para manter o controle da sua conta.",
+    "smartAccountPasskeySaveFailed": "O Pali não conseguiu salvar o registro de recuperação da chave de acesso. Mantenha a chave de acesso no seu gerenciador de credenciais e tente novamente.",
     "prepareSmartAccountDetailsKnownSigner": "Se o assinante já for conhecido, a Pali pode usá-lo ao criar a conta.",
     "prepareSmartAccountDetailsPasskey": "Para passkeys, a Pali cria a conta primeiro e depois adiciona a nova passkey.",
     "prepareSmartAccountStepCredential": "Verificando método de login...",
@@ -427,6 +429,7 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletSetupFailed": "A configuração da carteira não foi concluída. Guarde sua frase de recuperação e tente novamente.",
     "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",
     "retryWalletWindowCheck": "Verificar as janelas novamente",
     "bgError": "Erro em segundo plano",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "(verificar se o token existe)"
   },
   "transactions": {
+    "psbtAccountScopeError": "A Pali não conseguiu verificar as entradas desta transação para a conta aprovada. Verifique a conta e solicite uma nova transação.",
+    "psbtSigningContextChanged": "A conta ou a rede da sua carteira mudou. Solicite a aprovação novamente.",
     "messageCopied": "Mensagem copiada com sucesso",
     "signatureFailed": "Solicitação de assinatura falhou",
     "sorryWeCould": "Desculpe, não conseguimos enviar sua solicitação. Tente novamente mais tarde.",

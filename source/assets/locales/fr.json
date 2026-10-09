@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Ce site a demandé des adresses de propriétaires ECDSA qui ne sont pas des comptes Pali locaux. Ces propriétaires peuvent contrôler le smart account après la configuration.",
     "prepareSmartAccountExternalEcdsaConfirm": "Je comprends que ces propriétaires externes peuvent approuver des actions du smart account.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirmez l’avertissement concernant les propriétaires ECDSA externes avant de continuer.",
+    "smartAccountExternalPasskeyUnsupported": "Ce site a fourni une clé d’accès externe. Demandez plutôt une nouvelle clé d’accès dans Pali pour garder le contrôle de votre compte.",
+    "smartAccountPasskeySaveFailed": "Pali n’a pas pu enregistrer les données de récupération de la clé d’accès. Conservez la clé d’accès dans votre gestionnaire d’identifiants et réessayez.",
     "prepareSmartAccountDetailsKnownSigner": "Si le signataire est déjà connu, Pali peut l’utiliser lors de la création du compte.",
     "prepareSmartAccountDetailsPasskey": "Pour les passkeys, Pali crée d’abord le compte, puis ajoute la nouvelle passkey.",
     "prepareSmartAccountStepCredential": "Vérification de la méthode de connexion...",
@@ -427,6 +429,7 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "walletSetupFailed": "La configuration du portefeuille n’a pas abouti. Conservez votre phrase de récupération et réessayez.",
     "walletWindowCheckSlow": "Les fenêtres du portefeuille mettent plus de temps à répondre. Réessayez de les vérifier.",
     "retryWalletWindowCheck": "Vérifier à nouveau les fenêtres",
     "bgError": "Erreur en arrière-plan",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "(vérifier l'existence du token)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali n’a pas pu vérifier les entrées de cette transaction pour le compte approuvé. Vérifiez le compte et demandez une nouvelle transaction.",
+    "psbtSigningContextChanged": "Le compte ou le réseau de votre portefeuille a changé. Veuillez demander une nouvelle approbation.",
     "messageCopied": "Message copié avec succès",
     "signatureFailed": "La demande de signature a échoué",
     "sorryWeCould": "Désolé, nous n'avons pas pu soumettre votre demande. Réessayez plus tard.",

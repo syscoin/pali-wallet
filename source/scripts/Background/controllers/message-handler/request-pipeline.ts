@@ -1,4 +1,3 @@
-import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
@@ -811,62 +810,6 @@ const extractEvmAddressFromParams = (
   return undefined;
 };
 
-const extractUtxoAddressFromPsbt = async (
-  psbtData: any,
-  accounts: any
-): Promise<string | undefined> => {
-  if (!psbtData || typeof psbtData !== 'object' || !psbtData.psbt) {
-    return undefined;
-  }
-
-  try {
-    const psbtObj = PsbtUtils.fromPali(
-      psbtData,
-      store.getState().vault.activeNetwork
-    );
-
-    // Look through inputs to find the first unsigned input that belongs to our wallet
-    if (psbtObj?.data?.inputs) {
-      for (let i = 0; i < psbtObj.data.inputs.length; i++) {
-        const dataInput = psbtObj.data.inputs[i];
-
-        // Check if this input is already signed (skip if signed)
-        if (dataInput.partialSig && dataInput.partialSig.length > 0) {
-          continue;
-        }
-
-        // Extract address from unknownKeyVals if available
-        if (dataInput.unknownKeyVals && dataInput.unknownKeyVals.length > 0) {
-          // Look for the address in unknownKeyVals
-          for (const kv of dataInput.unknownKeyVals) {
-            if (kv.key?.equals?.(Buffer.from('address'))) {
-              const inputAddress = kv.value.toString();
-
-              // Check if this address belongs to any of our accounts
-              const accountExists = Object.values(accounts).some(
-                (accountsOfType: any) =>
-                  accountsOfType &&
-                  Object.values(accountsOfType).some(
-                    (account: any) => account.address === inputAddress
-                  )
-              );
-
-              if (accountExists) {
-                // Found the first unsigned input that belongs to our wallet
-                return inputAddress;
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (error) {
-    console.error('[Pipeline] Error decoding PSBT:', error);
-  }
-
-  return undefined;
-};
-
 const findAccountByAddress = (
   address: string,
   accounts: any
@@ -958,25 +901,13 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   }
 
   // Check if the request has a 'from' address that we need to validate
-  let requiredFromAddress: string | undefined;
-
-  // Extract 'from' address based on method type
-  requiredFromAddress = extractEvmAddressFromParams(
+  const requiredFromAddress = extractEvmAddressFromParams(
     originalRequest.method,
     originalRequest.params
   );
 
-  // If not EVM, check for UTXO transactions
-  if (
-    !requiredFromAddress &&
-    (originalRequest.method === 'sys_signAndSend' ||
-      originalRequest.method === 'sys_sign')
-  ) {
-    requiredFromAddress = await extractUtxoAddressFromPsbt(
-      originalRequest.params?.[0],
-      accounts
-    );
-  }
+  // PSBT proprietary address/path metadata is untrusted. UTXO requests stay
+  // bound to the site's selected account; the signer authenticates each input.
 
   // If we have a required from address, validate it exists and switch to it if needed
   if (requiredFromAddress) {

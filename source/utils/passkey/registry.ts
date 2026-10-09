@@ -54,12 +54,13 @@ const readJson = <T>(key: string): T | null => {
 const writeJson = (key: string, value: unknown) => {
   const storage = getLocalStorage();
   if (!storage) {
-    return;
+    return false;
   }
   try {
     storage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    // Quota/serialization failures degrade to "no record" behaviour.
+    return false;
   }
 };
 
@@ -97,16 +98,14 @@ export const getPasskeyAccountRecords = (
 export const setActivePasskeyRecord = (
   accountAddress: string,
   profile: IPasskeyCredentialProfile
-) => {
-  writeJson(accountRecordsKey(accountAddress), { active: profile });
-};
+) => writeJson(accountRecordsKey(accountAddress), { active: profile });
 
 export const setPendingPasskeyRecord = (
   accountAddress: string,
   profile: IPasskeyCredentialProfile
 ) => {
   const records = getPasskeyAccountRecords(accountAddress);
-  writeJson(accountRecordsKey(accountAddress), {
+  return writeJson(accountRecordsKey(accountAddress), {
     ...records,
     pending: { createdAt: Date.now(), profile },
   });
@@ -135,12 +134,15 @@ export const clearPendingPasskeyRecord = (accountAddress: string) => {
 export const getPendingCreationPasskey = (): PasskeyPendingRecord | null =>
   readJson<PasskeyPendingRecord>(CREATION_PENDING_KEY);
 
-export const setPendingCreationPasskey = (
-  profile: IPasskeyCredentialProfile
-) => {
+export const setPendingCreationPasskey = (profile: IPasskeyCredentialProfile) =>
   writeJson(CREATION_PENDING_KEY, { createdAt: Date.now(), profile });
-};
 
-export const clearPendingCreationPasskey = () => {
+export const clearPendingCreationPasskey = (credentialId?: string) => {
+  if (
+    credentialId &&
+    getPendingCreationPasskey()?.profile.credentialId !== credentialId
+  ) {
+    return;
+  }
   removeKey(CREATION_PENDING_KEY);
 };

@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "このサイトは、ローカルの Pali アカウントではない ECDSA 所有者アドレスを要求しています。設定後、これらの所有者はスマートアカウントを制御できます。",
     "prepareSmartAccountExternalEcdsaConfirm": "これらの外部所有者がスマートアカウントの操作を承認できることを理解しています。",
     "prepareSmartAccountExternalEcdsaRequired": "続行する前に、外部 ECDSA 所有者の警告を確認してください。",
+    "smartAccountExternalPasskeyUnsupported": "このサイトは外部のパスキーを指定しました。アカウントの管理権を保つには、代わりに Pali で新しいパスキーの作成をリクエストしてください。",
+    "smartAccountPasskeySaveFailed": "Pali はパスキーの復元情報を保存できませんでした。認証情報マネージャーにパスキーを残して、もう一度お試しください。",
     "prepareSmartAccountDetailsKnownSigner": "署名者がすでに分かっている場合、Pali はアカウント作成時にそれを使用できます。",
     "prepareSmartAccountDetailsPasskey": "passkey の場合、Pali は先にアカウントを作成し、その後新しい passkey を追加します。",
     "prepareSmartAccountStepCredential": "ログイン方法を確認中...",
@@ -427,6 +429,7 @@
     "receipts": "レシート"
   },
   "settings": {
+    "walletSetupFailed": "ウォレットの設定が完了しませんでした。リカバリーフレーズを保管して、もう一度お試しください。",
     "walletWindowCheckSlow": "ウォレットのウィンドウの応答に時間がかかっています。もう一度確認してください。",
     "retryWalletWindowCheck": "ウィンドウを再確認",
     "bgError": "バックグラウンドエラー",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "（トークンの存在を確認）"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali は、この取引の入力が承認されたアカウントに対応していることを確認できませんでした。アカウントを確認し、新しい取引をリクエストしてください。",
+    "psbtSigningContextChanged": "ウォレットのアカウントまたはネットワークが変更されました。もう一度承認をリクエストしてください。",
     "messageCopied": "メッセージが正常にコピーされました",
     "signatureFailed": "署名リクエストが失敗しました",
     "sorryWeCould": "申し訳ありません。リクエストを送信できませんでした。後でもう一度お試しください。",

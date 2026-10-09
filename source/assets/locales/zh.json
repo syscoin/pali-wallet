@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "此网站请求了不是本地 Pali 账户的 ECDSA 所有者地址。设置完成后，这些所有者可以控制该智能账户。",
     "prepareSmartAccountExternalEcdsaConfirm": "我理解这些外部所有者可以批准智能账户操作。",
     "prepareSmartAccountExternalEcdsaRequired": "请先确认外部 ECDSA 所有者警告，然后继续。",
+    "smartAccountExternalPasskeyUnsupported": "此网站提供了外部通行密钥。请改为在 Pali 中请求创建新的通行密钥，以保留对账户的控制权。",
+    "smartAccountPasskeySaveFailed": "Pali 无法保存通行密钥恢复记录。请在凭据管理器中保留该通行密钥，然后重试。",
     "prepareSmartAccountDetailsKnownSigner": "如果签名者已知，Pali 可以在创建账户时使用它。",
     "prepareSmartAccountDetailsPasskey": "对于 passkey，Pali 会先创建账户，然后添加新的 passkey。",
     "prepareSmartAccountStepCredential": "正在检查登录方式...",
@@ -427,6 +429,7 @@
     "receipts": "收据"
   },
   "settings": {
+    "walletSetupFailed": "钱包设置未完成。请保管好恢复助记词，然后重试。",
     "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
     "retryWalletWindowCheck": "重新检查窗口",
     "bgError": "背景错误",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "（验证代币存在）"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali 无法验证此交易的输入是否适用于已批准的账户。请检查账户并请求新的交易。",
+    "psbtSigningContextChanged": "您的钱包账户或网络已更改。请重新请求批准。",
     "messageCopied": "消息复制成功",
     "signatureFailed": "签名请求失败",
     "sorryWeCould": "抱歉，我们无法提交您的请求。请稍后再试。",

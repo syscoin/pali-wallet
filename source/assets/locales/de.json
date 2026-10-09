@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Diese Website hat ECDSA-Inhaberadressen angefordert, die keine lokalen Pali-Konten sind. Diese Inhaber können das Smart Account nach der Einrichtung kontrollieren.",
     "prepareSmartAccountExternalEcdsaConfirm": "Ich verstehe, dass diese externen Inhaber Smart-Account-Aktionen genehmigen können.",
     "prepareSmartAccountExternalEcdsaRequired": "Bestätigen Sie die Warnung zu externen ECDSA-Inhabern, bevor Sie fortfahren.",
+    "smartAccountExternalPasskeyUnsupported": "Diese Website hat einen externen Passkey bereitgestellt. Fordere stattdessen einen neuen Passkey in Pali an, um die Kontrolle über dein Konto zu behalten.",
+    "smartAccountPasskeySaveFailed": "Pali konnte den Wiederherstellungseintrag für den Passkey nicht speichern. Behalte den Passkey in deiner Anmeldeinformationsverwaltung und versuche es erneut.",
     "prepareSmartAccountDetailsKnownSigner": "Wenn der Signierer bereits bekannt ist, kann Pali ihn beim Erstellen des Kontos verwenden.",
     "prepareSmartAccountDetailsPasskey": "Bei Passkeys erstellt Pali zuerst das Konto und fügt danach den neuen Passkey hinzu.",
     "prepareSmartAccountStepCredential": "Anmeldemethode wird geprüft...",
@@ -427,6 +429,7 @@
     "receipts": "Belege"
   },
   "settings": {
+    "walletSetupFailed": "Die Wallet-Einrichtung wurde nicht abgeschlossen. Bewahre deine Wiederherstellungsphrase auf und versuche es erneut.",
     "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",
     "retryWalletWindowCheck": "Fenster erneut prüfen",
     "bgError": "Hintergrundfehler",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "(Token-Existenz überprüfen)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali konnte die Eingänge dieser Transaktion für das genehmigte Konto nicht überprüfen. Prüfe das Konto und fordere eine neue Transaktion an.",
+    "psbtSigningContextChanged": "Das Konto oder Netzwerk deiner Wallet hat sich geändert. Bitte fordere die Genehmigung erneut an.",
     "messageCopied": "Nachricht erfolgreich kopiert",
     "signatureFailed": "Signaturanfrage fehlgeschlagen",
     "sorryWeCould": "Entschuldigung, wir konnten Ihre Anfrage nicht übermitteln. Versuchen Sie es später erneut.",

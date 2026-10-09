@@ -18,8 +18,12 @@ jest.mock('components/index', () => ({
   },
 }));
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({
-    state: { phrase: 'test seed', isWalletImported: true },
+  Navigate: () => null,
+}));
+jest.mock('hooks/useOnboardingSecrets', () => ({
+  useOnboardingSecrets: () => ({
+    secrets: { kind: 'import', phrase: 'test seed' },
+    clear: jest.fn(),
   }),
 }));
 jest.mock('hooks/index', () => ({

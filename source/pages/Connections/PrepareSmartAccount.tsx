@@ -24,8 +24,7 @@ import {
   passkeyRegistrationToProfile,
   setActivePasskeyRecord,
   setPendingCreationPasskey,
-  signalAcceptedPasskeyCredentials,
-  signalUnknownPasskeyCredential,
+  setPendingPasskeyRecord,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
 import { encodeP256WebAuthnAuthData } from 'utils/passkey/account';
@@ -140,7 +139,8 @@ const localAccountCandidates = (
 // slot; it is reused (after proving the user still holds it) instead of
 // minting a duplicate passkey on every retry.
 const resolveWalletCreationPasskey = async (
-  label: string
+  label: string,
+  persistenceError: string
 ): Promise<IPasskeyCredentialProfile> => {
   const pending = getPendingCreationPasskey();
   if (pending?.profile?.credentialId && pending.profile.passkeyName === label) {
@@ -158,16 +158,9 @@ const resolveWalletCreationPasskey = async (
           : {}),
       };
     } catch {
-      // The pending credential is gone or the user declined to reuse it:
-      // best-effort cleanup, then fall through to creating a fresh one.
-      await signalUnknownPasskeyCredential(pending.profile.credentialId);
-      clearPendingCreationPasskey();
+      // A cancelled assertion does not prove the credential is unused. Keep
+      // it in the credential manager even if a fresh credential is created.
     }
-  } else if (pending?.profile?.credentialId) {
-    // Orphan from a different creation flow: drop it from the credential
-    // manager so it does not linger as a confusing stale entry.
-    await signalUnknownPasskeyCredential(pending.profile.credentialId);
-    clearPendingCreationPasskey();
   }
 
   const credential = await createPasskeyCredential({
@@ -178,24 +171,26 @@ const resolveWalletCreationPasskey = async (
   const profile = passkeyRegistrationToProfile(credential, label);
   // Persist before any on-chain step so a failed flow retries with the same
   // credential instead of orphaning it and minting another.
-  setPendingCreationPasskey(profile);
+  if (!setPendingCreationPasskey(profile)) {
+    throw new Error(persistenceError);
+  }
   return profile;
 };
 
 const normalizeP256Authenticator = async ({
   chainId,
   label,
-  requested,
+  persistenceError,
 }: {
   chainId: number;
   label: string;
-  requested: { config?: any; id: string };
+  persistenceError: string;
 }): Promise<PreparedAuthenticator> => {
-  const config = hasP256Config(requested.config) ? requested.config : null;
-  const passkeyProfile = config
-    ? undefined
-    : await resolveWalletCreationPasskey(label);
-  const resolvedConfig = config || {
+  const passkeyProfile = await resolveWalletCreationPasskey(
+    label,
+    persistenceError
+  );
+  const resolvedConfig = {
     backupStatus: passkeyProfile?.backupStatus,
     credentialId: passkeyProfile?.credentialId,
     credentialIdHash: passkeyProfile?.credentialIdHash,
@@ -332,6 +327,10 @@ export const PrepareSmartAccount = () => {
     t
   );
   const isRequestedSLHDSA = requestedAuthenticator.id === 'slh-dsa';
+  const hasExternalPasskey =
+    requestedAuthenticator.id === 'p256-webauthn' &&
+    requestedAuthenticator.config !== undefined &&
+    requestedAuthenticator.config !== null;
   const createsWalletPasskey =
     requestedAuthenticator.id === 'p256-webauthn' &&
     !hasP256Config(requestedAuthenticator.config);
@@ -465,6 +464,12 @@ export const PrepareSmartAccount = () => {
         throw new Error(t('connections.smartAccountCompositeUnsupported'));
       }
 
+      if (hasExternalPasskey) {
+        throw new Error(
+          t('connections.smartAccountExternalPasskeyUnsupported')
+        );
+      }
+
       if (
         requestedAuthenticator.id === 'slh-dsa' &&
         (requestedAuthenticator.config || !isSLHDSAOffscreenSignerSupported())
@@ -477,7 +482,7 @@ export const PrepareSmartAccount = () => {
           ? await normalizeP256Authenticator({
               chainId: activeNetwork.chainId,
               label,
-              requested: requestedAuthenticator,
+              persistenceError: t('connections.smartAccountPasskeySaveFailed'),
             })
           : requestedAuthenticator.id === 'ecdsa'
           ? normalizeEcdsaAuthenticator({
@@ -501,6 +506,15 @@ export const PrepareSmartAccount = () => {
       const bootstrapMetadata = account.smartAccount;
       if (!bootstrapMetadata) {
         throw new Error(t('connections.smartAccountPrepareFailed'));
+      }
+
+      // Save the public credential under its account before any installation.
+      // An ambiguous submission or failed hydration must remain recoverable.
+      if (
+        requested?.passkeyProfile &&
+        !setPendingPasskeyRecord(account.address, requested.passkeyProfile)
+      ) {
+        throw new Error(t('connections.smartAccountPasskeySaveFailed'));
       }
 
       await controllerEmitter(
@@ -565,25 +579,22 @@ export const PrepareSmartAccount = () => {
         bootstrapMetadata,
         requested,
       });
+      if (requested.passkeyProfile) {
+        // Confirmation succeeded. Record adoption before the next async read;
+        // if this write fails, keep both pending records for recovery.
+        if (
+          !setActivePasskeyRecord(account.address, requested.passkeyProfile)
+        ) {
+          throw new Error(t('connections.smartAccountPasskeySaveFailed'));
+        }
+        clearPendingCreationPasskey(requested.passkeyProfile.credentialId);
+      }
       setCreationStep('saving');
       await controllerEmitter(
         ['wallet', 'hydrateSmartAccount'],
         [account.id],
         300000
       );
-      if (requested.passkeyProfile) {
-        // The passkey is live on-chain: promote the pending credential to the
-        // account's durable record so future rotations reuse it, and let the
-        // credential manager prune anything else under this user handle.
-        setActivePasskeyRecord(account.address, requested.passkeyProfile);
-        clearPendingCreationPasskey();
-        if (requested.passkeyProfile.userHandle) {
-          await signalAcceptedPasskeyCredentials({
-            credentialIds: [requested.passkeyProfile.credentialId],
-            userHandle: requested.passkeyProfile.userHandle,
-          });
-        }
-      }
       await controllerEmitter(
         ['dapp', 'connect'],
         [
@@ -624,6 +635,7 @@ export const PrepareSmartAccount = () => {
     externalEcdsaAcknowledged,
     handleWalletLockedError,
     hasExternalEcdsaOwners,
+    hasExternalPasskey,
     host,
     label,
     replaceRequestedValidator,
@@ -735,9 +747,12 @@ export const PrepareSmartAccount = () => {
             </div>
           )}
 
-          {error && (
+          {(error || hasExternalPasskey) && (
             <Card type="error">
-              <p className="text-left text-sm font-normal">{error}</p>
+              <p className="text-left text-sm font-normal">
+                {error ||
+                  t('connections.smartAccountExternalPasskeyUnsupported')}
+              </p>
             </Card>
           )}
         </div>
@@ -780,7 +795,9 @@ export const PrepareSmartAccount = () => {
             type="button"
             onClick={approve}
             disabled={
-              loading || (hasExternalEcdsaOwners && !externalEcdsaAcknowledged)
+              loading ||
+              hasExternalPasskey ||
+              (hasExternalEcdsaOwners && !externalEcdsaAcknowledged)
             }
             loading={loading}
           >

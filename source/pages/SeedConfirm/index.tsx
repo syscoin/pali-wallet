@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 
+import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useController } from 'hooks/useController';
+import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { useUtils } from 'hooks/useUtils';
 
 import { ConfirmPhrase } from './ConfirmPhrase';
@@ -14,10 +16,11 @@ export const SeedConfirm = () => {
   const { navigate } = useUtils();
 
   const [passed, setPassed] = useState<boolean>(false);
-
-  const {
-    state: { password, next, createdSeed },
-  }: any = useLocation();
+  const [created, setCreated] = useState(false);
+  const { secrets, clear } = useOnboardingSecrets();
+  const { password, phrase: createdSeed } = secrets;
+  const { state } = useLocation();
+  const next = state?.next === true;
 
   const handleConfirm = async () => {
     if (passed) {
@@ -25,25 +28,17 @@ export const SeedConfirm = () => {
         ['wallet', 'createWallet'],
         [password, createdSeed]
       );
+      setCreated(true);
+      clear();
 
       const confirmed = await refreshControllerStatus();
       navigate(confirmed ? '/home' : '/');
     }
   };
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // If the document becomes hidden, navigate to the home page
-      if (document.visibilityState === 'hidden') {
-        navigate('/home');
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [navigate]);
+  if (created) return <AppLoadingSkeleton />;
+  if (secrets.kind !== 'create' || !password || (next && !createdSeed)) {
+    return <Navigate to="/create-password" replace />;
+  }
 
   return (
     <>
@@ -55,7 +50,7 @@ export const SeedConfirm = () => {
           setPassed={setPassed}
         />
       ) : (
-        <CreatePhrase password={password} />
+        <CreatePhrase />
       )}
     </>
   );

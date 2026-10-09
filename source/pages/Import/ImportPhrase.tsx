@@ -1,6 +1,6 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useController } from 'hooks/useController';
+import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 import { formatSeedPhrase } from 'utils/format';
 
 type SeedValidationType = {
@@ -22,6 +23,14 @@ const ImportPhrase: React.FC = () => {
   const { controllerEmitter } = useController();
   const [form] = useForm();
   const navigate = useNavigate();
+  const { beginImport } = useOnboardingSecrets();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const { t } = useTranslation();
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
   const [visible, setVisible] = useState<boolean>(false);
@@ -44,9 +53,10 @@ const ImportPhrase: React.FC = () => {
   const onSubmit = ({ phrase }: { phrase: string }) => {
     controllerEmitter(['wallet', 'isSeedValid'], [phrase]).then(
       (isSeedValid: boolean) => {
-        if (isSeedValid) {
+        if (isSeedValid && mounted.current) {
+          beginImport(phrase);
           navigate('/create-password-import', {
-            state: { phrase, isWalletImported: true },
+            state: { isWalletImported: true },
           });
         }
       }

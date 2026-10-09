@@ -141,6 +141,8 @@
     "prepareSmartAccountExternalEcdsaWarning": "Este sitio solicitó direcciones propietarias ECDSA que no son cuentas locales de Pali. Esos propietarios pueden controlar la cuenta inteligente después de la configuración.",
     "prepareSmartAccountExternalEcdsaConfirm": "Entiendo que estos propietarios externos pueden aprobar acciones de la cuenta inteligente.",
     "prepareSmartAccountExternalEcdsaRequired": "Confirma la advertencia sobre propietarios ECDSA externos antes de continuar.",
+    "smartAccountExternalPasskeyUnsupported": "Este sitio proporcionó una clave de acceso externa. Solicita una nueva clave de acceso en Pali para mantener el control de tu cuenta.",
+    "smartAccountPasskeySaveFailed": "Pali no pudo guardar el registro de recuperación de la clave de acceso. Conserva la clave de acceso en tu gestor de credenciales e inténtalo de nuevo.",
     "prepareSmartAccountDetailsKnownSigner": "Si el firmante ya es conocido, Pali puede usarlo al crear la cuenta.",
     "prepareSmartAccountDetailsPasskey": "Para passkeys, Pali crea primero la cuenta y luego agrega la nueva passkey.",
     "prepareSmartAccountStepCredential": "Comprobando método de inicio de sesión...",
@@ -427,6 +429,7 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "walletSetupFailed": "La configuración de la billetera no se completó. Conserva tu frase de recuperación e inténtalo de nuevo.",
     "walletWindowCheckSlow": "Las ventanas de la billetera tardan más en responder. Intenta comprobarlas de nuevo.",
     "retryWalletWindowCheck": "Volver a comprobar las ventanas",
     "bgError": "Error de Fondo",
@@ -723,6 +726,8 @@
     "verifyTokenExists": "(verificar que existe el token)"
   },
   "transactions": {
+    "psbtAccountScopeError": "Pali no pudo verificar las entradas de esta transacción para la cuenta aprobada. Comprueba la cuenta y solicita una nueva transacción.",
+    "psbtSigningContextChanged": "La cuenta o la red de tu cartera ha cambiado. Vuelve a solicitar la aprobación.",
     "messageCopied": "Mensaje copiado con éxito",
     "signatureFailed": "La solicitud de firma falló",
     "sorryWeCould": "Lo siento, no pudimos enviar su solicitud. Intente de nuevo más tarde.",

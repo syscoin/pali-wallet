@@ -19,15 +19,11 @@ import {
 import { getAddress } from 'utils/ethersV6Compat';
 import {
   bytesToHex,
-  clearPasskeyAccountRecords,
   createPasskeyCredential,
-  derivePasskeyUserHandle,
   getPasskeyAccountRecords,
   passkeyRegistrationToProfile,
   setActivePasskeyRecord,
   setPendingPasskeyRecord,
-  signalAcceptedPasskeyCredentials,
-  signalUnknownPasskeyCredential,
   signP256WebAuthnActionHash,
   toP256WebAuthnRecoveryTarget,
 } from 'utils/passkey';
@@ -815,8 +811,8 @@ const SmartAccountPolicy = () => {
   };
 
   // Resolves a previously linked passkey for this account, preferring the
-  // local registry (pending first: it marks a created-but-not-yet-on-chain
-  // credential from an interrupted attempt) and falling back to the hydrated
+  // local registry (pending first: an interrupted attempt may already have
+  // installed it on-chain) and falling back to the hydrated
   // on-chain module config (covers wallet reinstall while the p256 module is
   // still installed).
   const resolveExistingPasskeyProfile =
@@ -916,54 +912,38 @@ const SmartAccountPolicy = () => {
             : {}),
           passkeyName: existingProfile.passkeyName || passkeyName,
         };
+        if (!setPendingPasskeyRecord(account.address, reusedProfile)) {
+          throw new Error(t('connections.smartAccountPasskeySaveFailed'));
+        }
         await replaceActiveValidator(
           buildPasskeyAuthenticator(reusedProfile, passkeyName)
         );
-        setActivePasskeyRecord(account.address, reusedProfile);
-        if (reusedProfile.userHandle) {
-          await signalAcceptedPasskeyCredentials({
-            credentialIds: [reusedProfile.credentialId],
-            userHandle: reusedProfile.userHandle,
-          });
+        if (!setActivePasskeyRecord(account.address, reusedProfile)) {
+          throw new Error(t('connections.smartAccountPasskeySaveFailed'));
         }
         alert.success(t('settings.smartAccountAuthenticatorConfigured'));
         return;
       }
 
-      const previousProfile = options.forceCreateNew
-        ? resolveExistingPasskeyProfile()
-        : null;
       const challenge = crypto.getRandomValues(new Uint8Array(32));
-      // Deterministic user handle: a re-created passkey for this account
-      // replaces the stale credential-manager entry instead of stacking a new
-      // one. Safe here because this action is only offered while the passkey
-      // validator is NOT active, so no prior passkey is needed for signing.
-      const userId = await derivePasskeyUserHandle(account.address);
+      // A composite validator or another chain may still require the old key.
+      // A fresh random user handle preserves it even if this rotation fails.
       const credential = await createPasskeyCredential({
         accountName: passkeyName,
         challengeHex: bytesToHex(challenge),
         userDisplayName: passkeyName,
-        userId,
       });
       const profile = passkeyRegistrationToProfile(credential, passkeyName);
       // Persist before the on-chain step: if the rotation fails, the retry
       // reuses this credential instead of creating yet another passkey.
-      setPendingPasskeyRecord(account.address, profile);
+      if (!setPendingPasskeyRecord(account.address, profile)) {
+        throw new Error(t('connections.smartAccountPasskeySaveFailed'));
+      }
       await replaceActiveValidator(
         buildPasskeyAuthenticator(profile, passkeyName)
       );
-      setActivePasskeyRecord(account.address, profile);
-      if (
-        previousProfile?.credentialId &&
-        previousProfile.credentialId !== profile.credentialId
-      ) {
-        await signalUnknownPasskeyCredential(previousProfile.credentialId);
-      }
-      if (profile.userHandle) {
-        await signalAcceptedPasskeyCredentials({
-          credentialIds: [profile.credentialId],
-          userHandle: profile.userHandle,
-        });
+      if (!setActivePasskeyRecord(account.address, profile)) {
+        throw new Error(t('connections.smartAccountPasskeySaveFailed'));
       }
       alert.success(t('settings.smartAccountAuthenticatorConfigured'));
     } catch (error: any) {
@@ -1406,9 +1386,8 @@ const SmartAccountPolicy = () => {
             });
             verifiedReplacement = storedReplacement;
           } catch {
-            if (storedConfig.credentialId) {
-              await signalUnknownPasskeyCredential(storedConfig.credentialId);
-            }
+            // Failed possession is not proof that a previous attempt never
+            // installed this credential. Never delete it from the authenticator.
             clearGuardianReplacementCredential();
           }
         }
@@ -1617,24 +1596,15 @@ const SmartAccountPolicy = () => {
         ],
         300000
       );
-      // The replaced validator's passkey (if any) is now obsolete: signal the
-      // credential manager to drop it and update the local registry to the
-      // replacement credential so future rotations reuse the right passkey.
-      const previousRecords = getPasskeyAccountRecords(smartAccountAddress);
-      const previousCredentialId = previousRecords.active?.credentialId;
-      if (
-        previousCredentialId &&
-        previousCredentialId !== activeGuardianReplacement.credentialId
-      ) {
-        await signalUnknownPasskeyCredential(previousCredentialId);
-      }
+      // Preserve previous credentials: other chains or composite policies can
+      // still reference them even after this account's recovery is finalized.
       if (
         activeGuardianReplacement.kind === 'p256-webauthn' &&
         activeGuardianReplacement.authenticator.id === 'p256-webauthn' &&
         activeGuardianReplacement.credentialId &&
         activeGuardianReplacement.credentialIdHash
       ) {
-        setActivePasskeyRecord(smartAccountAddress, {
+        const saved = setActivePasskeyRecord(smartAccountAddress, {
           backupStatus: activeGuardianReplacement.backupStatus as
             | IPasskeyCredentialProfile['backupStatus']
             | undefined,
@@ -1645,8 +1615,9 @@ const SmartAccountPolicy = () => {
           publicKey: activeGuardianReplacement.authenticator.config.publicKey,
           userHandle: activeGuardianReplacement.userHandle,
         });
-      } else {
-        clearPasskeyAccountRecords(smartAccountAddress);
+        if (!saved) {
+          throw new Error(t('connections.smartAccountPasskeySaveFailed'));
+        }
       }
       clearGuardianReplacementCredential();
       setIsGuardianRecoveryScreenOpen(false);

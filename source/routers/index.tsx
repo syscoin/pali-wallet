@@ -12,6 +12,7 @@ import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { WarningModal } from 'components/Modal';
 import { useController } from 'hooks/useController';
 import { useNavigationState } from 'hooks/useNavigationState';
+import { OnboardingSecretsProvider } from 'hooks/useOnboardingSecrets';
 import { useRouterLogic } from 'routers/useRouterLogic';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -252,7 +253,7 @@ export const Router = () => {
   } = useRouterLogic();
 
   return (
-    <>
+    <OnboardingSecretsProvider>
       <NavigationRestorer />
       <WarningModal
         show={showUtf8ErrorModal}
@@ -405,6 +406,6 @@ export const Router = () => {
           />
         </Routes>
       </Suspense>
-    </>
+    </OnboardingSecretsProvider>
   );
 };
