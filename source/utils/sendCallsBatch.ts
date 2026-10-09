@@ -22,6 +22,10 @@ export interface ISendCallsBatchDescriptor {
   // recorded txHashes do not cover the whole batch.
   failed?: boolean;
   smartAccount: boolean;
+  // A durable begin without explicit completion has an unknown outstanding
+  // send, even when an earlier call in the batch already has a mined hash.
+  submissionCompleted?: boolean;
+  submissionStarted?: boolean;
   txHashes: string[];
 }
 

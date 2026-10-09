@@ -94,6 +94,27 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   return extractErrorMessage(error, 'Unknown error');
 };
 
+const controllerErrorResponse = (error: any) => {
+  const message = normalizeControllerErrorMessage(error);
+  const submission: {
+    transactionHash?: string;
+    transactionNotBroadcast?: boolean;
+  } = {};
+  if (typeof error?.transactionNotBroadcast === 'boolean')
+    submission.transactionNotBroadcast = error.transactionNotBroadcast;
+  if (
+    typeof error?.transactionHash === 'string' &&
+    /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)
+  )
+    submission.transactionHash = error.transactionHash;
+  return {
+    error: Object.keys(submission).length
+      ? { message, ...submission }
+      : message,
+    success: false,
+  };
+};
+
 let controllerMessageListener:
   | Parameters<typeof chrome.runtime.onMessage.addListener>[0]
   | undefined;
@@ -153,10 +174,7 @@ export const handleMasterControllerResponses = (
               sendResponse(error);
             } else {
               // For regular errors, wrap in error object
-              sendResponse({
-                error: normalizeControllerErrorMessage(error),
-                success: false,
-              });
+              sendResponse(controllerErrorResponse(error));
             }
             return false;
           });
@@ -178,10 +196,7 @@ export const handleMasterControllerResponses = (
         sendResponse(error);
       } else {
         // For regular errors, wrap in error object
-        sendResponse({
-          error: normalizeControllerErrorMessage(error),
-          success: false,
-        });
+        sendResponse(controllerErrorResponse(error));
       }
       return false;
     }

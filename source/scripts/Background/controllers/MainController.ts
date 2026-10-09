@@ -5233,7 +5233,7 @@ class MainController {
   /**
    * Persist an EIP-5792 bundle record for a dapp-provided wallet_sendCalls id
    * so wallet_getCallsStatus / wallet_showCallsStatus can resolve it later.
-   * Called by the SendCalls popup after the batch has been broadcast.
+   * Called by the SendCalls popup before submission and as hashes arrive.
    */
   public async recordSendCallsBundle(
     host: string,
@@ -5241,7 +5241,13 @@ class MainController {
     bundle: {
       atomic: boolean;
       chainId: number;
+      previousSubmissionId?: string;
+      reservationId: string;
       smartAccount: boolean;
+      submissionCompleted?: boolean;
+      submissionId?: string;
+      submissionNotBroadcast?: boolean;
+      submissionStarted?: boolean;
       txHashes: string[];
     }
   ): Promise<void> {

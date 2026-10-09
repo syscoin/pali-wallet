@@ -166,13 +166,19 @@ export class WalletMethodHandler implements IMethodHandler {
         // rejected (5720) instead of racing the post-broadcast record.
         const bundleId: string =
           sendCallsRequest.id ?? generateWalletBundleId();
-        const reserved = await reserveSendCallsBundle(host, bundleId, {
-          atomic:
-            Boolean(smartAccountAtomicSupported) ||
-            sendCallsRequest.atomicRequired === true,
-          chainId: activeNetwork?.chainId,
-          smartAccount: Boolean(smartAccountAtomicSupported),
-        });
+        const reservationId = generateWalletBundleId();
+        const reserved = await reserveSendCallsBundle(
+          host,
+          bundleId,
+          {
+            atomic:
+              Boolean(smartAccountAtomicSupported) ||
+              sendCallsRequest.atomicRequired === true,
+            chainId: activeNetwork?.chainId,
+            smartAccount: Boolean(smartAccountAtomicSupported),
+          },
+          reservationId
+        );
         if (!reserved) {
           throw cleanErrorStack(
             ethErrors.rpc.custom({
@@ -193,14 +199,18 @@ export class WalletMethodHandler implements IMethodHandler {
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
-                data: { ...sendCallsRequest, bundleId },
+                data: { ...sendCallsRequest, bundleId, reservationId },
               }),
             methodConfig.popupRoute! // Explicit route parameter
           );
         } catch (error) {
-          // The request never broadcast (rejected/failed): free the id so the
-          // dapp can retry with it. Finalized bundles are never deleted here.
-          await releaseSendCallsBundleReservation(host, bundleId);
+          // Release only approvals that never entered submission. Navigation
+          // can reject the popup while its controller action keeps sending.
+          await releaseSendCallsBundleReservation(
+            host,
+            bundleId,
+            reservationId
+          );
           throw error;
         }
       }

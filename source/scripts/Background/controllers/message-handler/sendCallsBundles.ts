@@ -2,6 +2,7 @@ import { ethErrors } from 'helpers/errors';
 
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
+  CALLS_STATUS_PENDING,
   computeCallsStatusCode,
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
@@ -34,6 +35,10 @@ interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
   createdAt: number;
   // True while the id is reserved but the batch has not been broadcast yet.
   pending?: boolean;
+  reservationId?: string;
+  submissionId?: string;
+  // Persisted before invoking a sender. A missing hash cannot prove that an
+  // interrupted popup failed to broadcast, including after a worker restart.
 }
 
 // All store mutations run through this queue: the background service worker
@@ -54,14 +59,14 @@ type TBundleStore = {
 };
 
 const readBundleStore = (): Promise<TBundleStore> =>
-  new Promise((resolve) => {
+  new Promise((resolve, reject) => {
     chrome.storage.local.get([STORAGE_KEY], (result) => {
       if (chrome.runtime.lastError) {
         console.error(
           '[sendCallsBundles] Failed to read store:',
           chrome.runtime.lastError
         );
-        resolve({});
+        reject(new Error('Unable to read sendCalls bundle reservations'));
         return;
       }
       resolve((result?.[STORAGE_KEY] as TBundleStore) || {});
@@ -69,17 +74,22 @@ const readBundleStore = (): Promise<TBundleStore> =>
   });
 
 const writeBundleStore = (storeData: TBundleStore): Promise<void> =>
-  new Promise((resolve) => {
+  new Promise((resolve, reject) => {
     chrome.storage.local.set({ [STORAGE_KEY]: storeData }, () => {
       if (chrome.runtime.lastError) {
         console.error(
           '[sendCallsBundles] Failed to write store:',
           chrome.runtime.lastError
         );
+        reject(new Error('Unable to persist sendCalls bundle reservations'));
+        return;
       }
       resolve();
     });
   });
+
+const hasUnresolvedSubmission = (bundle: IStoredSendCallsBundle) =>
+  bundle.submissionStarted && !bundle.submissionCompleted;
 
 export const isValidAppProvidedBundleId = (id: unknown): id is string =>
   typeof id === 'string' &&
@@ -111,6 +121,8 @@ export const getStoredSendCallsBundle = async (
     chainId: bundle.chainId,
     failed: bundle.failed,
     smartAccount: bundle.smartAccount,
+    submissionCompleted: bundle.submissionCompleted,
+    submissionStarted: bundle.submissionStarted,
     txHashes: bundle.txHashes,
   };
 };
@@ -121,12 +133,23 @@ const evictAndWrite = async (
   hostBundles: { [id: string]: IStoredSendCallsBundle },
   now: number
 ): Promise<void> => {
-  // Evict expired entries, then the oldest beyond the per-host cap.
+  // Unknown submissions must keep their duplicate-id protection until an
+  // outcome is recorded. Age or other requests cannot prove they never sent.
   const entries = Object.entries(hostBundles).filter(
-    ([, bundle]) => now - bundle.createdAt <= BUNDLE_TTL_MS
+    ([, bundle]) =>
+      hasUnresolvedSubmission(bundle) || now - bundle.createdAt <= BUNDLE_TTL_MS
   );
   entries.sort(([, a], [, b]) => b.createdAt - a.createdAt);
-  storeData[host] = Object.fromEntries(entries.slice(0, MAX_BUNDLES_PER_HOST));
+  const unknown = entries.filter(([, bundle]) =>
+    hasUnresolvedSubmission(bundle)
+  );
+  const remaining = entries.filter(
+    ([, bundle]) => !hasUnresolvedSubmission(bundle)
+  );
+  storeData[host] = Object.fromEntries([
+    ...unknown,
+    ...remaining.slice(0, Math.max(0, MAX_BUNDLES_PER_HOST - unknown.length)),
+  ]);
   await writeBundleStore(storeData);
 };
 
@@ -136,21 +159,32 @@ const evictAndWrite = async (
 export const reserveSendCallsBundle = (
   host: string,
   id: string,
-  descriptor: Omit<ISendCallsBatchDescriptor, 'txHashes'>
+  descriptor: Omit<ISendCallsBatchDescriptor, 'txHashes'>,
+  reservationId: string
 ): Promise<boolean> =>
   withStoreLock(async () => {
     const storeData = await readBundleStore();
     const now = Date.now();
     const hostBundles = storeData[host] || {};
     const existing = hostBundles[id];
-    if (existing && now - existing.createdAt <= BUNDLE_TTL_MS) {
+    if (
+      existing &&
+      (hasUnresolvedSubmission(existing) ||
+        now - existing.createdAt <= BUNDLE_TTL_MS)
+    ) {
       return false;
     }
+    if (
+      Object.values(hostBundles).filter(hasUnresolvedSubmission).length >=
+      MAX_BUNDLES_PER_HOST
+    )
+      throw new Error('Too many unresolved sendCalls bundles for this app');
     hostBundles[id] = {
       ...descriptor,
       txHashes: [],
       createdAt: now,
       pending: true,
+      reservationId,
     };
     await evictAndWrite(storeData, host, hostBundles, now);
     return true;
@@ -161,28 +195,86 @@ export const reserveSendCallsBundle = (
 export const recordSendCallsBundle = (
   host: string,
   id: string,
-  descriptor: ISendCallsBatchDescriptor
+  descriptor: ISendCallsBatchDescriptor & {
+    previousSubmissionId?: string;
+    reservationId: string;
+    submissionId?: string;
+    submissionNotBroadcast?: boolean;
+    submissionStarted?: boolean;
+  }
 ): Promise<void> =>
   withStoreLock(async () => {
     const storeData = await readBundleStore();
     const now = Date.now();
     const hostBundles = storeData[host] || {};
-    const createdAt = hostBundles[id]?.createdAt ?? now;
-    hostBundles[id] = { ...descriptor, createdAt, pending: false };
+    const existing = hostBundles[id];
+    if (!existing || existing.reservationId !== descriptor.reservationId)
+      throw new Error('sendCalls bundle reservation is unavailable');
+    if (existing.chainId !== descriptor.chainId)
+      throw new Error('sendCalls bundle network changed');
+    if (descriptor.submissionStarted) {
+      if (!descriptor.submissionId)
+        throw new Error('sendCalls submission identity is unavailable');
+      if (descriptor.submissionId !== existing.submissionId) {
+        if (descriptor.previousSubmissionId !== existing.submissionId)
+          throw new Error('sendCalls submission changed');
+        hostBundles[id] = {
+          ...existing,
+          submissionId: descriptor.submissionId,
+          submissionStarted: true,
+          submissionCompleted: false,
+        };
+      } else hostBundles[id] = { ...existing, submissionStarted: true };
+      await evictAndWrite(storeData, host, hostBundles, now);
+      return;
+    }
+    if (descriptor.submissionId !== existing.submissionId)
+      throw new Error('sendCalls submission changed');
+    if (descriptor.submissionNotBroadcast) {
+      if (existing.txHashes.length === 0 && !existing.submissionCompleted)
+        hostBundles[id] = {
+          ...existing,
+          failed: true,
+          pending: true,
+          submissionStarted: false,
+        };
+    } else {
+      hostBundles[id] = {
+        ...descriptor,
+        failed: existing.submissionCompleted
+          ? existing.failed
+          : descriptor.failed,
+        createdAt: existing?.createdAt ?? now,
+        pending: false,
+        submissionCompleted:
+          existing.submissionCompleted ||
+          descriptor.submissionCompleted === true,
+        submissionStarted: existing?.submissionStarted,
+        txHashes: Array.from(
+          new Set([...(existing?.txHashes || []), ...descriptor.txHashes])
+        ),
+      };
+    }
     await evictAndWrite(storeData, host, hostBundles, now);
   });
 
-// Drops a reservation whose request failed before broadcast (user rejection,
-// popup error). Only removes records that never received transaction hashes
-// so a finalized bundle can never be deleted by a late cleanup.
+// Only an unstarted approval can be released. Popup closure/navigation after
+// submission began is ambiguous even when no hash reached the component.
 export const releaseSendCallsBundleReservation = (
   host: string,
-  id: string
+  id: string,
+  reservationId: string
 ): Promise<void> =>
   withStoreLock(async () => {
     const storeData = await readBundleStore();
     const bundle = storeData[host]?.[id];
-    if (!bundle || !bundle.pending || bundle.txHashes.length > 0) {
+    if (
+      !bundle ||
+      bundle.reservationId !== reservationId ||
+      (!bundle.pending && !bundle.failed) ||
+      bundle.submissionStarted ||
+      bundle.txHashes.length > 0
+    ) {
       return;
     }
     delete storeData[host][id];
@@ -261,12 +353,15 @@ export const resolveCallsStatus = async (
       id,
       chainId: `0x${descriptor.chainId.toString(16)}`,
       atomic: descriptor.atomic,
-      status: computeCallsStatusCode({
-        atomic: descriptor.atomic,
-        receiptStatuses: [],
-        smartAccount: descriptor.smartAccount,
-        someCallsFailedToBroadcast: descriptor.failed,
-      }),
+      status:
+        descriptor.submissionStarted && !descriptor.submissionCompleted
+          ? CALLS_STATUS_PENDING
+          : computeCallsStatusCode({
+              atomic: descriptor.atomic,
+              receiptStatuses: [],
+              smartAccount: descriptor.smartAccount,
+              someCallsFailedToBroadcast: descriptor.failed,
+            }),
     };
   }
 
@@ -307,13 +402,16 @@ export const resolveCallsStatus = async (
     }
   }
 
-  const status = computeCallsStatusCode({
-    atomic: descriptor.atomic,
-    receiptStatuses,
-    smartAccount: descriptor.smartAccount,
-    someCallsFailedToBroadcast: descriptor.failed,
-    smartAccountInnerSuccess,
-  });
+  const status =
+    descriptor.submissionStarted && !descriptor.submissionCompleted
+      ? CALLS_STATUS_PENDING
+      : computeCallsStatusCode({
+          atomic: descriptor.atomic,
+          receiptStatuses,
+          smartAccount: descriptor.smartAccount,
+          someCallsFailedToBroadcast: descriptor.failed,
+          smartAccountInnerSuccess,
+        });
 
   const minedReceipts = receipts
     .filter((receipt) => Boolean(receipt))
