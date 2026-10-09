@@ -50,6 +50,13 @@ const vault = (incomplete = false) => ({
   activeNetwork: SYSCOIN_UTXO_MAINNET_NETWORK,
 });
 
+const emptyVault = () => ({
+  ...vault(),
+  accounts: { HDAccount: {} },
+  accountAssets: { HDAccount: {} },
+  accountTransactions: { HDAccount: {} },
+});
+
 describe('non-destructive account recovery boundaries', () => {
   let wallet: any;
   let keyring: any;
@@ -307,7 +314,195 @@ describe('non-destructive account recovery boundaries', () => {
     expect(keyring.setSignerNetwork).not.toHaveBeenCalled();
   });
 
-  it.each(['lock', 'metadata arrival', 'account arrival'])(
+  it('finishes a genuinely empty target when a newer queued network request supersedes its first derivation', async () => {
+    currentState.vault = vault();
+    wallet.keyrings = new Map([[57, keyring]]);
+    wallet.getActiveKeyring.mockImplementation(() =>
+      wallet.keyrings.get(currentState.vaultGlobal.activeSlip44)
+    );
+    wallet.stopAllRapidPolling = jest.fn();
+    wallet.cancellablePromises = {};
+    wallet.assetUpdateRequestId = 0;
+    wallet.cancelActiveBalanceUpdate = jest.fn();
+    wallet.handleNetworkChangeError = jest.fn();
+    const committedVaults: any[] = [];
+    wallet.handleNetworkChangeSuccess = jest.fn(async () => {
+      committedVaults.push(JSON.parse(JSON.stringify(currentState.vault)));
+    });
+    // Keep public request cancellation and the production network-switch mutex;
+    // omit unrelated network-quality/notification work around configuration.
+    wallet.setActiveNetworkLogic = (
+      network: any,
+      resolve: (value: any) => void,
+      reject: (error: any) => void,
+      isCurrent: () => boolean
+    ) => wallet.setSignerNetwork(network, isCurrent).then(resolve, reject);
+    (store.dispatch as jest.Mock).mockImplementation((action: any) => {
+      if (action.type === 'vaultGlobal/setActiveSlip44') {
+        currentState.vaultGlobal.activeSlip44 = action.payload;
+      } else if (action.type === 'vault/createAccount') {
+        const { account, accountType } = action.payload;
+        currentState.vault.accounts[accountType][account.id] = account;
+      } else if (action.type === 'vault/setActiveAccount') {
+        currentState.vault.activeAccount = action.payload;
+      }
+      return action;
+    });
+    let finishFirstDerivation!: (value: any) => void;
+    const firstDerivation = new Promise((resolve) => {
+      finishFirstDerivation = resolve;
+    });
+    let started!: () => void;
+    const derivationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const firstAccount = {
+      id: 0,
+      address: 'derived-address',
+      xpub: 'derived-public-key',
+    };
+    const targetKeyring = {
+      isUnlocked: jest.fn().mockReturnValue(false),
+      lockWallet: jest.fn(),
+      setSignerNetwork: jest.fn().mockResolvedValue({ success: true }),
+      createFirstAccount: jest
+        .fn()
+        .mockImplementationOnce(() => {
+          started();
+          return firstDerivation;
+        })
+        .mockResolvedValue(firstAccount),
+    };
+    wallet.createKeyringOnDemand = jest.fn(() => targetKeyring);
+    keyring.transferSessionTo.mockImplementation(() => {
+      keyring.isUnlocked.mockReturnValue(false);
+      targetKeyring.isUnlocked.mockReturnValue(true);
+    });
+    const loadTarget = jest
+      .spyOn(storeModule, 'loadAndActivateSlip44Vault')
+      .mockImplementation(async () => {
+        currentState.vault = {
+          ...vault(),
+          accounts: { HDAccount: {} },
+          accountAssets: { HDAccount: {} },
+          accountTransactions: { HDAccount: {} },
+          activeNetwork: SYSCOIN_MAINNET_NETWORK,
+        };
+        return false;
+      });
+    const first = wallet.setActiveNetwork(SYSCOIN_MAINNET_NETWORK);
+    const firstOutcome = first.then(
+      () => 'unexpected success',
+      (error: any) => error
+    );
+    await derivationStarted;
+    expect(currentState.vaultGlobal.activeSlip44).toBe(60);
+    const secondNetwork = { ...SYSCOIN_MAINNET_NETWORK, chainId: 137 };
+    const second = wallet.setActiveNetwork(secondNetwork);
+    finishFirstDerivation(firstAccount);
+    expect(await firstOutcome).toBe('Network change cancelled');
+    await expect(second).resolves.toMatchObject({ networkVersion: 137 });
+    expect(loadTarget).toHaveBeenCalledTimes(1);
+    expect(targetKeyring.createFirstAccount).toHaveBeenCalledTimes(2);
+    expect(targetKeyring.setSignerNetwork).toHaveBeenCalledTimes(1);
+    expect(targetKeyring.setSignerNetwork).toHaveBeenCalledWith(secondNetwork);
+    expect(targetKeyring.lockWallet).not.toHaveBeenCalled();
+    expect(currentState.vault.accounts.HDAccount).toEqual({ 0: firstAccount });
+    expect(committedVaults).toHaveLength(1);
+    expect(committedVaults[0].accounts.HDAccount).toEqual({ 0: firstAccount });
+  });
+
+  it.each([
+    'orphaned metadata',
+    'locked target',
+    'missing selected account',
+    'malformed selected account',
+  ])('refuses empty-target initialization with %s', async (damage) => {
+    currentState.vault = emptyVault();
+    wallet.keyrings = new Map([[57, keyring]]);
+    keyring.setSignerNetwork = jest.fn().mockResolvedValue({ success: true });
+    if (damage === 'orphaned metadata') {
+      currentState.vault.accountAssets.HDAccount[0] = {
+        ethereum: [{ symbol: 'SAVED' }],
+        syscoin: [],
+      };
+    } else if (damage === 'locked target') {
+      keyring.isUnlocked.mockReturnValue(false);
+    } else if (damage === 'missing selected account') {
+      currentState.vault.activeAccount.id = 7;
+    } else {
+      currentState.vault.activeAccount = {
+        id: 2,
+        type: KeyringAccountType.Imported,
+      };
+      currentState.vault.accounts.Imported = { 2: { id: 2, address: '' } };
+    }
+    const snapshot = JSON.stringify(currentState.vault);
+    await expect(
+      wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
+    ).rejects.toThrow(
+      damage === 'locked target'
+        ? 'Wallet session changed'
+        : 'Account data is incomplete'
+    );
+    expect(JSON.stringify(currentState.vault)).toBe(snapshot);
+    expect(keyring.createFirstAccount).not.toHaveBeenCalled();
+    expect(keyring.setSignerNetwork).not.toHaveBeenCalled();
+    expect(keyring.lockWallet).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    KeyringAccountType.Imported,
+    KeyringAccountType.Ledger,
+    KeyringAccountType.Trezor,
+  ])(
+    'preserves a valid selected %s account without manufacturing an HD identity',
+    async (accountType) => {
+      currentState.vault = emptyVault();
+      currentState.vault.accounts[accountType] = {
+        2: { id: 2, address: 'saved-non-hd-address', label: 'Saved identity' },
+      };
+      currentState.vault.activeAccount = { id: 2, type: accountType };
+      wallet.keyrings = new Map([[57, keyring]]);
+      keyring.setSignerNetwork = jest.fn().mockResolvedValue({ success: true });
+      const snapshot = JSON.stringify(currentState.vault);
+      await expect(
+        wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
+      ).resolves.toBeUndefined();
+      expect(JSON.stringify(currentState.vault)).toBe(snapshot);
+      expect(keyring.createFirstAccount).not.toHaveBeenCalled();
+      expect(keyring.setSignerNetwork).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each(['backend failure', 'incomplete derived identity'])(
+    'does not report empty-target success after %s',
+    async (failure) => {
+      currentState.vault = emptyVault();
+      wallet.keyrings = new Map([[57, keyring]]);
+      keyring.setSignerNetwork = jest.fn().mockResolvedValue({ success: true });
+      if (failure === 'backend failure') {
+        keyring.createFirstAccount.mockRejectedValue(
+          new Error('backend unavailable')
+        );
+      } else {
+        keyring.createFirstAccount.mockResolvedValue({
+          id: 0,
+          address: 'new-address',
+          xpub: '',
+        });
+      }
+      const snapshot = JSON.stringify(currentState.vault);
+      await expect(
+        wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
+      ).rejects.toThrow();
+      expect(JSON.stringify(currentState.vault)).toBe(snapshot);
+      expect(keyring.setSignerNetwork).not.toHaveBeenCalled();
+      expect(keyring.lockWallet).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['lock', 'metadata arrival', 'account arrival', 'active selection'])(
     'does not overwrite the current vault after %s during network account derivation',
     async (change) => {
       currentState.vault = vault();
@@ -364,6 +559,14 @@ describe('non-destructive account recovery boundaries', () => {
         currentState.vault.accountAssets.HDAccount[0] = {
           ethereum: [{ symbol: 'ARRIVED' }],
           syscoin: [],
+        };
+      } else if (change === 'active selection') {
+        currentState.vault.accounts.Imported = {
+          2: { id: 2, address: 'selected-imported-address' },
+        };
+        currentState.vault.activeAccount = {
+          id: 2,
+          type: KeyringAccountType.Imported,
         };
       } else {
         currentState.vault.accounts.HDAccount[0] = {

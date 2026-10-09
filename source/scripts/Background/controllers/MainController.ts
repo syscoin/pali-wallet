@@ -1075,66 +1075,6 @@ class MainController {
           if (isSwitchingSlip44) {
             store.dispatch(setActiveSlip44(slip44));
           }
-
-          // Create accounts if no existing vault state OR if vault exists but has no accounts
-          let shouldCreateFirstAccount = !hasExistingVaultState;
-
-          if (hasExistingVaultState) {
-            // Check if the vault has any HD accounts
-            const { accounts } = store.getState().vault;
-            const hasHDAccounts =
-              accounts.HDAccount && Object.keys(accounts.HDAccount).length > 0;
-
-            if (!hasHDAccounts) {
-              console.log(
-                '[MainController] Existing vault state found but no HD accounts exist, will create first account'
-              );
-              shouldCreateFirstAccount = true;
-            }
-          }
-
-          if (shouldCreateFirstAccount) {
-            // Ensure the keyring is properly unlocked before creating account
-            if (!targetKeyring.isUnlocked()) {
-              throw new Error(
-                `Target keyring is not unlocked after session transfer! This should not happen.`
-              );
-            }
-
-            // Create first account
-            // Session data was already transferred, so we can create the first account directly
-            const account = await targetKeyring.createFirstAccount();
-            assertCurrentSwitch();
-            this.assertCurrentWalletSession(switchGeneration, targetKeyring);
-            assertCompleteHDAccountData({ 0: account });
-            // Derivation may await the backend. Never write into a changed or
-            // newly populated vault when it eventually completes.
-            const currentVault = store.getState().vault;
-            assertCompleteHDAccountData(currentVault.accounts.HDAccount);
-            if (Object.keys(currentVault.accounts.HDAccount).length > 0) {
-              throw new AccountRecoveryRequiredError();
-            }
-            assertEmptyHDAccountMetadata(currentVault);
-            console.log(
-              '[MainController] Created new keyring account',
-              account.address
-            );
-
-            store.dispatch(
-              createAccount({
-                account: account,
-                accountType: KeyringAccountType.HDAccount,
-              })
-            );
-
-            // This ensures setSignerNetwork() finds the correct account
-            store.dispatch(
-              setActiveAccount({
-                id: account.id,
-                type: KeyringAccountType.HDAccount,
-              })
-            );
-          }
         } catch (error) {
           console.error(`[MainController] Error transferring session:`, error);
           throw new Error(
@@ -1155,6 +1095,66 @@ class MainController {
           );
         }
         // For same slip44, the keyring should already be unlocked from previous operations
+      }
+
+      // A superseded switch may have transferred the sole session and committed
+      // activeSlip44 before its first derivation finished. The next request must
+      // finish that genuinely empty HD0 target before configuring its provider.
+      const targetVault = store.getState().vault;
+      assertCompleteHDAccountData(targetVault.accounts.HDAccount);
+      const expectedSelection = targetVault.activeAccount;
+      const selectedAccount =
+        targetVault.accounts[expectedSelection.type]?.[expectedSelection.id];
+      const shouldCreateFirstAccount =
+        Object.keys(targetVault.accounts.HDAccount).length === 0 &&
+        (needsSessionTransfer ||
+          (!isSwitchingSlip44 &&
+            targetVault.activeAccount.type === KeyringAccountType.HDAccount &&
+            targetVault.activeAccount.id === 0));
+
+      if (
+        Object.keys(targetVault.accounts.HDAccount).length === 0 &&
+        !shouldCreateFirstAccount &&
+        (!selectedAccount ||
+          selectedAccount.id !== expectedSelection.id ||
+          typeof selectedAccount.address !== 'string' ||
+          selectedAccount.address.trim() === '')
+      ) {
+        throw new AccountRecoveryRequiredError();
+      }
+
+      if (shouldCreateFirstAccount) {
+        assertCurrentSwitch();
+        this.assertCurrentWalletSession(switchGeneration, targetKeyring);
+        assertEmptyHDAccountMetadata(targetVault);
+        const account = await targetKeyring.createFirstAccount();
+        assertCurrentSwitch();
+        this.assertCurrentWalletSession(switchGeneration, targetKeyring);
+        assertCompleteHDAccountData({ 0: account });
+        // Never assign a delayed identity to newly arrived records or metadata.
+        const currentVault = store.getState().vault;
+        assertCompleteHDAccountData(currentVault.accounts.HDAccount);
+        if (
+          Object.keys(currentVault.accounts.HDAccount).length > 0 ||
+          currentVault.activeAccount.type !== expectedSelection.type ||
+          currentVault.activeAccount.id !== expectedSelection.id
+        ) {
+          throw new AccountRecoveryRequiredError();
+        }
+        assertEmptyHDAccountMetadata(currentVault);
+
+        store.dispatch(
+          createAccount({
+            account,
+            accountType: KeyringAccountType.HDAccount,
+          })
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: account.id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
       }
 
       assertCurrentSwitch();
