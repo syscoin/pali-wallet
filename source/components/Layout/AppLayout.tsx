@@ -189,7 +189,10 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         return t('settings.manageAccounts');
       if (path === '/settings/edit-account') return t('settings.editAccount');
 
-      if (path === '/settings/account/new') return t('settings.createAccount');
+      if (path === '/settings/account/new')
+        return locationState?.smartAccountOnly === true
+          ? t('settings.createSmartAccount')
+          : t('settings.createAccount');
       if (path === '/settings/account/smart-account-policy')
         return t('settings.smartAccountAccountPolicy');
       if (path === '/settings/account/import')

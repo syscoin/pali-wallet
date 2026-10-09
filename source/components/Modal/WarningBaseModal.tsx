@@ -138,7 +138,10 @@ export const CreatedAccountSuccessfully = ({
           id="account-created-ok-btn"
           type="button"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
+          onClick={() => {
+            if (onClose) onClose();
+            else navigate('/home');
+          }}
         >
           {t('buttons.ok')}
         </Button>

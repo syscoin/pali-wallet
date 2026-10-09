@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button, Card, Icon } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
+import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
 import { navigateBack } from 'utils/navigationState';
@@ -16,10 +17,13 @@ const CreateAccount = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const smartCreationPending = useRef(false);
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
   const location = useLocation();
+  const smartAccountOnly = location.state?.smartAccountOnly === true;
+  const { isContextChanging } = usePageLoadingState();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -52,6 +56,14 @@ const CreateAccount = () => {
   };
 
   const createSmartAccount = async () => {
+    if (
+      loading ||
+      smartCreationPending.current ||
+      isContextChanging ||
+      !isSmartAccountSupported
+    )
+      return;
+    smartCreationPending.current = true;
     setLoading(true);
     setError('');
 
@@ -76,6 +88,7 @@ const CreateAccount = () => {
         console.error('Error creating smart account:', caughtError);
       }
     } finally {
+      smartCreationPending.current = false;
       setLoading(false);
     }
   };
@@ -99,7 +112,7 @@ const CreateAccount = () => {
           className="flex flex-col gap-8 items-center justify-center text-center w-full"
           name="newaccount"
           autoComplete="off"
-          onFinish={onSubmit}
+          onFinish={smartAccountOnly ? createSmartAccount : onSubmit}
         >
           <Form.Item
             name="label"
@@ -129,11 +142,11 @@ const CreateAccount = () => {
             </Card>
           )}
 
-          {isSmartAccountSupported && (
+          {isSmartAccountSupported && !smartAccountOnly && (
             <button
               type="button"
               className="flex w-full cursor-pointer items-center justify-between gap-4 rounded-lg bg-alpha-whiteAlpha100 px-4 py-4 text-left hover:bg-brand-blue500 hover:bg-opacity-20"
-              disabled={loading}
+              disabled={loading || isContextChanging}
               onClick={createSmartAccount}
             >
               <span className="flex min-w-0 flex-1 items-center gap-3">
@@ -168,12 +181,18 @@ const CreateAccount = () => {
               variant="neutral"
               className="text-sm text-brand-royalblue"
               type="submit"
-              disabled={loading}
+              disabled={
+                loading ||
+                (smartAccountOnly &&
+                  (isContextChanging || !isSmartAccountSupported))
+              }
               loading={loading}
               id="create-btn"
               fullWidth
             >
-              {t('buttons.create')}
+              {smartAccountOnly
+                ? t('settings.createSmartAccount')
+                : t('buttons.create')}
             </Button>
           </div>
         </Form>

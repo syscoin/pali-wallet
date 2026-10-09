@@ -37,6 +37,8 @@ import {
 import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
+import SmartAccountEntry from './SmartAccountEntry';
+
 // ---------------------------------------------------------------------------
 // Smart Account hub: the 2-click home for everything smart-account.
 //  - sign-in method (active validator) + manage link into the policy flows
@@ -498,22 +500,7 @@ const SmartAccountHub = () => {
   ]);
 
   if (!isSmartAccount) {
-    return (
-      <div className="flex flex-col items-center gap-4 p-6 text-brand-white">
-        <Icon name="wallet" size={28} />
-        <p className="text-sm text-center text-brand-gray200">
-          {t('smartAccountHub.notSmartAccount')}
-        </p>
-        <Button
-          variant="neutral"
-          className="text-sm text-brand-royalblue"
-          type="button"
-          onClick={() => navigate('/settings/manage-accounts')}
-        >
-          {t('smartAccountHub.chooseAccount')}
-        </Button>
-      </div>
-    );
+    return <SmartAccountEntry />;
   }
 
   return (
