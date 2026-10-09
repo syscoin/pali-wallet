@@ -2,6 +2,7 @@ jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: {
     cleanup: jest.fn(),
+    notifyAccountChange: jest.fn(),
     notifyNetworkChange: jest.fn(),
   },
 }));
@@ -106,6 +107,60 @@ describe('non-destructive account recovery boundaries', () => {
     jest.clearAllTimers();
     jest.useRealTimers();
     jest.restoreAllMocks();
+  });
+
+  it('clears its account-switch guard if synchronous persistence rejects', async () => {
+    wallet.stopAllRapidPolling = jest.fn();
+    wallet.cancellablePromises = {};
+    wallet.assetUpdateRequestId = 0;
+    wallet.cancelActiveBalanceUpdate = jest.fn();
+    wallet.performPostAccountSwitchOperations = jest.fn();
+    (store.dispatch as jest.Mock).mockImplementation((action: any) => {
+      if (action.type === 'vaultGlobal/setIsSwitchingAccount')
+        currentState.vaultGlobal.isSwitchingAccount = action.payload;
+      return action;
+    });
+    let failSave!: (error: Error) => void;
+    let saving!: () => void;
+    const started = new Promise<void>((resolve) => (saving = resolve));
+    wallet.saveWalletState.mockImplementation(() => {
+      saving();
+      return new Promise((_, reject) => (failSave = reject));
+    });
+
+    const switching = wallet.setAccount(7, KeyringAccountType.HDAccount, true);
+    const rejected = expect(switching).rejects.toThrow('Storage unavailable');
+    await started;
+    expect(currentState.vaultGlobal.isSwitchingAccount).toBe(true);
+    failSave(new Error('Storage unavailable'));
+    await rejected;
+    expect(currentState.vaultGlobal.isSwitchingAccount).toBe(false);
+    expect(wallet.performPostAccountSwitchOperations).not.toHaveBeenCalled();
+  });
+
+  it('releases its account-switch guard before waiting for background refresh', async () => {
+    wallet.stopAllRapidPolling = jest.fn();
+    wallet.cancellablePromises = {};
+    wallet.assetUpdateRequestId = 0;
+    wallet.cancelActiveBalanceUpdate = jest.fn();
+    (store.dispatch as jest.Mock).mockImplementation((action: any) => {
+      if (action.type === 'vaultGlobal/setIsSwitchingAccount')
+        currentState.vaultGlobal.isSwitchingAccount = action.payload;
+      return action;
+    });
+    let finish!: () => void;
+    let refreshing!: () => void;
+    const started = new Promise<void>((resolve) => (refreshing = resolve));
+    wallet.performPostAccountSwitchOperations = jest.fn(() => {
+      refreshing();
+      return new Promise<void>((resolve) => (finish = resolve));
+    });
+
+    const switching = wallet.setAccount(7, KeyringAccountType.HDAccount, true);
+    await started;
+    expect(currentState.vaultGlobal.isSwitchingAccount).toBe(false);
+    finish();
+    await switching;
   });
 
   it('allows a healthy sparse wallet to unlock without rebuilding any accounts', async () => {

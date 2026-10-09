@@ -4,8 +4,14 @@ import MigrationController from 'scripts/Background/controllers/MigrationControl
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
-import { setHasEncryptedVault } from 'state/vaultGlobal';
+import {
+  resetLoadingStates,
+  setHasEncryptedVault,
+  setNetworkRuntimeState,
+} from 'state/vaultGlobal';
 import { chromeStorage } from 'utils/storageAPI';
+
+let hasCreatedController = false;
 
 export const handleMasterControllerInstance = async () => {
   // Add performance timing
@@ -48,7 +54,26 @@ export const handleMasterControllerInstance = async () => {
     throw error;
   }
 
+  if (!hasCreatedController) {
+    // Disk may capture an in-flight operation just before the old worker exits.
+    // No operation from that worker survives cold startup. Do this only here:
+    // frontend rehydration and same-worker retries must retain live guards.
+    store.dispatch(
+      setNetworkRuntimeState({
+        isPollingUpdate: false,
+        isPostNetworkSwitchLoading: false,
+        isSwitchingAccount: false,
+        networkStatus: 'idle',
+        networkTarget: undefined,
+      })
+    );
+    store.dispatch(resetLoadingStates());
+  }
+
   const controller = MasterController(store);
+  // Construction is synchronous: a failed constructor remains recoverable on
+  // retry, and a successfully created controller is never normalized again.
+  hasCreatedController = true;
 
   // 🔥 FIX: Start periodic saves on startup if wallet is already unlocked
   // This ensures periodic saves survive service worker restarts

@@ -3034,6 +3034,7 @@ class MainController {
     // Use AsyncMutex for cross-context synchronization
     // This prevents concurrent account switches across all contexts
     return accountSwitchMutex.runExclusive(async () => {
+      let ownsSwitchingAccount = false;
       try {
         const { accounts, activeNetwork } = store.getState().vault;
         const account = accounts[type]?.[id];
@@ -3064,6 +3065,7 @@ class MainController {
 
         // Set switching account loading state
         store.dispatch(setIsSwitchingAccount(true));
+        ownsSwitchingAccount = true;
 
         // Set active account
         store.dispatch(setActiveAccount({ id, type }));
@@ -3090,6 +3092,7 @@ class MainController {
         // balance refresh continues in the background. Account selection is
         // session state; avoid full vault serialization on this hot path.
         store.dispatch(setIsSwitchingAccount(false));
+        ownsSwitchingAccount = false;
 
         // Defer heavy operations to prevent blocking the UI
         if (sync) {
@@ -3101,6 +3104,8 @@ class MainController {
         console.error('Failed to set active account:', error);
         // Re-throw to let the UI handle the error
         throw error;
+      } finally {
+        if (ownsSwitchingAccount) store.dispatch(setIsSwitchingAccount(false));
       }
     });
   }
