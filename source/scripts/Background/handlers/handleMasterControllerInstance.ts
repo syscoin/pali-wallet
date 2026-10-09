@@ -1,16 +1,18 @@
+import { readWalletPresence } from '../utils/readWalletPresence';
 import MasterController from 'scripts/Background/controllers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
-import { loadState } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 import { setHasEncryptedVault } from 'state/vaultGlobal';
+import { chromeStorage } from 'utils/storageAPI';
 
 export const handleMasterControllerInstance = async () => {
   // Add performance timing
   const startTime = performance.now();
 
-  const storageState = await loadState();
+  // Distinguish an absent state from a failed read before creating controllers.
+  const storageState = await chromeStorage.getItem('state');
 
   if (storageState) {
     // Run migrations before rehydrating state
@@ -22,43 +24,17 @@ export const handleMasterControllerInstance = async () => {
       '[handleMasterControllerInstance] Rehydrating with slip44 support...'
     );
     const activeSlip44 = storageState?.vaultGlobal?.activeSlip44;
-    await rehydrateStore(store, null, activeSlip44);
+    // Migrations mutate the global state. Keep legacy inline vault data out of
+    // this argument so rehydration still loads the isolated slip44 vault.
+    const globalState = { ...storageState };
+    delete globalState.vault;
+    await rehydrateStore(store, globalState, activeSlip44);
   }
 
   // 🔥 FIX: Initialize hasEncryptedVault flag based on actual vault existence
   // This prevents the "wallet was forgotten" false positive on startup
   try {
-    const [vault, vaultKeys] = await Promise.all([
-      new Promise<any>((resolve, reject) => {
-        chrome.storage.local.get('sysweb3-vault', (result) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                `Failed to get vault: ${chrome.runtime.lastError.message}`
-              )
-            );
-            return;
-          }
-          resolve(result['sysweb3-vault']);
-        });
-      }),
-      new Promise<any>((resolve, reject) => {
-        chrome.storage.local.get('sysweb3-vault-keys', (result) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                `Failed to get vault-keys: ${chrome.runtime.lastError.message}`
-              )
-            );
-            return;
-          }
-          resolve(result['sysweb3-vault-keys']);
-        });
-      }),
-    ]);
-
-    // Check if vault exists
-    const hasVault = !!(vault && vaultKeys);
+    const hasVault = await readWalletPresence();
 
     // Set the flag in Redux to match actual vault existence
     store.dispatch(setHasEncryptedVault(hasVault));
@@ -67,8 +43,9 @@ export const handleMasterControllerInstance = async () => {
       '[handleMasterControllerInstance] Error checking vault:',
       error
     );
-    // If we can't check, assume no vault (safe default)
-    store.dispatch(setHasEncryptedVault(false));
+    // Startup retry/recovery must handle the error; treating it as an empty
+    // wallet would expose the destructive create/import flow.
+    throw error;
   }
 
   const controller = MasterController(store);

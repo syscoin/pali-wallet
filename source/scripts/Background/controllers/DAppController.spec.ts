@@ -102,3 +102,43 @@ describe('DAppController account changes', () => {
     errorSpy.mockRestore();
   });
 });
+
+describe('legacy dapp permission isolation', () => {
+  it('does not use hostname-only permissions for either web origin', async () => {
+    getStateMock.mockReturnValue({
+      dapp: { dapps: { 'legacy.example': { host: 'legacy.example' } } },
+    });
+    const controller = DAppController();
+    expect(controller.isConnected('https://legacy.example')).toBe(false);
+    expect(controller.isConnected('http://legacy.example')).toBe(false);
+    await controller.disconnect('legacy.example');
+    expect(dispatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'dapp/removeDApp',
+        payload: 'legacy.example',
+      })
+    );
+  });
+
+  it('queries event recipients using the exact approved origin', () => {
+    const account = { address: '0x1234', xpub: 'xpub' };
+    getStateMock.mockReturnValue({
+      vault: { accounts: { HDAccount: { 0: account } }, isBitcoinBased: false },
+    });
+    (chrome.runtime as any).id = 'test-extension';
+    (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
+    };
+    (chrome as any).scripting = { executeScript: jest.fn() };
+    const controller = DAppController();
+    controller.connect({
+      host: 'https://example.com',
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+    } as any);
+    expect(chrome.tabs.query).toHaveBeenCalledWith(
+      { url: 'https://example.com/*' },
+      expect.any(Function)
+    );
+  });
+});

@@ -1,21 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 
-import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
 import { useAppReady } from 'hooks/useAppReady';
-import { useController } from 'hooks/useController';
-import { chromeStorage } from 'utils/storageAPI';
+import { RootState } from 'state/store';
+import { selectActiveAccount } from 'state/vault/selectors';
 
 export const Start = (props: any) => {
   const [isOpenValidation, setIsOpenValidation] = useState(false);
-  const [hasAccount, setHasAccount] = useState(false);
-  const [hasVault, setHasVault] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const { controllerEmitter } = useController();
+  // WalletBootstrap has already hydrated the authoritative background snapshot.
+  // Re-reading storage/RPC here could stall or misclassify an existing wallet.
+  const hasVault = useSelector(
+    (state: RootState) => state.vaultGlobal.hasEncryptedVault
+  );
+  const activeAccount = useSelector(selectActiveAccount);
+  const hasAccount = !!activeAccount?.address;
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
 
@@ -31,45 +34,8 @@ export const Start = (props: any) => {
 
   const isFirstStep = !hasAccount && !hasVault;
 
-  useEffect(() => {
-    const checkVaultAndAccounts = async () => {
-      try {
-        // Check for vault in Chrome storage
-        const vault = await chromeStorage.getItem('sysweb3-vault');
-        setHasVault(!!vault);
+  useAppReady();
 
-        // Check for active account
-        const result: any = await controllerEmitter([
-          'wallet',
-          'getActiveAccount',
-        ]);
-        setHasAccount(!!result.activeAccount.address);
-      } catch (error: any) {
-        // Only log non-connection errors
-        if (
-          !error?.message?.includes('Could not establish connection') &&
-          !error?.message?.includes('Receiving end does not exist') &&
-          !error?.message?.includes('Network request timed out')
-        ) {
-          console.error('Error checking vault/accounts:', error);
-        }
-        // For connection errors, we'll just use the default state (no account/vault)
-      } finally {
-        setIsInitialLoading(false);
-      }
-    };
-
-    checkVaultAndAccounts();
-  }, []);
-
-  // Signal app is ready when we have content to show
-  useAppReady(!isInitialLoading);
-
-  // Branded skeleton while loading: invisible under the HTML loader on first
-  // boot, and prevents a blank screen on later visits (e.g. after logout)
-  if (isInitialLoading) {
-    return <AppLoadingSkeleton />;
-  }
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.webp')] justify-center min-w-full h-screen login-animated-bg">
       {/* Subtle twinkling particles */}

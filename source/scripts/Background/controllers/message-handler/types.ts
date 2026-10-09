@@ -95,6 +95,7 @@ export interface IEnhancedRequestContext {
     network?: string;
     params?: any[];
     sender: chrome.runtime.MessageSender;
+    signal?: AbortSignal;
     type: string;
   };
   prefix?: string;

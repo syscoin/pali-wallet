@@ -8,7 +8,11 @@ import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
 import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
 import { useAppReady } from 'hooks/useAppReady';
-import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import { useController } from 'hooks/useController';
+import {
+  isContextSensitiveWalletRoute,
+  usePageLoadingState,
+} from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
 import { navigateBack, clearNavigationState } from 'utils/navigationState';
 
@@ -32,7 +36,13 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   );
 
   // Use the new page loading state hook
-  const { isLoading, hasTimedOut } = usePageLoadingState();
+  const { isLoading, isContextChanging, message } = usePageLoadingState();
+  const { connectionUnavailable } = useController();
+  const contextSafetyProps =
+    (isContextChanging || connectionUnavailable) &&
+    isContextSensitiveWalletRoute(location.pathname)
+      ? { inert: '', 'aria-busy': true as const }
+      : {};
 
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
@@ -316,8 +326,13 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     >
       {/* Loading overlay - shows after delay for content area only */}
       <PageLoadingOverlay
-        isLoading={isLoading}
-        hasTimedOut={hasTimedOut}
+        isLoading={isLoading || connectionUnavailable}
+        message={
+          connectionUnavailable
+            ? 'Wallet service is unavailable. Reconnecting…'
+            : message
+        }
+        nonBlocking={connectionUnavailable}
         hasHeader={!hideHeader && !titleOnly}
         hasBanner={showBanner}
       />
@@ -396,18 +411,27 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Content area - keyed by route so each navigation gets a short fade-in */}
       {location.pathname === '/home' ? (
         // Home page gets a minimal wrapper - it has its own layout
-        <div key={location.pathname} className="animate-fadeIn h-full">
+        <div
+          key={location.pathname}
+          className="animate-fadeIn h-full"
+          {...contextSafetyProps}
+        >
           {children || <Outlet />}
         </div>
       ) : hideHeader ? (
         // Hardware wallet and other hideHeader pages get a minimal wrapper
-        <div key={location.pathname} className="animate-fadeIn h-full">
+        <div
+          key={location.pathname}
+          className="animate-fadeIn h-full"
+          {...contextSafetyProps}
+        >
           {children || <Outlet />}
         </div>
       ) : (
         // Other pages get the standard content wrapper
         <div
           key={location.pathname}
+          {...contextSafetyProps}
           className={`animate-fadeIn flex flex-col items-center justify-center md:mx-auto ${
             showBanner ? 'pt-8' : 'pt-4'
           } px-[24px] w-full page-content ${

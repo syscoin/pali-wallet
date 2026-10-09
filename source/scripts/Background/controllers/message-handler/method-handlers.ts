@@ -113,6 +113,8 @@ export class WalletMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute!,
             eventName: methodConfig.popupEventName!,
@@ -186,6 +188,8 @@ export class WalletMethodHandler implements IMethodHandler {
             context,
             () =>
               popupPromise({
+                signal: context.originalRequest.signal,
+                sender: context.originalRequest.sender,
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
@@ -223,6 +227,8 @@ export class WalletMethodHandler implements IMethodHandler {
             context,
             () =>
               popupPromise({
+                signal: context.originalRequest.signal,
+                sender: context.originalRequest.sender,
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
@@ -238,6 +244,8 @@ export class WalletMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
@@ -262,19 +270,19 @@ export class WalletMethodHandler implements IMethodHandler {
           return wallet.getChangeAddress(account.id);
 
         case 'getAccount':
-          return account || null;
+          return wallet.isUnlocked() ? account || null : null;
 
         case 'getBalance':
-          return account.balances[networkChain()];
+          return wallet.isUnlocked() ? account.balances[networkChain()] : null;
 
         case 'getNetwork':
           return dapp.getNetwork();
 
         case 'getPublicKey':
-          return account.xpub;
+          return wallet.isUnlocked() ? account.xpub : null;
 
         case 'getAddress':
-          return account.address;
+          return wallet.isUnlocked() ? account.address : null;
 
         case 'getTokens': {
           const connectedDapp = dapp.get(host);
@@ -406,21 +414,44 @@ export class WalletMethodHandler implements IMethodHandler {
           }
           return {
             accounts: providerAccounts,
-            xpub: account?.xpub || null,
+            xpub:
+              wallet.isUnlocked() && isBitcoinBased
+                ? account?.xpub || null
+                : null,
             blockExplorerURL: isBitcoinBased ? activeNetwork.url : null,
             isUnlocked: wallet.isUnlocked(),
             isBitcoinBased,
           };
 
         case 'getSysAssetMetadata':
-          if (!params || params.length < 2) {
+          if (
+            !params ||
+            typeof params[0] !== 'string' ||
+            !/^\d{1,20}$/.test(params[0])
+          ) {
             throw cleanErrorStack(
               ethErrors.rpc.invalidParams(
-                'getSysAssetMetadata requires assetGuid and networkUrl parameters'
+                'getSysAssetMetadata requires a numeric asset GUID'
               )
             );
           }
-          return wallet.getSysAssetMetadata(params[0], params[1]);
+          if (!isBitcoinBased) return null;
+          // The page must not turn this public metadata method into a
+          // privileged cross-origin fetch proxy. The provider may echo the
+          // selected backend, but cannot choose a different request URL.
+          if (
+            params[1] !== undefined &&
+            (typeof params[1] !== 'string' ||
+              params[1].replace(/\/$/, '') !==
+                activeNetwork.url.replace(/\/$/, ''))
+          ) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams(
+                'Asset metadata is only available from the selected network'
+              )
+            );
+          }
+          return wallet.getSysAssetMetadata(params[0], activeNetwork.url);
 
         case 'getSmartAccountModules': {
           // Read-only module inventory for the connected smart account.
@@ -656,6 +687,8 @@ export class EthMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
@@ -738,6 +771,8 @@ export class SysMethodHandler implements IMethodHandler {
         context,
         () =>
           popupPromise({
+            signal: context.originalRequest.signal,
+            sender: context.originalRequest.sender,
             host,
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,

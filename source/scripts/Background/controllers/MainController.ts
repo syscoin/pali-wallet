@@ -30,6 +30,11 @@ import * as syscoinjs from 'syscoinjs-lib';
 import { getController, notificationManager } from '..';
 import { clearNavigationState } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
+import {
+  AccountRecoveryRequiredError,
+  assertCompleteHDAccountData,
+  assertEmptyHDAccountMetadata,
+} from '../utils/assertCompleteHDAccountData';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
@@ -101,6 +106,7 @@ import {
 import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
+  AsyncMutex,
   fiatPriceMutex,
   networkSwitchMutex,
   accountSwitchMutex,
@@ -224,6 +230,8 @@ class MainController {
   private isAccountSwitching = false;
   // Add a property to track network switching state
   private isNetworkSwitching = false;
+  private walletSessionGeneration = 0;
+  private authenticationMutex = new AsyncMutex();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -322,10 +330,14 @@ class MainController {
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
   private async resetWalletState(options?: { resetNetworks?: boolean }) {
+    this.walletSessionGeneration += 1;
     const { resetNetworks = false } = options || {};
 
     // Clear all timers first to prevent any background operations
     this.clearAllTimers();
+    // Receipt jobs have their own queue and in-flight freshness markers. Stop
+    // them before reset I/O so restoring the same account cannot revive reads.
+    this.stopAllRapidPolling();
 
     // Clean up notification manager to prevent memory leaks
     notificationManager.cleanup();
@@ -851,6 +863,9 @@ class MainController {
   }
   // Switch active keyring based on network
   private async switchActiveKeyring(network: INetwork): Promise<void> {
+    // Invalidate pending secret exports/unlocks, including an A -> B -> A switch.
+    this.walletSessionGeneration += 1;
+    const switchGeneration = this.walletSessionGeneration;
     const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
@@ -950,7 +965,6 @@ class MainController {
       // Ensure the target keyring exists
       let targetKeyring = this.keyrings.get(slip44);
       let keyringWasJustCreated = false;
-      let needsAccountRepair = false;
 
       if (!targetKeyring) {
         console.log('[MainController] Creating new keyring on demand');
@@ -962,18 +976,16 @@ class MainController {
 
       stateTransaction.targetKeyring = targetKeyring;
 
-      // Check if we need to repair corrupted accounts (using the flag we set earlier)
-      if (hasExistingVaultState) {
-        const { accounts } = store.getState().vault;
-
-        // Quick check for missing xpub in HD accounts
-        if (accounts.HDAccount) {
-          for (const account of Object.values(accounts.HDAccount)) {
-            if (!account.xpub || account.xpub === '') {
-              needsAccountRepair = true;
-              break;
-            }
-          }
+      // Validate persisted identities before transferring the unlocked session.
+      // A failed target must leave the source wallet and its metadata intact.
+      if (hasExistingVaultState || !isSwitchingSlip44) {
+        const targetVault = store.getState().vault;
+        assertCompleteHDAccountData(targetVault.accounts.HDAccount);
+        if (
+          hasExistingVaultState &&
+          Object.keys(targetVault.accounts.HDAccount).length === 0
+        ) {
+          assertEmptyHDAccountMetadata(targetVault);
         }
       }
 
@@ -1035,6 +1047,16 @@ class MainController {
             // Create first account
             // Session data was already transferred, so we can create the first account directly
             const account = await targetKeyring.createFirstAccount();
+            this.assertCurrentWalletSession(switchGeneration, targetKeyring);
+            assertCompleteHDAccountData({ 0: account });
+            // Derivation may await the backend. Never write into a changed or
+            // newly populated vault when it eventually completes.
+            const currentVault = store.getState().vault;
+            assertCompleteHDAccountData(currentVault.accounts.HDAccount);
+            if (Object.keys(currentVault.accounts.HDAccount).length > 0) {
+              throw new AccountRecoveryRequiredError();
+            }
+            assertEmptyHDAccountMetadata(currentVault);
             console.log(
               '[MainController] Created new keyring account',
               account.address
@@ -1081,25 +1103,6 @@ class MainController {
 
       // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
       this.keyrings.set(slip44, targetKeyring);
-
-      // Repair corrupted accounts if needed (after session transfer is complete)
-      if (needsAccountRepair && targetKeyring.isUnlocked()) {
-        console.log(
-          `[MainController] Starting account repair for slip44 ${slip44} after network switch`
-        );
-
-        try {
-          // We need the password to repair accounts, but we don't have it here
-          // Instead, we can try to repair using the existing session
-          await this.repairCorruptedAccountsWithSession(targetKeyring);
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to repair accounts during network switch:`,
-            error
-          );
-          // Don't throw - continue with network switch even if repair fails
-        }
-      }
 
       // Perform deferred save of previous vault state (non-blocking)
       if (stateTransaction.deferredSaveData) {
@@ -1161,7 +1164,12 @@ class MainController {
     this.keyrings.forEach((keyring, slip44) => {
       try {
         if (keyring.isUnlocked()) {
-          keyring.lockWallet();
+          Promise.resolve(keyring.lockWallet()).catch((error) => {
+            console.error(
+              `[MainController] Error cleaning up locked keyring ${slip44}:`,
+              error
+            );
+          });
         }
 
         // Clean up some Web3 provider listeners during normal lock to prevent accumulation
@@ -1383,6 +1391,15 @@ class MainController {
   }
 
   public async getSeed(pwd: string) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.getSeedForCurrentSession(pwd, generation)
+    );
+  }
+
+  private async getSeedForCurrentSession(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -1392,9 +1409,11 @@ class MainController {
     }
 
     try {
-      const seed = await this.getActiveKeyring().getSeed(pwd);
+      const seed = await keyring.getSeed(pwd);
+      this.assertCurrentWalletSession(generation, keyring);
       // Reset rate limit on success
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
       return seed;
     } catch (error) {
       // Record failed attempt if it's a password error
@@ -1410,6 +1429,20 @@ class MainController {
     accountType: any,
     pwd: string
   ) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.getPrivateKeyForCurrentSession(id, accountType, pwd, generation)
+    );
+  }
+
+  private async getPrivateKeyForCurrentSession(
+    id: number,
+    accountType: any,
+    pwd: string,
+    generation: number
+  ) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -1419,13 +1452,15 @@ class MainController {
     }
 
     try {
-      const privateKey = await this.getActiveKeyring().getPrivateKeyByAccountId(
+      const privateKey = await keyring.getPrivateKeyByAccountId(
         id,
         accountType,
         pwd
       );
+      this.assertCurrentWalletSession(generation, keyring);
       // Reset rate limit on success
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
       return privateKey;
     } catch (error) {
       // Record failed attempt if it's a password error
@@ -1554,50 +1589,76 @@ class MainController {
   // End Rate Limiting Methods
   // =============================================
 
-  public async unlock(pwd: string, skipRateLimit = false) {
+  private assertCurrentWalletSession(
+    generation: number,
+    keyring?: KeyringManager
+  ) {
+    if (
+      generation !== this.walletSessionGeneration ||
+      (keyring &&
+        (keyring !== this.getActiveKeyring() || !keyring.isUnlocked()))
+    ) {
+      throw new Error(
+        'Wallet session changed. Unlock the wallet and try again.'
+      );
+    }
+  }
+
+  private async unlockKeyring(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
+    const result = await keyring.unlock(pwd);
+    if (
+      generation !== this.walletSessionGeneration ||
+      keyring !== this.getActiveKeyring()
+    ) {
+      // KDF/decryption cannot be aborted. Drop the session it created if a
+      // lock/reset/network change happened while it was running.
+      await keyring.lockWallet();
+      throw new Error(
+        'Wallet session changed. Unlock the wallet and try again.'
+      );
+    }
+    return result;
+  }
+
+  public async unlock(pwd: string) {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.unlockWithRateLimit(pwd, generation)
+    );
+  }
+
+  private async unlockWithRateLimit(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
     console.log('[MainController] Attempting to unlock wallet');
 
-    // Check rate limiting (skip for internal dry-run checks)
-    if (!skipRateLimit) {
-      const remainingLockout = await this.checkRateLimit();
-      if (remainingLockout > 0) {
-        throw new Error(
-          `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
-        );
-      }
+    const remainingLockout = await this.checkRateLimit();
+    if (remainingLockout > 0) {
+      throw new Error(
+        `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
+      );
     }
 
     try {
-      const keyring = this.getActiveKeyring();
-      const result = await keyring.unlock(pwd);
+      const result = await this.unlockKeyring(pwd, generation);
 
       if (result.canLogin) {
         console.log('[MainController] Wallet unlocked successfully');
         // Reset rate limit on successful login
-        if (!skipRateLimit) {
-          await this.resetRateLimit();
-        }
+        await this.resetRateLimit();
+        this.assertCurrentWalletSession(generation, this.getActiveKeyring());
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
         // Record failed attempt
-        if (!skipRateLimit) {
-          await this.recordFailedAttempt();
-        }
+        await this.recordFailedAttempt();
       }
 
       return result;
     } catch (error) {
       console.error('[MainController] Error during wallet unlock:', error);
-      // Record failed attempt only for password errors (avoid locking users out on transient/system failures)
-      if (!skipRateLimit) {
-        const msg =
-          (error as any)?.message ??
-          (error as any)?.errorMessage ??
-          (typeof error === 'string' ? error : '');
-        if (String(msg) === 'Invalid password') {
-          await this.recordFailedAttempt();
-        }
-      }
+      // Requires the upstream keyring contract: canLogin=false only for
+      // authentication failure; operational errors must propagate.
       throw error;
     }
   }
@@ -1619,10 +1680,6 @@ class MainController {
 
   public isSeedValid(phrase: string) {
     return this.getActiveKeyring().isSeedValid(phrase);
-  }
-
-  private logout() {
-    return this.getActiveKeyring().logout();
   }
 
   private async setSignerNetwork(network: INetwork) {
@@ -2005,8 +2062,21 @@ class MainController {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    const generation = this.walletSessionGeneration;
+    return this.authenticationMutex.runExclusive(() =>
+      this.unlockFromControllerExclusive(pwd, generation)
+    );
+  }
+
+  private async unlockFromControllerExclusive(
+    pwd: string,
+    generation: number
+  ): Promise<boolean> {
+    this.assertCurrentWalletSession(generation);
+    const keyring = this.getActiveKeyring();
     // Check rate limiting for failed unlock attempts (uses persisted state)
     const remainingLockout = await this.checkRateLimit();
+    this.assertCurrentWalletSession(generation);
     if (remainingLockout > 0) {
       throw new Error(
         `Too many failed attempts. Please wait ${remainingLockout} seconds before trying again.`
@@ -2016,6 +2086,8 @@ class MainController {
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
     const controller = getController();
+    let invalidPassword = false;
+    let authenticated = false;
 
     try {
       console.log('[MainController] Attempting unlock...');
@@ -2023,6 +2095,7 @@ class MainController {
       // Ensure storage is initialized before attempting unlock
       const storageManager = StorageManager.getInstance();
       await storageManager.ensureInitialized();
+      this.assertCurrentWalletSession(generation);
       console.log(
         '[MainController] Storage initialized, proceeding with unlock...'
       );
@@ -2055,27 +2128,54 @@ class MainController {
 
       this.lockAllKeyrings();
       // Skip rate limiting here since it's handled above in unlockFromController
-      const { canLogin, needsAccountCreation } = await this.unlock(pwd, true);
+      const { canLogin, needsAccountCreation } = await this.unlockKeyring(
+        pwd,
+        generation
+      );
 
       if (!canLogin) {
+        invalidPassword = true;
         console.error('[MainController] Unlock failed - invalid password');
         throw new Error('Invalid password');
       }
+      authenticated = true;
+      this.assertCurrentWalletSession(generation, keyring);
 
       console.log('[MainController] Unlock successful');
 
       // Reset failed attempts on successful unlock (persisted)
       await this.resetRateLimit();
+      this.assertCurrentWalletSession(generation, keyring);
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
+        const assertSafeFirstAccountCreation = () => {
+          const migrationVault = store.getState().vault;
+          assertCompleteHDAccountData(migrationVault.accounts.HDAccount);
+          // The keyring flag also covers a stale/missing active selection. It is
+          // not permission to replace an existing default account or its data.
+          if (
+            Object.keys(migrationVault.accounts.HDAccount).length > 0 ||
+            migrationVault.activeAccount.type !==
+              KeyringAccountType.HDAccount ||
+            migrationVault.activeAccount.id !== 0
+          ) {
+            throw new AccountRecoveryRequiredError();
+          }
+          assertEmptyHDAccountMetadata(migrationVault);
+        };
+        assertSafeFirstAccountCreation();
+
         console.log(
           '[MainController] Detected migration from old vault format - creating first account'
         );
 
         try {
-          const keyring = this.getActiveKeyring();
           const account = await keyring.createFirstAccount();
+          this.assertCurrentWalletSession(generation, keyring);
+          assertCompleteHDAccountData({ 0: account });
+          // Recheck after asynchronous derivation, immediately before commit.
+          assertSafeFirstAccountCreation();
 
           console.log(
             '[MainController] Created first account after migration:',
@@ -2108,8 +2208,9 @@ class MainController {
         }
       }
 
-      // REPAIR CHECK: Detect and fix accounts with missing xpub/xprv
-      await this.repairCorruptedAccounts();
+      // Never rebuild persisted accounts as a side effect of authentication.
+      assertCompleteHDAccountData(store.getState().vault.accounts.HDAccount);
+      this.assertCurrentWalletSession(generation, keyring);
 
       // Set flags to indicate we just unlocked and are starting up
       this.justUnlocked = true;
@@ -2140,6 +2241,7 @@ class MainController {
 
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
+        if (generation !== this.walletSessionGeneration) return;
         // Fetch fresh fiat prices immediately after successful unlock
         Promise.all([
           this.setFiat().catch((error) =>
@@ -2170,6 +2272,7 @@ class MainController {
 
       // Clear startup flags after 2 seconds
       setTimeout(() => {
+        if (generation !== this.walletSessionGeneration) return;
         this.justUnlocked = false;
         this.isStartingUp = false;
 
@@ -2177,303 +2280,34 @@ class MainController {
         store.dispatch(clearNetworkQualityIfStale());
       }, 2000); // 2 seconds - enough time for all initialization
 
+      this.assertCurrentWalletSession(generation, keyring);
       return canLogin;
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
 
-      // Record failed attempt if it's a password error (persisted)
-      if (error.message === 'Invalid password') {
+      if (
+        authenticated &&
+        generation === this.walletSessionGeneration &&
+        keyring === this.getActiveKeyring()
+      ) {
+        // Authentication succeeded, but this session must not remain usable
+        // after the UI reports a startup failure. This is not a bad password.
+        this.justUnlocked = false;
+        this.isStartingUp = false;
+        try {
+          await keyring.lockWallet();
+        } catch (lockError) {
+          console.error('[MainController] Session cleanup failed:', lockError);
+        }
+      }
+
+      // Count the keyring's explicit authentication rejection, never arbitrary
+      // storage/session errors whose message happens to mention a password.
+      if (invalidPassword) {
         await this.recordFailedAttempt();
       }
 
       throw error;
-    }
-  }
-
-  /**
-   * Repair corrupted accounts using an already-unlocked keyring (no password needed)
-   * This is used during network switches when we already have session data
-   */
-  private async repairCorruptedAccountsWithSession(
-    keyring: KeyringManager
-  ): Promise<void> {
-    try {
-      const { accounts } = store.getState().vault;
-
-      if (!keyring || !keyring.isUnlocked()) {
-        console.log(
-          '[MainController] Keyring not unlocked, skipping account repair'
-        );
-        return;
-      }
-
-      // Check if any HD accounts have missing xpub or a missing index 0.
-      let hasCorruptedAccounts = false;
-      if (accounts.HDAccount) {
-        hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
-        for (const account of Object.values(accounts.HDAccount)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedAccounts = true;
-            break;
-          }
-        }
-      }
-
-      if (!hasCorruptedAccounts) {
-        console.log(
-          '[MainController] No corrupted accounts found, skipping repair'
-        );
-        return;
-      }
-
-      console.log(
-        '[MainController] Found corrupted HD accounts, recreating all accounts...'
-      );
-
-      // Store old account data for labels and metadata
-      const oldAccounts = { ...accounts.HDAccount };
-      const maxAccountId = Math.max(
-        ...Object.keys(oldAccounts).map((id) => parseInt(id))
-      );
-
-      console.log(
-        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
-      );
-
-      // Store accounts to recreate in a transaction array
-      const recreatedAccounts: Array<{
-        account: IKeyringAccountState;
-        accountType: KeyringAccountType;
-      }> = [];
-
-      // First, validate we can recreate all accounts before modifying state
-      for (let i = 0; i <= maxAccountId; i++) {
-        try {
-          const oldAccount = oldAccounts[i];
-          const label =
-            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
-
-          let newAccount;
-          if (i === 0) {
-            // First account
-            newAccount = await keyring.createFirstAccount();
-            // Update the label if needed
-            if (label !== 'Account 1') {
-              newAccount.label = label;
-            }
-          } else {
-            // Subsequent accounts
-            newAccount = await keyring.addNewAccount(label);
-          }
-
-          console.log(`[MainController] Recreated HD account ${i}:`, {
-            address: newAccount.address,
-            xpub: newAccount.xpub ? 'present' : 'missing',
-            label: newAccount.label,
-            oldAddress: oldAccount?.address,
-            addressMatch: newAccount.address === oldAccount?.address,
-          });
-
-          // Store for later commit
-          recreatedAccounts.push({
-            account: newAccount,
-            accountType: KeyringAccountType.HDAccount,
-          });
-
-          // Warn if address changed (shouldn't happen with same seed)
-          if (oldAccount && newAccount.address !== oldAccount.address) {
-            console.error(
-              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to recreate HD account ${i}:`,
-            error
-          );
-          throw error; // Stop the repair process on error
-        }
-      }
-
-      // Now commit all changes atomically
-      // Clear all HD accounts from Redux
-      Object.keys(oldAccounts).forEach((idStr) => {
-        const id = parseInt(idStr);
-        store.dispatch(
-          removeAccount({
-            id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-      });
-
-      // Add all recreated accounts
-      recreatedAccounts.forEach(({ account, accountType }) => {
-        store.dispatch(
-          createAccount({
-            account,
-            accountType,
-          })
-        );
-      });
-
-      // Save the repaired wallet state
-      this.saveWalletState('repair-corrupted-accounts');
-
-      console.log('[MainController] Account repair completed successfully');
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to repair corrupted accounts:',
-        error
-      );
-      // Don't throw - we don't want to prevent network switch if repair fails
-    }
-  }
-
-  /**
-   * Detect and repair accounts with missing xpub/xprv by recreating them from the seed
-   * This handles slip44 mismatches and corrupted account states
-   */
-  private async repairCorruptedAccounts(): Promise<void> {
-    try {
-      const { accounts, activeNetwork } = store.getState().vault;
-      const keyring = this.getActiveKeyring();
-
-      if (!keyring || !keyring.isUnlocked()) {
-        console.log(
-          '[MainController] Keyring not unlocked, skipping account repair'
-        );
-        return;
-      }
-
-      // Check if any HD accounts have missing xpub or a missing index 0.
-      let hasCorruptedAccounts = false;
-      if (accounts.HDAccount) {
-        hasCorruptedAccounts =
-          Object.keys(accounts.HDAccount).length > 0 && !accounts.HDAccount[0];
-        for (const account of Object.values(accounts.HDAccount)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedAccounts = true;
-            break;
-          }
-        }
-      }
-
-      if (!hasCorruptedAccounts) {
-        console.log(
-          '[MainController] No corrupted accounts found, skipping repair'
-        );
-        return;
-      }
-
-      console.log(
-        '[MainController] Found corrupted HD accounts, recreating all accounts...'
-      );
-
-      // Store old account data for labels and metadata
-      const oldAccounts = { ...accounts.HDAccount };
-      const maxAccountId = Math.max(
-        ...Object.keys(oldAccounts).map((id) => parseInt(id))
-      );
-
-      console.log(
-        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
-      );
-
-      // Clear all HD accounts from Redux
-      Object.keys(oldAccounts).forEach((idStr) => {
-        const id = parseInt(idStr);
-        store.dispatch(
-          removeAccount({
-            id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-      });
-
-      // Recreate all accounts in order
-      for (let i = 0; i <= maxAccountId; i++) {
-        try {
-          const oldAccount = oldAccounts[i];
-          const label =
-            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
-
-          let newAccount;
-          if (i === 0) {
-            // First account
-            newAccount = await keyring.createFirstAccount();
-            // Update the label if needed
-            if (label !== 'Account 1') {
-              newAccount.label = label;
-            }
-          } else {
-            // Subsequent accounts
-            newAccount = await keyring.addNewAccount(label);
-          }
-
-          console.log(`[MainController] Recreated HD account ${i}:`, {
-            address: newAccount.address,
-            xpub: newAccount.xpub ? 'present' : 'missing',
-            label: newAccount.label,
-            oldAddress: oldAccount?.address,
-            addressMatch: newAccount.address === oldAccount?.address,
-          });
-
-          // Add the recreated account to Redux
-          store.dispatch(
-            createAccount({
-              account: newAccount,
-              accountType: KeyringAccountType.HDAccount,
-            })
-          );
-
-          // Warn if address changed (shouldn't happen with same seed)
-          if (oldAccount && newAccount.address !== oldAccount.address) {
-            console.error(
-              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            `[MainController] Failed to recreate HD account ${i}:`,
-            error
-          );
-          throw error; // Stop the repair process on error
-        }
-      }
-
-      // Handle imported accounts separately - we can't repair these without private keys
-      if (accounts.Imported) {
-        let hasCorruptedImported = false;
-        for (const account of Object.values(accounts.Imported)) {
-          if (!account.xpub || account.xpub === '') {
-            hasCorruptedImported = true;
-            break;
-          }
-        }
-
-        if (hasCorruptedImported) {
-          console.warn(
-            '[MainController] Found corrupted imported accounts - these cannot be auto-repaired without private keys'
-          );
-        }
-      }
-
-      // Ensure the active keyring network matches the current network
-      await keyring.setSignerNetwork(activeNetwork);
-
-      // Save the repaired wallet state
-      this.saveWalletState('repair-corrupted-accounts');
-
-      console.log('[MainController] Account repair completed successfully');
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to repair corrupted accounts:',
-        error
-      );
-      // Don't throw - we don't want to prevent unlock if repair fails
-      // The wallet might still be usable even with some corrupted accounts
     }
   }
 
@@ -2586,6 +2420,7 @@ class MainController {
   }
 
   public lock() {
+    this.walletSessionGeneration += 1;
     const controller = getController();
 
     // Clear any pending timers before locking
@@ -2596,7 +2431,7 @@ class MainController {
 
     void cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
-    this.logout();
+    this.lockAllKeyrings();
 
     // Stop auto-lock timer when wallet is locked
     // This is best-effort - don't let timer cleanup failures prevent wallet lock

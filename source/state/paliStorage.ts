@@ -82,7 +82,8 @@ export const loadSlip44State = async (slip44: number) => {
       `[PaliStorage] ❌ Failed to load slip44 vault ${slip44}:`,
       error
     );
-    return null;
+    // Absence may initialize a new vault; a failed read must never do so.
+    throw error;
   }
 };
 
@@ -98,7 +99,8 @@ export const loadPasskeyCredentialProfileState = async (slip44: number) => {
       `[PaliStorage] ❌ Failed to load passkey credential profile ${slip44}:`,
       error
     );
-    return null;
+    // Do not overwrite an unreadable profile with an empty/embedded fallback.
+    throw error;
   }
 };
 

@@ -4,6 +4,8 @@ import type {
   SLHDSAWorkerResponse,
 } from 'utils/slhDsa';
 
+import { isTrustedSigningWorkerSender } from './messageAuthorization';
+
 let worker: Worker | null = null;
 let workerRequestQueue: Promise<SLHDSAWorkerResponse | void> =
   Promise.resolve();
@@ -142,7 +144,20 @@ const postWorkerRequest = (request: SLHDSAWorkerRequest) => {
   return queuedRequest;
 };
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const isSigningCommand = [
+    'PALI_SLH_DSA_CANCEL_WORKER',
+    'PALI_SLH_DSA_SIGN',
+    'PALI_SLH_DSA_PREPARE_KEYPAIR',
+    'PALI_SLH_DSA_CLEAR_XMSS_CACHE',
+  ].includes(message?.type);
+  if (isSigningCommand && !isTrustedSigningWorkerSender(sender)) {
+    sendResponse({
+      error: 'Unauthorized signing worker source',
+      success: false,
+    });
+    return false;
+  }
   if (message?.type === 'PALI_SLH_DSA_CANCEL_WORKER') {
     cancelWorkerRequests();
     sendResponse({ result: {}, success: true });

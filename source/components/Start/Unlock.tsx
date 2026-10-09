@@ -3,6 +3,7 @@ import React, { Dispatch, SetStateAction, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
+import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
@@ -30,10 +31,17 @@ const Unlock: React.FC<{
     try {
       setIsLoading(true);
 
-      await controllerEmitter(['wallet', 'unlockFromController'], [password]);
+      const unlocked = await controllerEmitter(
+        ['wallet', 'unlockFromController'],
+        [password]
+      );
+      if (unlocked !== true) throw new Error(t('start.wrongPassword'));
+      if (!(await refreshControllerStatus())) {
+        throw new Error(
+          'Wallet unlock could not be confirmed. Please try again.'
+        );
+      }
 
-      // unlockFromController returns true on success, false on invalid password
-      // If we get here without throwing, it was successful
       setErrorMessage(null);
 
       if (!isExternal) {

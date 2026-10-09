@@ -8,6 +8,7 @@ import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
+import { getDappOrigin } from 'utils/dappOrigin';
 
 import { clearProviderCache } from './message-handler/provider-cache';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -56,7 +57,8 @@ const DAppController = (): IDAppController => {
     }
 
     try {
-      const { host } = new URL(sender.url);
+      const host = getDappOrigin(sender.url);
+      if (!host) return;
       if (!isConnected(host)) {
         delete _dapps[host];
         return;
@@ -486,17 +488,12 @@ const DAppController = (): IDAppController => {
         return;
       }
 
-      // For hosts with ports, we need to query with specific protocols
-      const queryPatterns: string[] = [];
-
-      if (host.includes(':')) {
-        // Host has a port (e.g., localhost:3000)
-        queryPatterns.push(`http://${host}/*`);
-        queryPatterns.push(`https://${host}/*`);
-      } else {
-        // Host without port - use wildcard
-        queryPatterns.push(`*://${host}/*`);
-      }
+      // Bare-host legacy permissions cannot identify the originally approved
+      // scheme. Keep them visible/removable in settings, but never grant access
+      // or send account events until the site reconnects with an origin key.
+      const origin = getDappOrigin(host);
+      if (!origin || origin !== host) return;
+      const queryPatterns = [`${origin}/*`];
       // Query tabs for each pattern and combine results
       const allTabs: chrome.tabs.Tab[] = [];
 
@@ -526,7 +523,9 @@ const DAppController = (): IDAppController => {
 
       // Remove duplicates (in case a tab matches multiple patterns)
       const uniqueTabs = allTabs.filter(
-        (tab, index, self) => index === self.findIndex((t) => t.id === tab.id)
+        (tab, index, self) =>
+          getDappOrigin(tab.url || '') === origin &&
+          index === self.findIndex((t) => t.id === tab.id)
       );
 
       if (uniqueTabs.length > 0) {

@@ -16,12 +16,17 @@ import {
   RiShareForward2Line as DetailsIcon,
 } from 'components/Icon/Icon';
 import { IconButton, TokenIcon } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
-import { selectActiveAccountAssets } from 'state/vault/selectors';
+import {
+  selectActiveAccountAssets,
+  selectActiveAccountRef,
+} from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
   navigateWithContext,
@@ -59,14 +64,19 @@ const DefaultEvmAssets = React.memo(
     );
 
     const assets = useSelector(selectActiveAccountAssets);
+    const account = useSelector(selectActiveAccountRef);
     const chainId = useSelector(
       (rootState: RootState) => rootState.vault.activeNetwork.chainId
     );
 
     // Separate regular tokens from NFTs as requested
-    const allAssets =
-      assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
-    const currentChainAssets = allAssets.filter((token) => !token.isNft);
+    const currentChainAssets = useMemo(
+      () =>
+        assets?.ethereum?.filter(
+          (token) => token.chainId === chainId && !token.isNft
+        ) || [],
+      [assets?.ethereum, chainId]
+    );
 
     const filteredAssets = useMemo(() => {
       const tokens = currentChainAssets || [];
@@ -105,6 +115,22 @@ const DefaultEvmAssets = React.memo(
       }
       return working;
     }, [currentChainAssets, searchValue, sortByValue]);
+
+    const { visibleItems, hasMore, showMore } = useIncrementalList(
+      filteredAssets,
+      JSON.stringify([
+        account.type,
+        account.id,
+        chainId,
+        searchValue,
+        sortByValue,
+      ])
+    );
+
+    useEffect(() => {
+      setShowDeleteConfirmation(false);
+      setTokenToDelete(null);
+    }, [account.type, account.id, chainId]);
 
     // Delete confirmation handlers
     const handleDeleteClick = (token: ITokenEthProps) => {
@@ -149,7 +175,7 @@ const DefaultEvmAssets = React.memo(
 
     return (
       <>
-        {filteredAssets?.map((token: ITokenEthProps) => (
+        {visibleItems.map((token: ITokenEthProps) => (
           <li
             key={token.id}
             className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200"
@@ -211,6 +237,13 @@ const DefaultEvmAssets = React.memo(
           </li>
         ))}
 
+        {hasMore && (
+          <ListLoadMore
+            onClick={showMore}
+            shown={visibleItems.length}
+            total={filteredAssets.length}
+          />
+        )}
         <ConfirmationModal
           show={showDeleteConfirmation}
           onClick={handleConfirmDelete}

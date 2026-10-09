@@ -94,10 +94,17 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   return extractErrorMessage(error, 'Unknown error');
 };
 
+let controllerMessageListener:
+  | Parameters<typeof chrome.runtime.onMessage.addListener>[0]
+  | undefined;
+
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
-  chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+  if (controllerMessageListener) {
+    chrome.runtime.onMessage.removeListener(controllerMessageListener);
+  }
+  controllerMessageListener = (message: any, sender, sendResponse) => {
     const { type, data } = message;
 
     try {
@@ -178,5 +185,6 @@ export const handleMasterControllerResponses = (
       }
       return false;
     }
-  });
+  };
+  chrome.runtime.onMessage.addListener(controllerMessageListener);
 };

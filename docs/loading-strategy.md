@@ -1,226 +1,46 @@
 # Pali Wallet Loading Strategy
 
-## Overview
+Pali should acknowledge work immediately and provide useful feedback within two seconds. RPC responses, hardware prompts, key derivation, signing and chain confirmation can legitimately take longer. A timeout must not be presented as transaction failure or used to invent a successful network switch.
 
-This document outlines the standardized loading state management strategy for the Pali Wallet application. The goal is to provide instant feedback with a non-intrusive overlay that darkens the screen and prevents interactions, with an optional spinner for longer operations.
+## Startup and recovery
 
-## Key Components
+The static HTML loader remains visible until React owns a visible screen. If the application bundle does not load, the loader offers a reload action. `WalletBootstrap` requests authoritative background state and waits for rehydration before mounting wallet routes. An unavailable background worker produces a retry screen instead of routing with an empty default wallet.
 
-### 1. PageLoadingOverlay Component
+Startup and extension-window checks use a soft feedback deadline of 1.8 seconds from page navigation, reserving time to paint a recovery action. Their separate ten-second I/O deadline allows a healthy but slow response to finish after that feedback appears. A fresh service worker can take time to register its listener; completed connection failures are retried within the I/O deadline. User-initiated retry can restart a degraded controller and supersedes the prior attempt. Replies from superseded or expired attempts are ignored.
 
-- **Location**: `source/components/Loading/PageLoadingOverlay.tsx`
-- **Purpose**: Provides immediate visual feedback with minimal disruption
-- **Features**:
-  - Shows instantly when loading starts (no delay)
-  - Darkens screen with subtle backdrop blur
-  - Blocks all user interactions
-  - Shows spinner only after 500ms for longer operations
-  - Displays slow connection warning after 5 seconds
+Vault read errors and an incomplete vault/key pair fail initialization. They must never be interpreted as a new wallet. Persisted popup-open flags are hints; live extension contexts determine whether an approval window is open.
 
-### 2. usePageLoadingState Hook
+## Account and network transitions
 
-- **Location**: `source/hooks/usePageLoadingState.tsx`
-- **Purpose**: Centralized loading state management
-- **Features**:
-  - Tracks navigation changes
-  - Monitors network switching and account switching
-  - Supports additional loading conditions per page
-  - Returns raw loading state and message
-  - All timing handled by PageLoadingOverlay component
+`usePageLoadingState` observes real account/network state. `PageLoadingOverlay` delays the spinner for 150 ms and the blocking backdrop for 500 ms to avoid flicker. After two seconds it changes to a nonblocking status message. The underlying operation continues with its actual status.
 
-### 3. AppLayout Integration
+`AppLayout` keeps navigation available but makes transaction and account-editing content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. No timer changes the network to idle or declares a connection failure merely because it is slow.
 
-- **Location**: `source/components/Layout/AppLayout.tsx`
-- **Purpose**: Connects loading state to overlay display
-- **Behavior**:
-  - Uses usePageLoadingState to get loading status
-  - Passes state to PageLoadingOverlay for display
-  - Header and banner remain accessible above overlay
+Approval pages retain their own user-consent and transaction lifecycle. A pending approval is never accepted automatically to meet a responsiveness target.
 
-### 4. Suspense Boundaries
+## Shared controller status
 
-- **Purpose**: Required by React for lazy-loaded components
-- **Implementation**:
-  - Use minimal transparent fallback: `<div style={{ opacity: 0 }}>Loading...</div>`
-  - AppLayout handles the actual loading display
-  - Prevents duplicate loading indicators
+`controllerStatus` owns one runtime listener and one status poller per extension page. Mounted `useController` consumers share that subscription. Identical in-flight status requests and activity updates are coalesced. A logout event invalidates older status replies, preventing a delayed unlocked response from restoring the UI after lock.
 
-## Loading States
+A failed or malformed status response marks cached lock state unavailable. The layout shows a reconnect message, keeps sensitive content inert, and polls again after two seconds. A valid response clears the unavailable state. Read-only status requests have an independent 1.8-second timeout; loss of the worker must not silently look like a healthy unlocked wallet.
 
-### Global Loading States
+## Lists and stale data
 
-These are automatically tracked across the entire app:
+Assets, NFTs and transaction lists render 50 rows initially, with explicit load-more controls. Search and sort run on the full applicable collection before slicing, so an item outside the first page remains discoverable. This limits initial DOM work; repeatedly loading every page still grows the DOM and is not virtualization.
 
-- Network switching (`networkStatus === 'switching'`)
-- Account switching (`isSwitchingAccount`)
-- Navigation changes (brief loading during route transitions)
+Pagination is bound to account, network and backend context. A delayed page reply cannot append to a different context, including after leaving and returning to a screen. Locally cached rows are excluded during render as soon as their context changes. UTXO rows use formatting helpers without repeatedly sorting the complete history.
 
-### Page-Specific Loading States
+Transaction display caches include account, chain, currency, call and token metadata. Token decimals and symbols are looked up on the transaction's chain; a late metadata result from a different active context is discarded.
 
-Individual pages can add their own loading conditions:
+## Validation
 
-```typescript
-const { isLoading, message } = usePageLoadingState([
-  isLoadingData,
-  !requiredData,
-  isFetchingAssets,
-]);
+Run the unit regressions and production bundle budget check:
+
+```sh
+yarn test source tests --runInBand --coverage=false
+yarn type-check
+yarn build:chrome
+node scripts/check-bundle-size.js build/chrome
 ```
 
-## Implementation Guidelines
-
-### 1. For Regular Pages
-
-Pages that are part of the main app navigation should:
-
-- Let AppLayout handle the loading overlay automatically
-- Continue rendering content (it will be darkened by overlay)
-- Use skeleton loaders for partial data loading within the page
-
-Example:
-
-```typescript
-export const MyPage = () => {
-  const { data, isLoading } = useData();
-  const { isLoading: pageIsLoading } = usePageLoadingState([isLoading, !data]);
-
-  // No need to return null - overlay handles loading display
-  return (
-    <div>{isLoading ? <SkeletonLoader /> : <DataDisplay data={data} />}</div>
-  );
-};
-```
-
-### 2. For External/Popup Pages
-
-External transaction pages (opened in popup windows) should:
-
-- Keep their existing `LoadingComponent` usage
-- Manage their own loading states
-- Not rely on AppLayout's overlay
-
-### 3. For Skeleton Loaders
-
-Use skeleton loaders for:
-
-- List items loading (transactions, assets)
-- Balance displays during refresh
-- Any partial content that can load independently
-
-Example:
-
-```typescript
-{
-  isLoadingBalance ? (
-    <SkeletonLoader width="200px" height="48px" />
-  ) : (
-    <BalanceDisplay balance={balance} />
-  );
-}
-```
-
-### 4. For Lazy-Loaded Components
-
-When using React.lazy() for code splitting:
-
-- Wrap lazy components in Suspense boundaries
-- Use minimal transparent fallback
-- Let AppLayout handle the actual loading display
-
-Example:
-
-```typescript
-const LazyComponent = lazy(() => import('./MyComponent'));
-
-// In router or parent component:
-<Suspense fallback={<div style={{ opacity: 0 }}>Loading...</div>}>
-  <LazyComponent />
-</Suspense>;
-```
-
-## Loading UX Flow
-
-1. **After 150ms**: Spinner appears for immediate feedback (no screen darkening)
-2. **After 500ms**: Dark overlay appears with backdrop blur if still loading
-3. **After 5s**: Slow connection warning appears
-
-This provides instant visual feedback with the spinner, while delaying screen changes until needed.
-
-## Best Practices
-
-1. **Instant Feedback**: Overlay shows immediately for all loading states
-2. **Non-Intrusive**: Dark overlay is subtle, not jarring
-3. **Progressive Enhancement**: Spinner delayed even further (700ms total)
-4. **Prevent Interactions**: Overlay blocks all clicks during loading
-5. **Skeleton First**: Use skeletons for partial content loading
-6. **Minimal Suspense**: Use transparent Suspense fallbacks
-
-## Migration Checklist
-
-When updating a component to use the new loading strategy:
-
-- [ ] Remove `LoadingComponent` imports if not external
-- [ ] Remove `isDelayedLoading` checks and `return null` statements
-- [ ] Let components render normally (overlay will handle loading)
-- [ ] Add skeleton loaders for partial content
-- [ ] Test loading states with network throttling
-- [ ] Verify overlay appears immediately
-- [ ] Update Suspense fallbacks to be minimal/transparent
-
-## Key Features
-
-- **Single source of timing**: PageLoadingOverlay handles all delays and transitions
-- **Instant feedback**: Spinner appears immediately (50ms) without screen changes
-- **Progressive darkening**: Overlay only appears if loading takes longer (250ms)
-- **Header remains accessible**: Overlay only covers content area below header
-- **Consistent background**: No jarring color changes during quick operations
-- **Non-intrusive**: Clean spinner with delayed screen interaction blocking
-
-## Common Patterns
-
-### Data Fetching Page
-
-```typescript
-const { data, isLoading, error } = useFetch();
-const { isLoading: pageLoading } = usePageLoadingState([isLoading]);
-
-// Component renders normally - overlay handles loading
-if (error) return <ErrorComponent />;
-return <div>{isLoading ? <DataSkeleton /> : <DataDisplay data={data} />}</div>;
-```
-
-### Form Submission Page
-
-```typescript
-const [isSubmitting, setIsSubmitting] = useState(false);
-const { isLoading } = usePageLoadingState([isSubmitting]);
-
-const handleSubmit = async () => {
-  setIsSubmitting(true);
-  try {
-    await submitData();
-    navigate('/success');
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-// Form renders normally - overlay prevents interactions during submission
-return <Form onSubmit={handleSubmit} />;
-```
-
-### List with Skeletons
-
-```typescript
-const { items, isLoadingItems } = useItems();
-
-return (
-  <div>
-    {isLoadingItems ? (
-      <ListSkeleton />
-    ) : (
-      items.map((item) => <ListItem key={item.id} {...item} />)
-    )}
-  </div>
-);
-```
+Browser checks should cover fresh and existing wallets, offline RPCs, missing application chunks, an unresponsive background worker, recovery, CPU throttling, large histories and rapid account/network changes. A fast empty-wallet startup does not establish a two-second guarantee for every wallet or device.

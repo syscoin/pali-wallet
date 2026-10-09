@@ -13,6 +13,7 @@ import {
 
 // Flag to prevent duplicate listener registration
 let listenersInitialized = false;
+let currentMasterController: IMasterController;
 
 // Store listener references for cleanup
 let alarmListener: ((alarm: chrome.alarms.Alarm) => void) | null = null;
@@ -61,6 +62,8 @@ const persistSLHDSASetupProgress = async (message: any) => {
 };
 
 export const handleListeners = (masterController: IMasterController) => {
+  // A manual retry can replace a degraded controller after listeners exist.
+  currentMasterController = masterController;
   // Prevent duplicate listener registration
   if (listenersInitialized) {
     console.log(
@@ -118,7 +121,7 @@ export const handleListeners = (masterController: IMasterController) => {
 
     // Handle fiat price updates - only the initial update since unlock/create wallet handle immediate updates
     if (alarm.name === 'update_fiat_price_initial') {
-      masterController.wallet
+      currentMasterController.wallet
         .setFiat()
         .catch((error) =>
           console.error('Error updating fiat price from alarm:', error)
@@ -131,7 +134,7 @@ export const handleListeners = (masterController: IMasterController) => {
         '🔒 handleListeners: Auto-lock timer triggered, locking wallet'
       );
       try {
-        masterController.wallet.lock();
+        currentMasterController.wallet.lock();
       } catch (error) {
         console.error('Error locking wallet from auto-lock timer:', error);
       }
@@ -226,17 +229,17 @@ export const handleListeners = (masterController: IMasterController) => {
     switch (type) {
       case 'pw-msg-background':
         if (action === 'isInjected') {
-          masterController.dapp.setup(sender);
+          currentMasterController.dapp.setup(sender);
           sendResponse({ isInjected: hasEthProperty });
           return true; // Indicate async response
         }
         break;
       case 'lock_wallet':
-        handleLogout(masterController);
+        handleLogout(currentMasterController);
         return false; // Synchronous, no response needed
       case 'changeNetwork':
         if (data) {
-          masterController.wallet.setActiveNetwork(data.network);
+          currentMasterController.wallet.setActiveNetwork(data.network);
         }
         return false; // Synchronous, no response needed
       case 'startPolling':
@@ -245,6 +248,10 @@ export const handleListeners = (masterController: IMasterController) => {
         );
         return false; // Synchronous, no response needed
       case 'getCurrentState':
+        if (!currentMasterController.wallet) {
+          sendResponse({ error: 'Wallet initialization has not completed.' });
+          return false;
+        }
         // Send current state from background store
         const currentState = store.getState();
         sendResponse(currentState);

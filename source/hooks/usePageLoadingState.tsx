@@ -1,22 +1,13 @@
-import { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 import { RootState } from 'state/store';
-
-interface IPageLoadingState {
-  hasTimedOut?: boolean;
-  isLoading: boolean;
-  message?: string;
-}
-
-const TEN_SECONDS = 10000;
 
 const LOADING_OVERLAY_EXCLUDED_PAGES = new Set([
   '/chain-fail-to-connect',
   '/settings/networks/custom-rpc',
-  // Dapp approval pages own their pending state. A global overlay would cover
-  // their controls while the background switch is waiting for completion.
+  // Dapp approval pages own their pending state.
   '/external/switch-network',
   '/external/add-EthChain',
   '/external/switch-EthChain',
@@ -26,15 +17,23 @@ const LOADING_OVERLAY_EXCLUDED_PAGES = new Set([
 export const isPageLoadingOverlayExcluded = (pathname: string): boolean =>
   LOADING_OVERLAY_EXCLUDED_PAGES.has(pathname);
 
+// Navigation stays available during slow reads, but actions tied to the active
+// account/network must not submit while that context is changing.
+export const isContextSensitiveWalletRoute = (pathname: string): boolean =>
+  /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
+  /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|forget-wallet$|seed$)/.test(
+    pathname
+  ) ||
+  pathname === '/home/smart-account' ||
+  /^\/external\/(?:smart-account|smart-account-modules|watch-asset)$/.test(
+    pathname
+  );
+
 export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []
-): IPageLoadingState => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [navigationLoading, setNavigationLoading] = useState(false);
-  const [hasTimedOut, setHasTimedOut] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+) => {
+  const { pathname } = useLocation();
+  const { t } = useTranslation();
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
@@ -44,137 +43,36 @@ export const usePageLoadingState = (
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
-  const { isLoadingBalances } = useSelector(
-    (state: RootState) => state.vaultGlobal.loadingStates
+  const isLoadingBalances = useSelector(
+    (state: RootState) => state.vaultGlobal.loadingStates.isLoadingBalances
   );
   const isPollingUpdate = useSelector(
     (state: RootState) => state.vaultGlobal.isPollingUpdate
   );
-
-  // Only apply timeout logic on pages where users expect quick loading
-  const timeoutEnabledPages = ['/home'];
-
-  const shouldEnableTimeout = timeoutEnabledPages.some(
-    (page) =>
-      location.pathname === page || location.pathname.startsWith(`${page}/`)
-  );
-
-  const isOnExcludedPage = isPageLoadingOverlayExcluded(location.pathname);
-
-  // Determine if we're loading
   const isNetworkChanging = networkStatus === 'switching';
   const isConnecting = networkStatus === 'connecting';
-  // Consider balance loading (non-polling) as a network operation that should timeout
   const isNonPollingBalanceLoad = isLoadingBalances && !isPollingUpdate;
-
+  const isContextChanging =
+    isNetworkChanging || isConnecting || isSwitchingAccount;
   const isLoading =
-    navigationLoading ||
-    isNetworkChanging ||
-    isSwitchingAccount ||
-    isConnecting ||
+    isContextChanging ||
     isNonPollingBalanceLoad ||
-    additionalLoadingConditions.some((condition) => condition);
+    additionalLoadingConditions.some(Boolean);
 
-  // Handle network operation timeout (switching or non-polling balance load)
-  useEffect(() => {
-    // Clear existing timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-
-    // Only set timeout if we're on a page where timeouts are enabled
-    if (!shouldEnableTimeout) {
-      setHasTimedOut(false);
-      return;
-    }
-
-    // Timeout for network switching OR non-polling balance/transaction loads (like after unlock/retry) OR connecting
-    if (isNetworkChanging || isNonPollingBalanceLoad || isConnecting) {
-      // Set 10-second timeout for network operations
-      timeoutRef.current = setTimeout(() => {
-        setHasTimedOut(true);
-      }, TEN_SECONDS);
-    } else {
-      // Reset timeout state when not in a network operation
-      setHasTimedOut(false);
-    }
-
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
-  }, [
-    isNetworkChanging,
-    isNonPollingBalanceLoad,
-    isConnecting,
-    shouldEnableTimeout,
-  ]);
-
-  // Reset hasTimedOut when network status becomes idle
-  useEffect(() => {
-    if (networkStatus === 'idle') {
-      setHasTimedOut(false);
-    }
-  }, [networkStatus]);
-
-  // Handle timeout redirect
-  useEffect(() => {
-    if (hasTimedOut) {
-      // Don't redirect if we're already on the error page
-      if (location.pathname === '/chain-fail-to-connect') {
-        return;
-      }
-
-      // Clear the timeout immediately to prevent duplicate redirects
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      // Small delay to ensure state is stable before redirecting
-      const redirectTimer = setTimeout(() => {
-        navigate('/chain-fail-to-connect');
-      }, 100);
-
-      return () => clearTimeout(redirectTimer);
-    }
-  }, [hasTimedOut, navigate, location.pathname]);
-
-  // Track navigation changes
-  useEffect(() => {
-    // Settings drilling is instant (small synchronous pages) and already has
-    // a route fade transition - skip the 100ms overlay flash there
-    if (location.pathname.startsWith('/settings')) {
-      setNavigationLoading(false);
-      return;
-    }
-
-    setNavigationLoading(true);
-
-    const navigationTimer = setTimeout(() => {
-      setNavigationLoading(false);
-    }, 100); // Give time for component to mount
-
-    return () => clearTimeout(navigationTimer);
-  }, [location.pathname]);
-
-  // Determine message based on current state
-  let message: string | undefined;
+  let message = t('buttons.loading');
   if (isNetworkChanging && networkTarget) {
-    message = `Connecting to ${networkTarget.label}...`;
-  } else if (isConnecting || isNonPollingBalanceLoad) {
-    message = 'Connecting to network...';
-  } else if (isSwitchingAccount) {
-    message = 'Switching account...';
-  } else if (navigationLoading) {
-    message = 'Loading...';
+    message = t('networkConnection.connecting', {
+      network: networkTarget.label,
+    });
+  } else if (isNetworkChanging || isConnecting) {
+    message = t('networkConnection.switchingNetwork');
+  } else if (isNonPollingBalanceLoad) {
+    message = t('networkConnection.updatingBalances');
   }
 
   return {
-    isLoading: isOnExcludedPage ? false : isLoading,
+    isLoading: !isPageLoadingOverlayExcluded(pathname) && isLoading,
+    isContextChanging,
     message,
-    hasTimedOut,
   };
 };

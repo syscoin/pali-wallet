@@ -15,13 +15,16 @@ import {
 } from 'components/Icon/Icon';
 import { IconButton } from 'components/index';
 import { TokenIcon } from 'components/index';
+import { ListLoadMore } from 'components/Loading/ListLoadMore';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import {
   selectActiveAccountAssets,
+  selectActiveAccountRef,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
@@ -31,6 +34,7 @@ import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
   const assets = useSelector(selectActiveAccountAssets);
+  const account = useSelector(selectActiveAccountRef);
   const chainId = useSelector(
     (state: RootState) => state.vault.activeNetwork.chainId
   );
@@ -69,6 +73,16 @@ export const SyscoinAssetsList = () => {
     () => assets?.syscoin?.filter((asset) => asset.chainId === chainId) || [],
     [assets?.syscoin, chainId]
   );
+
+  const { visibleItems, hasMore, showMore } = useIncrementalList(
+    filteredAssets,
+    JSON.stringify([account.type, account.id, chainId])
+  );
+
+  useEffect(() => {
+    setShowDeleteConfirmation(false);
+    setAssetToDelete(null);
+  }, [account.type, account.id, chainId]);
 
   // Build a set of assetGuids that have at least one unconfirmed SPT transfer in tx list
   const pendingAssetGuids = useMemo(() => {
@@ -249,7 +263,7 @@ export const SyscoinAssetsList = () => {
 
     AssetRenderer.displayName = 'AssetRenderer';
     return AssetRenderer;
-  }, [navigate, t, handleDeleteClickMemo, handleAssetClick]);
+  }, [navigate, t, handleDeleteClickMemo, handleAssetClick, pendingAssetGuids]);
 
   return (
     <>
@@ -260,7 +274,7 @@ export const SyscoinAssetsList = () => {
       ) : (
         <ul className="space-y-0">
           {filteredAssets?.length > 0 ? (
-            filteredAssets.map(renderAsset)
+            visibleItems.map(renderAsset)
           ) : (
             <li>
               <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -274,6 +288,15 @@ export const SyscoinAssetsList = () => {
                   {t('tokens.importTokensToGetStarted')}
                 </p>
               </div>
+            </li>
+          )}
+          {hasMore && (
+            <li>
+              <ListLoadMore
+                onClick={showMore}
+                shown={visibleItems.length}
+                total={filteredAssets.length}
+              />
             </li>
           )}
         </ul>

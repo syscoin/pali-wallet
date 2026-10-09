@@ -37,6 +37,21 @@ const PrivateKeyView = () => {
   const [isPrivateKeyVisible, setIsPrivateKeyVisible] =
     useState<boolean>(false);
   const [form] = Form.useForm();
+  const keyContext = JSON.stringify([
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+  ]);
+  const [validatedContext, setValidatedContext] = useState('');
+  const isCurrentKeyValid = valid && validatedContext === keyContext;
+
+  useEffect(() => {
+    setValid(false);
+    setCurrentXprv('');
+    setIsPrivateKeyVisible(false);
+    form.resetFields();
+  }, [keyContext, form]);
 
   const getDecryptedPrivateKey = async (key: string) => {
     const privateKey = (await controllerEmitter(
@@ -55,22 +70,16 @@ const PrivateKeyView = () => {
 
   // Password validation function for ValidatedPasswordInput
   const validatePassword = async (password: string) => {
-    const { canLogin } = (await controllerEmitter(
-      ['wallet', 'unlock'],
-      [password, true]
-    )) as any;
-
-    if (!canLogin) {
-      throw new Error('Invalid password');
-    }
-
-    // Get the private key
+    // Secret export already validates the password and enforces the persisted
+    // attempt limit. A separate unlock would bypass that limit on failures.
     const privateKey = await getDecryptedPrivateKey(password);
-    return { canLogin, privateKey };
+    return { privateKey, context: keyContext };
   };
 
   // Handle successful password validation
   const handleValidationSuccess = (result: any) => {
+    if (result.context !== keyContext) return;
+    setValidatedContext(result.context);
     setValid(true);
     setCurrentXprv(result.privateKey);
   };
@@ -122,6 +131,7 @@ const PrivateKeyView = () => {
         </Card>
       ) : (
         <Form
+          key={keyContext}
           validateMessages={{ default: '' }}
           name="phraseview"
           form={form}
@@ -148,7 +158,7 @@ const PrivateKeyView = () => {
           <div className="w-full md:max-w-md bg-bkg-4 border border-bkg-4 p-4 text-xs rounded-lg">
             <div className="flex items-center justify-between w-full">
               <p>{t('settings.yourPrivateKey')}</p>
-              {valid && currentXprv && (
+              {isCurrentKeyValid && currentXprv && (
                 <button
                   type="button"
                   onClick={() => setIsPrivateKeyVisible(!isPrivateKeyVisible)}
@@ -173,19 +183,19 @@ const PrivateKeyView = () => {
             </div>
             <div
               className={`${
-                valid && currentXprv && !isPrivateKeyVisible
+                isCurrentKeyValid && currentXprv && !isPrivateKeyVisible
                   ? 'select-none filter blur-sm'
                   : ''
               }`}
             >
               <p
                 className={`${
-                  valid && currentXprv && isPrivateKeyVisible
+                  isCurrentKeyValid && currentXprv && isPrivateKeyVisible
                     ? 'font-mono break-all'
                     : ''
                 }`}
               >
-                {valid && currentXprv
+                {isCurrentKeyValid && currentXprv
                   ? isPrivateKeyVisible
                     ? currentXprv
                     : ellipsis(currentXprv, 4, 16)

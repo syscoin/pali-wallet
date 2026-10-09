@@ -15,6 +15,7 @@ import { handleObserveStateChanges } from 'scripts/Background/handlers/handleSta
 import { IMasterController } from './controllers';
 import { startSpamFilterCleanup } from './controllers/spamFilterCleanup';
 import { notificationManager } from './notification-manager';
+import { restrictStorageAccess } from './utils/restrictStorageAccess';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -44,6 +45,7 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
       `[Background] Initialization attempt ${attempt}/${MAX_INIT_ATTEMPTS}`
     );
 
+    await restrictStorageAccess();
     const controller = await handleMasterControllerInstance();
     MasterControllerInstance = controller;
     isReady = true;

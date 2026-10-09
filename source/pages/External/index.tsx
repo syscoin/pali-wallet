@@ -7,7 +7,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { AntdProvider } from 'components/AntdProvider';
-import { rehydrateStore } from 'state/rehydrate';
+import { WalletBootstrap } from 'components/WalletBootstrap/WalletBootstrap';
 import store from 'state/store';
 import { clearNavigationState } from 'utils/navigationState';
 import 'assets/styles/index.css';
@@ -38,56 +38,21 @@ const toastOptions = {
 };
 
 if (externalRootElement) {
-  // Clear navigation state for external popups to ensure they don't restore state
-  clearNavigationState()
-    .then(() => {
-      console.log('[External] Cleared navigation state for external popup');
-
-      // Prefer fast-path: request current state from background (authoritative)
-      return new Promise<any>((resolve) => {
-        try {
-          chrome.runtime.sendMessage({ type: 'getCurrentState' }, (bgState) => {
-            if (chrome.runtime.lastError) {
-              console.warn(
-                '[External] Failed to get state from background:',
-                chrome.runtime.lastError
-              );
-              resolve(null);
-              return;
-            }
-            resolve(bgState || null);
-          });
-        } catch (e) {
-          console.warn('[External] Error sending getCurrentState:', e);
-          resolve(null);
-        }
-      });
-    })
-    .then((backgroundState) => {
-      if (backgroundState) {
-        return rehydrateStore(store, backgroundState);
-      }
-      // Fallback to storage-based rehydrate if background did not respond
-      return rehydrateStore(store);
-    })
-    .then(() => {
-      // Ensure background polling is running for updates (no immediate cost)
-      try {
-        chrome.runtime.sendMessage({ type: 'startPolling' });
-      } catch {}
-
-      const root = ReactDOM.createRoot(externalRootElement);
-      root.render(
-        <React.StrictMode>
-          <Provider store={store}>
-            <AntdProvider>
-              <External />
-              <ToastContainer {...toastOptions} />
-            </AntdProvider>
-          </Provider>
-        </React.StrictMode>
-      );
-    });
+  // Navigation cleanup is best-effort and must not block the approval UI.
+  void clearNavigationState();
+  const root = ReactDOM.createRoot(externalRootElement);
+  root.render(
+    <React.StrictMode>
+      <Provider store={store}>
+        <AntdProvider>
+          <WalletBootstrap>
+            <External />
+            <ToastContainer {...toastOptions} />
+          </WalletBootstrap>
+        </AntdProvider>
+      </Provider>
+    </React.StrictMode>
+  );
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");
 }

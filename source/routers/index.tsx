@@ -105,90 +105,71 @@ const NavigationRestorer = () => {
 // Lazy load route groups
 const AuthRoutes = lazy(() => import('./routes/AuthRoutes'));
 
-// Lazy load components with proper imports
-const About = lazy(() => import('pages').then((m) => ({ default: m.About })));
-const ConnectedSites = lazy(() =>
-  import('pages').then((m) => ({ default: m.ConnectedSites }))
+// Import each route directly: importing the pages barrel fetches every screen
+// before the first route can render.
+const About = lazy(() => import('pages/Settings/About'));
+const ConnectedSites = lazy(() => import('pages/Settings/ConnectedSites'));
+const ConnectHardwareWallet = lazy(
+  () => import('pages/Settings/ConnectHardwareWallet')
 );
-const ConnectHardwareWallet = lazy(() =>
-  import('pages').then((m) => ({ default: m.ConnectHardwareWallet }))
-);
-const CreateAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.CreateAccount }))
-);
+const CreateAccount = lazy(() => import('pages/Settings/CreateAccount'));
 const CreatePass = lazy(() =>
-  import('pages').then((m) => ({ default: m.CreatePass }))
+  import('pages/CreatePass/CreatePass').then((m) => ({ default: m.CreatePass }))
 );
-const Currency = lazy(() =>
-  import('pages').then((m) => ({ default: m.Currency }))
-);
-const CustomRPC = lazy(() =>
-  import('pages').then((m) => ({ default: m.CustomRPC }))
-);
-const ForgetWallet = lazy(() =>
-  import('pages').then((m) => ({ default: m.ForgetWallet }))
-);
+const Currency = lazy(() => import('pages/Settings/Currency'));
+const CustomRPC = lazy(() => import('pages/Settings/CustomRPC'));
+const ForgetWallet = lazy(() => import('pages/Settings/ForgetWallet'));
 const DetailsView = lazy(() =>
-  import('pages').then((m) => ({ default: m.DetailsView }))
+  import('pages/Home/Panel/components/Details').then((m) => ({
+    default: m.DetailsView,
+  }))
 );
-const ManageNetwork = lazy(() =>
-  import('pages').then((m) => ({ default: m.ManageNetwork }))
+const ManageNetwork = lazy(() => import('pages/Settings/ManageNetwork'));
+const Home = lazy(() =>
+  import('pages/Home/Home').then((m) => ({ default: m.Home }))
 );
-const Home = lazy(() => import('pages').then((m) => ({ default: m.Home })));
-const Import = lazy(() => import('pages').then((m) => ({ default: m.Import })));
-const PrivateKey = lazy(() =>
-  import('pages').then((m) => ({ default: m.PrivateKey }))
+const Import = lazy(() =>
+  import('pages/Import').then((m) => ({ default: m.Import }))
 );
+const PrivateKey = lazy(() => import('pages/Settings/PrivateKey'));
 const Receive = lazy(() =>
-  import('pages').then((m) => ({ default: m.Receive }))
+  import('pages/Receive/Receive').then((m) => ({ default: m.Receive }))
 );
 const SendEth = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendEth }))
+  import('pages/Send/SendEth').then((m) => ({ default: m.SendEth }))
 );
 const SendSys = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendSys }))
+  import('pages/Send/SendSys').then((m) => ({ default: m.SendSys }))
 );
 const SendConfirm = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendConfirm }))
+  import('pages/Send/Confirm').then((m) => ({ default: m.SendConfirm }))
 );
-const Start = lazy(() => import('pages').then((m) => ({ default: m.Start })));
-const TrustedSites = lazy(() =>
-  import('pages').then((m) => ({ default: m.TrustedSites }))
+const Start = lazy(() =>
+  import('pages/Start/Start').then((m) => ({ default: m.Start }))
 );
+const TrustedSites = lazy(() => import('pages/Settings/TrustedSites'));
 const AddToken = lazy(() =>
-  import('pages').then((m) => ({ default: m.AddToken }))
+  import('pages/Tokens/AddToken').then((m) => ({ default: m.AddToken }))
 );
 const SeedConfirm = lazy(() =>
-  import('pages').then((m) => ({ default: m.SeedConfirm }))
+  import('pages/SeedConfirm').then((m) => ({ default: m.SeedConfirm }))
 );
-const Phrase = lazy(() => import('pages').then((m) => ({ default: m.Phrase })));
-const ImportAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.ImportAccount }))
-);
-const RemoveEth = lazy(() =>
-  import('pages').then((m) => ({ default: m.RemoveEth }))
-);
+const Phrase = lazy(() => import('pages/Settings/Phrase'));
+const ImportAccount = lazy(() => import('pages/Settings/ImportAccount'));
+const RemoveEth = lazy(() => import('pages/Settings/RemoveEth'));
 const CreatePasswordImport = lazy(() =>
-  import('pages').then((m) => ({ default: m.CreatePasswordImport }))
+  import('pages/Import/CreatePass').then((m) => ({
+    default: m.CreatePasswordImport,
+  }))
 );
-const ManageAccounts = lazy(() =>
-  import('pages').then((m) => ({ default: m.ManageAccounts }))
+const ManageAccounts = lazy(() => import('pages/Settings/ManageAccounts'));
+const SmartAccountPolicy = lazy(
+  () => import('pages/Settings/SmartAccountPolicy')
 );
-const SmartAccountPolicy = lazy(() =>
-  import('pages').then((m) => ({ default: m.SmartAccountPolicy }))
-);
-const SmartAccountHub = lazy(() =>
-  import('pages').then((m) => ({ default: m.SmartAccountHub }))
-);
-const EditAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.EditAccount }))
-);
-const Advanced = lazy(() =>
-  import('pages').then((m) => ({ default: m.Advanced }))
-);
-const Languages = lazy(() =>
-  import('pages').then((m) => ({ default: m.Languages }))
-);
+const SmartAccountHub = lazy(() => import('pages/SmartAccount/Hub'));
+const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
+const Advanced = lazy(() => import('pages/Settings/Advanced'));
+const Languages = lazy(() => import('pages/Settings/Languages'));
 const ChainErrorPage = lazy(() =>
   import('pages/Chain/ChainErrorPage').then((m) => ({
     default: m.ChainErrorPage,
@@ -203,57 +184,61 @@ const SwitchNetwork = lazy(() =>
 
 // External/dApp components
 const ConnectWallet = lazy(() =>
-  import('pages').then((m) => ({ default: m.ConnectWallet }))
+  import('pages/Connections/ConnectWallet').then((m) => ({
+    default: m.ConnectWallet,
+  }))
 );
 const ChangeAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.ChangeAccount }))
+  import('pages/Connections/ChangeAccount').then((m) => ({
+    default: m.ChangeAccount,
+  }))
 );
 const ChangeConnectedAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.ChangeConnectedAccount }))
+  import('pages/Connections/ChangeConnectedAccount').then((m) => ({
+    default: m.ChangeConnectedAccount,
+  }))
 );
 const PrepareSmartAccount = lazy(() =>
-  import('pages').then((m) => ({ default: m.PrepareSmartAccount }))
+  import('pages/Connections/PrepareSmartAccount').then((m) => ({
+    default: m.PrepareSmartAccount,
+  }))
 );
 const SmartAccountModuleConsent = lazy(() =>
-  import('pages').then((m) => ({ default: m.SmartAccountModuleConsent }))
+  import('pages/Connections/SmartAccountModuleConsent').then((m) => ({
+    default: m.SmartAccountModuleConsent,
+  }))
 );
-const ExternalWatchAsset = lazy(() =>
-  import('pages').then((m) => ({ default: m.ExternalWatchAsset }))
+const ExternalWatchAsset = lazy(
+  () => import('pages/Settings/ExternalWatchAsset')
 );
-const CustomRPCExternal = lazy(() =>
-  import('pages').then((m) => ({ default: m.CustomRPCExternal }))
-);
-const SwitchChain = lazy(() =>
-  import('pages').then((m) => ({ default: m.SwitchChain }))
-);
+const CustomRPCExternal = lazy(() => import('pages/Settings/ExternalAddRPC'));
+const SwitchChain = lazy(() => import('pages/Settings/SwitchEthereumChain'));
 const SpamWarning = lazy(() =>
   import('pages/External/SpamWarning').then((m) => ({ default: m.SpamWarning }))
 );
-const SwitchNeworkUtxoEvm = lazy(() =>
-  import('pages').then((m) => ({ default: m.SwitchNeworkUtxoEvm }))
+const SwitchNeworkUtxoEvm = lazy(
+  () => import('pages/Settings/SwitchNetworkUtxoEvm')
 );
 const SendTransaction = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendTransaction }))
+  import('pages/Send/SendTransaction').then((m) => ({
+    default: m.SendTransaction,
+  }))
 );
 const SendCalls = lazy(() =>
-  import('pages').then((m) => ({ default: m.SendCalls }))
+  import('pages/Send/SendCalls').then((m) => ({ default: m.SendCalls }))
 );
 const CallsStatus = lazy(() =>
-  import('pages').then((m) => ({ default: m.CallsStatus }))
+  import('pages/Send/CallsStatus').then((m) => ({ default: m.CallsStatus }))
 );
 const SignAndSend = lazy(() =>
-  import('pages').then((m) => ({ default: m.SignAndSend }))
+  import('pages/Transactions').then((m) => ({ default: m.SignAndSend }))
 );
-const EthSign = lazy(() =>
-  import('pages').then((m) => ({ default: m.EthSign }))
+const EthSign = lazy(() => import('pages/Transactions/SignEth'));
+const EncryptPubKey = lazy(() => import('pages/Transactions/EncryptPubKey'));
+const Decrypt = lazy(() => import('pages/Transactions/Decrypt'));
+const Sign = lazy(() =>
+  import('pages/Transactions').then((m) => ({ default: m.Sign }))
 );
-const EncryptPubKey = lazy(() =>
-  import('pages').then((m) => ({ default: m.EncryptPubKey }))
-);
-const Decrypt = lazy(() =>
-  import('pages').then((m) => ({ default: m.Decrypt }))
-);
-const Sign = lazy(() => import('pages').then((m) => ({ default: m.Sign })));
 
 export const Router = () => {
   const {

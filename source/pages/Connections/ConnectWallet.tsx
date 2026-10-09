@@ -21,6 +21,7 @@ import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { isHexString } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/index';
 
@@ -160,13 +161,14 @@ export const ConnectWallet = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const date = Date.now();
 
-  const isBridgeHost = useMemo(() => {
-    const safeHost = (host || '').toLowerCase();
-    return (
-      safeHost.includes('bridge.syscoin.org') ||
-      safeHost.includes('bridge-staging.syscoin.org')
-    );
-  }, [host]);
+  const isBridgeHost = useMemo(
+    () =>
+      isTrustedDappOrigin(host || '', [
+        'bridge.syscoin.org',
+        'bridge-staging.syscoin.org',
+      ]),
+    [host]
+  );
 
   const showTrezorUtxoDisclaimer = useMemo(
     () =>
@@ -261,9 +263,7 @@ export const ConnectWallet = () => {
 
   const onConfirm = () => {
     // Check if the host is in the trusted apps list
-    const isTrusted = trustedApps.some((trustedHost) =>
-      host.toLowerCase().includes(trustedHost.toLowerCase())
-    );
+    const isTrusted = isTrustedDappOrigin(host, trustedApps);
 
     if (isTrusted) {
       handleConnect();

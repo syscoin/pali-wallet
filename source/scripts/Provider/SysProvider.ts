@@ -6,8 +6,8 @@ import store from 'state/store';
 export const SysProvider = (host: string) => {
   //* ----- Connection & Account Methods -----
   const getAccount = () => {
-    const { dapp } = getController();
-    return dapp.getAccount(host);
+    const { dapp, wallet } = getController();
+    return wallet.isUnlocked() ? dapp.getAccount(host) : null;
   };
 
   const isConnected = () => {
@@ -21,14 +21,13 @@ export const SysProvider = (host: string) => {
   };
 
   const getPublicKey = () => {
-    const { dapp } = getController();
-    const account = dapp.getAccount(host);
+    const account = getAccount();
     return account?.xpub || null;
   };
 
   const getChangeAddress = () => {
-    const { dapp, wallet } = getController();
-    const account = dapp.getAccount(host);
+    const { wallet } = getController();
+    const account = getAccount();
     if (!account) {
       throw new Error('Not connected');
     }
@@ -36,8 +35,8 @@ export const SysProvider = (host: string) => {
   };
 
   const getCurrentAddressPubkey = (params: any[]) => {
-    const { dapp, wallet } = getController();
-    const account = dapp.getAccount(host);
+    const { wallet } = getController();
+    const account = getAccount();
     if (!account) {
       throw new Error('Not connected');
     }
@@ -47,8 +46,8 @@ export const SysProvider = (host: string) => {
   };
 
   const getBip32Path = (params: any[]) => {
-    const { dapp, wallet } = getController();
-    const account = dapp.getAccount(host);
+    const { wallet } = getController();
+    const account = getAccount();
     if (!account) {
       throw new Error('Not connected');
     }
@@ -59,24 +58,22 @@ export const SysProvider = (host: string) => {
 
   //* ----- Transaction Methods -----
   const getTransactions = () => {
-    const { dapp } = getController();
-    const account = dapp.getAccount(host);
+    const account = getAccount();
     if (!account) {
       return [];
     }
 
     // Get transactions from Redux store
-    const { activeAccount, activeNetwork, accountTransactions } =
-      store.getState().vault;
+    const connection = getController().dapp.get(host);
+    const { activeNetwork, accountTransactions } = store.getState().vault;
 
-    if (!activeAccount || !activeNetwork) {
+    if (!connection || !activeNetwork) {
       return [];
     }
 
     const transactions =
-      accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
-        activeNetwork.chainId
-      ] || [];
+      accountTransactions[connection.accountType]?.[connection.accountId]
+        ?.syscoin?.[activeNetwork.chainId] || [];
 
     return transactions;
   };
@@ -88,19 +85,7 @@ export const SysProvider = (host: string) => {
     }
 
     const txId = params[0];
-    const { activeAccount, activeNetwork, accountTransactions } =
-      store.getState().vault;
-
-    if (!activeAccount || !activeNetwork) {
-      return null;
-    }
-
-    const transactions =
-      accountTransactions[activeAccount.type]?.[activeAccount.id]?.syscoin?.[
-        activeNetwork.chainId
-      ] || [];
-
-    return transactions.find((tx: any) => tx.txid === txId) || null;
+    return getTransactions().find((tx: any) => tx.txid === txId) || null;
   };
 
   //* ----- Validation Methods -----

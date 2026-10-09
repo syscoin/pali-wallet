@@ -3,17 +3,47 @@ import { ethErrors } from 'helpers/errors';
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { hasExternalWalletPage } from 'utils/extensionContexts';
 
+import {
+  assertRequestActive,
+  isRequestDocumentLive,
+  requestCancelledError,
+} from './request-lifetime';
 import { MethodRoute } from './types';
 
 const handleResponseEvent = async (
   event: ICustomEvent,
   eventName: string,
   host: string,
-  resolve: (value: unknown) => void
+  approvalId: string,
+  resolve: (value: unknown) => void,
+  sender?: chrome.runtime.MessageSender,
+  onStale?: () => void
 ): Promise<void> => {
   const expectedEventName = `${eventName}.${host}`;
+  // A different extension view must not resolve this approval. The browser
+  // supplies Client.url; page-controlled message fields cannot substitute it.
+  try {
+    const sourceUrl = new URL((event as any).source?.url);
+    const expectedUrl = new URL(chrome.runtime.getURL('external.html'));
+    const sourceData = JSON.parse(sourceUrl.searchParams.get('data') || '{}');
+    if (
+      sourceUrl.protocol !== expectedUrl.protocol ||
+      sourceUrl.host !== expectedUrl.host ||
+      sourceUrl.pathname !== expectedUrl.pathname ||
+      sourceData.approvalId !== approvalId
+    )
+      return;
+  } catch {
+    return;
+  }
   if (event.data.eventName !== expectedEventName) {
+    return;
+  }
+
+  if (!(await isRequestDocumentLive(sender))) {
+    onStale?.();
     return;
   }
 
@@ -24,7 +54,7 @@ const handleResponseEvent = async (
       resolve(parsedDetail);
     } catch (error) {
       console.error('Error parsing event detail:', error);
-      resolve(null); // Fallback to null if parsing fails
+      onStale?.(); // Malformed approval data must never count as acceptance.
     }
   } else {
     // Component sent a message but with no detail - resolve with null
@@ -32,41 +62,10 @@ const handleResponseEvent = async (
   }
 };
 
-// Detection function for popup blocking - includes ALL extension windows that should block new popups
-const checkForAnyOpenPopupOrHardwareWallet = async (): Promise<boolean> => {
-  try {
-    // Use only context detection since chrome.tabs.query doesn't give us URLs without tabs permission
-    if (
-      'getContexts' in chrome.runtime &&
-      typeof chrome.runtime.getContexts === 'function'
-    ) {
-      return new Promise((resolve) => {
-        (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
-          const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
-
-          const hasBlockingWindow = contexts.some((ctx) => {
-            // Check for ANY tab from our extension (includes hardware wallet and external tabs)
-            if (
-              (ctx.contextType === 'TAB' || ctx.contextType === 'POPUP') &&
-              ctx.documentOrigin === ourExtensionOrigin
-            ) {
-              return true;
-            }
-
-            return false;
-          });
-
-          resolve(hasBlockingWindow);
-        });
-      });
-    }
-
-    return false;
-  } catch (error) {
-    console.error('[checkForAnyOpenPopupOrHardwareWallet] Error:', error);
-    return false;
-  }
-};
+// Ordinary wallet tabs may stay open while a dapp requests approval.
+// External approval/hardware views serialize prompts. Detection is bounded and
+// failure is handled by atomicCheckAndSetPopup without opening another window.
+const checkForAnyOpenPopupOrHardwareWallet = () => hasExternalWalletPage(2000);
 
 /**
  * Opens a popup and adds events listener to resolve a promise.
@@ -84,13 +83,20 @@ export const popupPromise = async ({
   eventName,
   host,
   route,
+  signal,
+  sender,
 }: {
   data?: object;
   eventName: string;
   host: string;
   route: MethodRoute;
+  sender?: chrome.runtime.MessageSender;
+  signal?: AbortSignal;
 }) => {
+  assertRequestActive(signal);
+  if (!(await isRequestDocumentLive(sender))) throw requestCancelledError();
   const { createPopup } = getController();
+  const approvalId = crypto.randomUUID();
 
   // Use atomic check-and-set to prevent race conditions
   const canCreatePopup = await atomicCheckAndSetPopup();
@@ -100,12 +106,13 @@ export const popupPromise = async ({
     );
   }
 
-  data = JSON.parse(JSON.stringify(data || {}).replace(/#(?=\S)/g, ''));
+  // URLSearchParams in createPopup escapes the payload without changing it.
+  data = data || {};
 
   let popup = null;
 
   try {
-    popup = await createPopup(route, { ...data, host, eventName });
+    popup = await createPopup(route, { ...data, host, eventName, approvalId });
   } catch (error) {
     // Clear the flag if popup creation failed
     chrome.storage.local.remove(
@@ -126,9 +133,14 @@ export const popupPromise = async ({
     let messageHandler: any = null;
     let windowRemovalHandler: any = null;
     let resolved = false;
+    let onAbort: (() => void) | null = null;
+    let livenessInterval: ReturnType<typeof setInterval> | null = null;
+    let checkingLiveness = false;
 
     // Clean up function to remove listeners
     const cleanup = () => {
+      if (livenessInterval) clearInterval(livenessInterval);
+      if (onAbort) signal?.removeEventListener('abort', onAbort);
       if (messageHandler) {
         self.removeEventListener('message', messageHandler);
         messageHandler = null;
@@ -163,7 +175,15 @@ export const popupPromise = async ({
 
     // Message handler
     messageHandler = (swEvent: any) => {
-      handleResponseEvent(swEvent, eventName, host, safeResolve);
+      handleResponseEvent(
+        swEvent,
+        eventName,
+        host,
+        approvalId,
+        safeResolve,
+        sender,
+        () => onAbort?.()
+      );
     };
 
     // Window removal handler
@@ -196,9 +216,34 @@ export const popupPromise = async ({
       );
     };
 
+    onAbort = () => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
+      // Closing an approval rejects it; cancellation never authorizes a request.
+      chrome.windows.remove(popup.id, () => {
+        void chrome.runtime.lastError;
+      });
+      reject(requestCancelledError());
+    };
+
     // Add listeners
     self.addEventListener('message', messageHandler);
     chrome.windows.onRemoved.addListener(windowRemovalHandler);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    if (sender?.documentId && !resolved) {
+      livenessInterval = setInterval(async () => {
+        if (checkingLiveness || resolved) return;
+        checkingLiveness = true;
+        try {
+          if (!(await isRequestDocumentLive(sender))) onAbort?.();
+        } finally {
+          checkingLiveness = false;
+        }
+      }, 1000);
+    }
   });
 };
 

@@ -68,6 +68,7 @@ jest.mock('state/vault', () => ({
 jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: {
+    cleanup: jest.fn(),
     notifyTransaction: jest.fn(),
     updatePendingTransactionBadge: jest.fn(),
   },
@@ -690,6 +691,96 @@ it('immediately disposes pending receipt transports when the wallet context is c
   await jest.advanceTimersByTimeAsync(300_000);
   expect(provider.send).toHaveBeenCalledTimes(1);
   expect(balanceOf).not.toHaveBeenCalled();
+});
+
+// Exercise the reset entry point, stopping at its first I/O boundary. Even a
+// stalled/failed reset must invalidate reads before a matching vault returns.
+const resetBeforeStorageIO = async () => {
+  Object.assign(controller, {
+    walletSessionGeneration: 0,
+    keyrings: new Map(),
+    disposeAllKeyrings: jest.fn(),
+    cleanupPersistentProviders: jest.fn(),
+    cancelActiveBalanceUpdate: jest.fn(),
+    stopAutoLockTimer: jest
+      .fn()
+      .mockRejectedValue(new Error('Reset I/O unavailable')),
+  });
+  await expect(controller.resetWalletState()).rejects.toThrow(
+    'Reset I/O unavailable'
+  );
+};
+
+it('reset cancels old receipt reads before I/O even when the same vault is restored', async () => {
+  let tokenDone!: (value: bigint) => void;
+  let nativeDone!: (value: bigint) => void;
+  balanceOf.mockReturnValue(
+    new Promise((done) => {
+      tokenDone = done;
+    })
+  );
+  provider.getBalance.mockReturnValue(
+    new Promise((done) => {
+      nativeDone = done;
+    })
+  );
+  controller.refreshBalancesAfterReceipt({ from: A, to: T, blockNumber: 10 });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(provider.getBalance).toHaveBeenCalledTimes(1);
+
+  await resetBeforeStorageIO();
+  state.vault = JSON.parse(JSON.stringify(state.vault));
+  state.vault.accounts[type][0].nativeBalance = 77;
+  state.vault.accountAssets[type][0].ethereum[0] = asset(T, 66);
+  expect(readProviders.every((local) => local.signal.aborted)).toBe(true);
+  tokenDone(BigInt(99));
+  nativeDone(BigInt('99000000000000000000'));
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(77);
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(66);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+it('reset invalidates an old targeted token read when the same vault is restored', async () => {
+  let done!: (value: bigint) => void;
+  balanceOf.mockReturnValue(
+    new Promise((resolve) => {
+      done = resolve;
+    })
+  );
+  const read = controller.refreshActiveEvmTokenBalance(T);
+  const rejected = expect(read).rejects.toThrow('context changed');
+  await resetBeforeStorageIO();
+  state.vault = JSON.parse(JSON.stringify(state.vault));
+  state.vault.accountAssets[type][0].ethereum[0] = asset(T, 66);
+  done(BigInt(99));
+  await rejected;
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(66);
+});
+
+it('reset invalidates an old native poll even when the same vault is restored', async () => {
+  let done!: (value: number) => void;
+  controller.balancesManager = {
+    utils: {
+      getBalanceUpdatedForAccount: () =>
+        new Promise((resolve) => {
+          done = resolve;
+        }),
+    },
+  };
+  const read = controller.updateUserNativeBalance({
+    activeAccount: state.vault.activeAccount,
+    activeNetwork: state.vault.activeNetwork,
+    isBitcoinBased: false,
+    isPolling: true,
+  });
+  await resetBeforeStorageIO();
+  state.vault = JSON.parse(JSON.stringify(state.vault));
+  state.vault.accounts[type][0].nativeBalance = 77;
+  done(99);
+  await read;
+  expect(state.vault.accounts[type][0].nativeBalance).toBe(77);
 });
 
 it('does not overwrite a newer regular token balance with a delayed receipt response', async () => {

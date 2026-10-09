@@ -18,6 +18,7 @@ import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { getDappOrigin } from 'utils/dappOrigin';
 import { truncate } from 'utils/index';
 import {
   createNavigationContext,
@@ -69,7 +70,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
         currentWindow: true,
       });
       if (tabs[0]?.url) {
-        const { host } = new URL(tabs[0].url);
+        const host = getDappOrigin(tabs[0].url) || '';
         const isConnected = !!dapps[host];
         setCurrentTab({ host, isConnected });
       }

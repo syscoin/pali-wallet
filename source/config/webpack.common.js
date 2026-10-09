@@ -219,13 +219,8 @@ module.exports = {
             ignore: [],
           },
         },
-        {
-          from: 'source/assets/locales',
-          to: 'assets/locales',
-          globOptions: {
-            ignore: [],
-          },
-        },
+        // Locale JSON is already emitted by i18n's static/dynamic imports.
+        // Copying it here ships a second, unused copy of every translation.
         {
           from: 'source/assets/fonts/index.css',
           to: 'assets/fonts/index.css',

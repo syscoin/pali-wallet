@@ -66,8 +66,9 @@ export const getTransactionDisplayInfo = async (
     if (tokenValue !== null && tokenValue !== undefined && tokenAddress) {
       // Try to get token info from user's assets or fetch from controller
       try {
-        const { accounts, activeAccount, accountAssets } =
+        const { accounts, activeAccount, accountAssets, activeNetwork } =
           store.getState().vault;
+        const transactionChainId = Number(tx.chainId ?? activeNetwork.chainId);
         const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
         const userAssets =
           accountAssets[activeAccount.type]?.[activeAccount.id];
@@ -76,8 +77,9 @@ export const getTransactionDisplayInfo = async (
         if (userAssets?.ethereum) {
           const token = userAssets.ethereum.find(
             (asset) =>
+              Number(asset.chainId) === transactionChainId &&
               asset.contractAddress?.toLowerCase() ===
-              tokenAddress.toLowerCase()
+                tokenAddress.toLowerCase()
           );
 
           if (token) {
@@ -117,7 +119,12 @@ export const getTransactionDisplayInfo = async (
         }
 
         // If not in user's assets, try to fetch from controller
-        if (!skipUnknownTokenFetch) {
+        // The metadata RPC always targets the current network. It must never
+        // label a historical transaction from another chain.
+        if (
+          !skipUnknownTokenFetch &&
+          transactionChainId === Number(activeNetwork.chainId)
+        ) {
           try {
             let tokenDetails: ITokenDetails | null;
 
@@ -135,7 +142,14 @@ export const getTransactionDisplayInfo = async (
               )) as ITokenDetails | null;
             }
 
-            if (tokenDetails) {
+            const latestVault = store.getState().vault;
+            const sameContext =
+              Number(latestVault.activeNetwork.chainId) ===
+                transactionChainId &&
+              latestVault.activeNetwork.url === activeNetwork.url &&
+              latestVault.activeAccount.id === activeAccount.id &&
+              latestVault.activeAccount.type === activeAccount.type;
+            if (tokenDetails && sameContext) {
               const isNft = tokenDetails.isNft || false;
               const rawDecimals = isNft
                 ? 0

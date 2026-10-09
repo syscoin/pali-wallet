@@ -69,7 +69,8 @@ module.exports = merge(common, {
           output: {
             ecma: 5,
             comments: false,
-            ascii_only: true,
+            // Supported browsers can parse UTF-8; escaping translations bloats chunks.
+            ascii_only: false,
           },
         },
         extractComments: false,
