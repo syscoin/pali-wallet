@@ -73,22 +73,42 @@ alongside the vault profile, preventing a successful vault unlock from losing
 access to imported or derived account keys. This is compatibility work, not a
 claim that all historical account keys have been rekeyed with stronger settings.
 
-Fresh creation encrypts first and commits ciphertext with its salt in one native
-storage batch. A rejected batch leaves neither record, and a committed pair
-remains recoverable if its acknowledgement is lost. Native batch support is
-required; sequential-only custom adapters fail before writing. Existing-vault
+Fresh creation encrypts first, then atomically creates ciphertext and its salt
+only if both records are absent. For the actual `chrome.storage.local` or
+`browser.storage.local` adapter, a Web Lock covers the absence check and one
+native batch commit within that extension-origin storage partition. A rejected
+batch leaves neither record and releases the lock for retry; a committed pair
+remains recoverable if its acknowledgement is lost. Custom or shared backends
+must explicitly provide atomic `createItemsIfAbsent`; the built-in memory
+backend provides that capability. A native adapter without Web Locks, or a
+sequential-only custom adapter, fails before writing. Existing-vault
 migrations retain their ordering. Pali rejects existing complete or incomplete
 vault state before onboarding can reset it, and checks required WebCrypto
 capability before beginning creation. Operational failures after authentication still clear partial
 session state without consuming a wrong-password attempt.
 
-Final [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) validation uses production commit
-`7eba1e9` and test-only follow-up `1f6b576`: 30 workspace suites / 432 tests pass, both
-packages build, and all 127 packed files match the Pali installation. Pali
-runtime `fa34432c` passes 148 suites / 1,400 tests, its production build and
-creation/import/approval browser checks. Artifact hashes are recorded under
-`cryptoFollowup` in [the evidence file](security-responsiveness-evidence.json).
-Publication of core1.0.29/keyring1.0.613 and clean registry CI remain pending.
+The keyring initializer itself also requires both records to be absent when no
+live session exists. Existing wallets restore through `unlock()`. A matching
+live session may repeat initialization only after read-only verification of its
+stored mnemonic and session identity; it does not rewrite the vault. Pali reads
+both presence records in one native storage call and preserves malformed falsy
+values rather than treating them as an empty wallet.
+
+Current [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) validation uses
+commit `2a0f9bcb6ac099286da93c99b8363ef900748305`: 31 workspace suites / 467
+tests pass, both packages build, and all 127 packed files match the Pali
+installation. Pali runtime `0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8`, with
+fingerprint `c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010`,
+passes 148 suites / 1,424 tests with coverage, TypeScript, translations and its
+production build. ESLint has zero errors and two existing warnings. Current
+atomic-creation, lost-acknowledgement, Receive, Faucet, history and approval
+browser checks pass. Cross-context browser checks
+demonstrate two winners with an unguarded check/write sequence, versus one
+winner and one matching pair with the atomic capability; a failed write releases
+the lock. Artifact hashes are recorded under `cryptoFollowup` in
+[the evidence file](security-responsiveness-evidence.json). The 05:26 UTC registry
+check returned E404 for core 1.0.29 and keyring 1.0.613. Owner publication of core
+first, then keyring, and clean registry CI remain pending.
 
 A separate UI race is fixed in Pali: Home could read stale locked status after
 successful unlock or wallet creation and redirect back to login. Unlock, seed import and new-wallet creation now await a fresh

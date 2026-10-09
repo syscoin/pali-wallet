@@ -14,7 +14,7 @@ Cold background initialization clears activity flags left by the previous worker
 
 `usePageLoadingState` observes real account/network state. `PageLoadingOverlay` delays the spinner for 150 ms and the blocking backdrop for 500 ms to avoid flicker. After two seconds it changes to a nonblocking status message. The underlying operation continues with its actual status.
 
-`AppLayout` keeps header navigation available but makes Home, transaction, account-editing, account-management, advanced-settings and account-consent content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, or deleting against a mismatched context. Case, trailing-slash and encoded-path aliases receive the same guards. Account-removal confirmations also validate context inside the portal and again in the background before deletion. No timer changes the network to idle or declares a connection failure merely because it is slow.
+`AppLayout` keeps header navigation available but makes Home, Faucet, transaction, account-editing, account-management, advanced-settings and account-consent content inert while its account/network context is changing. Removing the global backdrop must not enable signing, sending, importing, deleting or faucet claims against a mismatched context. Case, trailing-slash and encoded-path aliases receive the same guards. Account-removal confirmations also validate context inside the portal and again in the background before deletion. No timer changes the network to idle or declares a connection failure merely because it is slow.
 
 Approval pages retain their own user-consent and transaction lifecycle. A pending approval is never accepted automatically to meet a responsiveness target.
 
@@ -57,6 +57,16 @@ stale work. Invalid or unverifiable account inputs produce translated feedback.
 The signing request does not automatically retry, and an acknowledged broadcast
 remains successful even if the later local history update fails. These checks
 do not impose a two-second completion deadline on cryptography or hardware.
+
+Receive is also context-sensitive. Its address, QR code and copy control are
+unmounted while an account/network transition or worker disconnection is
+unresolved, including after the loading overlay becomes nonblocking. They return
+when the context settles. Ordinary balance loading leaves Receive available.
+
+Faucet claims remain inert during those same unresolved context changes,
+including after the two-second overlay becomes nonblocking. The claim control
+becomes usable again only when the account/network context is authoritative;
+header navigation stays available throughout.
 
 ## Smart-account infrastructure setup
 
