@@ -11,9 +11,11 @@ import {
   IconButton,
   Tooltip,
 } from 'components/index';
+import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import { usePageLoadingState } from 'hooks/usePageLoadingState';
+import store, { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { truncate } from 'utils/index';
 import { navigateWithContext } from 'utils/navigationState';
@@ -30,7 +32,19 @@ const ManageNetworkView = () => {
   const location = useLocation();
 
   const { navigate } = useUtils();
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, connectionUnavailable } = useController();
+  const { isContextChanging } = usePageLoadingState();
+  const networkActionsBlocked = isContextChanging || connectionUnavailable;
+  const isNetworkActionBlocked = () => {
+    const { networkStatus, isSwitchingAccount } = store.getState().vaultGlobal;
+    return (
+      networkActionsBlocked ||
+      getControllerStatus().connectionUnavailable ||
+      networkStatus === 'switching' ||
+      networkStatus === 'connecting' ||
+      isSwitchingAccount
+    );
+  };
 
   // Ref for the scrollable ul element
   const scrollContainerRef = useRef<HTMLUListElement>(null);
@@ -44,6 +58,13 @@ const ManageNetworkView = () => {
     label: string;
     rpcUrl: string;
   } | null>(null);
+
+  useEffect(() => {
+    if (networkActionsBlocked) {
+      setShowConfirmModal(false);
+      setNetworkToRemove(null);
+    }
+  }, [networkActionsBlocked]);
 
   // Track if we've already restored scroll position to prevent duplicate restoration
   const hasRestoredScrollRef = useRef(false);
@@ -69,6 +90,7 @@ const ManageNetworkView = () => {
     label: string,
     key?: string
   ) => {
+    if (isNetworkActionBlocked()) return;
     // Store network info and show confirmation modal
     setNetworkToRemove({ chain, chainId, rpcUrl, label, key });
     setShowConfirmModal(true);
@@ -76,6 +98,10 @@ const ManageNetworkView = () => {
 
   const handleConfirmRemoval = async () => {
     if (!networkToRemove) return;
+    if (isNetworkActionBlocked()) {
+      handleCancelRemoval();
+      return;
+    }
 
     // Close modal first
     setShowConfirmModal(false);
@@ -110,6 +136,7 @@ const ManageNetworkView = () => {
     isDefault: boolean;
     selected: INetwork;
   }) => {
+    if (isNetworkActionBlocked()) return;
     // Create navigation context with scroll position from the ul element
     const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
 
@@ -338,7 +365,7 @@ const ManageNetworkView = () => {
       </div>
 
       <ConfirmationModal
-        show={showConfirmModal}
+        show={showConfirmModal && !networkActionsBlocked}
         title={t('settings.confirmRemoveNetwork', {
           networkName: networkToRemove?.label || '',
         })}

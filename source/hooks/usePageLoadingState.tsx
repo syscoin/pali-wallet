@@ -35,6 +35,7 @@ export const isContextSensitiveWalletRoute = (pathname: string): boolean => {
   return (
     pathname === '/home' ||
     pathname === '/settings/advanced' ||
+    /^\/settings\/networks\/(?:edit|custom-rpc)$/.test(pathname) ||
     /^(?:\/external)?\/(?:send|tx|tokens)(?:\/|$)/.test(pathname) ||
     /^(?:\/external)?\/settings\/(?:account(?:\/|$)|edit-account$|manage-accounts$|forget-wallet$|seed$)/.test(
       pathname

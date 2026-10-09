@@ -6,6 +6,7 @@ import { AppLayout } from './AppLayout';
 let mockPath = '/home';
 let mockUnavailable = false;
 let mockChanging = false;
+let mockOverlayLoading = true;
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({ pathname: mockPath }),
   useNavigate: () => jest.fn(),
@@ -38,7 +39,7 @@ jest.mock('hooks/useController', () => ({
 jest.mock('hooks/usePageLoadingState', () => ({
   ...jest.requireActual('hooks/usePageLoadingState'),
   usePageLoadingState: () => ({
-    isLoading: mockChanging,
+    isLoading: mockChanging && mockOverlayLoading,
     isContextChanging: mockChanging,
   }),
 }));
@@ -52,6 +53,7 @@ describe('wallet content safety during background changes', () => {
     mockPath = '/home';
     mockUnavailable = false;
     mockChanging = false;
+    mockOverlayLoading = true;
   });
 
   it.each([
@@ -108,6 +110,35 @@ describe('wallet content safety during background changes', () => {
     expect(markup).toContain('Account balances');
     expect(markup).toContain('Wallet navigation');
   });
+
+  it.each([
+    '/settings/networks/edit',
+    '/SETTINGS/NETWORKS/EDIT/',
+    '/%73ettings/networks/%65dit',
+    '/settings/networks/custom-rpc',
+    '/SETTINGS/NETWORKS/CUSTOM-RPC/',
+  ])(
+    'keeps network mutations at %s guarded independently of the loading overlay',
+    (path) => {
+      mockPath = path;
+      mockChanging = true;
+      // The route guard must survive the overlay becoming nonblocking or being
+      // excluded for CustomRPC; its safety depends on the transition itself.
+      mockOverlayLoading = false;
+      const content = <button>Delete or edit network</button>;
+      const markup = renderToStaticMarkup(<AppLayout>{content}</AppLayout>);
+      expect(markup).toContain('inert=""');
+      expect(markup.indexOf('</nav>')).toBeLessThan(markup.indexOf('inert=""'));
+      expect(markup.indexOf('inert=""')).toBeLessThan(
+        markup.indexOf('Delete or edit network')
+      );
+
+      mockChanging = false;
+      const settled = renderToStaticMarkup(<AppLayout>{content}</AppLayout>);
+      expect(settled).not.toContain('inert=""');
+      expect(settled).toContain('Delete or edit network');
+    }
+  );
 
   it.each([
     '/external/connect-wallet',

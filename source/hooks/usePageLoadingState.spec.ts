@@ -10,6 +10,7 @@ describe('isPageLoadingOverlayExcluded', () => {
     '/external/switch-EthChain',
     '/external/switch-UtxoEvm',
     '/EXTERNAL/SWITCH-ETHCHAIN/',
+    '/settings/networks/custom-rpc',
   ])('keeps the global overlay off dapp switch approval %s', (pathname) => {
     expect(isPageLoadingOverlayExcluded(pathname)).toBe(true);
   });
@@ -36,6 +37,12 @@ describe('context-sensitive actions', () => {
     '/settings/seed',
     '/settings/advanced',
     '/SETTINGS/ADVANCED/',
+    '/settings/networks/edit',
+    '/SETTINGS/NETWORKS/EDIT/',
+    '/%73ettings/networks/%65dit',
+    '/settings/networks/custom-rpc',
+    '/SETTINGS/NETWORKS/CUSTOM-RPC/',
+    '/%73ettings/networks/custom-rpc',
     '/external/settings/account/hardware',
     '/external/smart-account',
     '/external/smart-account-modules',
@@ -53,10 +60,13 @@ describe('context-sensitive actions', () => {
   ])('guards %s during account/network transitions', (route) => {
     expect(isContextSensitiveWalletRoute(route)).toBe(true);
   });
-  it.each(['/receive', '/switch-network', '/settings/networks/custom-rpc'])(
-    'keeps navigation and recovery route %s available',
-    (route) => {
-      expect(isContextSensitiveWalletRoute(route)).toBe(false);
-    }
-  );
+  it.each([
+    '/receive',
+    '/switch-network',
+    '/settings/about',
+    '/settings/networks/connected-sites',
+    '/settings/networks/trusted-sites',
+  ])('keeps navigation and recovery route %s available', (route) => {
+    expect(isContextSensitiveWalletRoute(route)).toBe(false);
+  });
 });
