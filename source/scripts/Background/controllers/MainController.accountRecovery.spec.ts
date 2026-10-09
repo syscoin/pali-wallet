@@ -901,4 +901,25 @@ describe('non-destructive account recovery boundaries', () => {
       expect(exclusive).toHaveBeenCalledTimes(1);
     }
   );
+
+  it('rejects a duplicate creation while the first reset is queued or running', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    wallet.createWalletExclusive = jest.fn(() => pending);
+    const first = wallet.createWallet('password', 'test seed');
+    const second = wallet.createWallet('password', 'test seed');
+    await expect(second).rejects.toThrow(
+      'Wallet creation is already in progress'
+    );
+    await Promise.resolve();
+    expect(wallet.createWalletExclusive).toHaveBeenCalledTimes(1);
+    expect(wallet.isCreatingWallet).toBe(true);
+    release();
+    await first;
+    expect(wallet.isCreatingWallet).toBe(false);
+    await wallet.createWallet('new password', 'new intentional seed');
+    expect(wallet.createWalletExclusive).toHaveBeenCalledTimes(2);
+  });
 });

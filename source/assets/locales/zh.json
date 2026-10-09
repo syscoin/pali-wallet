@@ -429,7 +429,7 @@
     "receipts": "收据"
   },
   "settings": {
-    "walletSetupFailed": "钱包设置未完成。请保管好恢复助记词，然后重试。",
+    "walletSetupFailed": "无法确认钱包设置是否完成。请保管好恢复助记词并检查钱包状态。",
     "walletWindowCheckSlow": "钱包窗口响应时间较长。请尝试重新检查。",
     "retryWalletWindowCheck": "重新检查窗口",
     "bgError": "背景错误",

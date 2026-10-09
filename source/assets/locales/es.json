@@ -429,7 +429,7 @@
     "receipts": "Recibos"
   },
   "settings": {
-    "walletSetupFailed": "La configuración de la billetera no se completó. Conserva tu frase de recuperación e inténtalo de nuevo.",
+    "walletSetupFailed": "No se pudo confirmar la configuración de la billetera. Conserva tu frase de recuperación y comprueba el estado de la billetera.",
     "walletWindowCheckSlow": "Las ventanas de la billetera tardan más en responder. Intenta comprobarlas de nuevo.",
     "retryWalletWindowCheck": "Volver a comprobar las ventanas",
     "bgError": "Error de Fondo",

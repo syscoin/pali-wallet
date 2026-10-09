@@ -429,7 +429,7 @@
     "receipts": "Belege"
   },
   "settings": {
-    "walletSetupFailed": "Die Wallet-Einrichtung wurde nicht abgeschlossen. Bewahre deine Wiederherstellungsphrase auf und versuche es erneut.",
+    "walletSetupFailed": "Die Wallet-Einrichtung konnte nicht bestätigt werden. Bewahre deine Wiederherstellungsphrase auf und prüfe den Status der Wallet.",
     "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",
     "retryWalletWindowCheck": "Fenster erneut prüfen",
     "bgError": "Hintergrundfehler",

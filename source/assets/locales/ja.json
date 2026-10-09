@@ -429,7 +429,7 @@
     "receipts": "レシート"
   },
   "settings": {
-    "walletSetupFailed": "ウォレットの設定が完了しませんでした。リカバリーフレーズを保管して、もう一度お試しください。",
+    "walletSetupFailed": "ウォレットの設定が完了したか確認できませんでした。リカバリーフレーズを保管し、ウォレットの状態を確認してください。",
     "walletWindowCheckSlow": "ウォレットのウィンドウの応答に時間がかかっています。もう一度確認してください。",
     "retryWalletWindowCheck": "ウィンドウを再確認",
     "bgError": "バックグラウンドエラー",

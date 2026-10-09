@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
@@ -13,23 +14,35 @@ import { CreatePhrase } from './CreatePhrase';
 export const SeedConfirm = () => {
   const { controllerEmitter } = useController();
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
+  const { t } = useTranslation();
 
   const [passed, setPassed] = useState<boolean>(false);
   const [created, setCreated] = useState(false);
+  const creationRequested = useRef(false);
   const { secrets, clear } = useOnboardingSecrets();
   const { password, phrase: createdSeed } = secrets;
   const { state } = useLocation();
   const next = state?.next === true;
 
   const handleConfirm = async () => {
-    if (passed) {
-      await controllerEmitter(
-        ['wallet', 'createWallet'],
-        [password, createdSeed]
-      );
+    if (passed && !creationRequested.current) {
+      creationRequested.current = true;
       setCreated(true);
       clear();
+      try {
+        await controllerEmitter(
+          ['wallet', 'createWallet'],
+          [password, createdSeed],
+          10000,
+          false
+        );
+      } catch {
+        alert.error(t('settings.walletSetupFailed'));
+        await refreshControllerStatus();
+        navigate('/', { replace: true });
+        return;
+      }
 
       const confirmed = await refreshControllerStatus();
       navigate(confirmed ? '/home' : '/');

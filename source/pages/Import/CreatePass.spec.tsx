@@ -11,6 +11,11 @@ import { CreatePasswordImport } from './CreatePass';
 
 let mockSubmit: (values: { password: string }) => Promise<void>;
 const mockNavigate = jest.fn();
+const mockAlert = jest.fn();
+const mockClear = jest.fn();
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 jest.mock('components/index', () => ({
   PasswordForm: ({ onSubmit }: any) => {
     mockSubmit = onSubmit;
@@ -23,11 +28,11 @@ jest.mock('react-router-dom', () => ({
 jest.mock('hooks/useOnboardingSecrets', () => ({
   useOnboardingSecrets: () => ({
     secrets: { kind: 'import', phrase: 'test seed' },
-    clear: jest.fn(),
+    clear: mockClear,
   }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({ navigate: mockNavigate }),
+  useUtils: () => ({ navigate: mockNavigate, alert: { error: mockAlert } }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter }),
@@ -46,6 +51,8 @@ describe('new wallet authentication navigation', () => {
     })) as any;
     jest.mocked(controllerEmitter).mockReset();
     mockNavigate.mockClear();
+    mockAlert.mockClear();
+    mockClear.mockClear();
     renderToStaticMarkup(<CreatePasswordImport />);
   });
   afterEach(() => {
@@ -91,14 +98,27 @@ describe('new wallet authentication navigation', () => {
     expect(controllerEmitter).toHaveBeenCalledTimes(2);
   });
 
-  it('does not navigate or claim authentication if creation fails', async () => {
+  it.each([
+    'Storage unavailable',
+    'Network request timed out',
+    'Receiving end does not exist',
+  ])('recovers without replaying creation after %s', async (message) => {
     jest
       .mocked(controllerEmitter)
-      .mockRejectedValueOnce(new Error('Storage unavailable'));
-    await expect(mockSubmit({ password: 'test password' })).rejects.toThrow(
-      'Storage unavailable'
+      .mockRejectedValueOnce(new Error(message))
+      .mockResolvedValueOnce(false);
+    await mockSubmit({ password: 'test password' });
+    await mockSubmit({ password: 'test password' });
+    expect(controllerEmitter).toHaveBeenNthCalledWith(
+      1,
+      ['wallet', 'createWallet'],
+      ['test password', 'test seed'],
+      10000,
+      false
     );
-    expect(mockNavigate).not.toHaveBeenCalled();
-    expect(controllerEmitter).toHaveBeenCalledTimes(1);
+    expect(controllerEmitter).toHaveBeenCalledTimes(2);
+    expect(mockClear).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
+    expect(mockAlert).toHaveBeenCalledWith('settings.walletSetupFailed');
   });
 });

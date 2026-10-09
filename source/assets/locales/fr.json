@@ -429,7 +429,7 @@
     "receipts": "Reçus"
   },
   "settings": {
-    "walletSetupFailed": "La configuration du portefeuille n’a pas abouti. Conservez votre phrase de récupération et réessayez.",
+    "walletSetupFailed": "Impossible de confirmer la configuration du portefeuille. Conservez votre phrase de récupération et vérifiez l’état du portefeuille.",
     "walletWindowCheckSlow": "Les fenêtres du portefeuille mettent plus de temps à répondre. Réessayez de les vérifier.",
     "retryWalletWindowCheck": "Vérifier à nouveau les fenêtres",
     "bgError": "Erreur en arrière-plan",

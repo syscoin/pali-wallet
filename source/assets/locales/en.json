@@ -429,7 +429,7 @@
     "receipts": "Receipts"
   },
   "settings": {
-    "walletSetupFailed": "Wallet setup did not complete. Keep your recovery phrase and try again.",
+    "walletSetupFailed": "Could not confirm wallet setup. Keep your recovery phrase and check the wallet status.",
     "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",
     "retryWalletWindowCheck": "Retry window check",
     "bgError": "Background Error",

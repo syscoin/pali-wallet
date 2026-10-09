@@ -2419,13 +2419,22 @@ class MainController {
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
+    if (this.isCreatingWallet)
+      throw new Error('Wallet creation is already in progress');
+    // Reserve before the mutex await so a lost reply cannot queue a second
+    // destructive reset behind the original creation.
+    this.isCreatingWallet = true;
     const walletStateGeneration = this.walletStateGeneration;
-    return this.authenticationMutex.runExclusive(() => {
-      if (walletStateGeneration !== this.walletStateGeneration) {
-        throw new Error('Wallet state changed before reset');
-      }
-      return this.createWalletExclusive(password, phrase);
-    });
+    try {
+      return await this.authenticationMutex.runExclusive(() => {
+        if (walletStateGeneration !== this.walletStateGeneration) {
+          throw new Error('Wallet state changed before reset');
+        }
+        return this.createWalletExclusive(password, phrase);
+      });
+    } finally {
+      this.isCreatingWallet = false;
+    }
   }
 
   private async createWalletExclusive(

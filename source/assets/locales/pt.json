@@ -429,7 +429,7 @@
     "receipts": "Recibos"
   },
   "settings": {
-    "walletSetupFailed": "A configuração da carteira não foi concluída. Guarde sua frase de recuperação e tente novamente.",
+    "walletSetupFailed": "Não foi possível confirmar a configuração da carteira. Guarde sua frase de recuperação e verifique o estado da carteira.",
     "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",
     "retryWalletWindowCheck": "Verificar as janelas novamente",
     "bgError": "Erro em segundo plano",
