@@ -235,6 +235,7 @@ describe('infrastructure transaction broadcast boundary', () => {
     ).rejects.toMatchObject({
       message: 'Storage unavailable',
       transactionHash: response.hash,
+      transactionNonce: response.nonce,
     });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });

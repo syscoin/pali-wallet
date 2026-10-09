@@ -4790,7 +4790,13 @@ class MainController {
           new Error(
             error?.message || 'Deployment submission persistence failed'
           ),
-          { transactionHash: txResponse.hash }
+          {
+            transactionHash: txResponse.hash,
+            transactionNonce:
+              Number.isSafeInteger(txResponse.nonce) && txResponse.nonce >= 0
+                ? txResponse.nonce
+                : undefined,
+          }
         );
       }
       if (

@@ -820,14 +820,28 @@ class SmartAccountController {
             const acknowledged = this.pendingInfrastructure.get(
               context.chainId
             );
-            this.pendingInfrastructure.set(context.chainId, {
+            const pending = {
               ...reservation,
               ...(infrastructurePendingIdentity(acknowledged) ===
               reservation.attemptId
                 ? acknowledged
                 : {}),
               transactionHash: hash,
-            });
+            };
+            const acknowledgedNonce = (error as any)?.transactionNonce;
+            if (
+              Number.isSafeInteger(acknowledgedNonce) &&
+              acknowledgedNonce >= 0
+            )
+              pending.nonce = acknowledgedNonce;
+            this.pendingInfrastructure.set(context.chainId, pending);
+            this.infrastructureStatusCache.delete(context.key);
+            // The broadcast callback may have failed its first storage write.
+            // Retry this same acknowledged attempt before reporting the error;
+            // permanent storage failure keeps the existing reservation closed.
+            await this.infrastructureDeadline(
+              writeInfrastructureJournal(context.chainId, pending)
+            ).catch(() => undefined);
           }
           // Definite pre-broadcast rejection is safe to release. Ambiguous
           // transport failures retain the reservation across worker restarts.

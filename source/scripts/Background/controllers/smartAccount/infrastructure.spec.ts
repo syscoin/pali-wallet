@@ -422,6 +422,86 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it.each([KeyringAccountType.Trezor, KeyringAccountType.Ledger])(
+    'repairs an acknowledged %s journal after one hash-write failure and recovers a reverted transaction after restart',
+    async (type) => {
+      state.vault.activeAccount = { id: 3, type };
+      state.vault.accounts[type] = {
+        3: { id: 3, address: '0xcccccccccccccccccccccccccccccccccccccccc' },
+      };
+      const storageWrite = (
+        chromeStorage.setItem as jest.Mock
+      ).getMockImplementation();
+      let failHashWrite = true;
+      (chromeStorage.setItem as jest.Mock).mockImplementation(
+        async (key, value) => {
+          if (value?.transactionHash && failHashWrite) {
+            failHashWrite = false;
+            throw Error('disk temporarily unavailable');
+          }
+          return storageWrite(key, value);
+        }
+      );
+      deps.sendAndSaveEthTransaction.mockImplementationOnce(
+        async (_params, _legacy, _account, _metadata, options) => {
+          try {
+            await options.onBroadcast({ hash: hash(1), nonce: 7 });
+          } catch (error) {
+            throw Object.assign(error, {
+              transactionHash: hash(1),
+              transactionNonce: 7,
+            });
+          }
+        }
+      );
+      await expect(
+        controller.deploySmartAccountInfrastructure()
+      ).rejects.toThrow('disk temporarily unavailable');
+      expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+        transactionHash: hash(1),
+        nonce: 7,
+      });
+      const restarted = new SmartAccountController(deps);
+      await expect(
+        restarted.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        pending: { transactionHash: hash(1), nonce: 7 },
+      });
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+      receipts[hash(1)] = { status: 0, hash: hash(1) };
+      expect(
+        (await restarted.getSmartAccountInfrastructureStatus(true)).pending
+      ).toBeUndefined();
+      expect(journalStorage['pali.infrastructure.pending.v1.1']).toBeNull();
+      await expect(
+        restarted.deploySmartAccountInfrastructure()
+      ).resolves.toMatchObject({
+        deployed: ['accountImplementation', 'factory'],
+      });
+      expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  it('journals an acknowledged hardware nonce when submission fails before the broadcast callback', async () => {
+    state.vault.activeAccount = { id: 3, type: KeyringAccountType.Trezor };
+    state.vault.accounts.Trezor = {
+      3: { id: 3, address: '0xcccccccccccccccccccccccccccccccccccccccc' },
+    };
+    deps.sendAndSaveEthTransaction.mockRejectedValueOnce(
+      Object.assign(Error('Signing context restoration failed'), {
+        transactionHash: hash(1),
+        transactionNonce: 7,
+      })
+    );
+    await expect(controller.deploySmartAccountInfrastructure()).rejects.toThrow(
+      'Signing context restoration failed'
+    );
+    expect(journalStorage['pali.infrastructure.pending.v1.1']).toMatchObject({
+      transactionHash: hash(1),
+      nonce: 7,
+    });
+  });
+
   it('continues past an old settled history record to find another account pending deployment', async () => {
     state.vault.accountTransactions.HDAccount[0].ethereum[1] = [
       {
