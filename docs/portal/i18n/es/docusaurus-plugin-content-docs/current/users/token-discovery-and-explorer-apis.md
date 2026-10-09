@@ -11,14 +11,14 @@ Pali puede usar la API de un explorador para encontrar tokens y NFT que puedes i
 | Red principal de Ethereum | Routescan, sin cuenta ni clave de API. Admite tokens ERC-20 y tenencias de ERC-721/ERC-1155 compatibles. | Usa **Importar Token → Agregar Personalizado**.                                                                  |
 | Base                      | No hay una API de detección predeterminada. La red y su RPC siguen disponibles.                          | Agrega activos por su dirección de contrato o configura una API de explorador compatible a la que tengas acceso. |
 | Arbitrum One              | No hay una API de detección predeterminada. La red y su RPC siguen disponibles.                          | Agrega activos por su dirección de contrato o configura una API de explorador compatible a la que tengas acceso. |
-| Otras redes EVM           | Depende de la API de explorador configurada para esa red.                                                | Usa **Agregar Personalizado** si la detección no está disponible.                                                |
+| Otras redes EVM           | Depende de la API de explorador configurada para esa red.                                                | Agrega activos mediante la dirección del contrato si la detección no está disponible.                            |
 
-Cuando no hay una API de explorador configurada, Pali abre **Agregar Personalizado**, oculta **Tus Tokens** y explica cómo agregar activos o configurar una API. Borrar una URL de API no elimina la red ni sus activos importados. Sin una API de explorador, el historial de transacciones depende de las transacciones guardadas localmente y de las consultas RPC; es posible que no pueda recuperar todo el historial anterior.
+Cuando no hay una API de explorador configurada, Pali muestra directamente el formulario de dirección del contrato, sin pestañas, con un breve aviso y un enlace de **Ayuda para importar tokens**. Borrar una URL de API no elimina la red ni sus activos importados. Sin una API de explorador, el historial de transacciones depende de las transacciones guardadas localmente y de las consultas RPC; es posible que no pueda recuperar todo el historial anterior.
 
 ## Agregar un token o NFT manualmente
 
 1. Selecciona la red y la cuenta correctas.
-2. Abre **Importar Token → Agregar Personalizado**.
+2. Abre **Importar Token**. Si se muestran pestañas, elige **Agregar Personalizado**.
 3. Introduce la dirección del contrato del activo en esa red.
 4. Revisa los detalles del activo detectado. Para un activo ERC-1155, introduce también su ID de token.
 5. Importa el activo.
@@ -114,7 +114,7 @@ Pali guarda la URL de API configurada en los ajustes de red de la extensión. Un
 ## Resultados vacíos, API no disponibles y reintentos
 
 - **No hay tokens adicionales para importar:** la API no devolvió tenencias adicionales compatibles tras excluir los activos ya importados. Esto no demuestra que la cuenta no tenga activos; la indexación y la cobertura de activos pueden estar incompletas.
-- **La detección no está configurada:** la red no tiene una URL de API de explorador. Usa **Agregar Personalizado** o configura un servicio compatible mediante **Administrar redes**.
+- **La detección no está configurada:** la red no tiene una URL de API de explorador. Agrega activos mediante la dirección del contrato o configura un servicio compatible mediante **Administrar redes**.
 - **API no disponible / acceso prohibido:** comprueba el endpoint del proveedor, la cadena seleccionada, la clave de API y el plan. Una respuesta `403` indica que el proveedor rechazó el acceso.
 - **Demasiadas solicitudes:** una respuesta `429` significa que el proveedor está limitando las solicitudes. Su cuota puede estar agotada incluso cuando abres la lista por primera vez. Espera antes de usar **Reintentar** y comprueba los límites de uso del proveedor si los errores continúan.
 

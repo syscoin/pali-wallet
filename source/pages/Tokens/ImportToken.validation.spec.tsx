@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 
@@ -8,7 +9,7 @@ import { getCurrentTab } from 'utils/navigationState';
 import { ImportToken } from './ImportToken';
 
 jest.mock('components/Icon/Icon', () => ({
-  TbFileImport: 'span',
+  FiDownload: 'span',
   LoadingOutlined: 'loading-icon',
   CheckCircleOutlined: 'success-icon',
   CloseCircleOutlined: 'error-icon',
@@ -27,7 +28,7 @@ jest.mock('react-router-dom', () => ({
   ]),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: jest.fn(),
 }));
 jest.mock('utils/navigationState', () => ({
   getCurrentTab: jest.fn(() => 'custom'),
@@ -47,6 +48,17 @@ const find = (
   }
   return undefined;
 };
+const findAll = (
+  node: React.ReactNode,
+  predicate: (element: React.ReactElement) => boolean
+): React.ReactElement[] =>
+  React.Children.toArray(node).flatMap((child) => {
+    if (!React.isValidElement(child)) return [];
+    return [
+      ...(predicate(child) ? [child] : []),
+      ...findAll(child.props.children, predicate),
+    ];
+  });
 
 describe('custom token validation cancellation', () => {
   let cursor: number;
@@ -75,6 +87,10 @@ describe('custom token validation cancellation', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     slots = [];
+    (useTranslation as jest.Mock).mockReturnValue({
+      t: (key: string) => key,
+      i18n: { resolvedLanguage: 'en', language: 'en' },
+    });
     (getCurrentTab as jest.Mock).mockReturnValue('custom');
     (useSearchParams as jest.Mock).mockReturnValue([
       new URLSearchParams('tab=custom'),
@@ -139,8 +155,12 @@ describe('custom token validation cancellation', () => {
     jest.useRealTimers();
   });
 
-  it('attributes Routescan only on its owned-token discovery tab', () => {
+  it('keeps Ethereum discovery tabs free of provider links and offers manual import after an empty scan', async () => {
     (getCurrentTab as jest.Mock).mockReturnValue('owned');
+    (useSearchParams as jest.Mock).mockReturnValue([
+      new URLSearchParams('tab=owned'),
+      jest.fn(),
+    ]);
     (useSelector as jest.Mock).mockReturnValue({
       activeAccount: { type: 'HDAccount', id: 0 },
       accounts: { HDAccount: { 0: { address: ADDRESS } } },
@@ -151,22 +171,42 @@ describe('custom token validation cancellation', () => {
       },
       accountAssets: {},
     });
-    const attribution = find(
-      render(),
-      (element) => element.props.href === 'https://routescan.io'
-    );
-    expect(attribution?.props.children).toBe('Routescan.io APIs');
+    const tree = render();
+    expect(
+      find(tree, (element) => element.props.children === 'tokens.yourTokens')
+    ).toBeDefined();
+    expect(
+      find(tree, (element) => element.props.children === 'tokens.addCustomTab')
+    ).toBeDefined();
+    expect(
+      find(tree, (element) => element.props.href === 'https://routescan.io')
+    ).toBeUndefined();
+    await jest.advanceTimersByTimeAsync(0);
+    const loaded = render();
     expect(
       find(
-        render(),
-        (element) => element.props.children === 'tokens.discoveryUnavailable'
+        loaded,
+        (element) => element.props.children === 'tokens.noAdditionalTokensFound'
       )
-    ).toBeUndefined();
-    const customTab = find(
+    ).toBeDefined();
+    expect(
+      find(
+        loaded,
+        (element) =>
+          element.props.children === 'tokens.missingTokenManualImport'
+      )
+    ).toBeDefined();
+    const customActions = findAll(
       render(),
-      (element) => element.props.children === 'tokens.addCustomTab'
+      (element) =>
+        element.type === 'button' &&
+        element.props.children === 'tokens.addCustomTab'
     );
-    customTab!.props.onClick();
+    expect(customActions).toHaveLength(2);
+    customActions[1].props.onClick();
+    expect(
+      find(render(), (element) => element.props.id === 'custom-token-contract')
+    ).toBeDefined();
     expect(
       find(render(), (element) => element.props.href === 'https://routescan.io')
     ).toBeUndefined();
@@ -205,13 +245,69 @@ describe('custom token validation cancellation', () => {
       expect(
         find(
           tree,
+          (element) => element.props.children === 'tokens.addCustomTab'
+        )
+      ).toBeUndefined();
+      const contractInput = find(
+        tree,
+        (element) => element.props.id === 'custom-token-contract'
+      );
+      expect(
+        find(
+          tree,
           (element) =>
-            element.props.placeholder === 'tokens.enterContractAddress'
+            element.type === 'label' &&
+            element.props.htmlFor === contractInput?.props.id
         )
       ).toBeDefined();
+      expect(contractInput?.props.value).toBe('');
+      expect(
+        find(tree, (element) => element.props.children === 'tokens.importHelp')
+          ?.props.href
+      ).toBe(
+        'https://docs.paliwallet.com/docs/users/token-discovery-and-explorer-apis'
+      );
+      expect(
+        find(
+          tree,
+          (element) => element.props.children === 'tokens.addCustomToken'
+        )
+      ).toBeUndefined();
       expect(emitter).not.toHaveBeenCalled();
     }
   );
+
+  it.each([
+    ['en-US', ''],
+    ['es', '/es'],
+    ['pt-BR', '/pt'],
+    ['fr', '/fr'],
+    ['de', '/de'],
+    ['ru', '/ru'],
+    ['zh-CN', '/zh'],
+    ['ja', '/ja'],
+    ['ko-KR', '/ko'],
+    ['it', ''],
+  ])('opens the supported guide locale for %s', (language, prefix) => {
+    (useTranslation as jest.Mock).mockReturnValue({
+      t: (key: string) => key,
+      i18n: { resolvedLanguage: language, language },
+    });
+    (useSelector as jest.Mock).mockReturnValue({
+      activeAccount: { type: 'HDAccount', id: 0 },
+      accounts: { HDAccount: { 0: { address: ADDRESS } } },
+      activeNetwork: { chainId: 8453 },
+      accountAssets: {},
+    });
+    const help = find(
+      render(),
+      (element) => element.props.children === 'tokens.importHelp'
+    );
+    expect(help?.props.href).toBe(
+      `https://docs.paliwallet.com${prefix}/docs/users/token-discovery-and-explorer-apis`
+    );
+    expect(help?.props.rel).toBe('noopener noreferrer');
+  });
 
   it.each([1, 8453])(
     'keeps the manual form accessible when network %s loses its API with an owned-tab URL',
@@ -276,6 +372,38 @@ describe('custom token validation cancellation', () => {
     expect(loading()).toBe(false);
     expect(
       find(render(), (element) => element.type === 'success-icon')
+    ).toBeUndefined();
+    expect(
+      emitter.mock.calls.filter(
+        ([[, method]]) => method !== 'getUserOwnedTokens'
+      )
+    ).toHaveLength(1);
+  });
+
+  it('removes the previous importable contract as soon as its input changes', async () => {
+    changeAddress(TOKEN);
+    await jest.advanceTimersByTimeAsync(500);
+    resolve({
+      contractAddress: TOKEN,
+      symbol: 'OLD',
+      name: 'Old Token',
+      decimals: 18,
+      balance: 10,
+      chainId: 1,
+      tokenStandard: 'ERC-20',
+    });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(
+      find(render(), (element) => element.type === 'asset-list')?.props
+        .assets[0].contractAddress
+    ).toBe(TOKEN);
+
+    const changed = changeAddress(ADDRESS);
+    expect(
+      find(changed, (element) => element.type === 'asset-list')
+    ).toBeUndefined();
+    expect(
+      find(changed, (element) => element.type === 'success-icon')
     ).toBeUndefined();
     expect(
       emitter.mock.calls.filter(
