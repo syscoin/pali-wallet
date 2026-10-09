@@ -6163,5 +6163,812 @@
       "customAdapterRequirement": "native set(items) or explicit atomic setItems; no sequential fallback."
     },
     "historicalScope": "Prior fa34432c/7eba1e9 snapshot, before initializer, hardware finalized-input, context and cross-context conditional-create follow-ups."
+  },
+  "psbtCompatibilityFollowup": {
+    "measuredAt": "2026-10-09T05:53:34.451890+00:00",
+    "snapshot": {
+      "measuredAt": "2026-10-09T05:52:37.701692+00:00",
+      "paliSourceCommit": "120eab6abd759dc93011c4221de083e94b5a18d6",
+      "paliRuntimeCommit": "0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8",
+      "runtimeSourceFingerprintSha256": "c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010",
+      "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted path NUL file bytes NUL",
+      "runtimeFileCount": 546,
+      "paliVersion": "4.0.70",
+      "keyringVersion": "1.0.613",
+      "coreVersion": "1.0.29",
+      "keyringSourceCommit": "2a575108be2306d5a007dbd997c2f9903e411e03",
+      "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/16",
+      "dependencyArtifact": "Exact upstream source npm packs; no npm publication",
+      "packages": [
+        {
+          "package": "core",
+          "version": "1.0.29",
+          "path": "/tmp/pali-audit/crypto/reconciled/sidhujag-sysweb3-core-1.0.29.tgz",
+          "sha256": "9b105282a91ea87ca3fc4c14f9910e8fc558820baa93b9976cacfecdba41d235",
+          "files": 8,
+          "mismatches": []
+        },
+        {
+          "package": "keyring",
+          "version": "1.0.613",
+          "path": "/tmp/pali-audit/crypto/reconciled/sidhujag-sysweb3-keyring-1.0.613.tgz",
+          "sha256": "691561ab4b12b789ba709241da2d8c8825f1ad567f0961777a4f53cc369f308f",
+          "files": 119,
+          "mismatches": []
+        }
+      ]
+    },
+    "fixes": {
+      "taprootCompatibility": "Restore previously supported selected-account key-path Taproot PSBTs without tapInternalKey. Derive the public internal key from the approved path, apply the supplied Merkle root if present, and require an exact match to the actual spent output before private signing.",
+      "taprootMetadataBoundary": "Missing-key inference requires no tapLeafScript, no tapScriptSig, and no nonempty tapBip32Derivation leafHashes. Explicit-key behavior is preserved; no new script-path or hardware Taproot support is claimed.",
+      "ledgerOfflineFinalizedWitness": "Skip previous-transaction enrichment when nonWitnessUtxo exists or a finalized input already carries witnessUtxo. Unfinished inputs missing nonWitnessUtxo and finalized inputs lacking both prevout forms retain the prior lookup requirement."
+    },
+    "redGreen": {
+      "taprootCompatibility": {
+        "baseline": "2a0f9bc",
+        "failedBefore": 5,
+        "passedAfterInitialRepair": 12,
+        "report": "/tmp/pali-crypto-review/taproot-regression-red.json"
+      },
+      "taprootScriptMetadata": {
+        "baseline": "98568a53",
+        "failedBefore": 2,
+        "passedAfter": 14,
+        "report": "/tmp/pali-crypto-review/taproot-script-metadata-red.json"
+      },
+      "ledgerFinalizedWitness": {
+        "baseline": "3e67528",
+        "failedBefore": 2,
+        "passedAfter": 10,
+        "report": "/tmp/pali-crypto-review/ledger-finalized-enrichment-red.json"
+      }
+    },
+    "validation": {
+      "upstream": {
+        "suites": 32,
+        "tests": 485,
+        "status": "passed",
+        "log": "/tmp/pali-audit/crypto/reconciled/upstream-tests.log"
+      },
+      "independentFocused": {
+        "focusedReport": "/tmp/pali-audit/crypto/reconciled/review-tests.json",
+        "status": "passed",
+        "runner": "Jest --runInBand --forceExit; explicit runner cleanup for retained asynchronous test handles",
+        "suites": 6,
+        "tests": 136,
+        "failed": 0,
+        "processExitCode": 0,
+        "testFiles": [
+          {
+            "file": "packages/sysweb3-keyring/test/unit/keyring-manager/vault-kdf-compatibility.spec.ts",
+            "tests": 26,
+            "status": "passed"
+          },
+          {
+            "file": "packages/sysweb3-keyring/test/unit/transactions/psbt-account-scope.spec.ts",
+            "tests": 37,
+            "status": "passed"
+          },
+          {
+            "file": "packages/sysweb3-keyring/test/unit/hardware/ledger-finalized-inputs.spec.ts",
+            "tests": 10,
+            "status": "passed"
+          },
+          {
+            "file": "packages/sysweb3-keyring/test/unit/transactions/psbt-taproot-account-scope.spec.ts",
+            "tests": 14,
+            "status": "passed"
+          },
+          {
+            "file": "packages/sysweb3-keyring/test/unit/keyring-manager/storage-adapter.spec.ts",
+            "tests": 20,
+            "status": "passed"
+          },
+          {
+            "file": "packages/sysweb3-keyring/test/unit/hardware/trezor-transaction-invariants.spec.ts",
+            "tests": 29,
+            "status": "passed"
+          }
+        ]
+      },
+      "pali": {
+        "suites": 148,
+        "tests": 1424,
+        "coverage": true,
+        "status": "passed",
+        "log": "/tmp/pali-audit/crypto/reconciled/pali-tests.log",
+        "scope": "Clean git archive of120eab6, runtime0235f38f; exact verified core/keyring packs from2a575108"
+      },
+      "typescript": "passed",
+      "packageFilesVerified": 127,
+      "productionBuild": "passed",
+      "bundleBudgets": "passed",
+      "packedPublicSigning": {
+        "status": "passed",
+        "report": "/tmp/pali-audit/crypto/reconciled/packed-signing.json",
+        "scope": "Installed compiled package through KeyringManager and public SyscoinTransactions.signPSBT, compared with published612; all three restored variants and explicit-key controls produce valid Schnorr signatures; previously unsupported variants remain unsupported."
+      }
+    },
+    "build": {
+      "measuredAt": "2026-10-09T05:53:05.495Z",
+      "snapshot": {
+        "measuredAt": "2026-10-09T05:52:37.701692+00:00",
+        "paliSourceCommit": "120eab6abd759dc93011c4221de083e94b5a18d6",
+        "paliRuntimeCommit": "0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8",
+        "runtimeSourceFingerprintSha256": "c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted path NUL file bytes NUL",
+        "runtimeFileCount": 546,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.613",
+        "coreVersion": "1.0.29",
+        "keyringSourceCommit": "2a575108be2306d5a007dbd997c2f9903e411e03",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/16",
+        "dependencyArtifact": "Exact upstream source npm packs; no npm publication",
+        "packages": [
+          {
+            "package": "core",
+            "version": "1.0.29",
+            "path": "/tmp/pali-audit/crypto/reconciled/sidhujag-sysweb3-core-1.0.29.tgz",
+            "sha256": "9b105282a91ea87ca3fc4c14f9910e8fc558820baa93b9976cacfecdba41d235",
+            "files": 8,
+            "mismatches": []
+          },
+          {
+            "package": "keyring",
+            "version": "1.0.613",
+            "path": "/tmp/pali-audit/crypto/reconciled/sidhujag-sysweb3-keyring-1.0.613.tgz",
+            "sha256": "691561ab4b12b789ba709241da2d8c8825f1ad567f0961777a4f53cc369f308f",
+            "files": 119,
+            "mismatches": []
+          }
+        ],
+        "webpackStatsSha256": "f3d00bcafa9a75a3ac09f4075ecffa9015096a43a4eae09175c873f47d5bfcfe",
+        "buildDirectory": "/tmp/pali-audit/optimized-reconciled",
+        "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamcore1.0.29 and keyring1.0.613 localpacks, no local package patch."
+      },
+      "hardware": {
+        "model": "MacBook Pro Mac17,6",
+        "chip": "Apple M5 Max",
+        "cores": 18,
+        "coreTopology": "6 Super + 12 Performance",
+        "memoryGiB": 48
+      },
+      "software": {
+        "chromium": "149.0.7827.55",
+        "node": "v23.11.1",
+        "yarn": "1.22.22"
+      },
+      "baseline": {
+        "app": {
+          "bytes": 1476859,
+          "gzipBytes": 448969,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1469529,
+          "gzipBytes": 447303,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4202303,
+          "gzipBytes": 1177950,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 11094,
+          "gzipBytes": 3853,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8632973,
+          "budgetBytes": 9000000
+        }
+      },
+      "optimized": {
+        "app": {
+          "bytes": 1486850,
+          "gzipBytes": 453965,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1483326,
+          "gzipBytes": 452906,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4272146,
+          "gzipBytes": 1196923,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 14784,
+          "gzipBytes": 4948,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8537473,
+          "budgetBytes": 9000000
+        }
+      },
+      "firstRoute": {
+        "baseline": {
+          "initialJSBytes": 1476859,
+          "lazyJSFiles": [
+            "js/490.bundle.js",
+            "js/542.bundle.js"
+          ],
+          "lazyJSBytes": 902662,
+          "totalJSBytes": 2379521
+        },
+        "optimized": {
+          "initialJSBytes": 1486850,
+          "lazyJSFiles": [
+            "js/6386.bundle.js",
+            "js/1185.bundle.js"
+          ],
+          "lazyJSBytes": 11536,
+          "totalJSBytes": 1498386
+        }
+      },
+      "firstRouteReductionPercent": 37.029931654311945,
+      "firstRouteLazyReductionPercent": 98.7220022555508,
+      "packageReductionPercent": 1.1062237771391148,
+      "notes": [
+        "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
+        "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
+        "The 11-case startup matrix belongs to startup-matrix-build.json and runtime-build-metadata.json, an earlier snapshot before authentication navigation and surgical containment fixes."
+      ]
+    },
+    "retainedBrowserEvidence": {
+      "source": "cryptoFollowup.browser",
+      "scope": "Prior UI, creation, passkey and infrastructure results keep their documented source boundaries; they are not relabelled as reruns of this PSBT-only change.",
+      "uiAndCreationPaliRuntime": "0235f38f",
+      "uiAndCreationUpstream": "2a0f9bc",
+      "infrastructurePaliRuntime": "363ab482",
+      "infrastructureUpstream": "16baa93",
+      "passkeyVirtualAuthenticator": "Retained separately in cryptoFollowup.passkeyPreservation with its own recorded scope; not a new run on2a575108."
+    },
+    "review": {
+      "allReportedUpstreamFindings": {
+        "reviewedAt": "2026-10-09T05:52:48.643071+00:00",
+        "repository": "sidhujag/sysweb3",
+        "pullRequest": 16,
+        "sourceCommit": "2a575108be2306d5a007dbd997c2f9903e411e03",
+        "reviewThreadCount": 5,
+        "allReviewPagesRead": true,
+        "sourceEdits": false,
+        "findings": [
+          {
+            "commentId": 4226785666,
+            "title": "Preserve finalized inputs through hardware conversion",
+            "status": "source-fixed",
+            "source": [
+              {
+                "file": "packages/sysweb3-keyring/src/trezor/index.ts",
+                "lines": [
+                  430,
+                  479
+                ],
+                "sha256": "68b5d9b08a1ac928ce4fe841a62416f386a1a1c7119991fb4b9f78b32109709e"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/trezor/index.ts",
+                "lines": [
+                  601,
+                  638
+                ],
+                "sha256": "68b5d9b08a1ac928ce4fe841a62416f386a1a1c7119991fb4b9f78b32109709e"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/ledger/index.ts",
+                "lines": [
+                  459,
+                  467
+                ],
+                "sha256": "f97885048e73271c71b94ac1703a13df64ada37c9848cf9e46474d60b6767034"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/ledger/bitcoin_client/lib/psbtv2.ts",
+                "lines": [
+                  520,
+                  555
+                ],
+                "sha256": "1bfc48485e563eba733bfb6108c26240ddb43520238cfe365eceec18c49074ab"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/transactions/syscoin.ts",
+                "lines": [
+                  524,
+                  547
+                ],
+                "sha256": "198f391617d7f7a77dca8298d4d85591c27800b358ba13026613fa86d8f2bccc"
+              }
+            ],
+            "tests": [
+              {
+                "file": "packages/sysweb3-keyring/test/unit/hardware/trezor-transaction-invariants.spec.ts",
+                "lines": [
+                  229,
+                  339
+                ],
+                "sha256": "eee0ab8ee53f420a459ab774ad29925eb25e2a03376c1c0dd41448e538828e32"
+              },
+              {
+                "file": "packages/sysweb3-keyring/test/unit/hardware/ledger-finalized-inputs.spec.ts",
+                "lines": [
+                  185,
+                  325
+                ],
+                "sha256": "1e92bb53fcbc6ab413cd8526e92e6e643799c5abea53cc1ac05cca38207d5143"
+              }
+            ],
+            "verifiedBehavior": "Trezor sends finalized entries as EXTERNAL with supplied final bytes, verifies both returned and live final bytes, and skips importing signatures there. Ledger preserves final scripts/witness and prevout in PSBTv2 without derivations, rejects returned signatures for those entries, and skips re-finalizing them.",
+            "remainingLimitations": [
+              "Fixtures exercise converters/serialization and mocked device responses; no physical Ledger or Trezor validation.",
+              "Preserving finalized external bytes does not independently authenticate their signatures."
+            ],
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226785666"
+          },
+          {
+            "commentId": 4226846461,
+            "title": "Refuse initialization when either vault record already exists",
+            "status": "source-fixed",
+            "source": [
+              {
+                "file": "packages/sysweb3-keyring/src/keyring-manager.ts",
+                "lines": [
+                  2921,
+                  2941
+                ],
+                "sha256": "316076bd9da725381b2521aecad338cce8ab0ece7139544397f4265170c2eded"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/keyring-manager.ts",
+                "lines": [
+                  2965,
+                  3012
+                ],
+                "sha256": "316076bd9da725381b2521aecad338cce8ab0ece7139544397f4265170c2eded"
+              }
+            ],
+            "tests": [
+              {
+                "file": "packages/sysweb3-keyring/test/unit/keyring-manager/vault-kdf-compatibility.spec.ts",
+                "lines": [
+                  235,
+                  332
+                ],
+                "sha256": "d77a6bf8ce6f01ff6b950f2241cc7b1ab9c57b6a0d3c3fbcdf7d34e6666976ce"
+              }
+            ],
+            "verifiedBehavior": "A fresh session rejects either non-nullish vault record before creating a salt/KDF/write. Fresh initialization always supplies freshVaultKeys to the conditional pair-creation path. Only an already-live matching session can repeat initialization after a read-only persisted mnemonic check.",
+            "remainingLimitations": [
+              "Existing persisted wallets restore through unlock; fresh initialization deliberately refuses complete or incomplete existing storage."
+            ],
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226846461"
+          },
+          {
+            "commentId": 4226884193,
+            "title": "Make the fresh-vault check atomic across execution contexts",
+            "status": "source-fixed",
+            "source": [
+              {
+                "file": "packages/sysweb3-keyring/src/storage.ts",
+                "lines": [
+                  195,
+                  205
+                ],
+                "sha256": "b5682b1d427d5293bc0a536c51c9649bfc83d9009dfab437e44d1c1cd0c5b16c"
+              },
+              {
+                "file": "packages/sysweb3-core/src/index.ts",
+                "lines": [
+                  78,
+                  135
+                ],
+                "sha256": "802c255b80a5dc6e627fa606008949414567ab904f89d8dfead92ab4e2fb9e7e"
+              },
+              {
+                "file": "packages/sysweb3-core/src/index.ts",
+                "lines": [
+                  187,
+                  195
+                ],
+                "sha256": "802c255b80a5dc6e627fa606008949414567ab904f89d8dfead92ab4e2fb9e7e"
+              }
+            ],
+            "tests": [
+              {
+                "file": "packages/sysweb3-keyring/test/unit/keyring-manager/storage-adapter.spec.ts",
+                "lines": [
+                  129,
+                  348
+                ],
+                "sha256": "07fb24b6803d5220e1429cc85fb894ba0666ad8240560d40c76dc643b72e5021"
+              },
+              {
+                "file": "packages/sysweb3-keyring/test/unit/keyring-manager/vault-kdf-compatibility.spec.ts",
+                "lines": [
+                  274,
+                  317
+                ],
+                "sha256": "d77a6bf8ce6f01ff6b950f2241cc7b1ab9c57b6a0d3c3fbcdf7d34e6666976ce"
+              }
+            ],
+            "verifiedBehavior": "Fresh pair creation uses createManyIfAbsent. Exact native chrome/browser storage.local clients hold the same origin/partition Web Lock across absence check and one awaited pair write; custom backends must supply createItemsIfAbsent. Captured client/prefix cannot change while queued. Independent module tests admit one winner and preserve its pair.",
+            "remainingLimitations": [
+              "No claim of CAS across browser partitions/devices.",
+              "Custom backends must implement the documented atomic primitive; arbitrary get/set adapters fail closed."
+            ],
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226884193"
+          },
+          {
+            "commentId": 4226901667,
+            "title": "Skip prevtx fetching for finalized witness inputs",
+            "status": "source-fixed",
+            "source": [
+              {
+                "file": "packages/sysweb3-keyring/src/transactions/syscoin.ts",
+                "lines": [
+                  381,
+                  400
+                ],
+                "sha256": "198f391617d7f7a77dca8298d4d85591c27800b358ba13026613fa86d8f2bccc"
+              },
+              {
+                "file": "packages/sysweb3-keyring/src/ledger/bitcoin_client/lib/psbtv2.ts",
+                "lines": [
+                  533,
+                  555
+                ],
+                "sha256": "1bfc48485e563eba733bfb6108c26240ddb43520238cfe365eceec18c49074ab"
+              }
+            ],
+            "tests": [
+              {
+                "file": "packages/sysweb3-keyring/test/unit/hardware/ledger-finalized-inputs.spec.ts",
+                "lines": [
+                  185,
+                  264
+                ],
+                "sha256": "1e92bb53fcbc6ab413cd8526e92e6e643799c5abea53cc1ac05cca38207d5143"
+              }
+            ],
+            "verifiedBehavior": "Existing nonWitnessUtxo or finalized+witnessUtxo skips enrichment. Finalized external P2WPKH and nested P2SH-P2WPKH succeed through the public Ledger path with a rejecting backend and preserve final fields. Unfinished witness-only input and finalized legacy input without prevout still fetch/fail when unavailable.",
+            "redEvidence": "/tmp/pali-crypto-review/ledger-finalized-enrichment-red.json",
+            "remainingLimitations": [
+              "This is a conditional enrichment skip, not a broader change to Ledger previous-transaction policy.",
+              "External final signatures are preserved rather than independently revalidated."
+            ],
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226901667"
+          },
+          {
+            "commentId": 4227040033,
+            "title": "Reject all script-path metadata before inferring the internal key",
+            "status": "source-fixed",
+            "source": [
+              {
+                "file": "packages/sysweb3-keyring/src/utils/psbt-account-scope.ts",
+                "lines": [
+                  280,
+                  301
+                ],
+                "sha256": "8bd0959f148e3f8f7aec80dcde0b052b1ae50a16a67628e39d315ada34ae1cdf"
+              }
+            ],
+            "tests": [
+              {
+                "file": "packages/sysweb3-keyring/test/unit/transactions/psbt-taproot-account-scope.spec.ts",
+                "lines": [
+                  158,
+                  319
+                ],
+                "sha256": "115c5b9b150e285c5ffd55f1cacd8c730500e7eb30841f9e28bc25948951e834"
+              }
+            ],
+            "verifiedBehavior": "The missing-internal-key arm requires no tapLeafScript, no tapScriptSig, and no nonempty leafHashes in any Taproot derivation. It still authenticates the derived key plus supplied Merkle root against the actual spent output. Real single-leaf root and valid script-signature fixtures reject before hd.sign.",
+            "redEvidence": "/tmp/pali-crypto-review/taproot-script-metadata-red.json",
+            "remainingLimitations": [
+              "Only the absent-internal-key inference branch changed; existing explicit-key behavior is retained.",
+              "No new script-path, MuSig or hardware Taproot support is claimed."
+            ],
+            "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4227040033"
+          }
+        ],
+        "behaviorVerification": {
+          "ordinaryAndJoint": [
+            "Approved-account P2WPKH and standard P2WSH/P2SH-P2WSH/P2SH multisig sign through real public APIs.",
+            "Foreign and same-wallet-other-account inputs remain unsigned; only their own signing hints are hidden during signing and public metadata is restored.",
+            "Conflicting paths/keys/prevouts reject before signing; imported key normalization remains bounded."
+          ],
+          "taprootKeyPath": [
+            "Proprietary-path-only simple P2TR succeeds.",
+            "Path plus BIP371 empty leaf hashes succeeds without tapInternalKey, with and without a known Merkle root.",
+            "Explicit-internal-key controls still succeed with and without known root.",
+            "All successful key-path fixtures verify Schnorr signatures over their real spent outputs/amounts.",
+            "Missing-key requests carrying script-path markers reject before private signing."
+          ],
+          "offlineLedger": [
+            "Finalized witness-only external inputs are carried without backend fetch.",
+            "Unfinished missing previous transactions and finalized entries without prevout data retain prior fetch/failure behavior."
+          ]
+        },
+        "validation": {
+          "focusedReport": "/tmp/pali-audit/crypto/reconciled/review-tests.json",
+          "status": "passed",
+          "runner": "Jest --runInBand --forceExit; explicit runner cleanup for retained asynchronous test handles",
+          "suites": 6,
+          "tests": 136,
+          "failed": 0,
+          "processExitCode": 0,
+          "testFiles": [
+            {
+              "file": "packages/sysweb3-keyring/test/unit/keyring-manager/vault-kdf-compatibility.spec.ts",
+              "tests": 26,
+              "status": "passed"
+            },
+            {
+              "file": "packages/sysweb3-keyring/test/unit/transactions/psbt-account-scope.spec.ts",
+              "tests": 37,
+              "status": "passed"
+            },
+            {
+              "file": "packages/sysweb3-keyring/test/unit/hardware/ledger-finalized-inputs.spec.ts",
+              "tests": 10,
+              "status": "passed"
+            },
+            {
+              "file": "packages/sysweb3-keyring/test/unit/transactions/psbt-taproot-account-scope.spec.ts",
+              "tests": 14,
+              "status": "passed"
+            },
+            {
+              "file": "packages/sysweb3-keyring/test/unit/keyring-manager/storage-adapter.spec.ts",
+              "tests": 20,
+              "status": "passed"
+            },
+            {
+              "file": "packages/sysweb3-keyring/test/unit/hardware/trezor-transaction-invariants.spec.ts",
+              "tests": 29,
+              "status": "passed"
+            }
+          ]
+        },
+        "scopeNote": "A source-fixed matrix of the five reported issues, not a blanket claim that the code has no vulnerabilities."
+      },
+      "freshCodeReview": {
+        "status": "completed; no major issues or new findings reported",
+        "commit": "2a575108be2306d5a007dbd997c2f9903e411e03",
+        "request": "https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6075180998",
+        "result": "https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6075223604",
+        "completedAt": "2026-10-09T05:56:26Z"
+      },
+      "security": "No confirmed new-head completion; old security summaries are not current sign-off."
+    },
+    "release": {
+      "paliVersion": "4.0.70",
+      "coreVersion": "1.0.29",
+      "keyringVersion": "1.0.613",
+      "registryCheckedAt": "2026-10-09T05:53:34.451890+00:00",
+      "coreRegistryResult": "E404",
+      "keyringRegistryResult": "E404",
+      "publishedByAgent": false,
+      "cleanRegistryValidation": "Pending owner publication of core1.0.29 then keyring1.0.613"
+    },
+    "limits": [
+      "No physical-device signing.",
+      "No new script-path, MuSig or hardware Taproot support.",
+      "Finalized external signatures are preserved rather than independently authenticated.",
+      "Passing tests and closed review threads do not establish absence of defects."
+    ]
+  },
+  "reportedReviewFindings": {
+    "checkedAt": "2026-10-09T05:53:34.451890+00:00",
+    "upstream": {
+      "sourceCommit": "2a575108be2306d5a007dbd997c2f9903e411e03",
+      "count": 5,
+      "sourceFixed": 5,
+      "findings": [
+        {
+          "commentId": 4226785666,
+          "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226785666",
+          "title": "Preserve finalized inputs through hardware conversion",
+          "status": "source-fixed"
+        },
+        {
+          "commentId": 4226846461,
+          "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226846461",
+          "title": "Refuse initialization when either vault record already exists",
+          "status": "source-fixed"
+        },
+        {
+          "commentId": 4226884193,
+          "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226884193",
+          "title": "Make the fresh-vault check atomic across execution contexts",
+          "status": "source-fixed"
+        },
+        {
+          "commentId": 4226901667,
+          "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4226901667",
+          "title": "Skip prevtx fetching for finalized witness inputs",
+          "status": "source-fixed"
+        },
+        {
+          "commentId": 4227040033,
+          "url": "https://github.com/sidhujag/sysweb3/pull/16#discussion_r4227040033",
+          "title": "Reject all script-path metadata before inferring the internal key",
+          "status": "source-fixed"
+        }
+      ],
+      "resolvedThreads": 5,
+      "unresolvedThreads": 0
+    },
+    "pali": {
+      "sourceCommit": "120eab6abd759dc93011c4221de083e94b5a18d6",
+      "count": 13,
+      "implemented": 11,
+      "findings": [
+        {
+          "commentId": 4225955428,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4225955428",
+          "title": "Publish or pin an installable keyring artifact",
+          "status": "still_applicable_publication_hold",
+          "evidence": [
+            "package.json:59-60",
+            "yarn.lock:3023-3036"
+          ],
+          "reason": "Current required core 1.0.29 and keyring 1.0.613 return 404; registry latest is core1.0.28/keyring1.0.612 and neither caret range has a matching published version. Owner publication hold remains intentional."
+        },
+        {
+          "commentId": 4225955437,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4225955437",
+          "title": "Include Home in context-sensitive route protection",
+          "status": "implemented",
+          "evidence": [
+            "source/hooks/usePageLoadingState.tsx:36",
+            "source/components/Layout/AppLayout.tsx:48-52",
+            "source/components/Layout/AppLayout.tsx:442"
+          ],
+          "reason": "Home is normalized and context-sensitive; the layout applies inert while switching or disconnected and header is outside it."
+        },
+        {
+          "commentId": 4226102548,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226102548",
+          "title": "Persist slip changes after superseding a network switch",
+          "status": "implemented",
+          "evidence": [
+            "source/scripts/Background/controllers/MainController.ts:1098-1103",
+            "source/scripts/Background/controllers/MainController.ts:7061-7078",
+            "source/scripts/Background/controllers/MainController.accountRecovery.spec.ts:464-488"
+          ],
+          "reason": "Dirty flag is set at activeSlip44 commit, survives supersession and drives durable main-state persistence."
+        },
+        {
+          "commentId": 4226102558,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226102558",
+          "title": "Include account management in the transition guard",
+          "status": "implemented",
+          "evidence": [
+            "source/hooks/usePageLoadingState.tsx:42",
+            "source/pages/Settings/ManageAccounts.tsx:140-160",
+            "source/scripts/Background/controllers/MainController.ts:3711-3739"
+          ],
+          "reason": "Manage Accounts route is guarded and removal confirmation binds displayed account, slip, network and current account."
+        },
+        {
+          "commentId": 4226272964,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226272964",
+          "title": "Retain sendCalls reservations after an in-flight abort",
+          "status": "implemented",
+          "evidence": [
+            "source/pages/Send/SendCalls.tsx:286-309",
+            "source/pages/Send/SendCalls.tsx:889-893",
+            "source/scripts/Background/controllers/message-handler/sendCallsBundles.ts:263-280"
+          ],
+          "reason": "Durable submission begins before sender invocation; release refuses started submissions even without hash; unknown submissions are retained across TTL/capacity."
+        },
+        {
+          "commentId": 4226272968,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226272968",
+          "title": "Persist hashes recovered from deployment errors",
+          "status": "implemented",
+          "evidence": [
+            "source/scripts/Background/controllers/smartAccount/index.ts:850-876",
+            "source/scripts/Background/controllers/smartAccount/infrastructure.spec.ts:646-701"
+          ],
+          "reason": "Catch retries durable journal with recovered transactionHash and nonce, preserves attempt identity; both hardware variants have restart/reverted receipt regression."
+        },
+        {
+          "commentId": 4226556747,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226556747",
+          "title": "Bind deployment journals to the RPC context",
+          "status": "implemented",
+          "evidence": [
+            "source/scripts/Background/controllers/smartAccount/infrastructureJournal.ts:89-129",
+            "source/scripts/Background/controllers/smartAccount/index.ts:592-603"
+          ],
+          "reason": "Entries carry exact rpcUrl; write and clear compare it; mismatched or legacy endpoint records remain pending and are not probed/cleared. Storage key remains chain-scoped by design."
+        },
+        {
+          "commentId": 4226598516,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226598516",
+          "title": "Add a Firefox-compatible approval handshake",
+          "status": "not_implemented_preexisting_unsupported_platform",
+          "evidence": [
+            "source/utils/approvalClient.ts:90-126",
+            "source/utils/browser.ts:9-16",
+            "source/config/generateManifest.js:15-17",
+            "manifest.json:45-46",
+            "docs/security-responsiveness-review.md:238"
+          ],
+          "reason": "Current worker-only handshake has no background-page fallback. Base94a1cde5 has identical browser.ts and generator and service-worker-only default manifest, so this is preexisting unsupported Firefox path, not repaired or claimed working."
+        },
+        {
+          "commentId": 4226632220,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226632220",
+          "title": "Keep network-management controls inert during switches",
+          "status": "implemented",
+          "evidence": [
+            "source/hooks/usePageLoadingState.tsx:40",
+            "source/scripts/Background/controllers/MainController.ts:3797-3878"
+          ],
+          "reason": "Network edit/custom RPC routes are guarded; controller rejects transitions/active network, reserves removal synchronously and holds switch/persistence mutex through cleanup."
+        },
+        {
+          "commentId": 4226772787,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226772787",
+          "title": "Keep creation replay protection after completion",
+          "status": "implemented",
+          "evidence": [
+            "source/scripts/Background/controllers/MainController.ts:2430-2444",
+            "source/scripts/Background/utils/readWalletPresence.ts:4-18",
+            "source/scripts/Background/controllers/MainController.creationAdmission.spec.ts:42-104"
+          ],
+          "reason": "Durable vault presence is checked under authentication mutex before reset. Complete pair rejects; incomplete/read failure fails closed."
+        },
+        {
+          "commentId": 4226776127,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226776127",
+          "title": "Rehydrate wallet state before reopening onboarding",
+          "status": "implemented",
+          "evidence": [
+            "source/pages/Import/CreatePass.tsx:35-49",
+            "source/pages/SeedConfirm/index.tsx:41-49",
+            "source/utils/reloadWalletForRecovery.ts:2-3"
+          ],
+          "reason": "Lost creation acknowledgement or failed authoritative status replaces entire app document; stale mounted SPA cannot reopen onboarding."
+        },
+        {
+          "commentId": 4226839772,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226839772",
+          "title": "Keep the Receive page inert during context switches",
+          "status": "implemented",
+          "evidence": [
+            "source/hooks/usePageLoadingState.tsx:37",
+            "source/components/Layout/AppLayout.tsx:331-336"
+          ],
+          "reason": "Receive is guarded and QR/copy children are unmounted while switching or disconnected."
+        },
+        {
+          "commentId": 4226895694,
+          "url": "https://github.com/syscoin/pali-wallet/pull/851#discussion_r4226895694",
+          "title": "Guard faucet claims during wallet-context transitions",
+          "status": "implemented",
+          "evidence": [
+            "source/hooks/usePageLoadingState.tsx:38",
+            "source/components/Layout/AppLayout.tsx:48-52",
+            "source/components/Layout/AppLayout.security.spec.tsx:152-177"
+          ],
+          "reason": "Faucet and normalized aliases are inert throughout context change/worker loss, after bounded overlay stops blocking."
+        }
+      ],
+      "focusedTests": {
+        "suites": 13,
+        "passed": 283,
+        "failed": 0,
+        "report": "/tmp/pali-crypto-review/pr851-reported-findings-tests.json"
+      }
+    },
+    "scope": "All fetched review pages checked against source, independently of resolved flags. Publication remains applicable; Firefox background-page transport remains unsupported at base94a1cde5 and current head."
   }
 }

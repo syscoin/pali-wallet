@@ -272,7 +272,7 @@ The focused review identified eight concrete findings, using synthetic keys, off
 
 Independent offline checks exercise the real new keyring/HD signer for all three multisig forms: only the selected account signs, same-wallet other-account hints gain no signature, foreign-only unfinished PSBTs reject, existing external signatures survive, and a standard external cosigner with a different derivation path can complete the returned partial PSBT. The passkey tests exercise real component handlers with synthetic controllers, and a disposable Chromium authenticator confirms that independent user handles preserve the old credential. No real wallet, live hardware signature or funded broadcast was used for these crypto regressions.
 
-The current validation snapshot uses Pali runtime `0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8`, runtime fingerprint `c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010`, and [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) commit `2a0f9bcb6ac099286da93c99b8363ef900748305`. All **127 packed package files** match the rebuilt upstream artifacts. No local dependency patch is shipped.
+The preceding validation snapshot uses Pali runtime `0235f38f167a9dc8a54570a9e5ec9aa71a2c72b8`, runtime fingerprint `c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010`, and [sysweb3#16](https://github.com/sidhujag/sysweb3/pull/16) commit `2a0f9bcb6ac099286da93c99b8363ef900748305`. All **127 packed package files** match the rebuilt upstream artifacts. No local dependency patch is shipped.
 
 - **148 Pali suites / 1,424 tests** pass with coverage, plus TypeScript, translation checks, production webpack and bundle budgets. Full-snapshot ESLint has zero errors and two existing warnings. **31 upstream workspace suites / 467 tests** pass across keyring, network and utils; both package builds pass.
 - Real Chrome fault injection confirms that a rejected fresh-vault batch leaves no salt or ciphertext, retry works after worker restart, and stale setup documents cannot replace a completed wallet before or after worker restart. A withheld successful creation acknowledgement triggers a full new bootstrap, recovers the existing wallet, and preserves the original password. A controlled cross-context creation race produces two winners with an unguarded check/write sequence, but only one winner and one matching salt/ciphertext pair with the atomic capability. Rejected writes release the Web Lock for retry.
@@ -290,6 +290,30 @@ The six affected public user/developer guides are synchronized across English, S
 The exact artifacts, timing scope and reports are recorded in `cryptoFollowup` in [security-responsiveness-evidence.json](security-responsiveness-evidence.json). The **05:26 UTC** registry check still returned E404 for core **1.0.29** and keyring **1.0.613**. The package owner must publish core first, then keyring, and clean registry CI must be rerun before release. Local source-package validation does not satisfy that publication requirement.
 
 The earlier 500-account timings remain bound to `87084512`; the four-chain deployment checks remain bound to `363ab482`/`16baa93`. Earlier loading reductions, approval timings and suite counts retain their original snapshot boundaries. They do not become measurements of the current snapshot. This work does not establish a whole-library proof, constant-time behavior, complete SLH-DSA known-answer coverage, reproducible WASM provenance, or physical-device compatibility. See [unlock and migration behavior](keyring-unlock-errors.md) and [loading strategy](loading-strategy.md).
+
+## PSBT compatibility and complete review-thread reconciliation
+
+A later base-versus-head reproduction confirmed a real regression: selected-account key-path Taproot inputs carrying a derivation path but omitting `tapInternalKey` signed with published keyring 1.0.612 and were rejected by the account guard. The guard now derives the candidate public internal key, applies any supplied Merkle root, and requires its P2TR output to match the actual spent script before private signing. Missing-key inference rejects `tapLeafScript`, `tapScriptSig`, and nonempty BIP371 leaf hashes. Existing explicit-key behavior is retained. This restores the supported key-path cases; it does not add script-path, MuSig or hardware Taproot support.
+
+The older Ledger review comment also remained applicable after finalized-input preservation was implemented. Enrichment now skips a finalized SegWit input when it already carries `witnessUtxo`. Unfinished inputs missing `nonWitnessUtxo` and finalized inputs lacking both prevout forms retain the existing lookup requirement. Offline real-PSBT tests cover native and nested SegWit finalized inputs, plus both negative controls. Device responses are mocked.
+
+The combined source is sysweb3 `2a575108be2306d5a007dbd997c2f9903e411e03`, installed as exact local core 1.0.29/keyring 1.0.613 packs into a clean archive of Pali `120eab6a` (unchanged runtime `0235f38f`, fingerprint `c3819c8a61f1a1561916a556992460dbde34566eb020efb28fb94ab433e86010`). All **127 packed files** match rebuilt upstream files and the installed copies. The keyring archive SHA-256 is `691561ab4b12b789ba709241da2d8c8825f1ad567f0961777a4f53cc369f308f`; core remains `9b105282a91ea87ca3fc4c14f9910e8fc558820baa93b9976cacfecdba41d235`.
+
+- **32 upstream suites / 485 tests** pass. All **14 Taproot tests** and **10 Ledger finalized-input tests** pass, including regressions demonstrated failing before their repairs. A separate six-suite review run passes 136 tests.
+- **148 Pali suites / 1,424 tests** pass with coverage using those installed packages. TypeScript, production Chrome build and bundle budgets pass. The compiled installed public signer produces valid Schnorr signatures for the three restored Taproot variants and explicit-key controls.
+- Fresh Start still loads **1,498,386 bytes**, **37.0% less** than baseline. Background JavaScript is **4,272,146 bytes**, and the unpacked extension is **8,537,473 bytes**.
+- Earlier UI, creation, passkey, infrastructure and documentation browser results retain the source boundaries above; those runs are not relabelled as reruns of this PSBT change. No physical hardware signed.
+
+Every reported review thread was checked against source rather than relying on its resolved flag:
+
+| PR | Reconciled result |
+| --- | --- |
+| sysweb3 #16 | All five reported findings have source fixes and regression coverage: finalized hardware inputs, existing-record initialization, cross-context creation, finalized witness enrichment, and script-path metadata in inferred Taproot keys. |
+| Pali #851 | Eleven of thirteen findings are implemented. Package publication remains an applicable release prerequisite. The Firefox background-page approval transport is not implemented; the default base and current manifests/transports already lack that platform path, so this is recorded as a pre-existing unsupported path, not a completed fix. |
+
+The fresh code review of sysweb3 `2a575108` [completed without reporting major issues](https://github.com/sidhujag/sysweb3/pull/16#issuecomment-6075223604); all five reported threads are resolved. The exact head and result are recorded in `psbtCompatibilityFollowup.review` in [the evidence file](security-responsiveness-evidence.json). Earlier no-new-finding review responses are not evidence that all older comments were addressed. The separate security-review summary has no confirmed completion for this new head. The source/test matrices, failed-before/passed-after reports and latest package/build data are recorded separately from the previous snapshot.
+
+The refreshed registry check still returns E404 for core 1.0.29 and keyring 1.0.613. The owner must publish core first, then keyring, followed by clean registry CI. Neither a package publication nor a merge was performed.
 
 ## Dependency findings
 
