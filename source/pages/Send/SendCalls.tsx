@@ -14,6 +14,10 @@ import { getMethodName } from 'utils/commonMethodSignatures';
 import { formatEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { ellipsis } from 'utils/format';
 import { clearNavigationState } from 'utils/navigationState';
 import {
@@ -22,6 +26,7 @@ import {
 } from 'utils/smartAccount';
 
 interface ISendCallsData {
+  approvedContext: IEvmTransactionContext;
   atomicRequired: boolean;
   // Bundle id reserved by the background handler before this popup opened
   // (the app-provided id when the dapp supplied one, otherwise a random
@@ -149,6 +154,7 @@ const decodeCommonCallData = (data?: string) => {
 
 const getSafeSmartAccountCallErrorMessage = (error: any, fallback: string) => {
   const message = error?.message ? String(error.message) : '';
+  if (message === EVM_TRANSACTION_CONTEXT_CHANGED) return fallback;
   const normalized = message.toLowerCase();
   const isRawRpcError =
     normalized.includes('"jsonrpc"') ||
@@ -179,6 +185,7 @@ export const SendCalls = () => {
   const { host, eventName, ...externalData } = useQueryData();
 
   const callsData: ISendCallsData = externalData;
+  const [approvedContext] = useState(() => callsData.approvedContext);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -288,7 +295,7 @@ export const SendCalls = () => {
             atomic:
               requestSmartAccount.supportsAtomicBatch ||
               callsData.atomicRequired,
-            chainId: activeNetwork.chainId,
+            chainId: approvedContext.chainId,
             smartAccount: requestSmartAccount.supportsAtomicBatch,
             reservationId: callsData.reservationId,
             previousSubmissionId: lastStartedSubmissionRef.current,
@@ -316,7 +323,7 @@ export const SendCalls = () => {
             atomic:
               requestSmartAccount.supportsAtomicBatch ||
               callsData.atomicRequired,
-            chainId: activeNetwork.chainId,
+            chainId: approvedContext.chainId,
             reservationId: callsData.reservationId,
             submissionId: lastStartedSubmissionRef.current,
             smartAccount: requestSmartAccount.supportsAtomicBatch,
@@ -341,7 +348,7 @@ export const SendCalls = () => {
         {
           atomic:
             requestSmartAccount.supportsAtomicBatch || callsData.atomicRequired,
-          chainId: activeNetwork.chainId,
+          chainId: approvedContext.chainId,
           reservationId: callsData.reservationId,
           smartAccount: requestSmartAccount.supportsAtomicBatch,
           submissionCompleted: true,
@@ -361,7 +368,7 @@ export const SendCalls = () => {
         {
           atomic:
             requestSmartAccount.supportsAtomicBatch || callsData.atomicRequired,
-          chainId: activeNetwork.chainId,
+          chainId: approvedContext.chainId,
           reservationId: callsData.reservationId,
           smartAccount: requestSmartAccount.supportsAtomicBatch,
           submissionId: lastStartedSubmissionRef.current,
@@ -401,7 +408,7 @@ export const SendCalls = () => {
     if (txHashes.length === 0 && !failed) return;
     const bundleDescriptor = {
       atomic: smartAccount ? true : callsData.atomicRequired,
-      chainId: activeNetwork.chainId,
+      chainId: approvedContext.chainId,
       failed,
       smartAccount,
       reservationId: callsData.reservationId,
@@ -421,7 +428,7 @@ export const SendCalls = () => {
       console.error('Failed to record sendCalls bundle progress', error);
     });
   }, [
-    activeNetwork.chainId,
+    approvedContext.chainId,
     allTransactionsSuccessful,
     callsData.atomicRequired,
     callsData.bundleId,
@@ -453,7 +460,7 @@ export const SendCalls = () => {
       );
       const bundleDescriptor = {
         atomic: smartAccount ? true : callsData.atomicRequired,
-        chainId: activeNetwork.chainId,
+        chainId: approvedContext.chainId,
         failed: false,
         smartAccount,
         reservationId: callsData.reservationId,
@@ -490,7 +497,7 @@ export const SendCalls = () => {
       }, 2000);
     }
   }, [
-    activeNetwork.chainId,
+    approvedContext.chainId,
     allTransactionsSuccessful,
     callsData.atomicRequired,
     callsData.bundleId,
@@ -533,7 +540,7 @@ export const SendCalls = () => {
         .filter((index) => shouldSubmitCall(callsData.calls[index], index));
 
       const receipts: any[] = [];
-      const from = callsData.from || activeAccount.address;
+      const from = callsData.from || approvedContext.account.address;
 
       // Pre-resolve ENS names in batch when multiple ENS destinations are present
       let batchEnsMap: Record<string, string | null> = {};
@@ -865,6 +872,7 @@ export const SendCalls = () => {
 
           const tx: any = {
             from,
+            chainId: approvedContext.chainId,
             value: call.value || '0x0',
             data: call.data || '0x',
             nonce: currentNonce, // Increment only when a tx is actually sent to avoid gaps
@@ -883,7 +891,13 @@ export const SendCalls = () => {
           submissionInvoked = true;
           const response = (await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
-            [tx, false], // false = not legacy transaction
+            [
+              tx,
+              false,
+              undefined,
+              undefined,
+              { expectedContext: approvedContext },
+            ],
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000
               : 10000,
@@ -941,6 +955,14 @@ export const SendCalls = () => {
               return newStatuses;
             });
             currentNonce += 1;
+            if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) {
+              if (i + 1 < selectedCallsData.length)
+                receipts.push({
+                  status: '0x0',
+                  error: EVM_TRANSACTION_CONTEXT_CHANGED,
+                });
+              break;
+            }
             continue;
           }
           const unknown =
@@ -970,6 +992,7 @@ export const SendCalls = () => {
             alert.error(errorMessage);
             return;
           }
+          if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) break;
         }
       }
 

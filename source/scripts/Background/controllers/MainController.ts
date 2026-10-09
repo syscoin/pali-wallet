@@ -125,6 +125,10 @@ import {
   getEoaNonceFromHistoryTransaction,
   needsEoaNonceHistoryVerification,
 } from 'utils/evmNonce';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { logError } from 'utils/logger';
 import {
   getFreshNativeBalance,
@@ -4679,6 +4683,7 @@ class MainController {
     saveOptions?: {
       assertCurrentContext?: () => void;
       clearNavigation?: boolean;
+      expectedContext?: IEvmTransactionContext;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -4687,7 +4692,38 @@ class MainController {
   ): Promise<IEvmTransactionResponse> {
     let txResponse: IEvmTransactionResponse | undefined;
     let submissionStarted = false;
+    const expectedContext = saveOptions?.expectedContext;
+    const sessionGeneration = this.walletSessionGeneration;
+    const assertExpectedContext = () => {
+      if (!expectedContext) return;
+      const { vault, vaultGlobal } = store.getState();
+      const currentAccount =
+        vault.accounts?.[vault.activeAccount.type]?.[vault.activeAccount.id];
+      if (
+        this.walletSessionGeneration !== sessionGeneration ||
+        this.isResettingWallet ||
+        vault.isBitcoinBased ||
+        vault.activeNetwork.chainId !== expectedContext.chainId ||
+        vault.activeNetwork.url !== expectedContext.rpcUrl ||
+        vaultGlobal.activeSlip44 !== expectedContext.slip44 ||
+        vault.activeAccount.id !== expectedContext.account.id ||
+        vault.activeAccount.type !== expectedContext.account.type ||
+        currentAccount?.address?.toLowerCase() !==
+          expectedContext.account.address.toLowerCase() ||
+        (params.chainId !== undefined &&
+          params.chainId !== null &&
+          Number(params.chainId) !== expectedContext.chainId) ||
+        (params.from &&
+          params.from.toLowerCase() !==
+            expectedContext.account.address.toLowerCase()) ||
+        (targetAccount &&
+          (targetAccount.id !== expectedContext.account.id ||
+            targetAccount.type !== expectedContext.account.type))
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
     try {
+      assertExpectedContext();
       const controller = getController();
 
       // Check the call target and obvious calldata recipients/spenders.
@@ -4720,6 +4756,7 @@ class MainController {
       }
 
       saveOptions?.assertCurrentContext?.();
+      assertExpectedContext();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
         targetAccount &&
@@ -4747,10 +4784,19 @@ class MainController {
             activeAccount: targetAccount,
           }));
         }
+        // No asynchronous work may intervene between this check and the
+        // keyring's synchronous capture of the account and network.
+        assertExpectedContext();
         submissionStarted = true;
         txResponse =
           (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
-            params,
+            expectedContext
+              ? {
+                  ...params,
+                  chainId: expectedContext.chainId,
+                  from: expectedContext.account.address,
+                }
+              : params,
             isLegacy
           )) as unknown as IEvmTransactionResponse;
       } finally {
@@ -4763,6 +4809,7 @@ class MainController {
       // wallet/network the UI selects while the broadcast is in flight.
       if (saveOptions?.onBroadcast) await saveOptions.onBroadcast(txResponse);
       saveOptions?.assertCurrentContext?.();
+      assertExpectedContext();
 
       // Save the transaction (this will also clear navigation state)
       const txToSave = transactionMetadata
@@ -4783,7 +4830,8 @@ class MainController {
         );
       }
       if (
-        transactionMetadata?.smartAccountInfrastructureDeployment &&
+        (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          expectedContext) &&
         txResponse?.hash
       ) {
         throw Object.assign(
@@ -4792,6 +4840,7 @@ class MainController {
           ),
           {
             transactionHash: txResponse.hash,
+            ...(expectedContext ? { transactionNotBroadcast: false } : {}),
             transactionNonce:
               Number.isSafeInteger(txResponse.nonce) && txResponse.nonce >= 0
                 ? txResponse.nonce
@@ -4800,7 +4849,8 @@ class MainController {
         );
       }
       if (
-        transactionMetadata?.smartAccountInfrastructureDeployment &&
+        (transactionMetadata?.smartAccountInfrastructureDeployment ||
+          expectedContext) &&
         !submissionStarted
       ) {
         throw Object.assign(

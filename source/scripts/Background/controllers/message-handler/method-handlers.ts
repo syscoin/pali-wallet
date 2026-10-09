@@ -131,6 +131,32 @@ export class WalletMethodHandler implements IMethodHandler {
     ) {
       if (methodName === 'sendCalls') {
         const sendCallsRequest = params?.[0] || {};
+        const connection = dapp.get(host);
+        if (
+          !account?.address ||
+          !connection ||
+          (sendCallsRequest.from &&
+            sendCallsRequest.from.toLowerCase() !==
+              account.address.toLowerCase()) ||
+          (sendCallsRequest.chainId !== undefined &&
+            sendCallsRequest.chainId !== null &&
+            Number(sendCallsRequest.chainId) !== activeNetwork?.chainId)
+        )
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'The requested account or network is no longer selected'
+            )
+          );
+        const approvedContext = {
+          account: {
+            address: account.address,
+            id: connection.accountId,
+            type: connection.accountType,
+          },
+          chainId: activeNetwork.chainId,
+          rpcUrl: activeNetwork.url,
+          slip44: vaultGlobal.activeSlip44,
+        };
         const smartAccountAtomicSupported =
           account?.isSmartAccount &&
           account.smartAccount?.chainId === activeNetwork?.chainId;
@@ -199,7 +225,13 @@ export class WalletMethodHandler implements IMethodHandler {
                 host,
                 route: methodConfig.popupRoute,
                 eventName: methodConfig.popupEventName,
-                data: { ...sendCallsRequest, bundleId, reservationId },
+                data: {
+                  ...sendCallsRequest,
+                  from: account.address,
+                  approvedContext,
+                  bundleId,
+                  reservationId,
+                },
               }),
             methodConfig.popupRoute! // Explicit route parameter
           );

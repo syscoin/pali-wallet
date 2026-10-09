@@ -64,12 +64,15 @@ describe('sendCalls reservation submission boundary', () => {
       }
     );
     (getController as jest.Mock).mockReturnValue({
-      dapp: { getAccount: () => ({ address: 'payer' }) },
+      dapp: {
+        getAccount: () => ({ address: 'payer' }),
+        get: () => ({ accountId: 0, accountType: 'HDAccount' }),
+      },
       wallet: {},
     });
     (store.getState as jest.Mock).mockReturnValue({
-      vault: { activeNetwork: { chainId: 1 } },
-      vaultGlobal: {},
+      vault: { activeNetwork: { chainId: 1, url: 'rpc-a' } },
+      vaultGlobal: { activeSlip44: 60 },
     });
   });
 
@@ -99,6 +102,25 @@ describe('sendCalls reservation submission boundary', () => {
         signal: new AbortController().signal,
       },
     } as any);
+
+  it('binds omitted from and overrides page-supplied context with the connected account', async () => {
+    (popupPromise as jest.Mock).mockResolvedValueOnce({ id });
+    const request = context();
+    request.originalRequest.params[0].approvedContext = {
+      account: { address: 'attacker' },
+      chainId: 2,
+    };
+    await new WalletMethodHandler().handle(request);
+    expect((popupPromise as jest.Mock).mock.calls[0][0].data).toMatchObject({
+      from: 'payer',
+      approvedContext: {
+        account: { address: 'payer', id: 0, type: 'HDAccount' },
+        chainId: 1,
+        rpcUrl: 'rpc-a',
+        slip44: 60,
+      },
+    });
+  });
 
   it.each(['before submission', 'during submission', 'after hash'])(
     'handles requesting-document navigation %s without duplicate submission',

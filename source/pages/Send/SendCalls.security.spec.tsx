@@ -147,6 +147,12 @@ describe('sendCalls submission lifecycle', () => {
       bundleId: 'bundle-id',
       reservationId: 'reservation-id',
       chainId: '0x1',
+      approvedContext: {
+        account: { address: `0x${'1'.repeat(40)}`, id: 0, type: 'HDAccount' },
+        chainId: 1,
+        rpcUrl: 'rpc-a',
+        slip44: 60,
+      },
       version: '2.0.0',
       atomicRequired: false,
       calls: [{ to: `0x${'2'.repeat(40)}` }, { to: `0x${'3'.repeat(40)}` }],
@@ -244,6 +250,76 @@ describe('sendCalls submission lifecycle', () => {
     expect(starts[1].submissionId).not.toBe(starts[0].submissionId);
     expect(starts[1].previousSubmissionId).toBe(starts[0].submissionId);
   });
+
+  it('passes the originally approved account and chain after the visible wallet changes', async () => {
+    initialize();
+    mockState.vault.activeNetwork = { chainId: 2, currency: 'OTHER' };
+    mockState.vault.activeAccount = { type: 'HDAccount', id: 1 };
+    mockState.vault.accounts.HDAccount[1] = {
+      id: 1,
+      address: `0x${'4'.repeat(40)}`,
+    };
+    await signButton().props.onClick();
+    for (const [, params] of sends()) {
+      expect(params[0]).toMatchObject({
+        chainId: 1,
+        from: mockQuery.approvedContext.account.address,
+      });
+      expect(params[4]).toEqual({ expectedContext: mockQuery.approvedContext });
+    }
+    expect(records().every((record) => record.chainId === 1)).toBe(true);
+  });
+
+  it('keeps a last acknowledged call successful if context changes after its broadcast', async () => {
+    mockQuery.calls = [mockQuery.calls[0]];
+    mockControllerEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'getRecommendedNonceForBatch') return 5;
+      if (method === 'sendAndSaveEthTransaction')
+        throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+          transactionNotBroadcast: false,
+          transactionHash: HASH,
+        });
+      return undefined;
+    });
+    await signButton(initialize()).props.onClick();
+    expect(records()).toContainEqual(
+      expect.objectContaining({
+        failed: false,
+        submissionCompleted: true,
+        txHashes: [HASH],
+      })
+    );
+  });
+
+  it.each([false, true])(
+    'stops later calls on context change while preserving acknowledged hash=%s',
+    async (acknowledged) => {
+      mockQuery.calls.push({ to: `0x${'4'.repeat(40)}` });
+      let sendCount = 0;
+      mockControllerEmitter.mockImplementation(async ([, method]) => {
+        if (method === 'getRecommendedNonceForBatch') return 5;
+        if (method === 'sendAndSaveEthTransaction') {
+          sendCount++;
+          if (sendCount === 2)
+            throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
+              transactionNotBroadcast: !acknowledged,
+              ...(acknowledged ? { transactionHash: OTHER_HASH } : {}),
+            });
+          return { hash: HASH };
+        }
+        return undefined;
+      });
+      await signButton(initialize()).props.onClick();
+      expect(sends()).toHaveLength(2);
+      expect(records()).toContainEqual(
+        expect.objectContaining({
+          failed: true,
+          submissionCompleted: true,
+          txHashes: acknowledged ? [HASH, OTHER_HASH] : [HASH],
+        })
+      );
+    }
+  );
 
   it('stops safely if an acknowledged hash cannot be persisted', async () => {
     mockControllerEmitter.mockImplementation(async ([, method], params) => {

@@ -239,4 +239,120 @@ describe('infrastructure transaction broadcast boundary', () => {
     });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
+
+  describe('approved EOA context', () => {
+    const expectedContext = {
+      account: { ...account, address: 'payer-a' },
+      chainId: 1,
+      rpcUrl: 'rpc-a',
+      slip44: 60,
+    };
+    beforeEach(() => {
+      currentState.vaultGlobal = { activeSlip44: 60 };
+      wallet.walletSessionGeneration = 1;
+    });
+
+    it('rejects a context already changed before querying transaction targets', async () => {
+      currentState.vault.activeNetwork.chainId = 2;
+      await expect(
+        wallet.sendAndSaveEthTransaction({}, false, undefined, undefined, {
+          expectedContext,
+        })
+      ).rejects.toMatchObject({
+        message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+        transactionNotBroadcast: true,
+      });
+      expect(
+        getBlacklistTargetsForEvmCallWithContractType
+      ).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it.each(['network', 'account', 'rpc', 'slip44', 'session', 'reset'])(
+      'rejects a %s change during async preflight before the sender captures state',
+      async (change) => {
+        (
+          getBlacklistTargetsForEvmCallWithContractType as jest.Mock
+        ).mockImplementationOnce(async () => {
+          if (change === 'network')
+            currentState.vault.activeNetwork.chainId = 2;
+          if (change === 'account')
+            currentState.vault.activeAccount = { ...account, id: 1 };
+          if (change === 'rpc') currentState.vault.activeNetwork.url = 'rpc-b';
+          if (change === 'slip44') currentState.vaultGlobal.activeSlip44 = 57;
+          if (change === 'session') wallet.walletSessionGeneration += 1;
+          if (change === 'reset') wallet.isResettingWallet = true;
+          return [];
+        });
+        await expect(
+          wallet.sendAndSaveEthTransaction(
+            { chainId: 1, from: 'payer-a' },
+            false,
+            undefined,
+            undefined,
+            { expectedContext }
+          )
+        ).rejects.toMatchObject({
+          message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+          transactionNotBroadcast: true,
+        });
+        expect(send).not.toHaveBeenCalled();
+        expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+      }
+    );
+
+    it('sets the approved chain and sender without mutating the caller transaction', async () => {
+      const params = { value: '0x1' };
+      await wallet.sendAndSaveEthTransaction(
+        params,
+        false,
+        undefined,
+        undefined,
+        { expectedContext }
+      );
+      expect(send).toHaveBeenCalledWith(
+        { chainId: 1, from: 'payer-a', value: '0x1' },
+        false
+      );
+      expect(params).toEqual({ value: '0x1' });
+    });
+
+    it.each([{ chainId: 2 }, { from: 'payer-b' }])(
+      'rejects parameters outside the approved context: %j',
+      async (params) => {
+        await expect(
+          wallet.sendAndSaveEthTransaction(
+            params,
+            false,
+            undefined,
+            undefined,
+            { expectedContext }
+          )
+        ).rejects.toMatchObject({ transactionNotBroadcast: true });
+        expect(send).not.toHaveBeenCalled();
+      }
+    );
+
+    it('keeps an acknowledged hash and avoids current-network history after a switch during broadcast', async () => {
+      send.mockImplementationOnce(async () => {
+        currentState.vault.activeNetwork.chainId = 2;
+        return response;
+      });
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          { chainId: 1 },
+          false,
+          undefined,
+          undefined,
+          { expectedContext }
+        )
+      ).rejects.toMatchObject({
+        message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+        transactionHash: response.hash,
+        transactionNotBroadcast: false,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+    });
+  });
 });
