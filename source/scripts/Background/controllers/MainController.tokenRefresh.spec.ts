@@ -44,6 +44,12 @@ jest.mock('state/store', () => ({
         );
         rows[index] = payload.transaction;
       }
+      if (action.type === 'transactions') {
+        const active = state.vault.activeAccount;
+        state.vault.accountTransactions[active.type][active.id].ethereum[
+          payload.chainId
+        ] = payload.transactions;
+      }
     },
   },
 }));
@@ -52,6 +58,10 @@ jest.mock('state/vault', () => ({
   setAccountBalanceForNetwork: (payload: any) => ({ type: 'balance', payload }),
   setSingleTransactionToState: (payload: any) => ({
     type: 'transaction',
+    payload,
+  }),
+  setAccountTransactions: (payload: any) => ({
+    type: 'transactions',
     payload,
   }),
 }));
@@ -145,6 +155,24 @@ afterEach(() => {
   controller.stopAllRapidPolling();
   jest.useRealTimers();
 });
+
+const confirmHistory = async (transaction: any) => {
+  controller.transactionsManager = {
+    utils: {
+      updateTransactionsFromCurrentAccount: jest
+        .fn()
+        .mockResolvedValue([transaction]),
+    },
+  };
+  controller.reconcileLocalPendingEvmSmartAccountTransactions = jest
+    .fn()
+    .mockResolvedValue(undefined);
+  await controller.updateUserTransactionsState({
+    isBitcoinBased: false,
+    activeNetwork: state.vault.activeNetwork,
+    isPolling: true,
+  });
+};
 
 it('a direct receipt refreshes only its token and native payer; retries are independent of receipt polling', async () => {
   balanceOf
@@ -339,6 +367,163 @@ it('waits for the actual receipt height when a different RPC backend reports an 
   expect(balanceOf).toHaveBeenCalledTimes(1);
   expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 10 });
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+});
+
+it('enriches a newly confirmed router history row with one receipt before refreshing tracked tokens', async () => {
+  const hash = `0x${'cc'.repeat(32)}`;
+  const router = `0x${'66'.repeat(20)}`;
+  state.vault.accountTransactions[type][0].ethereum[1] = [
+    { hash, blockNumber: null, confirmations: 0 },
+  ];
+  const confirmed = {
+    hash,
+    from: A,
+    to: router,
+    value: '0',
+    chainId: 1,
+    blockNumber: 10,
+    blockHash: hash,
+    confirmations: 1,
+    status: 'success',
+  };
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: router,
+    blockNumber: 10,
+    logs: [
+      {
+        address: T,
+        topics: [
+          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+          `0x${'0'.repeat(24)}${A.slice(2)}`,
+          `0x${'0'.repeat(24)}${U.slice(2)}`,
+        ],
+      },
+    ],
+  });
+  provider.getTransaction = jest.fn();
+  provider.getBlock = jest.fn();
+
+  await confirmHistory(confirmed);
+  await jest.advanceTimersByTimeAsync(200);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledWith(hash);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(A, { blockTag: 11 });
+  expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
+  expect(provider.getTransaction).not.toHaveBeenCalled();
+  expect(provider.getBlock).not.toHaveBeenCalled();
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledTimes(1);
+});
+
+it('preserves all local AA refresh hints when explorer history confirms the outer transaction', async () => {
+  const hash = `0x${'dd'.repeat(32)}`;
+  const saType = KeyringAccountType.SmartAccount;
+  const sa = `0x${'55'.repeat(20)}`;
+  state.vault.activeAccount = { type: saType, id: 0 };
+  state.vault.accounts[saType] = { 0: { address: sa } };
+  state.vault.accountAssets[saType] = { 0: { ethereum: [asset(T)] } };
+  state.vault.accountTransactions[saType] = {
+    0: {
+      ethereum: {
+        1: [
+          {
+            hash,
+            blockNumber: null,
+            smartAccountExecutionFrom: sa,
+            balanceRefreshTokenAddresses: [T],
+            balanceRefreshNativeAddresses: [sa],
+          },
+        ],
+      },
+    },
+  };
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    hash,
+    from: A,
+    to: U,
+    blockNumber: 10,
+    logs: [],
+  });
+  await confirmHistory({
+    hash,
+    from: A,
+    to: U,
+    blockNumber: 10,
+    confirmations: 1,
+    chainId: 1,
+  });
+  await jest.advanceTimersByTimeAsync(200);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+  expect(balanceOf).toHaveBeenCalledWith(sa, { blockTag: 11 });
+  expect(provider.getBalance).toHaveBeenCalledTimes(2);
+  expect(state.vault.accountAssets[saType][0].ethereum[0].balance).toBe(9);
+  expect(
+    state.vault.accountTransactions[saType][0].ethereum[1][0]
+  ).toMatchObject({
+    smartAccountExecutionFrom: sa,
+    balanceRefreshTokenAddresses: [T],
+    balanceRefreshNativeAddresses: [sa],
+  });
+});
+
+it('coalesces pending history receipt reads and refuses their late result after context changes', async () => {
+  const hash = `0x${'ee'.repeat(32)}`;
+  let resolve!: (value: any) => void;
+  provider.getTransactionReceipt = jest.fn().mockReturnValue(
+    new Promise((done) => {
+      resolve = done;
+    })
+  );
+  const row = { hash, from: A, to: T, blockNumber: 10, chainId: 1 };
+  controller.refreshBalancesAfterHistory(row);
+  controller.refreshBalancesAfterHistory(row);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(1);
+  state.vault.activeNetwork = {
+    ...state.vault.activeNetwork,
+    url: 'https://new.test',
+  };
+  resolve({ hash, blockNumber: 10, logs: [] });
+  await jest.advanceTimersByTimeAsync(200);
+  expect(balanceOf).not.toHaveBeenCalled();
+  expect(provider.getBalance).not.toHaveBeenCalled();
+});
+
+it('bounds missing history receipt retries and stays silent after exhaustion', async () => {
+  provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
+  controller.refreshBalancesAfterHistory({
+    hash: `0x${'ff'.repeat(32)}`,
+    from: A,
+    to: T,
+    blockNumber: 10,
+    chainId: 1,
+  });
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(4);
+  expect(balanceOf).not.toHaveBeenCalled();
+  expect(provider.getBalance).not.toHaveBeenCalled();
+  expect(jest.getTimerCount()).toBe(0);
+  await jest.advanceTimersByTimeAsync(10_000);
+  expect(provider.getTransactionReceipt).toHaveBeenCalledTimes(4);
+});
+
+it('does not refetch a history row that already carries receipt logs', async () => {
+  provider.getTransactionReceipt = jest.fn();
+  controller.refreshBalancesAfterHistory({
+    hash: `0x${'ab'.repeat(32)}`,
+    from: A,
+    to: T,
+    blockNumber: 10,
+    chainId: 1,
+    logs: [],
+  });
+  await jest.advanceTimersByTimeAsync(100);
+  expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+  expect(balanceOf).toHaveBeenCalledTimes(1);
 });
 
 it('does not let an older same-key read overwrite a newer response', async () => {

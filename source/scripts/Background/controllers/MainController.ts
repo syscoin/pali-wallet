@@ -4281,6 +4281,26 @@ class MainController {
                   previousTxMap.set(txId, tx);
                 }
               });
+              // SYSCOIN: Explorer/AA history rows replace pending entries but
+              // do not carry the local execution targets needed for refresh.
+              const updatedTxs = isBitcoinBased
+                ? txs
+                : txs.map((tx: any) => {
+                    const previous = previousTxMap.get(tx.hash || tx.txid);
+                    if (!previous) return tx;
+                    return {
+                      ...tx,
+                      smartAccountExecutionFrom:
+                        previous.smartAccountExecutionFrom ??
+                        tx.smartAccountExecutionFrom,
+                      balanceRefreshTokenAddresses:
+                        previous.balanceRefreshTokenAddresses ??
+                        tx.balanceRefreshTokenAddresses,
+                      balanceRefreshNativeAddresses:
+                        previous.balanceRefreshNativeAddresses ??
+                        tx.balanceRefreshNativeAddresses,
+                    };
+                  });
 
               // Suppress notifications on first sync for this account/chain to avoid spam
               // Baseline at current latest transactions and notify only for subsequent updates
@@ -4291,7 +4311,7 @@ class MainController {
               // Always check for notifications, even during polling - users should be notified
               // about new transactions discovered in the background while using dapps
               if (account && hasPreviousTxs) {
-                txs.forEach((tx: any) => {
+                updatedTxs.forEach((tx: any) => {
                   const txId = tx.hash || tx.txid;
                   const previousTx = txId ? previousTxMap.get(txId) : undefined;
                   const isCurrentConfirmed = isTransactionInBlock(tx);
@@ -4315,7 +4335,7 @@ class MainController {
 
                   // Transaction just confirmed
                   if (isCurrentConfirmed && !wasPreviouslyConfirmed) {
-                    if (!isBitcoinBased) this.refreshBalancesAfterReceipt(tx);
+                    if (!isBitcoinBased) this.refreshBalancesAfterHistory(tx);
                     notificationManager.notifyTransaction({
                       transaction: tx,
                       type: isBitcoinBased
@@ -4338,12 +4358,12 @@ class MainController {
                   networkType: isBitcoinBased
                     ? TransactionsType.Syscoin
                     : TransactionsType.Ethereum,
-                  transactions: txs,
+                  transactions: updatedTxs,
                 })
               );
 
               // Update pending transaction badge
-              notificationManager.updatePendingTransactionBadge(txs);
+              notificationManager.updatePendingTransactionBadge(updatedTxs);
             }
 
             if (!isBitcoinBased) {
@@ -6204,6 +6224,70 @@ class MainController {
         notificationManager.updatePendingTransactionBadge(activeAccountTxs);
       }
     }
+  }
+
+  // SYSCOIN: History may confirm a router/AA transaction after rapid polling
+  // ends. Fetch only its receipt on the existing bounded, abortable queue;
+  // already-enriched rows need no extra request or persistent polling.
+  private refreshBalancesAfterHistory(tx: any) {
+    if (Array.isArray(tx.logs) || Array.isArray(tx.receipt?.logs)) {
+      this.refreshBalancesAfterReceipt(tx);
+      return;
+    }
+    const {
+      activeNetwork: network,
+      activeAccount,
+      accounts,
+    } = store.getState().vault;
+    const block = Number(tx.balanceRefreshBlockNumber || tx.blockNumber);
+    const hash = String(tx.hash || '').toLowerCase();
+    if (!/^0x[0-9a-f]{64}$/.test(hash)) return;
+    if (!Number.isSafeInteger(block) || block <= 0) return;
+    if (tx.chainId && Number(tx.chainId) !== network.chainId) return;
+    const owner =
+      accounts[activeAccount.type]?.[activeAccount.id]?.address?.toLowerCase();
+    if (!owner) return;
+    const contextIsCurrent = () => {
+      const vault = store.getState().vault;
+      return (
+        vault.activeNetwork.chainId === network.chainId &&
+        vault.activeNetwork.url === network.url &&
+        vault.activeNetwork.kind === network.kind &&
+        vault.activeNetwork.slip44 === network.slip44 &&
+        vault.activeAccount.id === activeAccount.id &&
+        vault.activeAccount.type === activeAccount.type &&
+        vault.accounts[activeAccount.type]?.[
+          activeAccount.id
+        ]?.address?.toLowerCase() === owner
+      );
+    };
+    this.receiptBalanceRefresh.schedule(
+      `${network.chainId}:${network.url}:${activeAccount.type}:${activeAccount.id}:${owner}:history:${hash}`,
+      block,
+      (current, signal) =>
+        this.withReceiptReadProvider(signal, network, async (readProvider) => {
+          if (!current() || !contextIsCurrent()) return;
+          const receipt = await readProvider.getTransactionReceipt(hash);
+          if (!current() || !contextIsCurrent()) return;
+          const receiptBlock = Number(receipt?.blockNumber);
+          if (
+            !receipt ||
+            receipt.hash?.toLowerCase() !== hash ||
+            !Number.isSafeInteger(receiptBlock) ||
+            receiptBlock <= 0
+          )
+            throw new Error('Confirmed history receipt not available');
+          this.refreshBalancesAfterReceipt({
+            ...tx,
+            from: receipt.from || tx.from,
+            to: receipt.to ?? tx.to,
+            blockNumber: receiptBlock,
+            balanceRefreshBlockNumber: Math.max(block, receiptBlock),
+            blockHash: receipt.blockHash,
+            logs: receipt.logs || [],
+          });
+        })
+    );
   }
 
   // SYSCOIN: Refresh only receipt-affected tracked keys, not every token in the
