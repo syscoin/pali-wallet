@@ -1,9 +1,9 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 
 import {
+  getChainId,
   getInfrastructureState,
   getNativeBalance,
-  provider,
 } from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
@@ -50,9 +50,7 @@ test.describe('visual baselines', () => {
     // SYSCOIN: These goldens describe the funded public QA fixture, not an
     // empty replacement chain. Fail with the actual missing prerequisite
     // before comparing different account/history states or skipping coverage.
-    expect(Number((await provider.getNetwork()).chainId)).toBe(
-      E2E_CONFIG.chainId
-    );
+    expect(await getChainId()).toBe(E2E_CONFIG.chainId);
     expect(
       BigInt(await getNativeBalance(SELF_ADDRESS)),
       'Fund the public QA fixture before running funded-state visual baselines'
