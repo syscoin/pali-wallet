@@ -1840,11 +1840,28 @@ class SmartAccountController {
       }
       return response;
     } catch (error) {
-      if (hasNativeGasFailure(error)) {
-        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
-      }
-      if (hasSmartAccountSignatureFailure(error)) {
-        throw new Error(SMART_ACCOUNT_SIGNATURE_ERROR);
+      const normalizedMessage = hasNativeGasFailure(error)
+        ? NATIVE_GAS_REQUIRED_ERROR
+        : hasSmartAccountSignatureFailure(error)
+        ? SMART_ACCOUNT_SIGNATURE_ERROR
+        : undefined;
+      if (normalizedMessage) {
+        const normalizedError = new Error(normalizedMessage);
+        // Keep trusted submission facts when replacing provider text with a
+        // UI sentinel. Losing false could permit an unsafe retry; losing true
+        // would strand a definite rejection as an unknown submission.
+        if (typeof error?.transactionNotBroadcast === 'boolean')
+          Object.assign(normalizedError, {
+            transactionNotBroadcast: error.transactionNotBroadcast,
+          });
+        if (
+          typeof error?.transactionHash === 'string' &&
+          /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)
+        )
+          Object.assign(normalizedError, {
+            transactionHash: error.transactionHash,
+          });
+        throw normalizedError;
       }
       throw error;
     }
