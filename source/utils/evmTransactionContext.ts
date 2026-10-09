@@ -5,6 +5,8 @@ export interface IEvmTransactionContext {
   account: { address: string; id: number; type: KeyringAccountType };
   chainId: number;
   rpcUrl: string;
+  /** Captured in the background when the approval is created. */
+  sessionGeneration?: number;
   slip44: number;
 }
 

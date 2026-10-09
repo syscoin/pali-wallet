@@ -1,5 +1,6 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 
+import { type InfrastructureStatus } from '../../source/pages/Settings/SmartAccountInfrastructure';
 import {
   getChainId,
   getInfrastructureState,
@@ -7,6 +8,7 @@ import {
 } from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+
 import { resetVisualScroll } from './scrollReset';
 
 // Pixel-baseline walk of the core screens. One onboarding, then every test
@@ -43,6 +45,60 @@ const settle = async (ms = 1200, page = wallet.page) => {
   // capture. Pin every baseline to its initial viewport for determinism.
   await page.evaluate(resetVisualScroll).catch(() => undefined);
   await page.waitForTimeout(150);
+};
+
+// Retry only this read-only preflight; never repeat account creation or a
+// submitted action because of a transport timeout.
+const refreshFixtureInfrastructure = async (page: Page) => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response: any = await page.evaluate(async () => {
+        let timer: number | undefined;
+        try {
+          return await Promise.race([
+            chrome.runtime.sendMessage({
+              type: 'CONTROLLER_ACTION',
+              data: {
+                methods: ['wallet', 'getSmartAccountInfrastructureStatus'],
+                params: [true],
+              },
+            }),
+            new Promise((_, reject) => {
+              timer = window.setTimeout(
+                () => reject(new Error('Infrastructure status read timed out')),
+                22000
+              );
+            }),
+          ]);
+        } finally {
+          window.clearTimeout(timer);
+        }
+      });
+      if (response?.error) {
+        throw new Error(
+          typeof response.error === 'string'
+            ? response.error
+            : response.error.message ||
+              response.message ||
+              'Infrastructure status read failed'
+        );
+      }
+      expect(
+        response?.chainId,
+        'Preflight must match the visual fixture network'
+      ).toBe(E2E_CONFIG.chainId);
+      return;
+    } catch (error: any) {
+      if (!error?.message?.includes('Infrastructure RPC timed out.'))
+        throw error;
+      if (attempt === 2) {
+        throw new Error(
+          'Visual fixture infrastructure RPC timed out after three read-only preflight attempts'
+        );
+      }
+      await page.waitForTimeout(1000 * (attempt + 1));
+    }
+  }
 };
 
 test.describe('visual baselines', () => {
@@ -82,13 +138,18 @@ test.describe('visual baselines', () => {
       !smartAccountsUnavailable &&
       (await createSmartAccount.isVisible().catch(() => false))
     ) {
-      await createSmartAccount.click();
       const unavailableMessage = wallet.page.getByText(
         /smart accounts are not ready on this network yet/i
+      );
+      const rpcTimeoutMessage = wallet.page.getByText(
+        'Infrastructure RPC timed out. Refresh status before retrying.',
+        { exact: true }
       );
       const okButton = wallet.page
         .getByRole('button', { name: /^ok$/i })
         .first();
+      await refreshFixtureInfrastructure(wallet.page);
+      await createSmartAccount.click();
       const outcome = await Promise.race([
         unavailableMessage
           .waitFor({
@@ -96,6 +157,12 @@ test.describe('visual baselines', () => {
             timeout: E2E_CONFIG.slowActionTimeoutMs,
           })
           .then(() => 'unavailable' as const),
+        rpcTimeoutMessage
+          .waitFor({
+            state: 'visible',
+            timeout: E2E_CONFIG.slowActionTimeoutMs,
+          })
+          .then(() => 'rpc-timeout' as const),
         okButton
           .waitFor({
             state: 'visible',
@@ -106,6 +173,11 @@ test.describe('visual baselines', () => {
           .waitForURL(/#\/home/, { timeout: E2E_CONFIG.slowActionTimeoutMs })
           .then(() => 'home' as const),
       ]);
+      if (outcome === 'rpc-timeout') {
+        throw new Error(
+          'Visual fixture infrastructure RPC timed out after preflight; account creation was not retried'
+        );
+      }
       if (outcome === 'dialog') {
         await okButton.click();
         await wallet.page.waitForURL(/#\/home/, { timeout: 30_000 });
@@ -216,8 +288,15 @@ test.describe('visual baselines', () => {
     ).toHaveCount(0);
     await wallet.page.getByRole('button', { name: /next/i }).first().click();
     await expect(wallet.page).toHaveURL(/send\/confirm/, { timeout: 30_000 });
-    // Fee estimation needs a beat to resolve before the layout is final.
+    // Background fee estimation can outlast a fixed settle delay. Capture
+    // the resolved fee layout only; never click Confirm in this visual walk.
     await settle(3000);
+    await expect(
+      wallet.page.getByText('Calculating...', { exact: true })
+    ).toHaveCount(0, { timeout: E2E_CONFIG.slowActionTimeoutMs });
+    await expect(
+      wallet.page.getByRole('button', { name: 'Confirm', exact: true })
+    ).toBeEnabled({ timeout: E2E_CONFIG.slowActionTimeoutMs });
     await expect(wallet.page).toHaveScreenshot(['send-confirm.png'], {
       mask: [...commonMasks(), wallet.page.getByText(/gwei/i)],
     });
@@ -326,8 +405,12 @@ test.describe('visual baselines', () => {
       // A new canonical module is absent from the live testnet until rollout.
       // Pin this read-only UI input and cover both layouts without deploying it.
       const page = await wallet.context.newPage();
+      const infrastructureFixture = {
+        chainId: E2E_CONFIG.chainId,
+        isReady: ready,
+      };
       try {
-        await page.addInitScript((isReady) => {
+        await page.addInitScript(({ chainId, isReady }) => {
           const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
           chrome.runtime.sendMessage = ((...args: any[]) => {
             const [message, callback] = args;
@@ -338,7 +421,9 @@ test.describe('visual baselines', () => {
               message.data.methods[0] === 'wallet' &&
               message.data.methods[1] === 'getSmartAccountInfrastructureStatus'
             ) {
-              const status = {
+              // The UI accepts only status for the active fixture network.
+              const status: InfrastructureStatus = {
+                chainId,
                 contracts: [
                   {
                     deployed: isReady,
@@ -357,7 +442,7 @@ test.describe('visual baselines', () => {
             }
             return (sendMessage as any)(...args);
           }) as typeof chrome.runtime.sendMessage;
-        }, ready);
+        }, infrastructureFixture);
         await page.goto(wallet.appUrl('#/home'));
         await expect(page.locator('#home-balance')).toBeVisible({
           timeout: 60_000,
@@ -372,8 +457,20 @@ test.describe('visual baselines', () => {
           page.getByText('Smart account setup', { exact: true })
         ).toBeVisible({ timeout: 60_000 });
         await expect(
-          page.getByText(ready ? 'Ready' : 'Not ready', { exact: true })
+          page
+            .getByRole('status')
+            .getByText(
+              ready
+                ? 'Ready on this network.'
+                : 'Needed before smart accounts can be used here.',
+              { exact: true }
+            )
         ).toBeVisible();
+        const checkStatus = page.getByRole('button', {
+          name: 'Check status',
+          exact: true,
+        });
+        await expect(checkStatus).toBeEnabled();
         const deploy = page.getByRole('button', {
           name: 'Deploy',
           exact: true,
@@ -388,6 +485,56 @@ test.describe('visual baselines', () => {
             page.getByText('1 setup item(s) missing.', { exact: true })
           ).toBeVisible();
           await expect(deploy).toBeEnabled();
+        }
+        // A text locator can pass even when a button is white-on-white.
+        for (const action of [checkStatus, ...(ready ? [] : [deploy])]) {
+          const contrast = await action.evaluate((button) => {
+            const style = getComputedStyle(button);
+            const luminance = (color: string) => {
+              const channels = color
+                .match(/[\d.]+/g)!
+                .slice(0, 3)
+                .map(Number);
+              return channels.reduce((total, channel, index) => {
+                const value = channel / 255;
+                const linear =
+                  value <= 0.04045
+                    ? value / 12.92
+                    : ((value + 0.055) / 1.055) ** 2.4;
+                return total + linear * [0.2126, 0.7152, 0.0722][index];
+              }, 0);
+            };
+            const foreground = luminance(style.color);
+            const background = luminance(style.backgroundColor);
+            return (
+              (Math.max(foreground, background) + 0.05) /
+              (Math.min(foreground, background) + 0.05)
+            );
+          });
+          expect(
+            contrast,
+            'Infrastructure action text must be readable'
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+        // Both the popup and wider extension view must keep Save in flow.
+        for (const viewport of [
+          { width: 400, height: 620 },
+          { width: 600, height: 800 },
+        ]) {
+          await page.setViewportSize(viewport);
+          const save = page.getByRole('button', { name: 'Save', exact: true });
+          const autolock = page.getByRole('spinbutton');
+          const autolockRow = page
+            .locator('#autolock .ant-form-item')
+            .filter({ has: autolock });
+          await save.scrollIntoViewIfNeeded();
+          await expect(save).toBeInViewport({ ratio: 1 });
+          await expect(autolockRow).toBeInViewport({ ratio: 1 });
+          const saveBox = await save.boundingBox();
+          const autolockBox = await autolockRow.boundingBox();
+          expect(saveBox!.y).toBeGreaterThanOrEqual(
+            autolockBox!.y + autolockBox!.height
+          );
         }
         await settle(1500, page);
         await expect(page).toHaveURL(/#\/settings\/advanced$/);

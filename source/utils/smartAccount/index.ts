@@ -11,3 +11,4 @@ export * from './gas';
 export * from './modules';
 export * from './recovery';
 export * from './templates';
+export * from './userOperationHash';

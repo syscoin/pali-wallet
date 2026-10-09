@@ -157,6 +157,7 @@ export class WalletMethodHandler implements IMethodHandler {
           },
           chainId: activeNetwork.chainId,
           rpcUrl: activeNetwork.url,
+          sessionGeneration: wallet.getWalletSessionGeneration(),
           slip44: vaultGlobal.activeSlip44,
         };
         const smartAccountAtomicSupported =

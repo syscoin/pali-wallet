@@ -10,6 +10,10 @@ import type {
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { hexConcat, hexDataSlice, isHexString } from 'utils/ethersV6Compat';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
 import {
@@ -281,6 +285,7 @@ export type SubmitSmartAccountExecutionsParams = {
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   controllerEmitter: ControllerEmitter;
   executions: SmartAccountExecutionIntent[];
+  expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
@@ -320,6 +325,7 @@ export type SmartAccountLocalOwner = {
 
 export type SmartAccountLocalEcdsaSigner = (params: {
   actionHash: string;
+  executionContextId?: string;
   owner: SmartAccountLocalOwner;
 }) => Promise<string>;
 
@@ -340,6 +346,7 @@ export type SmartAccountSLHDSASigner = (params: {
   accountId?: number;
   actionHash: string;
   allowReservedSignature?: boolean;
+  executionContextId?: string;
   keyId: string;
   parameterSet: 'SLH-DSA-SHA2-128-24';
   pkRoot: string;
@@ -463,10 +470,14 @@ export const getSmartAccountLocalOwnerContexts = ({
   return {
     ecdsa: {
       localOwners,
-      signActionHash: ({ actionHash, owner }) =>
+      signActionHash: ({ actionHash, executionContextId, owner }) =>
         controllerEmitter(
           ['wallet', 'signSmartAccountActionDigestInternal'],
-          [[owner.address, actionHash], { id: owner.id, type: owner.type }],
+          [
+            [owner.address, actionHash],
+            { id: owner.id, type: owner.type },
+            ...(executionContextId ? [executionContextId] : []),
+          ],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
         ) as Promise<string>,
     },
@@ -487,6 +498,7 @@ export type SmartAccountAuthenticatorContext<
   accountId?: number;
   actionHash: string;
   allowReservedSLHDSASignature?: boolean;
+  executionContextId?: string;
   runtimeContext?: unknown;
   smartAccount: ISmartAccountMetadata;
   validator: T;
@@ -600,6 +612,9 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
         localOwners.slice(0, threshold).map((owner) =>
           runtimeContext.signActionHash({
             actionHash: context.actionHash,
+            ...(context.executionContextId
+              ? { executionContextId: context.executionContextId }
+              : {}),
             owner,
           })
         )
@@ -643,6 +658,7 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     accountId,
     allowReservedSLHDSASignature,
     actionHash,
+    executionContextId,
     runtimeContext,
     validator,
   }) => {
@@ -652,6 +668,7 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     const signature = await slhDsaContext?.signActionHash?.({
       accountId,
       actionHash,
+      ...(executionContextId ? { executionContextId } : {}),
       allowReservedSignature: allowReservedSLHDSASignature,
       keyId: validator.config.keyId,
       parameterSet: validator.config.parameterSet,
@@ -782,6 +799,7 @@ export const signSmartAccountActionHash = async (params: {
   actionHash: string;
   allowReservedSLHDSASignature?: boolean;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
+  executionContextId?: string;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   smartAccount: ISmartAccountMetadata;
@@ -794,6 +812,7 @@ export const signSmartAccountActionHash = async (params: {
     .signActionHash({
       accountId: params.accountId,
       actionHash: params.actionHash,
+      executionContextId: params.executionContextId,
       allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
       runtimeContext: params.authenticatorContexts?.[validator.id],
       smartAccount: params.smartAccount,
@@ -829,6 +848,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     authenticatorContexts,
     controllerEmitter,
     executions,
+    expectedContext,
     feeOverrides,
     onAssertionResolved,
     onAuthenticatorSigningResolved,
@@ -842,7 +862,8 @@ export const signAndSubmitSmartAccountExecutions = async (
   } = params;
   const validatorIdForJob =
     smartAccount.auth?.module || smartAccount.auth?.scheme;
-  const shouldTrackJob = validatorIdForJob === 'slh-dsa';
+  // An external approval owns its own context checks and durable submit marker.
+  const shouldTrackJob = validatorIdForJob === 'slh-dsa' && !expectedContext;
   const submitJobKey = shouldTrackJob
     ? await getSmartAccountSubmitJobKey({
         accountAddress,
@@ -862,6 +883,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         executions,
         accountId,
         {
+          ...(expectedContext ? { expectedContext } : {}),
           feeOverrides,
           useCachedMetadata: useCachedMetadataOverride,
         },
@@ -869,10 +891,23 @@ export const signAndSubmitSmartAccountExecutions = async (
       300000
     )) as any;
     onPrepared?.();
+    if (expectedContext && !prepared.executionContextId)
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    const assertContext = async () => {
+      if (prepared.executionContextId)
+        await controllerEmitter(
+          ['wallet', 'assertSmartAccountExecutionContext'],
+          [prepared.executionContextId, prepared.actionHash]
+        );
+    };
+    await assertContext();
 
     const signature = await signSmartAccountActionHash({
       accountId,
       actionHash: prepared.actionHash,
+      executionContextId: prepared.executionContextId,
       allowReservedSLHDSASignature: canUseReservedSLHDSASignature({
         accountAddress,
         executions: prepared.executions,
@@ -883,9 +918,11 @@ export const signAndSubmitSmartAccountExecutions = async (
       onAuthenticatorSigningStarted,
       smartAccount: prepared.smartAccount || smartAccount,
     });
+    await assertContext();
     onAssertionResolved?.();
 
     await onBeforeSubmit?.();
+    await assertContext();
     submissionStarted = true;
     return controllerEmitter(
       ['wallet', 'submitSmartAccountExecution'],
@@ -894,6 +931,8 @@ export const signAndSubmitSmartAccountExecutions = async (
           executionCalldata: prepared.executionCalldata,
           executions: prepared.executions,
           accountId,
+          executionContextId: prepared.executionContextId,
+          expectedContext,
           gasPayer: prepared.gasPayer,
           maxFeePerGas: prepared.maxFeePerGas,
           maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,

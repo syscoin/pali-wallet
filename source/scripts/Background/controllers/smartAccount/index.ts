@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from 'uuid';
+
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -16,6 +18,10 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { blacklistService } from 'utils/security/blacklistService';
 import {
   getSLHDSAKeyId,
@@ -49,6 +55,7 @@ import {
   getPaliSmartAccountDescriptor,
   getSmartAccountGasUnitsReserve,
   getSmartAccountUserOpGasFees,
+  getSmartAccountUserOpHash,
   getSmartAccountUserOpRequiredPrefund,
   getSmartAccountValidatorProfile,
   getZkSysGasTankAddress,
@@ -141,7 +148,8 @@ export interface ISmartAccountControllerDependencies {
   }) => Promise<string>;
   signSmartAccountActionDigestInternal: (
     params: string[],
-    targetAccount: { id: number; type: PaliKeyringAccountType }
+    targetAccount: { id: number; type: PaliKeyringAccountType },
+    executionContextId?: string
   ) => Promise<string>;
 }
 
@@ -329,6 +337,16 @@ const hasSmartAccountSignatureFailure = (error: unknown): boolean => {
 };
 
 class SmartAccountController {
+  private readonly executionContexts = new Map<
+    string,
+    {
+      accountId: number;
+      actionHash: string;
+      expiresAt: number;
+      snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
+      userOperation: SmartAccountPackedUserOperation;
+    }
+  >();
   private readonly infrastructureStatusCache = new Map<
     string,
     { status: SmartAccountInfrastructureStatus; timestamp: number }
@@ -412,6 +430,54 @@ class SmartAccountController {
       throw new Error(
         'Wallet context changed. Reopen deployment on the selected network.'
       );
+  }
+
+  private assertExpectedExecutionContext(
+    expected: IEvmTransactionContext,
+    accountId?: number
+  ): void {
+    const { vault, vaultGlobal } = store.getState();
+    const selected =
+      vault.accounts?.[vault.activeAccount.type]?.[vault.activeAccount.id];
+    if (
+      vault.isBitcoinBased ||
+      vault.activeNetwork.chainId !== expected.chainId ||
+      vault.activeNetwork.url !== expected.rpcUrl ||
+      vaultGlobal.activeSlip44 !== expected.slip44 ||
+      expected.sessionGeneration === undefined ||
+      this.deps.getWalletSessionGeneration?.() !== expected.sessionGeneration ||
+      vault.activeAccount.id !== expected.account.id ||
+      vault.activeAccount.type !== expected.account.type ||
+      expected.account.type !== PaliKeyringAccountType.SmartAccount ||
+      selected?.address?.toLowerCase() !==
+        expected.account.address.toLowerCase() ||
+      (accountId !== undefined && accountId !== expected.account.id)
+    ) {
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    }
+  }
+
+  public assertSmartAccountExecutionContext(
+    executionContextId: string,
+    actionHash?: string
+  ): void {
+    const context = this.executionContexts.get(executionContextId);
+    try {
+      if (
+        !context ||
+        context.expiresAt <= Date.now() ||
+        (actionHash &&
+          actionHash.toLowerCase() !== context.actionHash.toLowerCase())
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      this.assertInfrastructureContext(context.snapshot);
+    } catch {
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    }
   }
 
   private async infrastructureDeadline<T>(
@@ -1140,10 +1206,12 @@ class SmartAccountController {
         );
         const signature = await this.signActionHashWithLocalEcdsaOwners(
           metadata,
-          prepared.actionHash
+          prepared.actionHash,
+          prepared.executionContextId
         );
         response = await this.submitSmartAccountExecution({
           accountId: params.accountId,
+          executionContextId: prepared.executionContextId,
           executions: prepared.executions,
           gasPayer: prepared.gasPayer,
           maxFeePerGas: prepared.maxFeePerGas,
@@ -1462,6 +1530,7 @@ class SmartAccountController {
     params: Array<{ data?: string; target: string; value: string }>,
     accountId?: number,
     options: {
+      expectedContext?: IEvmTransactionContext;
       feeOverrides?: {
         maxFeePerGas?: string;
         maxPriorityFeePerGas?: string;
@@ -1469,7 +1538,22 @@ class SmartAccountController {
       useCachedMetadata?: boolean;
     } = {}
   ) {
+    if (options.expectedContext)
+      this.assertExpectedExecutionContext(options.expectedContext, accountId);
+    const snapshot = this.infrastructureContext();
+    const assertContext = () => {
+      try {
+        this.assertInfrastructureContext(snapshot);
+      } catch {
+        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+          transactionNotBroadcast: true,
+        });
+      }
+      if (options.expectedContext)
+        this.assertExpectedExecutionContext(options.expectedContext, accountId);
+    };
     await this.assertSmartAccountExecutionTargetsAllowed(params);
+    assertContext();
 
     const useCachedMetadata = options.useCachedMetadata !== false;
     let active = useCachedMetadata
@@ -1479,6 +1563,7 @@ class SmartAccountController {
       : Number.isInteger(accountId)
       ? await this.getHydratedSmartAccountById(accountId as number)
       : await this.getHydratedActiveSmartAccount();
+    assertContext();
     if (
       useCachedMetadata &&
       active.metadata.isDeployed &&
@@ -1487,7 +1572,12 @@ class SmartAccountController {
       active = Number.isInteger(accountId)
         ? await this.getHydratedSmartAccountById(accountId as number)
         : await this.getHydratedActiveSmartAccount();
+      assertContext();
     }
+    if (active.metadata.chainId !== snapshot.chainId)
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
@@ -1498,6 +1588,7 @@ class SmartAccountController {
       this.hasUsableSmartAccountAuthMetadata(active.metadata);
     if (!useDeployedCachedMetadata) {
       await this.assertSmartAccountSupported();
+      assertContext();
     }
     const accountContract = new Contract(
       active.account.address,
@@ -1521,6 +1612,7 @@ class SmartAccountController {
         getPaliSmartAccountFactoryAddress(active.metadata.chainId),
       provider,
     });
+    assertContext();
     const prepared = smartAccount.encodeExecutions(params);
     const validator = auth.validator;
     const nonceKey = smartAccount.getNonceKey();
@@ -1533,17 +1625,21 @@ class SmartAccountController {
     const code = useDeployedCachedMetadata
       ? 'cached-deployed'
       : await provider.getCode(active.account.address);
+    assertContext();
     if (code !== '0x' && !useDeployedCachedMetadata) {
       await this.assertSmartAccountExecutionModeSupported(
         accountContract,
         prepared.mode
       );
+      assertContext();
     }
     const nonce = (
       await entryPoint.getNonce(active.account.address, nonceKey)
     ).toString();
+    assertContext();
     const callData = smartAccount.encodeCalls(params);
     const feeData = await provider.getFeeData();
+    assertContext();
     // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
     // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
     // the per-validator table (limits are inside the signed hash).
@@ -1556,6 +1652,7 @@ class SmartAccountController {
       sender: active.account.address,
       validatorKind: validatorProfile.validatorKind,
     });
+    assertContext();
     const hasOuterEip1559FeeParams =
       (options.feeOverrides?.maxFeePerGas !== null &&
         options.feeOverrides?.maxFeePerGas !== undefined &&
@@ -1587,6 +1684,7 @@ class SmartAccountController {
           maxFeePerGas,
         })
       : false;
+    assertContext();
     const gasPayer = primaryGasPayerUsesTank
       ? {
           address: primaryGasPayer.address,
@@ -1594,6 +1692,7 @@ class SmartAccountController {
           type: primaryGasPayer.type,
         }
       : await this.getWalletGasPayerAccount(active.metadata.deploymentGasPayer);
+    assertContext();
     const useZkSysGasTank = primaryGasPayerUsesTank;
     const gasFees = getSmartAccountUserOpGasFees({
       maxFeePerGas: maxFeePerGas.toString(),
@@ -1616,8 +1715,24 @@ class SmartAccountController {
     // In verified tank mode, the outer transaction pays at the bootloader
     // layer, so the inner UserOp must not reimburse the submitter in SYS.
     const userOperation = unsignedUserOperation;
-    const actionHash = await entryPoint.getUserOpHash(userOperation);
+    const actionHash = getSmartAccountUserOpHash(
+      userOperation,
+      active.metadata.chainId
+    );
 
+    assertContext();
+    for (const [id, context] of this.executionContexts)
+      if (context.expiresAt <= Date.now()) this.executionContexts.delete(id);
+    while (this.executionContexts.size >= 128)
+      this.executionContexts.delete(this.executionContexts.keys().next().value);
+    const executionContextId = uuidv4();
+    this.executionContexts.set(executionContextId, {
+      accountId: active.account.id,
+      actionHash,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+      snapshot,
+      userOperation: { ...userOperation },
+    });
     const executions = prepared.executions.map((execution) => ({
       ...execution,
       nonce,
@@ -1625,6 +1740,7 @@ class SmartAccountController {
 
     return {
       actionHash,
+      executionContextId,
       execution: executions[0],
       executionCalldata: prepared.executionCalldata,
       executions,
@@ -1708,7 +1824,9 @@ class SmartAccountController {
   public async submitSmartAccountExecution(params: {
     accountId?: number;
     executionCalldata?: string;
+    executionContextId?: string;
     executions?: SmartAccountExecution[];
+    expectedContext?: IEvmTransactionContext;
     gasPayer?: {
       address: string;
       id: number;
@@ -1723,6 +1841,34 @@ class SmartAccountController {
     validator?: string;
     waitForConfirmation?: boolean;
   }) {
+    const assertContext = () => {
+      if (params.expectedContext) {
+        this.assertExpectedExecutionContext(
+          params.expectedContext,
+          params.accountId
+        );
+        if (!params.executionContextId)
+          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+            transactionNotBroadcast: true,
+          });
+      }
+      if (params.executionContextId) {
+        this.assertSmartAccountExecutionContext(params.executionContextId);
+        const context = this.executionContexts.get(params.executionContextId)!;
+        if (
+          (params.accountId !== undefined &&
+            params.accountId !== context.accountId) ||
+          !params.userOperation ||
+          Object.entries(context.userOperation).some(
+            ([key, value]) => params.userOperation[key] !== value
+          )
+        )
+          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+            transactionNotBroadcast: true,
+          });
+      }
+    };
+    assertContext();
     const active = Number.isInteger(params.accountId)
       ? this.getSmartAccountById(params.accountId as number)
       : this.getActiveSmartAccount();
@@ -1744,6 +1890,7 @@ class SmartAccountController {
       undefined,
       { requirePreferred: Boolean(params.gasPayer) }
     );
+    assertContext();
     const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
     const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
     const signedUserOperation: SmartAccountPackedUserOperation = {
@@ -1776,6 +1923,7 @@ class SmartAccountController {
             value: '0x0',
           },
         });
+        assertContext();
       }
       // Self-funded first-UserOp deployment: an op carrying initCode validates
       // before anything executes, so the counterfactual account must already
@@ -1789,8 +1937,11 @@ class SmartAccountController {
           active.account.address,
           signedUserOperation,
           entryPointAddress,
-          gasPayer
+          gasPayer,
+          active.metadata.chainId,
+          assertContext
         );
+        assertContext();
       }
       // zkSYS derives an omitted estimateGas ceiling from balance / baseFee,
       // then validates that ceiling against maxFeePerGas. Supplying EIP-1559
@@ -1813,10 +1964,14 @@ class SmartAccountController {
             value: '0x0',
           })
         );
+        assertContext();
       }
+      assertContext();
       const response = await this.deps.sendAndSaveEthTransaction(
         {
+          chainId: active.metadata.chainId,
           data: callData,
+          from: gasPayer.address,
           gasLimit: outerGasLimit.toString(),
           ...(params.maxFeePerGas && params.maxPriorityFeePerGas
             ? {
@@ -1852,6 +2007,7 @@ class SmartAccountController {
           ],
         },
         {
+          assertCurrentContext: assertContext,
           clearNavigation: true,
           persist: true,
           skipRapidPolling: params.skipRapidPolling,
@@ -1986,8 +2142,11 @@ class SmartAccountController {
     accountAddress: string,
     userOperation: SmartAccountPackedUserOperation,
     entryPointAddress: string,
-    gasPayer: { address: string; id: number; type: PaliKeyringAccountType }
+    gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
+    chainId: number,
+    assertCurrentContext?: () => void
   ): Promise<void> {
+    assertCurrentContext?.();
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error('Web3 provider not available');
@@ -2001,6 +2160,7 @@ class SmartAccountController {
       provider.getBalance(accountAddress),
       entryPoint.balanceOf(accountAddress),
     ]);
+    assertCurrentContext?.();
     const deposit = toCompatBigNumber(rawDeposit);
     const required = getSmartAccountUserOpRequiredPrefund(userOperation);
     const shortfall = required.sub(balance).sub(deposit);
@@ -2009,6 +2169,8 @@ class SmartAccountController {
     }
     const response = await this.deps.sendAndSaveEthTransaction(
       {
+        chainId,
+        from: gasPayer.address,
         to: getAddress(accountAddress),
         value: shortfall.toHexString(),
       },
@@ -2018,9 +2180,15 @@ class SmartAccountController {
         smartAccountAddress: getAddress(accountAddress),
         smartAccountDeploymentPrefund: true,
       },
-      { clearNavigation: false, persist: true, skipRapidPolling: true }
+      {
+        assertCurrentContext,
+        clearNavigation: false,
+        persist: true,
+        skipRapidPolling: true,
+      }
     );
     await response.wait();
+    assertCurrentContext?.();
   }
 
   private getLocalNativeExecutionRecipients(
@@ -2524,7 +2692,8 @@ class SmartAccountController {
    */
   private async signActionHashWithLocalEcdsaOwners(
     metadata: ISmartAccountMetadata,
-    actionHash: string
+    actionHash: string,
+    executionContextId?: string
   ): Promise<string> {
     const moduleId = metadata.auth?.module || metadata.auth?.scheme;
     if (moduleId !== 'ecdsa' || !metadata.auth?.data) {
@@ -2552,7 +2721,8 @@ class SmartAccountController {
         .map((owner) =>
           this.deps.signSmartAccountActionDigestInternal(
             [owner, actionHash],
-            this.getLocalSigningAccount(owner)
+            this.getLocalSigningAccount(owner),
+            executionContextId
           )
         )
     );

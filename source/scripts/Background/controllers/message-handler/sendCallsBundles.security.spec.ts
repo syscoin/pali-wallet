@@ -68,7 +68,7 @@ describe('sendCalls reservation submission boundary', () => {
         getAccount: () => ({ address: 'payer' }),
         get: () => ({ accountId: 0, accountType: 'HDAccount' }),
       },
-      wallet: {},
+      wallet: { getWalletSessionGeneration: () => 7 },
     });
     (store.getState as jest.Mock).mockReturnValue({
       vault: { activeNetwork: { chainId: 1, url: 'rpc-a' } },
@@ -117,6 +117,7 @@ describe('sendCalls reservation submission boundary', () => {
         account: { address: 'payer', id: 0, type: 'HDAccount' },
         chainId: 1,
         rpcUrl: 'rpc-a',
+        sessionGeneration: 7,
         slip44: 60,
       },
     });
