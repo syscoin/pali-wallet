@@ -4179,5 +4179,158 @@
       },
       "note": "Actual generator evaluated with captured filesystem writes. Webpack manifest transform is JSON.parse/stringify without a browser-specific background conversion."
     }
+  },
+  "networkRemovalFollowup": {
+    "snapshot": {
+      "measuredAt": "2026-10-09T04:37:15.976231+00:00",
+      "paliSourceCommit": "70502d7d22ca518a8a29ba7f53596c2f58d862da",
+      "runtimeSourceFingerprintSha256": "0aa24dc5a635c6121dfab025d92865ccf6444d1bca93115bb7f32479ebb77390",
+      "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
+      "runtimeFileCount": 543,
+      "paliVersion": "4.0.70",
+      "keyringVersion": "1.0.612",
+      "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
+      "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
+      "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
+      "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce"
+    },
+    "validationSource": "Clean git archive of 70502d7d sharing the reviewed local dependencies; not a clean registry install.",
+    "changes": [
+      "Network edit/custom-RPC routes remain inert while context changes, including normalized route aliases.",
+      "A pending confirmation portal is hidden and cleared on transition or background disconnect; callbacks recheck current state.",
+      "Removal rejects in-flight switches, active networks and active UTXO slip44 vaults. It reserves synchronously, rechecks identity/session at lock boundaries and awaits vault I/O under switch/persistence mutexes.",
+      "Switches, edits and additions cannot race removal. Additions recheck after asynchronous metadata discovery.",
+      "Removal failures are consumed and shown with a neutral message translated in every locale; stale completion cannot clear a newer selection."
+    ],
+    "validation": {
+      "suites": 138,
+      "tests": 1337,
+      "coverageEnabled": true,
+      "typeScript": "passed",
+      "scopedLint": "passed",
+      "translationConsistency": "passed",
+      "independentReview": "passed",
+      "productionChromeBuild": "passed",
+      "newBackendRemovalTests": 23,
+      "manageNetworkUiTests": 9,
+      "localeCount": 9
+    },
+    "size": {
+      "measuredAt": "2026-10-09T04:37:40.661Z",
+      "snapshot": {
+        "measuredAt": "2026-10-09T04:37:15.976231+00:00",
+        "paliSourceCommit": "70502d7d22ca518a8a29ba7f53596c2f58d862da",
+        "runtimeSourceFingerprintSha256": "0aa24dc5a635c6121dfab025d92865ccf6444d1bca93115bb7f32479ebb77390",
+        "runtimeFingerprintScope": "source/** excluding .spec and .test files, package.json, yarn.lock, scripts/check-bundle-size.js; sorted relative path then NUL then file bytes then NUL",
+        "runtimeFileCount": 543,
+        "paliVersion": "4.0.70",
+        "keyringVersion": "1.0.612",
+        "keyringSourceCommit": "5e253bf4c6be7431d9608c4d0168d85fba7e5b09",
+        "keyringSourcePR": "https://github.com/sidhujag/sysweb3/pull/15",
+        "dependencyArtifact": "Local npm pack of upstream source build; not an npm publication",
+        "localDependencyTarballSha256": "3befe5e090c9d94f600c0839e12104158504cf3348d28a252229954175d864ce",
+        "webpackStatsSha256": "26752787a8e06d1878fa98521b9092537c630023ac4d0af7880b598d23c3a518",
+        "buildDirectory": "/tmp/pali-audit/optimized-network-removal",
+        "scope": "Pali4.0.70 rebased on master94a1cde5, upstreamkeyring1.0.612 localpack, no local package patch."
+      },
+      "hardware": {
+        "model": "MacBook Pro Mac17,6",
+        "chip": "Apple M5 Max",
+        "cores": 18,
+        "coreTopology": "6 Super + 12 Performance",
+        "memoryGiB": 48
+      },
+      "software": {
+        "chromium": "149.0.7827.55",
+        "node": "v23.11.1",
+        "yarn": "1.22.22"
+      },
+      "baseline": {
+        "app": {
+          "bytes": 1476859,
+          "gzipBytes": 448969,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1469529,
+          "gzipBytes": 447303,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4202303,
+          "gzipBytes": 1177950,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 11094,
+          "gzipBytes": 3853,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8632973,
+          "budgetBytes": 9000000
+        }
+      },
+      "optimized": {
+        "app": {
+          "bytes": 1483007,
+          "gzipBytes": 453412,
+          "budgetBytes": 1600000
+        },
+        "external": {
+          "bytes": 1479483,
+          "gzipBytes": 452355,
+          "budgetBytes": 1600000
+        },
+        "background": {
+          "bytes": 4281681,
+          "gzipBytes": 1201631,
+          "budgetBytes": 4300000
+        },
+        "contentScript": {
+          "bytes": 14784,
+          "gzipBytes": 4948,
+          "budgetBytes": 16000
+        },
+        "package": {
+          "bytes": 8528108,
+          "budgetBytes": 9000000
+        }
+      },
+      "firstRoute": {
+        "baseline": {
+          "initialJSBytes": 1476859,
+          "lazyJSFiles": [
+            "js/490.bundle.js",
+            "js/542.bundle.js"
+          ],
+          "lazyJSBytes": 902662,
+          "totalJSBytes": 2379521
+        },
+        "optimized": {
+          "initialJSBytes": 1483007,
+          "lazyJSFiles": [
+            "js/6386.bundle.js",
+            "js/1185.bundle.js"
+          ],
+          "lazyJSBytes": 11536,
+          "totalJSBytes": 1494543
+        }
+      },
+      "firstRouteReductionPercent": 37.191434746741045,
+      "firstRouteLazyReductionPercent": 98.7220022555508,
+      "packageReductionPercent": 1.2147032082690412,
+      "notes": [
+        "Minified raw bytes include the script loader. Gzip sizes are comparative; extension execution reads local files.",
+        "Fresh-start aggregate is the unique initial scripts and lazy chunks requested before onboarding was interactive.",
+        "The 11-case startup matrix belongs to startup-matrix-build.json and runtime-build-metadata.json, an earlier snapshot before authentication navigation and surgical containment fixes."
+      ]
+    },
+    "limits": [
+      "The latest four-chain/alias/approval browser scenarios remain tied to runtime 76e9f44d; this subsequent removal guard is covered by controller/component regressions and a new production build.",
+      "The 500-account timings remain tied to runtime 87084512.",
+      "The focused crypto review still has eight open findings; no crypto production remediation is claimed.",
+      "Keyring 1.0.612 is still unpublished; clean registry CI is required before release."
+    ]
   }
 }

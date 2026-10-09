@@ -245,6 +245,16 @@ Fresh Start loads **1,494,387 bytes** of JavaScript, **37.2% less** than the ori
 
 A separate focused cryptography and key-management review has open findings. This PR's regression results and prior review completions are not a clean cryptographic security sign-off. Those findings require separate remediation before release.
 
+## Network-removal follow-up
+
+Source `70502d7d22ca518a8a29ba7f53596c2f58d862da` has runtime fingerprint `0aa24dc5a635c6121dfab025d92865ccf6444d1bca93115bb7f32479ebb77390`. A slow network switch must not allow deletion of the vault it is still loading. Network edit/custom-RPC pages now remain inert through context changes, including route aliases. A confirmation already open in a portal is hidden and cleared when a transition starts or the background becomes unavailable; its callbacks recheck live state.
+
+The background independently rejects removal during switches and refuses active-network or active-UTXO-vault deletion. Removal reserves synchronously, rechecks session and network identity at lock boundaries, and awaits vault cleanup under the network-switch and persistence mutexes. New switches, edits and additions cannot race that cleanup. An addition that was already awaiting metadata rechecks before committing. Storage errors propagate and the reservation always releases. The UI consumes failures, shows a neutral message translated in all nine locales, and clears only the completed request's selection.
+
+The final combined suite passes **138 suites and 1,337 tests with coverage enabled**, including 23 new backend removal regressions and nine network-management UI tests. TypeScript, scoped lint, translation consistency, independent review and the production Chrome build pass. Validation uses a clean Git archive and the same reviewed local dependency package.
+
+Fresh Start loads **1,494,543 bytes** of JavaScript, **37.2% less** than the original baseline. The background is **4,281,681 bytes** and the unpacked extension **8,528,108 bytes**; all budgets pass. The preceding four-chain/alias/approval browser checks remain bound to runtime `76e9f44d`; the 500-account measurements remain bound to `87084512`. They are not relabelled as reruns of this later guard change. The separate crypto findings remain open.
+
 ## Dependency findings
 
 The read-only production-dependency audit reported 381 dependency-path findings: 3 critical, 241 high, 131 moderate and 6 low; these represent 57 distinct GHSA URLs across 18 packages. Build/test tools are also listed under this project's `dependencies`. These counts are not counts of reachable extension exploits.
