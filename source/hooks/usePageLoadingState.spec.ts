@@ -41,6 +41,10 @@ describe('context-sensitive actions', () => {
     '/settings/forget-wallet/',
     '/%73ettings/account/private-key',
     '/EXTERNAL/SMART-ACCOUNT/',
+    '/external/connect-wallet',
+    '/external/change-account',
+    '/external/change-active-connected-account',
+    '/EXTERNAL/CONNECT-WALLET/',
   ])('guards %s during account/network transitions', (route) => {
     expect(isContextSensitiveWalletRoute(route)).toBe(true);
   });

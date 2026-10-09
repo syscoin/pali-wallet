@@ -108,4 +108,28 @@ describe('wallet content safety during background changes', () => {
     expect(markup).toContain('Account balances');
     expect(markup).toContain('Wallet navigation');
   });
+
+  it.each([
+    '/external/connect-wallet',
+    '/external/change-account',
+    '/external/change-active-connected-account',
+  ])(
+    'disables account consent at %s during a transition or disconnection',
+    (path) => {
+      mockPath = path;
+      for (const unavailable of [false, true]) {
+        mockUnavailable = unavailable;
+        mockChanging = !unavailable;
+        const markup = renderToStaticMarkup(
+          <AppLayout>
+            <button>Confirm account permission</button>
+          </AppLayout>
+        );
+        expect(markup).toContain('inert=""');
+        expect(markup.indexOf('inert=""')).toBeLessThan(
+          markup.indexOf('Confirm account permission')
+        );
+      }
+    }
+  );
 });

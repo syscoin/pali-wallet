@@ -39,7 +39,7 @@ export const isContextSensitiveWalletRoute = (pathname: string): boolean => {
       pathname
     ) ||
     pathname === '/home/smart-account' ||
-    /^\/external\/(?:smart-account|smart-account-modules|watch-asset)$/.test(
+    /^\/external\/(?:smart-account|smart-account-modules|watch-asset|connect-wallet|change-account|change-active-connected-account)$/.test(
       pathname
     )
   );
