@@ -1,5 +1,6 @@
 import { type Locator, type Page, expect, test } from '@playwright/test';
 
+import { type InfrastructureStatus } from '../../source/pages/Settings/SmartAccountInfrastructure';
 import {
   getChainId,
   getInfrastructureState,
@@ -7,6 +8,7 @@ import {
 } from '../harness/chain';
 import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
+
 import { resetVisualScroll } from './scrollReset';
 
 // Pixel-baseline walk of the core screens. One onboarding, then every test
@@ -326,8 +328,12 @@ test.describe('visual baselines', () => {
       // A new canonical module is absent from the live testnet until rollout.
       // Pin this read-only UI input and cover both layouts without deploying it.
       const page = await wallet.context.newPage();
+      const infrastructureFixture = {
+        chainId: E2E_CONFIG.chainId,
+        isReady: ready,
+      };
       try {
-        await page.addInitScript((isReady) => {
+        await page.addInitScript(({ chainId, isReady }) => {
           const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
           chrome.runtime.sendMessage = ((...args: any[]) => {
             const [message, callback] = args;
@@ -338,7 +344,9 @@ test.describe('visual baselines', () => {
               message.data.methods[0] === 'wallet' &&
               message.data.methods[1] === 'getSmartAccountInfrastructureStatus'
             ) {
-              const status = {
+              // The UI accepts only status for the active fixture network.
+              const status: InfrastructureStatus = {
+                chainId,
                 contracts: [
                   {
                     deployed: isReady,
@@ -357,7 +365,7 @@ test.describe('visual baselines', () => {
             }
             return (sendMessage as any)(...args);
           }) as typeof chrome.runtime.sendMessage;
-        }, ready);
+        }, infrastructureFixture);
         await page.goto(wallet.appUrl('#/home'));
         await expect(page.locator('#home-balance')).toBeVisible({
           timeout: 60_000,
