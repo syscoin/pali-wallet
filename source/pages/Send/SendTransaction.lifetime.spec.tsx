@@ -63,6 +63,7 @@ jest.mock('utils/fetchGasAndDecodeFunction', () => ({
 jest.mock('utils/errorHandling', () => ({
   handleTransactionError: () => false,
 }));
+jest.mock('utils/logger', () => ({ logError: jest.fn() }));
 jest.mock('components/index', () => ({
   Button: ({ children, onClick, disabled, loading }: any) => {
     mockButtonHandlers[String(children)] = onClick;
@@ -95,7 +96,7 @@ const prepare = async (external = true) => {
   await saveNavigationState('/send/eth', undefined, {
     formValues: { receiver: mockQuery.tx.to, amount: '1' },
   });
-  render(<SendTransaction />);
+  const view = render(<SendTransaction />);
   await waitFor(() => {
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
@@ -103,6 +104,7 @@ const prepare = async (external = true) => {
   });
   mockEmitter.mockClear();
   mockGet.mockClear();
+  return view;
 };
 const delayCleanup = () => {
   let resolve!: (value: any) => void;
@@ -288,4 +290,208 @@ it('an unchanged SendTransaction approval still submits and closes after cleanup
   } finally {
     jest.useRealTimers();
   }
+});
+
+describe('SendTransaction error close lifetimes', () => {
+  let timeouts: jest.SpyInstance;
+  let clearTimeouts: jest.SpyInstance;
+  const closeTimer = (delay: number) => {
+    let index = timeouts.mock.calls.length - 1;
+    while (index >= 0 && timeouts.mock.calls[index][1] !== delay) index--;
+    expect(index).toBeGreaterThanOrEqual(0);
+    return {
+      callback: timeouts.mock.calls[index][0] as () => Promise<void> | void,
+      id: timeouts.mock.results[index].value,
+    };
+  };
+  const refuseForInsufficientFunds = async () => {
+    mockEmitter.mockResolvedValueOnce({ nativeBalance: '0' });
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    return closeTimer(2000);
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    timeouts = jest.spyOn(globalThis, 'setTimeout');
+    clearTimeouts = jest.spyOn(globalThis, 'clearTimeout');
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it.each(['insufficient funds', 'submission error'])(
+    'invalidates a prior %s close while a retry is in flight',
+    async (failure) => {
+      await prepare();
+      let timer: ReturnType<typeof closeTimer>;
+      if (failure === 'insufficient funds') {
+        timer = await refuseForInsufficientFunds();
+      } else {
+        mockEmitter
+          .mockResolvedValueOnce({ nativeBalance: '1' })
+          .mockRejectedValueOnce(Error('RPC refused'));
+        await act(async () => mockButtonHandlers['buttons.confirm']());
+        timer = closeTimer(4000);
+      }
+      mockEmitter
+        .mockClear()
+        .mockImplementationOnce(() => new Promise(() => undefined));
+      act(() => {
+        void mockButtonHandlers['buttons.confirm']();
+      });
+      mockGet.mockClear();
+      await act(async () => timer.callback());
+      expect(mockGet).not.toHaveBeenCalled();
+      expect(mockClose).not.toHaveBeenCalled();
+      expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
+    }
+  );
+
+  it('a first error cannot close the lifetime of a failed retry', async () => {
+    await prepare();
+    const first = await refuseForInsufficientFunds();
+    const second = await refuseForInsufficientFunds();
+    mockGet.mockClear();
+    await act(async () => first.callback());
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+    expect(clearTimeouts).toHaveBeenCalledWith(first.id);
+    await act(async () => second.callback());
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('an eligible error timer claims dismissal before cleanup can race a retry', async () => {
+    await prepare();
+    const timer = await refuseForInsufficientFunds();
+    const finishCleanup = delayCleanup();
+    const confirm = mockButtonHandlers['buttons.confirm'];
+    mockEmitter.mockClear();
+    let closing: Promise<void> | void;
+    act(() => {
+      closing = timer.callback();
+      void confirm();
+    });
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    await act(async () => {
+      finishCleanup();
+      await closing;
+    });
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('manual cancellation invalidates an exposed error timer callback', async () => {
+    await prepare();
+    const timer = await refuseForInsufficientFunds();
+    await act(async () => mockButtonHandlers['buttons.cancel']());
+    expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    mockGet.mockClear();
+    await act(async () => timer.callback());
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('unmount invalidates an exposed error timer callback', async () => {
+    const view = await prepare();
+    const timer = await refuseForInsufficientFunds();
+    view.unmount();
+    expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
+    mockGet.mockClear();
+    await act(async () => timer.callback());
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it('unmount during error cleanup prevents its late close', async () => {
+    const view = await prepare();
+    const timer = await refuseForInsufficientFunds();
+    mockGet.mockClear();
+    const finishCleanup = delayCleanup();
+    let closing: Promise<void> | void;
+    act(() => {
+      closing = timer.callback();
+    });
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await act(async () => {
+      finishCleanup();
+      await closing;
+    });
+    expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it('an eligible error timeout still closes at its existing deadline', async () => {
+    await prepare();
+    await refuseForInsufficientFunds();
+    await act(async () => {
+      jest.advanceTimersByTime(1999);
+    });
+    expect(mockClose).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['resolved', 'rejected'])(
+    'unmount prevents a late %s submission from scheduling a close',
+    async (result) => {
+      const view = await prepare();
+      let finish!: (value: any) => void;
+      let fail!: (error: Error) => void;
+      mockEmitter
+        .mockResolvedValueOnce({ nativeBalance: '1' })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              finish = resolve;
+              fail = reject;
+            })
+        );
+      let submitting!: Promise<any>;
+      await act(async () => {
+        submitting = mockButtonHandlers['buttons.confirm']();
+        await Promise.resolve();
+      });
+      view.unmount();
+      timeouts.mockClear();
+      await act(async () => {
+        if (result === 'resolved') finish({ hash: 'public-test-hash' });
+        else fail(Error('RPC refused'));
+        await submitting;
+        jest.advanceTimersByTime(4000);
+      });
+      expect(timeouts).not.toHaveBeenCalled();
+      expect(mockClose).not.toHaveBeenCalled();
+    }
+  );
+
+  it('a fee estimation error close cannot interrupt a new confirmation attempt', async () => {
+    const view = await prepare();
+    mockFee.mockRejectedValueOnce(Error('fee estimate failed'));
+    mockQuery.tx = { ...mockQuery.tx, to: `0x${'33'.repeat(20)}` };
+    view.rerender(<SendTransaction />);
+    await waitFor(() => {
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'send.txWillFail',
+        expect.any(Error)
+      );
+    });
+    const timer = closeTimer(3000);
+    mockEmitter.mockImplementationOnce(() => new Promise(() => undefined));
+    act(() => {
+      void mockButtonHandlers['buttons.confirm']();
+    });
+    expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
+    mockGet.mockClear();
+    await act(async () => timer.callback());
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+  });
 });
