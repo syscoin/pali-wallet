@@ -560,7 +560,7 @@ const cancelTransaction = async (
   isLegacy: boolean,
   chainId: number,
   alert: any,
-  t: (key: string) => string,
+  t: (key: string, options?: { hash: string }) => string,
   fallbackNonce?: number,
   signerAddress?: string
 ) => {
@@ -595,10 +595,29 @@ const cancelTransaction = async (
 
     switch (isCanceled) {
       case true:
-        await controllerEmitter(
-          ['wallet', 'setEvmTransactionCancelSubmitted'],
-          [txHash, chainId, transaction]
-        );
+        try {
+          await controllerEmitter(
+            ['wallet', 'setEvmTransactionCancelSubmitted'],
+            [txHash, chainId, transaction]
+          );
+        } catch (metadataError) {
+          if (
+            error ||
+            typeof transaction?.hash !== 'string' ||
+            !/^0x[0-9a-f]{64}$/i.test(transaction.hash)
+          )
+            throw metadataError;
+          console.error(
+            'Replacement history could not be saved:',
+            metadataError
+          );
+          alert.warning(
+            t('transactions.replacementHistoryWarning', {
+              hash: transaction.hash,
+            })
+          );
+          return transaction.hash;
+        }
 
         alert.success(t('transactions.transactionCancelSubmitted'));
         break;
@@ -618,7 +637,7 @@ const speedUpTransaction = async (
   isLegacy: boolean,
   chainId: number,
   alert: any,
-  t: (key: string) => string
+  t: (key: string, options?: { hash: string }) => string
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -651,10 +670,29 @@ const speedUpTransaction = async (
 
     switch (isSpeedUp) {
       case true:
-        await controllerEmitter(
-          ['wallet', 'setEvmTransactionAsAccelerated'],
-          [txHash, chainId, transaction]
-        );
+        try {
+          await controllerEmitter(
+            ['wallet', 'setEvmTransactionAsAccelerated'],
+            [txHash, chainId, transaction]
+          );
+        } catch (metadataError) {
+          if (
+            error ||
+            typeof transaction?.hash !== 'string' ||
+            !/^0x[0-9a-f]{64}$/i.test(transaction.hash)
+          )
+            throw metadataError;
+          console.error(
+            'Replacement history could not be saved:',
+            metadataError
+          );
+          alert.warning(
+            t('transactions.replacementHistoryWarning', {
+              hash: transaction.hash,
+            })
+          );
+          return transaction.hash;
+        }
 
         alert.success(t('transactions.transactionAcceleratedSuccessfully'));
         break;
@@ -673,7 +711,7 @@ export const handleUpdateTransaction = async ({
   updateData,
   t,
 }: {
-  t: (key: string) => string;
+  t: (key: string, options?: { hash: string }) => string;
   updateData: {
     alert: any;
     chainId: number;

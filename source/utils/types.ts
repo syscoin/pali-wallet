@@ -32,7 +32,7 @@ export interface ITransactionOptions {
       txHash: string;
       updateType: UpdateTxAction;
     };
-  }) => Promise<void>;
+  }) => Promise<void | string>;
   isOpen?: boolean;
   onClose?: any;
   setIsOpenModal: React.Dispatch<React.SetStateAction<boolean>>;

@@ -35,6 +35,15 @@ import {
   getTransactionTypeLabel,
   getTransactionTypeDisplayLabel,
 } from 'utils/commonMethodSignatures';
+import {
+  buildEvmMinedNonceIndex,
+  buildEvmTransactionHashIndex,
+  getEvmSettlementStatus,
+  hasEvmCancellationIntent,
+  evmSettlementLabel,
+  evmSettlementClass,
+  EvmSettlementStatus,
+} from 'utils/evmReplacement';
 import { getKnownTokenLogo } from 'utils/index';
 import {
   getSmartAccountDisplayTransaction,
@@ -71,7 +80,8 @@ const EvmTransactionItem = React.memo(
     currentAccount,
     getTxStatusIcons,
     getTxType,
-    getTxStatus,
+    settlement,
+    cancellationIntent,
     currency,
     getFiatAmount,
     txId,
@@ -81,16 +91,17 @@ const EvmTransactionItem = React.memo(
     ensCache,
     onDetailsClick,
   }: {
+    cancellationIntent: boolean;
     chainId: number;
     currency: string;
     currentAccount: any;
     ensCache?: any;
     getFiatAmount: any;
     getTxOptions: any;
-    getTxStatus: any;
     getTxStatusIcons: any;
     getTxType: any;
     onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
+    settlement: EvmSettlementStatus;
     t: any;
     tokenMeta?: any;
     tx: ITransactionInfoEvm & {
@@ -101,12 +112,11 @@ const EvmTransactionItem = React.memo(
     };
     txId: string;
   }) => {
-    const isCancel = tx?.isCancel === true;
-    const isReplaced = tx?.isReplaced === true;
+    const isCancel = cancellationIntent;
+    const isReplaced = settlement === 'replaced';
     const isSpeedUp = tx?.isSpeedUp === true;
     const displayTx = getSmartAccountDisplayTransaction(tx) || tx;
     const isConfirmed = isTransactionInBlock(tx);
-    const isTxCanceled = tx?.isCanceled === true || (isCancel && isConfirmed);
     const currentAddress = currentAccount?.address?.toLowerCase();
     const txFrom = displayTx?.from?.toLowerCase?.();
     const txTo = displayTx?.to?.toLowerCase?.();
@@ -120,7 +130,14 @@ const EvmTransactionItem = React.memo(
     const isContractCall = isContractInteraction(displayTx);
     // Check transaction status from API
     // txreceipt_status: '0' = failed, '1' = success, null/undefined = pending
-    const isFailed = tx.txreceipt_status === '0' || tx.isError === '1';
+    const isFailed = settlement === 'failed';
+    const transactionLabel = isCancel
+      ? t('transactions.cancellation')
+      : getTransactionTypeDisplayLabel(
+          getTransactionTypeLabel(displayTx, isTxSent),
+          t,
+          currency
+        );
 
     // Add loading state
     const [isLoadingDisplayInfo, setIsLoadingDisplayInfo] =
@@ -357,14 +374,10 @@ const EvmTransactionItem = React.memo(
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
-                {getTransactionTypeDisplayLabel(
-                  getTransactionTypeLabel(displayTx, isTxSent),
-                  t,
-                  currency
-                )}
+                {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
-                {isFailed ? t('send.failed') : t('transactions.replaced')}
+                {t('transactions.replaced')}
               </div>
             </div>
           </div>
@@ -385,22 +398,17 @@ const EvmTransactionItem = React.memo(
       );
     }
 
-    // If transaction is canceled, show it with a different style
-    if (isTxCanceled) {
+    if (isFailed) {
       return (
         <div className="flex justify-between py-2 w-full border-b border-dashed border-bkg-deepBlue opacity-30">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
             <div className="flex flex-col">
               <div className="text-white text-xs font-normal line-through">
-                {getTransactionTypeDisplayLabel(
-                  getTransactionTypeLabel(displayTx, isTxSent),
-                  t,
-                  currency
-                )}
+                {transactionLabel}
               </div>
               <div className="text-warning-error text-xs">
-                {isFailed ? t('send.failed') : t('send.canceled')}
+                {t('send.failed')}
               </div>
             </div>
           </div>
@@ -431,11 +439,7 @@ const EvmTransactionItem = React.memo(
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-white text-xs font-normal">
-                  {getTransactionTypeDisplayLabel(
-                    getTransactionTypeLabel(displayTx, isTxSent),
-                    t,
-                    currency
-                  )}
+                  {transactionLabel}
                 </span>
                 {isContractCall && displayTx?.to && (
                   <Tooltip
@@ -491,20 +495,20 @@ const EvmTransactionItem = React.memo(
                 )}
               </div>
               <div className="flex items-center gap-2 mt-1">
-                {isFailed && isConfirmed ? (
-                  <p className="text-xs font-normal text-warning-error">
-                    {t('send.failed')}
-                  </p>
-                ) : (
-                  getTxStatus(isTxCanceled, isConfirmed)
-                )}
+                <p
+                  className={`text-xs font-normal ${evmSettlementClass(
+                    settlement
+                  )}`}
+                >
+                  {t(evmSettlementLabel(settlement))}
+                </p>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-4 min-w-0">
             {renderValueDisplay()}
             <div className="m-auto">
-              {isConfirmed || isReplaced || isTxCanceled ? (
+              {isConfirmed || isReplaced ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
                     className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
@@ -512,7 +516,7 @@ const EvmTransactionItem = React.memo(
                   />
                 </Tooltip>
               ) : (
-                getTxOptions(isTxCanceled, isConfirmed, tx)
+                getTxOptions(false, isConfirmed, tx)
               )}
             </div>
           </div>
@@ -528,6 +532,8 @@ const EvmTransactionItem = React.memo(
   (prevProps, nextProps) =>
     // Custom comparison function - only re-render if the transaction data actually changed
     prevProps.tx === nextProps.tx &&
+    prevProps.settlement === nextProps.settlement &&
+    prevProps.cancellationIntent === nextProps.cancellationIntent &&
     prevProps.chainId === nextProps.chainId &&
     prevProps.tx.confirmations === nextProps.tx.confirmations &&
     prevProps.tx.isCanceled === nextProps.tx.isCanceled &&
@@ -652,10 +658,17 @@ export const EvmTransactionsList = ({
     filteredTransactions,
     formatTimeStamp,
     getTxStatusIcons,
-    getTxStatus,
     getTxType,
     txId,
   } = useTransactionsListConfig(combinedTransactions);
+  const minedNonceIndex = useMemo(
+    () => buildEvmMinedNonceIndex(filteredTransactions, chainId),
+    [filteredTransactions, chainId]
+  );
+  const replacementLookup = useMemo(
+    () => buildEvmTransactionHashIndex(filteredTransactions),
+    [filteredTransactions]
+  );
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
 
@@ -845,7 +858,17 @@ export const EvmTransactionsList = ({
                   currentAccount={currentAccount}
                   getTxStatusIcons={getTxStatusIcons}
                   getTxType={getTxType}
-                  getTxStatus={getTxStatus}
+                  settlement={getEvmSettlementStatus(
+                    tx,
+                    chainId,
+                    minedNonceIndex
+                  )}
+                  cancellationIntent={hasEvmCancellationIntent(
+                    tx,
+                    filteredTransactions,
+                    chainId,
+                    replacementLookup
+                  )}
                   currency={currency}
                   getFiatAmount={getFiatAmount}
                   onDetailsClick={onDetailsClick}

@@ -26,6 +26,14 @@ import {
 } from 'utils/addressPoisoning';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
+import { parseEvmInteger } from 'utils/evmNonce';
+import {
+  buildEvmMinedNonceIndex,
+  getEvmSettlementStatus,
+  hasEvmCancellationIntent,
+  evmSettlementLabel,
+  evmSettlementClass,
+} from 'utils/evmReplacement';
 import { camelCaseToText } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
@@ -51,6 +59,17 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // A cached pending lookup must not overwrite newer authoritative activity status.
 const mergeTransactionDetails = (summary: any, enhanced: any) => {
   const merged = { ...summary, ...enhanced };
+  // Intent and replacement links are wallet annotations, not RPC fields.
+  for (const field of [
+    'isCancel',
+    'isSpeedUp',
+    'isReplaced',
+    'replacesHash',
+    'replacementRootHash',
+  ]) {
+    if (summary?.[field] !== undefined) merged[field] = summary[field];
+    else delete merged[field];
+  }
   if (
     summary &&
     enhanced &&
@@ -96,11 +115,16 @@ export const EvmTransactionDetailsEnhanced = ({
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  const matchesChain = (data: any) =>
+    data?.chainId === undefined || parseEvmInteger(data.chainId) === chainId;
   const matchingTx =
-    tx?.hash?.toLowerCase() === normalizedHash ? tx : undefined;
+    tx?.hash?.toLowerCase() === normalizedHash && matchesChain(tx)
+      ? tx
+      : undefined;
   const matchesHash = (data: any) =>
     typeof data?.hash === 'string' &&
-    data.hash.toLowerCase() === normalizedHash;
+    data.hash.toLowerCase() === normalizedHash &&
+    matchesChain(data);
   const usableLookup = (data: any) =>
     matchesHash(data) &&
     (matchingTx ||
@@ -109,6 +133,11 @@ export const EvmTransactionDetailsEnhanced = ({
         data.value !== null));
   const activeAccountTransactions = useSelector(
     selectActiveAccountTransactions
+  );
+  const history = activeAccountTransactions?.ethereum?.[chainId] || [];
+  const minedNonceIndex = useMemo(
+    () => buildEvmMinedNonceIndex(history, chainId),
+    [activeAccountTransactions, chainId]
   );
   const trustedRecipients = useMemo(
     () =>
@@ -122,8 +151,7 @@ export const EvmTransactionDetailsEnhanced = ({
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const { getTxStatusIcons, getTxStatus, getTxType } =
-    useTransactionsListConfig();
+  const { getTxStatusIcons, getTxType } = useTransactionsListConfig();
 
   const [, copy] = useCopyClipboard();
   const [enhancedDetails, setEnhancedDetails] = useContextualState<any>(
@@ -148,8 +176,6 @@ export const EvmTransactionDetailsEnhanced = ({
       tokenId?: string;
     } | null>(scope, null);
 
-  let isTxCanceled: boolean;
-  let isConfirmed: boolean;
   let isTxSent: boolean;
   const mergedTransaction = useMemo(
     () =>
@@ -451,10 +477,6 @@ export const EvmTransactionDetailsEnhanced = ({
 
     transactionTx = txLocal as any;
 
-    isConfirmed = isTransactionInBlock(txLocal);
-    isTxCanceled =
-      txLocal?.isCanceled === true ||
-      (txLocal?.isCancel === true && isConfirmed);
     isTxSent =
       typeof displayTransaction?.from === 'string' &&
       displayTransaction.from.toLowerCase() ===
@@ -651,16 +673,41 @@ export const EvmTransactionDetailsEnhanced = ({
             typeof address === 'string' &&
             address.toLowerCase() === accountAddress
         )));
-  const txType = hasAccountDirection
+  const settlement = getEvmSettlementStatus(
+    displayContext.isOperation && displayContext.success !== undefined
+      ? {
+          ...transactionTx,
+          // eslint-disable-next-line camelcase -- RPC receipt status field.
+          txreceipt_status: displayContext.success ? '1' : '0',
+        }
+      : transactionTx,
+    chainId,
+    minedNonceIndex
+  );
+  const isCancellation = hasEvmCancellationIntent(
+    transactionTx,
+    history,
+    chainId
+  );
+  const directionLabel = hasAccountDirection
     ? getTxType(displayTransaction || transactionTx, isTxSent)
     : 'Transaction';
+  const txType = isCancellation
+    ? t('transactions.cancellation')
+    : directionLabel;
   return (
     <>
       <TransactionHeader
         txType={txType}
-        statusIcon={getTxStatusIcons(txType, true)}
+        statusIcon={getTxStatusIcons(directionLabel, true)}
         displayInfo={displayTransaction ? transactionDisplayInfo : null}
-        txStatus={getTxStatus(isTxCanceled, isConfirmed)}
+        txStatus={
+          <p
+            className={`text-xs font-normal ${evmSettlementClass(settlement)}`}
+          >
+            {t(evmSettlementLabel(settlement))}
+          </p>
+        }
         isLoading={isLoadingDetails}
       />
 
