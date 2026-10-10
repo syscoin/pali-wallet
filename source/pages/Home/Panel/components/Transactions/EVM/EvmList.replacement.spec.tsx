@@ -155,6 +155,50 @@ it('rerenders an unchanged original when another hash mines', async () => {
   expect(screen.queryByText('Replacement pending')).toBeNull();
 });
 
+it.each([{ isReplaced: true }, { status: 'replaced' }])(
+  'keeps superseded attempt %j details-only while the replacement is pending',
+  async (marker) => {
+    const original = transaction('4', marker);
+    const latest = transaction('5', {
+      isSpeedUp: true,
+      replacesHash: original.hash,
+    });
+    mockRows = [original, latest];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    await screen.findByText('Replacement pending');
+    expect(screen.queryByText(`Options:${original.hash}`)).toBeNull();
+    expect(screen.getByText(`Options:${latest.hash}`)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
+      state: { id: null, hash: original.hash, tx: original },
+    });
+  }
+);
+
+it('offers actions only on the latest pending hop after cancel and speedup', async () => {
+  const original = transaction('3', { isReplaced: true });
+  const cancel = transaction('2', {
+    isCancel: true,
+    isReplaced: true,
+    replacesHash: original.hash,
+  });
+  const latest = transaction('1', {
+    isCancel: true,
+    isSpeedUp: true,
+    replacesHash: cancel.hash,
+  });
+  mockRows = [original, cancel, latest];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  await waitFor(() =>
+    expect(screen.getAllByText('Replacement pending')).toHaveLength(2)
+  );
+  expect(screen.queryByText(`Options:${original.hash}`)).toBeNull();
+  expect(screen.queryByText(`Options:${cancel.hash}`)).toBeNull();
+  expect(screen.getByText(`Options:${latest.hash}`)).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(2);
+});
+
 it.each(['1', '0'])(
   'uses original receipt %s rather than a stale replacement marker',
   async (receipt) => {
