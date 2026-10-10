@@ -4155,7 +4155,8 @@ class MainController {
     txHash: string,
     isLegacy: boolean,
     chainId: number,
-    signerAddress?: string
+    signerAddress?: string,
+    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
   ) {
     const { vault } = store.getState();
     const accountInfo = { ...vault.activeAccount };
@@ -4287,6 +4288,7 @@ class MainController {
         txHash,
         isLegacy,
         {
+          ...options,
           targetAccount,
           assertCurrentContext,
           validateOriginal,

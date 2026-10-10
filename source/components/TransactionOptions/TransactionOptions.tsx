@@ -1,5 +1,5 @@
 import { Menu } from '@headlessui/react';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -8,7 +8,9 @@ import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
-import { UpdateTxAction } from 'utils/transactions';
+import { formatUnits } from 'utils/ethersV6Compat';
+import { getWalletNavigationScope } from 'utils/navigationState';
+import { previewSpeedUpTransaction, UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
 // Memoize frequently used transaction option icons
@@ -50,8 +52,109 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
     (state: RootState) => state.vault.activeNetwork.explorer
   );
   const adjustedExplorer = useAdjustedExplorer(explorer);
+  const currency = useSelector(
+    (state: RootState) => state.vault.activeNetwork.currency
+  );
+  const scope = useSelector(() => getWalletNavigationScope());
+  const preview = useRef<{
+    cancel: () => void;
+    close: () => void;
+  }>();
+
+  useEffect(() => {
+    preview.current?.close();
+    return () => preview.current?.close();
+  }, [scope.account, scope.network, transaction.hash, chainId]);
+
+  const previewSpeedUp = async () => {
+    preview.current?.cancel();
+    const startingScope = getWalletNavigationScope();
+    let cancelled = false;
+    let confirmed = false;
+    let maximumFee: string | undefined;
+    const cancel = () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    const close = () => {
+      cancel();
+      if (preview.current?.close !== close) return;
+      preview.current = undefined;
+      setIsOpenModal(false);
+    };
+    const current = () => {
+      const latest = getWalletNavigationScope();
+      return (
+        !cancelled &&
+        latest.account === startingScope.account &&
+        latest.network === startingScope.network
+      );
+    };
+    const confirm = () => {
+      if (!current() || confirmed || maximumFee === undefined) return;
+      confirmed = true;
+      close();
+      void handleUpdateTransaction({
+        updateData: {
+          alert,
+          chainId,
+          isLegacy: isLegacyTransaction,
+          txHash: transaction.hash,
+          updateType: UpdateTxAction.SpeedUp,
+          signerAddress: transaction.from,
+          approvedMaximumFee: maximumFee,
+          walletScope: startingScope,
+        },
+        t,
+      });
+    };
+    preview.current = { cancel, close };
+    const modal = {
+      buttonText: t('buttons.confirm'),
+      title: t('header.speedTx'),
+      description: t('transactions.speedUpFeePreview'),
+      isButtonLoading: true,
+      onClose: close,
+      onClick: confirm,
+    };
+    setModalData(modal);
+    setIsOpenModal(true);
+    const fail = () => {
+      if (!current()) return;
+      close();
+      alert.error(t('transactions.speedUpFeeUnavailable'));
+    };
+    const timer = setTimeout(fail, 15_000);
+    try {
+      const fee = await previewSpeedUpTransaction(
+        transaction.hash,
+        isLegacyTransaction,
+        chainId,
+        transaction.from
+      );
+      if (!current()) return;
+      clearTimeout(timer);
+      maximumFee = fee;
+      setModalData({
+        ...modal,
+        description: t('transactions.speedUpFeeConsent', {
+          fee: formatUnits(fee, 18),
+          currency: currency?.toUpperCase(),
+        }),
+        isButtonLoading: false,
+      });
+    } catch {
+      fail();
+    }
+  };
 
   const handleOnClick = (actionType: UpdateTxAction) => {
+    if (actionType === UpdateTxAction.SpeedUp) {
+      void previewSpeedUp();
+      return;
+    }
+    preview.current?.cancel();
+    preview.current = undefined;
     setIsOpenModal(true);
 
     switch (actionType) {
@@ -71,27 +174,6 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
                 updateType: UpdateTxAction.Cancel,
                 nonce: transaction.nonce,
                 signerAddress: transaction.from,
-              },
-              t,
-            });
-            setIsOpenModal(false);
-          },
-        });
-        break;
-      case UpdateTxAction.SpeedUp:
-        setModalData({
-          buttonText: t('buttons.confirm'),
-          title: t('header.speedTx'),
-          description: t('header.speedTxMessage'),
-          onClose: () => setIsOpenModal(false),
-          onClick: () => {
-            handleUpdateTransaction({
-              updateData: {
-                alert,
-                chainId,
-                isLegacy: isLegacyTransaction,
-                txHash: transaction.hash,
-                updateType: UpdateTxAction.SpeedUp,
               },
               t,
             });

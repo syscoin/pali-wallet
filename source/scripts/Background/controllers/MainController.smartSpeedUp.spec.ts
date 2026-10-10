@@ -10,7 +10,12 @@ import { Wallet } from 'ethers/wallet';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { handleUpdateTransaction, UpdateTxAction } from 'utils/transactions';
+import { getWalletNavigationScope } from 'utils/navigationState';
+import {
+  handleUpdateTransaction,
+  previewSpeedUpTransaction,
+  UpdateTxAction,
+} from 'utils/transactions';
 
 import MainController from './MainController';
 
@@ -86,18 +91,19 @@ const SMART = `0x${'22'.repeat(20)}`;
 const TARGET = `0x${'33'.repeat(20)}`;
 const REPLACEMENT = `0x${'55'.repeat(32)}`;
 const CHAIN = 5700;
+const APPROVED_MAXIMUM_FEE = '100000000000';
 const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
-const signedOriginal = (legacy = false) => {
+const signedOriginal = (legacy = false, type = legacy ? 0 : 2) => {
   const unsigned = Transaction.from({
-    type: legacy ? 0 : 2,
+    type,
     chainId: CHAIN,
     nonce: 8,
     to: TARGET,
     value: BigInt(7),
     data: '0x1234',
     gasLimit: BigInt(21000),
-    ...(legacy
-      ? { gasPrice: BigInt(100) }
+    ...(type !== 2
+      ? { gasPrice: BigInt(100), ...(type === 1 ? { accessList: [] } : {}) }
       : {
           maxFeePerGas: BigInt(100),
           maxPriorityFeePerGas: BigInt(10),
@@ -152,7 +158,20 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   let response: any;
   const transactions = () =>
     mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN];
-  const run = (legacy = false, signer = PAYER) =>
+  const useSignedOriginal = (legacy = false, type?: number) => {
+    original = signedOriginal(legacy, type);
+    ORIGINAL = original.hash;
+    Object.assign(transactions()[0], rawOriginal());
+    provider.getTransaction.mockResolvedValue(rawOriginal());
+    response = { ...rawOriginal(), hash: REPLACEMENT };
+    provider.sendTransaction.mockResolvedValue(response);
+  };
+  const run = (
+    legacy = false,
+    signer = PAYER,
+    approvedMaximumFee: string | null = APPROVED_MAXIMUM_FEE,
+    walletScope?: ReturnType<typeof getWalletNavigationScope>
+  ) =>
     handleUpdateTransaction({
       t: (key, options) => (options ? `${key}: ${options.hash}` : key),
       updateData: {
@@ -162,6 +181,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         txHash: ORIGINAL,
         updateType: UpdateTxAction.SpeedUp,
         signerAddress: signer,
+        approvedMaximumFee: approvedMaximumFee ?? undefined,
+        walletScope,
       },
     });
 
@@ -264,14 +285,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   it.each([false, true])(
     'uses the actual recorded payer credential and preserves payload/metadata (legacy=%s)',
     async (legacy) => {
-      if (legacy) {
-        original = signedOriginal(true);
-        ORIGINAL = original.hash;
-        Object.assign(transactions()[0], rawOriginal());
-        provider.getTransaction.mockResolvedValue(rawOriginal());
-        response = { ...rawOriginal(), hash: REPLACEMENT };
-        provider.sendTransaction.mockResolvedValue(response);
-      }
+      if (legacy) useSignedOriginal(true);
       await run(legacy);
       expect(alert.success).toHaveBeenCalledWith(
         'transactions.transactionAcceleratedSuccessfully'
@@ -311,6 +325,210 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         ['wallet', 'speedUpEvmTransaction'],
         ['wallet', 'setEvmTransactionAsAccelerated'],
       ]);
+    }
+  );
+
+  it.each([false, true])(
+    'previews the authenticated maximum without keys and carries approval through the real utility (legacy=%s)',
+    async (legacy) => {
+      if (legacy) useSignedOriginal(true);
+      const scope = getWalletNavigationScope();
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        legacy,
+        CHAIN,
+        PAYER
+      );
+      expect(maximumFee).toBe('3024000');
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+      expect(controllerEmitter).toHaveBeenLastCalledWith(
+        ['wallet', 'speedUpEvmTransaction'],
+        [ORIGINAL, legacy, CHAIN, PAYER, { previewOnly: true }]
+      );
+
+      await run(legacy, PAYER, maximumFee, scope);
+
+      expect(controllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'speedUpEvmTransaction'],
+        [ORIGINAL, legacy, CHAIN, PAYER, { approvedMaximumFee: maximumFee }]
+      );
+      expect(aes.decrypt).toHaveBeenCalledTimes(1);
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+      expect(mockPersist).toHaveBeenCalledTimes(1);
+      expect(alert.success).toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'derives final fee mode from signed type despite a poisoned history type (signed legacy=%s)',
+    async (legacy) => {
+      useSignedOriginal(legacy);
+      transactions()[0].type = legacy ? 2 : 0;
+      provider.getGasPrice = jest.fn();
+      provider.getFeeData = jest.fn();
+      const enrichFees = jest.spyOn(
+        keyring.ethereumTransaction,
+        'getFeeDataWithDynamicMaxPriorityFeePerGas'
+      );
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        !legacy,
+        CHAIN,
+        PAYER
+      );
+      await run(!legacy, PAYER, maximumFee);
+      const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+      expect(
+        (legacy ? replacement.gasPrice : replacement.maxFeePerGas).toString()
+      ).toBe('120');
+      expect(replacement.data).toBe('0x1234');
+      expect(replacement.nonce).toBe(8);
+      expect(replacement.value.toString()).toBe('7');
+      expect(provider.getGasPrice).not.toHaveBeenCalled();
+      expect(provider.getFeeData).not.toHaveBeenCalled();
+      expect(enrichFees).not.toHaveBeenCalled();
+      expect(alert.success).toHaveBeenCalled();
+    }
+  );
+
+  it('uses the authenticated type1 gas price for both dynamic fee fields without RPC enrichment', async () => {
+    useSignedOriginal(false, 1);
+    provider.getGasPrice = jest.fn();
+    provider.getFeeData = jest.fn();
+    const enrichFees = jest.spyOn(
+      keyring.ethereumTransaction,
+      'getFeeDataWithDynamicMaxPriorityFeePerGas'
+    );
+    const maximumFee = await previewSpeedUpTransaction(
+      ORIGINAL,
+      false,
+      CHAIN,
+      PAYER
+    );
+    await run(false, PAYER, maximumFee);
+    const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+    expect(replacement.maxFeePerGas.toString()).toBe('120');
+    expect(replacement.maxPriorityFeePerGas.toString()).toBe('120');
+    expect(replacement.accessList).toEqual([]);
+    expect(provider.getGasPrice).not.toHaveBeenCalled();
+    expect(provider.getFeeData).not.toHaveBeenCalled();
+    expect(enrichFees).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [KeyringAccountType.HDAccount, null],
+    [KeyringAccountType.HDAccount, '3023999'],
+    [KeyringAccountType.Ledger, null],
+    [KeyringAccountType.Ledger, '3023999'],
+    [KeyringAccountType.Trezor, null],
+    [KeyringAccountType.Trezor, '3023999'],
+  ])(
+    'rejects %s missing or insufficient fee approval %p before credentials/devices',
+    async (signerType, cap) => {
+      mockState.vault.accounts.HDAccount =
+        signerType === KeyringAccountType.HDAccount
+          ? { 3: { id: 3, address: PAYER, xprv: 'synthetic-payer-ciphertext' } }
+          : {};
+      if (signerType !== KeyringAccountType.HDAccount)
+        mockState.vault.accounts[signerType] = { 4: { id: 4, address: PAYER } };
+      const ledgerSign = jest.fn();
+      const trezorSign = jest.fn();
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      await run(false, PAYER, cap);
+      expect(alert.error).toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
+    'previews %s fees without invoking the device or broadcast',
+    async (signerType) => {
+      mockState.vault.accounts.HDAccount = {};
+      mockState.vault.accounts[signerType] = { 4: { id: 4, address: PAYER } };
+      const ledgerSign = jest.fn();
+      const trezorSign = jest.fn();
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      await expect(
+        previewSpeedUpTransaction(ORIGINAL, false, CHAIN, PAYER)
+      ).resolves.toBe('3024000');
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'RPC', 'chain', 'provider', 'session', 'payer'])(
+    'rejects a %s change while fee preview is in flight',
+    async (axis) => {
+      const pending = deferred<any>();
+      const started = deferred<void>();
+      provider.getTransaction.mockImplementationOnce(() => {
+        started.resolve();
+        return pending.promise;
+      });
+      const previewing = previewSpeedUpTransaction(
+        ORIGINAL,
+        false,
+        CHAIN,
+        PAYER
+      );
+      await started.promise;
+      if (axis === 'account')
+        mockState.vault.activeAccount = { ...owner, id: 8 };
+      if (axis === 'RPC') mockState.vault.activeNetwork.url = 'rpc-b';
+      if (axis === 'chain') mockState.vault.activeNetwork.chainId = 1;
+      if (axis === 'provider') currentProvider = {};
+      if (axis === 'session') wallet.walletSessionGeneration++;
+      if (axis === 'payer')
+        mockState.vault.accounts.HDAccount[3].address = TARGET;
+      pending.resolve(rawOriginal());
+      await expect(previewing).rejects.toThrow();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'RPC'])(
+    'does not reuse fee approval after %s changes between preview and final submission',
+    async (axis) => {
+      const scope = getWalletNavigationScope();
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        false,
+        CHAIN,
+        PAYER
+      );
+      provider.getTransaction.mockClear();
+      if (axis === 'account')
+        mockState.vault.activeAccount = { ...owner, id: 8 };
+      else mockState.vault.activeNetwork.url = 'rpc-b';
+      await run(false, PAYER, maximumFee, scope);
+      expect(alert.error).toHaveBeenCalled();
+      expect(provider.getTransaction).not.toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
     }
   );
 

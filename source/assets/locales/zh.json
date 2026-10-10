@@ -110,8 +110,7 @@
     "speedUp": "加速",
     "cancelTx": "取消交易",
     "cancelTxMessage": "您确定要取消此交易吗？",
-    "speedTx": "加速交易",
-    "speedTxMessage": "您确定要加速此交易吗？"
+    "speedTx": "加速交易"
   },
   "connections": {
     "searchAccounts": "搜索账户",
@@ -865,7 +864,10 @@
     "confirmOnDevice": "请在设备上确认",
     "checkYourDevice": "请在 {{device}} 上批准此请求",
     "useYourPasskey": "使用您的通行密钥",
-    "passkeyPrompt": "请按照浏览器提示使用通行密钥签名"
+    "passkeyPrompt": "请按照浏览器提示使用通行密钥签名",
+    "speedUpFeePreview": "正在检查网络费用…",
+    "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
+    "speedUpFeeUnavailable": "无法检查费用。请重试。"
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

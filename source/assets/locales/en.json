@@ -110,8 +110,7 @@
     "speedUp": "Speed Up",
     "cancelTx": "Cancel Transaction",
     "cancelTxMessage": "Are you sure that you want to cancel this transaction?",
-    "speedTx": "Speed Up Transaction",
-    "speedTxMessage": "Are you sure that you want to speed up this transaction?"
+    "speedTx": "Speed Up Transaction"
   },
   "connections": {
     "searchAccounts": "Search accounts",
@@ -865,7 +864,10 @@
     "confirmOnDevice": "Confirm on your device",
     "checkYourDevice": "Check your {{device}} to approve this request",
     "useYourPasskey": "Use your passkey",
-    "passkeyPrompt": "Follow your browser prompt to sign with your passkey"
+    "passkeyPrompt": "Follow your browser prompt to sign with your passkey",
+    "speedUpFeePreview": "Checking the network fee…",
+    "speedUpFeeConsent": "Speed up this transaction with a maximum network fee of {{fee}} {{currency}}?",
+    "speedUpFeeUnavailable": "Unable to check the fee. Please try again."
   },
   "switchNetworkPage": {
     "connectedOn": "You are connected on",

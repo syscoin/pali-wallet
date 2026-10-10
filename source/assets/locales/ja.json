@@ -110,8 +110,7 @@
     "speedUp": "スピードアップ",
     "cancelTx": "取引をキャンセル",
     "cancelTxMessage": "本当にこの取引をキャンセルしますか？",
-    "speedTx": "取引をスピードアップ",
-    "speedTxMessage": "本当にこの取引をスピードアップしますか？"
+    "speedTx": "取引をスピードアップ"
   },
   "connections": {
     "searchAccounts": "アカウントを検索",
@@ -865,7 +864,10 @@
     "confirmOnDevice": "デバイスで確認してください",
     "checkYourDevice": "{{device}} でこのリクエストを承認してください",
     "useYourPasskey": "パスキーを使用してください",
-    "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください"
+    "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください",
+    "speedUpFeePreview": "ネットワーク手数料を確認中…",
+    "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
+    "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

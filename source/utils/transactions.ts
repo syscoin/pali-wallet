@@ -12,6 +12,10 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
 import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
+import {
+  getWalletNavigationScope,
+  IWalletNavigationScope,
+} from './navigationState';
 
 /**
  * Get proper display information for a transaction (value, symbol, recipient, and type)
@@ -632,32 +636,91 @@ const cancelTransaction = async (
   }
 };
 
+const requestSpeedUp = (
+  txHash: string,
+  isLegacy: boolean,
+  chainId: number,
+  signerAddress: string | undefined,
+  options: { approvedMaximumFee?: string; previewOnly?: boolean }
+) =>
+  store.getState().vault.activeAccount?.type === KeyringAccountType.SmartAccount
+    ? controllerEmitter(
+        ['wallet', 'speedUpEvmTransaction'],
+        [txHash, isLegacy, chainId, signerAddress, options]
+      )
+    : controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
+        [txHash, isLegacy, options]
+      );
+
+export const previewSpeedUpTransaction = async (
+  txHash: string,
+  isLegacy: boolean,
+  chainId: number,
+  signerAddress?: string
+): Promise<string> => {
+  const { isBitcoinBased, activeNetwork } = store.getState().vault;
+  if (isBitcoinBased || Number(activeNetwork?.chainId) !== chainId)
+    throw new Error('Transaction network changed');
+  const scope = getWalletNavigationScope();
+  const response = (await requestSpeedUp(
+    txHash,
+    isLegacy,
+    chainId,
+    signerAddress,
+    { previewOnly: true }
+  )) as
+    | { error?: boolean; isSpeedUp?: boolean; maximumFee?: string }
+    | undefined;
+  const current = getWalletNavigationScope();
+  const maximumFee = response?.maximumFee;
+  if (
+    current.account !== scope.account ||
+    current.network !== scope.network ||
+    store.getState().vault.isBitcoinBased ||
+    response?.error === true ||
+    response?.isSpeedUp !== false ||
+    typeof maximumFee !== 'string' ||
+    maximumFee.length > 78 ||
+    !/^(0|[1-9][0-9]*)$/.test(maximumFee)
+  )
+    throw new Error('Replacement fee unavailable');
+  return maximumFee;
+};
+
 const speedUpTransaction = async (
   txHash: string,
   isLegacy: boolean,
   chainId: number,
   alert: any,
   t: (key: string, options?: { hash: string }) => string,
-  signerAddress?: string
+  signerAddress?: string,
+  approvedMaximumFee?: string,
+  walletScope?: IWalletNavigationScope
 ) => {
   // Safety check: this function is only for EVM networks
-  const { isBitcoinBased, activeAccount } = store.getState().vault;
+  const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
     alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
 
   try {
-    const response =
-      activeAccount?.type === KeyringAccountType.SmartAccount
-        ? await controllerEmitter(
-            ['wallet', 'speedUpEvmTransaction'],
-            [txHash, isLegacy, chainId, signerAddress]
-          )
-        : await controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-            [txHash, isLegacy]
-          );
+    const current = getWalletNavigationScope();
+    if (
+      walletScope &&
+      (current.account !== walletScope.account ||
+        current.network !== walletScope.network ||
+        Number(store.getState().vault.activeNetwork?.chainId) !== chainId)
+    )
+      throw new Error('Transaction context changed');
+    const response = await requestSpeedUp(
+      txHash,
+      isLegacy,
+      chainId,
+      signerAddress,
+      { approvedMaximumFee }
+    );
 
     if (!response) {
       alert.error(t('transactions.transactionSpeedUpFailed'));
@@ -721,16 +784,27 @@ export const handleUpdateTransaction = async ({
   t: (key: string, options?: { hash: string }) => string;
   updateData: {
     alert: any;
+    approvedMaximumFee?: string;
     chainId: number;
     isLegacy: boolean;
     nonce?: number;
     signerAddress?: string;
     txHash: string;
     updateType: UpdateTxAction;
+    walletScope?: IWalletNavigationScope;
   };
 }) => {
-  const { alert, chainId, isLegacy, txHash, updateType, nonce, signerAddress } =
-    updateData;
+  const {
+    alert,
+    approvedMaximumFee,
+    chainId,
+    isLegacy,
+    txHash,
+    updateType,
+    nonce,
+    signerAddress,
+    walletScope,
+  } = updateData;
 
   switch (updateType) {
     case UpdateTxAction.Cancel:
@@ -750,7 +824,9 @@ export const handleUpdateTransaction = async ({
         chainId,
         alert,
         t,
-        signerAddress
+        signerAddress,
+        approvedMaximumFee,
+        walletScope
       );
   }
 };

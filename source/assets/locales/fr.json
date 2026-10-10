@@ -110,8 +110,7 @@
     "speedUp": "Accélérer",
     "cancelTx": "Annuler la transaction",
     "cancelTxMessage": "Êtes-vous sûr de vouloir annuler cette transaction ?",
-    "speedTx": "Accélérer la transaction",
-    "speedTxMessage": "Êtes-vous sûr de vouloir accélérer cette transaction ?"
+    "speedTx": "Accélérer la transaction"
   },
   "connections": {
     "searchAccounts": "Rechercher des comptes",
@@ -865,7 +864,10 @@
     "confirmOnDevice": "Confirmez sur votre appareil",
     "checkYourDevice": "Vérifiez votre {{device}} pour approuver cette demande",
     "useYourPasskey": "Utilisez votre clé d'accès",
-    "passkeyPrompt": "Suivez les instructions du navigateur pour signer avec votre clé d'accès"
+    "passkeyPrompt": "Suivez les instructions du navigateur pour signer avec votre clé d'accès",
+    "speedUpFeePreview": "Vérification des frais de réseau…",
+    "speedUpFeeConsent": "Accélérer cette transaction avec des frais de réseau maximum de {{fee}} {{currency}} ?",
+    "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer."
   },
   "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",
