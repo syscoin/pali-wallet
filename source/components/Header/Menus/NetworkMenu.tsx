@@ -170,7 +170,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   // ✅ MEMOIZED: Navigation handlers
   const handleConnectedSitesNavigation = useCallback(() => {
-    // Create navigation context to return to home
     const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
@@ -179,10 +178,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleTrustedSitesNavigation = useCallback(() => {
-    // Create navigation context to return to home
     const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
@@ -191,10 +189,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleCustomRpcNavigation = useCallback(() => {
-    // Create navigation context to return to network menu
     const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
@@ -203,14 +200,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleManageNetworksNavigation = useCallback(() => {
-    // Create navigation context to return to home
     const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(navigate, '/settings/networks/edit', {}, returnContext);
-  }, [navigate]);
+  }, [navigate, location]);
 
   return (
     <Menu
