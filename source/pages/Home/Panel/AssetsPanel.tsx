@@ -1,13 +1,16 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { CgImport as ImportIcon } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
-import { createNavigationContext, navigateWithContext } from 'utils/index';
+import {
+  createBrowsingNavigationContext,
+  navigateWithContext,
+} from 'utils/index';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
@@ -21,6 +24,7 @@ export const AssetsPanel = () => {
     (state: RootState) => state.vault.activeNetwork.chainId
   );
   const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   // Ensure assets exists before filtering
   const ethereumAssets = assets?.ethereum || [];
@@ -41,11 +45,9 @@ export const AssetsPanel = () => {
 
   const handleImportTokenClick = () => {
     // Create navigation context to preserve home page state
-    const returnContext = createNavigationContext(
-      '/home',
-      searchParams.get('tab') || 'assets', // Preserve the active tab
-      {} // No additional state needed for home page
-    );
+    const returnContext = createBrowsingNavigationContext(location, {
+      tab: searchParams.get('tab') || 'assets',
+    });
 
     navigateWithContext(navigate, '/tokens/add', {}, returnContext);
   };

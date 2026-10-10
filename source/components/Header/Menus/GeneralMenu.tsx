@@ -3,6 +3,7 @@ import { Badge } from 'antd';
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import slider from 'assets/all_assets/sliderIcon.png';
 import {
@@ -21,7 +22,7 @@ import { RootState } from 'state/store';
 import { getDappOrigin } from 'utils/dappOrigin';
 import { truncate } from 'utils/index';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
 
@@ -32,6 +33,7 @@ interface IGeneralMenuProps {
 export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
   disabled = false,
 }) => {
+  const location = useLocation();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { navigate } = useUtils();
@@ -95,7 +97,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
           <Tooltip content={truncate(currentTab.host)}>
             <div
               onClick={() => {
-                const returnContext = createNavigationContext('/home');
+                const returnContext = createBrowsingNavigationContext(location);
                 navigateWithContext(
                   navigate,
                   '/settings/networks/connected-sites',
@@ -169,7 +171,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/remove-eth',
@@ -188,7 +191,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/home/smart-account',
@@ -213,7 +217,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/seed',
@@ -234,7 +239,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/forget-wallet',
@@ -258,7 +264,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/languages',
@@ -282,7 +289,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/currency',
@@ -301,7 +309,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/about',
@@ -334,7 +343,8 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   <Menu.Item>
                     <li
                       onClick={() => {
-                        const returnContext = createNavigationContext('/home');
+                        const returnContext =
+                          createBrowsingNavigationContext(location);
                         navigateWithContext(
                           navigate,
                           '/settings/advanced',

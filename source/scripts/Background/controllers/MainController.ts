@@ -1735,6 +1735,7 @@ class MainController {
       );
     }
 
+    const wasUnlocked = this.getActiveKeyring().isUnlocked();
     try {
       const result = await this.unlockKeyring(pwd, generation);
 
@@ -1743,6 +1744,10 @@ class MainController {
         // Reset rate limit on successful login
         await this.resetRateLimit();
         this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+        if (!wasUnlocked) {
+          await clearNavigationState();
+          this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+        }
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
         // Record failed attempt
@@ -2190,6 +2195,7 @@ class MainController {
   ): Promise<boolean> {
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
+    const wasUnlocked = keyring.isUnlocked();
     // Check rate limiting for failed unlock attempts (uses persisted state)
     const remainingLockout = await this.checkRateLimit();
     this.assertCurrentWalletSession(generation);
@@ -2262,6 +2268,12 @@ class MainController {
       // Reset failed attempts on successful unlock (persisted)
       await this.resetRateLimit();
       this.assertCurrentWalletSession(generation, keyring);
+      // A new authenticated session never inherits an older unsigned draft.
+      // Password verification inside an existing session keeps its caller.
+      if (!wasUnlocked) {
+        await clearNavigationState();
+        this.assertCurrentWalletSession(generation, keyring);
+      }
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
@@ -2607,6 +2619,8 @@ class MainController {
     void cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
     this.lockAllKeyrings();
+    // Lock can happen with no popup open to perform UI cleanup.
+    void clearNavigationState();
 
     // Stop auto-lock timer when wallet is locked
     // This is best-effort - don't let timer cleanup failures prevent wallet lock
@@ -7679,19 +7693,17 @@ class MainController {
    */
   public async getEvmTransactionFromProvider(hash: string) {
     try {
+      // Keep every read on the provider that started this lookup, even if the
+      // active network changes while the transaction request is in flight.
+      const provider = this.ethereumTransaction.web3Provider;
       // Get transaction from provider
-      const tx = await this.ethereumTransaction.web3Provider.getTransaction(
-        hash
-      );
+      const tx = await provider.getTransaction(hash);
       if (!tx) return null;
 
       // Get receipt for confirmation status
       let receipt = null;
       try {
-        receipt =
-          await this.ethereumTransaction.web3Provider.getTransactionReceipt(
-            hash
-          );
+        receipt = await provider.getTransactionReceipt(hash);
       } catch (receiptError) {
         // Transaction might be pending, receipt not available yet
         console.log(
@@ -7700,8 +7712,7 @@ class MainController {
       }
 
       // Get current block number for confirmation count
-      const latestBlock =
-        await this.ethereumTransaction.web3Provider.getBlockNumber();
+      const latestBlock = await provider.getBlockNumber();
       const blockNumber = receipt
         ? this.convertHexValue(receipt.blockNumber, 'number')
         : null;
@@ -7713,9 +7724,7 @@ class MainController {
       let timestamp = Math.floor(Date.now() / 1000);
       if (receipt && receipt.blockNumber) {
         try {
-          const block = await this.ethereumTransaction.web3Provider.getBlock(
-            receipt.blockNumber
-          );
+          const block = await provider.getBlock(receipt.blockNumber);
           timestamp = block ? block.timestamp : timestamp;
         } catch (blockError) {
           console.log(

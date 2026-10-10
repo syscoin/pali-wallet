@@ -7,7 +7,10 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
+import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
@@ -22,6 +25,7 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
+  selectActiveAccountRef,
   selectActiveAccountAssets,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
@@ -70,12 +74,12 @@ const EvmTransactionItem = React.memo(
     getTxStatus,
     currency,
     getFiatAmount,
-    navigate,
     txId,
     getTxOptions,
     t,
     tokenMeta,
     ensCache,
+    onDetailsClick,
   }: {
     chainId: number;
     currency: string;
@@ -86,7 +90,7 @@ const EvmTransactionItem = React.memo(
     getTxStatus: any;
     getTxStatusIcons: any;
     getTxType: any;
-    navigate: any;
+    onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
     t: any;
     tokenMeta?: any;
     tx: ITransactionInfoEvm & {
@@ -215,9 +219,7 @@ const EvmTransactionItem = React.memo(
     const isNativeTransfer = !isErc20Tx;
 
     const handleGoTxDetails = () => {
-      navigate('/home/details', {
-        state: { id: null, hash: tx[txId], tx },
-      });
+      onDetailsClick(tx, txId);
     };
 
     // Render value display with loading state
@@ -553,7 +555,8 @@ const EvmTransactionItem = React.memo(
       (nextProps.tokenMeta?.contractAddress ?? '') &&
     // ENS cache is replaced immutably on each resolution; reference compare so
     // rows re-render when async ENS names arrive (was a per-row selector before)
-    prevProps.ensCache === nextProps.ensCache
+    prevProps.ensCache === nextProps.ensCache &&
+    prevProps.onDetailsClick === nextProps.onDetailsClick
 );
 
 EvmTransactionItem.displayName = 'EvmTransactionItem';
@@ -566,6 +569,7 @@ export const EvmTransactionsList = ({
   const { t } = useTranslation();
   const { alert } = useUtils();
   const currentAccount = useSelector(selectActiveAccount);
+  const activeAccountRef = useSelector(selectActiveAccountRef);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -580,17 +584,43 @@ export const EvmTransactionsList = ({
   );
 
   const { chainId, currency, apiUrl } = activeNetwork as any;
-  const paginationContext = JSON.stringify([
-    currentAccount?.address,
-    chainId,
-    apiUrl,
-  ]);
+  const paginationContext = getHomeBrowsingScope(
+    { ...currentAccount, ...activeAccountRef },
+    activeNetwork
+  );
   const beginPageRequest = useRequestScope(paginationContext);
 
+  const fetchHistoryPage = useCallback(
+    async (page: number) => {
+      const response = (await controllerEmitter(
+        ['wallet', 'getEvmTransactionsPage'],
+        [currentAccount?.address, chainId, apiUrl, page, 30]
+      )) as EvmPageResponse;
+      if (response.error) throw new Error(response.error);
+      const rows = Array.isArray(response.transactions)
+        ? response.transactions
+        : [];
+      return { rows, hasMore: response.hasMore !== false && rows.length > 0 };
+    },
+    [paginationContext]
+  );
+
   // Combine base transactions with any paged transactions we load from API
-  const [extraTransactions, setExtraTransactions] = useContextualState<
-    ITransactionInfoEvm[]
-  >(paginationContext, []);
+  const {
+    extraTransactions,
+    setExtraTransactions,
+    visibleCount,
+    setVisibleCount,
+    nextPage,
+    setNextPage,
+    hasMoreServer,
+    setHasMoreServer,
+    isRestoringPages,
+  } = useHistoryBrowsingState<ITransactionInfoEvm>(
+    paginationContext,
+    true,
+    apiUrl ? fetchHistoryPage : undefined
+  );
   const combinedTransactions = useMemo(() => {
     if (!extraTransactions.length) return userTransactions;
     // Prefer base txlist entries over earlier tokentx placeholders when hashes collide
@@ -719,32 +749,19 @@ export const EvmTransactionsList = ({
     [alert, chainId]
   );
 
-  // Server-backed pagination via explorer API (fallbacks to local slicing when no API)
-  const [nextPage, setNextPage] = useContextualState<number>(
-    paginationContext,
-    2
-  );
   const [isLoadingMore, setIsLoadingMore] = useContextualState<boolean>(
     paginationContext,
     false
   );
-  const [hasMoreServer, setHasMoreServer] = useContextualState<boolean>(
-    paginationContext,
-    true
+  const location = useLocation();
+  const onDetailsClick = useCallback(
+    (tx: ITransactionInfoEvm, transactionId: string) => {
+      navigate('/home/details', {
+        state: { id: null, hash: tx[transactionId], tx },
+      });
+    },
+    [navigate, location.state]
   );
-  const [visibleCount, setVisibleCount] = useContextualState<number>(
-    paginationContext,
-    50
-  ); // fallback only
-
-  // Reset pagination state when switching account, network, or API endpoint
-  useEffect(() => {
-    setExtraTransactions([]);
-    setIsLoadingMore(false);
-    setNextPage(2);
-    setHasMoreServer(true);
-    setVisibleCount(50);
-  }, [currentAccount?.address, chainId, apiUrl]);
 
   const groupedTransactions = useMemo(() => {
     const grouped: { [date: string]: ITransactionInfoEvm[] } = {};
@@ -831,7 +848,7 @@ export const EvmTransactionsList = ({
                   getTxStatus={getTxStatus}
                   currency={currency}
                   getFiatAmount={getFiatAmount}
-                  navigate={navigate}
+                  onDetailsClick={onDetailsClick}
                   txId={txId}
                   getTxOptions={getTxOptions}
                   t={t}
@@ -849,7 +866,7 @@ export const EvmTransactionsList = ({
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                disabled={isLoadingMore}
+                disabled={isLoadingMore || isRestoringPages}
                 onClick={async () => {
                   if (filteredTransactions.length > visibleCount) {
                     setVisibleCount((count) => count + 50);
@@ -887,7 +904,9 @@ export const EvmTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore ? t('buttons.loading') : t('buttons.loadMore')}
+                {isLoadingMore || isRestoringPages
+                  ? t('buttons.loading')
+                  : t('buttons.loadMore')}
               </button>
             </div>
           )

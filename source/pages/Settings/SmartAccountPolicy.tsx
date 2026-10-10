@@ -17,6 +17,7 @@ import {
   SmartAccountValidatorModule,
 } from 'types/network';
 import { getAddress } from 'utils/ethersV6Compat';
+import { captureNavigationScroll } from 'utils/navigationState';
 import {
   bytesToHex,
   createPasskeyCredential,
@@ -156,7 +157,7 @@ const SmartAccountPolicy = () => {
   const location = useLocation();
   const routeState = location.state as any;
   const { t } = useTranslation();
-  const { alert, useCopyClipboard } = useUtils();
+  const { alert, navigate, useCopyClipboard } = useUtils();
   const [, copy] = useCopyClipboard();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { accounts, activeAccount, activeNetwork } = useSelector(
@@ -191,7 +192,52 @@ const SmartAccountPolicy = () => {
   const [guardianAddress, setGuardianAddress] = useState('');
   const [guardianDelaySeconds, setGuardianDelaySeconds] = useState(86400);
   const [isGuardianRecoveryScreenOpen, setIsGuardianRecoveryScreenOpen] =
-    useState(false);
+    useState(routeState?.smartAccountPolicyView === 'recovery');
+  useEffect(() => {
+    setIsGuardianRecoveryScreenOpen(
+      routeState?.smartAccountPolicyView === 'recovery'
+    );
+  }, [routeState?.smartAccountPolicyView]);
+  const setGuardianRecoveryView = (open: boolean) => {
+    setIsGuardianRecoveryScreenOpen(open);
+    const policyParentScroll = routeState?.policyParentScroll;
+    const policyParentScrollPositions = routeState?.policyParentScrollPositions;
+    const parentState = { ...routeState };
+    delete parentState.smartAccountPolicyView;
+    delete parentState.policyParentScroll;
+    delete parentState.policyParentScrollPositions;
+    const state = open
+      ? {
+          ...parentState,
+          smartAccountPolicyView: 'recovery',
+          policyParentScrollPositions: captureNavigationScroll(),
+          scrollPositions: {
+            'wallet-layout': 0,
+            'smart-account-policy-recovery': 0,
+          },
+          policyParentScroll:
+            typeof document === 'undefined'
+              ? 0
+              : (
+                  document.querySelector(
+                    '[data-navigation-scroll="smart-account-policy"]'
+                  ) as HTMLElement | null
+                )?.scrollTop || 0,
+        }
+      : {
+          ...parentState,
+          scrollPositions: {
+            ...parentState.scrollPositions,
+            ...policyParentScrollPositions,
+            'smart-account-policy':
+              typeof policyParentScroll === 'number' ? policyParentScroll : 0,
+          },
+        };
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state,
+    });
+  };
   const [
     isGuardianPolicyUpdateConfirmOpen,
     setIsGuardianPolicyUpdateConfirmOpen,
@@ -1620,7 +1666,7 @@ const SmartAccountPolicy = () => {
         }
       }
       clearGuardianReplacementCredential();
-      setIsGuardianRecoveryScreenOpen(false);
+      setGuardianRecoveryView(false);
       await refreshMetadata();
       alert.success(t('settings.smartAccountGuardianRecoveryFinalized'));
     } catch (error: any) {
@@ -1703,7 +1749,10 @@ const SmartAccountPolicy = () => {
     !isUndeployedSmartAccount
   ) {
     return (
-      <div className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left">
+      <div
+        data-navigation-scroll="smart-account-policy-recovery"
+        className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left"
+      >
         <PqSigningOverlay
           expectedSeconds={60}
           show={isSLHDSASigning}
@@ -1716,7 +1765,7 @@ const SmartAccountPolicy = () => {
             type="button"
             className="self-start rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={guardianActionLoading}
-            onClick={() => setIsGuardianRecoveryScreenOpen(false)}
+            onClick={() => setGuardianRecoveryView(false)}
           >
             {t('settings.smartAccountGuardianRecoveryBack')}
           </button>
@@ -1853,7 +1902,10 @@ const SmartAccountPolicy = () => {
   }
 
   return (
-    <div className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left">
+    <div
+      data-navigation-scroll="smart-account-policy"
+      className="remove-scrollbar flex h-full w-full flex-col items-center overflow-y-auto px-4 pb-24 text-left"
+    >
       <PqSigningOverlay
         expectedSeconds={60}
         show={isSLHDSASigning}
@@ -2260,9 +2312,7 @@ const SmartAccountPolicy = () => {
                                 type="button"
                                 className="mt-3 w-full rounded-full border border-alpha-whiteAlpha300 bg-alpha-whiteAlpha100 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-brand-blue500 hover:bg-opacity-20 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={guardianActionLoading}
-                                onClick={() =>
-                                  setIsGuardianRecoveryScreenOpen(true)
-                                }
+                                onClick={() => setGuardianRecoveryView(true)}
                               >
                                 {hasPendingGuardianRecovery
                                   ? t(

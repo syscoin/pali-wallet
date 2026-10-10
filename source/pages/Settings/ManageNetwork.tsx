@@ -18,8 +18,11 @@ import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import store, { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { truncate } from 'utils/index';
-import { navigateWithContext } from 'utils/navigationState';
-import { navigateBack } from 'utils/navigationState';
+import {
+  createBrowsingNavigationContext,
+  navigateBack,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 const ManageNetworkView = () => {
   const networks = useSelector(
@@ -72,13 +75,14 @@ const ManageNetworkView = () => {
   // Custom scroll restoration for the ul element
   useEffect(() => {
     if (
-      location.state?.scrollPosition !== undefined &&
+      location.state?.manageNetworksScrollTop !== undefined &&
       !hasRestoredScrollRef.current
     ) {
       // Small delay to ensure the component has rendered before scrolling
       if (scrollContainerRef.current) {
         hasRestoredScrollRef.current = true;
-        scrollContainerRef.current.scrollTop = location.state.scrollPosition;
+        scrollContainerRef.current.scrollTop =
+          location.state.manageNetworksScrollTop;
       }
     }
   }, [location.state]);
@@ -145,15 +149,23 @@ const ManageNetworkView = () => {
     // Create navigation context with scroll position from the ul element
     const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
 
-    const returnContext = {
-      returnRoute: '/settings/networks/edit',
-      scrollPosition,
-    };
+    const returnContext = createBrowsingNavigationContext(location, {
+      manageNetworksScrollTop: scrollPosition,
+    });
 
     navigateWithContext(
       navigate,
       '/settings/networks/custom-rpc',
-      { selected, chain, isDefault, isEditing: true },
+      {
+        selected: {
+          chainId: selected.chainId,
+          key: selected.key,
+          kind: selected.kind,
+        },
+        chain,
+        isDefault,
+        isEditing: true,
+      },
       returnContext
     );
   };
@@ -161,6 +173,7 @@ const ManageNetworkView = () => {
   return (
     <>
       <ul
+        data-navigation-scroll="settings-manage-networks"
         ref={scrollContainerRef}
         className="mb-4 w-full h-85 text-sm overflow-auto md:h-96 remove-scrollbar"
       >

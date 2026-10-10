@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
+import { shallowEqual, useSelector } from 'react-redux';
 
 import { EnhancedEvmTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import {
@@ -10,6 +10,7 @@ import {
   DecodedTransactionParams,
 } from 'components/TransactionDetails';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
@@ -26,8 +27,17 @@ import {
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { camelCaseToText } from 'utils/index';
+import { getWalletNavigationScope } from 'utils/navigationState';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+} from 'utils/smartAccount/contracts';
 import { isRoutescanApiUrl } from 'utils/tokenDiscovery';
-import { getTransactionDisplayInfo } from 'utils/transactions';
+import {
+  getTransactionDisplayInfo,
+  getSmartAccountDisplayTransaction,
+  getSmartAccountExecutionTransactions,
+} from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Transaction details cache with TTL (5 minutes)
@@ -38,22 +48,65 @@ const decodedTxCache = new Map<
 >();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// A cached pending lookup must not overwrite newer authoritative activity status.
+const mergeTransactionDetails = (summary: any, enhanced: any) => {
+  const merged = { ...summary, ...enhanced };
+  if (
+    summary &&
+    enhanced &&
+    (Number(summary.confirmations ?? -1) >
+      Number(enhanced.confirmations ?? -1) ||
+      (isTransactionInBlock(summary) && !isTransactionInBlock(enhanced)))
+  ) {
+    for (const field of [
+      'blockNumber',
+      'blockHash',
+      'confirmations',
+      'timestamp',
+      'status',
+      'success',
+      'isError',
+      'txreceipt_status',
+      'isCanceled',
+      'isCancel',
+    ]) {
+      if (summary[field] !== undefined) merged[field] = summary[field];
+    }
+  }
+  return merged;
+};
+
 export const EvmTransactionDetailsEnhanced = ({
   hash,
   tx,
 }: {
   hash: string;
-  tx: IEvmTransactionResponse;
+  tx?: IEvmTransactionResponse;
 }) => {
   const { controllerEmitter } = useController();
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
-  const {
-    activeNetwork: { chainId, currency, apiUrl },
-  } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const { chainId, currency, apiUrl } = activeNetwork;
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
+  const normalizedHash = hash.toLowerCase();
+  const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
+  const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const matchingTx =
+    tx?.hash?.toLowerCase() === normalizedHash ? tx : undefined;
+  const matchesHash = (data: any) =>
+    typeof data?.hash === 'string' &&
+    data.hash.toLowerCase() === normalizedHash;
+  const usableLookup = (data: any) =>
+    matchesHash(data) &&
+    (matchingTx ||
+      (typeof data.from === 'string' &&
+        data.value !== undefined &&
+        data.value !== null));
   const activeAccountTransactions = useSelector(
     selectActiveAccountTransactions
   );
@@ -73,28 +126,110 @@ export const EvmTransactionDetailsEnhanced = ({
     useTransactionsListConfig();
 
   const [, copy] = useCopyClipboard();
-  const [enhancedDetails, setEnhancedDetails] = useState<any>(null);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-  const [decodedTxData, setDecodedTxData] = useState<IDecodedTx | null>(null);
-
-  // Simple duplicate prevention (like EvmAssetDetails pattern)
-  const fetchingRef = useRef(false);
-  const decodingRef = useRef(false);
+  const [enhancedDetails, setEnhancedDetails] = useContextualState<any>(
+    scope,
+    null
+  );
+  const [isLoadingDetails, setIsLoadingDetails] = useContextualState(
+    scope,
+    false
+  );
+  const [decodedTxData, setDecodedTxData] =
+    useContextualState<IDecodedTx | null>(scope, null);
 
   // State for transaction display info - moved up to be available for useEffect dependencies
-  const [transactionDisplayInfo, setTransactionDisplayInfo] = useState<{
-    actualRecipient: string;
-    displaySymbol: string;
-    displayValue: number | string;
-    isErc20Transfer: boolean;
-    isNft: boolean;
-    tokenId?: string;
-  } | null>(null);
+  const [transactionDisplayInfo, setTransactionDisplayInfo] =
+    useContextualState<{
+      actualRecipient: string;
+      displaySymbol: string;
+      displayValue: number | string;
+      isErc20Transfer: boolean;
+      isNft: boolean;
+      tokenId?: string;
+    } | null>(scope, null);
 
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let transactionTx: IEvmTransactionResponse = tx;
+  const mergedTransaction = useMemo(
+    () =>
+      matchingTx || enhancedDetails
+        ? mergeTransactionDetails(matchingTx, enhancedDetails)
+        : undefined,
+    [matchingTx, enhancedDetails]
+  );
+  // An EntryPoint bundle may contain many accounts. Never fall back to its first
+  // operation when restoring this account's details from an outer hash alone.
+  const displayContext = useMemo(() => {
+    if (!mergedTransaction)
+      return { transaction: undefined, isOperation: false };
+    const input = String(
+      mergedTransaction.input || mergedTransaction.data || ''
+    );
+    if (!input.startsWith(paliEntryPointInterface.getSighash('handleOps'))) {
+      return { transaction: mergedTransaction, isOperation: false };
+    }
+    const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
+    const accountAddress = currentAccount?.address?.toLowerCase();
+    const anchored = {
+      ...mergedTransaction,
+      smartAccountExecutionFrom: currentAccount?.address,
+    };
+    const executions = getSmartAccountExecutionTransactions(anchored, {
+      requireMatchingSmartAccount: true,
+    });
+    if (String(mergedTransaction.to || '').toLowerCase() !== entryPoint) {
+      return { transaction: undefined, isOperation: true, success: undefined };
+    }
+    let success: boolean | undefined;
+    for (const log of Array.isArray(mergedTransaction.logs)
+      ? mergedTransaction.logs
+      : []) {
+      if (
+        String(log?.address || '').toLowerCase() !== entryPoint ||
+        (log.transactionHash &&
+          String(log.transactionHash).toLowerCase() !== normalizedHash)
+      )
+        continue;
+      try {
+        const event = paliEntryPointInterface.parseLog(log);
+        if (
+          event?.name === 'UserOperationEvent' &&
+          String(event.args.sender).toLowerCase() === accountAddress
+        ) {
+          success = (success ?? true) && Boolean(event.args.success);
+        }
+      } catch {
+        /* Other receipt events do not prove this operation's outcome. */
+      }
+    }
+    if (
+      success === undefined &&
+      isTransactionInBlock(matchingTx) &&
+      String(
+        (matchingTx as any)?.smartAccountExecutionFrom || ''
+      ).toLowerCase() === accountAddress
+    ) {
+      const status = (matchingTx as any)?.txreceipt_status;
+      if (status === '0' || status === '1') success = status === '1';
+    }
+    return {
+      transaction:
+        success === true && executions.length
+          ? getSmartAccountDisplayTransaction(anchored)
+          : undefined,
+      isOperation: true,
+      success,
+    };
+  }, [
+    mergedTransaction,
+    matchingTx,
+    currentAccount?.address,
+    chainId,
+    normalizedHash,
+  ]);
+  const displayTransaction = displayContext.transaction;
+  let transactionTx: IEvmTransactionResponse | undefined = mergedTransaction;
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -134,75 +269,69 @@ export const EvmTransactionDetailsEnhanced = ({
 
   // Copy message is now handled inline in the copy button onClick
 
-  // Fetch enhanced transaction details using controller methods (handles both API and provider)
+  // Lookup and caches belong to this exact account, network, endpoint and hash.
   useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
     const fetchEnhancedDetails = async () => {
       if (!hash) return;
-
-      // Check cache first
-      const cached = txDetailsCache.get(hash);
+      const cached = txDetailsCache.get(scope);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         setEnhancedDetails(cached.data);
         return;
       }
 
-      // Prevent duplicate fetches
-      if (fetchingRef.current) return;
-
-      fetchingRef.current = true;
       setIsLoadingDetails(true);
       try {
         let enhancedData = null;
-
         // Routescan's Etherscan API has no Blockscout gettxinfo action.
         if (apiUrl && !isRoutescanApiUrl(apiUrl, chainId)) {
-          // Use API method for networks with API URL (faster, but may miss some EIP-1559 fields)
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromAPI'],
             [hash, apiUrl]
           );
         }
-        if (!enhancedData) {
-          // RPC also covers explorers that do not implement gettxinfo.
+        if (!isCurrent()) return;
+        if (!usableLookup(enhancedData)) {
           enhancedData = await controllerEmitter(
             ['wallet', 'getEvmTransactionFromProvider'],
             [hash]
           );
         }
-
-        if (enhancedData) {
-          // Cache the result
-          txDetailsCache.set(hash, {
+        if (!isCurrent()) return;
+        if (usableLookup(enhancedData)) {
+          txDetailsCache.set(scope, {
             data: enhancedData,
             timestamp: Date.now(),
           });
+          if (txDetailsCache.size > 100)
+            txDetailsCache.delete(txDetailsCache.keys().next().value);
           setEnhancedDetails(enhancedData);
         } else {
           setEnhancedDetails(null);
         }
       } catch (error) {
-        console.error('Failed to fetch enhanced transaction details:', error);
-        // On error, set to null to fall back to basic data
-        setEnhancedDetails(null);
+        if (isCurrent()) {
+          console.error('Failed to fetch enhanced transaction details:', error);
+          setEnhancedDetails(null);
+        }
       } finally {
-        fetchingRef.current = false;
-        setIsLoadingDetails(false);
+        if (isCurrent()) setIsLoadingDetails(false);
       }
     };
-
     fetchEnhancedDetails();
-
-    // Cleanup function to reset fetch state
     return () => {
-      fetchingRef.current = false;
+      cancelled = true;
     };
-  }, [hash, apiUrl, chainId]);
+  }, [hash, scope]);
 
   // Effect to decode transaction data when we have transaction data
   useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
     const processTransactionDecoding = async () => {
       // Check cache first
-      const cached = decodedTxCache.get(hash);
+      const cached = decodedTxCache.get(scope);
       const now = Date.now();
 
       if (cached && now - cached.timestamp < CACHE_TTL) {
@@ -212,13 +341,9 @@ export const EvmTransactionDetailsEnhanced = ({
 
       const currentTransaction = transactionTx;
 
-      if (currentTransaction && !decodingRef.current) {
-        decodingRef.current = true;
-
+      if (currentTransaction) {
         try {
-          const mergedTx = enhancedDetails
-            ? { ...currentTransaction, ...enhancedDetails }
-            : currentTransaction;
+          const mergedTx = currentTransaction;
 
           let decodedData: IDecodedTx | null = null;
 
@@ -255,26 +380,33 @@ export const EvmTransactionDetailsEnhanced = ({
             }
           }
 
+          if (!isCurrent()) return;
           // Cache the result
-          decodedTxCache.set(hash, {
+          decodedTxCache.set(scope, {
             data: decodedData,
             timestamp: now,
           });
 
+          if (decodedTxCache.size > 100)
+            decodedTxCache.delete(decodedTxCache.keys().next().value);
           setDecodedTxData(decodedData);
         } catch (error) {
-          console.error('Error decoding transaction:', error);
-          setDecodedTxData(null);
-        } finally {
-          decodingRef.current = false;
+          if (isCurrent()) {
+            console.error('Error decoding transaction:', error);
+            setDecodedTxData(null);
+          }
         }
       }
     };
 
     processTransactionDecoding();
+    return () => {
+      cancelled = true;
+    };
   }, [
     hash,
-    chainId,
+    scope,
+    matchingTx,
     enhancedDetails,
     transactionDisplayInfo,
     // controllerEmitter is omitted as it's a stable reference from useController
@@ -284,38 +416,39 @@ export const EvmTransactionDetailsEnhanced = ({
 
   // Removed redux dependency; rely on passed tx and enhanced details
 
-  // Effect to get proper transaction display info
+  // Display enrichment can await token reads; discard it after the view changes.
   useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
     const getDisplayInfo = async () => {
-      const baseTx = transactionTx;
-      if (baseTx || enhancedDetails) {
-        const mergedTx = enhancedDetails
-          ? { ...baseTx, ...enhancedDetails }
-          : baseTx;
-        const displayInfo = await getTransactionDisplayInfo(
-          mergedTx,
-          currency
-          // Don't skip token fetch on details page - users want full info
-        );
-        setTransactionDisplayInfo(displayInfo);
+      const baseTx = displayTransaction;
+      if (!baseTx) {
+        setTransactionDisplayInfo(null);
+        return;
+      }
+      try {
+        const displayInfo = await getTransactionDisplayInfo(baseTx, currency);
+        if (isCurrent()) setTransactionDisplayInfo(displayInfo);
+      } catch (error) {
+        if (isCurrent()) {
+          console.error('Failed to get transaction display info:', error);
+          setTransactionDisplayInfo(null);
+        }
       }
     };
-
-    if (hash) {
-      getDisplayInfo();
-    }
-  }, [hash, enhancedDetails, currency]);
+    if (hash) getDisplayInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [hash, scope, displayTransaction, currency]);
 
   // Build details from the available transaction (passed + enhanced)
-  if (transactionTx || enhancedDetails) {
-    const base = transactionTx ? { ...transactionTx } : ({} as any);
-    const txLocal = enhancedDetails ? { ...base, ...enhancedDetails } : base;
+  if (transactionTx) {
+    // Provider/explorer detail DTOs add display-only fields to the activity shape.
+    const txLocal: Record<string, any> = { ...transactionTx };
 
     txLocal.value = !!txLocal.value?.hex ? txLocal.value?.hex : txLocal.value;
 
-    if (txLocal?.hash !== hash) {
-      txLocal.hash = hash;
-    }
     transactionTx = txLocal as any;
 
     isConfirmed = isTransactionInBlock(txLocal);
@@ -323,12 +456,16 @@ export const EvmTransactionDetailsEnhanced = ({
       txLocal?.isCanceled === true ||
       (txLocal?.isCancel === true && isConfirmed);
     isTxSent =
-      txLocal.from.toLowerCase() === currentAccount?.address?.toLowerCase();
+      typeof displayTransaction?.from === 'string' &&
+      displayTransaction.from.toLowerCase() ===
+        currentAccount?.address?.toLowerCase();
 
-    // Merge with enhanced details if available - prioritize enhanced data
-    const mergedTx = enhancedDetails
-      ? { ...txLocal, ...enhancedDetails }
-      : txLocal;
+    const mergedTx = txLocal;
+    if (displayContext.isOperation) {
+      // Outer receipt success does not establish an inner user operation's result.
+      if (displayContext.success === undefined) delete mergedTx.success;
+      else mergedTx.success = displayContext.success;
+    }
 
     // Use the decoded transaction data for method information
     if (decodedTxData && decodedTxData.method) {
@@ -487,12 +624,42 @@ export const EvmTransactionDetailsEnhanced = ({
     alert.info(getCopyMessage(label));
   };
 
+  if (!transactionTx && !isLoadingDetails) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-brand-gray200 text-sm mb-4">
+          {t('transactions.transactionNotFoundOrPending')}
+        </p>
+        <p className="text-xs text-brand-gray400">
+          {t('transactions.transactionMayNotExistYet')}
+        </p>
+      </div>
+    );
+  }
+
+  const accountAddress = currentAccount?.address?.toLowerCase();
+  const hasAccountDirection =
+    displayTransaction &&
+    (matchingTx ||
+      (accountAddress &&
+        [
+          displayTransaction?.from,
+          displayTransaction?.to,
+          transactionDisplayInfo?.actualRecipient,
+        ].some(
+          (address) =>
+            typeof address === 'string' &&
+            address.toLowerCase() === accountAddress
+        )));
+  const txType = hasAccountDirection
+    ? getTxType(displayTransaction || transactionTx, isTxSent)
+    : 'Transaction';
   return (
     <>
       <TransactionHeader
-        txType={getTxType(transactionTx, isTxSent)}
-        statusIcon={getTxStatusIcons(getTxType(transactionTx, isTxSent), true)}
-        displayInfo={transactionDisplayInfo}
+        txType={txType}
+        statusIcon={getTxStatusIcons(txType, true)}
+        displayInfo={displayTransaction ? transactionDisplayInfo : null}
         txStatus={getTxStatus(isTxCanceled, isConfirmed)}
         isLoading={isLoadingDetails}
       />
@@ -506,7 +673,9 @@ export const EvmTransactionDetailsEnhanced = ({
       <DecodedTransactionParams decodedData={decodedTxData} />
 
       {/* Display event logs */}
-      <TransactionEventLogs logs={enhancedDetails?.logs} />
+      <TransactionEventLogs
+        logs={Array.isArray(enhancedDetails?.logs) ? enhancedDetails.logs : []}
+      />
     </>
   );
 };

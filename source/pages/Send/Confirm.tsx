@@ -57,7 +57,6 @@ import {
   omitTransactionObjectData,
   INITIAL_FEE,
   SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
-  saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
 import { safeToFixed } from 'utils/safeToFixed';
@@ -71,6 +70,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
@@ -79,7 +79,8 @@ const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
 const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
 
 export const SendConfirm = () => {
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, isUnlocked, connectionUnavailable } =
+    useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const { getFiatAmount } = usePrice();
@@ -131,7 +132,14 @@ export const SendConfirm = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const location = useLocation();
-  const { state } = location;
+  const submission = useConfirmSubmission({
+    location,
+    navigate,
+    controllerEmitter,
+    isUnlocked,
+    connectionUnavailable,
+  });
+  const { state } = submission;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -233,7 +241,7 @@ export const SendConfirm = () => {
   const [retryTrigger, setRetryTrigger] = useState(0);
 
   // Handle both normal navigation and restoration
-  const basicTxValues = state.tx;
+  const basicTxValues = state?.tx;
   const cachedGasData = basicTxValues?.cachedGasData;
   // Initialize fee state after basicTxValues is available
   const [fee, setFee] = useState<IFeeState>({
@@ -271,21 +279,6 @@ export const SendConfirm = () => {
     // Trigger recalculation
     setRetryTrigger((prev) => prev + 1);
   };
-
-  // Save navigation state when confirm page loads to preserve transaction data and return context
-  useEffect(() => {
-    const saveConfirmState = async () => {
-      // Only save if we have transaction data and return context
-      await saveNavigationState(
-        location.pathname,
-        undefined,
-        state,
-        state.returnContext
-      );
-    };
-
-    saveConfirmState();
-  }, [state, location.pathname]);
 
   // Clear navigation state on unmount to prevent stale state
   useEffect(
@@ -483,7 +476,8 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
-  const handleConfirm = async () => {
+  const performConfirm = async () => {
+    const submitEmitter = submission.controllerEmitter;
     if (recipientPoisoningCollision) {
       alert.error(
         t('send.addressPoisoningBlocked', {
@@ -498,7 +492,7 @@ export const SendConfirm = () => {
       : activeAccount.balances[INetworkType.Ethereum];
 
     try {
-      const refreshedBalance = (await controllerEmitter(
+      const refreshedBalance = (await submitEmitter(
         ['wallet', 'refreshActiveAccountBalances'],
         [{ includeAssets: false }]
       )) as { nativeBalance: string };
@@ -572,11 +566,12 @@ export const SendConfirm = () => {
             accountId: activeAccount.id,
             authenticatorContexts: getSmartAccountLocalOwnerContexts({
               accounts,
-              controllerEmitter,
+              controllerEmitter: submitEmitter,
             }),
-            controllerEmitter,
+            controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
             feeOverrides,
+            onBeforeSubmit: submission.beforeBroadcast,
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -589,13 +584,16 @@ export const SendConfirm = () => {
             },
             smartAccount: activeAccount.smartAccount,
           });
+        } catch (error) {
+          submission.recordError(error);
+          throw error;
         } finally {
           setIsPqSigning(false);
         }
       };
 
       const assertPasskeyTokenRecipientAllowed = async () => {
-        const blacklistResult = (await controllerEmitter(
+        const blacklistResult = (await submitEmitter(
           ['wallet', 'checkAddressBlacklist'],
           [destinationTo]
         )) as {
@@ -690,7 +688,7 @@ export const SendConfirm = () => {
         case TransactionType.UTXO:
           try {
             // Use atomic wrapper for all wallets
-            await controllerEmitter(
+            await submitEmitter(
               ['wallet', 'signSendAndSaveTransaction'],
               [
                 {
@@ -759,14 +757,14 @@ export const SendConfirm = () => {
                       : parseUnits(safeToFixed(customFee.maxFeePerGas), 9);
                 } else if (isEIP1559Compatible === false) {
                   gasPriceWei = BigNumber.from(
-                    await controllerEmitter([
+                    await submitEmitter([
                       'wallet',
                       'ethereumTransaction',
                       'getRecommendedGasPrice',
                     ])
                   );
                 } else {
-                  const feeData = (await controllerEmitter([
+                  const feeData = (await submitEmitter([
                     'wallet',
                     'ethereumTransaction',
                     'getFeeDataWithDynamicMaxPriorityFeePerGas',
@@ -795,7 +793,7 @@ export const SendConfirm = () => {
                 // which over-reserved Max-sends by 10-20x).
                 let gasUnitsReserve = SMART_ACCOUNT_FALLBACK_GAS_RESERVE;
                 try {
-                  const gasStatus = (await controllerEmitter(
+                  const gasStatus = (await submitEmitter(
                     ['wallet', 'getSmartAccountNativeGasStatus'],
                     [{ accountId: activeAccountMeta.id }]
                   )) as { gasUnitsReserve?: string };
@@ -917,7 +915,7 @@ export const SendConfirm = () => {
             if (isEIP1559Compatible === false) {
               try {
                 // Use atomic wrapper for legacy transactions
-                await controllerEmitter(
+                await submitEmitter(
                   ['wallet', 'sendAndSaveEthTransaction'],
                   [
                     {
@@ -971,7 +969,7 @@ export const SendConfirm = () => {
               return;
             }
             // Use atomic wrapper for EIP-1559 transactions
-            await controllerEmitter(
+            await submitEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
               [
                 {
@@ -1076,7 +1074,7 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case TransactionType.ERC20:
               try {
-                await controllerEmitter(
+                await submitEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
                   [
                     'ERC20',
@@ -1164,7 +1162,7 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                await controllerEmitter(
+                await submitEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
                   [
                     'ERC721',
@@ -1253,7 +1251,7 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                await controllerEmitter(
+                await submitEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
                   [
                     'ERC1155',
@@ -1329,6 +1327,8 @@ export const SendConfirm = () => {
     }
   };
 
+  const handleConfirm = () => submission.run(performConfirm);
+
   // Initialize fee for UTXO transactions
   useEffect(() => {
     if (isBitcoinBased && basicTxValues?.fee) {
@@ -1345,7 +1345,7 @@ export const SendConfirm = () => {
   }, [isBitcoinBased, basicTxValues?.fee]);
 
   useEffect(() => {
-    if (isBitcoinBased) return;
+    if (!basicTxValues || isBitcoinBased) return;
     const eipModeUnknown = isEIP1559Compatible === undefined;
 
     // Skip fee recalculation when using custom fees
@@ -1571,9 +1571,9 @@ export const SendConfirm = () => {
       clearTimeout(timeoutId);
     };
   }, [
-    basicTxValues.sender,
-    basicTxValues.receivingAddress,
-    basicTxValues.amount,
+    basicTxValues?.sender,
+    basicTxValues?.receivingAddress,
+    basicTxValues?.amount,
     isBitcoinBased,
     isEIP1559Compatible,
     activeNetwork.chainId,
@@ -2303,6 +2303,7 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
+              disabled={loading || submission.pending}
               onClick={async () => {
                 await clearNavigationState();
                 navigate('/home');
@@ -2316,6 +2317,7 @@ export const SendConfirm = () => {
               type="button"
               disabled={
                 confirmed ||
+                submission.blocked ||
                 Boolean(recipientPoisoningCollision) ||
                 isCalculatingFees ||
                 (!isBitcoinBased && !!feeCalculationError)
@@ -2327,6 +2329,11 @@ export const SendConfirm = () => {
               {t('buttons.confirm')}
             </Button>
           </div>
+          {submission.unknown && (
+            <p role="status" className="text-sm text-brand-gray200 text-center">
+              {t('send.submissionStatusUnknown')}
+            </p>
+          )}
         </div>
       ) : null}
     </>

@@ -7,8 +7,10 @@ import ManageNetwork from './ManageNetwork';
 let mockState: any;
 let mockChanging = false;
 let mockUnavailable = false;
+let mockLocation: any;
 const mockControllerEmitter = jest.fn();
 const mockNavigate = jest.fn();
+const mockNavigateWithContext = jest.fn();
 const mockAlert = { error: jest.fn() };
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -17,7 +19,7 @@ jest.mock('state/store', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
-jest.mock('react-router-dom', () => ({ useLocation: () => ({ state: null }) }));
+jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -46,7 +48,11 @@ jest.mock('components/index', () => ({
 }));
 jest.mock('utils/index', () => ({ truncate: (value: string) => value }));
 jest.mock('utils/navigationState', () => ({
-  navigateWithContext: jest.fn(),
+  createBrowsingNavigationContext: (...args: any[]) =>
+    jest
+      .requireActual('utils/navigationState')
+      .createBrowsingNavigationContext(...args),
+  navigateWithContext: (...args: any[]) => mockNavigateWithContext(...args),
   navigateBack: jest.fn(),
 }));
 
@@ -88,6 +94,8 @@ describe('network management transition safety', () => {
     states = [];
     mockChanging = false;
     mockUnavailable = false;
+    mockLocation = { pathname: '/settings/networks/edit', state: null };
+    mockNavigateWithContext.mockReset();
     mockControllerEmitter.mockReset().mockResolvedValue(undefined);
     mockAlert.error.mockReset();
     mockState = {
@@ -128,6 +136,54 @@ describe('network management transition safety', () => {
     });
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('keeps the original page and list position through editing a network', () => {
+    const parent = { returnRoute: '/tokens/add', state: { tab: 'custom' } };
+    mockLocation = {
+      pathname: '/settings/networks/edit',
+      search: '?family=utxo',
+      hash: '#networks',
+      state: { returnContext: parent },
+    };
+    mockState.vaultGlobal.networks.syscoin[1].apiUrl =
+      'https://api.example/?apikey=private-key';
+    const view = render();
+    const list = find(view, (element) => element.type === 'ul')!;
+    (list as any).ref.current = { scrollTop: 220 };
+    find(
+      view,
+      (element) =>
+        element.type === 'button' &&
+        Boolean(find(element, (child) => child.props.name === 'edit'))
+    )!.props.onClick();
+    expect(mockNavigateWithContext).toHaveBeenCalledWith(
+      mockNavigate,
+      '/settings/networks/custom-rpc',
+      {
+        selected: { chainId: 1, key: undefined, kind: INetworkType.Syscoin },
+        chain: INetworkType.Syscoin,
+        isDefault: false,
+        isEditing: true,
+      },
+      expect.objectContaining({
+        returnRoute: '/settings/networks/edit?family=utxo#networks',
+        returnContext: parent,
+        state: { manageNetworksScrollTop: 220 },
+        walletScope: expect.objectContaining({
+          account: expect.any(String),
+          network: expect.any(String),
+        }),
+      })
+    );
+  });
+
+  it('restores the network list position separately from page scroll', () => {
+    mockLocation.state = { manageNetworksScrollTop: 67, scrollPosition: 300 };
+    const list = find(render(), (element) => element.type === 'ul')!;
+    (list as any).ref.current = { scrollTop: 0 };
+    effects.forEach((effect) => effect());
+    expect((list as any).ref.current.scrollTop).toBe(67);
+  });
 
   it('removes the selected network after a healthy confirmation', async () => {
     const confirmation = openRemoval();

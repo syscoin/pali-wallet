@@ -12,7 +12,7 @@ import { EvmTransactionDetailsEnhanced } from './Transactions/EVM/EvmDetailsEnha
 
 export type TransactionDetailsProps = {
   hash: string;
-  tx: IEvmTransactionResponse | ISysTransaction;
+  tx?: IEvmTransactionResponse | ISysTransaction;
 };
 
 export const TransactionDetails = ({ hash, tx }: TransactionDetailsProps) => {

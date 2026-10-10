@@ -1,5 +1,11 @@
 import { startTransition, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+import {
+  createBrowsingNavigationContext,
+  getWalletNavigationScope,
+  isRestorableWalletRoute,
+} from 'utils/navigationState';
 
 /**
  * Custom navigation hook that wraps navigation in startTransition
@@ -7,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
  */
 export function useSafeNavigate() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const safeNavigate = useCallback(
     (to: string | number, options?: any) => {
@@ -14,11 +21,32 @@ export function useSafeNavigate() {
         if (typeof to === 'number') {
           navigate(to);
         } else {
-          navigate(to, options);
+          const state = options?.state;
+          const contextual =
+            !options?.replace &&
+            to !== '/home' &&
+            isRestorableWalletRoute(location.pathname) &&
+            !to.startsWith('/external') &&
+            to.startsWith('/') &&
+            to !== '/' &&
+            !state?.returnContext;
+          navigate(
+            to,
+            contextual
+              ? {
+                  ...options,
+                  state: {
+                    ...state,
+                    walletScope: getWalletNavigationScope(),
+                    returnContext: createBrowsingNavigationContext(location),
+                  },
+                }
+              : options
+          );
         }
       });
     },
-    [navigate]
+    [navigate, location]
   );
 
   return safeNavigate;

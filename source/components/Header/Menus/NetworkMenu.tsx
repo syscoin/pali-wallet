@@ -2,6 +2,7 @@ import { Disclosure, Menu } from '@headlessui/react';
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {
@@ -21,7 +22,7 @@ import store, { RootState } from 'state/store';
 import { switchNetworkError } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
 
@@ -51,6 +52,7 @@ const customSort = (a: INetwork, b: INetwork) => {
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
+  const location = useLocation();
   const { disabled = false } = props;
   const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
@@ -168,8 +170,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   // ✅ MEMOIZED: Navigation handlers
   const handleConnectedSitesNavigation = useCallback(() => {
-    // Create navigation context to return to home
-    const returnContext = createNavigationContext('/home');
+    const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
       navigate,
@@ -177,11 +178,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleTrustedSitesNavigation = useCallback(() => {
-    // Create navigation context to return to home
-    const returnContext = createNavigationContext('/home');
+    const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
       navigate,
@@ -189,11 +189,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleCustomRpcNavigation = useCallback(() => {
-    // Create navigation context to return to network menu
-    const returnContext = createNavigationContext('/home');
+    const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(
       navigate,
@@ -201,14 +200,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       { fromMenu: true },
       returnContext
     );
-  }, [navigate]);
+  }, [navigate, location]);
 
   const handleManageNetworksNavigation = useCallback(() => {
-    // Create navigation context to return to home
-    const returnContext = createNavigationContext('/home');
+    const returnContext = createBrowsingNavigationContext(location);
 
     navigateWithContext(navigate, '/settings/networks/edit', {}, returnContext);
-  }, [navigate]);
+  }, [navigate, location]);
 
   return (
     <Menu

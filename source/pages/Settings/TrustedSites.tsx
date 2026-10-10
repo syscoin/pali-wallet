@@ -1,10 +1,12 @@
 import { Input } from 'antd';
 import uniq from 'lodash/uniq';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 
 import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
+import { useUtils } from 'hooks/index';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
@@ -35,42 +37,35 @@ const NOT_TRUSTED_WALLET_STYLE = {
 
 const TrustedSitesView = () => {
   const { t } = useTranslation();
-  const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
+  const location = useLocation();
+  const { navigate } = useUtils();
+  const [search, setSearch] = useState<string>(
+    typeof location.state?.trustedSitesSearch === 'string'
+      ? location.state.trustedSitesSearch.slice(0, 200)
+      : ''
+  );
+  const filteredSearch = useMemo(
+    () =>
+      trustedApps.filter((url) =>
+        url.toLowerCase().startsWith(search.toLowerCase())
+      ),
+    [search]
+  );
+  const status = !search
+    ? EMPTY_STATE
+    : trustedApps.some((url) => url.startsWith(search))
+    ? TRUSTED_STYLE
+    : filteredSearch.length === 0
+    ? ATTENTION_STYLE
+    : NOT_TRUSTED_WALLET_STYLE;
 
-  const [status, setStatus] = useState(EMPTY_STATE);
-
-  const handleSearch = (typed) => {
-    if (!typed) setStatus(EMPTY_STATE);
-
-    if (typed) {
-      const newList = trustedApps.filter((item: string) => {
-        const url = item.toLowerCase();
-        const typedValue = typed.toLowerCase();
-
-        return url.startsWith(typedValue);
-      });
-
-      const isValueValid = validateSearch(typed, trustedApps);
-
-      if (isValueValid) {
-        setStatus(TRUSTED_STYLE);
-      } else if (!isValueValid && newList.length === 0) {
-        setStatus(ATTENTION_STYLE);
-      } else {
-        setStatus(NOT_TRUSTED_WALLET_STYLE);
-      }
-
-      setFilteredSearch(newList);
-
-      return;
-    }
-
-    setFilteredSearch(trustedApps);
-  };
-
-  const validateSearch = (str: string, array: string[]) => {
-    const searchString = array.some((s) => s.startsWith(str));
-    return searchString;
+  const handleSearch = (typed: string) => {
+    setSearch(typed);
+    // Keep this public list filter in the current history entry for menu detours.
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: { ...location.state, trustedSitesSearch: typed },
+    });
   };
 
   return (
@@ -79,6 +74,8 @@ const TrustedSitesView = () => {
         {t('settings.isConnected')}
       </p>
       <Input
+        value={search}
+        maxLength={200}
         onChange={(event) => handleSearch(event.target.value)}
         type="text"
         className="w-full"
@@ -97,7 +94,10 @@ const TrustedSitesView = () => {
         }
       />
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="remove-scrollbar my-2 w-full h-[19.5rem] overflow-auto">
+        <ul
+          data-navigation-scroll="trusted-sites"
+          className="remove-scrollbar my-2 w-full h-[19.5rem] overflow-auto"
+        >
           {filteredSearch &&
             filteredSearch.map((url: string, key: number) => (
               <li

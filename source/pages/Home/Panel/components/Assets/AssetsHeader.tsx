@@ -1,5 +1,4 @@
-import debounce from 'lodash/debounce';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -15,21 +14,27 @@ import { Tooltip } from 'components/Tooltip';
 
 interface IAssetsHeader {
   isCoinSelected: boolean;
+  searchValue: string;
   setIsCoinSelected: React.Dispatch<React.SetStateAction<boolean>>;
   setSearchValue: React.Dispatch<React.SetStateAction<string>>;
   setSortyByValue: React.Dispatch<React.SetStateAction<string>>;
+  sortByValue: string;
 }
 
 export const AssetsHeader = ({
   isCoinSelected,
+  searchValue,
   setIsCoinSelected,
   setSearchValue,
   setSortyByValue,
+  sortByValue,
 }: IAssetsHeader) => {
   const { t } = useTranslation();
   const [isSortByOpen, setIsSortByOpen] = useState<boolean>(false);
-  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
-  const [currentSortBy, setCurrentSortBy] = useState<string>('');
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(
+    Boolean(searchValue)
+  );
+  const currentSortBy = sortByValue;
 
   const showSortBy = () => {
     if (isSearchOpen) {
@@ -46,34 +51,22 @@ export const AssetsHeader = ({
     setIsSearchOpen(!isSearchOpen);
   };
 
-  const delayedSearch = debounce((value) => {
-    setSearchValue(value);
-  }, 300);
-
   const handleInputChange = (e) => {
     const { value } = e.target;
-    delayedSearch(value);
+    // The list already defers filtering; keep the visible input and return state in sync.
+    setSearchValue(value);
   };
 
   const handleSortSelection = (sortValue: string) => {
-    setCurrentSortBy(sortValue);
     setSortyByValue(sortValue);
     setIsSortByOpen(false);
   };
 
   const handleClearSort = () => {
-    setCurrentSortBy('');
     setSortyByValue('');
   };
 
   const showDefaultHeader = !isSearchOpen;
-
-  //Guarantee values empty when the search filter is closed (but preserve sort)
-  useEffect(() => {
-    if (!isSearchOpen) {
-      setSearchValue('');
-    }
-  }, [isSearchOpen]);
 
   return (
     <>
@@ -159,7 +152,10 @@ export const AssetsHeader = ({
         <div className="flex w-full gap-2">
           <div
             className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue"
-            onClick={() => setIsSearchOpen(false)}
+            onClick={() => {
+              setIsSearchOpen(false);
+              setSearchValue('');
+            }}
           >
             <GoBackIcon size={16} color="#fff" />
           </div>
@@ -172,6 +168,7 @@ export const AssetsHeader = ({
               text-xs font-normal p-4 text-brand-gray200 outline-none"
               style={{ borderRadius: '100px' }}
               onChange={handleInputChange}
+              value={searchValue}
             />
 
             <SearchIcon

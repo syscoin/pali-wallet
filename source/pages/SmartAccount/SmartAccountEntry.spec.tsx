@@ -15,6 +15,9 @@ import { navigateWithContext } from 'utils/navigationState';
 import SmartAccountHub from './Hub';
 import SmartAccountEntry from './SmartAccountEntry';
 
+let mockLocation: any;
+jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
+const mockStoreListeners = new Set<() => void>();
 let mockState: any;
 let mockChanging = false;
 let mockUnavailable = false;
@@ -45,7 +48,15 @@ jest.mock('hooks/usePageLoadingState', () => ({
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState },
+  default: {
+    getState: () => mockState,
+    subscribe: (listener: () => void) => {
+      mockStoreListeners.add(listener);
+      return () => {
+        mockStoreListeners.delete(listener);
+      };
+    },
+  },
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccount: (state: any) =>
@@ -58,6 +69,13 @@ jest.mock('utils/smartAccount', () => ({
 }));
 jest.mock('antd', () => ({ Form: 'form', Input: 'input' }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({
+    account: String(mockState.vault.activeAccount.id),
+    network: JSON.stringify(mockState.vault.activeNetwork),
+  }),
+  captureNavigationScroll: () => ({}),
+  createBrowsingNavigationContext: (_location: any, state: any) =>
+    state ? { ...mockReturnContext, state } : mockReturnContext,
   createNavigationContext: () => mockReturnContext,
   navigateWithContext: jest.fn(),
 }));
@@ -108,10 +126,20 @@ const choose = (id = 7) =>
 describe('smart-account hub account selection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockStoreListeners.clear();
     mockChanging = false;
     mockUnavailable = false;
     mockHandleLocked.mockReturnValue(false);
-    mockEmitter.mockResolvedValue(undefined);
+    mockLocation = {
+      pathname: '/home/smart-account',
+      search: '',
+      hash: '',
+      state: {},
+    };
+    mockEmitter.mockImplementation(async (command, args) => {
+      if (command[1] === 'setAccount')
+        mockState.vault.activeAccount = { id: args[0], type: args[1] };
+    });
     mockState = {
       vault: {
         accounts: {
@@ -144,7 +172,9 @@ describe('smart-account hub account selection', () => {
     expect(screen.getByTestId('smart-account-option-9')).toBeDefined();
     expect(screen.queryByTestId('smart-account-option-8')).toBeNull();
     expect(screen.queryByText('Ordinary account')).toBeNull();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(
+      mockNavigate.mock.calls.every(([, options]) => options?.replace)
+    ).toBe(true);
     expect(navigateWithContext).not.toHaveBeenCalled();
     expect(mockEmitter).not.toHaveBeenCalled();
   });
@@ -158,7 +188,18 @@ describe('smart-account hub account selection', () => {
       ['wallet', 'setAccount'],
       [7, KeyringAccountType.SmartAccount]
     );
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      '/home/smart-account',
+      expect.objectContaining({
+        state: expect.objectContaining({
+          returnContext: expect.objectContaining({
+            state: expect.objectContaining({
+              smartAccountPicker: expect.objectContaining({ open: true }),
+            }),
+          }),
+        }),
+      })
+    );
     expect(navigateWithContext).not.toHaveBeenCalled();
   });
 
@@ -171,7 +212,18 @@ describe('smart-account hub account selection', () => {
       [9, KeyringAccountType.SmartAccount]
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      '/home/smart-account',
+      expect.objectContaining({
+        state: expect.objectContaining({
+          returnContext: expect.objectContaining({
+            state: expect.objectContaining({
+              smartAccountPicker: expect.objectContaining({ open: true }),
+            }),
+          }),
+        }),
+      })
+    );
     expect(navigateWithContext).not.toHaveBeenCalled();
   });
 
@@ -194,6 +246,10 @@ describe('smart-account hub account selection', () => {
     ).toBe(true);
     fireEvent.click(screen.getByTestId('dismiss-smart-account-picker'));
     expect(screen.getByRole('dialog')).toBeDefined();
+    mockState.vault.activeAccount = {
+      id: 7,
+      type: KeyringAccountType.SmartAccount,
+    };
     await act(async () => finish());
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -227,7 +283,9 @@ describe('smart-account hub account selection', () => {
     choose();
     await waitFor(() => expect(mockHandleLocked).toHaveBeenCalledWith(error));
     expect(mockAlert.error).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(
+      mockNavigate.mock.calls.every(([, options]) => options?.replace)
+    ).toBe(true);
   });
 
   it('can dismiss the picker without changing the account', () => {
@@ -236,7 +294,9 @@ describe('smart-account hub account selection', () => {
     fireEvent.click(screen.getByTestId('dismiss-smart-account-picker'));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(mockEmitter).not.toHaveBeenCalled();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(
+      mockNavigate.mock.calls.every(([, options]) => options?.replace)
+    ).toBe(true);
   });
 
   it('offers smart-account creation when no smart account belongs to the active chain', () => {
@@ -335,5 +395,72 @@ describe('smart-account hub account selection', () => {
       screen.queryByRole('button', { name: 'settings.createSmartAccount' })
     ).toBeNull();
     expect(mockEmitter).not.toHaveBeenCalled();
+  });
+
+  it('reopens a saved chooser over the active hub without switching accounts', () => {
+    mockLocation.state = {
+      smartAccountPicker: {
+        open: true,
+        search: 'Second',
+        network: JSON.stringify(mockState.vault.activeNetwork),
+        visibleCount: 100,
+        scrollTop: 80,
+      },
+    };
+    render(<SmartAccountEntry pickerOnly />);
+    expect(screen.getByRole('dialog')).toBeDefined();
+    expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
+      'Second'
+    );
+    expect(screen.getByTestId('smart-account-option-9')).toBeDefined();
+    expect(screen.queryByTestId('smart-account-option-7')).toBeNull();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  });
+  it('waits for account publication when the RPC replies before Redux, then keeps the chooser as origin', async () => {
+    mockEmitter.mockResolvedValueOnce(undefined);
+    render(<SmartAccountEntry />);
+    openPicker();
+    choose();
+    await act(async () => undefined);
+    expect(screen.getByRole('dialog')).toBeDefined();
+    mockState.vault.activeAccount = {
+      id: 7,
+      type: KeyringAccountType.SmartAccount,
+    };
+    await act(async () => {
+      mockStoreListeners.forEach((listener) => listener());
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      '/home/smart-account',
+      expect.objectContaining({
+        state: expect.objectContaining({
+          returnContext: expect.objectContaining({
+            state: expect.objectContaining({
+              smartAccountPicker: expect.objectContaining({ open: true }),
+            }),
+          }),
+        }),
+      })
+    );
+    expect(mockStoreListeners.size).toBe(0);
+  });
+  it('closes an open chooser on network change without republishing its old filter in the new context', () => {
+    mockLocation.state.smartAccountPicker = {
+      open: true,
+      search: 'Second',
+      visibleCount: 50,
+      network: JSON.stringify(mockState.vault.activeNetwork),
+    };
+    const view = render(<SmartAccountEntry />);
+    expect(screen.getByRole('dialog')).toBeDefined();
+    mockNavigate.mockClear();
+    mockState.vault.activeNetwork = {
+      ...mockState.vault.activeNetwork,
+      chainId: 1,
+    };
+    view.rerender(<SmartAccountEntry />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

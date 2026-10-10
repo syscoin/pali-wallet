@@ -17,7 +17,7 @@ export const LogoHeader: React.FC = () => {
 
       <IconButton
         className="absolute -right-24 top-0"
-        onClick={() => navigate(-1)}
+        onClick={() => navigate('/', { replace: true })}
       >
         <Icon name="home" className="text-brand-royalblue opacity-60" />
       </IconButton>

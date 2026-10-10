@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
+import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { Icon } from 'components/Icon';
 import { DetailArrowSvg } from 'components/Icon/Icon';
@@ -15,10 +17,12 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
+  selectActiveAccountRef,
   selectActiveAccountAssets,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
+import { keccak256, toUtf8Bytes } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
   formatDisplayValue,
@@ -356,6 +360,7 @@ export const UtxoTransactionsList = ({
   const { t } = useTranslation();
   const { alert } = useUtils();
   const currentAccount = useSelector(selectActiveAccount);
+  const activeAccountRef = useSelector(selectActiveAccountRef);
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -364,22 +369,49 @@ export const UtxoTransactionsList = ({
   );
 
   const { chainId, url: networkUrl } = activeNetwork as any;
-  const paginationContext = JSON.stringify([
-    currentAccount?.address,
-    currentAccount?.xpub,
-    chainId,
-    networkUrl,
-    userTransactions.map((tx) => tx.txid),
-  ]);
+  const paginationContext = keccak256(
+    toUtf8Bytes(
+      JSON.stringify([
+        getHomeBrowsingScope(
+          { ...currentAccount, ...activeAccountRef },
+          activeNetwork,
+          true
+        ),
+        userTransactions.map((transaction) => transaction.txid),
+      ])
+    )
+  );
   const beginPageRequest = useRequestScope(paginationContext);
 
+  const fetchHistoryPage = useCallback(
+    async (page: number) => {
+      const accountKey = currentAccount?.xpub || currentAccount?.address;
+      if (!accountKey) throw new Error('Missing account identifier');
+      const response = (await controllerEmitter(
+        ['wallet', 'getSysTransactionsPage'],
+        [accountKey, networkUrl, page, SERVER_PAGE_SIZE]
+      )) as ITransactionInfoUtxo[];
+      const rows = Array.isArray(response) ? response : [];
+      return { rows, hasMore: rows.length >= SERVER_PAGE_SIZE };
+    },
+    [paginationContext]
+  );
+
   // Merge base transactions with any paged ones we fetch from Blockbook
-  const [extraTransactions, setExtraTransactions] = useContextualState<
-    ITransactionInfoUtxo[]
-  >(paginationContext, []);
-  const baseTransactionsKey = useMemo(
-    () => userTransactions.map((tx) => tx.txid).join('|'),
-    [userTransactions]
+  const {
+    extraTransactions,
+    setExtraTransactions,
+    visibleCount,
+    setVisibleCount,
+    nextPage,
+    setNextPage,
+    hasMoreServer,
+    setHasMoreServer,
+    isRestoringPages,
+  } = useHistoryBrowsingState<ITransactionInfoUtxo>(
+    paginationContext,
+    userTransactions.length >= SERVER_PAGE_SIZE,
+    networkUrl ? fetchHistoryPage : undefined
   );
   const combined = useMemo(() => {
     if (!extraTransactions.length) return userTransactions;
@@ -469,39 +501,10 @@ export const UtxoTransactionsList = ({
     }
   }, [txCount, confirmationSum, chainId, alert, t]);
 
-  // Server-backed pagination using Blockbook pages (fallback to local slicing if needed)
-  const [visibleCount, setVisibleCount] = useContextualState<number>(
-    paginationContext,
-    50
-  );
-  const [nextPage, setNextPage] = useContextualState<number>(
-    paginationContext,
-    2
-  );
   const [isLoadingMore, setIsLoadingMore] = useContextualState<boolean>(
     paginationContext,
     false
   );
-  const [hasMoreServer, setHasMoreServer] = useContextualState<boolean>(
-    paginationContext,
-    true
-  );
-
-  // Reset paging on account/network changes
-  useEffect(() => {
-    setExtraTransactions([]);
-    setIsLoadingMore(false);
-    setNextPage(2);
-    setHasMoreServer(userTransactions.length >= SERVER_PAGE_SIZE);
-    setVisibleCount(50);
-  }, [
-    currentAccount?.address,
-    currentAccount?.xpub,
-    chainId,
-    networkUrl,
-    userTransactions.length,
-    baseTransactionsKey,
-  ]);
 
   return (
     <>
@@ -513,7 +516,7 @@ export const UtxoTransactionsList = ({
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                disabled={isLoadingMore}
+                disabled={isLoadingMore || isRestoringPages}
                 onClick={async () => {
                   if (array.length > visibleCount) {
                     setVisibleCount((count) => count + 50);
@@ -563,7 +566,9 @@ export const UtxoTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore ? t('buttons.loading') : t('buttons.loadMore')}
+                {isLoadingMore || isRestoringPages
+                  ? t('buttons.loading')
+                  : t('buttons.loadMore')}
               </button>
             </div>
           )

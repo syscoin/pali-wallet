@@ -12,12 +12,13 @@ import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { Button, Tooltip } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { getControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
 import { ICustomRpcParams } from 'types/transactions';
-import { navigateBack } from 'utils/navigationState';
+import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
 interface IChainInfo {
   chain: INetworkType;
@@ -84,6 +85,49 @@ const CustomRPCView = () => {
   const { alert, navigate } = useUtils();
 
   const [form] = useForm();
+  const mountedRef = React.useRef(true);
+  const latestLocationRef = React.useRef(location);
+  latestLocationRef.current = location;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const isCurrentRoute = (origin: typeof location) => {
+    const current = latestLocationRef.current;
+    const nativeKey = window.history.state?.key;
+    const nativeRoute = window.location.hash.startsWith('#/')
+      ? window.location.hash.slice(1)
+      : undefined;
+    return (
+      mountedRef.current &&
+      current.key === origin.key &&
+      current.pathname + current.search + current.hash ===
+        origin.pathname + origin.search + origin.hash &&
+      (!nativeRoute ||
+        nativeRoute === origin.pathname + origin.search + origin.hash) &&
+      (typeof nativeKey !== 'string' ||
+        typeof origin.key !== 'string' ||
+        nativeKey === origin.key)
+    );
+  };
+  const createOperationGuard = () => {
+    const origin = location;
+    const scope = getWalletNavigationScope();
+    return (allowNetworkChange = false) => {
+      const status = getControllerStatus();
+      const currentScope = getWalletNavigationScope();
+      return (
+        isCurrentRoute(origin) &&
+        status.isUnlocked &&
+        !status.isLoading &&
+        !status.connectionUnavailable &&
+        currentScope.account === scope.account &&
+        (allowNetworkChange || currentScope.network === scope.network)
+      );
+    };
+  };
   const urlInputRef = React.useRef<any>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
@@ -162,7 +206,11 @@ const CustomRPCView = () => {
     setShowModal(false);
   };
 
-  const validateApiUrlAndShowError = async (apiUrl?: string) => {
+  const validateApiUrlAndShowError = async (
+    apiUrl?: string,
+    canApply = createOperationGuard()
+  ) => {
+    if (!canApply()) return false;
     if (!apiUrl || !apiUrl.trim()) {
       // Clear any existing API URL field errors
       form.setFields([
@@ -176,6 +224,7 @@ const CustomRPCView = () => {
 
     try {
       const result = await testBlockExplorerApi(apiUrl.trim());
+      if (!canApply()) return false;
       if (!result.success) {
         // Improve error message handling
         let errorMessage = result.error || t('settings.apiFormatError');
@@ -226,6 +275,7 @@ const CustomRPCView = () => {
 
       return true;
     } catch (error) {
+      if (!canApply()) return false;
       // Handle different types of errors
       let errorMessage = t('settings.apiConnectionError');
 
@@ -260,8 +310,10 @@ const CustomRPCView = () => {
 
   const validateRpcUrlAndShowError = async (
     rpcUrl?: string,
-    formData?: ICustomRpcParams
+    formData?: ICustomRpcParams,
+    canApply = createOperationGuard()
   ): Promise<INetwork | null> => {
+    if (!canApply()) return null;
     if (!rpcUrl || !rpcUrl.trim()) {
       // Clear any existing RPC URL field errors
       form.setFields([
@@ -290,6 +342,7 @@ const CustomRPCView = () => {
         ['wallet', 'getRpc'],
         [rpcParams]
       )) as INetwork;
+      if (!canApply()) return null;
 
       if (!network) {
         throw new Error('Failed to get network configuration from RPC');
@@ -349,6 +402,7 @@ const CustomRPCView = () => {
 
       return network;
     } catch (error) {
+      if (!canApply()) return null;
       // Extract the actual error message from the thrown error
       let errorMessage = t('settings.failedValidateRpc');
       if (error && typeof error === 'object' && 'message' in error) {
@@ -372,12 +426,23 @@ const CustomRPCView = () => {
   };
 
   const onSubmit = async (data: ICustomRpcParams) => {
+    const origin = location;
+    const stillActive = createOperationGuard();
+    const canContinue = (allowNetworkChange = false) => {
+      if (stillActive(allowNetworkChange)) return true;
+      // A canceled request must not leave this visible form in a pending state.
+      if (isCurrentRoute(origin)) setLoading(false);
+      return false;
+    };
+    if (!canContinue()) return;
     setLoading(true);
 
     // Validate form fields before proceeding
     try {
       await form.validateFields();
+      if (!canContinue()) return;
     } catch (error) {
+      if (!canContinue()) return;
       console.log('Form validation failed:', error);
       setLoading(false);
 
@@ -417,21 +482,30 @@ const CustomRPCView = () => {
     }
 
     // Validate RPC URL and get network configuration
-    const network = await validateRpcUrlAndShowError(data.url, data);
+    const network = await validateRpcUrlAndShowError(
+      data.url,
+      data,
+      canContinue
+    );
+    if (!canContinue()) return;
     if (!network) {
       setLoading(false);
       return;
     }
 
     // Validate API URL and show toast error if invalid (only for EVM)
-    if (
-      !isSyscoinRpc &&
-      data.apiUrl &&
-      !(await validateApiUrlAndShowError(data.apiUrl))
-    ) {
-      setLoading(false);
-      return;
+    if (!isSyscoinRpc && data.apiUrl) {
+      const validApi = await validateApiUrlAndShowError(
+        data.apiUrl,
+        canContinue
+      );
+      if (!canContinue()) return;
+      if (!validApi) {
+        setLoading(false);
+        return;
+      }
     }
+    if (!canContinue()) return;
 
     try {
       // Check if network already exists
@@ -480,6 +554,7 @@ const CustomRPCView = () => {
         };
 
         await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
+        if (!canContinue(true)) return;
         setLoading(false);
 
         alert.success(t('settings.rpcSuccessfullyEdited'));
@@ -495,12 +570,14 @@ const CustomRPCView = () => {
 
         // New network, add it
         await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
+        if (!canContinue(true)) return;
         setLoading(false);
 
         alert.success(t('settings.rpcSuccessfullyAdded'));
-        navigate(-1);
+        navigateBack(navigate, location);
       }
     } catch (error: any) {
+      if (!canContinue(true)) return;
       setShowModal(true);
       setLoading(false);
       setErrorModalMessage(error.message);
@@ -517,17 +594,14 @@ const CustomRPCView = () => {
     // Use fresh data from Redux store
     const freshNetwork = networks[chain][networkKey];
 
-    if (!freshNetwork) {
-      console.warn(
-        '[CustomRPC] Network not found in Redux, using state.selected as fallback'
-      );
-      return state.selected;
-    }
-
-    return freshNetwork;
+    return freshNetwork || null;
   };
 
   const currentNetwork = getCurrentNetworkData();
+
+  useEffect(() => {
+    if (state?.isEditing && !currentNetwork) navigateBack(navigate, location);
+  }, [state?.isEditing, currentNetwork, navigate, location]);
 
   const initialValues = {
     label: currentNetwork?.label ?? '',
@@ -929,6 +1003,8 @@ const CustomRPCView = () => {
       prevProps.chain.chainId === nextProps.chain.chainId
   );
   NetworkSuggestionItem.displayName = 'NetworkSuggestionItem';
+
+  if (state?.isEditing && !currentNetwork) return null;
 
   return (
     <>

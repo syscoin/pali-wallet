@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "取消",
+    "back": "返回",
     "change": "更改",
     "send": "发送",
     "receive": "接收",

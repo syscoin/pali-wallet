@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../../../useHomeBrowsingState';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as DetailsIcon,
@@ -16,30 +17,42 @@ import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
-import { truncate, navigateWithContext, ellipsis } from 'utils/index';
+import {
+  truncate,
+  createBrowsingNavigationContext,
+  navigateWithContext,
+  ellipsis,
+} from 'utils/index';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmNftsListProps {
+  onVisibleCountChange?: (count: number) => void;
   state: {
     isCoinSelected: boolean;
+    nftsVisibleCount?: number;
     searchValue: string;
     sortByValue: string;
   };
 }
 
-export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
+export const EvmNftsList = ({
+  state,
+  onVisibleCountChange,
+}: IEvmNftsListProps) => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   const { account, assets: accountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
-  const {
-    activeNetwork: { chainId },
-  } = useSelector((rootState: RootState) => rootState.vault);
+  const { activeNetwork } = useSelector(
+    (rootState: RootState) => rootState.vault
+  );
+  const { chainId } = activeNetwork;
 
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{
@@ -141,29 +154,24 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
     }
     return filtered;
   }, [collections, state.searchValue, state.sortByValue]);
-  const { visibleItems, hasMore, showMore } = useIncrementalList(
+  const { visibleItems, visibleCount, hasMore, showMore } = useIncrementalList(
     filteredCollections,
     JSON.stringify([
-      account?.address,
-      chainId,
+      getHomeBrowsingScope(account, activeNetwork),
       state.searchValue,
       state.sortByValue,
-    ])
+    ]),
+    state.nftsVisibleCount
   );
 
   // NFTs are automatically updated through regular asset polling
 
   const handleNftClick = useCallback(
     (collection: any) => {
-      // Capture current scroll position
-      const scrollPosition = window.scrollY || 0;
-
-      const returnContext = {
-        returnRoute: '/home',
+      const returnContext = createBrowsingNavigationContext(location, {
         tab: searchParams.get('tab') || 'assets',
-        scrollPosition,
-        state, // Use the complete state object passed as prop
-      };
+        homeAssets: { ...location.state?.homeAssets, value: state },
+      });
 
       navigateWithContext(
         navigate,
@@ -172,7 +180,7 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
         returnContext
       );
     },
-    [navigate, searchParams, state]
+    [navigate, searchParams, state, location.state]
   );
 
   if (filteredCollections.length === 0) {
@@ -297,7 +305,10 @@ export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
 
       {hasMore && (
         <ListLoadMore
-          onClick={showMore}
+          onClick={() => {
+            showMore();
+            onVisibleCountChange?.(visibleCount + 50);
+          }}
           shown={visibleItems.length}
           total={filteredCollections.length}
         />

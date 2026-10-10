@@ -1,10 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../Home/useHomeBrowsingState';
 import { useController } from 'hooks/useController';
-import { getCurrentTab } from 'utils/navigationState';
+import { getCurrentTab, navigateWithContext } from 'utils/navigationState';
 
 import { ImportToken } from './ImportToken';
 
@@ -21,7 +22,13 @@ jest.mock('hooks/index', () => ({
 jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ state: null }),
+  useNavigate: () => jest.fn(),
+  useLocation: jest.fn(() => ({
+    pathname: '/tokens/add',
+    search: '?tab=custom',
+    hash: '',
+    state: null,
+  })),
   useSearchParams: jest.fn(() => [
     new URLSearchParams('tab=custom'),
     jest.fn(),
@@ -32,6 +39,12 @@ jest.mock('react-i18next', () => ({
 }));
 jest.mock('utils/navigationState', () => ({
   getCurrentTab: jest.fn(() => 'custom'),
+  createBrowsingNavigationContext: (location: any, extra: any) => ({
+    returnRoute: `${location.pathname}${location.search}${location.hash}`,
+    state: extra,
+    returnContext: location.state?.returnContext,
+  }),
+  navigateWithContext: jest.fn(),
 }));
 
 const ADDRESS = `0x${'11'.repeat(20)}`;
@@ -87,6 +100,13 @@ describe('custom token validation cancellation', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     slots = [];
+    (useLocation as jest.Mock).mockReturnValue({
+      pathname: '/tokens/add',
+      search: '?tab=custom',
+      hash: '',
+      state: null,
+    });
+    (navigateWithContext as jest.Mock).mockClear();
     (useTranslation as jest.Mock).mockReturnValue({
       t: (key: string) => key,
       i18n: { resolvedLanguage: 'en', language: 'en' },
@@ -215,6 +235,113 @@ describe('custom token validation cancellation', () => {
         render(),
         (element) => element.props.children === 'tokens.discoveryUnavailable'
       )
+    ).toBeUndefined();
+  });
+
+  it('preserves the return chain while replacing the import tab URL', () => {
+    const returnContext = { returnRoute: '/home?tab=assets' };
+    const state = { returnContext };
+    const setSearchParams = jest.fn();
+    (useLocation as jest.Mock).mockReturnValue({
+      pathname: '/tokens/add',
+      search: '?tab=custom',
+      hash: '',
+      state,
+    });
+    (useSearchParams as jest.Mock).mockReturnValue([
+      new URLSearchParams('tab=custom'),
+      setSearchParams,
+    ]);
+    const ownedTab = find(
+      render(),
+      (element) =>
+        element.type === 'button' &&
+        element.props.children === 'tokens.yourTokens'
+    );
+    ownedTab!.props.onClick();
+    expect(setSearchParams).toHaveBeenCalledWith(expect.any(URLSearchParams), {
+      replace: true,
+      state,
+    });
+    expect(setSearchParams.mock.calls[0][0].get('tab')).toBe('owned');
+  });
+
+  it('restores token ID zero and carries it through a nested details preview', () => {
+    const returnContext = { returnRoute: '/home?tab=assets' };
+    const customTokenDetails = {
+      contractAddress: TOKEN,
+      tokenStandard: 'ERC-1155',
+      isNft: true,
+      name: 'Collection',
+      symbol: 'NFT',
+      balance: 1,
+    };
+    (useLocation as jest.Mock).mockReturnValue({
+      pathname: '/tokens/add',
+      search: '?tab=custom&keep=1',
+      hash: '',
+      state: {
+        customContractAddress: TOKEN,
+        customTokenDetails,
+        customTokenId: '0',
+        tokenImportScope: getHomeBrowsingScope(
+          { type: 'HDAccount', id: 0, address: ADDRESS },
+          { chainId: 1, apiUrl: 'https://explorer.test/api' }
+        ),
+        returnContext,
+      },
+    });
+    const tree = render();
+    expect(
+      find(tree, (element) => element.props.id === 'custom-token-id')?.props
+        .value
+    ).toBe('0');
+    const assetList = find(tree, (element) => element.type === 'asset-list');
+    assetList!.props.onDetailsClick({ id: 'nft-preview' });
+    expect(navigateWithContext).toHaveBeenCalledWith(
+      expect.any(Function),
+      '/home/details',
+      { id: 'nft-preview', isImportPreview: true },
+      expect.objectContaining({
+        returnRoute: '/tokens/add?tab=custom&keep=1',
+        returnContext,
+        state: {
+          customContractAddress: TOKEN,
+          tab: 'custom',
+          customTokenId: '0',
+          tokenImportScope: getHomeBrowsingScope(
+            { type: 'HDAccount', id: 0, address: ADDRESS },
+            { chainId: 1, apiUrl: 'https://explorer.test/api' }
+          ),
+        },
+      })
+    );
+  });
+
+  it('does not restore a custom token preview from another account or network', () => {
+    (useLocation as jest.Mock).mockReturnValue({
+      pathname: '/tokens/add',
+      search: '?tab=custom',
+      hash: '',
+      state: {
+        customContractAddress: TOKEN,
+        customTokenDetails: {
+          contractAddress: TOKEN,
+          tokenStandard: 'ERC-1155',
+          isNft: true,
+          symbol: 'NFT',
+        },
+        customTokenId: '0',
+        tokenImportScope: 'another-account-or-network',
+      },
+    });
+    const tree = render();
+    expect(
+      find(tree, (element) => element.props.id === 'custom-token-contract')
+        ?.props.value
+    ).toBe('');
+    expect(
+      find(tree, (element) => element.props.id === 'custom-token-id')
     ).toBeUndefined();
   });
 

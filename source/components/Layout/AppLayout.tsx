@@ -8,6 +8,7 @@ import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
 import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
 import { useAppReady } from 'hooks/useAppReady';
+import { useBrowsingNavigationScroll } from 'hooks/useBrowsingNavigationScroll';
 import { useController } from 'hooks/useController';
 import {
   isContextSensitiveWalletRoute,
@@ -15,7 +16,11 @@ import {
   usePageLoadingState,
 } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
-import { navigateBack, clearNavigationState } from 'utils/navigationState';
+import {
+  navigateBack,
+  clearNavigationState,
+  getWalletNavigationScope,
+} from 'utils/navigationState';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders
 const BackArrowIcon = memo(() => <Icon isSvg={true} name="ArrowLeft" />);
@@ -41,6 +46,11 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
+  const navigationScope = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  useBrowsingNavigationScroll(navigationScope);
 
   // Use the new page loading state hook
   const { isLoading, isContextChanging, message } = usePageLoadingState();
@@ -278,9 +288,16 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       !noNavigationRoutes.includes(location.pathname) &&
       !titleOnly &&
       !hideHeader &&
-      !isExternalTransaction
+      !isExternalTransaction &&
+      locationState?.submissionStarted !== true
     );
-  }, [location.pathname, titleOnly, hideHeader, isExternalTransaction]);
+  }, [
+    location.pathname,
+    titleOnly,
+    hideHeader,
+    isExternalTransaction,
+    locationState?.submissionStarted,
+  ]);
 
   // Determine banner gradient style
   const bannerGradient = useMemo(() => {
@@ -300,6 +317,41 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     // Clear any saved navigation state when navigating back
     await clearNavigationState();
 
+    if (
+      location.pathname === '/settings/account/smart-account-policy' &&
+      location.state?.smartAccountPolicyView === 'recovery'
+    ) {
+      const { policyParentScroll, policyParentScrollPositions, ...state } =
+        location.state;
+      delete state.smartAccountPolicyView;
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true,
+        state: {
+          ...state,
+          scrollPositions: {
+            ...policyParentScrollPositions,
+            'smart-account-policy': policyParentScroll || 0,
+          },
+        },
+      });
+      return;
+    }
+    if (
+      location.pathname === '/home/smart-account' &&
+      location.state?.smartAccountPicker?.open
+    ) {
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true,
+        state: {
+          ...location.state,
+          smartAccountPicker: {
+            ...location.state.smartAccountPicker,
+            open: false,
+          },
+        },
+      });
+      return;
+    }
     // First check for navigation context
     const hasNavigationContext = location.state?.returnContext;
 
@@ -308,7 +360,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     } else {
       // Always go to home when no navigation context
       // This prevents cycling through browser history
-      navigate('/home');
+      navigate('/home', { replace: true });
     }
   }, [location, navigate]);
 
@@ -348,6 +400,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
   return (
     <div
+      data-navigation-scroll="wallet-layout"
       className={`remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white ${bgColor} overflow-x-hidden ${
         disableScroll ? '' : 'overflow-y-auto'
       }`}
@@ -391,6 +444,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           {showNavigationButtons ? (
             <IconButton
               className="z-40 cursor-pointer"
+              aria-label={t('buttons.back')}
               onClick={handleBackNavigation}
             >
               <BackArrowIcon />
@@ -407,6 +461,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           {showNavigationButtons ? (
             <IconButton
               className="z-40 cursor-pointer"
+              aria-label={t('buttons.close')}
               onClick={async () => {
                 // Clear any saved navigation state when closing
                 await clearNavigationState();
@@ -417,7 +472,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
                 ) {
                   navigate('/chain-fail-to-connect');
                 } else {
-                  navigate('/home');
+                  navigate('/home', { replace: true });
                 }
               }}
             >

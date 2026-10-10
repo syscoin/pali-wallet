@@ -428,6 +428,61 @@ it('waits for the actual receipt height when a different RPC backend reports an 
   expect(state.vault.accountAssets[type][0].ethereum[0].balance).toBe(9);
 });
 
+it('keeps an in-flight transaction detail lookup on its original provider after a network change', async () => {
+  const hash = `0x${'dd'.repeat(32)}`;
+  const originalProvider = provider;
+  let resolveTransaction!: (value: any) => void;
+  originalProvider.getTransaction = jest.fn().mockReturnValue(
+    new Promise((resolve) => {
+      resolveTransaction = resolve;
+    })
+  );
+  originalProvider.getTransactionReceipt = jest.fn().mockResolvedValue({
+    blockNumber: 10,
+    status: 1,
+    logs: [],
+  });
+  originalProvider.getBlockNumber = jest.fn().mockResolvedValue(11);
+  originalProvider.getBlock = jest.fn().mockResolvedValue({ timestamp: 1000 });
+
+  const lookup = controller.getEvmTransactionFromProvider(hash);
+  provider = {
+    getTransactionReceipt: jest.fn().mockResolvedValue({
+      blockNumber: 50,
+      status: 0,
+      logs: [],
+    }),
+    getBlockNumber: jest.fn().mockResolvedValue(99),
+    getBlock: jest.fn().mockResolvedValue({ timestamp: 9000 }),
+  };
+  state.vault.activeNetwork = { chainId: 2, url: 'https://other.test' };
+  resolveTransaction({
+    hash,
+    from: A,
+    to: T,
+    value: BigInt(0),
+    chainId: 1,
+    data: '0x',
+  });
+
+  const transaction = await lookup;
+  expect(transaction).toMatchObject({
+    hash,
+    chainId: 1,
+    blockNumber: 10,
+    balanceRefreshBlockNumber: 11,
+    confirmations: 2,
+    timestamp: 1000,
+    success: true,
+  });
+  expect(originalProvider.getTransactionReceipt).toHaveBeenCalledWith(hash);
+  expect(originalProvider.getBlockNumber).toHaveBeenCalledTimes(1);
+  expect(originalProvider.getBlock).toHaveBeenCalledWith(10);
+  expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+  expect(provider.getBlockNumber).not.toHaveBeenCalled();
+  expect(provider.getBlock).not.toHaveBeenCalled();
+});
+
 it('enriches a newly confirmed router history row with one receipt before refreshing tracked tokens', async () => {
   const hash = `0x${'cc'.repeat(32)}`;
   const router = `0x${'66'.repeat(20)}`;

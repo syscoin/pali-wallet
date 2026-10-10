@@ -18,7 +18,10 @@ import {
   formatCurrency,
   formatFullPrecisionBalance,
 } from 'utils/index';
-import { navigateWithContext } from 'utils/navigationState';
+import {
+  createBrowsingNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 import { navigateBack } from 'utils/navigationState';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -448,12 +451,10 @@ export const EvmAssetDetails = ({
               <button
                 onClick={() => {
                   // Create recursive return context
-                  const returnContext = {
-                    returnRoute: '/home/details',
-                    state: navigationState || { id },
-                    // Include existing return context to make it recursive
-                    returnContext: location.state?.returnContext,
-                  };
+                  const returnContext = createBrowsingNavigationContext(
+                    location,
+                    navigationState || { id }
+                  );
 
                   navigateWithContext(
                     navigate,
@@ -482,7 +483,10 @@ export const EvmAssetDetails = ({
   const RenderAsset = () => (
     <div className="flex flex-col h-full">
       {currentAsset.contractAddress ? (
-        <div className="flex-1 overflow-y-auto remove-scrollbar pb-20">
+        <div
+          data-navigation-scroll="asset-details"
+          className="flex-1 overflow-y-auto remove-scrollbar pb-20"
+        >
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
             {(enhancedData?.image?.large ||
               enhancedData?.image?.small ||

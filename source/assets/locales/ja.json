@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "キャンセル",
+    "back": "戻る",
     "change": "変更",
     "send": "送信",
     "receive": "受信",

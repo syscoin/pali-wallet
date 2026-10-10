@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../Home/useHomeBrowsingState';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import {
   FiDownload,
@@ -29,9 +30,11 @@ import {
 } from 'types/tokens';
 import {
   getCurrentTab,
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+
+import { useTokenImportNavigation } from './useTokenImportNavigation';
 
 export const ImportToken: React.FC = () => {
   const { controllerEmitter } = useController();
@@ -39,6 +42,23 @@ export const ImportToken: React.FC = () => {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    activeNetwork,
+    accountAssets,
+  } = useSelector((state: RootState) => state.vault);
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const tokenImportScope = getHomeBrowsingScope(
+    { ...activeAccount, ...activeAccountMeta },
+    activeNetwork,
+    false
+  );
+  const restoredState =
+    location.state?.tokenImportScope === tokenImportScope
+      ? location.state
+      : undefined;
 
   // Tab state - get initial from URL params or location state
   const getInitialTab = () => {
@@ -57,12 +77,18 @@ export const ImportToken: React.FC = () => {
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customContractAddress, setCustomContractAddress] = useState(
-    location.state?.customContractAddress || ''
+    restoredState?.customContractAddress || ''
   );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenDetails | null>(location.state?.customTokenDetails || null);
+    useState<ITokenDetails | null>(restoredState?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
-  const [customTokenId, setCustomTokenId] = useState('');
+  const [customTokenId, setCustomTokenId] = useState(
+    restoredState?.customTokenId || ''
+  );
+  useTokenImportNavigation(tokenImportScope, {
+    customContractAddress,
+    customTokenId,
+  });
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
     number | null
@@ -77,13 +103,6 @@ export const ImportToken: React.FC = () => {
   );
   const [fetchingLogos, setFetchingLogos] = useState<Set<string>>(new Set());
 
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    activeNetwork,
-    accountAssets,
-  } = useSelector((state: RootState) => state.vault);
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
 
@@ -512,7 +531,7 @@ export const ImportToken: React.FC = () => {
   const updateTabInUrl = (tab: string) => {
     const newParams = new URLSearchParams(searchParams);
     newParams.set('tab', tab);
-    setSearchParams(newParams, { replace: true });
+    setSearchParams(newParams, { replace: true, state: location.state });
   };
 
   // Update tab when URL parameters change
@@ -531,14 +550,14 @@ export const ImportToken: React.FC = () => {
       // Prepare component state to preserve
       const state = {
         customContractAddress,
-        customTokenDetails,
+        customTokenId,
+        tokenImportScope,
       };
 
-      const returnContext = {
-        ...createNavigationContext('/tokens/add', activeTab, state),
-        // Include existing return context to make it recursive
-        returnContext: location.state?.returnContext,
-      };
+      const returnContext = createBrowsingNavigationContext(location, {
+        ...state,
+        tab: activeTab,
+      });
 
       navigateWithContext(
         navigate,
@@ -553,8 +572,9 @@ export const ImportToken: React.FC = () => {
     [
       activeTab,
       customContractAddress,
-      customTokenDetails,
-      location.state?.returnContext,
+      customTokenId,
+      tokenImportScope,
+      location,
       navigate,
     ]
   );
@@ -640,7 +660,10 @@ export const ImportToken: React.FC = () => {
       )}
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
+      <div
+        data-navigation-scroll="token-import"
+        className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4"
+      >
         {activeTab === 'owned' && ownedTokensUnavailable ? (
           <div role="alert">
             <p>{t('settings.apiConnectionError')}</p>
