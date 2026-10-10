@@ -25,6 +25,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { t } = useTranslation();
   const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const approvalActionRef = React.useRef<
+    'ready' | 'submitting' | 'dismissed' | 'completed'
+  >('ready');
   const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -71,11 +75,13 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   }, [data]);
 
   const onSubmit = async () => {
+    if (approvalActionRef.current !== 'ready') return;
     if (reviewError) {
       setErrorMsg(reviewError);
       return;
     }
 
+    approvalActionRef.current = 'submitting';
     setLoading(true);
 
     try {
@@ -123,6 +129,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           : t('transactions.youCanCheckYour')
       );
 
+      approvalActionRef.current = 'completed';
       setConfirmed(true);
       setLoading(false);
 
@@ -158,6 +165,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         setErrorMsg(sanitizedMessage);
       }
 
+      approvalActionRef.current = 'ready';
       setLoading(false);
       createTemporaryAlarm({
         delayInSeconds: 4,
@@ -169,22 +177,24 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     }
   };
 
+  const handleDismiss = async () => {
+    if (approvalActionRef.current !== 'ready') return;
+    approvalActionRef.current = 'dismissed';
+    setClosing(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error('[Sign] Failed to clear navigation state on close:', error);
+    } finally {
+      window.close();
+    }
+  };
+
   return (
     <>
       <ErrorModal
         show={Boolean(errorMsg)}
-        onClose={async () => {
-          try {
-            await clearTransactionNavigationState();
-            console.log('[Sign] Navigation state cleared on error modal close');
-          } catch (e) {
-            console.error(
-              '[Sign] Failed to clear navigation state on error modal close:',
-              e
-            );
-          }
-          window.close();
-        }}
+        onClose={handleDismiss}
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
@@ -239,19 +249,8 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={loading}
-                onClick={async () => {
-                  try {
-                    await clearTransactionNavigationState();
-                    console.log('[Sign] Navigation state cleared on cancel');
-                  } catch (e) {
-                    console.error(
-                      '[Sign] Failed to clear navigation state on cancel:',
-                      e
-                    );
-                  }
-                  window.close();
-                }}
+                disabled={loading || closing || confirmed}
+                onClick={handleDismiss}
               >
                 {t('buttons.cancel')}
               </Button>
@@ -259,7 +258,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed || Boolean(reviewError)}
+                disabled={closing || confirmed || Boolean(reviewError)}
                 loading={loading}
                 onClick={onSubmit}
               >

@@ -150,6 +150,10 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [closing, setClosing] = useState(false);
+  const approvalActionRef = React.useRef<
+    'ready' | 'submitting' | 'dismissed' | 'completed'
+  >('ready');
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
@@ -431,7 +435,7 @@ export const SendTransaction = () => {
         decodedTxData?.method === 'approve' && isMaxUint256(rawApprovalAmount),
     });
 
-  const handleConfirm = async () => {
+  const submitTransaction = async () => {
     if (hasInvalidApprovalDetails) {
       alert.error(t('send.invalidApprovalDetails'));
       return;
@@ -719,6 +723,7 @@ export const SendTransaction = () => {
           );
         }
 
+        approvalActionRef.current = 'completed';
         setConfirmed(true);
 
         // Store the response data for dispatch later
@@ -764,6 +769,34 @@ export const SendTransaction = () => {
         await clearTransactionNavigationState();
         setTimeout(window.close, 2000);
       }
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (approvalActionRef.current !== 'ready') return;
+    approvalActionRef.current = 'submitting';
+    try {
+      return await submitTransaction();
+    } finally {
+      if (approvalActionRef.current === 'submitting')
+        approvalActionRef.current = 'ready';
+    }
+  };
+
+  const handleCancel = async () => {
+    if (approvalActionRef.current !== 'ready') return;
+    approvalActionRef.current = 'dismissed';
+    setClosing(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error(
+        '[SendTransaction] Failed to clear navigation state on cancel:',
+        error
+      );
+    } finally {
+      if (isExternal) window.close();
+      else navigate('/home');
     }
   };
 
@@ -1368,16 +1401,8 @@ export const SendTransaction = () => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={loading}
-                onClick={async () => {
-                  // Clear navigation state when user cancels/goes away
-                  await clearTransactionNavigationState();
-                  if (isExternal) {
-                    window.close();
-                  } else {
-                    navigate('/home');
-                  }
-                }}
+                disabled={loading || closing || confirmed}
+                onClick={handleCancel}
               >
                 {t('buttons.cancel')}
               </Button>
@@ -1386,7 +1411,12 @@ export const SendTransaction = () => {
                 variant="primary"
                 type="button"
                 loading={loading}
-                disabled={hasTxDataError || hasInvalidApprovalDetails}
+                disabled={
+                  closing ||
+                  confirmed ||
+                  hasTxDataError ||
+                  hasInvalidApprovalDetails
+                }
                 onClick={handleConfirm}
               >
                 {t('buttons.confirm')}

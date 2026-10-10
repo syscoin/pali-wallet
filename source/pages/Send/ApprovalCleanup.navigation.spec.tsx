@@ -28,6 +28,7 @@ let mockState: any;
 const mockGet = jest.fn();
 const mockSet = jest.fn();
 const mockRemove = jest.fn();
+let mockButtonHandlers: Record<string, () => any>;
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -66,11 +67,14 @@ jest.mock('utils/syscoinErrorSanitizer', () => ({
   sanitizeErrorMessage: (error: any) => error.message,
 }));
 jest.mock('components/index', () => ({
-  Button: ({ children, onClick, disabled }: any) => (
-    <button onClick={onClick} disabled={disabled}>
-      {children}
-    </button>
-  ),
+  Button: ({ children, onClick, disabled, loading }: any) => {
+    mockButtonHandlers[String(children)] = onClick;
+    return (
+      <button onClick={onClick} disabled={disabled || loading}>
+        {children}
+      </button>
+    );
+  },
   DeviceWaitingBanner: () => null,
   ErrorModal: ({ show, onClose }: any) =>
     show ? <button onClick={onClose}>Dismiss error</button> : null,
@@ -119,6 +123,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers();
   mockStorage = {};
+  mockButtonHandlers = {};
   mockState = {
     vault: {
       activeAccount: { type: 'HDAccount', id: 0 },
@@ -243,4 +248,97 @@ it('waits for transaction cleanup to finish before closing the approval document
   });
   expect(mockClose).toHaveBeenCalledTimes(1);
   expect(mockStorage[KEY].currentPath).toBe(POLICY);
+});
+
+it.each(['before render', 'after render'])(
+  'sign cancellation blocks approval %s while storage cleanup is pending',
+  async (phase) => {
+    await draft();
+    let finishRead!: (value: any) => void;
+    const snapshot = mockStorage[KEY];
+    mockGet.mockImplementationOnce(
+      () => new Promise((resolve) => (finishRead = resolve))
+    );
+    await prepareSign();
+    const cancel = mockButtonHandlers['buttons.cancel'];
+    const sign = mockButtonHandlers['send.sign'];
+    act(() => {
+      void cancel();
+      if (phase === 'before render') void sign();
+    });
+    if (phase === 'after render')
+      fireEvent.click(screen.getByRole('button', { name: 'send.sign' }));
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.cancel',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(
+      (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true);
+    expect(mockClose).not.toHaveBeenCalled();
+    await act(async () => finishRead(snapshot));
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    await act(async () => sign());
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('duplicate Sign cancellation shares one cleanup and one close', async () => {
+  await draft();
+  let finishRead!: (value: any) => void;
+  const snapshot = mockStorage[KEY];
+  mockGet
+    .mockClear()
+    .mockImplementationOnce(
+      () => new Promise((resolve) => (finishRead = resolve))
+    );
+  await prepareSign();
+  const cancel = mockButtonHandlers['buttons.cancel'];
+  act(() => {
+    void cancel();
+    void cancel();
+  });
+  expect(mockGet).toHaveBeenCalledTimes(1);
+  await act(async () => finishRead(snapshot));
+  expect(mockClose).toHaveBeenCalledTimes(1);
+});
+
+it('a stale Cancel callback cannot close a Sign submission already in flight', async () => {
+  await draft();
+  mockGet.mockClear();
+  let finishSigning!: (value: string) => void;
+  mockEmitter.mockImplementationOnce(
+    () => new Promise((resolve) => (finishSigning = resolve))
+  );
+  await prepareSign();
+  const cancel = mockButtonHandlers['buttons.cancel'];
+  const sign = mockButtonHandlers['send.sign'];
+  act(() => {
+    void sign();
+    void cancel();
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockGet).not.toHaveBeenCalled();
+  expect(mockClose).not.toHaveBeenCalled();
+  await act(async () => finishSigning('public-test-response'));
+  await act(async () => cancel());
+  expect(mockGet).not.toHaveBeenCalled();
+  expect(mockClose).not.toHaveBeenCalled();
+});
+
+it('failed Sign cancellation cleanup remains terminal', async () => {
+  await draft();
+  mockGet.mockRejectedValueOnce(new Error('Storage temporarily unavailable'));
+  await prepareSign();
+  const cancel = mockButtonHandlers['buttons.cancel'];
+  const sign = mockButtonHandlers['send.sign'];
+  await act(async () => cancel());
+  await act(async () => sign());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockClose).toHaveBeenCalledTimes(1);
 });
