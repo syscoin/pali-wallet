@@ -717,3 +717,285 @@ it('rejects a matching provider hash explicitly belonging to another chain', asy
   await screen.findByText('transactions.transactionNotFoundOrPending');
   expect(mockDisplay).not.toHaveBeenCalled();
 });
+
+let nextPaginatedHash = 100;
+const paginatedTx = (fields: any = {}) =>
+  replacementTx('a', {
+    hash: `0x${(nextPaginatedHash++).toString(16).padStart(64, '0')}`,
+    ...fields,
+  });
+const lookupPaginated = (original: any, winner: any) =>
+  mockEmitter.mockImplementation(async (method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider'
+      ? args[0] === original.hash
+        ? original
+        : winner
+      : null
+  );
+
+it('restores a paginated winner by its saved hash without receiving a transaction payload', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({
+    blockNumber: 42,
+    to: ACCOUNT,
+    value: '0',
+    isCancel: true,
+  });
+  mockHistory = [original];
+  lookupPaginated(original, winner);
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getEvmTransactionFromProvider'],
+    [winner.hash]
+  );
+  expect(mockHistory).toEqual([original]);
+  expect(screen.queryByText(/Cancellation/)).toBeNull();
+  expect(
+    mockDisplay.mock.calls.every(([tx]) => tx.hash === original.hash)
+  ).toBe(true);
+});
+
+it('uses the ephemeral paginated proof only while fresh revalidation is pending', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  const pending = deferred();
+  mockHistory = [original];
+  mockEmitter.mockImplementation((method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+      ? pending.promise
+      : Promise.resolve(null)
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+  );
+  await act(async () => pending.resolve(null));
+  expect(screen.getByTestId('header').textContent).toBe(
+    'Sent|7|Replacement pending'
+  );
+});
+
+it.each([
+  { blockNumber: null, confirmations: 1, blockHash: ZERO },
+  { from: OTHER },
+  { nonce: 9 },
+  { chainId: 57 },
+  { hash: replacementHash('f') },
+  { historySource: 'explorer-tokentx' },
+  { type: '0x7f' },
+  { type: undefined },
+  { r: '0x0', s: '0x0', v: '0x0' },
+])(
+  'revokes a paginated snapshot after fresh invalid winner data %j',
+  async (fields) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    mockHistory = [original];
+    lookupPaginated(original, { ...winner, ...fields });
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        'Sent|7|Replacement pending'
+      )
+    );
+  }
+);
+
+it('revokes a paginated snapshot when fresh winner lookup rejects', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockHistory = [original];
+  mockEmitter.mockImplementation((method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve(null)
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+});
+
+it('keeps conflicting current mined winners ambiguous instead of choosing a paginated snapshot', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockHistory = [original, paginatedTx({ blockNumber: 43 })];
+  lookupPaginated(original, winner);
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+  expect(screen.queryByText(/\|Replaced$/)).toBeNull();
+});
+
+it.each([null, 42])(
+  'prefers a live same-hash winner row at block %p and skips its redundant lookup',
+  async (blockNumber) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    mockHistory = [original, { ...winner, blockNumber }];
+    lookupPaginated(original, winner);
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        `Sent|7|${blockNumber ? 'Replaced' : 'Replacement pending'}`
+      )
+    );
+    expect(mockEmitter).not.toHaveBeenCalledWith(
+      ['wallet', 'getEvmTransactionFromProvider'],
+      [winner.hash]
+    );
+  }
+);
+
+it.each(['1', '0'])(
+  'uses the original own receipt %s after a paginated winner lookup settles',
+  async (receipt) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    const pending = deferred();
+    mockHistory = [original];
+    mockEmitter.mockImplementation((method: string[], args: any[]) =>
+      method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+        ? pending.promise
+        : Promise.resolve(null)
+    );
+    const view = render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+    );
+    // eslint-disable-next-line camelcase
+    const mined = { ...original, blockNumber: 43, txreceipt_status: receipt };
+    mockHistory = [mined];
+    view.rerender(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={mined as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await act(async () => pending.resolve(winner));
+    expect(screen.getByTestId('header').textContent).toBe(
+      `Sent|7|${receipt === '1' ? 'Confirmed' : 'Failed'}`
+    );
+  }
+);
+
+it('does not reconstruct a missing original tuple from a restored winner hash', async () => {
+  const original = paginatedTx();
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockEmitter.mockImplementation(async (_method: string[], args: any[]) =>
+    args[0] === winner.hash ? winner : null
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      replacementWinnerHash={winner.hash}
+    />
+  );
+  await screen.findByText('transactions.transactionNotFoundOrPending');
+  expect(mockDisplay).not.toHaveBeenCalled();
+});
+
+it.each(['account', 'endpoint', 'hash', 'unmount'])(
+  'drops a late winner reply after changing %s',
+  async (change) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    const nextOriginal = paginatedTx({ isReplaced: true });
+    const pending = deferred();
+    mockHistory = [original];
+    mockEmitter.mockImplementation((method: string[], args: any[]) =>
+      method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+        ? pending.promise
+        : Promise.resolve(null)
+    );
+    const view = render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+      />
+    );
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'getEvmTransactionFromProvider'],
+        [winner.hash]
+      )
+    );
+    if (change === 'unmount') view.unmount();
+    else {
+      if (change === 'account') mockState.account = { id: 1, address: OTHER };
+      if (change === 'endpoint')
+        mockState.vault.activeNetwork.url = 'https://rpc-b.example';
+      view.rerender(
+        <EvmTransactionDetailsEnhanced
+          hash={change === 'hash' ? nextOriginal.hash : original.hash}
+          tx={(change === 'hash' ? nextOriginal : original) as any}
+        />
+      );
+    }
+    await act(async () => pending.resolve(winner));
+    if (change === 'unmount') expect(screen.queryByTestId('header')).toBeNull();
+    else
+      expect(screen.getByTestId('header').textContent).toBe(
+        `${change === 'account' ? 'Received' : 'Sent'}|7|Replacement pending`
+      );
+  }
+);

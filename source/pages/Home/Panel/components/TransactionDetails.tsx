@@ -9,13 +9,21 @@ import { RootState } from 'state/store';
 
 import { SyscoinTransactionDetails } from './Transactions';
 import { EvmTransactionDetailsEnhanced } from './Transactions/EVM/EvmDetailsEnhanced';
+import type { ReplacementWinner } from './Transactions/EVM/replacementWinner';
 
 export type TransactionDetailsProps = {
   hash: string;
+  replacementWinner?: ReplacementWinner;
+  replacementWinnerHash?: string;
   tx?: IEvmTransactionResponse | ISysTransaction;
 };
 
-export const TransactionDetails = ({ hash, tx }: TransactionDetailsProps) => {
+export const TransactionDetails = ({
+  hash,
+  tx,
+  replacementWinnerHash,
+  replacementWinner,
+}: TransactionDetailsProps) => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -29,6 +37,8 @@ export const TransactionDetails = ({ hash, tx }: TransactionDetailsProps) => {
     <EvmTransactionDetailsEnhanced
       hash={hash}
       tx={tx as IEvmTransactionResponse}
+      replacementWinnerHash={replacementWinnerHash}
+      replacementWinner={replacementWinner}
     />
   );
 };

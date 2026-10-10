@@ -52,6 +52,7 @@ import {
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import { getReplacementWinner } from './replacementWinner';
 import { getTransactionDisplayCacheKey } from './transactionDisplayCache';
 
 type EvmPageResponse = {
@@ -771,11 +772,25 @@ export const EvmTransactionsList = ({
   const location = useLocation();
   const onDetailsClick = useCallback(
     (tx: ITransactionInfoEvm, transactionId: string) => {
+      const replacementWinner = getReplacementWinner(
+        tx,
+        filteredTransactions,
+        chainId,
+        minedNonceIndex
+      );
       navigate('/home/details', {
-        state: { id: null, hash: tx[transactionId], tx },
+        state: {
+          id: null,
+          hash: tx[transactionId],
+          tx,
+          ...(replacementWinner && {
+            replacementWinnerHash: replacementWinner.hash,
+            replacementWinner,
+          }),
+        },
       });
     },
-    [navigate, location.state]
+    [navigate, location.state, filteredTransactions, chainId, minedNonceIndex]
   );
 
   const groupedTransactions = useMemo(() => {

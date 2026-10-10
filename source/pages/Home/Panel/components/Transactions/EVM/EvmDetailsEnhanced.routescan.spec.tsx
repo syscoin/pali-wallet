@@ -76,8 +76,8 @@ describe('transaction detail API compatibility', () => {
         value: '0',
       } as any,
     });
-    effects[0]();
-    // The component starts its async detail request inside the first effect.
+    // Mount all effects; the detail request need not be the first effect.
+    effects.forEach((effect) => effect());
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();

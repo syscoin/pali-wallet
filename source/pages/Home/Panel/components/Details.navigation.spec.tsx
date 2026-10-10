@@ -178,3 +178,52 @@ it.each([123, false, {}, ''])(
     expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
   }
 );
+
+it('forwards scoped paginated evidence beside the live original receipt', () => {
+  const hash = `0x${'ab'.repeat(32)}`;
+  const winnerHash = `0x${'cd'.repeat(32)}`;
+  const tx = { hash, blockNumber: 42, value: 'live' };
+  const proof = { hash: winnerHash, from: 'outer-payer', nonce: 8 };
+  mockState.transactions.ethereum[1] = [tx];
+  mockLocation.state = {
+    hash,
+    tx: { hash, blockNumber: null },
+    replacementWinnerHash: winnerHash.toUpperCase().replace('0X', '0x'),
+    replacementWinner: proof,
+    walletScope: { account: 'account1', network: 'network1' },
+  };
+  render(<DetailsView />);
+  expect(TransactionDetails).toHaveBeenCalledWith(
+    { hash, tx, replacementWinnerHash: winnerHash, replacementWinner: proof },
+    expect.anything()
+  );
+});
+
+it.each(['account', 'network', 'unscoped', 'utxo', 'malformed', 'same-hash'])(
+  'drops replacement evidence for %s routes',
+  (mode) => {
+    const hash = `0x${'ab'.repeat(32)}`;
+    mockLocation.state = {
+      hash,
+      replacementWinnerHash:
+        mode === 'same-hash'
+          ? hash
+          : mode === 'malformed'
+          ? '0xabc'
+          : `0x${'cd'.repeat(32)}`,
+      replacementWinner: { input: 'untrusted route payload' },
+      walletScope:
+        mode === 'unscoped'
+          ? undefined
+          : { account: 'account1', network: 'network1' },
+    };
+    if (mode === 'account') mockState.scopeAccount = 'account2';
+    if (mode === 'network') mockState.scopeNetwork = 'rpc2';
+    if (mode === 'utxo') mockState.vault.isBitcoinBased = true;
+    render(<DetailsView />);
+    expect(TransactionDetails).toHaveBeenCalledWith(
+      { hash, tx: undefined },
+      expect.anything()
+    );
+  }
+);

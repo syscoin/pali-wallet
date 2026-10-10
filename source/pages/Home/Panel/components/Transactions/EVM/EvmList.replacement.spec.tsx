@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
+import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 import { EvmTransactionsList } from './EvmList';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
@@ -22,6 +23,8 @@ const transaction = (digit: string, fields: any = {}) => ({
   ...fields,
 });
 let mockRows: any[];
+let mockApiUrl: string | undefined;
+const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
 const mockAlert = { success: jest.fn(), warning: jest.fn(), error: jest.fn() };
 const mockFiat = () => '0 USD';
@@ -44,7 +47,7 @@ jest.mock('react-redux', () => ({
   useSelector: (selector: any) =>
     selector({
       vault: {
-        activeNetwork: { chainId: 1, currency: 'eth' },
+        activeNetwork: { chainId: 1, currency: 'eth', apiUrl: mockApiUrl },
         isBitcoinBased: false,
       },
       vaultGlobal: { ensCache: {} },
@@ -56,6 +59,7 @@ jest.mock('state/vault/selectors', () => ({
   selectActiveAccountRef: () => ({ id: 0, type: 'HDAccount' }),
   selectActiveAccountAssets: () => ({ ethereum: [] }),
   selectActiveAccountTransactions: () => ({ ethereum: { 1: mockRows } }),
+  selectValidEnsCache: () => ({}),
 }));
 jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({ alert: mockAlert, navigate: mockNavigate }),
@@ -67,17 +71,56 @@ jest.mock('../../../../useHomeBrowsingState', () => ({
   getHomeBrowsingScope: () => 'scope',
 }));
 jest.mock('../useHistoryBrowsingState', () => ({
-  useHistoryBrowsingState: () => ({
-    extraTransactions: [],
-    visibleCount: 50,
-    nextPage: 2,
-    hasMoreServer: false,
-    isRestoringPages: false,
-    setExtraTransactions: jest.fn(),
-    setVisibleCount: jest.fn(),
-    setNextPage: jest.fn(),
-    setHasMoreServer: jest.fn(),
+  useHistoryBrowsingState: () => {
+    const react = jest.requireActual('react');
+    const [extraTransactions, setExtraTransactions] = react.useState([]);
+    const [visibleCount, setVisibleCount] = react.useState(50);
+    const [nextPage, setNextPage] = react.useState(2);
+    const [hasMoreServer, setHasMoreServer] = react.useState(
+      Boolean(mockApiUrl)
+    );
+    return {
+      extraTransactions,
+      visibleCount,
+      nextPage,
+      hasMoreServer,
+      isRestoringPages: false,
+      setExtraTransactions,
+      setVisibleCount,
+      setNextPage,
+      setHasMoreServer,
+    };
+  },
+}));
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: (...args: any[]) => mockEmitter(...args),
+}));
+jest.mock('hooks/useController', () => ({
+  useController: () => ({ controllerEmitter: mockEmitter }),
+}));
+jest.mock('hooks/index', () => ({
+  useUtils: () => ({
+    alert: mockAlert,
+    useCopyClipboard: () => [false, jest.fn()],
   }),
+  useTransactionsListConfig: () => ({
+    getTxType: () => 'Sent',
+    getTxStatusIcons: () => null,
+  }),
+}));
+jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({
+    account: 'account1',
+    network: 'network1',
+  }),
+}));
+jest.mock('components/TransactionDetails', () => ({
+  TransactionHeader: ({ txStatus }: any) => (
+    <div data-testid="detail-header">Detail:{txStatus}</div>
+  ),
+  TransactionDetailsList: () => null,
+  TransactionEventLogs: () => null,
+  DecodedTransactionParams: () => null,
 }));
 jest.mock('components/Icon/Icon', () => ({
   DetailArrowSvg: ({ onClick }: any) => (
@@ -96,9 +139,13 @@ jest.mock('components/TransactionOptions', () => ({
     <div>Options:{tx.hash}</div>
   ),
 }));
-jest.mock('utils/index', () => ({ getKnownTokenLogo: () => undefined }));
+jest.mock('utils/index', () => ({
+  getKnownTokenLogo: () => undefined,
+  camelCaseToText: (value: string) => value,
+}));
 jest.mock('utils/transactions', () => ({
   getSmartAccountDisplayTransaction: (tx: any) => tx,
+  getSmartAccountExecutionTransactions: () => [],
   getTransactionDisplayInfo: async (tx: any) => ({
     displayValue: tx.value,
     formattedValue: tx.value,
@@ -113,6 +160,8 @@ jest.mock('utils/transactions', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockRows = [];
+  mockApiUrl = undefined;
+  mockEmitter.mockReset();
 });
 
 it('keeps a confirmed accelerated cancellation separate from the replaced original', async () => {
@@ -137,8 +186,77 @@ it('keeps a confirmed accelerated cancellation separate from the replaced origin
   expect(screen.getAllByText('outgoing icon')).toHaveLength(2);
   fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[0]);
   expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
-    state: { id: null, hash: original.hash, tx: original },
+    state: {
+      id: null,
+      hash: original.hash,
+      tx: original,
+      replacementWinnerHash: winner.hash,
+      replacementWinner: {
+        hash: winner.hash,
+        from: ACCOUNT,
+        chainId: 1,
+        nonce: 8,
+        type: 2,
+        blockNumber: 42,
+      },
+    },
   });
+});
+
+it('keeps Load more replacement settlement when opening real details without adding the page to Redux', async () => {
+  const original = transaction('6', { isReplaced: true });
+  const winner = transaction('7', {
+    blockNumber: 42,
+    input: '0x12345678',
+    value: 'private route payload',
+    isCancel: true,
+  });
+  mockRows = [original];
+  mockApiUrl = 'https://explorer.example/api';
+  mockEmitter.mockImplementation(async (method: string[], args: any[]) => {
+    if (method[1] === 'getEvmTransactionsPage')
+      return { transactions: [winner], hasMore: false };
+    if (
+      method[1] === 'getEvmTransactionFromProvider' &&
+      args[0] === winner.hash
+    )
+      return winner;
+    if (method[1] === 'getEvmTransactionFromProvider') return original;
+    return null;
+  });
+  const list = render(<EvmTransactionsList userTransactions={mockRows} />);
+  await screen.findByText('Replacement pending');
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+  await screen.findByText('Replaced');
+  fireEvent.click(screen.getAllByRole('button', { name: 'Details' })[0]);
+  const route = mockNavigate.mock.calls[0][1].state;
+  expect(route.replacementWinnerHash).toBe(winner.hash);
+  expect(route.replacementWinner).toEqual({
+    hash: winner.hash,
+    from: ACCOUNT,
+    chainId: 1,
+    nonce: 8,
+    type: 2,
+    blockNumber: 42,
+  });
+  expect(mockRows).toEqual([original]);
+  list.unmount();
+  render(<EvmTransactionDetailsEnhanced {...route} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('detail-header').textContent).toBe(
+      'Detail:Replaced'
+    )
+  );
+  await waitFor(() =>
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'getEvmTransactionFromProvider'],
+      [winner.hash]
+    )
+  );
+  expect(screen.getByTestId('detail-header').textContent).toBe(
+    'Detail:Replaced'
+  );
+  expect(mockRows).toEqual([original]);
 });
 
 it('rerenders an unchanged original when another hash mines', async () => {

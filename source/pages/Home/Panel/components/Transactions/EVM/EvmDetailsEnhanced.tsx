@@ -48,6 +48,13 @@ import {
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import {
+  compactReplacementWinner,
+  mergeReplacementWinnerIndex,
+  replacementHash,
+  ReplacementWinner,
+} from './replacementWinner';
+
 // Transaction details cache with TTL (5 minutes)
 const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
 const decodedTxCache = new Map<
@@ -98,8 +105,12 @@ const mergeTransactionDetails = (summary: any, enhanced: any) => {
 export const EvmTransactionDetailsEnhanced = ({
   hash,
   tx,
+  replacementWinnerHash,
+  replacementWinner,
 }: {
   hash: string;
+  replacementWinner?: ReplacementWinner;
+  replacementWinnerHash?: string;
   tx?: IEvmTransactionResponse;
 }) => {
   const { controllerEmitter } = useController();
@@ -139,6 +150,20 @@ export const EvmTransactionDetailsEnhanced = ({
     () => buildEvmMinedNonceIndex(history, chainId),
     [activeAccountTransactions, chainId]
   );
+  const winnerHash =
+    replacementHash(normalizedHash) &&
+    replacementHash(replacementWinnerHash) !== normalizedHash
+      ? replacementHash(replacementWinnerHash)
+      : undefined;
+  const hasLiveWinner = Boolean(
+    winnerHash &&
+      history.some((row: any) => replacementHash(row?.hash) === winnerHash)
+  );
+  const winnerScope = `${scope}:${winnerHash || ''}`;
+  const [winnerLookup, setWinnerLookup] = useContextualState<{
+    candidate?: ReplacementWinner;
+    settled: boolean;
+  }>(winnerScope, { settled: false });
   const trustedRecipients = useMemo(
     () =>
       getTrustedEvmRecipients(
@@ -256,6 +281,53 @@ export const EvmTransactionDetailsEnhanced = ({
   ]);
   const displayTransaction = displayContext.transaction;
   let transactionTx: IEvmTransactionResponse | undefined = mergedTransaction;
+  const candidate = winnerLookup.settled
+    ? winnerLookup.candidate
+    : replacementWinner;
+  const settlementIndex = useMemo(
+    () =>
+      mergeReplacementWinnerIndex(
+        history,
+        mergedTransaction,
+        replacementHash(candidate?.hash) === winnerHash ? candidate : undefined,
+        chainId,
+        minedNonceIndex
+      ),
+    [mergedTransaction, candidate, winnerHash, minedNonceIndex, chainId]
+  );
+
+  // A paginated proof is provisional. Revalidate once per scoped details visit,
+  // without using the original transaction's five-minute lookup cache.
+  useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
+    if (!winnerHash || hasLiveWinner) {
+      setWinnerLookup({ settled: true });
+      return;
+    }
+    const fetchWinner = async () => {
+      try {
+        const result: any = await controllerEmitter(
+          ['wallet', 'getEvmTransactionFromProvider'],
+          [winnerHash]
+        );
+        if (isCurrent())
+          setWinnerLookup({
+            settled: true,
+            candidate:
+              replacementHash(result?.hash) === winnerHash
+                ? compactReplacementWinner(result, chainId)
+                : undefined,
+          });
+      } catch {
+        if (isCurrent()) setWinnerLookup({ settled: true });
+      }
+    };
+    fetchWinner();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, winnerHash, hasLiveWinner]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -682,7 +754,7 @@ export const EvmTransactionDetailsEnhanced = ({
         }
       : transactionTx,
     chainId,
-    minedNonceIndex
+    settlementIndex
   );
   const isCancellation = hasEvmCancellationIntent(
     transactionTx,
