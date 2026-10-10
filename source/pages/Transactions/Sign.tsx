@@ -8,11 +8,10 @@ import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { handleTransactionError } from 'utils/errorHandling';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 
 interface ISign {
@@ -25,6 +24,39 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { t } = useTranslation();
   const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const approvalActionRef = React.useRef<
+    'ready' | 'submitting' | 'dismissed' | 'completed'
+  >('ready');
+  // Cleared callbacks may already be running; every exit must own its attempt.
+  const approvalLifetimeRef = React.useRef(0);
+  const closeTimeoutRef = React.useRef<ReturnType<typeof setTimeout>>();
+  const mountedRef = React.useRef(true);
+
+  const invalidateScheduledClose = useCallback(() => {
+    approvalLifetimeRef.current += 1;
+    if (closeTimeoutRef.current !== undefined) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = undefined;
+    }
+    return approvalLifetimeRef.current;
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      invalidateScheduledClose();
+    };
+  }, [invalidateScheduledClose]);
+
+  const ownsLifetime = (
+    lifetime: number,
+    action: typeof approvalActionRef.current
+  ) =>
+    mountedRef.current &&
+    approvalLifetimeRef.current === lifetime &&
+    approvalActionRef.current === action;
   const [initialLoading, setInitialLoading] = useState(true);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -71,11 +103,15 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   }, [data]);
 
   const onSubmit = async () => {
+    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
     if (reviewError) {
       setErrorMsg(reviewError);
       return;
     }
 
+    const lifetime = invalidateScheduledClose();
+    approvalActionRef.current = 'submitting';
+    setErrorMsg('');
     setLoading(true);
 
     try {
@@ -116,6 +152,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           false
         );
       }
+      if (!ownsLifetime(lifetime, 'submitting')) return;
       // Show success toast
       alert.success(
         signOnly
@@ -123,15 +160,30 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           : t('transactions.youCanCheckYour')
       );
 
+      approvalActionRef.current = 'completed';
       setConfirmed(true);
       setLoading(false);
 
       // Close window
-      setTimeout(() => {
+      closeTimeoutRef.current = setTimeout(async () => {
+        if (!ownsLifetime(lifetime, 'completed')) return;
+        approvalActionRef.current = 'dismissed';
+        closeTimeoutRef.current = undefined;
+        try {
+          await clearTransactionNavigationState();
+        } catch (error) {
+          console.error(
+            '[Sign] Failed to clear navigation after signing:',
+            error
+          );
+          return;
+        }
+        if (!ownsLifetime(lifetime, 'dismissed')) return;
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
     } catch (error: any) {
+      if (!ownsLifetime(lifetime, 'submitting')) return;
       // Create custom alert object that routes to appropriate display method
       const customAlert = {
         error: (msg: string) => setErrorMsg(msg),
@@ -157,11 +209,27 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         setErrorMsg(sanitizedMessage);
       }
 
+      approvalActionRef.current = 'ready';
       setLoading(false);
-      createTemporaryAlarm({
-        delayInSeconds: 4,
-        callback: () => window.close(),
-      });
+      closeTimeoutRef.current = setTimeout(() => {
+        if (!ownsLifetime(lifetime, 'ready')) return;
+        closeTimeoutRef.current = undefined;
+        void handleDismiss();
+      }, 4000);
+    }
+  };
+
+  const handleDismiss = async () => {
+    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    const lifetime = invalidateScheduledClose();
+    approvalActionRef.current = 'dismissed';
+    setClosing(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error('[Sign] Failed to clear navigation state on close:', error);
+    } finally {
+      if (ownsLifetime(lifetime, 'dismissed')) window.close();
     }
   };
 
@@ -169,18 +237,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     <>
       <ErrorModal
         show={Boolean(errorMsg)}
-        onClose={async () => {
-          try {
-            await clearNavigationState();
-            console.log('[Sign] Navigation state cleared on error modal close');
-          } catch (e) {
-            console.error(
-              '[Sign] Failed to clear navigation state on error modal close:',
-              e
-            );
-          }
-          window.close();
-        }}
+        onClose={handleDismiss}
         title={t('transactions.signatureFailed')}
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
@@ -235,19 +292,8 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={loading}
-                onClick={async () => {
-                  try {
-                    await clearNavigationState();
-                    console.log('[Sign] Navigation state cleared on cancel');
-                  } catch (e) {
-                    console.error(
-                      '[Sign] Failed to clear navigation state on cancel:',
-                      e
-                    );
-                  }
-                  window.close();
-                }}
+                disabled={loading || closing || confirmed}
+                onClick={handleDismiss}
               >
                 {t('buttons.cancel')}
               </Button>
@@ -255,7 +301,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed || Boolean(reviewError)}
+                disabled={closing || confirmed || Boolean(reviewError)}
                 loading={loading}
                 onClick={onSubmit}
               >

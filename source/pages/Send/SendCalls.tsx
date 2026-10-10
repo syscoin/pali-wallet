@@ -19,7 +19,7 @@ import {
   IEvmTransactionContext,
 } from 'utils/evmTransactionContext';
 import { ellipsis } from 'utils/format';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
@@ -192,6 +192,7 @@ export const SendCalls = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [rejecting, setRejecting] = useState(false);
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [selectedCalls, setSelectedCalls] = useState<boolean[]>([]);
@@ -210,6 +211,7 @@ export const SendCalls = () => {
     }>
   >();
   const submissionInFlightRef = React.useRef(false);
+  const rejectionStartedRef = React.useRef(false);
   const lastStartedSubmissionRef = React.useRef<string>();
   const [progressSubmissionId, setProgressSubmissionId] = useState<string>();
   const [requestSmartAccount] = useState(() => ({
@@ -493,7 +495,7 @@ export const SendCalls = () => {
             console.error('Failed to record sendCalls bundle id', error);
           }
         }
-        clearNavigationState();
+        await clearTransactionNavigationState();
         // Dispatch event right before closing
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
@@ -515,7 +517,12 @@ export const SendCalls = () => {
   ]);
 
   const handleApprove = async () => {
-    if (submissionInFlightRef.current || hasUnknownSubmission) return;
+    if (
+      rejectionStartedRef.current ||
+      submissionInFlightRef.current ||
+      hasUnknownSubmission
+    )
+      return;
     submissionInFlightRef.current = true;
     try {
       setIsPqSigning(false);
@@ -1065,9 +1072,18 @@ export const SendCalls = () => {
     }
   };
 
-  const handleReject = () => {
-    clearNavigationState();
-    window.close();
+  const handleReject = async () => {
+    if (rejectionStartedRef.current || submissionInFlightRef.current) return;
+    // Own the terminal decision before awaiting storage or React's next render.
+    rejectionStartedRef.current = true;
+    setRejecting(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error('Failed to clean navigation after rejecting calls', error);
+    } finally {
+      window.close();
+    }
   };
 
   if (initialLoading) {
@@ -1094,7 +1110,12 @@ export const SendCalls = () => {
               {t('send.noCallsProvidedDescription')}
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="secondary" type="button" onClick={handleReject}>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={handleReject}
+                disabled={rejecting}
+              >
                 {t('buttons.close')}
               </Button>
             </div>
@@ -1411,7 +1432,7 @@ export const SendCalls = () => {
             variant="secondary"
             type="button"
             onClick={handleReject}
-            disabled={loading}
+            disabled={loading || rejecting}
           >
             {confirmed ? t('buttons.close') : t('buttons.reject')}
           </Button>
@@ -1419,7 +1440,9 @@ export const SendCalls = () => {
             variant="primary"
             type="button"
             onClick={handleApprove}
-            disabled={loading || confirmed || !hasUnsuccessfulSelected}
+            disabled={
+              loading || rejecting || confirmed || !hasUnsuccessfulSelected
+            }
             loading={loading}
           >
             {loading

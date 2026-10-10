@@ -4,9 +4,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
   clearNavigationState,
+  getNavigationPersistencePolicy,
   getWalletNavigationScope,
   isRestorableWalletRoute,
   loadNavigationState,
+  saveConfirmationReturnState,
   saveNavigationState,
 } from 'utils/navigationState';
 
@@ -15,7 +17,6 @@ import { useController } from './useController';
 // HashRouter maps the manifest's bare app.html popup to '/'. Every named
 // route, including bare '/home', is an explicit destination.
 const POPUP_ENTRY_ROUTES = new Set(['/']);
-const SEND_DRAFT_ROUTES = new Set(['/send/eth', '/send/sys']);
 const SCROLL_SAVE_THROTTLE_MS = 200;
 
 const isExternalNavigation = (pathname: string, search: string) => {
@@ -247,15 +248,49 @@ export const useNavigationState = () => {
       return;
     const { pathname, search, hash, state } = current.location;
     const path = pathname + search + hash;
+    const nativeRoute = window.location.hash.startsWith('#/')
+      ? window.location.hash.slice(1)
+      : undefined;
+    // Lazy transitions can leave the old route mounted after native navigation.
+    if (
+      (nativeRoute && nativeRoute !== path) ||
+      current.scope !== JSON.stringify(getWalletNavigationScope())
+    )
+      return;
     const restored = restoredTargetRef.current;
     // Do not overwrite the saved leaf while its route is still committing.
     if (restored && current.location.key === restored.previousKey) return;
-    if (!isRestorableWalletRoute(path)) {
+    const policy = getNavigationPersistencePolicy(path);
+    const nativeState = window.history.state?.usr;
+    const nativeHasUncertainSubmission =
+      policy === 'save-confirmation-caller' &&
+      nativeRoute === path &&
+      nativeState &&
+      typeof nativeState === 'object' &&
+      !Array.isArray(nativeState) &&
+      nativeState.submissionStarted !== false;
+    const nativeKey = window.history.state?.key;
+    if (
+      typeof nativeKey === 'string' &&
+      typeof current.location.key === 'string' &&
+      nativeKey !== current.location.key &&
+      !nativeHasUncertainSubmission
+    )
+      return;
+    if (policy === 'save-confirmation-caller') {
+      // Submission replaces history before React commits. Never let the old
+      // idle route re-save its draft after an attempt has begun.
+      void saveConfirmationReturnState(
+        nativeHasUncertainSubmission ? nativeState : state
+      );
+      return;
+    }
+    if (policy === 'discard') {
       void clearNavigationState();
       return;
     }
     // Send forms own their live values. Their location.state is an old snapshot.
-    if (SEND_DRAFT_ROUTES.has(pathname)) return;
+    if (policy === 'form-owned-draft') return;
     const tab = new URLSearchParams(search).get('tab') || state?.tab;
     void saveNavigationState(path, tab, state, state?.returnContext);
   }, []);

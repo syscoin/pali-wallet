@@ -57,8 +57,8 @@ import {
   omitTransactionObjectData,
   INITIAL_FEE,
   SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS,
-  clearNavigationState,
 } from 'utils/index';
+import { navigateBack } from 'utils/navigationState';
 import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
@@ -79,7 +79,7 @@ const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
 const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
 
 export const SendConfirm = () => {
-  const { controllerEmitter, isUnlocked, connectionUnavailable } =
+  const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
     useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
@@ -137,6 +137,7 @@ export const SendConfirm = () => {
     navigate,
     controllerEmitter,
     isUnlocked,
+    isLoading,
     connectionUnavailable,
   });
   const { state } = submission;
@@ -279,15 +280,6 @@ export const SendConfirm = () => {
     // Trigger recalculation
     setRetryTrigger((prev) => prev + 1);
   };
-
-  // Clear navigation state on unmount to prevent stale state
-  useEffect(
-    () => () => {
-      // Don't await here since this runs synchronously on unmount
-      clearNavigationState();
-    },
-    []
-  );
 
   // The confirmation screen displays the fee and total as calculated by SendSys.
   // When the user changes fee rate in SendSys and clicks "Next", SendSys recalculates
@@ -1327,7 +1319,12 @@ export const SendConfirm = () => {
     }
   };
 
-  const handleConfirm = () => submission.run(performConfirm);
+  const handleConfirm = () =>
+    submission.run(performConfirm).catch((error) => {
+      if (!submission.isActive()) return;
+      logError('error', 'Transaction', error);
+      alert.error(t('send.cantCompleteTxs'));
+    });
 
   // Initialize fee for UTXO transactions
   useEffect(() => {
@@ -1656,19 +1653,34 @@ export const SendConfirm = () => {
 
   // Navigate home with success feedback when the transaction is submitted
   useEffect(() => {
-    if (confirmed) {
+    if (confirmed && submission.isActive()) {
       alert.success(t('send.txSuccessfullMessage'));
       navigate('/home');
     }
-  }, [confirmed, alert, t, navigate]);
+  }, [confirmed, alert, t, navigate, submission.isActive]);
 
   // A Confirm page without transaction data is unusable (e.g. stale
   // restored route): redirect home instead of rendering a blank screen
   useEffect(() => {
-    if (!basicTxValues && !confirmed) {
-      navigate('/home');
+    if (!submission.hasUsableEntry && !confirmed && submission.ownsRoute()) {
+      navigateBack(navigate, {
+        state: { returnContext: submission.returnContext },
+      });
     }
-  }, [basicTxValues, confirmed, navigate]);
+  }, [
+    submission.hasUsableEntry,
+    submission.ownsRoute,
+    submission.returnContext,
+    confirmed,
+    navigate,
+  ]);
+
+  const cancelConfirmation = () => {
+    if (!submission.ownsRoute()) return;
+    navigateBack(navigate, {
+      state: { returnContext: submission.returnContext },
+    });
+  };
 
   // Don't render main content if transaction is confirmed (toast will show)
   // The overlay handles loading display, so we just check for confirmed state
@@ -2304,10 +2316,7 @@ export const SendConfirm = () => {
             <Button
               type="button"
               disabled={loading || submission.pending}
-              onClick={async () => {
-                await clearNavigationState();
-                navigate('/home');
-              }}
+              onClick={cancelConfirmation}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
             >
               {t('buttons.cancel')}
@@ -2336,6 +2345,20 @@ export const SendConfirm = () => {
           )}
         </div>
       ) : null}
+      {!basicTxValues && submission.interrupted && (
+        <div className="text-center">
+          <p role="status" className="text-sm text-brand-gray200">
+            {t(
+              submission.unknown
+                ? 'send.submissionStatusUnknown'
+                : 'send.cantCompleteTxs'
+            )}
+          </p>
+          <Button type="button" onClick={cancelConfirmation}>
+            {t('buttons.cancel')}
+          </Button>
+        </div>
+      )}
     </>
   );
 };

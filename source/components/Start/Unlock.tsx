@@ -9,7 +9,7 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { extractErrorMessage } from 'utils/index';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 
 const Unlock: React.FC<{
   externalRoute: string;
@@ -57,7 +57,7 @@ const Unlock: React.FC<{
       ) {
         // This is an authentication popup - dispatch success
         // Let the pipeline continue and close when the final response is ready
-        clearNavigationState();
+        await clearTransactionNavigationState();
         dispatchBackgroundEvent(`${eventName}.${host}`, null);
         window.close();
         // Note: Window will be closed by popup promise after pipeline completes

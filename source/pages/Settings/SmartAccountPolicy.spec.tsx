@@ -24,6 +24,17 @@ jest.mock('components/Loading', () => ({
   PqSigningOverlay: 'div',
 }));
 jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
+jest.mock('hooks/controllerStatus', () => ({
+  getControllerStatus: () => ({
+    isUnlocked: true,
+    isLoading: false,
+    connectionUnavailable: false,
+  }),
+}));
+jest.mock('utils/navigationState', () => ({
+  ...jest.requireActual('utils/navigationState'),
+  getWalletNavigationScope: () => ({ account: 'account:1', network: '57057' }),
+}));
 jest.mock('hooks/useUtils', () => ({ useUtils: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));

@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon } from 'components/index';
 import { PqOperationStatus, PqSigningOverlay } from 'components/Loading';
+import { getControllerStatus } from 'hooks/controllerStatus';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -17,7 +18,10 @@ import {
   SmartAccountValidatorModule,
 } from 'types/network';
 import { getAddress } from 'utils/ethersV6Compat';
-import { captureNavigationScroll } from 'utils/navigationState';
+import {
+  captureNavigationScroll,
+  getWalletNavigationScope,
+} from 'utils/navigationState';
 import {
   bytesToHex,
   createPasskeyCredential,
@@ -172,6 +176,55 @@ const SmartAccountPolicy = () => {
       ? KeyringAccountType.SmartAccount
       : activeAccount.type;
   const account = accounts[selectedAccountType]?.[selectedAccountId] as any;
+  const mountedRef = useRef(true);
+  const latestLocationRef = useRef(location);
+  const selectedAccountKey = `${selectedAccountType}:${selectedAccountId}:${
+    account?.address || ''
+  }`;
+  const latestSelectedAccountRef = useRef(selectedAccountKey);
+  const scopeKey = JSON.stringify(getWalletNavigationScope());
+  latestLocationRef.current = location;
+  latestSelectedAccountRef.current = selectedAccountKey;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // An approved operation may finish after leaving this page. Reconcile its
+  // credentials, but keep prompts, feedback and navigation in their exact entry.
+  // Settled busy-state cleanup may follow a same-route pane change; never clear
+  // it while an operation is pending or after its account/scope has changed.
+  const createUiGuard = () => {
+    const origin = location;
+    const originRoute = origin.pathname + origin.search + origin.hash;
+    return (requireTrustedAuth = true) => {
+      const current = latestLocationRef.current;
+      const status = getControllerStatus();
+      const nativeRoute =
+        typeof window !== 'undefined' && window.location.hash.startsWith('#/')
+          ? window.location.hash.slice(1)
+          : undefined;
+      const nativeKey =
+        typeof window === 'undefined' ? undefined : window.history.state?.key;
+      return (
+        mountedRef.current &&
+        (!requireTrustedAuth || current.key === origin.key) &&
+        current.pathname + current.search + current.hash === originRoute &&
+        latestSelectedAccountRef.current === selectedAccountKey &&
+        scopeKey === JSON.stringify(getWalletNavigationScope()) &&
+        (!nativeRoute || nativeRoute === originRoute) &&
+        (!requireTrustedAuth ||
+          typeof nativeKey !== 'string' ||
+          typeof origin.key !== 'string' ||
+          nativeKey === origin.key) &&
+        (!requireTrustedAuth ||
+          (status.isUnlocked &&
+            !status.isLoading &&
+            !status.connectionUnavailable))
+      );
+    };
+  };
   const [metadata, setMetadata] = useState<ISmartAccountMetadata | null>(
     account?.smartAccount || null
   );
@@ -258,10 +311,27 @@ const SmartAccountPolicy = () => {
     number | undefined
   >();
   const slhDsaFinalizeRef = useRef(false);
+  const slhDsaSetupOwnerRef = useRef('');
   const validatorSwitchRef = useRef<{
     key: string;
     promise: Promise<void>;
   } | null>(null);
+  useEffect(() => {
+    setLoading(false);
+    setModuleActionKey('');
+    setGuardianLoading(false);
+    setGuardianStep('');
+    setIsSLHDSASigning(false);
+    setShouldFinalizeSLHDSASetup(false);
+    setSlhDsaActionStartedAt(undefined);
+    setIsGuardianPolicyUpdateConfirmOpen(false);
+    setIsPasskeyRecreateConfirmOpen(false);
+    setIsSLHDSASetupConfirmOpen(false);
+    setReplacementEcdsaOwner('');
+    slhDsaFinalizeRef.current = false;
+    slhDsaSetupOwnerRef.current = '';
+    validatorSwitchRef.current = null;
+  }, [scopeKey, selectedAccountKey]);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
     metadata?.installedModules?.map((module) => module.id) || []
@@ -446,7 +516,9 @@ const SmartAccountPolicy = () => {
         JSON.stringify(credential)
       );
     }
-    setGuardianReplacementStorageVersion((version) => version + 1);
+    if (createUiGuard()()) {
+      setGuardianReplacementStorageVersion((version) => version + 1);
+    }
   };
 
   const clearGuardianReplacementCredential = () => {
@@ -458,7 +530,9 @@ const SmartAccountPolicy = () => {
         )
       );
     }
-    setGuardianReplacementStorageVersion((version) => version + 1);
+    if (createUiGuard()()) {
+      setGuardianReplacementStorageVersion((version) => version + 1);
+    }
   };
 
   const normalizeSLHDSAConfig = (
@@ -504,18 +578,29 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount) {
       return null;
     }
+    const isCurrentUi = createUiGuard();
     const hydrated = (await controllerEmitter(
       ['wallet', 'hydrateSmartAccount'],
       [account.id],
       300000
     )) as ISmartAccountMetadata;
-    setMetadata(hydrated);
+    if (isCurrentUi()) setMetadata(hydrated);
     return hydrated;
   };
 
   useEffect(() => {
-    const cachedMetadata = account?.smartAccount || null;
-    setMetadata(cachedMetadata);
+    // Background reconciliation is authoritative for the selected account,
+    // including an operation that settled after a same-route pane change.
+    if (
+      latestSelectedAccountRef.current === selectedAccountKey &&
+      scopeKey === JSON.stringify(getWalletNavigationScope())
+    ) {
+      setMetadata(account?.smartAccount || null);
+    }
+  }, [account?.smartAccount, selectedAccountKey, scopeKey]);
+
+  useEffect(() => {
+    const cachedMetadata = account?.smartAccount;
     if (
       account?.isSmartAccount &&
       cachedMetadata?.isDeployed &&
@@ -523,10 +608,11 @@ const SmartAccountPolicy = () => {
     ) {
       refreshMetadata().catch(() => undefined);
     }
-  }, [account?.address, account?.id]);
+  }, [account?.address, account?.id, location.key, scopeKey]);
 
   useEffect(() => {
     let cancelled = false;
+    const isCurrentUi = createUiGuard();
     if (!account?.isSmartAccount) {
       setSlhDsaSetupStatus(null);
       return () => undefined;
@@ -539,11 +625,11 @@ const SmartAccountPolicy = () => {
           [{ accountId: account.id }],
           300000
         )) as SLHDSASetupStatus | null;
-        if (!cancelled) {
+        if (!cancelled && isCurrentUi()) {
           setSlhDsaSetupStatus(status);
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && isCurrentUi()) {
           setSlhDsaSetupStatus(null);
         }
       }
@@ -558,10 +644,17 @@ const SmartAccountPolicy = () => {
         window.clearInterval(interval);
       }
     };
-  }, [account?.id, account?.isSmartAccount, controllerEmitter]);
+  }, [
+    account?.id,
+    account?.isSmartAccount,
+    controllerEmitter,
+    location.key,
+    scopeKey,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
+    const isCurrentUi = createUiGuard();
     setGuardianStatus(null);
     if (
       !account?.isSmartAccount ||
@@ -580,17 +673,17 @@ const SmartAccountPolicy = () => {
       300000
     )
       .then((status) => {
-        if (!cancelled) {
+        if (!cancelled && isCurrentUi()) {
           setGuardianStatus(status as GuardianRecoveryStatus);
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && isCurrentUi()) {
           setGuardianStatus(null);
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && isCurrentUi(false)) {
           setGuardianStatusLoading(false);
         }
       });
@@ -602,7 +695,9 @@ const SmartAccountPolicy = () => {
     account?.isSmartAccount,
     controllerEmitter,
     hasGuardianRecovery,
+    location.key,
     smartAccountAddress,
+    scopeKey,
   ]);
 
   useEffect(() => {
@@ -669,6 +764,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
     const submit = (
       smartAccount: ISmartAccountMetadata,
       useCachedMetadata?: boolean
@@ -680,12 +776,12 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions,
         onAuthenticatorSigningResolved: (authenticatorId) => {
-          if (authenticatorId === 'slh-dsa') {
+          if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
           }
         },
         onAuthenticatorSigningStarted: (authenticatorId) => {
-          if (authenticatorId === 'slh-dsa') {
+          if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(true);
           }
         },
@@ -719,7 +815,7 @@ const SmartAccountPolicy = () => {
         await refreshMetadata();
       }
     } finally {
-      setIsSLHDSASigning(false);
+      if (isCurrentUi(false)) setIsSLHDSASigning(false);
     }
   };
 
@@ -729,6 +825,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
     const activeValidator = metadata.installedModules?.find(
       (module) =>
         module.type === 'validator' &&
@@ -771,12 +868,12 @@ const SmartAccountPolicy = () => {
         controllerEmitter,
         executions: plan.executions,
         onAuthenticatorSigningResolved: (authenticatorId) => {
-          if (authenticatorId === 'slh-dsa') {
+          if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
           }
         },
         onAuthenticatorSigningStarted: (authenticatorId) => {
-          if (authenticatorId === 'slh-dsa') {
+          if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(true);
           }
         },
@@ -787,7 +884,6 @@ const SmartAccountPolicy = () => {
       });
       const hydrated = await refreshMetadata();
       if (hydrated) {
-        setMetadata(hydrated);
         if (
           hydrated.auth?.validator?.toLowerCase() !==
           plan.targetValidator.toLowerCase()
@@ -806,7 +902,7 @@ const SmartAccountPolicy = () => {
       if (validatorSwitchRef.current?.promise === switchPromise) {
         validatorSwitchRef.current = null;
       }
-      setIsSLHDSASigning(false);
+      if (isCurrentUi(false)) setIsSLHDSASigning(false);
     }
   };
 
@@ -830,6 +926,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
     setLoading(true);
     try {
       await controllerEmitter(
@@ -838,8 +935,9 @@ const SmartAccountPolicy = () => {
         300000
       );
       await refreshMetadata();
-      alert.success(t('settings.smartAccountRegistered'));
+      if (isCurrentUi()) alert.success(t('settings.smartAccountRegistered'));
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         alert.error(
@@ -852,7 +950,7 @@ const SmartAccountPolicy = () => {
         );
       }
     } finally {
-      setLoading(false);
+      if (isCurrentUi(false)) setLoading(false);
     }
   };
 
@@ -913,6 +1011,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
     setLoading(true);
     setModuleActionKey('p256-webauthn:use');
     try {
@@ -941,7 +1040,7 @@ const SmartAccountPolicy = () => {
         } catch {
           // Verification failed or was cancelled: ask before minting a new
           // passkey so a cancelled prompt never silently creates duplicates.
-          setIsPasskeyRecreateConfirmOpen(true);
+          if (isCurrentUi()) setIsPasskeyRecreateConfirmOpen(true);
           return;
         }
         const reusedProfile: IPasskeyCredentialProfile = {
@@ -967,7 +1066,9 @@ const SmartAccountPolicy = () => {
         if (!setActivePasskeyRecord(account.address, reusedProfile)) {
           throw new Error(t('connections.smartAccountPasskeySaveFailed'));
         }
-        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+        if (isCurrentUi()) {
+          alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+        }
         return;
       }
 
@@ -991,8 +1092,11 @@ const SmartAccountPolicy = () => {
       if (!setActivePasskeyRecord(account.address, profile)) {
         throw new Error(t('connections.smartAccountPasskeySaveFailed'));
       }
-      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      if (isCurrentUi()) {
+        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      }
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         const message =
@@ -1007,8 +1111,10 @@ const SmartAccountPolicy = () => {
         alert.error(message);
       }
     } finally {
-      setModuleActionKey('');
-      setLoading(false);
+      if (isCurrentUi(false)) {
+        setModuleActionKey('');
+        setLoading(false);
+      }
     }
   };
 
@@ -1016,6 +1122,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata || !walletManagementAddress) {
       return;
     }
+    const isCurrentUi = createUiGuard();
     const ecdsaValidator = getConfiguredAuthenticatorAddress(
       activeNetwork.chainId,
       'ecdsa'
@@ -1046,8 +1153,11 @@ const SmartAccountPolicy = () => {
           ],
         },
       });
-      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      if (isCurrentUi()) {
+        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      }
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         alert.error(
@@ -1060,8 +1170,10 @@ const SmartAccountPolicy = () => {
         );
       }
     } finally {
-      setModuleActionKey('');
-      setLoading(false);
+      if (isCurrentUi(false)) {
+        setModuleActionKey('');
+        setLoading(false);
+      }
     }
   };
 
@@ -1071,6 +1183,7 @@ const SmartAccountPolicy = () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
 
     const activeSLHDSAValidator = metadata.installedModules?.find(
       (module) =>
@@ -1090,7 +1203,9 @@ const SmartAccountPolicy = () => {
           'Prepared SLH-DSA key does not match the active validator'
         );
       }
-      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      if (isCurrentUi()) {
+        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      }
       return;
     }
 
@@ -1105,14 +1220,18 @@ const SmartAccountPolicy = () => {
       [{ accountId: account.id }],
       300000
     );
-    setSlhDsaSetupStatus(null);
-    alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+    if (isCurrentUi()) {
+      setSlhDsaSetupStatus(null);
+      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+    }
   };
 
   const setupSLHDSAAuthenticator = async () => {
     if (!account?.isSmartAccount || !metadata) {
       return;
     }
+    const isCurrentUi = createUiGuard();
+    slhDsaSetupOwnerRef.current = `${scopeKey}:${selectedAccountKey}`;
 
     setIsSLHDSASetupConfirmOpen(false);
     setLoading(true);
@@ -1148,7 +1267,7 @@ const SmartAccountPolicy = () => {
       const installedSLHDSAConfig = getInstalledSLHDSAValidatorConfig();
       if (!forceRegenerate && installedSLHDSAConfig) {
         if (await hasLocalSLHDSAState(installedSLHDSAConfig)) {
-          setShouldFinalizeSLHDSASetup(false);
+          if (isCurrentUi()) setShouldFinalizeSLHDSASetup(false);
           await finalizeSLHDSASetup(installedSLHDSAConfig);
           return;
         }
@@ -1159,12 +1278,12 @@ const SmartAccountPolicy = () => {
         preparedSLHDSAConfig &&
         (await hasLocalSLHDSAState(preparedSLHDSAConfig))
       ) {
-        setShouldFinalizeSLHDSASetup(false);
+        if (isCurrentUi()) setShouldFinalizeSLHDSASetup(false);
         await finalizeSLHDSASetup(preparedSLHDSAConfig);
         return;
       }
 
-      setShouldFinalizeSLHDSASetup(true);
+      if (isCurrentUi()) setShouldFinalizeSLHDSASetup(true);
       const status = (await controllerEmitter(
         ['wallet', 'startSLHDSASmartAccountValidatorSetup'],
         [
@@ -1177,8 +1296,9 @@ const SmartAccountPolicy = () => {
         ],
         300000
       )) as SLHDSASetupStatus;
-      setSlhDsaSetupStatus(status);
+      if (isCurrentUi()) setSlhDsaSetupStatus(status);
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       setShouldFinalizeSLHDSASetup(false);
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
@@ -1194,9 +1314,11 @@ const SmartAccountPolicy = () => {
         alert.error(message);
       }
     } finally {
-      setModuleActionKey('');
-      setSlhDsaActionStartedAt(undefined);
-      setLoading(false);
+      if (isCurrentUi(false)) {
+        setModuleActionKey('');
+        setSlhDsaActionStartedAt(undefined);
+        setLoading(false);
+      }
     }
   };
 
@@ -1206,6 +1328,7 @@ const SmartAccountPolicy = () => {
       !slhDsaSetupStatus.config ||
       !slhDsaSetupStatus.canFinalize ||
       !shouldFinalizeSLHDSASetup ||
+      slhDsaSetupOwnerRef.current !== `${scopeKey}:${selectedAccountKey}` ||
       slhDsaFinalizeRef.current ||
       !account?.isSmartAccount ||
       !metadata
@@ -1213,12 +1336,14 @@ const SmartAccountPolicy = () => {
       return;
     }
 
+    const isCurrentUi = createUiGuard();
     slhDsaFinalizeRef.current = true;
     setLoading(true);
     setModuleActionKey('slh-dsa:use');
     setSlhDsaActionStartedAt(Date.now());
     finalizeSLHDSASetup(slhDsaSetupStatus.config)
       .catch((error: any) => {
+        if (!isCurrentUi()) return;
         const wasHandled = handleWalletLockedError(error);
         if (!wasHandled) {
           alert.error(
@@ -1232,11 +1357,14 @@ const SmartAccountPolicy = () => {
         }
       })
       .finally(() => {
-        slhDsaFinalizeRef.current = false;
-        setShouldFinalizeSLHDSASetup(false);
-        setModuleActionKey('');
-        setSlhDsaActionStartedAt(undefined);
-        setLoading(false);
+        if (isCurrentUi(false)) {
+          slhDsaFinalizeRef.current = false;
+          slhDsaSetupOwnerRef.current = '';
+          setShouldFinalizeSLHDSASetup(false);
+          setModuleActionKey('');
+          setSlhDsaActionStartedAt(undefined);
+          setLoading(false);
+        }
       });
   }, [
     shouldFinalizeSLHDSASetup,
@@ -1246,6 +1374,7 @@ const SmartAccountPolicy = () => {
   ]);
 
   const installGuardianRecovery = async () => {
+    const isCurrentUi = createUiGuard();
     setIsGuardianPolicyUpdateConfirmOpen(false);
     if (!metadata || !normalizedGuardianAddress) {
       alert.error(t('settings.invalidSmartAccountGuardianAddress'));
@@ -1309,6 +1438,7 @@ const SmartAccountPolicy = () => {
           recoveryOperation: undefined,
         });
       }
+      if (!isCurrentUi()) return;
       setGuardianStatus((currentStatus) =>
         currentStatus
           ? {
@@ -1335,6 +1465,7 @@ const SmartAccountPolicy = () => {
           : t('settings.smartAccountGuardianRecoveryConnected')
       );
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         try {
@@ -1342,6 +1473,7 @@ const SmartAccountPolicy = () => {
         } catch {
           // Keep the original action error as the user-facing result.
         }
+        if (!isCurrentUi()) return;
         const fallbackMessage = hasGuardianRecovery
           ? t('settings.smartAccountGuardianRecoveryPolicyUpdateFailed')
           : t('settings.smartAccountGuardianRecoveryConnectFailed');
@@ -1353,8 +1485,11 @@ const SmartAccountPolicy = () => {
         alert.error(errorMessage);
       }
     } finally {
-      setModuleActionKey('');
-      setLoading(false);
+      if (isCurrentUi(false)) {
+        setModuleActionKey('');
+        setLoading(false);
+        setGuardianReplacementStorageVersion((version) => version + 1);
+      }
     }
   };
 
@@ -1368,6 +1503,7 @@ const SmartAccountPolicy = () => {
   };
 
   const startGuardianRecovery = async () => {
+    const isCurrentUi = createUiGuard();
     if (!smartAccountAddress || !guardianPolicyReady) {
       alert.error(t('settings.smartAccountGuardianRecoveryNotConnected'));
       return;
@@ -1513,11 +1649,13 @@ const SmartAccountPolicy = () => {
         };
       }
 
-      setGuardianStep(
-        replacementAuthenticator === 'ecdsa'
-          ? t('settings.smartAccountGuardianRecoveryStepAuthenticatorProof')
-          : t('settings.smartAccountGuardianRecoveryStepSubmit')
-      );
+      if (isCurrentUi()) {
+        setGuardianStep(
+          replacementAuthenticator === 'ecdsa'
+            ? t('settings.smartAccountGuardianRecoveryStepAuthenticatorProof')
+            : t('settings.smartAccountGuardianRecoveryStepSubmit')
+        );
+      }
       const preparedRecovery = (await controllerEmitter(
         ['wallet', 'prepareSmartAccountGuardianStartRecovery'],
         [{ account: smartAccountAddress, guardian, target }],
@@ -1591,8 +1729,11 @@ const SmartAccountPolicy = () => {
         recoveryOperation,
       };
       storeGuardianReplacementCredential(credentialWithOperation);
-      alert.success(t('settings.smartAccountGuardianRecoveryStarted'));
+      if (isCurrentUi()) {
+        alert.success(t('settings.smartAccountGuardianRecoveryStarted'));
+      }
     } catch (error: any) {
+      if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         // Keep the stored replacement credential: it has no recovery
@@ -1610,12 +1751,16 @@ const SmartAccountPolicy = () => {
         alert.error(errorMessage);
       }
     } finally {
-      setGuardianLoading(false);
-      setGuardianStep('');
+      if (isCurrentUi(false)) {
+        setGuardianLoading(false);
+        setGuardianStep('');
+        setGuardianReplacementStorageVersion((version) => version + 1);
+      }
     }
   };
 
   const finalizeGuardianRecovery = async () => {
+    const isCurrentUi = createUiGuard();
     if (!smartAccountAddress || !activeGuardianReplacement?.recoveryOperation) {
       alert.error(t('settings.smartAccountGuardianRecoveryFinalizeFailed'));
       return;
@@ -1666,10 +1811,29 @@ const SmartAccountPolicy = () => {
         }
       }
       clearGuardianReplacementCredential();
-      setGuardianRecoveryView(false);
       await refreshMetadata();
+      if (!isCurrentUi()) return;
       alert.success(t('settings.smartAccountGuardianRecoveryFinalized'));
+      setGuardianRecoveryView(false);
     } catch (error: any) {
+      if (!isCurrentUi()) {
+        // These records describe an on-chain recovery, so reconcile the
+        // originating account even when its Settings entry has departed.
+        if (isGuardianRecoveryPolicyChangedError(error)) {
+          storeGuardianReplacementCredential(
+            clearStaleGuardianRecoveryOperation(
+              activeGuardianReplacement,
+              error
+            )
+          );
+        } else if (isGuardianRecoveryExpiredError(error)) {
+          storeGuardianReplacementCredential({
+            ...activeGuardianReplacement,
+            recoveryOperation: undefined,
+          });
+        }
+        return;
+      }
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
         if (isGuardianRecoveryPolicyChangedError(error)) {
@@ -1713,8 +1877,11 @@ const SmartAccountPolicy = () => {
         alert.error(errorMessage);
       }
     } finally {
-      setGuardianLoading(false);
-      setGuardianStep('');
+      if (isCurrentUi(false)) {
+        setGuardianLoading(false);
+        setGuardianStep('');
+        setGuardianReplacementStorageVersion((version) => version + 1);
+      }
     }
   };
 

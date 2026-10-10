@@ -498,7 +498,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         navigateWithContext(
           navigate,
           '/send/confirm',
-          { tx: txData, transactionType: TransactionType.UTXO },
+          {
+            submissionStarted: false,
+            tx: txData,
+            transactionType: TransactionType.UTXO,
+          },
           returnContext
         );
       } else {
@@ -593,6 +597,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           navigate,
           '/send/confirm',
           {
+            submissionStarted: false,
             tx: {
               sender: activeAccount?.address,
               receivingAddress: receiver,

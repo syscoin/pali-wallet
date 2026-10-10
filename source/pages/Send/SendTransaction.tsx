@@ -27,7 +27,7 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
@@ -150,6 +150,15 @@ export const SendTransaction = () => {
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [closing, setClosing] = useState(false);
+  const approvalActionRef = React.useRef<
+    'ready' | 'submitting' | 'dismissed' | 'completed'
+  >('ready');
+  const mountedRef = React.useRef(true);
+  const closeGenerationRef = React.useRef(0);
+  const closeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
   const [tx, setTx] = useState<ITxState>();
@@ -431,7 +440,59 @@ export const SendTransaction = () => {
         decodedTxData?.method === 'approve' && isMaxUint256(rawApprovalAmount),
     });
 
-  const handleConfirm = async () => {
+  const invalidatePendingClose = () => {
+    closeGenerationRef.current += 1;
+    if (closeTimeoutRef.current !== null) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleErrorClose = (delay: number, generation: number) => {
+    if (
+      !mountedRef.current ||
+      generation !== closeGenerationRef.current ||
+      approvalActionRef.current === 'dismissed' ||
+      approvalActionRef.current === 'completed'
+    )
+      return;
+    if (closeTimeoutRef.current !== null) clearTimeout(closeTimeoutRef.current);
+    const timeout = setTimeout(async () => {
+      if (
+        !mountedRef.current ||
+        generation !== closeGenerationRef.current ||
+        closeTimeoutRef.current !== timeout ||
+        approvalActionRef.current !== 'ready'
+      )
+        return;
+      approvalActionRef.current = 'dismissed';
+      closeTimeoutRef.current = null;
+      setClosing(true);
+      try {
+        await clearTransactionNavigationState();
+      } catch (error) {
+        console.error(
+          '[SendTransaction] Failed to clear navigation state on error close:',
+          error
+        );
+      } finally {
+        if (mountedRef.current && generation === closeGenerationRef.current)
+          window.close();
+      }
+    }, delay);
+    closeTimeoutRef.current = timeout;
+    return timeout;
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      invalidatePendingClose();
+    };
+  }, []);
+
+  const submitTransaction = async (generation: number) => {
     if (hasInvalidApprovalDetails) {
       alert.error(t('send.invalidApprovalDetails'));
       return;
@@ -719,6 +780,10 @@ export const SendTransaction = () => {
           );
         }
 
+        if (!mountedRef.current || generation !== closeGenerationRef.current)
+          return response.hash;
+        invalidatePendingClose();
+        approvalActionRef.current = 'completed';
         setConfirmed(true);
 
         // Store the response data for dispatch later
@@ -748,8 +813,10 @@ export const SendTransaction = () => {
         alert.error(t('send.cantCompleteTxs'));
 
         if (isExternal) {
-          clearNavigationState();
-          setTimeout(window.close, 4000);
+          if (!mountedRef.current || generation !== closeGenerationRef.current)
+            return error;
+          await clearTransactionNavigationState();
+          scheduleErrorClose(4000, generation);
         } else {
           setLoading(false);
         }
@@ -761,8 +828,44 @@ export const SendTransaction = () => {
       setLoading(false);
       alert.error(t('send.enoughFunds'));
       if (isExternal) {
-        clearNavigationState();
-        setTimeout(window.close, 2000);
+        if (!mountedRef.current || generation !== closeGenerationRef.current)
+          return;
+        await clearTransactionNavigationState();
+        scheduleErrorClose(2000, generation);
+      }
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    invalidatePendingClose();
+    const generation = closeGenerationRef.current;
+    approvalActionRef.current = 'submitting';
+    try {
+      return await submitTransaction(generation);
+    } finally {
+      if (approvalActionRef.current === 'submitting')
+        approvalActionRef.current = 'ready';
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    invalidatePendingClose();
+    const generation = closeGenerationRef.current;
+    approvalActionRef.current = 'dismissed';
+    setClosing(true);
+    try {
+      await clearTransactionNavigationState();
+    } catch (error) {
+      console.error(
+        '[SendTransaction] Failed to clear navigation state on cancel:',
+        error
+      );
+    } finally {
+      if (mountedRef.current && generation === closeGenerationRef.current) {
+        if (isExternal) window.close();
+        else navigate('/home');
       }
     }
   };
@@ -770,7 +873,8 @@ export const SendTransaction = () => {
   useEffect(() => {
     const abortController = new AbortController();
     let isMounted = true;
-    let closeTimeoutId: NodeJS.Timeout | null = null;
+    const generation = closeGenerationRef.current;
+    let feeErrorCloseTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const getGasAndFunction = async () => {
       try {
@@ -813,12 +917,17 @@ export const SendTransaction = () => {
           return;
         }
 
-        if (isMounted) {
+        if (
+          isMounted &&
+          mountedRef.current &&
+          generation === closeGenerationRef.current
+        ) {
           setInitialLoading(false);
           logError('error getting fees', 'Transaction', e);
           alert.error(t('send.txWillFail'), e);
-          clearNavigationState();
-          closeTimeoutId = setTimeout(window.close, 3000);
+          await clearTransactionNavigationState();
+          if (!isMounted) return;
+          feeErrorCloseTimeout = scheduleErrorClose(3000, generation) ?? null;
         }
       }
     };
@@ -837,8 +946,12 @@ export const SendTransaction = () => {
     return () => {
       isMounted = false;
       abortController.abort();
-      if (closeTimeoutId) {
-        clearTimeout(closeTimeoutId);
+      if (
+        feeErrorCloseTimeout !== null &&
+        closeTimeoutRef.current === feeErrorCloseTimeout
+      ) {
+        clearTimeout(feeErrorCloseTimeout);
+        closeTimeoutRef.current = null;
       }
     };
   }, [
@@ -922,19 +1035,44 @@ export const SendTransaction = () => {
   useEffect(() => {
     if (confirmed) {
       // Clear navigation state when actually navigating
-      clearNavigationState();
+      const cleanup = clearTransactionNavigationState().then(
+        () => true,
+        (error) => {
+          console.error(
+            '[SendTransaction] Failed to clear navigation state on success:',
+            error
+          );
+          return false;
+        }
+      );
 
       if (isExternal) {
         // Show success toast
         alert.success(t('transactions.youCanCheckYour'));
         // Close window after showing success message
-        setTimeout(() => {
+        const generation = closeGenerationRef.current;
+        if (closeTimeoutRef.current !== null)
+          clearTimeout(closeTimeoutRef.current);
+        const timeout = setTimeout(async () => {
+          if (
+            !mountedRef.current ||
+            generation !== closeGenerationRef.current ||
+            closeTimeoutRef.current !== timeout ||
+            approvalActionRef.current !== 'completed'
+          )
+            return;
+          approvalActionRef.current = 'dismissed';
+          closeTimeoutRef.current = null;
+          if (!(await cleanup)) return;
+          if (!mountedRef.current || generation !== closeGenerationRef.current)
+            return;
           if (txResponse) {
             // Dispatch event right before closing
             dispatchBackgroundEvent(`${eventName}.${host}`, txResponse);
           }
           window.close();
         }, 2000);
+        closeTimeoutRef.current = timeout;
       } else {
         // For internal navigation, navigate immediately
         // The loading spinner will disappear when component unmounts
@@ -1366,16 +1504,8 @@ export const SendTransaction = () => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={loading}
-                onClick={async () => {
-                  // Clear navigation state when user cancels/goes away
-                  await clearNavigationState();
-                  if (isExternal) {
-                    window.close();
-                  } else {
-                    navigate('/home');
-                  }
-                }}
+                disabled={loading || closing || confirmed}
+                onClick={handleCancel}
               >
                 {t('buttons.cancel')}
               </Button>
@@ -1384,7 +1514,12 @@ export const SendTransaction = () => {
                 variant="primary"
                 type="button"
                 loading={loading}
-                disabled={hasTxDataError || hasInvalidApprovalDetails}
+                disabled={
+                  closing ||
+                  confirmed ||
+                  hasTxDataError ||
+                  hasInvalidApprovalDetails
+                }
                 onClick={handleConfirm}
               >
                 {t('buttons.confirm')}

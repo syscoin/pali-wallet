@@ -637,6 +637,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           navigate,
           '/send/confirm',
           {
+            submissionStarted: false,
             tx: {
               sender: activeAccount.address,
               receivingAddress: values.receiver,

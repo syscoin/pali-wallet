@@ -31,9 +31,28 @@ jest.mock('components/Loading', () => ({
   PqSigningOverlay: 'div',
 }));
 jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
+jest.mock('hooks/controllerStatus', () => ({
+  getControllerStatus: () => ({
+    isUnlocked: true,
+    isLoading: false,
+    connectionUnavailable: false,
+  }),
+}));
+jest.mock('utils/navigationState', () => ({
+  ...jest.requireActual('utils/navigationState'),
+  getWalletNavigationScope: () => ({ account: 'account:1', network: '57057' }),
+}));
 jest.mock('hooks/useUtils', () => ({ useUtils: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
-jest.mock('react-router-dom', () => ({ useLocation: () => ({ state: null }) }));
+jest.mock('react-router-dom', () => ({
+  useLocation: () => ({
+    key: 'policy',
+    pathname: '/settings/account/smart-account-policy',
+    search: '',
+    hash: '',
+    state: null,
+  }),
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));

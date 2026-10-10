@@ -28,10 +28,21 @@ const mockSend = jest.fn();
 let mockPreparation: Promise<void> | undefined;
 let mockRetryWithinAction = false;
 jest.mock('react-redux', () => ({ useSelector: (select: any) => select() }));
-jest.mock('utils/navigationState', () => ({
-  clearNavigationState: () => mockClear(),
-  getWalletNavigationScope: () => SCOPE,
+jest.mock('hooks/controllerStatus', () => ({
+  getControllerStatus: () => ({
+    isUnlocked: true,
+    isLoading: false,
+    connectionUnavailable: false,
+  }),
 }));
+jest.mock('utils/navigationState', () => {
+  const actual = jest.requireActual('utils/navigationState');
+  return {
+    clearTransactionNavigationState: (...args: any[]) => mockClear(...args),
+    getTransactionReturnContext: actual.getTransactionReturnContext,
+    getWalletNavigationScope: () => SCOPE,
+  };
+});
 
 const Draft = () => {
   const navigate = useNavigate();
@@ -40,6 +51,7 @@ const Draft = () => {
       onClick={() =>
         navigate('/send/confirm', {
           state: {
+            submissionStarted: false,
             walletScope: SCOPE,
             tx: {
               psbt: 'synthetic-unsigned-psbt',
@@ -64,8 +76,9 @@ const Confirmation = () => {
     isUnlocked: true,
   });
   useEffect(() => {
-    if (!submission.state?.tx) navigate('/home', { replace: true });
-  }, [submission.state, navigate]);
+    if (!submission.hasUsableEntry && submission.ownsRoute())
+      navigate('/home', { replace: true });
+  }, [submission.hasUsableEntry, submission.ownsRoute, navigate]);
   return (
     <>
       <output data-testid="route-state">
@@ -128,7 +141,10 @@ it('native Back/Forward after an ambiguous submission cannot reconstruct its tra
   fireEvent.click(screen.getByText('Review draft'));
   fireEvent.click(screen.getByText('Confirm once'));
   await waitFor(() => expect(screen.getByText('Unknown outcome')).toBeTruthy());
-  expect(window.history.state.usr).toEqual({ submissionStarted: true });
+  expect(window.history.state.usr).toEqual({
+    submissionStarted: true,
+    walletScope: SCOPE,
+  });
   expect(JSON.stringify(window.history.state)).not.toContain(
     'synthetic-unsigned-psbt'
   );
@@ -183,6 +199,47 @@ it('leaving while storage cleanup is pending prevents the first submission RPC',
   await act(async () => finishDiscard());
   expect(mockSend).not.toHaveBeenCalled();
   expect(screen.getByText('Review draft')).toBeTruthy();
+});
+
+it('a failed mandatory storage discard restores the active idle entry and permits a fresh attempt', async () => {
+  mockClear.mockRejectedValueOnce(new Error('Synthetic storage failure'));
+  mockSend.mockResolvedValue({ txid: 'synthetic-txid' });
+  mount();
+  fireEvent.click(screen.getByText('Review draft'));
+  fireEvent.click(screen.getByText('Confirm once'));
+  expect(mockClear).toHaveBeenCalledWith({
+    requireDiscard: true,
+    assertCurrent: expect.any(Function),
+  });
+  await waitFor(() =>
+    expect(screen.getByText('Confirm once').hasAttribute('disabled')).toBe(
+      false
+    )
+  );
+  expect(mockSend).not.toHaveBeenCalled();
+  expect(window.history.state.usr.tx.psbt).toBe('synthetic-unsigned-psbt');
+  fireEvent.click(screen.getByText('Confirm once'));
+  await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+});
+
+it('a storage discard failure after native departure cannot restore its old confirmation', async () => {
+  let rejectDiscard!: (error: Error) => void;
+  mockClear.mockImplementation(
+    () =>
+      new Promise<void>((_, reject) => {
+        rejectDiscard = reject;
+      })
+  );
+  mount();
+  fireEvent.click(screen.getByText('Review draft'));
+  fireEvent.click(screen.getByText('Confirm once'));
+  act(() => window.history.back());
+  await waitFor(() => expect(screen.getByText('Review draft')).toBeTruthy());
+  await act(async () => rejectDiscard(new Error('Synthetic storage failure')));
+  expect(mockSend).not.toHaveBeenCalled();
+  expect(screen.getByText('Review draft')).toBeTruthy();
+  act(() => window.history.forward());
+  await waitFor(() => expect(screen.getByText('Wallet home')).toBeTruthy());
 });
 
 it('a proven pre-broadcast failure restores only the active unsigned entry and permits retry', async () => {
@@ -249,7 +306,10 @@ it('a successful SDK retry clears the earlier pre-broadcast failure marker and k
   fireEvent.click(screen.getByText('Review draft'));
   fireEvent.click(screen.getByText('Confirm once'));
   await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(2));
-  expect(window.history.state.usr).toEqual({ submissionStarted: true });
+  expect(window.history.state.usr).toEqual({
+    submissionStarted: true,
+    walletScope: SCOPE,
+  });
   expect(screen.getByText('Confirm once').hasAttribute('disabled')).toBe(true);
   fireEvent.click(screen.getByText('Confirm once'));
   expect(mockSend).toHaveBeenCalledTimes(2);

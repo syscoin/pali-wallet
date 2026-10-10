@@ -28,7 +28,10 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
-import { clearNavigationState } from '../../../utils/navigationState';
+import {
+  clearNavigationState,
+  clearTransactionNavigationState,
+} from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import {
   AccountRecoveryRequiredError,
@@ -4620,12 +4623,12 @@ class MainController {
         }
       }
 
-      // Always clear navigation state after successfully saving transaction
+      // Discard transaction drafts while retaining a public caller such as Settings.
       if (clearNavigation) {
         try {
-          await clearNavigationState();
+          await clearTransactionNavigationState();
           console.log(
-            '[MainController] Navigation state cleared after transaction'
+            '[MainController] Transaction navigation cleaned after transaction'
           );
         } catch (e) {
           console.error(
@@ -4719,12 +4722,12 @@ class MainController {
       }
     }
 
-    // Always clear navigation state after successfully saving transaction
+    // Discard transaction drafts while retaining a public caller such as Settings.
     if (clearNavigation) {
       try {
-        await clearNavigationState();
+        await clearTransactionNavigationState();
         console.log(
-          '[MainController] Navigation state cleared after transaction'
+          '[MainController] Transaction navigation cleaned after transaction'
         );
       } catch (e) {
         console.error('[MainController] Failed to clear navigation state:', e);
@@ -4803,10 +4806,12 @@ class MainController {
         throw new Error('Unsupported transaction type for this wrapper');
       }
     } catch (error) {
-      // Clear navigation state on error as well
+      // A failed attempt must not erase the public screen that requested it.
       try {
-        await clearNavigationState();
-        console.error('[MainController] Navigation state cleared on error');
+        await clearTransactionNavigationState();
+        console.error(
+          '[MainController] Transaction navigation cleaned on error'
+        );
       } catch (e) {
         console.error(
           '[MainController] Failed to clear navigation state on error:',
@@ -4960,7 +4965,7 @@ class MainController {
       saveOptions?.assertCurrentContext?.();
       assertExpectedContext();
 
-      // Save the transaction (this will also clear navigation state)
+      // Save the transaction and discard its draft while retaining public browsing.
       const txToSave = transactionMetadata
         ? ({ ...txResponse, ...transactionMetadata } as IEvmTransactionResponse)
         : txResponse;
@@ -4968,10 +4973,10 @@ class MainController {
 
       return txToSave;
     } catch (error) {
-      // Clear navigation state on error as well
+      // Honor callers that retain browsing state (for example guardian settings).
       try {
-        await clearNavigationState();
-        console.error('[MainController] Navigation state cleared on error');
+        if (saveOptions?.clearNavigation !== false)
+          await clearTransactionNavigationState();
       } catch (e) {
         console.error(
           '[MainController] Failed to clear navigation state on error:',
@@ -5557,7 +5562,7 @@ class MainController {
           throw new Error(`Unsupported token type: ${tokenType}`);
       }
 
-      // Save the transaction (this will also clear navigation state)
+      // Save the transaction and discard its draft while retaining public browsing.
       await this.sendAndSaveTransaction({
         ...txResponse,
         // SYSCOIN: Retain the affected contract even before receipt logs exist.
@@ -5566,10 +5571,12 @@ class MainController {
 
       return txResponse;
     } catch (error) {
-      // Clear navigation state on error as well
+      // A failed attempt must not erase the public screen that requested it.
       try {
-        await clearNavigationState();
-        console.error('[MainController] Navigation state cleared on error');
+        await clearTransactionNavigationState();
+        console.error(
+          '[MainController] Transaction navigation cleaned on error'
+        );
       } catch (e) {
         console.error(
           '[MainController] Failed to clear navigation state on error:',
