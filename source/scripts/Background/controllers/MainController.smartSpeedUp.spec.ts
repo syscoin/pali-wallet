@@ -78,29 +78,64 @@ jest.mock('@sidhujag/sysweb3-keyring/cjs/trezor', () => ({
 }));
 
 const aes = jest.requireMock('crypto-js').AES;
-const PAYER = `0x${'11'.repeat(20)}`;
+// Public deterministic fixtures; signing and broadcast remain mocked below.
+const testWallet = new Wallet(`0x${'01'.repeat(32)}`);
+const otherTestWallet = new Wallet(`0x${'02'.repeat(32)}`);
+const PAYER = testWallet.address.toLowerCase();
 const SMART = `0x${'22'.repeat(20)}`;
 const TARGET = `0x${'33'.repeat(20)}`;
-const ORIGINAL = `0x${'44'.repeat(32)}`;
 const REPLACEMENT = `0x${'55'.repeat(32)}`;
 const CHAIN = 5700;
 const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
-const rawOriginal = (fields: any = {}) => ({
-  hash: ORIGINAL,
-  from: PAYER,
-  to: TARGET,
-  nonce: 8,
-  chainId: CHAIN,
-  blockNumber: null,
-  value: BigNumber.from(7),
-  data: '0x1234',
-  type: 2,
-  gasLimit: BigNumber.from(21000),
-  gasPrice: BigNumber.from(100),
-  maxFeePerGas: BigNumber.from(100),
-  maxPriorityFeePerGas: BigNumber.from(10),
-  ...fields,
-});
+const signedOriginal = (legacy = false) => {
+  const unsigned = Transaction.from({
+    type: legacy ? 0 : 2,
+    chainId: CHAIN,
+    nonce: 8,
+    to: TARGET,
+    value: BigInt(7),
+    data: '0x1234',
+    gasLimit: BigInt(21000),
+    ...(legacy
+      ? { gasPrice: BigInt(100) }
+      : {
+          maxFeePerGas: BigInt(100),
+          maxPriorityFeePerGas: BigInt(10),
+          accessList: [],
+        }),
+  });
+  unsigned.signature = testWallet.signingKey.sign(unsigned.unsignedHash);
+  const signed = Transaction.from(unsigned.serialized);
+  return {
+    hash: signed.hash!,
+    from: signed.from!.toLowerCase(),
+    to: signed.to!,
+    nonce: signed.nonce,
+    chainId: Number(signed.chainId),
+    type: signed.type,
+    accessList: signed.accessList,
+    signature: signed.signature!,
+    r: signed.signature!.r,
+    s: signed.signature!.s,
+    v: signed.signature!.networkV?.toString() ?? signed.signature!.v,
+    blockNumber: null,
+    value: BigNumber.from(signed.value),
+    data: signed.data,
+    gasLimit: BigNumber.from(signed.gasLimit),
+    gasPrice: BigNumber.from(signed.gasPrice ?? BigInt(100)),
+    maxFeePerGas:
+      signed.maxFeePerGas === null
+        ? undefined
+        : BigNumber.from(signed.maxFeePerGas),
+    maxPriorityFeePerGas:
+      signed.maxPriorityFeePerGas === null
+        ? undefined
+        : BigNumber.from(signed.maxPriorityFeePerGas),
+  };
+};
+let original = signedOriginal();
+let ORIGINAL = original.hash;
+const rawOriginal = (fields: any = {}) => ({ ...original, ...fields });
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((finish) => (resolve = finish));
@@ -114,7 +149,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   let currentProvider: any;
   let replaceGetter: jest.SpyInstance;
   let alert: { error: jest.Mock; success: jest.Mock; warning: jest.Mock };
-  const response = { ...rawOriginal(), hash: REPLACEMENT };
+  let response: any;
   const transactions = () =>
     mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN];
   const run = (legacy = false, signer = PAYER) =>
@@ -133,6 +168,9 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    original = signedOriginal();
+    ORIGINAL = original.hash;
+    response = { ...rawOriginal(), hash: REPLACEMENT };
     const initial: any = vaultReducer(undefined, { type: 'test/init' });
     mockState = {
       vault: {
@@ -226,6 +264,14 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   it.each([false, true])(
     'uses the actual recorded payer credential and preserves payload/metadata (legacy=%s)',
     async (legacy) => {
+      if (legacy) {
+        original = signedOriginal(true);
+        ORIGINAL = original.hash;
+        Object.assign(transactions()[0], rawOriginal());
+        provider.getTransaction.mockResolvedValue(rawOriginal());
+        response = { ...rawOriginal(), hash: REPLACEMENT };
+        provider.sendTransaction.mockResolvedValue(response);
+      }
       await run(legacy);
       expect(alert.success).toHaveBeenCalledWith(
         'transactions.transactionAcceleratedSuccessfully'
@@ -238,8 +284,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       expect(replaceGetter).not.toHaveBeenCalled();
       expect(mockState.vault.activeAccount).toEqual(owner);
       const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+      expect(replacement.from.toLowerCase()).toBe(PAYER);
       expect(replacement).toMatchObject({
-        from: PAYER,
         to: TARGET,
         nonce: 8,
         data: '0x1234',
@@ -308,6 +354,95 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     expect(mockPersist).not.toHaveBeenCalled();
   });
 
+  it('rejects wrong-hash provider details before receipt queries or SmartAccount owner lookup', async () => {
+    const readOwner = jest.fn(() => SMART);
+    Object.defineProperty(transactions()[0], 'smartAccountExecutionFrom', {
+      configurable: true,
+      get: readOwner,
+    });
+    const wrongTransaction = rawOriginal({ hash: REPLACEMENT });
+    provider.getTransaction.mockResolvedValue(wrongTransaction);
+    provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
+    provider.getBlockNumber = jest.fn().mockResolvedValue(123);
+
+    await expect(
+      wallet.getEvmTransactionFromProvider(ORIGINAL)
+    ).resolves.toBeNull();
+
+    expect(provider.getTransaction).toHaveBeenCalledWith(ORIGINAL);
+    expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(provider.getBlockNumber).not.toHaveBeenCalled();
+    expect(readOwner).not.toHaveBeenCalled();
+    expect(wrongTransaction).not.toHaveProperty('smartAccountExecutionFrom');
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [KeyringAccountType.HDAccount, 'payload'],
+    [KeyringAccountType.HDAccount, 'payer'],
+    [KeyringAccountType.Ledger, 'payload'],
+    [KeyringAccountType.Ledger, 'payer'],
+    [KeyringAccountType.Trezor, 'payload'],
+    [KeyringAccountType.Trezor, 'payer'],
+  ])(
+    'authenticates jointly changed history and RPC %s %s before any signing handoff',
+    async (signerType, changedField) => {
+      const selectedPayer =
+        changedField === 'payer'
+          ? otherTestWallet.address.toLowerCase()
+          : PAYER;
+      const fields =
+        changedField === 'payer'
+          ? { from: selectedPayer }
+          : { to: SMART, value: BigNumber.from(8), data: '0xabcd' };
+      Object.assign(transactions()[0], fields);
+      if (changedField === 'payload') {
+        transactions()[0].value = '8';
+        transactions()[0].input = '0xabcd';
+      }
+      // Both untrusted descriptions agree; the original hash/signature still
+      // authenticates the unchanged public fixture, so neither is authority.
+      provider.getTransaction.mockResolvedValue(rawOriginal(fields));
+      mockState.vault.accounts.HDAccount =
+        signerType === KeyringAccountType.HDAccount
+          ? {
+              3: {
+                id: 3,
+                address: selectedPayer,
+                xprv: 'synthetic-payer-ciphertext',
+              },
+            }
+          : {};
+      if (signerType !== KeyringAccountType.HDAccount)
+        mockState.vault.accounts[signerType] = {
+          4: { id: 4, address: selectedPayer },
+        };
+      const ledgerSign = jest
+        .fn()
+        .mockRejectedValue(new Error('Unexpected device signing'));
+      const trezorSign = jest
+        .fn()
+        .mockRejectedValue(new Error('Unexpected device signing'));
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      jest
+        .mocked(privateKeyToAccount)
+        .mockReturnValue({ address: selectedPayer } as any);
+      await run(false, selectedPayer);
+      expect(alert.error).toHaveBeenCalled();
+      expect(alert.warning).not.toHaveBeenCalled();
+      expect(provider.getBalance).not.toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
   it.each(['account', 'RPC', 'chain', 'provider', 'session', 'payer'])(
     'refuses a %s change during original lookup',
     async (axis) => {
@@ -374,8 +509,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
   });
 
   it('discards a valid hardware signature when the original is superseded during the device request', async () => {
-    // A deterministic test key provides a valid signature without any real wallet.
-    const hardwareWallet = new Wallet(`0x${'01'.repeat(32)}`);
+    const hardwareWallet = testWallet;
     const hardwareAddress = hardwareWallet.address.toLowerCase();
     mockState.vault.accounts.HDAccount = {};
     mockState.vault.accounts.Ledger = {

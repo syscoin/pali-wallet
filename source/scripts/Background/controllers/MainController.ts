@@ -31,6 +31,7 @@ import { getController, notificationManager } from '..';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
+  getWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import {
@@ -4156,26 +4157,37 @@ class MainController {
     chainId: number,
     signerAddress?: string
   ) {
-    const { vault, vaultGlobal } = store.getState();
+    const { vault } = store.getState();
     const accountInfo = { ...vault.activeAccount };
     const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
     const network = { ...vault.activeNetwork };
     const generation = this.walletSessionGeneration;
-    const slip44 = vaultGlobal.activeSlip44;
-    const original = vault.accountTransactions[accountInfo.type]?.[
-      accountInfo.id
-    ]?.ethereum?.[chainId]?.find(
-      (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
-    ) as any;
+    const { account: accountScope, network: networkScope } =
+      getWalletNavigationScope();
+    const findOriginal = (currentVault = vault) =>
+      currentVault.accountTransactions[accountInfo.type]?.[
+        accountInfo.id
+      ]?.ethereum?.[chainId]?.find(
+        (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
+      ) as any;
+    const original = findOriginal();
     const sender = original?.from?.toLowerCase();
     const nonce = getEoaNonceFromHistoryTransaction(
       { ...original, smartAccountExecutionFrom: undefined },
       sender || ''
     );
-    const contextError = () =>
-      Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
+      Object.assign(new Error(message), {
         transactionNotBroadcast: true,
       });
+    const isPendingOriginal = (tx: any) =>
+      tx &&
+      !tx.isReplaced &&
+      tx.status !== 'replaced' &&
+      !isTransactionInBlock(tx) &&
+      tx.smartAccountExecutionFrom?.toLowerCase() ===
+        account.address?.toLowerCase() &&
+      (tx.chainId === undefined || Number(tx.chainId) === chainId);
     if (
       vault.isBitcoinBased ||
       this.isResettingWallet ||
@@ -4185,88 +4197,67 @@ class MainController {
       !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
       !sender ||
       nonce === undefined ||
-      original.isReplaced ||
-      original.status === 'replaced' ||
-      isTransactionInBlock(original) ||
-      original.smartAccountExecutionFrom?.toLowerCase() !==
-        account.address?.toLowerCase() ||
-      (original.chainId !== undefined &&
-        Number(original.chainId) !== chainId) ||
+      !isPendingOriginal(original) ||
       (signerAddress && signerAddress.toLowerCase() !== sender)
     )
       throw contextError();
 
-    const targetAccount = Object.entries(vault.accounts)
-      .filter(([type]) => type !== KeyringAccountType.SmartAccount)
-      .flatMap(([type, accounts]) =>
-        Object.entries(accounts).map(([id, value]) => ({
-          id: Number(id),
-          type: type as KeyringAccountType,
-          value,
-        }))
-      )
-      .find(
-        ({ type, value }) =>
+    let targetAccount: { id: number; type: KeyringAccountType } | undefined;
+    for (const [type, accounts] of Object.entries(vault.accounts)) {
+      if (type === KeyringAccountType.SmartAccount) continue;
+      const found = Object.entries(accounts).find(
+        ([, value]) =>
           value.address?.toLowerCase() === sender &&
-          isAccountCompatibleWithNetwork(value, type, network) &&
+          isAccountCompatibleWithNetwork(
+            value,
+            type as KeyringAccountType,
+            network
+          ) &&
           (type === KeyringAccountType.Ledger ||
             type === KeyringAccountType.Trezor ||
             Boolean(value.xprv))
       );
+      if (found) {
+        targetAccount = {
+          id: Number(found[0]),
+          type: type as KeyringAccountType,
+        };
+        break;
+      }
+    }
     if (!targetAccount)
-      throw Object.assign(
-        new Error(
-          'The original transaction gas payer is not available locally'
-        ),
-        { transactionNotBroadcast: true }
-      );
+      throw contextError('Original gas payer unavailable locally');
 
     const keyring = this.getActiveKeyring();
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
     const assertCurrentContext = () => {
       const current = store.getState();
+      const currentScope = getWalletNavigationScope();
       const currentAccount =
         current.vault.accounts[accountInfo.type]?.[accountInfo.id];
       const payer =
         current.vault.accounts[targetAccount.type]?.[targetAccount.id];
-      const tracked = current.vault.accountTransactions[accountInfo.type]?.[
-        accountInfo.id
-      ]?.ethereum?.[chainId]?.find(
-        (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
-      ) as any;
+      const tracked = findOriginal(current.vault);
       if (
         this.isResettingWallet ||
         this.walletSessionGeneration !== generation ||
         current.vault.isBitcoinBased ||
-        current.vault.activeAccount.type !== accountInfo.type ||
-        current.vault.activeAccount.id !== accountInfo.id ||
-        currentAccount?.address?.toLowerCase() !==
-          account.address.toLowerCase() ||
+        currentScope.account !== accountScope ||
+        currentScope.network !== networkScope ||
         !isAccountCompatibleWithNetwork(
           currentAccount,
           accountInfo.type,
           network
         ) ||
-        current.vault.activeNetwork.chainId !== chainId ||
-        current.vault.activeNetwork.url !== network.url ||
-        current.vault.activeNetwork.kind !== network.kind ||
-        current.vault.activeNetwork.slip44 !== network.slip44 ||
-        current.vaultGlobal.activeSlip44 !== slip44 ||
         this.getActiveKeyring() !== keyring ||
         keyring.ethereumTransaction !== transactionController ||
         transactionController.web3Provider !== provider ||
         payer?.address?.toLowerCase() !== sender ||
         !isAccountCompatibleWithNetwork(payer, targetAccount.type, network) ||
-        !tracked ||
-        tracked.isReplaced ||
-        tracked.status === 'replaced' ||
-        isTransactionInBlock(tracked) ||
-        tracked.smartAccountExecutionFrom?.toLowerCase() !==
-          account.address.toLowerCase() ||
+        !isPendingOriginal(tracked) ||
         tracked.from?.toLowerCase() !== sender ||
-        Number(tracked.nonce) !== nonce ||
-        (tracked.chainId !== undefined && Number(tracked.chainId) !== chainId)
+        Number(tracked.nonce) !== nonce
       )
         throw contextError();
     };
@@ -4275,9 +4266,7 @@ class MainController {
       if (
         isTransactionInBlock(transaction) ||
         transaction.hash?.toLowerCase() !== txHash.toLowerCase() ||
-        transaction.from?.toLowerCase() !== sender ||
-        !Number.isSafeInteger(transaction.nonce) ||
-        transaction.nonce !== nonce ||
+        getEoaNonceFromHistoryTransaction(transaction, sender) !== nonce ||
         (transaction.chainId !== undefined &&
           Number(transaction.chainId) !== chainId) ||
         (original.to !== undefined &&
@@ -4298,7 +4287,7 @@ class MainController {
         txHash,
         isLegacy,
         {
-          targetAccount: { id: targetAccount.id, type: targetAccount.type },
+          targetAccount,
           assertCurrentContext,
           validateOriginal,
           beforeBroadcast: () => {
@@ -7959,7 +7948,7 @@ class MainController {
       const provider = this.ethereumTransaction.web3Provider;
       // Get transaction from provider
       const tx = await provider.getTransaction(hash);
-      if (!tx) return null;
+      if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
 
       // Get receipt for confirmation status
       let receipt = null;

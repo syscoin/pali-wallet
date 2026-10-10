@@ -1,7 +1,8 @@
 diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
+index f1cdbd9..d7ff70a 100644
 --- a/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
 +++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
-@@ -685,10 +685,11 @@
+@@ -685,10 +685,11 @@ class KeyringManager {
           * PRIVATE METHODS
           */
          // ===================================== AUXILIARY METHOD - FOR TRANSACTIONS CLASSES ===================================== //
@@ -16,9 +17,10 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js b/nod
                  const activeAccountType = activeAccount.type;
                  const isLedger = activeAccountType === types_1.KeyringAccountType.Ledger;
 diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
+index b7cfab2..9a4e8ab 100644
 --- a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
 +++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
-@@ -9,6 +9,7 @@
+@@ -9,6 +9,7 @@ const sysweb3_network_1 = require("@sidhujag/sysweb3-network");
  const sysweb3_utils_1 = require("@sidhujag/sysweb3-utils");
  const omit_1 = __importDefault(require("lodash/omit"));
  const ethers_v6_1 = require("../ethers-v6");
@@ -26,7 +28,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
  const providers_1 = require("../providers");
  const types_1 = require("../types");
  const evm_local_signer_1 = require("./evm-local-signer");
-@@ -427,18 +428,18 @@
+@@ -427,18 +428,18 @@ class EthereumTransactions {
                  throw error;
              }
          };
@@ -49,7 +51,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                          maxPriorityFeePerGas = ethers_v6_1.BigNumber.from(ethMaxPriorityFee);
                          // Apply minimum priority fee override if set
                          if (this.gasOverrides.minPriorityFee &&
-@@ -466,7 +467,7 @@
+@@ -466,7 +467,7 @@ class EthereumTransactions {
                          // Use a more aggressive fallback strategy with higher priority fees
                          // Check if we can get fee history for better estimation
                          try {
@@ -58,7 +60,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                                  '0x5', // Last 5 blocks
                                  'latest',
                                  [25, 50, 75], // Percentiles for priority fees
-@@ -499,7 +500,7 @@
+@@ -499,7 +500,7 @@ class EthereumTransactions {
                              // If fee history fails, use current gas price as reference
                              console.warn('Fee history not available, using gas price based estimation');
                              // Use 10% of current gas price as priority fee
@@ -67,7 +69,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                              maxPriorityFeePerGas = currentGasPrice.mul(10).div(100);
                              // Ensure minimum of 1 gwei
                              const minPriority = ethers_v6_1.BigNumber.from('1000000000');
-@@ -508,7 +509,7 @@
+@@ -508,7 +509,7 @@ class EthereumTransactions {
                              }
                          }
                          // Calculate maxFeePerGas based on current network conditions
@@ -76,7 +78,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                          const baselineMaxFee = currentGasPrice.mul(120).div(100);
                          const calculatedMaxFee = baseFeePerGas
                              .mul(250)
-@@ -1060,13 +1061,52 @@
+@@ -1060,13 +1061,83 @@ class EthereumTransactions {
                      return await sendEVMTransaction();
              }
          };
@@ -91,8 +93,8 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
 +                assertCurrent();
 +            };
 +            const assertSignedSender = (signedTx) => {
-+                if (targetAccount && transaction_1.Transaction.from(signedTx).from?.toLowerCase() !== activeAccount.address.toLowerCase()) {
-+                    throw new Error('Replacement signature does not match the signing account');
++                if (transaction_1.Transaction.from(signedTx).from?.toLowerCase() !== expectedSender) {
++                    throw new Error('Replacement signature does not match account');
 +                }
 +            };
 +            assertCurrent();
@@ -107,32 +109,63 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
 +            if (!activeAccount.address || (targetAccount && activeAccountType === types_1.KeyringAccountType.SmartAccount)) {
 +                throw new Error('Replacement signing account is unavailable');
 +            }
++            const expectedSender = activeAccount.address.toLowerCase();
++            const requestedHash = txHash.toLowerCase();
 +            const provider = this.web3Provider;
 +            assertCurrent();
 +            const validateLookup = (transaction) => {
 +                assertCurrent();
-+                if (!transaction) return;
-+                if (targetAccount && (transaction.from?.toLowerCase() !== activeAccount.address.toLowerCase() ||
-+                    (transaction.chainId != null && Number(transaction.chainId) !== Number(activeNetwork.chainId)))) {
-+                    throw new Error('Replacement transaction does not match the signing account or network');
++                if (!transaction) return null;
++                const fields = (0, ethers_v6_1.normalizeTransactionRequest)(transaction);
++                if (fields.hash != null) fields.hash = fields.hash.toLowerCase();
++                const type = fields.type ?? (fields.maxFeePerGas != null ? 2 : fields.accessList != null ? 1 : 0);
++                if (![0, 1, 2].includes(type)) {
++                    throw new Error('Unsupported replacement transaction type');
 +                }
-+                validateOriginal?.(transaction);
++                fields.signature = fields.signature ?? {
++                    r: fields.r, s: fields.s, v: fields.v ?? fields.yParity,
++                };
++                fields.type = type;
++                fields.data = fields.data ?? fields.input ?? '0x';
++                if (type === 2) delete fields.gasPrice; // Effective RPC gas price is not signed in type 2.
++                const original = transaction_1.Transaction.from(fields);
++                if (!original.signature ||
++                    original.hash !== requestedHash ||
++                    original.from?.toLowerCase() !== expectedSender ||
++                    original.chainId !== BigInt(activeNetwork.chainId) ||
++                    (isLegacy && type === 2 && original.accessList.length)) {
++                    throw new Error('Original transaction is not authenticated');
++                }
++                if (isLegacy && type === 1 && activeAccountType === types_1.KeyringAccountType.Trezor) {
++                    throw new Error('Trezor does not support type 1 replacement signing');
++                }
++                // Read only detached, authenticated signed fields after asynchronous work.
++                const authenticated = (0, providers_1.wrapTransactionResponse)({
++                    ...original.toJSON(),
++                    hash: original.hash,
++                    from: original.from,
++                    gasPrice: original.gasPrice ?? 0,
++                    maxFeePerGas: original.maxFeePerGas ?? 0,
++                    maxPriorityFeePerGas: original.maxPriorityFeePerGas ?? 0,
++                    signature: original.signature,
++                    blockNumber: transaction.blockNumber,
++                });
++                validateOriginal?.(authenticated);
 +                assertCurrent();
++                return authenticated;
 +            };
-+            let tx = (await provider.getTransaction(txHash));
-+            validateLookup(tx);
++            let tx = validateLookup(await provider.getTransaction(txHash));
              if (!tx) {
                  // Retry a couple of times in case the node hasn't indexed the pending tx yet
                  for (let attempt = 0; attempt < 2 && !tx; attempt++) {
                      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
 -                    tx = (await this.web3Provider.getTransaction(txHash));
 +                    assertCurrent();
-+                    tx = (await provider.getTransaction(txHash));
-+                    validateLookup(tx);
++                    tx = validateLookup(await provider.getTransaction(txHash));
                  }
                  if (!tx) {
                      return {
-@@ -1077,10 +1117,9 @@
+@@ -1077,10 +1148,9 @@ class EthereumTransactions {
                      };
                  }
              }
@@ -145,7 +178,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
              // Ensure all transaction values are resolved from promises
              const gasLimit = await Promise.resolve(tx.gasLimit);
              const gasPrice = await Promise.resolve(tx.gasPrice || 0);
-@@ -1088,6 +1127,7 @@
+@@ -1088,6 +1158,7 @@ class EthereumTransactions {
              const maxPriorityFeePerGas = await Promise.resolve(tx.maxPriorityFeePerGas || 0);
              const txValue = await Promise.resolve(tx.value);
              const txData = await Promise.resolve(tx.data || '0x');
@@ -153,7 +186,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
              // Check if this is a contract call (has data)
              const isContractCall = txData && txData !== '0x' && txData.length > 2;
              const originalGasCost = isLegacy
-@@ -1110,7 +1150,8 @@
+@@ -1110,7 +1181,8 @@ class EthereumTransactions {
              if (isLegacy) {
                  if (!oldTxsGasValues.gasPrice || oldTxsGasValues.gasPrice.isZero()) {
                      // Fetch current network gas price for replacement
@@ -163,7 +196,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      oldTxsGasValues.gasPrice = currentGasPrice;
                  }
              }
-@@ -1119,7 +1160,8 @@
+@@ -1119,7 +1191,8 @@ class EthereumTransactions {
                  if (!oldTxsGasValues.maxFeePerGas ||
                      oldTxsGasValues.maxFeePerGas.isZero()) {
                      // Fetch current network fee data for replacement
@@ -173,7 +206,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      oldTxsGasValues.maxFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxFeePerGas || 0);
                      oldTxsGasValues.maxPriorityFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxPriorityFeePerGas || 0);
                  }
-@@ -1151,6 +1193,7 @@
+@@ -1151,6 +1224,7 @@ class EthereumTransactions {
                      }
                  }
                  txWithEditedFee = {
@@ -181,7 +214,15 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      from: tx.from,
                      to: tx.to,
                      nonce: tx.nonce,
-@@ -1187,6 +1230,7 @@
+@@ -1159,6 +1233,7 @@ class EthereumTransactions {
+                     maxFeePerGas: newGasValues.maxFeePerGas,
+                     maxPriorityFeePerGas: newGasValues.maxPriorityFeePerGas,
+                     gasLimit: newGasValues.gasLimit,
++                    ...(tx.accessList != null ? { accessList: tx.accessList } : {}),
+                     // Don't set type - let ethers auto-detect for EIP-1559
+                 };
+             }
+@@ -1187,6 +1262,7 @@ class EthereumTransactions {
                      }
                  }
                  txWithEditedFee = {
@@ -189,7 +230,17 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      from: tx.from,
                      to: tx.to,
                      nonce: tx.nonce,
-@@ -1203,7 +1247,7 @@
+@@ -1194,7 +1270,8 @@ class EthereumTransactions {
+                     data: txData,
+                     gasLimit: newGasValues.gasLimit,
+                     gasPrice: newGasValues.gasPrice,
+-                    type: 0, // Force Type 0 for legacy speedup
++                    type: tx.type === 1 ? 1 : 0,
++                    ...(tx.type === 1 ? { accessList: tx.accessList } : {}),
+                 };
+             }
+             // Ledger speedup handler
+@@ -1203,7 +1280,7 @@ class EthereumTransactions {
                      const resolvedParams = await (0, ethers_v6_1.resolveProperties)((0, omit_1.default)(txWithEditedFee, 'from'));
                      const formatParams = {
                          ...resolvedParams,
@@ -198,7 +249,16 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                              ? Number(resolvedParams.nonce.toString())
                              : undefined,
                      };
-@@ -1219,6 +1263,7 @@
+@@ -1211,7 +1288,7 @@ class EthereumTransactions {
+                         ? {
+                             ...formatParams,
+                             chainId: activeNetwork.chainId,
+-                            type: 0, // Need explicit type for hardware wallet serialization
++                            type: txWithEditedFee.type,
+                         }
+                         : {
+                             ...formatParams,
+@@ -1219,6 +1296,7 @@ class EthereumTransactions {
                              type: 2, // Need explicit type for hardware wallet serialization
                          };
                      const rawTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForEthers);
@@ -206,7 +266,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      const signature = await this.ledgerSigner.evm.signEVMTransaction({
                          rawTx: rawTx.replace('0x', ''),
                          accountIndex: activeAccountId,
-@@ -1230,7 +1275,9 @@
+@@ -1230,7 +1308,9 @@ class EthereumTransactions {
                      };
                      if (signature) {
                          const signedTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForEthers, formattedSignature);
@@ -217,7 +277,16 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                          return {
                              isSpeedUp: true,
                              transaction: transactionResponse,
-@@ -1297,6 +1344,7 @@
+@@ -1276,7 +1356,7 @@ class EthereumTransactions {
+                             : this.toHex0x(formattedTx.value, 'value'),
+                         nonce: this.toHex0x(formattedTx.nonce, 'nonce'),
+                         chainId: activeNetwork.chainId,
+-                        type: isLegacy ? 0 : 2, // Need explicit type for hardware wallet serialization
++                        type: isLegacy ? txWithEditedFee.type : 2,
+                     };
+                     if (formattedTx.data && formattedTx.data !== '0x') {
+                         txFormattedForTrezor.data = formattedTx.data;
+@@ -1297,6 +1377,7 @@ class EthereumTransactions {
                                  ? formattedTx.maxPriorityFeePerGas
                                  : this.toHex0x(formattedTx.maxPriorityFeePerGas, 'maxPriorityFeePerGas');
                      }
@@ -225,7 +294,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                      const signature = await this.trezorSigner.signEthTransaction({
                          coin: trezorCoin,
                          tx: txFormattedForTrezor,
-@@ -1305,7 +1353,9 @@
+@@ -1305,7 +1386,9 @@ class EthereumTransactions {
                      });
                      if (signature.success) {
                          const signedTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForTrezor, signature.payload);
@@ -236,7 +305,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
                          return {
                              isSpeedUp: true,
                              transaction: transactionResponse,
-@@ -1339,8 +1389,13 @@
+@@ -1339,8 +1422,13 @@ class EthereumTransactions {
              // Regular wallet speedup handler
              const speedUpWithPrivateKey = async () => {
                  try {
@@ -245,17 +314,25 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
 +                    assertCurrent();
 +                    const { address, decryptedPrivateKey } = this.getDecryptedPrivateKey(targetAccount);
 +                    assertCurrent();
-+                    if (address.toLowerCase() !== activeAccount.address.toLowerCase()) {
++                    if (address.toLowerCase() !== expectedSender) {
 +                        throw new Error('Replacement signing account changed');
 +                    }
 +                    const transactionResponse = await (0, evm_local_signer_1.sendLocalEvmTransaction)(provider, decryptedPrivateKey, txWithEditedFee, assertBeforeBroadcast, assertCurrent);
                      if (transactionResponse) {
                          return {
                              isSpeedUp: true,
+@@ -2246,4 +2334,4 @@ class EthereumTransactions {
+     }
+ }
+ exports.EthereumTransactions = EthereumTransactions;
+-//# sourceMappingURL=ethereum.js.map
+\ No newline at end of file
++//# sourceMappingURL=ethereum.js.map
 diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
+index 57e9c8e..fd41469 100644
 --- a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
 +++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
-@@ -135,7 +135,7 @@
+@@ -135,7 +135,7 @@ const signTransaction = (transaction, privateKey) => {
      return (0, ethers_v6_1.serializeTransaction)(transaction, signature);
  };
  exports.signTransaction = signTransaction;
@@ -264,7 +341,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-s
      const account = (0, exports.privateKeyToAccount)(privateKey);
      const resolved = await (0, ethers_v6_1.resolveProperties)(transaction);
      if (resolved.from && !(0, exports.sameAddress)(resolved.from, account.address)) {
-@@ -194,6 +194,7 @@
+@@ -194,6 +194,7 @@ const sendLocalEvmTransaction = async (provider, privateKey, transaction, before
      if (!tx.value) {
          tx.value = '0x0';
      }
@@ -272,10 +349,62 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-s
      const signedTx = (0, exports.signTransaction)(tx, privateKey);
      beforeBroadcast?.();
      return provider.sendTransaction(signedTx);
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
+index 3051327..3dc54d4 100644
+--- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
++++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
+@@ -4,7 +4,7 @@ import { BigNumber, TransactionResponse } from '../ethers-v6';
+ import { LedgerKeyring } from '../ledger';
+ import { CustomJsonRpcProvider } from '../providers';
+ import { TrezorKeyring } from '../trezor';
+-import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
++import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, IEvmReplacementOptions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
+ export declare class EthereumTransactions implements IEthereumTransactions {
+     private _web3Provider;
+     private _web3ProviderKey?;
+@@ -15,7 +15,7 @@ export declare class EthereumTransactions implements IEthereumTransactions {
+     private getDecryptedPrivateKey;
+     private gasOverrides;
+     private getState;
+-    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: () => {
++    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: (targetAccount?: IEvmReplacementOptions['targetAccount']) => {
+         address: string;
+         decryptedPrivateKey: string;
+     }, getState: () => {
+@@ -49,7 +49,7 @@ export declare class EthereumTransactions implements IEthereumTransactions {
+         receivingAddress: string;
+         value: any;
+     }) => string;
+-    getFeeDataWithDynamicMaxPriorityFeePerGas: () => Promise<{
++    getFeeDataWithDynamicMaxPriorityFeePerGas: (provider?: CustomJsonRpcProvider) => Promise<{
+         maxFeePerGas: BigNumber;
+         maxPriorityFeePerGas: BigNumber;
+     }>;
+@@ -61,7 +61,7 @@ export declare class EthereumTransactions implements IEthereumTransactions {
+     }>;
+     sendFormattedTransaction: (params: SimpleTransactionRequest, isLegacy?: boolean) => Promise<any>;
+     private sendFormattedTransactionInternal;
+-    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean) => Promise<{
++    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean, options?: IEvmReplacementOptions) => Promise<{
+         error?: boolean;
+         isSpeedUp: boolean;
+         transaction?: TransactionResponse;
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
+index 5ea8146..34b20a4 100644
+--- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
++++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
+@@ -20,5 +20,5 @@ export declare const hashPersonalMessage: (message: Uint8Array) => string;
+ export declare const signPersonalMessage: (message: string | Uint8Array, privateKey: string | Uint8Array) => string;
+ export declare const parsePersonalMessage: (hexMessage: string) => string;
+ export declare const signTransaction: (transaction: TransactionRequest, privateKey: string | Uint8Array) => string;
+-export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void) => Promise<any>;
++export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void, beforeSign?: () => void) => Promise<any>;
+ export declare const sameAddress: (left: string, right: string) => boolean;
 diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
+index d198605..7cec31f 100644
 --- a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
 +++ b/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
-@@ -34,6 +34,12 @@
+@@ -34,6 +34,12 @@ export type EvmLocalAccount = {
      privateKey: string;
      publicKey: string;
  };
@@ -288,7 +417,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts b/node_modu
  export interface IEthereumTransactions {
      cancelSentTransaction: (txHash: string, isLegacy?: boolean, fallbackNonce?: number) => Promise<{
          error?: boolean;
-@@ -46,7 +52,7 @@
+@@ -46,7 +52,7 @@ export interface IEthereumTransactions {
      getEncryptedPubKey: () => string;
      getErc20TokensByAddress?: (address: string, isSupported: boolean, apiUrl: string) => Promise<any[]>;
      getFeeByType: (type: string) => Promise<string>;
@@ -297,7 +426,7 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts b/node_modu
      getGasLimit: (toAddress: string) => Promise<number>;
      getGasOracle?: () => Promise<any>;
      getRecommendedNonce: (address: string) => Promise<number>;
-@@ -59,7 +65,7 @@
+@@ -59,7 +65,7 @@ export interface IEthereumTransactions {
      toBigNumber: (aBigNumberish: string | number) => BigNumber;
      sendSignedErc20Transaction: ({ networkUrl, receiver, tokenAddress, tokenAmount, }: ISendSignedErcTransactionProps) => Promise<IResponseFromSendErcSignedTransaction>;
      sendSignedErc721Transaction: ({ networkUrl, receiver, tokenAddress, tokenId, }: ISendSignedErcTransactionProps) => Promise<IResponseFromSendErcSignedTransaction>;
@@ -306,52 +435,3 @@ diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts b/node_modu
          isSpeedUp: boolean;
          transaction?: TransactionResponse;
          error?: boolean;
-diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
---- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
-+++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
-@@ -4,7 +4,7 @@
- import { LedgerKeyring } from '../ledger';
- import { CustomJsonRpcProvider } from '../providers';
- import { TrezorKeyring } from '../trezor';
--import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
-+import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, IEvmReplacementOptions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
- export declare class EthereumTransactions implements IEthereumTransactions {
-     private _web3Provider;
-     private _web3ProviderKey?;
-@@ -15,7 +15,7 @@
-     private getDecryptedPrivateKey;
-     private gasOverrides;
-     private getState;
--    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: () => {
-+    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: (targetAccount?: IEvmReplacementOptions['targetAccount']) => {
-         address: string;
-         decryptedPrivateKey: string;
-     }, getState: () => {
-@@ -49,7 +49,7 @@
-         receivingAddress: string;
-         value: any;
-     }) => string;
--    getFeeDataWithDynamicMaxPriorityFeePerGas: () => Promise<{
-+    getFeeDataWithDynamicMaxPriorityFeePerGas: (provider?: CustomJsonRpcProvider) => Promise<{
-         maxFeePerGas: BigNumber;
-         maxPriorityFeePerGas: BigNumber;
-     }>;
-@@ -61,7 +61,7 @@
-     }>;
-     sendFormattedTransaction: (params: SimpleTransactionRequest, isLegacy?: boolean) => Promise<any>;
-     private sendFormattedTransactionInternal;
--    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean) => Promise<{
-+    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean, options?: IEvmReplacementOptions) => Promise<{
-         error?: boolean;
-         isSpeedUp: boolean;
-         transaction?: TransactionResponse;
-diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
---- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
-+++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
-@@ -20,5 +20,5 @@
- export declare const signPersonalMessage: (message: string | Uint8Array, privateKey: string | Uint8Array) => string;
- export declare const parsePersonalMessage: (hexMessage: string) => string;
- export declare const signTransaction: (transaction: TransactionRequest, privateKey: string | Uint8Array) => string;
--export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void) => Promise<any>;
-+export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void, beforeSign?: () => void) => Promise<any>;
- export declare const sameAddress: (left: string, right: string) => boolean;
