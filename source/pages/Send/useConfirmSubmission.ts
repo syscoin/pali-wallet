@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { getControllerStatus } from 'hooks/controllerStatus';
 import {
-  clearNavigationState,
+  clearTransactionNavigationState,
+  getTransactionReturnContext,
   getWalletNavigationScope,
 } from 'utils/navigationState';
 
@@ -21,10 +23,12 @@ export const useConfirmSubmission = ({
   navigate,
   controllerEmitter,
   isUnlocked,
+  isLoading,
   connectionUnavailable,
 }: {
   connectionUnavailable?: boolean;
   controllerEmitter: (...args: any[]) => Promise<any>;
+  isLoading?: boolean;
   isUnlocked: boolean;
   location: { key: string; pathname: string; state: any };
   navigate: (path: string, options?: any) => void;
@@ -45,6 +49,7 @@ export const useConfirmSubmission = ({
   );
   const entryRef = useRef(location.key);
   const scopeRef = useRef(currentScope);
+  const walletScopeRef = useRef(getWalletNavigationScope());
   const internalRef = useRef(internal);
   const pathRef = useRef(location.pathname);
   const mountedRef = useRef(true);
@@ -52,8 +57,13 @@ export const useConfirmSubmission = ({
   const markerKeyRef = useRef<string>();
   const safeRestoreRef = useRef(false);
   const departedRef = useRef(false);
-  const liveRef = useRef({ location, isUnlocked, connectionUnavailable });
-  liveRef.current = { location, isUnlocked, connectionUnavailable };
+  const liveRef = useRef({
+    location,
+    isUnlocked,
+    isLoading,
+    connectionUnavailable,
+  });
+  liveRef.current = { location, isUnlocked, isLoading, connectionUnavailable };
   const blockedRef = useRef(consumed);
   const attemptRef = useRef<{
     definitelyNotBroadcast: boolean;
@@ -96,17 +106,41 @@ export const useConfirmSubmission = ({
       return true;
     return (hashRoute || window.location.pathname) === pathRef.current;
   };
-  const isCurrent = () => {
+  const ownsRoute = () => {
     const live = liveRef.current;
     return (
       mountedRef.current &&
-      !departedRef.current &&
       nativeLocationMatches() &&
+      live.location.pathname === pathRef.current &&
+      (live.location.key === entryRef.current ||
+        (live.location.state?.submissionStarted === true &&
+          (live.location.key === markerKeyRef.current ||
+            live.location.state === markerRef.current)))
+    );
+  };
+  const hasTrustedAuth = () => {
+    const live = liveRef.current;
+    const fresh = getControllerStatus();
+    const trusted =
       live.isUnlocked &&
+      !live.isLoading &&
       !live.connectionUnavailable &&
+      fresh.isUnlocked &&
+      !fresh.isLoading &&
+      !fresh.connectionUnavailable;
+    // Status can publish before React commits new auth props. A begun attempt
+    // must stay consumed even if trust recovers before the next render.
+    if (!trusted && attemptRef.current) departedRef.current = true;
+    return trusted;
+  };
+  const isCurrent = () => {
+    const live = liveRef.current;
+    return (
+      ownsRoute() &&
+      !departedRef.current &&
+      hasTrustedAuth() &&
       (!internalRef.current ||
         JSON.stringify(getWalletNavigationScope()) === scopeRef.current) &&
-      live.location.pathname === pathRef.current &&
       ((live.location.key === entryRef.current &&
         live.location.state?.submissionStarted !== true) ||
         (live.location.state?.submissionStarted === true &&
@@ -114,6 +148,7 @@ export const useConfirmSubmission = ({
             live.location.state === markerRef.current)))
     );
   };
+  const trustedAuth = hasTrustedAuth();
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -121,8 +156,23 @@ export const useConfirmSubmission = ({
     };
   }, []);
   useEffect(() => {
-    if (!isCurrent()) departedRef.current = true;
-  }, [location, isUnlocked, connectionUnavailable, scopeChanged]);
+    // A focus check temporarily removes trust. Keep an idle entry in memory,
+    // while an attempt that has started can never resume after losing trust.
+    if (
+      !ownsRoute() ||
+      scopeChanged ||
+      !isUnlocked ||
+      (!trustedAuth && attemptRef.current)
+    ) {
+      departedRef.current = true;
+      if (attemptRef.current) {
+        setPending(false);
+        setUnknown(
+          attemptRef.current.mayBroadcast && !attemptRef.current.successful
+        );
+      }
+    }
+  }, [location, isUnlocked, trustedAuth, scopeChanged]);
   const assertCurrent = () => {
     if (!isCurrent())
       throw Object.assign(new Error('Confirmation is no longer active.'), {
@@ -168,21 +218,38 @@ export const useConfirmSubmission = ({
     setUnknown(false);
     // Keep the active component's required transaction only in its ref. Native
     // Back/Forward or a recreated document sees an inert marker, never a send.
-    markerRef.current = { submissionStarted: true };
+    markerRef.current = {
+      submissionStarted: true,
+      walletScope: walletScopeRef.current,
+      returnContext: getTransactionReturnContext(
+        stateRef.current?.returnContext,
+        walletScopeRef.current
+      ),
+    };
     navigate(location.pathname, { replace: true, state: markerRef.current });
     const nativeKey =
       typeof window !== 'undefined' ? window.history.state?.key : undefined;
     if (typeof nativeKey === 'string' && nativeKey !== entryRef.current)
       markerKeyRef.current = nativeKey;
-    await clearNavigationState();
     try {
+      await clearTransactionNavigationState({
+        requireDiscard: true,
+        assertCurrent: isCurrent,
+      });
       if (!isCurrent()) return;
       await action();
     } finally {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        if (ownsRoute()) {
+          setPending(false);
+          setUnknown(attempt.mayBroadcast && !attempt.successful);
+        }
+        return;
+      }
       setPending(false);
       if (!attempt.mayBroadcast || attempt.definitelyNotBroadcast) {
         consumedEntries.delete(entryRef.current);
+        attemptRef.current = null;
         blockedRef.current = false;
         setBlocked(false);
         setUnknown(false);
@@ -198,12 +265,22 @@ export const useConfirmSubmission = ({
   };
 
   return {
-    blocked:
-      blocked || scopeChanged || !isUnlocked || Boolean(connectionUnavailable),
+    blocked: blocked || scopeChanged || !trustedAuth,
     pending,
     unknown,
+    interrupted: Boolean(departedRef.current && attemptRef.current),
+    hasUsableEntry: Boolean(stateRef.current?.tx) && !scopeChanged,
+    isActive: isCurrent,
+    ownsRoute,
+    returnContext:
+      consumed || attemptRef.current || !validInitialScope || scopeChanged
+        ? getTransactionReturnContext(
+            stateRef.current?.returnContext || location.state?.returnContext,
+            getWalletNavigationScope()
+          )
+        : stateRef.current?.returnContext || location.state?.returnContext,
     state:
-      scopeChanged || !isUnlocked || connectionUnavailable || !isCurrent()
+      scopeChanged || !trustedAuth || !isCurrent()
         ? undefined
         : stateRef.current,
     controllerEmitter: invoke,

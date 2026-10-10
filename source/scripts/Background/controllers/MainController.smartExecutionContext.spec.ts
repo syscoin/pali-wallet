@@ -22,6 +22,7 @@ jest.mock('utils/evmCallBlacklist', () => ({
 }));
 jest.mock('utils/navigationState', () => ({
   clearNavigationState: jest.fn().mockResolvedValue(undefined),
+  clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { getController } from '..';

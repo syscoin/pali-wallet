@@ -32,6 +32,21 @@ export interface ISavedNavigationState {
 }
 const NAVIGATION_STATE_KEY = 'pali_navigation_state';
 let navigationWriteGeneration = 0;
+const NAVIGATION_STORAGE_LOCK = 'pali-navigation-storage';
+const withNavigationStorageLock = async <T>(
+  operation: () => Promise<T>
+): Promise<T> => {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  // Web Locks coordinates the popup and MV3 worker. Older runtimes retain only
+  // the local generation guard; it cannot synchronize separate documents.
+  return locks?.request
+    ? await locks.request(
+        NAVIGATION_STORAGE_LOCK,
+        { mode: 'exclusive' },
+        operation
+      )
+    : await operation();
+};
 const MAX_BYTES = 32 * 1024;
 const MAX_CONTEXTS = 12;
 const BROWSING_ROUTES = new Set([
@@ -55,6 +70,26 @@ const BROWSING_ROUTES = new Set([
   '/settings/remove-eth',
 ]);
 const DRAFT_ROUTES = new Set(['/send/eth', '/send/sys']);
+export type NavigationPersistencePolicy =
+  | 'save-browsing'
+  | 'form-owned-draft'
+  | 'save-confirmation-caller'
+  | 'discard';
+
+/** One policy owns which public view may survive a main-popup document. */
+export const getNavigationPersistencePolicy = (
+  path: string
+): NavigationPersistencePolicy => {
+  const safePath = safeWalletPath(path);
+  if (!safePath) return 'discard';
+  const query = new URL(path, 'https://wallet.invalid').searchParams;
+  if (query.has('route') || query.has('externalRoute')) return 'discard';
+  const pathname = safePath.split(/[?#]/)[0];
+  if (BROWSING_ROUTES.has(pathname)) return 'save-browsing';
+  if (DRAFT_ROUTES.has(pathname)) return 'form-owned-draft';
+  if (pathname === '/send/confirm') return 'save-confirmation-caller';
+  return 'discard';
+};
 const record = (value: any): value is Record<string, any> =>
   Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const scalar = (value: any) =>
@@ -403,6 +438,40 @@ const sanitizedContext = (
   };
 };
 
+/** A finished or uncertain action may resume its public caller, never a Send draft. */
+export const getTransactionReturnContext = (
+  input: any,
+  current = getWalletNavigationScope()
+): INavigationContext | undefined => {
+  const keepPublic = (
+    context: INavigationContext | undefined
+  ): INavigationContext | undefined => {
+    if (!context) return undefined;
+    const parent = keepPublic(context.returnContext);
+    return DRAFT_ROUTES.has(context.returnRoute.split(/[?#]/)[0])
+      ? parent
+      : { ...context, returnContext: parent };
+  };
+  return keepPublic(sanitizedContext(input, current));
+};
+
+/** An idle internal review resumes its unsigned caller, rather than its transaction. */
+export const getConfirmationReturnContext = (
+  state: any,
+  current = getWalletNavigationScope()
+): INavigationContext | undefined => {
+  if (
+    !record(state) ||
+    state.external === true ||
+    !sameScope(state.walletScope, current)
+  )
+    return undefined;
+  // Missing or malformed markers cannot prove that a submission never began.
+  return state.submissionStarted === false && record(state.tx)
+    ? sanitizedContext(state.returnContext, current)
+    : getTransactionReturnContext(state.returnContext, current);
+};
+
 export const createNavigationContext = (
   returnRoute: string,
   tab?: string,
@@ -428,28 +497,68 @@ export const createBrowsingNavigationContext = (
     location.state?.returnContext
   );
 
+const createSavedNavigationState = (
+  path: string,
+  tab?: string,
+  state?: Record<string, any>,
+  returnContext?: INavigationContext,
+  scroll?: Pick<INavigationContext, 'scrollPosition' | 'scrollPositions'>
+): ISavedNavigationState => {
+  const scope = getWalletNavigationScope();
+  return {
+    currentPath: withNavigationTab(safeWalletPath(path)!, tab),
+    state: sanitizeBrowsingState(path, state),
+    returnContext: sanitizedContext(returnContext, scope),
+    scrollPosition: scroll
+      ? scrollNumber(scroll.scrollPosition)
+        ? scroll.scrollPosition
+        : 0
+      : typeof window === 'undefined'
+      ? 0
+      : window.scrollY || 0,
+    scrollPositions: scroll
+      ? sanitizeScroll(scroll.scrollPositions)
+      : captureNavigationScroll(),
+    timestamp: Date.now(),
+    version: 2,
+    walletScope: scope,
+  };
+};
+const saveNavigationStateUnlocked = async (snapshot: ISavedNavigationState) => {
+  if (JSON.stringify(snapshot).length > MAX_BYTES)
+    throw new Error('Navigation snapshot exceeds its storage limit');
+  await chromeStorage.setItem(NAVIGATION_STATE_KEY, snapshot);
+};
+const clearNavigationStateUnlocked = async () => {
+  await chromeStorage.removeItem(NAVIGATION_STATE_KEY);
+};
+
 export const saveNavigationState = async (
   path: string,
   tab?: string,
   state?: Record<string, any>,
-  returnContext?: INavigationContext
+  returnContext?: INavigationContext,
+  scroll?: Pick<INavigationContext, 'scrollPosition' | 'scrollPositions'>
 ): Promise<void> => {
   if (!isRestorableWalletRoute(path)) return;
-  ++navigationWriteGeneration;
+  const generation = ++navigationWriteGeneration;
   try {
-    const scope = getWalletNavigationScope();
-    const snapshot: ISavedNavigationState = {
-      currentPath: withNavigationTab(safeWalletPath(path)!, tab),
-      state: sanitizeBrowsingState(path, state),
-      returnContext: sanitizedContext(returnContext, scope),
-      scrollPosition: typeof window === 'undefined' ? 0 : window.scrollY || 0,
-      scrollPositions: captureNavigationScroll(),
-      timestamp: Date.now(),
-      version: 2,
-      walletScope: scope,
-    };
-    if (JSON.stringify(snapshot).length <= MAX_BYTES)
-      await chromeStorage.setItem(NAVIGATION_STATE_KEY, snapshot);
+    // Capture values and their wallet before waiting behind another document.
+    const snapshot = createSavedNavigationState(
+      path,
+      tab,
+      state,
+      returnContext,
+      scroll
+    );
+    await withNavigationStorageLock(async () => {
+      if (
+        generation !== navigationWriteGeneration ||
+        !sameScope(snapshot.walletScope, getWalletNavigationScope())
+      )
+        return;
+      await saveNavigationStateUnlocked(snapshot);
+    });
   } catch {
     /* Closing a popup or storage failure must not block navigation. */
   }
@@ -457,54 +566,184 @@ export const saveNavigationState = async (
 export const clearNavigationState = async (): Promise<void> => {
   ++navigationWriteGeneration;
   try {
-    await chromeStorage.removeItem(NAVIGATION_STATE_KEY);
+    // Auth cleanup always runs; a queued save must never cancel it.
+    await withNavigationStorageLock(clearNavigationStateUnlocked);
   } catch {
     /* non-fatal */
   }
 };
+
+/** Preserve a review's safe caller without ever serializing the review payload. */
+export const saveConfirmationReturnState = async (
+  state: any
+): Promise<void> => {
+  const context = getConfirmationReturnContext(state);
+  if (!context) {
+    await clearNavigationState();
+    return;
+  }
+  await saveNavigationState(
+    context.returnRoute,
+    context.tab,
+    context.state,
+    context.returnContext,
+    context
+  );
+};
+
+/** Transaction cleanup must not erase an unrelated public Settings/caller view. */
+export const clearTransactionNavigationState = async (
+  options: { assertCurrent?: () => boolean; requireDiscard?: boolean } = {}
+): Promise<void> => {
+  const strict = options.requireDiscard === true;
+  const generation = strict
+    ? ++navigationWriteGeneration
+    : navigationWriteGeneration;
+  const startingScope = getWalletNavigationScope();
+  const ownsSnapshot = () => {
+    const current =
+      sameScope(startingScope, getWalletNavigationScope()) &&
+      (strict && options.assertCurrent
+        ? options.assertCurrent()
+        : generation === navigationWriteGeneration);
+    if (!current && strict)
+      throw new Error('Navigation cleanup context changed');
+    return current;
+  };
+  try {
+    await withNavigationStorageLock(async () => {
+      if (!ownsSnapshot()) return;
+      const saved = await loadNavigationStateUnlocked(
+        generation,
+        startingScope,
+        { strict, ignoreGeneration: strict && Boolean(options.assertCurrent) }
+      );
+      // A newer navigation or an authentication cleanup owns the snapshot now.
+      if (!ownsSnapshot()) return;
+      if (!saved) {
+        // Missing/invalid records need no second removal, and a transient read
+        // failure must not erase a public view another document already saved.
+        return;
+      }
+      let contextWithDraft: INavigationContext | undefined = {
+        returnRoute: saved.currentPath,
+        returnContext: saved.returnContext,
+      };
+      let containsDraft = false;
+      while (contextWithDraft) {
+        if (DRAFT_ROUTES.has(contextWithDraft.returnRoute.split(/[?#]/)[0])) {
+          containsDraft = true;
+          break;
+        }
+        contextWithDraft = contextWithDraft.returnContext;
+      }
+      // Ordinary public browsing already satisfies cleanup. Preserve its timestamp
+      // and avoid a background read/write roundtrip racing the popup's next view.
+      if (!containsDraft) return;
+      const context = getTransactionReturnContext({
+        returnRoute: saved.currentPath,
+        tab: saved.tab,
+        state: saved.state,
+        returnContext: saved.returnContext,
+        scrollPosition: saved.scrollPosition,
+        scrollPositions: saved.scrollPositions,
+        walletScope: saved.walletScope,
+      });
+      if (!context) {
+        if (!strict) ++navigationWriteGeneration;
+        await clearNavigationStateUnlocked();
+        return;
+      }
+      // Strict cleanup took ownership when requested. Do not invalidate a later
+      // legitimate marker/view save already waiting behind this shared lock.
+      if (!strict) ++navigationWriteGeneration;
+      await saveNavigationStateUnlocked(
+        createSavedNavigationState(
+          context.returnRoute,
+          context.tab,
+          context.state,
+          context.returnContext,
+          context
+        )
+      );
+    });
+  } catch (error) {
+    if (strict) throw error;
+    /* Closing a popup or storage failure must not block transaction cleanup. */
+  }
+};
+const loadNavigationStateUnlocked = async (
+  generation: number,
+  startingScope: IWalletNavigationScope,
+  options: { ignoreGeneration?: boolean; strict?: boolean } = {}
+): Promise<ISavedNavigationState | null> => {
+  try {
+    const saved = await chromeStorage.getItem(NAVIGATION_STATE_KEY);
+    if (
+      (!options.ignoreGeneration && generation !== navigationWriteGeneration) ||
+      !sameScope(startingScope, getWalletNavigationScope())
+    ) {
+      if (options.strict) throw new Error('Navigation cleanup context changed');
+      return null;
+    }
+    const autolock = store.getState().vaultGlobal?.advancedSettings?.autolock;
+    const timeout =
+      (typeof autolock === 'number' && autolock > 0 ? autolock : 30) * 60_000 -
+      30_000;
+    if (
+      !record(saved) ||
+      JSON.stringify(saved).length > MAX_BYTES ||
+      saved.version !== 2 ||
+      !isRestorableWalletRoute(saved.currentPath) ||
+      !Number.isFinite(saved.timestamp) ||
+      saved.timestamp > Date.now() + 1000 ||
+      Date.now() - saved.timestamp > timeout
+    ) {
+      if (saved) {
+        if (!options.strict) ++navigationWriteGeneration;
+        await clearNavigationStateUnlocked();
+      }
+      return null;
+    }
+    const current = getWalletNavigationScope();
+    const path = safeWalletPath(saved.currentPath)!;
+    const matches = sameScope(saved.walletScope, current);
+    if (DRAFT_ROUTES.has(path.split(/[?#]/)[0]) && !matches) {
+      if (!options.strict) ++navigationWriteGeneration;
+      await clearNavigationStateUnlocked();
+      return null;
+    }
+    return {
+      currentPath: path,
+      version: 2,
+      timestamp: saved.timestamp,
+      walletScope: current,
+      state: matches ? sanitizeBrowsingState(path, saved.state) : {},
+      returnContext: sanitizedContext(saved.returnContext, current),
+      scrollPosition:
+        matches && scrollNumber(saved.scrollPosition)
+          ? saved.scrollPosition
+          : 0,
+      scrollPositions: matches ? sanitizeScroll(saved.scrollPositions) : {},
+    };
+  } catch (error) {
+    if (options.strict) throw error;
+    return null;
+  }
+};
 export const loadNavigationState =
   async (): Promise<ISavedNavigationState | null> => {
+    const generation = navigationWriteGeneration;
+    const startingScope = getWalletNavigationScope();
     try {
-      const generation = navigationWriteGeneration;
-      const saved = await chromeStorage.getItem(NAVIGATION_STATE_KEY);
-      if (generation !== navigationWriteGeneration) return null;
-      const autolock = store.getState().vaultGlobal?.advancedSettings?.autolock;
-      const timeout =
-        (typeof autolock === 'number' && autolock > 0 ? autolock : 30) *
-          60_000 -
-        30_000;
-      if (
-        !record(saved) ||
-        JSON.stringify(saved).length > MAX_BYTES ||
-        saved.version !== 2 ||
-        !isRestorableWalletRoute(saved.currentPath) ||
-        !Number.isFinite(saved.timestamp) ||
-        saved.timestamp > Date.now() + 1000 ||
-        Date.now() - saved.timestamp > timeout
-      ) {
-        if (saved) await clearNavigationState();
-        return null;
-      }
-      const current = getWalletNavigationScope();
-      const path = safeWalletPath(saved.currentPath)!;
-      const matches = sameScope(saved.walletScope, current);
-      if (DRAFT_ROUTES.has(path.split(/[?#]/)[0]) && !matches) {
-        await clearNavigationState();
-        return null;
-      }
-      return {
-        currentPath: path,
-        version: 2,
-        timestamp: saved.timestamp,
-        walletScope: current,
-        state: matches ? sanitizeBrowsingState(path, saved.state) : {},
-        returnContext: sanitizedContext(saved.returnContext, current),
-        scrollPosition:
-          matches && scrollNumber(saved.scrollPosition)
-            ? saved.scrollPosition
-            : 0,
-        scrollPositions: matches ? sanitizeScroll(saved.scrollPositions) : {},
-      };
+      return await withNavigationStorageLock(() => {
+        if (
+          generation !== navigationWriteGeneration ||
+          !sameScope(startingScope, getWalletNavigationScope())
+        )
+          return Promise.resolve(null);
+        return loadNavigationStateUnlocked(generation, startingScope);
+      });
     } catch {
       return null;
     }

@@ -10,7 +10,6 @@ import { AntdProvider } from 'components/AntdProvider';
 import { WalletBootstrap } from 'components/WalletBootstrap/WalletBootstrap';
 import store from 'state/store';
 import { connectApprovalClient } from 'utils/approvalClient';
-import { clearNavigationState } from 'utils/navigationState';
 import { startupFeedbackDelay } from 'utils/requestWalletState';
 import 'assets/styles/index.css';
 import 'assets/styles/antd-overrides.css';
@@ -112,8 +111,8 @@ const toastOptions = {
 };
 
 if (externalRootElement) {
-  // Navigation cleanup is best-effort and must not block the approval UI.
-  void clearNavigationState();
+  // Approval documents never serialize a main-wallet navigation snapshot.
+  // Leave that separate document's browsing position untouched during bootstrap.
   const root = ReactDOM.createRoot(externalRootElement);
   root.render(
     <React.StrictMode>

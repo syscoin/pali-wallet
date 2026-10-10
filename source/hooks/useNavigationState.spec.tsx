@@ -20,6 +20,7 @@ import { NavigationRestorer } from 'routers/index';
 const mockLoad = jest.fn();
 const mockSave = jest.fn();
 const mockClear = jest.fn();
+const mockSaveConfirmation = jest.fn();
 let mockScope: { account: string; network: string };
 let mockAuth: {
   connectionUnavailable: boolean;
@@ -33,9 +34,12 @@ jest.mock('routers/useRouterLogic', () => ({ useRouterLogic: jest.fn() }));
 jest.mock('components/Layout/AppLayout', () => ({ AppLayout: () => null }));
 jest.mock('components/Modal', () => ({ WarningModal: () => null }));
 jest.mock('utils/navigationState', () => ({
+  getNavigationPersistencePolicy: jest.requireActual('utils/navigationState')
+    .getNavigationPersistencePolicy,
   loadNavigationState: () => mockLoad(),
   saveNavigationState: (...args: any[]) => mockSave(...args),
   clearNavigationState: () => mockClear(),
+  saveConfirmationReturnState: (state: any) => mockSaveConfirmation(state),
   getWalletNavigationScope: () => mockScope,
   isRestorableWalletRoute: (path: string) =>
     [

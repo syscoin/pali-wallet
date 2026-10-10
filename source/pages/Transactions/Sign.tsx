@@ -12,7 +12,7 @@ import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS } from 'utils/constants';
 import { handleTransactionError } from 'utils/errorHandling';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 
 interface ISign {
@@ -127,7 +127,8 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setLoading(false);
 
       // Close window
-      setTimeout(() => {
+      setTimeout(async () => {
+        await clearTransactionNavigationState();
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
       }, 2000);
@@ -160,7 +161,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setLoading(false);
       createTemporaryAlarm({
         delayInSeconds: 4,
-        callback: () => window.close(),
+        callback: async () => {
+          await clearTransactionNavigationState();
+          window.close();
+        },
       });
     }
   };
@@ -171,7 +175,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         show={Boolean(errorMsg)}
         onClose={async () => {
           try {
-            await clearNavigationState();
+            await clearTransactionNavigationState();
             console.log('[Sign] Navigation state cleared on error modal close');
           } catch (e) {
             console.error(
@@ -238,7 +242,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
                 disabled={loading}
                 onClick={async () => {
                   try {
-                    await clearNavigationState();
+                    await clearTransactionNavigationState();
                     console.log('[Sign] Navigation state cleared on cancel');
                   } catch (e) {
                     console.error(

@@ -19,7 +19,7 @@ import {
   IEvmTransactionContext,
 } from 'utils/evmTransactionContext';
 import { ellipsis } from 'utils/format';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
@@ -493,7 +493,7 @@ export const SendCalls = () => {
             console.error('Failed to record sendCalls bundle id', error);
           }
         }
-        clearNavigationState();
+        await clearTransactionNavigationState();
         // Dispatch event right before closing
         dispatchBackgroundEvent(`${eventName}.${host}`, response);
         window.close();
@@ -1065,8 +1065,8 @@ export const SendCalls = () => {
     }
   };
 
-  const handleReject = () => {
-    clearNavigationState();
+  const handleReject = async () => {
+    await clearTransactionNavigationState();
     window.close();
   };
 

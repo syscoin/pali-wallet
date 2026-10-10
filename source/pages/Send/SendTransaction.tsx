@@ -27,7 +27,7 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
-import { clearNavigationState } from 'utils/navigationState';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { safeBigNumber } from 'utils/safeBigNumber';
 import { safeToFixed } from 'utils/safeToFixed';
@@ -748,7 +748,7 @@ export const SendTransaction = () => {
         alert.error(t('send.cantCompleteTxs'));
 
         if (isExternal) {
-          clearNavigationState();
+          await clearTransactionNavigationState();
           setTimeout(window.close, 4000);
         } else {
           setLoading(false);
@@ -761,7 +761,7 @@ export const SendTransaction = () => {
       setLoading(false);
       alert.error(t('send.enoughFunds'));
       if (isExternal) {
-        clearNavigationState();
+        await clearTransactionNavigationState();
         setTimeout(window.close, 2000);
       }
     }
@@ -817,7 +817,8 @@ export const SendTransaction = () => {
           setInitialLoading(false);
           logError('error getting fees', 'Transaction', e);
           alert.error(t('send.txWillFail'), e);
-          clearNavigationState();
+          await clearTransactionNavigationState();
+          if (!isMounted) return;
           closeTimeoutId = setTimeout(window.close, 3000);
         }
       }
@@ -922,13 +923,14 @@ export const SendTransaction = () => {
   useEffect(() => {
     if (confirmed) {
       // Clear navigation state when actually navigating
-      clearNavigationState();
+      const cleanup = clearTransactionNavigationState();
 
       if (isExternal) {
         // Show success toast
         alert.success(t('transactions.youCanCheckYour'));
         // Close window after showing success message
-        setTimeout(() => {
+        setTimeout(async () => {
+          await cleanup;
           if (txResponse) {
             // Dispatch event right before closing
             dispatchBackgroundEvent(`${eventName}.${host}`, txResponse);
@@ -1369,7 +1371,7 @@ export const SendTransaction = () => {
                 disabled={loading}
                 onClick={async () => {
                   // Clear navigation state when user cancels/goes away
-                  await clearNavigationState();
+                  await clearTransactionNavigationState();
                   if (isExternal) {
                     window.close();
                   } else {

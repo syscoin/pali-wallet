@@ -1,5 +1,9 @@
+/** @jest-environment jsdom */
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+import { clearNavigationState, navigateBack } from 'utils/navigationState';
 
 import { AppLayout } from './AppLayout';
 
@@ -8,12 +12,19 @@ let mockSubmissionStarted = false;
 let mockUnavailable = false;
 let mockChanging = false;
 let mockOverlayLoading = true;
+const mockNavigate = jest.fn();
+let mockReturnContext: any;
 jest.mock('react-router-dom', () => ({
   useLocation: () => ({
     pathname: mockPath,
-    state: { submissionStarted: mockSubmissionStarted },
+    search: '',
+    hash: '',
+    state: {
+      submissionStarted: mockSubmissionStarted,
+      returnContext: mockReturnContext,
+    },
   }),
-  useNavigate: () => jest.fn(),
+  useNavigate: () => mockNavigate,
   Outlet: () => <main>Secret view</main>,
 }));
 jest.mock('react-redux', () => ({
@@ -31,7 +42,7 @@ jest.mock('components/Header/Header', () => ({
 }));
 jest.mock('components/index', () => ({
   Icon: () => null,
-  IconButton: () => <button>Back</button>,
+  IconButton: (props: any) => <button {...props}>Back</button>,
 }));
 jest.mock('components/Loading/PageLoadingOverlay', () => ({
   PageLoadingOverlay: () => null,
@@ -60,19 +71,49 @@ describe('wallet content safety during background changes', () => {
     mockUnavailable = false;
     mockChanging = false;
     mockOverlayLoading = true;
+    mockReturnContext = undefined;
+    jest.clearAllMocks();
   });
 
   it('hides global Back and Close once confirmation submission starts', () => {
     mockPath = '/send/confirm';
     mockSubmissionStarted = true;
-    expect(renderToStaticMarkup(<AppLayout />)).not.toContain(
-      '<button>Back</button>'
-    );
+    expect(renderToStaticMarkup(<AppLayout />)).not.toContain('>Back</button>');
     mockSubmissionStarted = false;
-    expect(renderToStaticMarkup(<AppLayout />)).toContain(
-      '<button>Back</button>'
-    );
+    expect(renderToStaticMarkup(<AppLayout />)).toContain('>Back</button>');
   });
+
+  it.each(['back', 'close'])(
+    'commits %s without waiting for storage and cannot redirect a later destination',
+    async (action) => {
+      let finishClear!: () => void;
+      (clearNavigationState as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishClear = resolve;
+          })
+      );
+      mockPath = '/settings/account/smart-account-policy';
+      mockReturnContext = { returnRoute: '/home/smart-account' };
+      const view = render(<AppLayout />);
+      fireEvent.click(
+        screen.getByRole('button', { name: `buttons.${action}` })
+      );
+      if (action === 'back') expect(navigateBack).toHaveBeenCalledTimes(1);
+      else
+        expect(mockNavigate).toHaveBeenCalledWith('/home', { replace: true });
+      expect(clearNavigationState).not.toHaveBeenCalled();
+      const calls = mockNavigate.mock.calls.length;
+      mockPath = '/receive';
+      view.rerender(<AppLayout />);
+      await act(async () => {
+        if (finishClear) finishClear();
+        await Promise.resolve();
+      });
+      expect(mockNavigate).toHaveBeenCalledTimes(calls);
+      if (action === 'back') expect(navigateBack).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it.each([
     '/settings/seed',

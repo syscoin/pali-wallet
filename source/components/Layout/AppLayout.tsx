@@ -16,11 +16,7 @@ import {
   usePageLoadingState,
 } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
-import {
-  navigateBack,
-  clearNavigationState,
-  getWalletNavigationScope,
-} from 'utils/navigationState';
+import { navigateBack, getWalletNavigationScope } from 'utils/navigationState';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders
 const BackArrowIcon = memo(() => <Icon isSvg={true} name="ArrowLeft" />);
@@ -313,10 +309,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   }, [location.pathname]);
 
   // Back navigation handler
-  const handleBackNavigation = useCallback(async () => {
-    // Clear any saved navigation state when navigating back
-    await clearNavigationState();
-
+  const handleBackNavigation = useCallback(() => {
     if (
       location.pathname === '/settings/account/smart-account-policy' &&
       location.state?.smartAccountPolicyView === 'recovery'
@@ -462,10 +455,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             <IconButton
               className="z-40 cursor-pointer"
               aria-label={t('buttons.close')}
-              onClick={async () => {
-                // Clear any saved navigation state when closing
-                await clearNavigationState();
-
+              onClick={() => {
                 if (
                   networkStatus === 'error' ||
                   networkStatus === 'connecting'

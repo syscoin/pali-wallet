@@ -36,7 +36,9 @@ jest.mock('components/Loading', () => ({
   PqSigningOverlay: 'pq-signing',
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
-jest.mock('utils/navigationState', () => ({ clearNavigationState: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
   signAndSubmitSmartAccountExecutions: (params: any) => mockSmartSubmit(params),

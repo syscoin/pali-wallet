@@ -4,9 +4,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { subscribeControllerStatus } from 'hooks/controllerStatus';
 import { ProtectedRoute } from 'routers/ProtectedRoute';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { dispatchBackgroundEvent } from 'utils/browser';
+import { clearTransactionNavigationState } from 'utils/navigationState';
 
 import Unlock from './Unlock';
 
+let mockQuery: any;
 let mockSubmit: (values: { password: string }) => Promise<unknown>;
 const mockNavigate = jest.fn();
 const mockAlert = { error: jest.fn() };
@@ -35,13 +38,15 @@ jest.mock('react-router-dom', () => ({
   useLocation: () => ({ hash: '', pathname: '/', search: '' }),
   useNavigate: () => mockNavigate,
 }));
-jest.mock('hooks/index', () => ({ useQueryData: () => ({}) }));
+jest.mock('hooks/index', () => ({ useQueryData: () => mockQuery }));
 jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
 jest.mock('hooks/useUtils', () => ({
   useUtils: () => ({ alert: mockAlert, navigate: mockNavigate }),
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
-jest.mock('utils/navigationState', () => ({ clearNavigationState: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('utils/index', () => ({
   extractErrorMessage: (error: Error) => error.message,
 }));
@@ -61,11 +66,11 @@ const flush = async () => {
   await Promise.resolve();
   await Promise.resolve();
 };
-const renderUnlock = () =>
+const renderUnlock = (isExternal = false) =>
   renderToStaticMarkup(
     <Unlock
       externalRoute=""
-      isExternal={false}
+      isExternal={isExternal}
       setIsOpenValidation={jest.fn()}
     />
   );
@@ -75,6 +80,8 @@ describe('Unlock authentication navigation', () => {
   const previousWindow = global.window;
 
   beforeEach(() => {
+    jest.clearAllMocks();
+    mockQuery = {};
     jest.useFakeTimers();
     chrome.runtime.connect = jest.fn(() => ({
       onDisconnect: { addListener: jest.fn(), removeListener: jest.fn() },
@@ -124,6 +131,46 @@ describe('Unlock authentication navigation', () => {
         <ProtectedRoute element={<main>Wallet home</main>} />
       )
     ).toBe('<main>Wallet home</main>');
+  });
+
+  it('cleans only transaction state on external login completion after fresh unlock confirmation', async () => {
+    const close = jest.fn();
+    global.window = {
+      location: { pathname: '/external.html' },
+      close,
+    } as unknown as Window & typeof globalThis;
+    mockQuery = { host: 'https://dapp.example', eventName: 'login' };
+    jest
+      .mocked(controllerEmitter)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true);
+    renderUnlock(true);
+    await mockSubmit({ password: 'correct-password' });
+    expect(clearTransactionNavigationState).toHaveBeenCalledTimes(1);
+    expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+      'login.https://dapp.example',
+      null
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('does not erase navigation or resolve external login when fresh auth cannot be confirmed', async () => {
+    const close = jest.fn();
+    global.window = {
+      location: { pathname: '/external.html' },
+      close,
+    } as unknown as Window & typeof globalThis;
+    mockQuery = { host: 'https://dapp.example', eventName: 'login' };
+    jest
+      .mocked(controllerEmitter)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    renderUnlock(true);
+    await mockSubmit({ password: 'correct-password' });
+    expect(clearTransactionNavigationState).not.toHaveBeenCalled();
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
   });
 
   it('does not navigate on a failed fresh confirmation even if cached status is unlocked', async () => {
