@@ -84,7 +84,11 @@ describe('transaction detail API compatibility', () => {
   };
 
   it('uses RPC directly for Routescan instead of requesting unsupported gettxinfo', async () => {
-    emitter.mockResolvedValue({ gasUsed: '21000', logs: [] });
+    emitter.mockResolvedValue({
+      hash: 'routescan-details-hash',
+      gasUsed: '21000',
+      logs: [],
+    });
 
     await loadDetails(ROUTESCAN_API, 'routescan-details-hash');
 
@@ -96,9 +100,10 @@ describe('transaction detail API compatibility', () => {
   });
 
   it('falls back to RPC when a custom explorer returns no enhanced details', async () => {
-    emitter
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ gasUsed: '21000' });
+    emitter.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      hash: 'fallback-details-hash',
+      gasUsed: '21000',
+    });
 
     await loadDetails(
       'https://custom-explorer.example/api',
@@ -115,7 +120,10 @@ describe('transaction detail API compatibility', () => {
   });
 
   it('keeps valid enhanced explorer details without an extra RPC request', async () => {
-    emitter.mockResolvedValue({ gasUsed: '21000' });
+    emitter.mockResolvedValue({
+      hash: 'supported-details-hash',
+      gasUsed: '21000',
+    });
 
     await loadDetails(
       'https://custom-explorer.example/api',

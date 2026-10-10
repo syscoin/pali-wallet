@@ -12,7 +12,9 @@ import {
 
 import { useController } from './useController';
 
-const POPUP_ENTRY_ROUTES = new Set(['/', '/home', '/app.html']);
+// HashRouter maps the manifest's bare app.html popup to '/'. Every named
+// route, including bare '/home', is an explicit destination.
+const POPUP_ENTRY_ROUTES = new Set(['/']);
 const SEND_DRAFT_ROUTES = new Set(['/send/eth', '/send/sys']);
 const SCROLL_SAVE_THROTTLE_MS = 200;
 

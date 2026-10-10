@@ -1,6 +1,6 @@
 import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
+import { shallowEqual, useSelector } from 'react-redux';
 
 import { UtxoTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
@@ -16,6 +16,7 @@ import {
   formatDisplayValue,
 } from 'utils/formatSyscoinValue';
 import { camelCaseToText, ellipsis } from 'utils/index';
+import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
@@ -75,9 +76,10 @@ const selectFresherStatusTransaction = (
 };
 
 const mergeAccountSummaryWithFullTransaction = (
-  accountTransaction: ISysTransaction,
+  accountTransaction: ISysTransaction | undefined,
   fullTransaction: ISysTransaction
 ): ISysTransaction => {
+  if (!accountTransaction) return fullTransaction;
   const statusTransaction = selectFresherStatusTransaction(
     accountTransaction,
     fullTransaction
@@ -135,45 +137,58 @@ const getSummaryAccountDelta = (transaction: any): string | null => {
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
-  tx: ISysTransaction;
+  tx?: ISysTransaction;
 }
 
 export const SyscoinTransactionDetails = ({
   hash,
   tx,
 }: ISyscoinTransactionDetailsProps) => {
-  const {
-    activeNetwork: { currency, url: networkUrl },
-  } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const { currency, url: networkUrl } = activeNetwork;
+  const normalizedHash = hash.toLowerCase();
+  const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
+  const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
+  const accountTransaction =
+    tx?.txid?.toLowerCase() === normalizedHash ? tx : undefined;
   const { controllerEmitter } = useController();
   const { getTxType, getTxStatus } = useTransactionsListConfig();
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [enhancedTransaction, setEnhancedTransaction] =
-    useState<ISysTransaction | null>(null);
+  const [enhancedTransaction, setEnhancedTransaction] = useState<{
+    data: ISysTransaction;
+    scope: string;
+  } | null>(null);
   const fetchingRef = useRef(false);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const [, copy] = useCopyClipboard();
   const matchingEnhancedTransaction =
-    enhancedTransaction?.txid === hash ? enhancedTransaction : null;
-  const rawTransaction: any = matchingEnhancedTransaction || tx;
+    enhancedTransaction?.scope === scope ? enhancedTransaction.data : null;
+  // Cache only chain data; always merge the latest account summary at render time.
+  const rawTransaction: any = matchingEnhancedTransaction
+    ? mergeAccountSummaryWithFullTransaction(
+        accountTransaction,
+        matchingEnhancedTransaction
+      )
+    : accountTransaction;
 
   useEffect(() => {
     let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
 
     const fetchTransactionDetails = async () => {
       if (!hash || !networkUrl) return;
 
       setEnhancedTransaction(null);
 
-      const cacheKey = `${networkUrl}::${hash}`;
+      const cacheKey = scope;
       const cached = txDetailsCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        if (!cancelled) {
-          setEnhancedTransaction(
-            mergeAccountSummaryWithFullTransaction(tx, cached.data)
-          );
+        if (isCurrent()) {
+          setEnhancedTransaction({ scope, data: cached.data });
         }
         return;
       }
@@ -187,19 +202,21 @@ export const SyscoinTransactionDetails = ({
           [hash, networkUrl]
         )) as ISysTransaction | null;
 
-        if (!cancelled && fullTransaction?.txid === hash) {
-          const mergedTransaction = mergeAccountSummaryWithFullTransaction(
-            tx,
-            fullTransaction
-          );
+        if (
+          isCurrent() &&
+          fullTransaction?.txid?.toLowerCase() === normalizedHash
+        ) {
           txDetailsCache.set(cacheKey, {
             data: fullTransaction,
             timestamp: Date.now(),
           });
-          setEnhancedTransaction(mergedTransaction);
+          if (txDetailsCache.size > 100)
+            txDetailsCache.delete(txDetailsCache.keys().next().value);
+          setEnhancedTransaction({ scope, data: fullTransaction });
         }
       } catch (error) {
-        console.error('Failed to fetch Syscoin transaction details:', error);
+        if (isCurrent())
+          console.error('Failed to fetch Syscoin transaction details:', error);
       } finally {
         fetchingRef.current = false;
       }
@@ -211,7 +228,7 @@ export const SyscoinTransactionDetails = ({
       cancelled = true;
       fetchingRef.current = false;
     };
-  }, [hash, networkUrl]);
+  }, [hash, networkUrl, scope]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -386,32 +403,35 @@ export const SyscoinTransactionDetails = ({
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
-          {getTxType(rawTransaction, isTxSent)}
+          {accountTransaction
+            ? getTxType(rawTransaction, isTxSent)
+            : getSyscoinTransactionTypeLabel(rawTransaction?.tokenType)}
         </p>
 
         {/* Display transaction amount */}
-        {(() => {
-          // Priority 1: Use SPT intent from compact summaries or full vin/vout data.
-          const intent = getSyscoinIntentAmount(rawTransaction);
+        {accountTransaction &&
+          (() => {
+            // Priority 1: Use SPT intent from compact summaries or full vin/vout data.
+            const intent = getSyscoinIntentAmount(rawTransaction);
 
-          if (intent) {
-            const decimals = intent.decimals ?? 8;
-            const symbol = intent.symbol ?? 'SYSX';
+            if (intent) {
+              const decimals = intent.decimals ?? 8;
+              const symbol = intent.symbol ?? 'SYSX';
 
+              return (
+                <p className="text-white text-base">
+                  {formatDisplayValue(intent.amount, decimals)} {symbol}
+                </p>
+              );
+            }
+
+            // Priority 2: For regular SYS transactions without asset transfers
             return (
               <p className="text-white text-base">
-                {formatDisplayValue(intent.amount, decimals)} {symbol}
+                {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
               </p>
             );
-          }
-
-          // Priority 2: For regular SYS transactions without asset transfers
-          return (
-            <p className="text-white text-base">
-              {formatSyscoinValue(txValue)} {currency?.toUpperCase() || 'SYS'}
-            </p>
-          );
-        })()}
+          })()}
 
         {(() => {
           // Detect SPT tx (either explicit tokenType or vout with assetInfo)

@@ -8,7 +8,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import React from 'react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  HashRouter,
+  MemoryRouter,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 
 import { NavigationRestorer } from 'routers/index';
 
@@ -39,6 +44,7 @@ jest.mock('utils/navigationState', () => ({
       '/home/details',
       '/receive',
       '/settings/about',
+      '/settings/account/smart-account-policy',
       '/settings/manage-accounts',
       '/send/eth',
       '/send/sys',
@@ -83,12 +89,12 @@ const Probe = () => {
     </>
   );
 };
-const tree = (entry: any = '/home') => (
+const tree = (entry: any = '/') => (
   <MemoryRouter initialEntries={[entry]}>
     <Probe />
   </MemoryRouter>
 );
-const mount = (entry: any = '/home') => render(tree(entry));
+const mount = (entry: any = '/') => render(tree(entry));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -186,7 +192,9 @@ it.each(['lock', 'scope', 'connection'])(
     if (change === 'connection') mockAuth.connectionUnavailable = true;
     view.rerender(tree());
     await act(async () => loaded.resolve(oldSaved));
-    expect(screen.getByTestId('route').textContent).toBe('/home');
+    expect(screen.getByTestId('route').textContent).toBe(
+      change === 'scope' ? '/home' : '/'
+    );
     if (change === 'lock') expect(mockClear).toHaveBeenCalled();
   }
 );
@@ -207,7 +215,7 @@ it('checks the live store scope before restoring even before a selector rerender
   mount();
   mockScope = { account: 'new-account', network: 'new-network' };
   await act(async () => loaded.resolve(oldSaved));
-  expect(screen.getByTestId('route').textContent).toBe('/home');
+  expect(screen.getByTestId('route').textContent).toBe('/');
   expect(mockSave).not.toHaveBeenCalled();
 });
 
@@ -250,7 +258,7 @@ it.each([
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.getByTestId('route').textContent).toBe('/home');
+    expect(screen.getByTestId('route').textContent).toBe('/');
   }
 );
 
@@ -265,7 +273,12 @@ it('respects an explicit safe entry and saves its metadata without loading anoth
   );
 });
 
-it.each(['/home?tab=assets', '/home?tab=activity', '/home#transactions'])(
+it.each([
+  '/home',
+  '/home?tab=assets',
+  '/home?tab=activity',
+  '/home#transactions',
+])(
   'does not replace explicit Home entry %s with another saved leaf',
   (entry) => {
     mockLoad.mockResolvedValue(saved());
@@ -275,8 +288,41 @@ it.each(['/home?tab=assets', '/home?tab=activity', '/home#transactions'])(
   }
 );
 
+it('respects a fresh explicit app.html#/home entry over a saved Policy leaf', async () => {
+  mockLoad.mockResolvedValue({
+    ...saved(),
+    currentPath: '/settings/account/smart-account-policy',
+  });
+  window.history.replaceState(null, '', '/app.html#/home');
+  render(
+    <HashRouter>
+      <Probe />
+    </HashRouter>
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(screen.getByTestId('route').textContent).toBe('/home');
+  expect(mockLoad).not.toHaveBeenCalled();
+  expect(mockSave).toHaveBeenCalledWith('/home', undefined, null, undefined);
+});
+
+it('restores a saved leaf from the manifest default bare app.html popup', async () => {
+  mockLoad.mockResolvedValue(saved());
+  render(
+    <HashRouter>
+      <Probe />
+    </HashRouter>
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('route').textContent).toBe('/home/smart-account')
+  );
+  expect(mockLoad).toHaveBeenCalledTimes(1);
+  expect(mockSave).not.toHaveBeenCalled();
+});
+
 it('saves ordinary tab and state changes immediately', async () => {
-  mount();
+  mount('/home');
   await waitFor(() => expect(mockSave).toHaveBeenCalled());
   mockSave.mockClear();
   fireEvent.click(screen.getByText('Change view'));

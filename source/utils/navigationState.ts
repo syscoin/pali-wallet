@@ -108,6 +108,7 @@ const COUNT_KEYS = new Set([
   'visibleCount',
 ]);
 const STRING_KEYS = new Set([
+  'hash',
   'search',
   'searchValue',
   'sortByValue',

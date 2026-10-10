@@ -26,7 +26,13 @@ jest.mock('state/vault/selectors', () => ({
 }));
 jest.mock('components/Icon/Icon', () => ({ ExternalLinkSvg: () => null }));
 jest.mock('utils/index', () => ({ adjustUrl: (url: string) => url }));
-jest.mock('utils/navigationState', () => ({ navigateBack: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  navigateBack: jest.fn(),
+  getWalletNavigationScope: () => ({
+    account: mockState.scopeAccount || 'account1',
+    network: mockState.scopeNetwork || 'network1',
+  }),
+}));
 jest.mock('./AssetDetails', () => ({ AssetDetails: () => null }));
 jest.mock('./Nfts', () => ({ NftsDetails: () => null }));
 jest.mock('./TransactionDetails', () => ({
@@ -74,5 +80,51 @@ it.each([false, true])(
       expect.anything()
     );
     expect(navigateBack).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['account', 'network'])(
+  'drops an old route summary after the %s scope changes',
+  (field) => {
+    const oldTx = { hash: '0xabc', txid: '0xabc', value: 'old-account' };
+    mockLocation.state = {
+      hash: '0xabc',
+      tx: oldTx,
+      walletScope: { account: 'account1', network: 'network1' },
+    };
+    mockState[field === 'account' ? 'scopeAccount' : 'scopeNetwork'] =
+      'changed';
+    render(<DetailsView />);
+    expect(TransactionDetails).toHaveBeenCalledWith(
+      { hash: '0xabc', tx: undefined },
+      expect.anything()
+    );
+  }
+);
+
+it('retains the same-document summary only in its exact wallet scope', () => {
+  const tx = { hash: '0xabc', value: 'current-account' };
+  mockLocation.state = {
+    hash: '0xabc',
+    tx,
+    walletScope: { account: 'account1', network: 'network1' },
+  };
+  render(<DetailsView />);
+  expect(TransactionDetails).toHaveBeenCalledWith(
+    { hash: '0xabc', tx },
+    expect.anything()
+  );
+});
+
+it.each([123, false, {}, ''])(
+  'rejects malformed direct transaction hash %p safely',
+  (hash) => {
+    mockLocation.state = {
+      hash,
+      returnContext: { returnRoute: '/home?tab=activity' },
+    };
+    const { container } = render(<DetailsView />);
+    expect(container.innerHTML).toBe('');
+    expect(navigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
   }
 );

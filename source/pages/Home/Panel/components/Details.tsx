@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { shallowEqual, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccountTransactions } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { adjustUrl } from 'utils/index';
-import { navigateBack } from 'utils/navigationState';
+import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
@@ -26,7 +26,23 @@ export const DetailsView = () => {
   const location = useLocation();
   const { navigate } = useUtils();
   const accountTransactions = useSelector(selectActiveAccountTransactions);
-  const { id, hash, nftCollection, nftData, tx } = location.state || {};
+  const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
+  const {
+    id,
+    hash: rawHash,
+    nftCollection,
+    nftData,
+    tx,
+  } = location.state || {};
+  const hash =
+    typeof rawHash === 'string' && rawHash.trim() ? rawHash : undefined;
+
+  const routeScope = location.state?.walletScope;
+  const routeTransaction =
+    routeScope?.account === walletScope.account &&
+    routeScope?.network === walletScope.network
+      ? tx
+      : undefined;
 
   const isAsset = id && !hash;
   const isNft = Boolean(nftCollection && nftData?.contractAddress);
@@ -77,7 +93,10 @@ export const DetailsView = () => {
       ) : isAsset ? (
         <AssetDetails id={id} />
       ) : (
-        <TransactionDetails hash={hash} tx={restoredTransaction || tx} />
+        <TransactionDetails
+          hash={hash}
+          tx={restoredTransaction || routeTransaction}
+        />
       )}
 
       {!isAsset && !isNft ? (

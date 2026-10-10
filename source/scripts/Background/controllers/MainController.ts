@@ -7693,19 +7693,17 @@ class MainController {
    */
   public async getEvmTransactionFromProvider(hash: string) {
     try {
+      // Keep every read on the provider that started this lookup, even if the
+      // active network changes while the transaction request is in flight.
+      const provider = this.ethereumTransaction.web3Provider;
       // Get transaction from provider
-      const tx = await this.ethereumTransaction.web3Provider.getTransaction(
-        hash
-      );
+      const tx = await provider.getTransaction(hash);
       if (!tx) return null;
 
       // Get receipt for confirmation status
       let receipt = null;
       try {
-        receipt =
-          await this.ethereumTransaction.web3Provider.getTransactionReceipt(
-            hash
-          );
+        receipt = await provider.getTransactionReceipt(hash);
       } catch (receiptError) {
         // Transaction might be pending, receipt not available yet
         console.log(
@@ -7714,8 +7712,7 @@ class MainController {
       }
 
       // Get current block number for confirmation count
-      const latestBlock =
-        await this.ethereumTransaction.web3Provider.getBlockNumber();
+      const latestBlock = await provider.getBlockNumber();
       const blockNumber = receipt
         ? this.convertHexValue(receipt.blockNumber, 'number')
         : null;
@@ -7727,9 +7724,7 @@ class MainController {
       let timestamp = Math.floor(Date.now() / 1000);
       if (receipt && receipt.blockNumber) {
         try {
-          const block = await this.ethereumTransaction.web3Provider.getBlock(
-            receipt.blockNumber
-          );
+          const block = await provider.getBlock(receipt.blockNumber);
           timestamp = block ? block.timestamp : timestamp;
         } catch (blockError) {
           console.log(

@@ -44,6 +44,24 @@ const reset = () => {
 };
 beforeEach(reset);
 
+it.each([true, false, 123])(
+  'drops non-string transaction hash %s from a stored details snapshot',
+  async (hash) => {
+    await saveNavigationState('/home/details', undefined, {
+      hash: 'valid-hash',
+    });
+    mockStored.state.hash = hash;
+    const snapshot = await loadNavigationState();
+    expect(snapshot?.state).not.toHaveProperty('hash');
+  }
+);
+
+it('preserves a string transaction hash across popup restoration', async () => {
+  const hash = 'a'.repeat(64);
+  await saveNavigationState('/home/details', undefined, { hash });
+  expect((await loadNavigationState())?.state.hash).toBe(hash);
+});
+
 it('restores exact amount and token ID strings without storing secrets, endpoints, verification or signed transaction fields', async () => {
   const amount = '0.000000000000000001';
   const tokenId =
