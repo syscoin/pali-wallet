@@ -2,10 +2,12 @@
 import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmNonce';
 import {
   buildEvmMinedNonceIndex,
+  buildEvmMinedSenderNonceIndex,
   buildEvmTransactionHashIndex,
   getEvmReplacementRootHash,
   getEvmSettlementStatus,
   hasEvmCancellationIntent,
+  isEvmStalePendingNonce,
 } from './evmReplacement';
 
 const SENDER = `0x${'11'.repeat(20)}`;
@@ -194,4 +196,63 @@ it('does not apply cancellation intent from an explicitly different chain', () =
     hasEvmCancellationIntent(winner({ chainId: 57, isCancel: true }), [], 5700)
   ).toBe(false);
   expect(status(winner({ chainId: 57 }))).toBe('pending');
+});
+
+it('suppresses stale pending nonces using a later mined outer EOA nonce without assigning intent', () => {
+  const later = winner({ nonce: 9, smartAccountExecutionFrom: OTHER });
+  const index = buildEvmMinedSenderNonceIndex(
+    buildEvmMinedNonceIndex([later], 5700)
+  );
+  expect(
+    isEvmStalePendingNonce(
+      original({ smartAccountExecutionFrom: OTHER }),
+      5700,
+      index
+    )
+  ).toBe(true);
+  expect(
+    isEvmStalePendingNonce(
+      original({ from: OTHER, smartAccountExecutionFrom: SENDER }),
+      5700,
+      index
+    )
+  ).toBe(false);
+  expect(
+    isEvmStalePendingNonce(original({ blockNumber: 42 }), 5700, index)
+  ).toBe(false);
+  expect(
+    isEvmStalePendingNonce(original({ hash: later.hash }), 5700, index)
+  ).toBe(false);
+  expect(hasEvmCancellationIntent(original(), [later], 5700)).toBe(false);
+});
+
+it.each([
+  { from: OTHER },
+  { nonce: 8 },
+  { nonce: undefined },
+  { chainId: 57 },
+  { historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer },
+  { type: '0x7f' },
+  { type: undefined, r: undefined, s: undefined, v: undefined },
+  { r: '0x0', s: '0x0', v: '0x0' },
+  { blockNumber: null, confirmations: 1 },
+])(
+  'does not suppress older pending history using weak or incompatible later data %j',
+  (fields) => {
+    const later = winner({ nonce: 9, ...fields });
+    const index = buildEvmMinedSenderNonceIndex(
+      buildEvmMinedNonceIndex([later], 5700)
+    );
+    expect(isEvmStalePendingNonce(original(), 5700, index)).toBe(false);
+  }
+);
+
+it('ignores conflicting indexed winners when suppressing older pending rows', () => {
+  const index = buildEvmMinedSenderNonceIndex(
+    buildEvmMinedNonceIndex(
+      [winner({ nonce: 9 }), winner({ nonce: 9, hash: hash('c') })],
+      5700
+    )
+  );
+  expect(isEvmStalePendingNonce(original(), 5700, index)).toBe(false);
 });

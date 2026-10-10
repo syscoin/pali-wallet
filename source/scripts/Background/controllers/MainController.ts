@@ -4150,6 +4150,170 @@ class MainController {
     return this.recordEvmReplacement(oldTxHash, chainID, newTxValue, false);
   }
 
+  public async speedUpEvmTransaction(
+    txHash: string,
+    isLegacy: boolean,
+    chainId: number,
+    signerAddress?: string
+  ) {
+    const { vault, vaultGlobal } = store.getState();
+    const accountInfo = { ...vault.activeAccount };
+    const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
+    const network = { ...vault.activeNetwork };
+    const generation = this.walletSessionGeneration;
+    const slip44 = vaultGlobal.activeSlip44;
+    const original = vault.accountTransactions[accountInfo.type]?.[
+      accountInfo.id
+    ]?.ethereum?.[chainId]?.find(
+      (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
+    ) as any;
+    const sender = original?.from?.toLowerCase();
+    const nonce = getEoaNonceFromHistoryTransaction(
+      { ...original, smartAccountExecutionFrom: undefined },
+      sender || ''
+    );
+    const contextError = () =>
+      Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    if (
+      vault.isBitcoinBased ||
+      this.isResettingWallet ||
+      accountInfo.type !== KeyringAccountType.SmartAccount ||
+      network.kind !== INetworkType.Ethereum ||
+      network.chainId !== chainId ||
+      !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
+      !sender ||
+      nonce === undefined ||
+      original.isReplaced ||
+      original.status === 'replaced' ||
+      isTransactionInBlock(original) ||
+      original.smartAccountExecutionFrom?.toLowerCase() !==
+        account.address?.toLowerCase() ||
+      (original.chainId !== undefined &&
+        Number(original.chainId) !== chainId) ||
+      (signerAddress && signerAddress.toLowerCase() !== sender)
+    )
+      throw contextError();
+
+    const targetAccount = Object.entries(vault.accounts)
+      .filter(([type]) => type !== KeyringAccountType.SmartAccount)
+      .flatMap(([type, accounts]) =>
+        Object.entries(accounts).map(([id, value]) => ({
+          id: Number(id),
+          type: type as KeyringAccountType,
+          value,
+        }))
+      )
+      .find(
+        ({ type, value }) =>
+          value.address?.toLowerCase() === sender &&
+          isAccountCompatibleWithNetwork(value, type, network) &&
+          (type === KeyringAccountType.Ledger ||
+            type === KeyringAccountType.Trezor ||
+            Boolean(value.xprv))
+      );
+    if (!targetAccount)
+      throw Object.assign(
+        new Error(
+          'The original transaction gas payer is not available locally'
+        ),
+        { transactionNotBroadcast: true }
+      );
+
+    const keyring = this.getActiveKeyring();
+    const transactionController = keyring.ethereumTransaction;
+    const provider = transactionController.web3Provider;
+    const assertCurrentContext = () => {
+      const current = store.getState();
+      const currentAccount =
+        current.vault.accounts[accountInfo.type]?.[accountInfo.id];
+      const payer =
+        current.vault.accounts[targetAccount.type]?.[targetAccount.id];
+      const tracked = current.vault.accountTransactions[accountInfo.type]?.[
+        accountInfo.id
+      ]?.ethereum?.[chainId]?.find(
+        (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
+      ) as any;
+      if (
+        this.isResettingWallet ||
+        this.walletSessionGeneration !== generation ||
+        current.vault.isBitcoinBased ||
+        current.vault.activeAccount.type !== accountInfo.type ||
+        current.vault.activeAccount.id !== accountInfo.id ||
+        currentAccount?.address?.toLowerCase() !==
+          account.address.toLowerCase() ||
+        !isAccountCompatibleWithNetwork(
+          currentAccount,
+          accountInfo.type,
+          network
+        ) ||
+        current.vault.activeNetwork.chainId !== chainId ||
+        current.vault.activeNetwork.url !== network.url ||
+        current.vault.activeNetwork.kind !== network.kind ||
+        current.vault.activeNetwork.slip44 !== network.slip44 ||
+        current.vaultGlobal.activeSlip44 !== slip44 ||
+        this.getActiveKeyring() !== keyring ||
+        keyring.ethereumTransaction !== transactionController ||
+        transactionController.web3Provider !== provider ||
+        payer?.address?.toLowerCase() !== sender ||
+        !isAccountCompatibleWithNetwork(payer, targetAccount.type, network) ||
+        !tracked ||
+        tracked.isReplaced ||
+        tracked.status === 'replaced' ||
+        isTransactionInBlock(tracked) ||
+        tracked.smartAccountExecutionFrom?.toLowerCase() !==
+          account.address.toLowerCase() ||
+        tracked.from?.toLowerCase() !== sender ||
+        Number(tracked.nonce) !== nonce ||
+        (tracked.chainId !== undefined && Number(tracked.chainId) !== chainId)
+      )
+        throw contextError();
+    };
+    const validateOriginal = (transaction: any) => {
+      assertCurrentContext();
+      if (
+        isTransactionInBlock(transaction) ||
+        transaction.hash?.toLowerCase() !== txHash.toLowerCase() ||
+        transaction.from?.toLowerCase() !== sender ||
+        !Number.isSafeInteger(transaction.nonce) ||
+        transaction.nonce !== nonce ||
+        (transaction.chainId !== undefined &&
+          Number(transaction.chainId) !== chainId) ||
+        (original.to !== undefined &&
+          transaction.to?.toLowerCase() !== original.to?.toLowerCase()) ||
+        (original.value !== undefined &&
+          BigInt(String(transaction.value)) !==
+            BigInt(String(original.value))) ||
+        ((original.input !== undefined || original.data !== undefined) &&
+          (transaction.data || '0x').toLowerCase() !==
+            (original.input ?? original.data).toLowerCase())
+      )
+        throw contextError();
+    };
+    let broadcastStarted = false;
+    try {
+      assertCurrentContext();
+      return await transactionController.sendTransactionWithEditedFee(
+        txHash,
+        isLegacy,
+        {
+          targetAccount: { id: targetAccount.id, type: targetAccount.type },
+          assertCurrentContext,
+          validateOriginal,
+          beforeBroadcast: () => {
+            assertCurrentContext();
+            broadcastStarted = true;
+          },
+        }
+      );
+    } catch (error) {
+      throw Object.assign(error, {
+        transactionNotBroadcast: !broadcastStarted,
+      });
+    }
+  }
+
   public async cancelEvmTransaction(
     txHash: string,
     isLegacy?: boolean,

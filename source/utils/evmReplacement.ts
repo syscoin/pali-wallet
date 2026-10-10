@@ -13,6 +13,10 @@ export type EvmSettlementStatus =
   | 'failed';
 
 export type EvmMinedNonceIndex = Map<string, Set<string>>;
+export type EvmMinedSenderNonceIndex = Map<
+  string,
+  { hash: string; nonce: number }
+>;
 const hashKey = (value: unknown) =>
   typeof value === 'string' && /^0x[0-9a-f]{64}$/i.test(value)
     ? value.toLowerCase()
@@ -107,6 +111,40 @@ export const buildEvmMinedNonceIndex = (
     index.set(key, hashes);
   }
   return index;
+};
+
+/** A later mined EOA nonce rules out older pending rows, without guessing intent. */
+export const buildEvmMinedSenderNonceIndex = (
+  mined: EvmMinedNonceIndex
+): EvmMinedSenderNonceIndex => {
+  const latest: EvmMinedSenderNonceIndex = new Map();
+  for (const [key, hashes] of mined) {
+    if (hashes.size !== 1) continue;
+    const split = key.lastIndexOf(':');
+    const sender = key.slice(0, split);
+    const nonce = Number(key.slice(split + 1));
+    if (!latest.has(sender) || latest.get(sender)!.nonce < nonce)
+      latest.set(sender, { nonce, hash: hashes.values().next().value! });
+  }
+  return latest;
+};
+
+export const isEvmStalePendingNonce = (
+  tx: any,
+  chainId: number,
+  mined: EvmMinedSenderNonceIndex
+): boolean => {
+  if (isTransactionInBlock(tx)) return false;
+  const key = nonceKey(tx, chainId);
+  const hash = hashKey(tx?.hash);
+  if (!key || !hash) return false;
+  const split = key.lastIndexOf(':');
+  const latest = mined.get(key.slice(0, split));
+  return Boolean(
+    latest &&
+      latest.hash !== hash &&
+      latest.nonce > Number(key.slice(split + 1))
+  );
 };
 
 export const getEvmSettlementStatus = (

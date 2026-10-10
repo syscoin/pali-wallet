@@ -37,27 +37,35 @@ const tx = (txHash: string, fields: any = {}) => ({
   ...fields,
 });
 const initial = () => reducer(undefined, { type: 'test/init' });
-const rows = (state: ReturnType<typeof reducer>) =>
-  state.accountTransactions[KeyringAccountType.HDAccount][0].ethereum[
-    CHAIN
-  ] as any[];
-const insert = (state: ReturnType<typeof reducer>, transaction: any) =>
+const rows = (
+  state: ReturnType<typeof reducer>,
+  accountType = KeyringAccountType.HDAccount
+) => state.accountTransactions[accountType][0].ethereum[CHAIN] as any[];
+const insert = (
+  state: ReturnType<typeof reducer>,
+  transaction: any,
+  accountType = KeyringAccountType.HDAccount
+) =>
   reducer(
     state,
     setSingleTransactionToState({
       accountId: 0,
-      accountType: KeyringAccountType.HDAccount,
+      accountType,
       chainId: CHAIN,
       networkType: TransactionsType.Ethereum,
       transaction,
     })
   );
-const refresh = (state: ReturnType<typeof reducer>, transactions: any[]) =>
+const refresh = (
+  state: ReturnType<typeof reducer>,
+  transactions: any[],
+  accountType = KeyringAccountType.HDAccount
+) =>
   reducer(
     state,
     setAccountTransactions({
       accountId: 0,
-      accountType: KeyringAccountType.HDAccount,
+      accountType,
       chainId: CHAIN,
       networkType: TransactionsType.Ethereum,
       transactions,
@@ -89,14 +97,161 @@ const incomingWinner = (fields: any = {}) => ({
   historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
   ...fields,
 });
-const settlement = (transaction: any, state: ReturnType<typeof reducer>) =>
+const settlement = (
+  transaction: any,
+  state: ReturnType<typeof reducer>,
+  accountType = KeyringAccountType.HDAccount
+) =>
   getEvmSettlementStatus(
     transaction,
     CHAIN,
-    buildEvmMinedNonceIndex(rows(state), CHAIN)
+    buildEvmMinedNonceIndex(rows(state, accountType), CHAIN)
   );
 
 describe('replacement history reducer refresh', () => {
+  it.each([undefined, SMART])(
+    'preserves the original own mined receipt when a duplicate single pending RPC read arrives (AA owner %s)',
+    (owner) => {
+      const accountType = owner
+        ? KeyringAccountType.SmartAccount
+        : KeyringAccountType.HDAccount;
+      const metadata = owner ? { smartAccountExecutionFrom: owner } : {};
+      const minedFields = {
+        blockNumber: '0x7b',
+        blockHash: hash('d'),
+        confirmations: 5,
+        success: true,
+        isError: '0',
+        txreceipt_status: '0x1',
+        logs: [{ address: SENDER, topics: [hash('f')], data: '0x01' }],
+      };
+      let state = insert(
+        initial(),
+        root({ ...minedFields, ...metadata }),
+        accountType
+      );
+      // A delayed provider read carries the same outer hash/hex nonce, but no
+      // receipt or wallet-purpose metadata. It cannot demote the known receipt.
+      state = insert(
+        state,
+        tx(ROOT, {
+          nonce: '0x8',
+          blockNumber: null,
+          blockHash: null,
+          confirmations: 0,
+          success: null,
+          isError: null,
+          txreceipt_status: null,
+          logs: [],
+        }),
+        accountType
+      );
+      expect(rows(state, accountType)).toHaveLength(1);
+      const original = rows(state, accountType)[0];
+      expect(original).toMatchObject({ ...minedFields, ...metadata });
+      expect(settlement(original, state, accountType)).toBe('confirmed');
+    }
+  );
+
+  it.each([undefined, SMART])(
+    'drops a stale pending descendant after its parent mines and never revives the root when that winner leaves the history window (AA owner %s)',
+    (owner) => {
+      const accountType = owner
+        ? KeyringAccountType.SmartAccount
+        : KeyringAccountType.HDAccount;
+      const metadata = owner ? { smartAccountExecutionFrom: owner } : {};
+      const winner = localWinner({
+        replacesHash: ROOT,
+        ...metadata,
+      });
+      const staleChild = tx(PARENT, {
+        to: SENDER,
+        value: '0',
+        nonce: '0x8',
+        isCancel: true,
+        isSpeedUp: true,
+        replacesHash: WINNER,
+        replacementRootHash: ROOT,
+        ...metadata,
+      });
+      let state = insert(initial(), root(metadata), accountType);
+      state = insert(state, winner, accountType);
+      state = insert(state, staleChild, accountType);
+      // Explorer refresh omits both the child's known wallet link and AA owner.
+      const incomingChild = tx(PARENT, {
+        to: SENDER,
+        value: '0',
+        nonce: '0x8',
+        historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
+      });
+      state = refresh(state, [incomingWinner(), incomingChild], accountType);
+      const replacedOriginal = rows(state, accountType).find(
+        (row) => row.hash === ROOT
+      );
+      expect(replacedOriginal).toBeDefined();
+      expect(settlement(replacedOriginal, state, accountType)).toBe('replaced');
+      const retainedStaleChild = rows(state, accountType).some(
+        (row) => row.hash === PARENT
+      );
+
+      // Rehydrate actual reducer state before the next shortened history page.
+      state = JSON.parse(JSON.stringify(state));
+      const unrelated = tx(hash('d'), {
+        nonce: '0x9',
+        blockNumber: 124,
+        confirmations: 1,
+        txreceipt_status: '1',
+      });
+      state = refresh(state, [incomingChild, unrelated], accountType);
+      expect(rows(state, accountType).map((row) => row.hash)).toEqual([
+        unrelated.hash,
+      ]);
+      expect(retainedStaleChild).toBe(false);
+    }
+  );
+
+  it('keeps a valid pending row when only a different outer payer has a higher mined nonce', () => {
+    const pending = tx(ROOT, { nonce: '0x8' });
+    let state = insert(initial(), pending);
+    state = refresh(state, [
+      pending,
+      tx(WINNER, {
+        from: RECIPIENT,
+        nonce: '0x9',
+        blockNumber: 124,
+        confirmations: 1,
+        txreceipt_status: '1',
+      }),
+    ]);
+    const preserved = rows(state).find((row) => row.hash === ROOT);
+    expect(preserved).toMatchObject(pending);
+    expect(settlement(preserved, state)).toBe('pending');
+  });
+
+  it.each([
+    { historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer },
+    { type: '0x7f' },
+  ])(
+    'keeps a valid pending row when a higher mined nonce comes only from an untrusted history placeholder %j',
+    (fields) => {
+      const pending = tx(ROOT, { nonce: '0x8' });
+      let state = insert(initial(), pending);
+      state = refresh(state, [
+        pending,
+        tx(WINNER, {
+          nonce: '0x9',
+          blockNumber: 124,
+          confirmations: 1,
+          txreceipt_status: '1',
+          ...fields,
+        }),
+      ]);
+      const preserved = rows(state).find((row) => row.hash === ROOT);
+      expect(preserved).toMatchObject(pending);
+      expect(settlement(preserved, state)).toBe('pending');
+    }
+  );
+
   it('does not retain a mined original with a stale replacement marker solely because an unmined child remains', () => {
     const original = root({
       blockNumber: 124,
@@ -291,7 +446,7 @@ describe('replacement history reducer refresh', () => {
     }
   );
 
-  it('prioritizes the original own mined receipt even while another attempted replacement is still in history', () => {
+  it('prioritizes the original own mined receipt and drops a losing attempt included in the incoming history', () => {
     const attemptedCancel = tx(WINNER, {
       isCancel: true,
       replacesHash: ROOT,
@@ -308,12 +463,7 @@ describe('replacement history reducer refresh', () => {
         state
       )
     ).toBe('confirmed');
-    expect(
-      settlement(
-        rows(state).find((row) => row.hash === WINNER),
-        state
-      )
-    ).toBe('replaced');
+    expect(rows(state).some((row) => row.hash === WINNER)).toBe(false);
   });
 });
 

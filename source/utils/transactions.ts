@@ -3,7 +3,7 @@ import { omit } from 'lodash';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
-import { IKeyringAccountState } from 'types/network';
+import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 import { formatUnits } from 'utils/ethersV6Compat';
@@ -637,20 +637,27 @@ const speedUpTransaction = async (
   isLegacy: boolean,
   chainId: number,
   alert: any,
-  t: (key: string, options?: { hash: string }) => string
+  t: (key: string, options?: { hash: string }) => string,
+  signerAddress?: string
 ) => {
   // Safety check: this function is only for EVM networks
-  const { isBitcoinBased } = store.getState().vault;
+  const { isBitcoinBased, activeAccount } = store.getState().vault;
   if (isBitcoinBased) {
     alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
 
   try {
-    const response = await controllerEmitter(
-      ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-      [txHash, isLegacy]
-    );
+    const response =
+      activeAccount?.type === KeyringAccountType.SmartAccount
+        ? await controllerEmitter(
+            ['wallet', 'speedUpEvmTransaction'],
+            [txHash, isLegacy, chainId, signerAddress]
+          )
+        : await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
+            [txHash, isLegacy]
+          );
 
     if (!response) {
       alert.error(t('transactions.transactionSpeedUpFailed'));
@@ -737,7 +744,14 @@ export const handleUpdateTransaction = async ({
         signerAddress
       );
     case UpdateTxAction.SpeedUp:
-      return await speedUpTransaction(txHash, isLegacy, chainId, alert, t);
+      return await speedUpTransaction(
+        txHash,
+        isLegacy,
+        chainId,
+        alert,
+        t,
+        signerAddress
+      );
   }
 };
 

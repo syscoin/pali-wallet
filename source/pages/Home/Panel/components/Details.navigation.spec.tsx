@@ -116,6 +116,56 @@ it('retains the same-document summary only in its exact wallet scope', () => {
   );
 });
 
+it.each(['1', '0'])(
+  'passes the current own receipt %s after history changes with an unchanged pending route summary',
+  (receipt) => {
+    const pending = {
+      hash: `0x${'ab'.repeat(32)}`,
+      value: '7',
+      blockNumber: null,
+      confirmations: 0,
+      isReplaced: true,
+    };
+    mockLocation.state = {
+      hash: pending.hash,
+      tx: pending,
+      walletScope: { account: 'account1', network: 'network1' },
+    };
+    const location = mockLocation;
+    mockState.transactions.ethereum[1] = [pending];
+    const view = render(<DetailsView />);
+    expect(TransactionDetails).toHaveBeenLastCalledWith(
+      { hash: pending.hash, tx: pending },
+      expect.anything()
+    );
+
+    const mined = {
+      ...pending,
+      blockNumber: 42,
+      confirmations: 1,
+      // eslint-disable-next-line camelcase
+      txreceipt_status: receipt,
+    };
+    mockState = {
+      ...mockState,
+      transactions: {
+        ...mockState.transactions,
+        ethereum: { ...mockState.transactions.ethereum, 1: [mined] },
+      },
+    };
+    view.rerender(<DetailsView />);
+
+    expect(TransactionDetails).toHaveBeenLastCalledWith(
+      { hash: pending.hash, tx: mined },
+      expect.anything()
+    );
+    expect(mockLocation).toBe(location);
+    expect(mockLocation.state.tx).toBe(pending);
+    expect(mockLocation.state.tx.blockNumber).toBeNull();
+    expect(navigateBack).not.toHaveBeenCalled();
+  }
+);
+
 it.each([123, false, {}, ''])(
   'rejects malformed direct transaction hash %p safely',
   (hash) => {

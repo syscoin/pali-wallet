@@ -1,0 +1,357 @@
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
+--- a/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
++++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/keyring-manager.js
+@@ -685,10 +685,11 @@
+          * PRIVATE METHODS
+          */
+         // ===================================== AUXILIARY METHOD - FOR TRANSACTIONS CLASSES ===================================== //
+-        this.getDecryptedPrivateKey = () => {
++        this.getDecryptedPrivateKey = (targetAccount) => {
+             try {
+                 const vault = this.getVault();
+-                const { accounts, activeAccount } = vault;
++                const { accounts } = vault;
++                const activeAccount = targetAccount || vault.activeAccount;
+                 const activeAccountId = activeAccount.id;
+                 const activeAccountType = activeAccount.type;
+                 const isLedger = activeAccountType === types_1.KeyringAccountType.Ledger;
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
+--- a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
++++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js
+@@ -9,6 +9,7 @@
+ const sysweb3_utils_1 = require("@sidhujag/sysweb3-utils");
+ const omit_1 = __importDefault(require("lodash/omit"));
+ const ethers_v6_1 = require("../ethers-v6");
++const transaction_1 = require("ethers/transaction");
+ const providers_1 = require("../providers");
+ const types_1 = require("../types");
+ const evm_local_signer_1 = require("./evm-local-signer");
+@@ -427,18 +428,18 @@
+                 throw error;
+             }
+         };
+-        this.getFeeDataWithDynamicMaxPriorityFeePerGas = async () => {
++        this.getFeeDataWithDynamicMaxPriorityFeePerGas = async (provider = this.web3Provider) => {
+             let maxFeePerGas = this.toBigNumber(0);
+             let maxPriorityFeePerGas = this.toBigNumber(0);
+             try {
+                 // First, try to get the current gas price as a baseline
+-                const currentGasPrice = await this.web3Provider.getGasPrice();
+-                const block = await this.web3Provider.getBlock('latest');
++                const currentGasPrice = await provider.getGasPrice();
++                const block = await provider.getBlock('latest');
+                 if (block && block.baseFeePerGas != null) {
+                     const baseFeePerGas = ethers_v6_1.BigNumber.from(block.baseFeePerGas);
+                     try {
+                         // Some networks don't support this RPC method
+-                        const ethMaxPriorityFee = await this.web3Provider.send('eth_maxPriorityFeePerGas', []);
++                        const ethMaxPriorityFee = await provider.send('eth_maxPriorityFeePerGas', []);
+                         maxPriorityFeePerGas = ethers_v6_1.BigNumber.from(ethMaxPriorityFee);
+                         // Apply minimum priority fee override if set
+                         if (this.gasOverrides.minPriorityFee &&
+@@ -466,7 +467,7 @@
+                         // Use a more aggressive fallback strategy with higher priority fees
+                         // Check if we can get fee history for better estimation
+                         try {
+-                            const feeHistory = await this.web3Provider.send('eth_feeHistory', [
++                            const feeHistory = await provider.send('eth_feeHistory', [
+                                 '0x5', // Last 5 blocks
+                                 'latest',
+                                 [25, 50, 75], // Percentiles for priority fees
+@@ -499,7 +500,7 @@
+                             // If fee history fails, use current gas price as reference
+                             console.warn('Fee history not available, using gas price based estimation');
+                             // Use 10% of current gas price as priority fee
+-                            const currentGasPrice = await this.web3Provider.getGasPrice();
++                            const currentGasPrice = await provider.getGasPrice();
+                             maxPriorityFeePerGas = currentGasPrice.mul(10).div(100);
+                             // Ensure minimum of 1 gwei
+                             const minPriority = ethers_v6_1.BigNumber.from('1000000000');
+@@ -508,7 +509,7 @@
+                             }
+                         }
+                         // Calculate maxFeePerGas based on current network conditions
+-                        const currentGasPrice = await this.web3Provider.getGasPrice();
++                        const currentGasPrice = await provider.getGasPrice();
+                         const baselineMaxFee = currentGasPrice.mul(120).div(100);
+                         const calculatedMaxFee = baseFeePerGas
+                             .mul(250)
+@@ -1060,13 +1061,52 @@
+                     return await sendEVMTransaction();
+             }
+         };
+-        this.sendTransactionWithEditedFee = async (txHash, isLegacy) => {
+-            let tx = (await this.web3Provider.getTransaction(txHash));
++        this.sendTransactionWithEditedFee = async (txHash, isLegacy, options = {}) => {
++            const { assertCurrentContext, validateOriginal, beforeBroadcast } = options;
++            const assertCurrent = () => assertCurrentContext?.();
++            const assertBeforeBroadcast = () => {
++                assertCurrent();
++                beforeBroadcast?.();
++                assertCurrent();
++            };
++            const assertSignedSender = (signedTx) => {
++                if (targetAccount && transaction_1.Transaction.from(signedTx).from?.toLowerCase() !== activeAccount.address.toLowerCase()) {
++                    throw new Error('Replacement signature does not match the signing account');
++                }
++            };
++            assertCurrent();
++            const state = this.getState();
++            const activeAccountType = options.targetAccount?.type ?? state.activeAccountType;
++            const activeAccountId = options.targetAccount?.id ?? state.activeAccountId;
++            const targetAccount = options.targetAccount
++                ? { type: activeAccountType, id: activeAccountId }
++                : undefined;
++            const activeAccount = { ...state.accounts?.[activeAccountType]?.[activeAccountId] };
++            const activeNetwork = { ...state.activeNetwork };
++            if (!activeAccount.address || (targetAccount && activeAccountType === types_1.KeyringAccountType.SmartAccount)) {
++                throw new Error('Replacement signing account is unavailable');
++            }
++            const provider = this.web3Provider;
++            assertCurrent();
++            const validateLookup = (transaction) => {
++                assertCurrent();
++                if (!transaction) return;
++                if (targetAccount && (transaction.from?.toLowerCase() !== activeAccount.address.toLowerCase() ||
++                    (transaction.chainId != null && Number(transaction.chainId) !== Number(activeNetwork.chainId)))) {
++                    throw new Error('Replacement transaction does not match the signing account or network');
++                }
++                validateOriginal?.(transaction);
++                assertCurrent();
++            };
++            let tx = (await provider.getTransaction(txHash));
++            validateLookup(tx);
+             if (!tx) {
+                 // Retry a couple of times in case the node hasn't indexed the pending tx yet
+                 for (let attempt = 0; attempt < 2 && !tx; attempt++) {
+                     await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+-                    tx = (await this.web3Provider.getTransaction(txHash));
++                    assertCurrent();
++                    tx = (await provider.getTransaction(txHash));
++                    validateLookup(tx);
+                 }
+                 if (!tx) {
+                     return {
+@@ -1077,10 +1117,9 @@
+                     };
+                 }
+             }
+-            const { activeAccountType, activeAccountId, accounts, activeNetwork } = this.getState();
+-            const activeAccount = accounts[activeAccountType][activeAccountId];
+             // Check if this might be a max send transaction by comparing total cost to balance
+-            const currentBalance = await this.web3Provider.getBalance(activeAccount.address);
++            const currentBalance = await provider.getBalance(activeAccount.address);
++            assertCurrent();
+             // Ensure all transaction values are resolved from promises
+             const gasLimit = await Promise.resolve(tx.gasLimit);
+             const gasPrice = await Promise.resolve(tx.gasPrice || 0);
+@@ -1088,6 +1127,7 @@
+             const maxPriorityFeePerGas = await Promise.resolve(tx.maxPriorityFeePerGas || 0);
+             const txValue = await Promise.resolve(tx.value);
+             const txData = await Promise.resolve(tx.data || '0x');
++            assertCurrent();
+             // Check if this is a contract call (has data)
+             const isContractCall = txData && txData !== '0x' && txData.length > 2;
+             const originalGasCost = isLegacy
+@@ -1110,7 +1150,8 @@
+             if (isLegacy) {
+                 if (!oldTxsGasValues.gasPrice || oldTxsGasValues.gasPrice.isZero()) {
+                     // Fetch current network gas price for replacement
+-                    const currentGasPrice = await this.web3Provider.getGasPrice();
++                    const currentGasPrice = await provider.getGasPrice();
++                    assertCurrent();
+                     oldTxsGasValues.gasPrice = currentGasPrice;
+                 }
+             }
+@@ -1119,7 +1160,8 @@
+                 if (!oldTxsGasValues.maxFeePerGas ||
+                     oldTxsGasValues.maxFeePerGas.isZero()) {
+                     // Fetch current network fee data for replacement
+-                    const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas();
++                    const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas(provider);
++                    assertCurrent();
+                     oldTxsGasValues.maxFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxFeePerGas || 0);
+                     oldTxsGasValues.maxPriorityFeePerGas = ethers_v6_1.BigNumber.from(feeData.maxPriorityFeePerGas || 0);
+                 }
+@@ -1151,6 +1193,7 @@
+                     }
+                 }
+                 txWithEditedFee = {
++                    chainId: activeNetwork.chainId,
+                     from: tx.from,
+                     to: tx.to,
+                     nonce: tx.nonce,
+@@ -1187,6 +1230,7 @@
+                     }
+                 }
+                 txWithEditedFee = {
++                    chainId: activeNetwork.chainId,
+                     from: tx.from,
+                     to: tx.to,
+                     nonce: tx.nonce,
+@@ -1203,7 +1247,7 @@
+                     const resolvedParams = await (0, ethers_v6_1.resolveProperties)((0, omit_1.default)(txWithEditedFee, 'from'));
+                     const formatParams = {
+                         ...resolvedParams,
+-                        nonce: resolvedParams.nonce
++                        nonce: resolvedParams.nonce != null
+                             ? Number(resolvedParams.nonce.toString())
+                             : undefined,
+                     };
+@@ -1219,6 +1263,7 @@
+                             type: 2, // Need explicit type for hardware wallet serialization
+                         };
+                     const rawTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForEthers);
++                    assertCurrent();
+                     const signature = await this.ledgerSigner.evm.signEVMTransaction({
+                         rawTx: rawTx.replace('0x', ''),
+                         accountIndex: activeAccountId,
+@@ -1230,7 +1275,9 @@
+                     };
+                     if (signature) {
+                         const signedTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForEthers, formattedSignature);
+-                        const transactionResponse = await this.web3Provider.sendTransaction(signedTx);
++                        assertSignedSender(signedTx);
++                        assertBeforeBroadcast();
++                        const transactionResponse = await provider.sendTransaction(signedTx);
+                         return {
+                             isSpeedUp: true,
+                             transaction: transactionResponse,
+@@ -1297,6 +1344,7 @@
+                                 ? formattedTx.maxPriorityFeePerGas
+                                 : this.toHex0x(formattedTx.maxPriorityFeePerGas, 'maxPriorityFeePerGas');
+                     }
++                    assertCurrent();
+                     const signature = await this.trezorSigner.signEthTransaction({
+                         coin: trezorCoin,
+                         tx: txFormattedForTrezor,
+@@ -1305,7 +1353,9 @@
+                     });
+                     if (signature.success) {
+                         const signedTx = (0, ethers_v6_1.serializeTransaction)(txFormattedForTrezor, signature.payload);
+-                        const transactionResponse = await this.web3Provider.sendTransaction(signedTx);
++                        assertSignedSender(signedTx);
++                        assertBeforeBroadcast();
++                        const transactionResponse = await provider.sendTransaction(signedTx);
+                         return {
+                             isSpeedUp: true,
+                             transaction: transactionResponse,
+@@ -1339,8 +1389,13 @@
+             // Regular wallet speedup handler
+             const speedUpWithPrivateKey = async () => {
+                 try {
+-                    const { decryptedPrivateKey } = this.getDecryptedPrivateKey();
+-                    const transactionResponse = await (0, evm_local_signer_1.sendLocalEvmTransaction)(this.web3Provider, decryptedPrivateKey, txWithEditedFee);
++                    assertCurrent();
++                    const { address, decryptedPrivateKey } = this.getDecryptedPrivateKey(targetAccount);
++                    assertCurrent();
++                    if (address.toLowerCase() !== activeAccount.address.toLowerCase()) {
++                        throw new Error('Replacement signing account changed');
++                    }
++                    const transactionResponse = await (0, evm_local_signer_1.sendLocalEvmTransaction)(provider, decryptedPrivateKey, txWithEditedFee, assertBeforeBroadcast, assertCurrent);
+                     if (transactionResponse) {
+                         return {
+                             isSpeedUp: true,
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
+--- a/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
++++ b/node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer.js
+@@ -135,7 +135,7 @@
+     return (0, ethers_v6_1.serializeTransaction)(transaction, signature);
+ };
+ exports.signTransaction = signTransaction;
+-const sendLocalEvmTransaction = async (provider, privateKey, transaction, beforeBroadcast) => {
++const sendLocalEvmTransaction = async (provider, privateKey, transaction, beforeBroadcast, beforeSign) => {
+     const account = (0, exports.privateKeyToAccount)(privateKey);
+     const resolved = await (0, ethers_v6_1.resolveProperties)(transaction);
+     if (resolved.from && !(0, exports.sameAddress)(resolved.from, account.address)) {
+@@ -194,6 +194,7 @@
+     if (!tx.value) {
+         tx.value = '0x0';
+     }
++    beforeSign?.();
+     const signedTx = (0, exports.signTransaction)(tx, privateKey);
+     beforeBroadcast?.();
+     return provider.sendTransaction(signedTx);
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
+--- a/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
++++ b/node_modules/@sidhujag/sysweb3-keyring/types/types.d.ts
+@@ -34,6 +34,12 @@
+     privateKey: string;
+     publicKey: string;
+ };
++export interface IEvmReplacementOptions {
++    targetAccount?: { id: number; type: KeyringAccountType };
++    assertCurrentContext?: () => void;
++    validateOriginal?: (transaction: TransactionResponse) => void;
++    beforeBroadcast?: () => void;
++}
+ export interface IEthereumTransactions {
+     cancelSentTransaction: (txHash: string, isLegacy?: boolean, fallbackNonce?: number) => Promise<{
+         error?: boolean;
+@@ -46,7 +52,7 @@
+     getEncryptedPubKey: () => string;
+     getErc20TokensByAddress?: (address: string, isSupported: boolean, apiUrl: string) => Promise<any[]>;
+     getFeeByType: (type: string) => Promise<string>;
+-    getFeeDataWithDynamicMaxPriorityFeePerGas: () => Promise<any>;
++    getFeeDataWithDynamicMaxPriorityFeePerGas: (provider?: CustomJsonRpcProvider) => Promise<any>;
+     getGasLimit: (toAddress: string) => Promise<number>;
+     getGasOracle?: () => Promise<any>;
+     getRecommendedNonce: (address: string) => Promise<number>;
+@@ -59,7 +65,7 @@
+     toBigNumber: (aBigNumberish: string | number) => BigNumber;
+     sendSignedErc20Transaction: ({ networkUrl, receiver, tokenAddress, tokenAmount, }: ISendSignedErcTransactionProps) => Promise<IResponseFromSendErcSignedTransaction>;
+     sendSignedErc721Transaction: ({ networkUrl, receiver, tokenAddress, tokenId, }: ISendSignedErcTransactionProps) => Promise<IResponseFromSendErcSignedTransaction>;
+-    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean) => Promise<{
++    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean, options?: IEvmReplacementOptions) => Promise<{
+         isSpeedUp: boolean;
+         transaction?: TransactionResponse;
+         error?: boolean;
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
+--- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
++++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/ethereum.d.ts
+@@ -4,7 +4,7 @@
+ import { LedgerKeyring } from '../ledger';
+ import { CustomJsonRpcProvider } from '../providers';
+ import { TrezorKeyring } from '../trezor';
+-import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
++import { IResponseFromSendErcSignedTransaction, ISendSignedErcTransactionProps, IEthereumTransactions, IEvmReplacementOptions, SimpleTransactionRequest, KeyringAccountType, accountType, IGasParams } from '../types';
+ export declare class EthereumTransactions implements IEthereumTransactions {
+     private _web3Provider;
+     private _web3ProviderKey?;
+@@ -15,7 +15,7 @@
+     private getDecryptedPrivateKey;
+     private gasOverrides;
+     private getState;
+-    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: () => {
++    constructor(getNetwork: () => INetwork, getDecryptedPrivateKey: (targetAccount?: IEvmReplacementOptions['targetAccount']) => {
+         address: string;
+         decryptedPrivateKey: string;
+     }, getState: () => {
+@@ -49,7 +49,7 @@
+         receivingAddress: string;
+         value: any;
+     }) => string;
+-    getFeeDataWithDynamicMaxPriorityFeePerGas: () => Promise<{
++    getFeeDataWithDynamicMaxPriorityFeePerGas: (provider?: CustomJsonRpcProvider) => Promise<{
+         maxFeePerGas: BigNumber;
+         maxPriorityFeePerGas: BigNumber;
+     }>;
+@@ -61,7 +61,7 @@
+     }>;
+     sendFormattedTransaction: (params: SimpleTransactionRequest, isLegacy?: boolean) => Promise<any>;
+     private sendFormattedTransactionInternal;
+-    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean) => Promise<{
++    sendTransactionWithEditedFee: (txHash: string, isLegacy?: boolean, options?: IEvmReplacementOptions) => Promise<{
+         error?: boolean;
+         isSpeedUp: boolean;
+         transaction?: TransactionResponse;
+diff --git a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
+--- a/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
++++ b/node_modules/@sidhujag/sysweb3-keyring/types/transactions/evm-local-signer.d.ts
+@@ -20,5 +20,5 @@
+ export declare const signPersonalMessage: (message: string | Uint8Array, privateKey: string | Uint8Array) => string;
+ export declare const parsePersonalMessage: (hexMessage: string) => string;
+ export declare const signTransaction: (transaction: TransactionRequest, privateKey: string | Uint8Array) => string;
+-export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void) => Promise<any>;
++export declare const sendLocalEvmTransaction: (provider: CustomJsonRpcProvider, privateKey: string, transaction: Deferrable<Record<string, any>>, beforeBroadcast?: () => void, beforeSign?: () => void) => Promise<any>;
+ export declare const sameAddress: (left: string, right: string) => boolean;
