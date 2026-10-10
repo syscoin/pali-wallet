@@ -20,7 +20,10 @@ import {
   setNetworkStatus,
 } from 'state/vaultGlobal';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
-import { loadNavigationState } from 'utils/navigationState';
+import {
+  getWalletNavigationScope,
+  loadNavigationState,
+} from 'utils/navigationState';
 
 export const useRouterLogic = () => {
   const [showModal, setShowModal] = useState(false);
@@ -33,7 +36,16 @@ export const useRouterLogic = () => {
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { navigate } = useUtils();
-  const { pathname } = useLocation();
+  const routeLocation = useLocation();
+  const { pathname } = routeLocation;
+  const liveNavigation = useRef({
+    pathname,
+    isUnlocked: false,
+    scope: getWalletNavigationScope(),
+    isLoading: true,
+    connectionUnavailable: true,
+    isNetworkChanging: true,
+  });
   const { t } = useTranslation();
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -45,7 +57,16 @@ export const useRouterLogic = () => {
     (state: RootState) => state.vaultGlobal
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { isUnlocked, isLoading, controllerEmitter } = useController();
+  const { isUnlocked, isLoading, connectionUnavailable, controllerEmitter } =
+    useController();
+  liveNavigation.current = {
+    pathname,
+    isUnlocked,
+    isLoading,
+    connectionUnavailable,
+    isNetworkChanging: networkStatus === 'switching',
+    scope: getWalletNavigationScope(),
+  };
   const [providerStatus, setProviderStatus] = useState<{
     errorMessage: string | { code?: number; message?: string } | any;
     serverHasAnError: boolean;
@@ -251,7 +272,12 @@ export const useRouterLogic = () => {
     }
 
     const canProceed = isUnlocked && accounts;
-    const isOnExternalRoute = pathname.includes('external');
+    const startupParams = new URLSearchParams(window.location.search);
+    const isOnExternalRoute =
+      pathname.includes('external') ||
+      window.location.pathname.includes('external') ||
+      startupParams.has('route') ||
+      startupParams.has('externalRoute');
 
     // IMPORTANT: Skip automatic navigation for external routes
     // External routes should handle their own navigation logic
@@ -263,24 +289,28 @@ export const useRouterLogic = () => {
 
     // Handle initial navigation after unlock
     if (canProceed && !initialCheckComplete) {
-      // Check if we're in external context and preserve the route
-      const urlParams = new URLSearchParams(window.location.search);
-      const externalRoute = urlParams.get('route');
-
-      if (isOnExternalRoute && externalRoute) {
-        // Preserve external route after login
-        debouncedNavigate(`/external/${externalRoute}`);
-      } else {
-        // Defer to NavigationRestorer when a saved route exists, so
-        // post-unlock navigation has a single authority and the forced
-        // /home doesn't race with saved-route restoration
+      // Only the neutral popup entry chooses a default. A delayed storage read
+      // cannot replace a route selected while it was in flight.
+      if (pathname === '/') {
+        const scope = JSON.stringify(getWalletNavigationScope());
+        const canDefault = () =>
+          liveNavigation.current.pathname === '/' &&
+          liveNavigation.current.isUnlocked &&
+          !liveNavigation.current.isLoading &&
+          !liveNavigation.current.connectionUnavailable &&
+          !liveNavigation.current.isNetworkChanging &&
+          !window.location.pathname.includes('external') &&
+          !new URLSearchParams(window.location.search).has('route') &&
+          !new URLSearchParams(window.location.search).has('externalRoute') &&
+          JSON.stringify(liveNavigation.current.scope) === scope;
         loadNavigationState()
           .then((savedState) => {
-            if (!savedState) {
-              debouncedNavigate('/home');
-            }
+            if (!savedState && canDefault())
+              navigate('/home', { replace: true });
           })
-          .catch(() => debouncedNavigate('/home'));
+          .catch(() => {
+            if (canDefault()) navigate('/home', { replace: true });
+          });
       }
       setInitialCheckComplete(true);
       return;

@@ -9,7 +9,11 @@ let mockCurrentState: any;
 let mockChanging = false;
 let mockUnavailable = false;
 let mockCurrentUnavailable = false;
+let mockLocation: any;
 const mockControllerEmitter = jest.fn();
+const mockNavigate = jest.fn();
+const mockNavigateWithContext = jest.fn();
+const mockNavigateBack = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -19,13 +23,13 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockRenderedState),
 }));
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ state: null }),
+  useLocation: () => mockLocation,
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('hooks/index', () => ({
-  useUtils: () => ({ navigate: jest.fn(), alert: mockAlert }),
+  useUtils: () => ({ navigate: mockNavigate, alert: mockAlert }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
@@ -53,7 +57,14 @@ jest.mock('components/index', () => ({
   ConfirmationModal: 'confirmation-dialog',
 }));
 jest.mock('utils/index', () => ({ ellipsis: (value: string) => value }));
-jest.mock('utils/navigationState', () => ({ navigateWithContext: jest.fn() }));
+jest.mock('utils/navigationState', () => ({
+  createBrowsingNavigationContext: (...args: any[]) =>
+    jest
+      .requireActual('utils/navigationState')
+      .createBrowsingNavigationContext(...args),
+  navigateWithContext: (...args: any[]) => mockNavigateWithContext(...args),
+  navigateBack: (...args: any[]) => mockNavigateBack(...args),
+}));
 jest.mock('utils/accountCompatibility', () => ({
   isAccountCompatibleWithNetwork: () => true,
 }));
@@ -119,6 +130,10 @@ describe('account removal confirmation context', () => {
     mockChanging = false;
     mockUnavailable = false;
     mockCurrentUnavailable = false;
+    mockLocation = { pathname: '/settings/manage-accounts', state: null };
+    mockNavigate.mockReset();
+    mockNavigateWithContext.mockReset();
+    mockNavigateBack.mockReset();
     mockControllerEmitter.mockReset().mockResolvedValue(undefined);
     mockAlert.error.mockClear();
     mockAlert.success.mockClear();
@@ -146,6 +161,61 @@ describe('account removal confirmation context', () => {
     mockCurrentState = mockRenderedState;
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('preserves the caller and the account list position through an edit detour', () => {
+    const parent = { returnRoute: '/home/smart-account?tab=modules' };
+    mockLocation = {
+      pathname: '/settings/manage-accounts',
+      search: '?view=smart',
+      hash: '#accounts',
+      state: { returnContext: parent },
+    };
+    mockRenderedState.vault.accounts.HDAccount[0].xprv = 'private-material';
+    const view = render();
+    const list = findElement(view, (element) => element.type === 'ul')!;
+    (list as any).ref.current = { scrollTop: 173 };
+    findElement(
+      view,
+      (element) =>
+        element.type === 'button' &&
+        Boolean(findElement(element, (child) => child.props.name === 'edit'))
+    )!.props.onClick();
+    expect(mockNavigateWithContext).toHaveBeenCalledWith(
+      mockNavigate,
+      '/settings/edit-account',
+      { id: 0, accountType: KeyringAccountType.HDAccount },
+      expect.objectContaining({
+        returnRoute: '/settings/manage-accounts?view=smart#accounts',
+        returnContext: parent,
+        state: { manageAccountsScrollTop: 173 },
+        walletScope: expect.objectContaining({
+          account: expect.any(String),
+          network: expect.any(String),
+        }),
+      })
+    );
+  });
+
+  it('closes account management back to its caller', () => {
+    mockLocation.state = {
+      returnContext: { returnRoute: '/home/smart-account' },
+    };
+    findElement(
+      render(),
+      (element) =>
+        element.type === 'button' && element.props.children === 'buttons.close'
+    )!.props.onClick();
+    expect(mockNavigateBack).toHaveBeenCalledWith(mockNavigate, mockLocation);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('restores only the account list scroll state, not its caller position', () => {
+    mockLocation.state = { manageAccountsScrollTop: 91, scrollPosition: 700 };
+    const list = findElement(render(), (element) => element.type === 'ul')!;
+    (list as any).ref.current = { scrollTop: 0 };
+    effects.forEach((effect) => effect());
+    expect((list as any).ref.current.scrollTop).toBe(91);
+  });
 
   it('binds a healthy removal to the displayed account and full network context', async () => {
     const confirmation = openRemoval();

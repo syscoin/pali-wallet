@@ -2,6 +2,7 @@ import { Menu } from '@headlessui/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import {
   AddUserSvg,
@@ -15,13 +16,14 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
 
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
 export const AccountMenu: React.FC = () => {
+  const location = useLocation();
   const { navigate, alert } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { t } = useTranslation();
@@ -62,7 +64,7 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <li
           onClick={() => {
-            const returnContext = createNavigationContext('/home');
+            const returnContext = createBrowsingNavigationContext(location);
             navigateWithContext(
               navigate,
               '/settings/account/new',
@@ -81,7 +83,7 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <li
           onClick={() => {
-            const returnContext = createNavigationContext('/home');
+            const returnContext = createBrowsingNavigationContext(location);
             navigateWithContext(
               navigate,
               '/settings/manage-accounts',
@@ -101,7 +103,7 @@ export const AccountMenu: React.FC = () => {
         <Menu.Item>
           <li
             onClick={() => {
-              const returnContext = createNavigationContext('/home');
+              const returnContext = createBrowsingNavigationContext(location);
               navigateWithContext(
                 navigate,
                 '/settings/account/private-key',
@@ -148,7 +150,7 @@ export const AccountMenu: React.FC = () => {
         <div className="flex flex-col gap-2">
           <li
             onClick={() => {
-              const returnContext = createNavigationContext('/home');
+              const returnContext = createBrowsingNavigationContext(location);
               navigateWithContext(
                 navigate,
                 '/settings/account/import',

@@ -4,11 +4,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { AppLayout } from './AppLayout';
 
 let mockPath = '/home';
+let mockSubmissionStarted = false;
 let mockUnavailable = false;
 let mockChanging = false;
 let mockOverlayLoading = true;
 jest.mock('react-router-dom', () => ({
-  useLocation: () => ({ pathname: mockPath }),
+  useLocation: () => ({
+    pathname: mockPath,
+    state: { submissionStarted: mockSubmissionStarted },
+  }),
   useNavigate: () => jest.fn(),
   Outlet: () => <main>Secret view</main>,
 }));
@@ -45,15 +49,29 @@ jest.mock('hooks/usePageLoadingState', () => ({
 }));
 jest.mock('utils/navigationState', () => ({
   navigateBack: jest.fn(),
+  getWalletNavigationScope: () => ({ account: 'test', network: 'test' }),
   clearNavigationState: jest.fn(),
 }));
 
 describe('wallet content safety during background changes', () => {
   beforeEach(() => {
     mockPath = '/home';
+    mockSubmissionStarted = false;
     mockUnavailable = false;
     mockChanging = false;
     mockOverlayLoading = true;
+  });
+
+  it('hides global Back and Close once confirmation submission starts', () => {
+    mockPath = '/send/confirm';
+    mockSubmissionStarted = true;
+    expect(renderToStaticMarkup(<AppLayout />)).not.toContain(
+      '<button>Back</button>'
+    );
+    mockSubmissionStarted = false;
+    expect(renderToStaticMarkup(<AppLayout />)).toContain(
+      '<button>Back</button>'
+    );
   });
 
   it.each([

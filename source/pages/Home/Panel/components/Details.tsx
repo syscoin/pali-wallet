@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { selectActiveAccountTransactions } from 'state/vault/selectors';
+import { TransactionsType } from 'state/vault/types';
 import { adjustUrl } from 'utils/index';
+import { navigateBack } from 'utils/navigationState';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
@@ -20,16 +24,32 @@ export const DetailsView = () => {
   );
 
   const location = useLocation();
-  const {
-    state: { id, hash, nftCollection, nftData, tx },
-  }: any = location;
+  const { navigate } = useUtils();
+  const accountTransactions = useSelector(selectActiveAccountTransactions);
+  const { id, hash, nftCollection, nftData, tx } = location.state || {};
 
   const isAsset = id && !hash;
-  const isNft = Boolean(nftCollection && nftData);
+  const isNft = Boolean(nftCollection && nftData?.contractAddress);
+  const hasDetails = Boolean(isAsset || isNft || hash);
+  const transactions =
+    accountTransactions[
+      isBitcoinBased ? TransactionsType.Syscoin : TransactionsType.Ethereum
+    ]?.[activeNetwork.chainId] || [];
+  const restoredTransaction = hash
+    ? transactions.find(
+        (transaction: any) =>
+          String(transaction.hash || transaction.txid).toLowerCase() ===
+          String(hash).toLowerCase()
+      )
+    : undefined;
 
   const adjustedExplorer = useAdjustedExplorer(
     activeNetwork.explorer || activeNetwork.url
   );
+
+  useEffect(() => {
+    if (!hasDetails) navigateBack(navigate, location);
+  }, [hasDetails, navigate, location]);
 
   const openEthExplorer = () => {
     const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
@@ -44,44 +64,33 @@ export const DetailsView = () => {
     window.open(url, '_blank');
   };
 
-  const isLoading = (isAsset && !id) || (!isAsset && !hash);
+  if (!hasDetails) return null;
 
   return (
-    <>
-      {isLoading && !isNft ? (
-        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-blue500"></div>
-        </div>
+    <ul
+      id="details-view-content"
+      data-navigation-scroll="details-view-content"
+      className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto"
+    >
+      {isNft ? (
+        <NftsDetails nftData={nftData} />
+      ) : isAsset ? (
+        <AssetDetails id={id} />
       ) : (
-        <>
-          <ul
-            id="details-view-content"
-            className="remove-scrollbar md:max-h-max w-full text-sm overflow-auto"
-          >
-            {isNft ? (
-              <NftsDetails nftData={nftData} />
-            ) : isAsset ? (
-              <AssetDetails id={id} />
-            ) : (
-              <TransactionDetails hash={hash} tx={tx} />
-            )}
-
-            {!isAsset && !isNft ? (
-              <li className="mt-6 mb-4 flex items-center justify-center">
-                <div
-                  className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
-                  onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-                >
-                  <ExternalLinkSvg className="w-4 h-4" />
-                  <p className="text-sm text-white underline">
-                    View on Explorer
-                  </p>
-                </div>
-              </li>
-            ) : null}
-          </ul>
-        </>
+        <TransactionDetails hash={hash} tx={restoredTransaction || tx} />
       )}
-    </>
+
+      {!isAsset && !isNft ? (
+        <li className="mt-6 mb-4 flex items-center justify-center">
+          <div
+            className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
+            onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
+          >
+            <ExternalLinkSvg className="w-4 h-4" />
+            <p className="text-sm text-white underline">View on Explorer</p>
+          </div>
+        </li>
+      ) : null}
+    </ul>
   );
 };

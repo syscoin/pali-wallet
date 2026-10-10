@@ -11,7 +11,12 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 
+jest.mock('utils/navigationState', () => ({
+  clearNavigationState: jest.fn().mockResolvedValue(undefined),
+}));
+
 import { AsyncMutex } from 'utils/asyncMutex';
+import { clearNavigationState } from 'utils/navigationState';
 
 import MainController from './MainController';
 
@@ -29,6 +34,7 @@ describe('wallet authentication session boundaries', () => {
   let errorSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    (clearNavigationState as jest.Mock).mockClear();
     errorSpy = jest.spyOn(console, 'error').mockImplementation();
     keyring = {
       isUnlocked: jest.fn().mockReturnValue(true),
@@ -48,6 +54,44 @@ describe('wallet authentication session boundaries', () => {
   });
 
   afterEach(() => errorSpy.mockRestore());
+
+  it('clears an older popup draft only when opening a locked keyring', async () => {
+    keyring.isUnlocked.mockReturnValue(false);
+    keyring.unlock.mockImplementation(async () => {
+      keyring.isUnlocked.mockReturnValue(true);
+      return { canLogin: true };
+    });
+    await expect(wallet.unlock('correct password')).resolves.toEqual({
+      canLogin: true,
+    });
+    expect(clearNavigationState).toHaveBeenCalledTimes(1);
+    (clearNavigationState as jest.Mock).mockClear();
+    keyring.isUnlocked.mockReturnValue(true);
+    await wallet.unlock('correct password');
+    expect(clearNavigationState).not.toHaveBeenCalled();
+  });
+  it('reasserts the authenticated session after awaited navigation cleanup', async () => {
+    keyring.isUnlocked.mockReturnValue(false);
+    keyring.unlock.mockImplementation(async () => {
+      keyring.isUnlocked.mockReturnValue(true);
+      return { canLogin: true };
+    });
+    const cleanup = deferred<void>();
+    const started = deferred<void>();
+    (clearNavigationState as jest.Mock).mockImplementationOnce(() => {
+      started.resolve();
+      return cleanup.promise;
+    });
+    const unlocking = wallet.unlock('correct password');
+    const rejected = expect(unlocking).rejects.toThrow(
+      'Wallet session changed'
+    );
+    await started.promise;
+    expect(clearNavigationState).toHaveBeenCalledTimes(1);
+    wallet.walletSessionGeneration += 1;
+    cleanup.resolve();
+    await rejected;
+  });
 
   it('does not reset an existing wallet when required cryptography is unavailable', async () => {
     const originalCrypto = Object.getOwnPropertyDescriptor(

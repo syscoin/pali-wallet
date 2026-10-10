@@ -505,6 +505,7 @@ const SmartAccountHub = () => {
 
   return (
     <div className="flex flex-col gap-4 pb-8 text-brand-white">
+      <SmartAccountEntry pickerOnly />
       {/* Identity */}
       <div className="rounded-card bg-bkg-2 p-4 flex flex-col gap-1 text-left">
         <span className="text-xs text-brand-gray200">

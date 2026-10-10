@@ -1735,6 +1735,7 @@ class MainController {
       );
     }
 
+    const wasUnlocked = this.getActiveKeyring().isUnlocked();
     try {
       const result = await this.unlockKeyring(pwd, generation);
 
@@ -1743,6 +1744,10 @@ class MainController {
         // Reset rate limit on successful login
         await this.resetRateLimit();
         this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+        if (!wasUnlocked) {
+          await clearNavigationState();
+          this.assertCurrentWalletSession(generation, this.getActiveKeyring());
+        }
       } else {
         console.warn('[MainController] Wallet unlock returned canLogin=false');
         // Record failed attempt
@@ -2190,6 +2195,7 @@ class MainController {
   ): Promise<boolean> {
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
+    const wasUnlocked = keyring.isUnlocked();
     // Check rate limiting for failed unlock attempts (uses persisted state)
     const remainingLockout = await this.checkRateLimit();
     this.assertCurrentWalletSession(generation);
@@ -2262,6 +2268,12 @@ class MainController {
       // Reset failed attempts on successful unlock (persisted)
       await this.resetRateLimit();
       this.assertCurrentWalletSession(generation, keyring);
+      // A new authenticated session never inherits an older unsigned draft.
+      // Password verification inside an existing session keeps its caller.
+      if (!wasUnlocked) {
+        await clearNavigationState();
+        this.assertCurrentWalletSession(generation, keyring);
+      }
 
       // Check if this is a migration from old vault format that needs account creation
       if (needsAccountCreation) {
@@ -2607,6 +2619,8 @@ class MainController {
     void cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
     this.lockAllKeyrings();
+    // Lock can happen with no popup open to perform UI cleanup.
+    void clearNavigationState();
 
     // Stop auto-lock timer when wallet is locked
     // This is best-effort - don't let timer cleanup failures prevent wallet lock

@@ -76,30 +76,8 @@ const ExternalQueryHandler = () => {
 };
 
 // Navigation state restorer component
-const NavigationRestorer = () => {
-  const { restoreState } = useNavigationState();
-  const { isLoading, isUnlocked } = useController();
-  const hasAttemptedRestore = React.useRef(false);
-
-  React.useEffect(() => {
-    // Don't attempt restoration if already done
-    if (hasAttemptedRestore.current) return;
-
-    // Wait for auth state to be loaded
-    if (isLoading) return;
-
-    // Mark that we've attempted restoration
-    hasAttemptedRestore.current = true;
-
-    // If user is authenticated, attempt to restore navigation
-    if (isUnlocked) {
-      // Small delay to ensure all components are mounted and ready
-      setTimeout(() => {
-        restoreState();
-      }, 100);
-    }
-  }, [restoreState, isLoading, isUnlocked]);
-
+export const NavigationRestorer = () => {
+  useNavigationState();
   return null;
 };
 

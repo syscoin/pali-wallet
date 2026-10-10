@@ -9,6 +9,9 @@ import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
+let mockLocation: any;
+const mockNavigate = jest.fn();
+
 jest.mock('antd', () => ({ Form: { Item: 'div' }, Input: 'input' }));
 jest.mock('components/Icon/Icon', () => ({ LoadingSvg: 'span' }));
 jest.mock('components/index', () => ({
@@ -23,7 +26,7 @@ jest.mock('components/Loading', () => ({
 jest.mock('hooks/useController', () => ({ useController: jest.fn() }));
 jest.mock('hooks/useUtils', () => ({ useUtils: jest.fn() }));
 jest.mock('react-redux', () => ({ useSelector: jest.fn() }));
-jest.mock('react-router-dom', () => ({ useLocation: () => ({ state: null }) }));
+jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -97,6 +100,15 @@ describe('SmartAccountPolicy guardian approval', () => {
     // Keep component state between button actions without mounting browser-only
     // presentation components. The recovery handler and signing drivers are real.
     hookStates = [];
+    mockLocation = {
+      pathname: '/settings/account/smart-account-policy',
+      search: '?view=modules',
+      hash: '#policy',
+      state: { returnContext: { returnRoute: '/home/smart-account' } },
+    };
+    mockNavigate.mockReset().mockImplementation((_path, options) => {
+      mockLocation = { ...mockLocation, state: options.state };
+    });
     jest.spyOn(React, 'useState').mockImplementation((initial?: any) => {
       const index = hookIndex++;
       if (!(index in hookStates)) {
@@ -122,6 +134,7 @@ describe('SmartAccountPolicy guardian approval', () => {
     alert = { error: jest.fn(), success: jest.fn() };
     (useUtils as jest.Mock).mockReturnValue({
       alert,
+      navigate: mockNavigate,
       useCopyClipboard: () => [null, jest.fn()],
     });
     controllerEmitter = jest.fn(async ([, method]: string[]) => {
@@ -192,6 +205,94 @@ describe('SmartAccountPolicy guardian approval', () => {
     ownerInput!.props.onChange({ target: { value: OWNER } });
     await click('settings.smartAccountGuardianRecoveryStart');
   };
+
+  it('remembers only the recovery pane across reopening and starts its form fresh', async () => {
+    await click('settings.smartAccountGuardianRecoveryShowOptions');
+    await click('settings.ecdsaAuthenticator');
+    findElement(
+      render(),
+      (element) =>
+        element.props.placeholder === 'settings.recoveryAuthenticatorEcdsaOwner'
+    )!.props.onChange({ target: { value: OWNER } });
+    expect(
+      findElement(
+        render(),
+        (element) =>
+          element.props.placeholder ===
+          'settings.recoveryAuthenticatorEcdsaOwner'
+      )!.props.value
+    ).toBe(OWNER);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/settings/account/smart-account-policy?view=modules#policy',
+      {
+        replace: true,
+        state: {
+          returnContext: { returnRoute: '/home/smart-account' },
+          smartAccountPolicyView: 'recovery',
+          policyParentScroll: 0,
+          policyParentScrollPositions: {},
+          scrollPositions: {
+            'wallet-layout': 0,
+            'smart-account-policy-recovery': 0,
+          },
+        },
+      }
+    );
+
+    hookStates = [];
+    expect(
+      findElement(
+        render(),
+        (element) =>
+          element.props['data-navigation-scroll'] ===
+          'smart-account-policy-recovery'
+      )
+    ).toBeDefined();
+    await click('settings.ecdsaAuthenticator');
+    expect(
+      findElement(
+        render(),
+        (element) =>
+          element.props.placeholder ===
+          'settings.recoveryAuthenticatorEcdsaOwner'
+      )!.props.value
+    ).toBe('');
+    expect(controllerEmitter).not.toHaveBeenCalled();
+  });
+
+  it('returns from recovery to the same policy pane and parent chain', async () => {
+    await click('settings.smartAccountGuardianRecoveryShowOptions');
+    mockLocation.state.policyParentScroll = 173;
+    mockLocation.state.policyParentScrollPositions = { 'wallet-layout': 417 };
+    const back = findElement(
+      render(),
+      (element) =>
+        element.type === 'button' &&
+        element.props.children === 'settings.smartAccountGuardianRecoveryBack'
+    )!;
+    back.props.onClick();
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      '/settings/account/smart-account-policy?view=modules#policy',
+      {
+        replace: true,
+        state: {
+          returnContext: { returnRoute: '/home/smart-account' },
+          scrollPositions: {
+            'wallet-layout': 417,
+            'smart-account-policy-recovery': 0,
+            'smart-account-policy': 173,
+          },
+        },
+      }
+    );
+    expect(
+      findElement(
+        render(),
+        (element) =>
+          element.props['data-navigation-scroll'] === 'smart-account-policy'
+      )
+    ).toBeDefined();
+  });
 
   it('signs the guardian ERC-7739 digest and submits the original recovery operation', async () => {
     await startRecovery();

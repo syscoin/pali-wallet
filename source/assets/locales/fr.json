@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "Annuler",
+    "back": "Retour",
     "change": "Modifier",
     "send": "Envoyer",
     "receive": "Recevoir",

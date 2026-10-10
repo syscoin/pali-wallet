@@ -1,14 +1,12 @@
-import React, {
-  useMemo,
-  useCallback,
-  useState,
-  useEffect,
-  useRef,
-} from 'react';
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
+import {
+  getHomeBrowsingScope,
+  useHomeBrowsingState,
+} from '../../../useHomeBrowsingState';
 import {
   HiTrash as DeleteIcon,
   RiShareForward2Line as ShareIcon,
@@ -23,21 +21,28 @@ import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import {
+  selectActiveAccount,
   selectActiveAccountAssets,
   selectActiveAccountRef,
   selectActiveAccountTransactions,
 } from 'state/vault/selectors';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
-import { navigateWithContext } from 'utils/navigationState';
+import {
+  createBrowsingNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 import { hasNonZeroAssetDelta } from 'utils/syscoinAssetAmount';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
   const assets = useSelector(selectActiveAccountAssets);
-  const account = useSelector(selectActiveAccountRef);
-  const chainId = useSelector(
-    (state: RootState) => state.vault.activeNetwork.chainId
+  const accountRef = useSelector(selectActiveAccountRef);
+  const currentAccount = useSelector(selectActiveAccount);
+  const account = { ...currentAccount, ...accountRef };
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
+  const { chainId } = activeNetwork;
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
@@ -54,19 +59,10 @@ export const SyscoinAssetsList = () => {
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  // Track if we've already restored scroll position to prevent duplicate restoration
-  const hasRestoredScrollRef = useRef(false);
-
-  // Handle navigation state restoration
-  useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredScrollRef.current
-    ) {
-      hasRestoredScrollRef.current = true;
-      window.scrollTo(0, location.state.scrollPosition);
-    }
-  }, [location.state]);
+  const scope = getHomeBrowsingScope(account, activeNetwork, true);
+  const [view, setView] = useHomeBrowsingState('homeAssets', scope, {
+    sptVisibleCount: 50,
+  });
 
   // Memoize filtered assets for performance
   const filteredAssets = useMemo(
@@ -74,9 +70,10 @@ export const SyscoinAssetsList = () => {
     [assets?.syscoin, chainId]
   );
 
-  const { visibleItems, hasMore, showMore } = useIncrementalList(
+  const { visibleItems, visibleCount, hasMore, showMore } = useIncrementalList(
     filteredAssets,
-    JSON.stringify([account.type, account.id, chainId])
+    scope,
+    view.sptVisibleCount
   );
 
   useEffect(() => {
@@ -111,14 +108,10 @@ export const SyscoinAssetsList = () => {
   // Handle asset click
   const handleAssetClick = useCallback(
     (asset: any) => {
-      // Capture current scroll position
-      const scrollPosition = window.scrollY || 0;
-
-      const returnContext = {
-        returnRoute: '/home',
+      const returnContext = createBrowsingNavigationContext(location, {
         tab: searchParams.get('tab') || 'assets',
-        scrollPosition,
-      };
+        homeAssets: { scope, value: view },
+      });
 
       navigateWithContext(
         navigate,
@@ -127,7 +120,7 @@ export const SyscoinAssetsList = () => {
         returnContext
       );
     },
-    [navigate, searchParams]
+    [navigate, searchParams, location.state, scope, view]
   );
 
   // Delete confirmation handlers
@@ -293,7 +286,10 @@ export const SyscoinAssetsList = () => {
           {hasMore && (
             <li>
               <ListLoadMore
-                onClick={showMore}
+                onClick={() => {
+                  showMore();
+                  setView({ sptVisibleCount: visibleCount + 50 });
+                }}
                 shown={visibleItems.length}
                 total={filteredAssets.length}
               />

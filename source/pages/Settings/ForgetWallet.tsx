@@ -2,6 +2,7 @@ import { Form } from 'antd';
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import {
   Button,
@@ -13,9 +14,11 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType } from 'types/network';
+import { navigateBack } from 'utils/navigationState';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
+  const location = useLocation();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const isBitcoinBased = useSelector(
@@ -96,8 +99,8 @@ const ForgetWalletView = () => {
 
   // Navigation callbacks
   const handleCancel = useCallback(() => {
-    navigate('/home');
-  }, [navigate]);
+    navigateBack(navigate, location);
+  }, [navigate, location]);
 
   const handleSubmit = useCallback(() => {
     form.submit();

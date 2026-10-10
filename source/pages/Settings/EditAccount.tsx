@@ -1,8 +1,9 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import { QRCodeSVG } from 'qrcode.react';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { LockIconSvg } from 'components/Icon/Icon';
@@ -10,13 +11,34 @@ import { Button, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
+import { RootState } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { ellipsis } from 'utils/format';
-import { navigateBack, navigateWithContext } from 'utils/navigationState';
+import {
+  createBrowsingNavigationContext,
+  navigateBack,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 const EditAccountView = () => {
   const location = useLocation();
-  const { state } = location;
+  const routeState = location.state || {};
+  const accountType: KeyringAccountType =
+    routeState.accountType ||
+    (routeState.isImported
+      ? KeyringAccountType.Imported
+      : routeState.isTrezorWallet
+      ? KeyringAccountType.Trezor
+      : routeState.isLedgerWallet
+      ? KeyringAccountType.Ledger
+      : routeState.isSmartAccount
+      ? KeyringAccountType.SmartAccount
+      : KeyringAccountType.HDAccount);
+  const account = useSelector(
+    (reduxState: RootState) =>
+      reduxState.vault.accounts[accountType]?.[routeState.id]
+  );
+  const state = { ...account, accountType };
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
@@ -26,6 +48,10 @@ const EditAccountView = () => {
   const { controllerEmitter } = useController();
 
   const [form] = useForm();
+
+  useEffect(() => {
+    if (!account) navigateBack(navigate, location);
+  }, [account, location, navigate]);
 
   const isSmartAccount =
     state.accountType === KeyringAccountType.SmartAccount ||
@@ -56,18 +82,7 @@ const EditAccountView = () => {
     setLoading(true);
 
     try {
-      const accountType =
-        state.accountType ||
-        (state.isImported
-          ? KeyringAccountType.Imported
-          : state.isTrezorWallet
-          ? KeyringAccountType.Trezor
-          : state.isLedgerWallet
-          ? KeyringAccountType.Ledger
-          : state.isSmartAccount
-          ? KeyringAccountType.SmartAccount
-          : KeyringAccountType.HDAccount);
-
+      if (!account) return;
       const accountId = state.id;
 
       await controllerEmitter(
@@ -92,14 +107,12 @@ const EditAccountView = () => {
     navigateWithContext(
       navigate,
       '/settings/account/smart-account-policy',
-      state,
-      {
-        returnRoute: '/settings/edit-account',
-        returnContext: state.returnContext,
-        state,
-      }
+      { id: state.id, accountType },
+      createBrowsingNavigationContext(location, { id: state.id, accountType })
     );
   };
+
+  if (!account) return null;
 
   return (
     <>

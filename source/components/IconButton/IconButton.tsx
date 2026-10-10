@@ -8,6 +8,7 @@ import React, { FC, ReactNode } from 'react';
 // contract without the antd dependency. New code should use
 // <Button variant="unstyled" size="icon"> (or "ghost") from components/Button.
 interface IIconButton {
+  'aria-label'?: string;
   children: ReactNode;
   className?: string;
   disabled?: boolean;
@@ -26,6 +27,7 @@ interface IIconButton {
 }
 
 export const IconButton: FC<IIconButton> = ({
+  'aria-label': ariaLabel,
   children,
   className = '',
   id = '',
@@ -34,6 +36,7 @@ export const IconButton: FC<IIconButton> = ({
 }) => (
   <button
     type="button"
+    aria-label={ariaLabel}
     className={`cursor-pointer disabled:cursor-not-allowed ${className}`}
     id={id}
     onClick={onClick}

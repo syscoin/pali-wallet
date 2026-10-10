@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
+import { getHomeBrowsingScope } from '../Home/useHomeBrowsingState';
 import { TbFileImport } from 'components/Icon/Icon';
 import {
   LoadingOutlined,
@@ -24,18 +25,37 @@ import type { ISysTokensAssetReponse } from 'scripts/Background/controllers/asse
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
   getCurrentTab,
 } from 'utils/index';
 import { getTokenLogo } from 'utils/tokens';
+
+import { useTokenImportNavigation } from './useTokenImportNavigation';
 
 export const SyscoinImport: React.FC = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    activeNetwork,
+    accountAssets,
+  } = useSelector((state: RootState) => state.vault);
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const tokenImportScope = getHomeBrowsingScope(
+    { ...activeAccount, ...activeAccountMeta },
+    activeNetwork,
+    true
+  );
+  const restoredState =
+    location.state?.tokenImportScope === tokenImportScope
+      ? location.state
+      : undefined;
 
   // Tab state - initialize with restored tab from URL params or location state
   const initialTab = getCurrentTab(searchParams, location.state, 'owned') as
@@ -43,16 +63,22 @@ export const SyscoinImport: React.FC = () => {
     | 'custom';
   const [activeTab, setActiveTab] = useState<'owned' | 'custom'>(initialTab);
 
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'owned' || tab === 'custom') setActiveTab(tab);
+  }, [searchParams]);
+
   // PATH 1: Your Tokens state
   const [ownedTokens, setOwnedTokens] = useState<ISysTokensAssetReponse[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(false);
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customAssetGuid, setCustomAssetGuid] = useState(
-    location.state?.customAssetGuid || ''
+    restoredState?.customAssetGuid || ''
   );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenSysProps | null>(location.state?.customTokenDetails || null);
+    useState<ITokenSysProps | null>(restoredState?.customTokenDetails || null);
+  useTokenImportNavigation(tokenImportScope, { customAssetGuid });
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
 
   // Common state
@@ -63,13 +89,6 @@ export const SyscoinImport: React.FC = () => {
     Set<string>
   >(new Set());
 
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    activeNetwork,
-    accountAssets,
-  } = useSelector((state: RootState) => state.vault);
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeAccountAssets =
     accountAssets?.[activeAccountMeta.type]?.[activeAccountMeta.id];
 
@@ -281,14 +300,13 @@ export const SyscoinImport: React.FC = () => {
     // Prepare component state to preserve
     const state = {
       customAssetGuid,
-      customTokenDetails,
+      tokenImportScope,
     };
 
-    const returnContext = {
-      ...createNavigationContext('/tokens/add', activeTab, state),
-      // Include existing return context to make it recursive
-      returnContext: location.state?.returnContext,
-    };
+    const returnContext = createBrowsingNavigationContext(location, {
+      ...state,
+      tab: activeTab,
+    });
 
     navigateWithContext(
       navigate,
@@ -304,6 +322,9 @@ export const SyscoinImport: React.FC = () => {
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
     setActiveTab(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next, { replace: true, state: location.state });
     if (tab === 'custom') {
       setCustomAssetGuid('');
       setCustomTokenDetails(null);
@@ -352,7 +373,10 @@ export const SyscoinImport: React.FC = () => {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4">
+      <div
+        data-navigation-scroll="token-import"
+        className="flex-1 overflow-y-auto remove-scrollbar px-4 py-4"
+      >
         {activeTab === 'owned' ? (
           <ImportableAssetsList
             assets={ownedAssetsForList}

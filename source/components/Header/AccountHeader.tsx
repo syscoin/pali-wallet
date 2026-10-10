@@ -2,6 +2,7 @@ import { toSvg } from 'jdenticon';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { IconButton, Icon, Tooltip, ConfirmationModal } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
@@ -13,7 +14,7 @@ import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { ellipsis, adjustUrl } from 'utils/index';
 import { isUserCancellationError } from 'utils/isUserCancellationError';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
 
@@ -34,6 +35,7 @@ export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const location = useLocation();
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
@@ -64,15 +66,15 @@ export const AccountHeader: React.FC = () => {
         return;
       }
 
-      const returnContext = createNavigationContext('/home');
+      const returnContext = createBrowsingNavigationContext(location);
       navigateWithContext(
         navigate,
         '/settings/edit-account',
-        { ...account, accountType: activeAccount.type },
+        { id: account.id, accountType: activeAccount.type },
         returnContext
       );
     },
-    [activeAccount?.type, navigate]
+    [activeAccount?.type, navigate, location]
   );
 
   const openAccountInExplorer = useCallback(() => {

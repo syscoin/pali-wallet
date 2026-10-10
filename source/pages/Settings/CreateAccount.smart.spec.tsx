@@ -143,12 +143,13 @@ describe('smart-account creation from the hub', () => {
     submit();
     await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'buttons.ok' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/home/smart-account', {
-      state: {
-        returnContext: undefined,
-        scrollPosition: undefined,
-      },
-    });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/home/smart-account',
+      expect.objectContaining({
+        replace: true,
+        state: expect.objectContaining({ returnContext: undefined }),
+      })
+    );
     expect(mockNavigate).toHaveBeenCalledTimes(1);
   });
 
@@ -231,12 +232,13 @@ describe('smart-account creation from the hub', () => {
     );
     await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: 'buttons.ok' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/home', {
-      state: {
-        returnContext: undefined,
-        scrollPosition: undefined,
-      },
-    });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/home',
+      expect.objectContaining({
+        replace: true,
+        state: expect.objectContaining({ returnContext: undefined }),
+      })
+    );
     expect(mockEmitter).toHaveBeenCalledTimes(1);
   });
 });

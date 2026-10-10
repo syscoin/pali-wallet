@@ -38,7 +38,9 @@ export const TxsPanel: FC = () => {
     if (tabParam === 'activity') return true; // true = activity tab
 
     // Then check location state (from navigate with state)
-    if (location.state?.showAssetsTab) return false;
+    if (location.state?.tab === 'assets' || location.state?.showAssetsTab)
+      return false;
+    if (location.state?.tab === 'activity') return true;
 
     // Default to activity tab
     return true;
@@ -63,7 +65,7 @@ export const TxsPanel: FC = () => {
     if (searchParams.get('tab') === tab) return;
     const next = new URLSearchParams(searchParams);
     next.set('tab', tab);
-    setSearchParams(next, { replace: true });
+    setSearchParams(next, { replace: true, state: location.state });
   };
 
   // Handlers for tab switching with transitions

@@ -23,7 +23,11 @@ import store, { RootState } from 'state/store';
 import { IKeyringAccountState, KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
-import { navigateWithContext } from 'utils/navigationState';
+import {
+  createBrowsingNavigationContext,
+  navigateBack,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 // Static account type configuration to prevent recreation
 const ACCOUNT_TYPE_CONFIG = {
@@ -118,13 +122,14 @@ const ManageAccountsView = React.memo(() => {
   // Custom scroll restoration for the ul element
   useEffect(() => {
     if (
-      location.state?.scrollPosition !== undefined &&
+      location.state?.manageAccountsScrollTop !== undefined &&
       !hasRestoredScrollRef.current
     ) {
       // Small delay to ensure the component has rendered before scrolling
       if (scrollContainerRef.current) {
         hasRestoredScrollRef.current = true;
-        scrollContainerRef.current.scrollTop = location.state.scrollPosition;
+        scrollContainerRef.current.scrollTop =
+          location.state.manageAccountsScrollTop;
       }
     }
   }, [location.state]);
@@ -171,24 +176,23 @@ const ManageAccountsView = React.memo(() => {
       // Create navigation context with scroll position from the ul element
       const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
 
-      const returnContext = {
-        returnRoute: '/settings/manage-accounts',
-        scrollPosition,
-      };
+      const returnContext = createBrowsingNavigationContext(location, {
+        manageAccountsScrollTop: scrollPosition,
+      });
 
       navigateWithContext(
         navigate,
         '/settings/edit-account',
-        { ...account, accountType },
+        { id: account.id, accountType },
         returnContext
       );
     },
-    [navigate]
+    [navigate, location]
   );
 
   const handleClose = useCallback(() => {
-    navigate('/home');
-  }, [navigate]);
+    navigateBack(navigate, location);
+  }, [navigate, location]);
 
   const isActiveAccount = useCallback(
     (account: IKeyringAccountState, type: KeyringAccountType) =>
@@ -391,6 +395,7 @@ const ManageAccountsView = React.memo(() => {
   return (
     <>
       <ul
+        data-navigation-scroll="settings-manage-accounts"
         ref={scrollContainerRef}
         className="remove-scrollbar mb-4 w-full h-80 text-sm overflow-auto md:h-96"
       >

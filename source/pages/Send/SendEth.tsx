@@ -39,16 +39,36 @@ import {
   createNavigationContext,
   getTokenTypeBadgeColor,
   navigateWithContext,
-  saveNavigationState,
+  getWalletNavigationScope,
   truncateToDecimals,
 } from 'utils/index';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
+
+import {
+  getScopedSendDraft,
+  useSendDraftWriter,
+  useSendPreparationGuard,
+} from './useSendDraftWriter';
+
 export const SendEth = () => {
+  const scopeKey = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  return <SendEthForm key={scopeKey} scopeKey={scopeKey} />;
+};
+
+const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();
-  const { controllerEmitter } = useController();
+  const {
+    controllerEmitter,
+    isUnlocked,
+    isLoading: controllerLoading,
+    connectionUnavailable,
+  } = useController();
   const location = useLocation();
+  const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -68,13 +88,16 @@ export const SendEth = () => {
   const hasAccountAssets = Boolean(activeAccountAssets?.ethereum);
   const isAccountImported = activeAccount?.isImported || false;
 
-  // Restore form state if coming back from navigation
-  const initialSelectedAsset = location.state?.selectedAsset || null;
-  const initialNftTokenIds = location.state?.nftTokenIds || [];
-  const initialSelectedNftTokenId = location.state?.selectedNftTokenId || null;
-  const initialIsMaxSend = location.state?.isMaxSend || false;
-  const initialVerifiedTokenBalance =
-    location.state?.verifiedTokenBalance ?? null;
+  // Hydrate only the matching account/network draft, once for this mounted form.
+  const initialDraft = useRef(
+    getScopedSendDraft(location.pathname, location.state, scopeKey)
+  ).current;
+  const initialSelectedAsset = initialDraft.selectedAsset || null;
+  const initialSelectedNftTokenId =
+    initialDraft.formValues?.nftTokenId ??
+    initialDraft.selectedNftTokenId ??
+    null;
+  const initialIsMaxSend = initialDraft.isMaxSend === true;
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenEthProps | null>(
     initialSelectedAsset
@@ -84,8 +107,9 @@ export const SendEth = () => {
   const [isMaxSend, setIsMaxSend] = useState(initialIsMaxSend);
 
   // NFT-related state
-  const [nftTokenIds, setNftTokenIds] =
-    useState<{ balance: number; tokenId: string }[]>(initialNftTokenIds);
+  const [nftTokenIds, setNftTokenIds] = useState<
+    { balance: number; tokenId: string }[]
+  >([]);
   const [isLoadingNftTokenIds, setIsLoadingNftTokenIds] = useState(false);
   const [selectedNftTokenId, setSelectedNftTokenId] = useState<string | null>(
     initialSelectedNftTokenId
@@ -93,7 +117,7 @@ export const SendEth = () => {
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
     number | null
-  >(initialVerifiedTokenBalance);
+  >(null);
   const [verificationError, setVerificationError] = useState<string | null>(
     null
   );
@@ -194,7 +218,7 @@ export const SendEth = () => {
   ]);
 
   // Track form value changes using a ref to avoid dependency issues
-  const formValuesRef = useRef<any>({});
+  const formValuesRef = useRef<any>(initialDraft.formValues || {});
   const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
@@ -244,47 +268,29 @@ export const SendEth = () => {
     activeNetwork.chainId,
   ]);
 
-  // Save navigation state when user completes interaction
-  const saveCurrentState = useCallback(async () => {
-    // Prefer live form values to avoid races when setFieldValue was just called
-    const currentFormValues =
-      typeof form?.getFieldsValue === 'function'
-        ? form.getFieldsValue()
-        : formValuesRef.current;
-    const state = {
-      formValues: currentFormValues,
-      selectedAsset,
-      nftTokenIds,
-      selectedNftTokenId,
-      isMaxSend,
-      verifiedTokenBalance,
-    };
-
-    await saveNavigationState(
-      location.pathname,
-      undefined,
-      state,
-      location.state?.returnContext
-    );
-  }, [
-    selectedAsset,
-    nftTokenIds,
-    selectedNftTokenId,
-    isMaxSend,
-    verifiedTokenBalance,
-    location,
+  const draftState = useMemo(
+    () => ({ selectedAsset, selectedNftTokenId, isMaxSend }),
+    [selectedAsset, selectedNftTokenId, isMaxSend]
+  );
+  const saveCurrentState = useSendDraftWriter({
     form,
-  ]);
+    location,
+    navigate,
+    scopeKey,
+    state: draftState,
+    enabled: isUnlocked && !controllerLoading && !connectionUnavailable,
+  });
 
-  // Update form values ref when they change (no save yet)
+  // Save typed values immediately, including before blur or a quick popup close.
   const handleFormValuesChange = useCallback(
     (_changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
       if (typeof allValues?.receiver === 'string') {
         setReceiverInput(allValues.receiver);
       }
+      void saveCurrentState(allValues);
     },
-    []
+    [saveCurrentState]
   );
 
   // Initialize receiverInput from form on mount (restored state)
@@ -309,6 +315,7 @@ export const SendEth = () => {
           ['wallet', 'resolveEns'],
           [maybeEns]
         )) as string | null;
+        if (!isCurrentForm()) return null;
         if (
           resolved &&
           typeof resolved === 'string' &&
@@ -321,7 +328,7 @@ export const SendEth = () => {
         return null;
       }
     },
-    [ensNameToAddress]
+    [ensNameToAddress, isCurrentForm]
   );
 
   // Build suggestions from local accounts and recent recipients
@@ -415,31 +422,6 @@ export const SendEth = () => {
     saveCurrentState,
   ]);
 
-  // Save component state when non-form state changes
-  useEffect(() => {
-    // Don't save on initial mount or when there's no meaningful state
-    if (
-      selectedAsset === null &&
-      nftTokenIds.length === 0 &&
-      selectedNftTokenId === null &&
-      isMaxSend === false &&
-      verifiedTokenBalance === null &&
-      Object.keys(formValuesRef.current).length === 0
-    ) {
-      return;
-    }
-
-    // Save immediately when these state values change
-    saveCurrentState();
-  }, [
-    selectedAsset,
-    nftTokenIds,
-    selectedNftTokenId,
-    isMaxSend,
-    verifiedTokenBalance,
-    saveCurrentState,
-  ]);
-
   // Cleanup timeout on unmount to prevent memory leaks
   useEffect(
     () => () => {
@@ -455,10 +437,9 @@ export const SendEth = () => {
 
   // Restore form values if coming back from navigation or from saved state
   useEffect(() => {
-    const hasScrollable = location.state?.scrollPosition !== undefined;
-    const hasFormValues = Boolean(location.state?.formValues);
-    if (!hasRestoredRef.current && (hasScrollable || hasFormValues)) {
-      const { formValues, isMaxSend: restoredIsMaxSend } = location.state || {};
+    if (!hasRestoredRef.current) {
+      hasRestoredRef.current = true;
+      const { formValues, isMaxSend: restoredIsMaxSend } = initialDraft;
 
       if (formValues) {
         hasRestoredRef.current = true;
@@ -477,7 +458,7 @@ export const SendEth = () => {
       // Do NOT clear the navigation state here - we need it to persist
       // for when the popup is closed and reopened
     }
-  }, [location.state, form]); // handleMaxButton is stable useCallback, no need to include
+  }, [initialDraft, form]); // Hydration never reapplies mirrored route drafts.
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = useCallback(
@@ -588,6 +569,7 @@ export const SendEth = () => {
 
   const handleSubmit = useCallback(
     async (values: any) => {
+      if (!isCurrentForm()) return;
       try {
         // Determine transaction type based on selected asset
         let transactionType: TransactionType;
@@ -638,10 +620,8 @@ export const SendEth = () => {
         const state = {
           formValues: allFormValues,
           selectedAsset,
-          nftTokenIds,
           selectedNftTokenId,
           isMaxSend: isMax, // Use the calculated isMax value
-          verifiedTokenBalance,
         };
 
         // Create navigation context for returning from confirm
@@ -652,6 +632,7 @@ export const SendEth = () => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
+        if (!isCurrentForm()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -700,6 +681,7 @@ export const SendEth = () => {
       selectedNftTokenId,
       hasPendingOutgoingEvmTx,
       location.state?.returnContext,
+      isCurrentForm,
     ]
   );
 
@@ -932,6 +914,20 @@ export const SendEth = () => {
     },
     [selectedAsset, activeAccount.address]
   );
+
+  const hasCheckedRestoredNft = useRef(false);
+  useEffect(() => {
+    if (hasCheckedRestoredNft.current) return;
+    hasCheckedRestoredNft.current = true;
+    if (!initialDraft.selectedAsset?.isNft) return;
+    const tokenId = String(
+      initialDraft.formValues?.nftTokenId ??
+        initialDraft.selectedNftTokenId ??
+        initialDraft.selectedAsset.tokenId ??
+        ''
+    );
+    if (tokenId) void verifyTokenId(tokenId);
+  }, [initialDraft, verifyTokenId]);
 
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = useCallback(
@@ -1183,6 +1179,7 @@ export const SendEth = () => {
         autoComplete="off"
         className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full"
         onValuesChange={handleFormValuesChange}
+        initialValues={initialDraft.formValues}
       >
         <div className="sender-custom-input">
           <Form.Item
@@ -1227,11 +1224,16 @@ export const SendEth = () => {
                     value.toLowerCase().endsWith('.eth')
                   ) {
                     const resolved = await tryResolveEns(value);
+                    if (!isCurrentForm())
+                      return Promise.reject(
+                        new Error('Send form is no longer active.')
+                      );
                     if (resolved) {
                       assertNotPoisoned(resolved);
                       // Replace input with resolved address for submission
                       form.setFieldValue('receiver', resolved);
                       setReceiverInput(resolved);
+                      void saveCurrentState();
                       return Promise.resolve();
                     }
                     return Promise.reject(
@@ -1254,6 +1256,7 @@ export const SendEth = () => {
                   setReceiverInput(v);
                   // Keep Form state in sync so validation can react to typing
                   form.setFieldValue('receiver', v);
+                  void saveCurrentState();
                   setIsSuggestionsOpen(true);
                   buildSuggestions(v);
                 }}

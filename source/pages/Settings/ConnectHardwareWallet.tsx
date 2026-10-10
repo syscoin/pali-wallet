@@ -1,4 +1,4 @@
-import React, { FC, useCallback, useEffect, useState } from 'react';
+import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -12,6 +12,7 @@ import { handleTransactionError } from 'utils/errorHandling';
 const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const importPending = useRef(false);
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState<
     string | undefined
   >();
@@ -21,7 +22,7 @@ const ConnectHardwareWalletView: FC = () => {
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
-  const { alert, navigate } = useUtils();
+  const { alert } = useUtils();
   const { controllerEmitter, isUnlocked } = useController();
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
@@ -44,6 +45,8 @@ const ConnectHardwareWalletView: FC = () => {
   const isLedger = selectedHardwareWallet === HardWallets.LEDGER;
 
   const handleCreateHardwareWallet = async () => {
+    if (!selectedHardwareWallet || !isUnlocked || importPending.current) return;
+    importPending.current = true;
     setIsLoading(true);
     try {
       switch (selectedHardwareWallet) {
@@ -56,7 +59,6 @@ const ConnectHardwareWalletView: FC = () => {
           );
 
           setIsModalOpen(true);
-          setIsLoading(false);
           break;
         case HardWallets.LEDGER:
           const LEDGER_USB_VENDOR_ID = 0x2c97;
@@ -75,12 +77,9 @@ const ConnectHardwareWalletView: FC = () => {
           );
 
           setIsModalOpen(true);
-          setIsLoading(false);
           break;
       }
     } catch (error) {
-      setIsLoading(false);
-
       // Log error for debugging
       console.log('Hardware wallet connection error:', error);
 
@@ -114,6 +113,9 @@ const ConnectHardwareWalletView: FC = () => {
         setSelectedHardwareWallet(undefined);
         alert.error(t('settings.errorCreatingHardWallet'));
       }
+    } finally {
+      importPending.current = false;
+      setIsLoading(false);
     }
   };
 
@@ -143,8 +145,9 @@ const ConnectHardwareWalletView: FC = () => {
     };
   }, []);
 
-  // Prevent navigation away from hardware wallet page - ALWAYS LOCKED
+  // Warn only while a device import is running; the idle setup page stays dismissible.
   useEffect(() => {
+    if (!isLoading) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue =
@@ -152,35 +155,12 @@ const ConnectHardwareWalletView: FC = () => {
       return e.returnValue;
     };
 
-    const handlePopState = (e: PopStateEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      // Immediately push state back to prevent navigation
-      window.history.pushState(null, '', window.location.href);
-      return false;
-    };
-
-    // Prevent navigation through browser controls
-    const preventNavigation = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    // Add event listeners to prevent navigation
     window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('popstate', handlePopState, true);
-    window.addEventListener('hashchange', preventNavigation, true);
-
-    // Push state once initially to prevent back navigation
-    window.history.pushState(null, '', window.location.href);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('popstate', handlePopState, true);
-      window.removeEventListener('hashchange', preventNavigation, true);
     };
-  }, [navigate]);
+  }, [isLoading]);
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-brand-blue600 overflow-y-auto">
@@ -359,7 +339,11 @@ const ConnectHardwareWalletView: FC = () => {
               <Button
                 type="button"
                 onClick={handleCreateHardwareWallet}
-                disabled={selectedHardwareWallet === undefined || !isUnlocked}
+                disabled={
+                  selectedHardwareWallet === undefined ||
+                  !isUnlocked ||
+                  isLoading
+                }
                 loading={isLoading}
                 id="connect-btn"
                 className={`${
@@ -369,6 +353,17 @@ const ConnectHardwareWalletView: FC = () => {
                 } cursor-pointer bg-white w-full h-10 text-brand-blue200 text-base font-base font-medium rounded-2xl`}
               >
                 <ButtonLabel />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="mt-3 w-full"
+                disabled={isLoading}
+                onClick={() => {
+                  if (!importPending.current) window.close();
+                }}
+              >
+                {t('buttons.cancel')}
               </Button>
             </div>
           </div>

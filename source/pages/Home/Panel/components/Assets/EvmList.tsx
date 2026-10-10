@@ -4,12 +4,17 @@ import React, {
   useDeferredValue,
   startTransition,
   useEffect,
-  useRef,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
+import {
+  DEFAULT_ASSETS_VIEW,
+  getHomeBrowsingScope,
+  IHomeAssetsView,
+  useHomeBrowsingState,
+} from '../../../useHomeBrowsingState';
 import { EvmNftsList } from '../Nfts/EvmNftsList';
 import {
   HiTrash as DeleteIcon,
@@ -24,11 +29,13 @@ import { useController } from 'hooks/useController';
 import { useIncrementalList } from 'hooks/useIncrementalList';
 import { RootState } from 'state/store';
 import {
+  selectActiveAccount,
   selectActiveAccountAssets,
   selectActiveAccountRef,
 } from 'state/vault/selectors';
 import { ITokenEthProps } from 'types/tokens';
 import {
+  createBrowsingNavigationContext,
   navigateWithContext,
   truncate,
   formatFullPrecisionBalance,
@@ -37,13 +44,11 @@ import {
 import { AssetsHeader } from './AssetsHeader';
 
 interface IDefaultEvmAssets {
+  onVisibleCountChange: (count: number) => void;
+  scope: string;
   searchValue: string;
   sortByValue: string;
-  state: {
-    isCoinSelected: boolean;
-    searchValue: string;
-    sortByValue: string;
-  };
+  state: IHomeAssetsView;
 }
 
 const DefaultEvmAssets = React.memo(
@@ -51,11 +56,13 @@ const DefaultEvmAssets = React.memo(
     searchValue,
     sortByValue,
     state,
+    onVisibleCountChange,
   }: IDefaultEvmAssets) {
     const { navigate } = useUtils();
     const { controllerEmitter } = useController();
     const { t } = useTranslation();
     const [searchParams] = useSearchParams();
+    const location = useLocation();
 
     // Confirmation modal state
     const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -64,10 +71,13 @@ const DefaultEvmAssets = React.memo(
     );
 
     const assets = useSelector(selectActiveAccountAssets);
-    const account = useSelector(selectActiveAccountRef);
-    const chainId = useSelector(
-      (rootState: RootState) => rootState.vault.activeNetwork.chainId
+    const accountRef = useSelector(selectActiveAccountRef);
+    const currentAccount = useSelector(selectActiveAccount);
+    const account = { ...currentAccount, ...accountRef };
+    const activeNetwork = useSelector(
+      (rootState: RootState) => rootState.vault.activeNetwork
     );
+    const { chainId } = activeNetwork;
 
     // Separate regular tokens from NFTs as requested
     const currentChainAssets = useMemo(
@@ -116,16 +126,18 @@ const DefaultEvmAssets = React.memo(
       return working;
     }, [currentChainAssets, searchValue, sortByValue]);
 
-    const { visibleItems, hasMore, showMore } = useIncrementalList(
-      filteredAssets,
-      JSON.stringify([
-        account.type,
-        account.id,
-        chainId,
-        searchValue,
-        sortByValue,
-      ])
-    );
+    const { visibleItems, visibleCount, hasMore, showMore } =
+      useIncrementalList(
+        filteredAssets,
+        JSON.stringify([
+          account.type,
+          account.id,
+          chainId,
+          searchValue,
+          sortByValue,
+        ]),
+        state.tokensVisibleCount
+      );
 
     useEffect(() => {
       setShowDeleteConfirmation(false);
@@ -155,15 +167,10 @@ const DefaultEvmAssets = React.memo(
     };
 
     const handleAssetClick = (token: ITokenEthProps) => {
-      // Capture current scroll position
-      const scrollPosition = window.scrollY || 0;
-
-      const returnContext = {
-        returnRoute: '/home',
+      const returnContext = createBrowsingNavigationContext(location, {
         tab: searchParams.get('tab') || 'assets',
-        scrollPosition,
-        state,
-      };
+        homeAssets: { ...location.state?.homeAssets, value: state },
+      });
 
       navigateWithContext(
         navigate,
@@ -239,7 +246,10 @@ const DefaultEvmAssets = React.memo(
 
         {hasMore && (
           <ListLoadMore
-            onClick={showMore}
+            onClick={() => {
+              showMore();
+              onVisibleCountChange(visibleCount + 50);
+            }}
             shown={visibleItems.length}
             total={filteredAssets.length}
           />
@@ -260,28 +270,46 @@ const DefaultEvmAssets = React.memo(
     );
   },
   (prev, next) =>
+    prev.scope === next.scope &&
     prev.searchValue === next.searchValue &&
     prev.sortByValue === next.sortByValue &&
     prev.state.isCoinSelected === next.state.isCoinSelected &&
     prev.state.searchValue === next.state.searchValue &&
-    prev.state.sortByValue === next.state.sortByValue
+    prev.state.sortByValue === next.state.sortByValue &&
+    prev.state.tokensVisibleCount === next.state.tokensVisibleCount
 );
 
 // todo: create a loading state
 export const EvmAssetsList = () => {
-  const location = useLocation();
-
-  // Restore state from navigation if available
-  const initialIsCoinSelected = location.state?.isCoinSelected ?? true;
-  const initialSearchValue = location.state?.searchValue || '';
-  const initialSortByValue = location.state?.sortByValue || '';
-
-  const [isCoinSelected, setIsCoinSelected] = useState<boolean>(
-    initialIsCoinSelected
+  const accountRef = useSelector(selectActiveAccountRef);
+  const currentAccount = useSelector(selectActiveAccount);
+  const account = { ...currentAccount, ...accountRef };
+  const activeNetwork = useSelector(
+    (rootState: RootState) => rootState.vault.activeNetwork
   );
-
-  const [searchValue, setSearchValue] = useState<string>(initialSearchValue);
-  const [sortByValue, setSortyByValue] = useState<string>(initialSortByValue);
+  const scope = getHomeBrowsingScope(account, activeNetwork);
+  const [state, setView] = useHomeBrowsingState(
+    'homeAssets',
+    scope,
+    DEFAULT_ASSETS_VIEW
+  );
+  const { isCoinSelected, searchValue, sortByValue } = state;
+  const setSearchValue = (update: React.SetStateAction<string>) =>
+    setView((previous) => ({
+      ...previous,
+      searchValue:
+        typeof update === 'function' ? update(previous.searchValue) : update,
+      tokensVisibleCount: 50,
+      nftsVisibleCount: 50,
+    }));
+  const setSortyByValue = (update: React.SetStateAction<string>) =>
+    setView((previous) => ({
+      ...previous,
+      sortByValue:
+        typeof update === 'function' ? update(previous.sortByValue) : update,
+      tokensVisibleCount: 50,
+      nftsVisibleCount: 50,
+    }));
 
   // Use deferred value for search to keep input responsive
   const deferredSearchValue = useDeferredValue(searchValue);
@@ -299,37 +327,10 @@ export const EvmAssetsList = () => {
 
   const loadingValidation = isNetworkChanging;
 
-  // Track if we've already restored scroll position to prevent duplicate restoration
-  const hasRestoredScrollRef = useRef(false);
-
-  // Handle navigation state restoration
-  useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredScrollRef.current
-    ) {
-      hasRestoredScrollRef.current = true;
-
-      // Restore scroll position
-      window.scrollTo(0, location.state.scrollPosition);
-
-      // Do NOT clear the navigation state here - we need it to persist
-      // for when the popup is closed and reopened
-    }
-  }, [location.state]);
-
-  // Handle tab switch with transition
   const handleTabSwitch = (isCoin: boolean) => {
     startTransition(() => {
-      setIsCoinSelected(isCoin);
+      setView((previous) => ({ ...previous, isCoinSelected: isCoin }));
     });
-  };
-
-  // Pass component state to child components
-  const state = {
-    isCoinSelected,
-    searchValue,
-    sortByValue,
   };
 
   return (
@@ -342,9 +343,11 @@ export const EvmAssetsList = () => {
         <>
           <AssetsHeader
             isCoinSelected={isCoinSelected}
+            searchValue={searchValue}
             setIsCoinSelected={handleTabSwitch}
             setSearchValue={setSearchValue}
             setSortyByValue={setSortyByValue}
+            sortByValue={sortByValue}
           />
 
           <div
@@ -354,12 +357,27 @@ export const EvmAssetsList = () => {
           >
             {isCoinSelected ? (
               <DefaultEvmAssets
+                scope={scope}
                 searchValue={deferredSearchValue}
                 sortByValue={deferredSortByValue}
                 state={state}
+                onVisibleCountChange={(count) =>
+                  setView((previous) => ({
+                    ...previous,
+                    tokensVisibleCount: count,
+                  }))
+                }
               />
             ) : (
-              <EvmNftsList state={state} />
+              <EvmNftsList
+                state={state}
+                onVisibleCountChange={(count) =>
+                  setView((previous) => ({
+                    ...previous,
+                    nftsVisibleCount: count,
+                  }))
+                }
+              />
             )}
           </div>
         </>

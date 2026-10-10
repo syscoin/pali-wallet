@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,9 +9,15 @@ import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 
 export const CreatePhrase = () => {
   const { controllerEmitter } = useController();
-  const { setCreatedPhrase } = useOnboardingSecrets();
-  const [seed, setSeed] = useState('');
-  const [wordCount, setWordCount] = useState<number>(12);
+  const { secrets, setCreatedPhrase } = useOnboardingSecrets();
+  // Native Back between the two /phrase steps stays in this live document.
+  // Reuse its existing phrase without recovering anything from browser state.
+  const livePhrase = secrets.kind === 'create' ? secrets.phrase || '' : '';
+  const [seed, setSeed] = useState(livePhrase);
+  const [wordCount, setWordCount] = useState<number>(
+    livePhrase.trim().split(/\s+/).length === 24 ? 24 : 12
+  );
+  const generatedWordCount = useRef<number | null>(seed ? wordCount : null);
   const { t } = useTranslation();
 
   const [isTermsConfirmed, setIsTermsConfirmed] = useState<boolean>(false);
@@ -19,11 +25,19 @@ export const CreatePhrase = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (generatedWordCount.current === wordCount) return;
+    let current = true;
     controllerEmitter(['wallet', 'createNewSeed'], [wordCount]).then(
       (response: string) => {
-        setSeed(response);
+        if (current) {
+          generatedWordCount.current = wordCount;
+          setSeed(response);
+        }
       }
     );
+    return () => {
+      current = false;
+    };
   }, [controllerEmitter, wordCount]);
 
   const handleNext = useCallback(() => {

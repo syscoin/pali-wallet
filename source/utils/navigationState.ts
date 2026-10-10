@@ -1,138 +1,513 @@
-/**
- * Navigation state management utility
- * Handles preservation of tab states and navigation context when moving between pages
- */
+/** Bounded, public browsing snapshots. Signing and secret-entry flows never resume. */
+import { keccak256 } from 'ethers/crypto';
+import { toUtf8Bytes } from 'ethers/utils';
 
 import store from '../state/store';
 
 import { chromeStorage } from './storageAPI';
 
-export interface INavigationContext {
-  // Nested return context for chained back navigation
-  returnContext?: INavigationContext;
-  // The route to return to
-  returnRoute: string;
-  // Scroll position to restore
-  scrollPosition?: number;
-  // Component state to preserve
-  state?: Record<string, any>;
-  // Tab or view state to restore
-  tab?: string;
+export interface IWalletNavigationScope {
+  account: string;
+  network: string;
 }
-
-// Storage key for navigation state
-const NAVIGATION_STATE_KEY = 'pali_navigation_state';
-
+export interface INavigationContext {
+  returnContext?: INavigationContext;
+  returnRoute: string;
+  scrollPosition?: number;
+  scrollPositions?: Record<string, number>;
+  state?: Record<string, any>;
+  tab?: string;
+  walletScope?: IWalletNavigationScope;
+}
 export interface ISavedNavigationState {
   currentPath: string;
   returnContext?: INavigationContext;
   scrollPosition?: number;
+  scrollPositions?: Record<string, number>;
   state?: Record<string, any>;
-  tab?: string; // Preserve return navigation
-  timestamp: number; // To validate freshness
+  tab?: string;
+  timestamp: number;
+  version: 2;
+  walletScope: IWalletNavigationScope;
 }
+const NAVIGATION_STATE_KEY = 'pali_navigation_state';
+let navigationWriteGeneration = 0;
+const MAX_BYTES = 32 * 1024;
+const MAX_CONTEXTS = 12;
+const BROWSING_ROUTES = new Set([
+  '/home',
+  '/home/details',
+  '/home/smart-account',
+  '/tokens/add',
+  '/receive',
+  '/faucet',
+  '/settings/about',
+  '/settings/advanced',
+  '/settings/languages',
+  '/settings/currency',
+  '/settings/manage-accounts',
+  '/settings/edit-account',
+  '/settings/account/smart-account-policy',
+  '/settings/networks/connected-sites',
+  '/settings/networks/custom-rpc',
+  '/settings/networks/edit',
+  '/settings/networks/trusted-sites',
+  '/settings/remove-eth',
+]);
+const DRAFT_ROUTES = new Set(['/send/eth', '/send/sys']);
+const record = (value: any): value is Record<string, any> =>
+  Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const scalar = (value: any) =>
+  typeof value === 'boolean' ||
+  (typeof value === 'string' && value.length <= 2048) ||
+  (typeof value === 'number' && Number.isFinite(value));
+const pick = (value: any, keys: string[]) => {
+  const result: Record<string, any> = {};
+  if (record(value))
+    for (const key of keys) if (scalar(value[key])) result[key] = value[key];
+  return result;
+};
+const PUBLIC_ASSET_FIELDS = [
+  'id',
+  'assetGuid',
+  'assetType',
+  'contractAddress',
+  'contract',
+  'chainId',
+  'decimals',
+  'balance',
+  'rawBalance',
+  'isNft',
+  'logo',
+  'name',
+  'tokenId',
+  'tokenStandard',
+  'tokenSymbol',
+  'symbol',
+  'image',
+  'type',
+  'originDecimals',
+  'maxSupply',
+  'totalSupply',
+];
+const BOOLEAN_KEYS = new Set([
+  'open',
+  'isCoinSelected',
+  'hasMoreServer',
+  'isDefault',
+  'isEditing',
+  'RBF',
+  'isMaxSend',
+  'isNft',
+  'nftCollection',
+]);
+const COUNT_KEYS = new Set([
+  'tokensVisibleCount',
+  'nftsVisibleCount',
+  'sptVisibleCount',
+  'visibleCount',
+]);
+const STRING_KEYS = new Set([
+  'search',
+  'searchValue',
+  'sortByValue',
+  'selectedTokenId',
+  'manualTokenId',
+  'cacheKey',
+  'trustedSitesSearch',
+  'tokenImportScope',
+  'customContractAddress',
+  'customTokenId',
+  'customAssetGuid',
+  'selectedNftTokenId',
+  'network',
+  'receiver',
+  'amount',
+  'nftTokenId',
+]);
+const boundedPick = (input: any, keys: string[]) => {
+  const result = pick(input, keys);
+  for (const key of Object.keys(result)) {
+    if (STRING_KEYS.has(key) && typeof result[key] !== 'string') {
+      delete result[key];
+      continue;
+    }
+    if (key === 'cacheKey' && !result[key]) {
+      delete result[key];
+      continue;
+    }
+    if (BOOLEAN_KEYS.has(key) && typeof result[key] !== 'boolean')
+      delete result[key];
+    if (COUNT_KEYS.has(key))
+      result[key] =
+        typeof result[key] === 'number'
+          ? Math.min(2000, Math.max(50, Math.floor(result[key])))
+          : 50;
+    if (
+      ['nextPage', 'restoreThroughPage'].includes(key) &&
+      (typeof result[key] !== 'number' ||
+        !Number.isInteger(result[key]) ||
+        result[key] < 2 ||
+        result[key] > 10_000)
+    )
+      delete result[key];
+  }
+  return result;
+};
+const UI_KEYS = [
+  'tab',
+  'isCoinSelected',
+  'searchValue',
+  'sortByValue',
+  'tokensVisibleCount',
+  'nftsVisibleCount',
+  'sptVisibleCount',
+  'cacheKey',
+  'hasMoreServer',
+  'nextPage',
+  'visibleCount',
+  'restoreThroughPage',
+  'selectedTokenId',
+  'manualTokenId',
+];
+const SCALAR_KEYS = [
+  'id',
+  'hash',
+  'nftCollection',
+  'tab',
+  'isCoinSelected',
+  'searchValue',
+  'sortByValue',
+  'customContractAddress',
+  'customTokenId',
+  'customAssetGuid',
+  'tokenImportScope',
+  'manageAccountsScrollTop',
+  'manageNetworksScrollTop',
+  'scrollPosition',
+  'trustedSitesSearch',
+  'accountType',
+  'chain',
+  'isDefault',
+  'isEditing',
+  'smartAccountPolicyView',
+  'policyParentScroll',
+];
 
-/**
- * Save current navigation state to Chrome storage
- */
+let lastScopeInputs = '';
+let lastScope: IWalletNavigationScope;
+
+/** Endpoint fingerprints include API credentials without storing their plaintext. */
+export const getWalletNavigationScope = (): IWalletNavigationScope => {
+  const state = store.getState();
+  const vault = state.vault;
+  const ref = vault?.activeAccount;
+  const account = ref && vault.accounts?.[ref.type]?.[ref.id];
+  const network = vault?.activeNetwork;
+  const accountIdentity = JSON.stringify([
+    ref?.type,
+    ref?.id,
+    account?.address,
+    account?.xpub,
+  ]);
+  const networkIdentity = JSON.stringify([
+    network?.kind,
+    network?.chainId,
+    network?.slip44,
+    state.vaultGlobal?.activeSlip44,
+    network?.url,
+    network?.apiUrl,
+  ]);
+  const inputs = accountIdentity + networkIdentity;
+  if (inputs !== lastScopeInputs) {
+    lastScopeInputs = inputs;
+    lastScope = Object.freeze({
+      account: keccak256(toUtf8Bytes(accountIdentity)),
+      network: keccak256(toUtf8Bytes(networkIdentity)),
+    });
+  }
+  return lastScope;
+};
+export const isRestorableWalletRoute = (path: string) => {
+  const pathname = safeWalletPath(path)?.split(/[?#]/)[0];
+  return Boolean(
+    pathname && (BROWSING_ROUTES.has(pathname) || DRAFT_ROUTES.has(pathname))
+  );
+};
+/** Only local routes and browsing query parameters can enter a return chain. */
+export const safeWalletPath = (path: any): string | null => {
+  if (
+    typeof path !== 'string' ||
+    path.length > 2048 ||
+    !/^\/[\w/-]*(?:[?#].*)?$/.test(path) ||
+    path.startsWith('//')
+  )
+    return null;
+  const url = new URL(path, 'https://wallet.invalid');
+  const params = new URLSearchParams();
+  for (const key of ['tab', 'view']) {
+    const value = url.searchParams.get(key);
+    if (value && /^[\w-]{1,64}$/.test(value)) params.set(key, value);
+  }
+  const hash = /^#[\w-]{1,64}$/.test(url.hash) ? url.hash : '';
+  return url.pathname + (params.toString() ? `?${params}` : '') + hash;
+};
+export const withNavigationTab = (path: string, tab?: string) => {
+  const url = new URL(path, 'https://wallet.invalid');
+  if (tab && /^[\w-]{1,64}$/.test(tab)) url.searchParams.set('tab', tab);
+  return `${url.pathname}${url.search}${url.hash}`;
+};
+const scrollNumber = (n: any) =>
+  typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 10_000_000;
+const sanitizeScroll = (value: any) => {
+  const result: Record<string, number> = {};
+  if (record(value))
+    for (const [key, n] of Object.entries(value).slice(0, 20))
+      if (/^[\w-]{1,64}$/.test(key) && scrollNumber(n)) result[key] = n;
+  return result;
+};
+export const captureNavigationScroll = (): Record<string, number> => {
+  const positions: Record<string, number> = {};
+  if (typeof document !== 'undefined')
+    document
+      .querySelectorAll<HTMLElement>('[data-navigation-scroll]')
+      .forEach((el) => {
+        const key = el.dataset.navigationScroll;
+        if (
+          key &&
+          scrollNumber(el.scrollTop) &&
+          Object.keys(positions).length < 20
+        )
+          positions[key] = el.scrollTop;
+      });
+  return positions;
+};
+
+/** Pick known public fields rather than recursively copying arbitrary route payloads. */
+export const sanitizeBrowsingState = (
+  path: string,
+  input: any
+): Record<string, any> => {
+  const pathname = path.split(/[?#]/)[0];
+  const state = DRAFT_ROUTES.has(pathname)
+    ? {}
+    : boundedPick(input, SCALAR_KEYS);
+  if (pathname === '/home/details' && input?.isImportPreview === true)
+    Object.assign(
+      state,
+      pick(input, [...PUBLIC_ASSET_FIELDS, 'isImportPreview'])
+    );
+  for (const key of ['homeAssets', 'homeActivity', 'nftView']) {
+    const saved = input?.[key];
+    if (
+      record(saved) &&
+      typeof saved.scope === 'string' &&
+      saved.scope.length <= 2048
+    )
+      state[key] = {
+        scope: saved.scope,
+        value: boundedPick(saved.value, UI_KEYS),
+      };
+  }
+  if (record(input?.smartAccountPicker))
+    state.smartAccountPicker = boundedPick(input.smartAccountPicker, [
+      'open',
+      'search',
+      'visibleCount',
+      'scrollTop',
+      'network',
+    ]);
+  if (record(input?.policyParentScrollPositions))
+    state.policyParentScrollPositions = sanitizeScroll(
+      input.policyParentScrollPositions
+    );
+  if (record(input?.selected))
+    state.selected = pick(input.selected, ['chainId', 'key', 'kind']);
+  if (record(input?.nftData))
+    state.nftData = pick(input.nftData, PUBLIC_ASSET_FIELDS);
+  if (DRAFT_ROUTES.has(pathname)) {
+    state.formValues = boundedPick(input?.formValues, [
+      'receiver',
+      'amount',
+      'nftTokenId',
+    ]);
+    if (record(input?.selectedAsset))
+      state.selectedAsset = pick(input.selectedAsset, PUBLIC_ASSET_FIELDS);
+    Object.assign(
+      state,
+      boundedPick(input, ['RBF', 'isMaxSend', 'selectedNftTokenId'])
+    );
+    // Verification/balance results are deliberately re-read by the send flow.
+  }
+  return state;
+};
+const sameScope = (saved: any, current: IWalletNavigationScope) =>
+  record(saved) &&
+  saved.account === current.account &&
+  saved.network === current.network;
+const ACCOUNT_INDEPENDENT = new Set([
+  '/settings/about',
+  '/settings/advanced',
+  '/settings/languages',
+  '/settings/currency',
+  '/settings/manage-accounts',
+  '/settings/edit-account',
+  '/settings/networks/connected-sites',
+  '/settings/networks/edit',
+  '/settings/networks/custom-rpc',
+  '/settings/networks/trusted-sites',
+  '/settings/remove-eth',
+]);
+const sanitizedContext = (
+  input: any,
+  current: IWalletNavigationScope,
+  depth = 0
+): INavigationContext | undefined => {
+  if (!record(input) || depth >= MAX_CONTEXTS) return undefined;
+  const route = safeWalletPath(input.returnRoute);
+  if (!route || !isRestorableWalletRoute(route)) return undefined;
+  const pathname = route.split(/[?#]/)[0];
+  const matches = sameScope(input.walletScope, current);
+  if (DRAFT_ROUTES.has(pathname) && !matches) return undefined;
+  // Choosing an account changes identity; returning to the chooser never switches it back.
+  const pickerMatches =
+    pathname === '/home/smart-account' &&
+    input.state?.smartAccountPicker?.network === current.network;
+  const keepState = matches || ACCOUNT_INDEPENDENT.has(pathname);
+  const state = keepState
+    ? sanitizeBrowsingState(route, input.state)
+    : pickerMatches
+    ? {
+        smartAccountPicker: boundedPick(input.state.smartAccountPicker, [
+          'open',
+          'search',
+          'visibleCount',
+          'scrollTop',
+          'network',
+        ]),
+      }
+    : {};
+  return {
+    returnRoute: route,
+    tab: pick(input, ['tab']).tab,
+    state,
+    scrollPosition:
+      keepState && scrollNumber(input.scrollPosition)
+        ? input.scrollPosition
+        : 0,
+    scrollPositions:
+      keepState || pickerMatches ? sanitizeScroll(input.scrollPositions) : {},
+    walletScope: current,
+    returnContext: sanitizedContext(input.returnContext, current, depth + 1),
+  };
+};
+
+export const createNavigationContext = (
+  returnRoute: string,
+  tab?: string,
+  state?: Record<string, any>,
+  returnContext?: INavigationContext
+): INavigationContext => ({
+  returnRoute,
+  tab,
+  state: sanitizeBrowsingState(returnRoute, state),
+  returnContext,
+  scrollPosition: typeof window === 'undefined' ? 0 : window.scrollY || 0,
+  scrollPositions: captureNavigationScroll(),
+  walletScope: getWalletNavigationScope(),
+});
+export const createBrowsingNavigationContext = (
+  location: { hash?: string; pathname: string; search?: string; state?: any },
+  extra?: Record<string, any>
+) =>
+  createNavigationContext(
+    `${location.pathname}${location.search || ''}${location.hash || ''}`,
+    undefined,
+    { ...location.state, ...extra },
+    location.state?.returnContext
+  );
+
 export const saveNavigationState = async (
   path: string,
   tab?: string,
   state?: Record<string, any>,
   returnContext?: INavigationContext
 ): Promise<void> => {
+  if (!isRestorableWalletRoute(path)) return;
+  ++navigationWriteGeneration;
   try {
-    const navigationState: ISavedNavigationState = {
-      currentPath: path,
-      tab,
-      state,
-      returnContext,
-      scrollPosition: window.scrollY || 0,
+    const scope = getWalletNavigationScope();
+    const snapshot: ISavedNavigationState = {
+      currentPath: withNavigationTab(safeWalletPath(path)!, tab),
+      state: sanitizeBrowsingState(path, state),
+      returnContext: sanitizedContext(returnContext, scope),
+      scrollPosition: typeof window === 'undefined' ? 0 : window.scrollY || 0,
+      scrollPositions: captureNavigationScroll(),
       timestamp: Date.now(),
+      version: 2,
+      walletScope: scope,
     };
-
-    await chromeStorage.setItem(NAVIGATION_STATE_KEY, navigationState);
-  } catch (error) {
-    console.error('[NavigationState] Failed to save navigation state:', error);
+    if (JSON.stringify(snapshot).length <= MAX_BYTES)
+      await chromeStorage.setItem(NAVIGATION_STATE_KEY, snapshot);
+  } catch {
+    /* Closing a popup or storage failure must not block navigation. */
   }
 };
-
-/**
- * Load saved navigation state from Chrome storage
- */
+export const clearNavigationState = async (): Promise<void> => {
+  ++navigationWriteGeneration;
+  try {
+    await chromeStorage.removeItem(NAVIGATION_STATE_KEY);
+  } catch {
+    /* non-fatal */
+  }
+};
 export const loadNavigationState =
   async (): Promise<ISavedNavigationState | null> => {
     try {
-      const savedState = await chromeStorage.getItem(NAVIGATION_STATE_KEY);
-      if (!savedState) {
+      const generation = navigationWriteGeneration;
+      const saved = await chromeStorage.getItem(NAVIGATION_STATE_KEY);
+      if (generation !== navigationWriteGeneration) return null;
+      const autolock = store.getState().vaultGlobal?.advancedSettings?.autolock;
+      const timeout =
+        (typeof autolock === 'number' && autolock > 0 ? autolock : 30) *
+          60_000 -
+        30_000;
+      if (
+        !record(saved) ||
+        JSON.stringify(saved).length > MAX_BYTES ||
+        saved.version !== 2 ||
+        !isRestorableWalletRoute(saved.currentPath) ||
+        !Number.isFinite(saved.timestamp) ||
+        saved.timestamp > Date.now() + 1000 ||
+        Date.now() - saved.timestamp > timeout
+      ) {
+        if (saved) await clearNavigationState();
         return null;
       }
-
-      const state = savedState as ISavedNavigationState;
-
-      // Get autolock setting from store - use navigation state timeout based on autolock
-      // since wallet will automatically lock and navigate to home after autolock period
-      const { advancedSettings } = store.getState().vaultGlobal;
-      const autoLockMinutes =
-        typeof advancedSettings?.autolock === 'number'
-          ? advancedSettings.autolock
-          : 0; // Default 0 (disabled)
-      // If autolock is disabled (0), use a reasonable default timeout for navigation state (30 minutes)
-      const navigationTimeout =
-        autoLockMinutes === 0
-          ? 30 * 60 * 1000 // 30 minutes when autolock is disabled
-          : autoLockMinutes * 60 * 1000; // Use autolock time when enabled
-
-      // Check if state is fresh (less than timeout)
-      // Add a small buffer (30 seconds) to ensure we don't restore state right before autolock
-      const stateTimeout = navigationTimeout - 30 * 1000;
-      if (Date.now() - state.timestamp > stateTimeout) {
+      const current = getWalletNavigationScope();
+      const path = safeWalletPath(saved.currentPath)!;
+      const matches = sameScope(saved.walletScope, current);
+      if (DRAFT_ROUTES.has(path.split(/[?#]/)[0]) && !matches) {
         await clearNavigationState();
         return null;
       }
-
-      console.log(
-        '[NavigationState] Restored navigation to:',
-        state.currentPath
-      );
-      return state;
-    } catch (error) {
-      console.error(
-        '[NavigationState] Failed to load navigation state:',
-        error
-      );
+      return {
+        currentPath: path,
+        version: 2,
+        timestamp: saved.timestamp,
+        walletScope: current,
+        state: matches ? sanitizeBrowsingState(path, saved.state) : {},
+        returnContext: sanitizedContext(saved.returnContext, current),
+        scrollPosition:
+          matches && scrollNumber(saved.scrollPosition)
+            ? saved.scrollPosition
+            : 0,
+        scrollPositions: matches ? sanitizeScroll(saved.scrollPositions) : {},
+      };
+    } catch {
       return null;
     }
   };
-
-/**
- * Clear saved navigation state
- */
-export const clearNavigationState = async (): Promise<void> => {
-  try {
-    await chromeStorage.removeItem(NAVIGATION_STATE_KEY);
-  } catch (error) {
-    console.error('[NavigationState] Failed to clear navigation state:', error);
-  }
-};
-
-/**
- * Create navigation context for returning to a specific page with state
- */
-export const createNavigationContext = (
-  returnRoute: string,
-  tab?: string,
-  state?: Record<string, any>
-): INavigationContext => ({
-  returnRoute,
-  tab,
-  scrollPosition: window.scrollY || 0,
-  state,
-});
-
-/**
- * Navigate to a detail page while preserving return context
- */
 export const navigateWithContext = (
   navigate: (path: string, options?: any) => void,
   targetPath: string,
@@ -142,54 +517,39 @@ export const navigateWithContext = (
   navigate(targetPath, {
     state: {
       ...targetState,
-      returnContext,
+      walletScope: getWalletNavigationScope(),
+      returnContext: {
+        ...returnContext,
+        walletScope: returnContext.walletScope || getWalletNavigationScope(),
+        scrollPositions:
+          returnContext.scrollPositions || captureNavigationScroll(),
+      },
     },
   });
 };
-
-/**
- * Navigate back using preserved context
- */
 export const navigateBack = (
   navigate: (path: string | number, options?: any) => void,
   location: { state?: any }
 ) => {
-  const returnContext = location.state?.returnContext as
-    | INavigationContext
-    | undefined;
-
-  if (returnContext) {
-    // Build URL with tab parameter if provided
-    let path = returnContext.returnRoute;
-    if (returnContext.tab) {
-      path += `?tab=${returnContext.tab}`;
-    }
-
-    navigate(path, {
+  const context = sanitizedContext(
+    location.state?.returnContext,
+    getWalletNavigationScope()
+  );
+  if (context)
+    navigate(withNavigationTab(context.returnRoute, context.tab), {
+      replace: true,
       state: {
-        ...returnContext.state,
-        returnContext: returnContext.returnContext, // Preserve nested return context
-        scrollPosition: returnContext.scrollPosition,
+        ...context.state,
+        returnContext: context.returnContext,
+        scrollPosition: context.scrollPosition,
+        scrollPositions: context.scrollPositions,
+        walletScope: context.walletScope,
       },
     });
-  } else {
-    navigate('/home');
-  }
+  else navigate('/home', { replace: true });
 };
-
-/**
- * Get current tab from URL search params or location state
- */
 export const getCurrentTab = (
   searchParams: URLSearchParams,
   locationState: any,
   defaultTab: string
-): string => {
-  // Priority: URL param > location state > default
-  const tabParam = searchParams.get('tab');
-  if (tabParam) return tabParam;
-
-  if (locationState?.tab) return locationState.tab;
-
-  return defaultTab;
-};
+): string => searchParams.get('tab') || locationState?.tab || defaultTab;

@@ -71,7 +71,10 @@ const ConnectedSites = () => {
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="remove-scrollbar w-full max-w-xs h-80 overflow-auto md:max-w-md">
+        <ul
+          data-navigation-scroll="settings-connected-sites"
+          className="remove-scrollbar w-full max-w-xs h-80 overflow-auto md:max-w-md"
+        >
           {' '}
           {dappsList.map((_dapp) => (
             <li

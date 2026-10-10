@@ -20,8 +20,10 @@ jest.mock('react-i18next', () => ({
 jest.mock('react-router-dom', () => ({
   useSearchParams: () => [new URLSearchParams(), jest.fn()],
   useLocation: () => ({ state: null }),
+  useNavigate: () => jest.fn(),
 }));
 jest.mock('state/vault/selectors', () => ({
+  selectActiveAccount: (state: any) => state.account,
   selectActiveAccountAssets: (state: any) => state.assets,
   selectActiveAccountTransactions: () => ({ syscoin: {} }),
   selectActiveAccountRef: (state: any) => state.account,

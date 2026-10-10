@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { Button, CenterTitle, DialogPrimitive, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -16,11 +17,22 @@ import {
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
 import {
-  createNavigationContext,
+  createBrowsingNavigationContext,
+  getWalletNavigationScope,
+  captureNavigationScroll,
   navigateWithContext,
 } from 'utils/navigationState';
 
-const SmartAccountEntry = () => {
+const SmartAccountEntry = ({
+  pickerOnly = false,
+}: {
+  pickerOnly?: boolean;
+}) => {
+  const location = useLocation();
+  const networkScope = getWalletNavigationScope().network;
+  const savedPicker = location.state?.smartAccountPicker;
+  const restoredPicker =
+    savedPicker?.network === networkScope ? savedPicker : undefined;
   const { t } = useTranslation();
   const { navigate, alert } = useUtils();
   const { controllerEmitter, handleWalletLockedError, connectionUnavailable } =
@@ -30,11 +42,12 @@ const SmartAccountEntry = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const [showPicker, setShowPicker] = useState(false);
-  const [search, setSearch] = useState('');
+  const [showPicker, setShowPicker] = useState(restoredPicker?.open === true);
+  const [search, setSearch] = useState(restoredPicker?.search || '');
   const [pendingId, setPendingId] = useState<number | null>(null);
   const switching = useRef(false);
   const mounted = useRef(true);
+  const listRef = useRef<HTMLDivElement>(null);
   const context = `${activeNetwork.kind}:${activeNetwork.chainId}:${activeNetwork.url}`;
   const disabled =
     isContextChanging || connectionUnavailable || pendingId !== null;
@@ -46,9 +59,9 @@ const SmartAccountEntry = () => {
     };
   }, []);
   useEffect(() => {
-    setShowPicker(false);
-    setSearch('');
-  }, [context]);
+    setShowPicker(restoredPicker?.open === true);
+    setSearch(restoredPicker?.search || '');
+  }, [context, restoredPicker?.open, restoredPicker?.search]);
 
   const eligibleAccounts = useMemo(
     () =>
@@ -68,10 +81,53 @@ const SmartAccountEntry = () => {
       `${account.label} ${account.address}`.toLowerCase().includes(query)
     );
   }, [eligibleAccounts, search]);
-  const { visibleItems, hasMore, showMore } = useIncrementalList(
+  const { visibleItems, visibleCount, hasMore, showMore } = useIncrementalList(
     matchingAccounts,
-    `${context}:${search}`
+    `${context}:${search}`,
+    restoredPicker?.visibleCount || 50
   );
+
+  const pickerSnapshot = (open: boolean) => ({
+    open,
+    search,
+    visibleCount,
+    network: networkScope,
+    scrollTop: listRef.current?.scrollTop || 0,
+  });
+  const updatePicker = (open: boolean, query = search) => {
+    setShowPicker(open);
+    setSearch(query);
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: {
+        ...location.state,
+        smartAccountPicker: {
+          ...pickerSnapshot(open),
+          search: query,
+          visibleCount: query === search ? visibleCount : 50,
+        },
+      },
+    });
+  };
+  useEffect(() => {
+    if (
+      !showPicker ||
+      savedPicker?.network !== networkScope ||
+      restoredPicker?.visibleCount === visibleCount
+    )
+      return;
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: {
+        ...location.state,
+        smartAccountPicker: { ...restoredPicker, ...pickerSnapshot(true) },
+      },
+    });
+  }, [visibleCount, showPicker]);
+  useEffect(() => {
+    if (showPicker && listRef.current)
+      listRef.current.scrollTop = restoredPicker?.scrollTop || 0;
+  }, [showPicker]);
 
   const contextIsCurrent = () => {
     const state = store.getState();
@@ -95,7 +151,7 @@ const SmartAccountEntry = () => {
       navigate,
       '/settings/account/new',
       { smartAccountOnly: true },
-      createNavigationContext('/home/smart-account')
+      createBrowsingNavigationContext(location)
     );
   };
 
@@ -115,6 +171,13 @@ const SmartAccountEntry = () => {
       )
     )
       return;
+    const chooserContext = createBrowsingNavigationContext(location, {
+      smartAccountPicker: pickerSnapshot(true),
+    });
+    chooserContext.scrollPositions = {
+      ...captureNavigationScroll(),
+      'smart-account-picker': listRef.current?.scrollTop || 0,
+    };
     switching.current = true;
     setPendingId(account.id);
     try {
@@ -122,6 +185,49 @@ const SmartAccountEntry = () => {
         ['wallet', 'setAccount'],
         [account.id, KeyringAccountType.SmartAccount]
       );
+      // The RPC reply and Redux publication may arrive in either order.
+      const switched = await new Promise<boolean>((resolve) => {
+        let unsubscribe: () => void = () => undefined;
+        const finish = (result: boolean) => {
+          unsubscribe();
+          clearTimeout(timer);
+          resolve(result);
+        };
+        const check = () => {
+          if (getWalletNavigationScope().network !== networkScope) {
+            finish(false);
+            return;
+          }
+          const vault = store.getState().vault;
+          if (
+            vault.activeAccount.id === account.id &&
+            vault.activeAccount.type === KeyringAccountType.SmartAccount &&
+            vault.accounts[KeyringAccountType.SmartAccount]?.[account.id]
+              ?.address === account.address
+          )
+            finish(true);
+        };
+        if (typeof store.subscribe === 'function')
+          unsubscribe = store.subscribe(check);
+        const timer = setTimeout(() => finish(false), 2000);
+        check();
+      });
+      if (
+        !switched ||
+        (window.location.hash.startsWith('#/') &&
+          window.location.hash.slice(1).split(/[?#]/)[0] !==
+            '/home/smart-account')
+      )
+        return;
+      // The account update can unmount this entry before its RPC resolves.
+      // Commit the browsing step after success; Back opens the chooser without undoing the account switch.
+      navigate('/home/smart-account', {
+        state: {
+          smartAccountPicker: { ...pickerSnapshot(false) },
+          returnContext: chooserContext,
+          walletScope: getWalletNavigationScope(),
+        },
+      });
       if (mounted.current) setShowPicker(false);
     } catch (error) {
       if (mounted.current && !handleWalletLockedError(error))
@@ -134,49 +240,51 @@ const SmartAccountEntry = () => {
 
   return (
     <>
-      <div className="flex flex-col items-center gap-4 p-6 text-brand-white">
-        <Icon name="wallet" size={28} />
-        <p className="text-sm text-center text-brand-gray200 max-w-xs">
-          {activeNetwork.kind !== INetworkType.Ethereum
-            ? t('smartAccountHub.evmNetworkRequired')
-            : eligibleAccounts.length
-            ? t('smartAccountHub.chooseAccountDescription')
-            : t('smartAccountHub.noAccountsOnNetwork', {
-                network: activeNetwork.label,
-              })}
-        </p>
-        {eligibleAccounts.length > 0 && (
-          <Button
-            variant="neutral"
-            className="text-sm text-brand-royalblue max-w-xs"
-            fullWidth
-            type="button"
-            disabled={disabled}
-            onClick={() => setShowPicker(true)}
-          >
-            {t('smartAccountHub.chooseAccount')}
-          </Button>
-        )}
-        {activeNetwork.kind === INetworkType.Ethereum && (
-          <Button
-            variant={eligibleAccounts.length ? 'ghost' : 'neutral'}
-            className={`text-sm max-w-xs ${
-              eligibleAccounts.length ? '' : 'text-brand-royalblue'
-            }`}
-            fullWidth
-            type="button"
-            disabled={disabled}
-            onClick={createSmartAccount}
-          >
-            {t('settings.createSmartAccount')}
-          </Button>
-        )}
-      </div>
+      {!pickerOnly && (
+        <div className="flex flex-col items-center gap-4 p-6 text-brand-white">
+          <Icon name="wallet" size={28} />
+          <p className="text-sm text-center text-brand-gray200 max-w-xs">
+            {activeNetwork.kind !== INetworkType.Ethereum
+              ? t('smartAccountHub.evmNetworkRequired')
+              : eligibleAccounts.length
+              ? t('smartAccountHub.chooseAccountDescription')
+              : t('smartAccountHub.noAccountsOnNetwork', {
+                  network: activeNetwork.label,
+                })}
+          </p>
+          {eligibleAccounts.length > 0 && (
+            <Button
+              variant="neutral"
+              className="text-sm text-brand-royalblue max-w-xs"
+              fullWidth
+              type="button"
+              disabled={disabled}
+              onClick={() => updatePicker(true)}
+            >
+              {t('smartAccountHub.chooseAccount')}
+            </Button>
+          )}
+          {activeNetwork.kind === INetworkType.Ethereum && (
+            <Button
+              variant={eligibleAccounts.length ? 'ghost' : 'neutral'}
+              className={`text-sm max-w-xs ${
+                eligibleAccounts.length ? '' : 'text-brand-royalblue'
+              }`}
+              fullWidth
+              type="button"
+              disabled={disabled}
+              onClick={createSmartAccount}
+            >
+              {t('settings.createSmartAccount')}
+            </Button>
+          )}
+        </div>
+      )}
       <DialogPrimitive
         presentation="sheet"
         show={showPicker}
         onClose={() => {
-          if (!switching.current) setShowPicker(false);
+          if (!switching.current) updatePicker(false);
         }}
       >
         <div className="w-screen max-w-md max-h-[85vh] overflow-y-auto rounded-t-2xl bg-bkg-4 p-5 text-brand-white">
@@ -191,9 +299,13 @@ const SmartAccountEntry = () => {
             aria-label={t('connections.searchAccounts')}
             value={search}
             disabled={disabled}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => updatePicker(true, event.target.value)}
           />
-          <div className="max-h-[35vh] overflow-y-auto remove-scrollbar space-y-2">
+          <div
+            ref={listRef}
+            data-navigation-scroll="smart-account-picker"
+            className="max-h-[35vh] overflow-y-auto remove-scrollbar space-y-2"
+          >
             {visibleItems.map((account) => (
               <button
                 key={account.id}
@@ -238,7 +350,7 @@ const SmartAccountEntry = () => {
             type="button"
             className="mt-4"
             disabled={pendingId !== null}
-            onClick={() => setShowPicker(false)}
+            onClick={() => updatePicker(false)}
           >
             {t('buttons.cancel')}
           </Button>

@@ -2,6 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import {
+  getHomeBrowsingScope,
+  useHomeBrowsingState,
+} from '../../../useHomeBrowsingState';
 import { ChainIcon } from 'components/ChainIcon';
 import {
   FiExternalLink as ExternalLinkIcon,
@@ -19,14 +23,13 @@ import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
 export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
-  const {
-    activeNetwork: { explorer },
-    activeAccount,
-    accounts,
-  } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork, activeAccount, accounts } = useSelector(
+    (state: RootState) => state.vault
+  );
 
   // Use proper selector for assets
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+  const { explorer } = activeNetwork;
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -38,8 +41,25 @@ export const NftsDetails = ({ nftData }: { nftData: any }) => {
     { balance: number; tokenId: string }[]
   >([]);
   const [isLoadingTokenIds, setIsLoadingTokenIds] = useState(false);
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
-  const [manualTokenId, setManualTokenId] = useState<string>('');
+  const [nftView, setNftView] = useHomeBrowsingState<{
+    manualTokenId: string;
+    selectedTokenId: string | null;
+  }>(
+    'nftView',
+    `${getHomeBrowsingScope(
+      { ...currentAccount, ...activeAccount },
+      activeNetwork
+    )}:${currentNft?.contractAddress}`,
+    {
+      selectedTokenId: null,
+      manualTokenId: '',
+    }
+  );
+  const { selectedTokenId, manualTokenId } = nftView;
+  const setSelectedTokenId = (tokenId: string | null) =>
+    setNftView((previous) => ({ ...previous, selectedTokenId: tokenId }));
+  const setManualTokenId = (tokenId: string) =>
+    setNftView((previous) => ({ ...previous, manualTokenId: tokenId }));
   const [hasMoreTokens, setHasMoreTokens] = useState(false);
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<

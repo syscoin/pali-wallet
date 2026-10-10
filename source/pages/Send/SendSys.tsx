@@ -29,7 +29,7 @@ import {
   adjustUrl,
   createNavigationContext,
   navigateWithContext,
-  saveNavigationState,
+  getWalletNavigationScope,
 } from 'utils/index';
 import {
   assertValidAssetAmount,
@@ -40,11 +40,30 @@ import { getRefreshedSyscoinAssetSelection } from 'utils/syscoinAssetSelection';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { isValidSYSAddress } from 'utils/validations';
 
+import {
+  getScopedSendDraft,
+  useSendDraftWriter,
+  useSendPreparationGuard,
+} from './useSendDraftWriter';
+
 export const SendSys = () => {
-  const { controllerEmitter } = useController();
+  const scopeKey = useSelector(() =>
+    JSON.stringify(getWalletNavigationScope())
+  );
+  return <SendSysForm key={scopeKey} scopeKey={scopeKey} />;
+};
+
+const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
+  const {
+    controllerEmitter,
+    isUnlocked,
+    isLoading: controllerLoading,
+    connectionUnavailable,
+  } = useController();
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const location = useLocation();
+  const isCurrentForm = useSendPreparationGuard(scopeKey, location.pathname);
 
   const { account: activeAccount, assets: accountAssets } = useSelector(
     selectActiveAccountWithAssets
@@ -56,11 +75,15 @@ export const SendSys = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  // Restore state from navigation if available
-  const initialRBF = location.state?.RBF ?? true;
+  // Hydrate only the matching account/network draft, once for this mounted form.
+  const initialDraft = useRef(
+    getScopedSendDraft(location.pathname, location.state, scopeKey)
+  ).current;
+  const initialRBF =
+    typeof initialDraft.RBF === 'boolean' ? initialDraft.RBF : true;
   const [RBF, setRBF] = useState<boolean>(initialRBF);
-  const initialSelectedAsset = location.state?.selectedAsset || null;
-  const initialIsMaxSend = location.state?.isMaxSend ?? false;
+  const initialSelectedAsset = initialDraft.selectedAsset || null;
+  const initialIsMaxSend = initialDraft.isMaxSend === true;
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     initialSelectedAsset
@@ -74,7 +97,7 @@ export const SendSys = () => {
   const [feeRate, setFeeRate] = useState<number | null>(null);
 
   // Track form value changes using a ref to avoid dependency issues
-  const formValuesRef = useRef<any>({});
+  const formValuesRef = useRef<any>(initialDraft.formValues || {});
 
   useEffect(() => {
     const refreshBalances = async () => {
@@ -104,29 +127,26 @@ export const SendSys = () => {
     }
   }, [accountAssets?.syscoin, selectedAsset]);
 
-  // Save navigation state when user completes interaction
-  const saveCurrentState = useCallback(async () => {
-    const state = {
-      formValues: formValuesRef.current,
-      selectedAsset,
-      RBF,
-      isMaxSend,
-    };
+  const draftState = useMemo(
+    () => ({ selectedAsset, RBF, isMaxSend }),
+    [selectedAsset, RBF, isMaxSend]
+  );
+  const saveCurrentState = useSendDraftWriter({
+    form,
+    location,
+    navigate,
+    scopeKey,
+    state: draftState,
+    enabled: isUnlocked && !controllerLoading && !connectionUnavailable,
+  });
 
-    await saveNavigationState(
-      location.pathname,
-      undefined,
-      state,
-      location.state?.returnContext
-    );
-  }, [selectedAsset, RBF, isMaxSend, location]);
-
-  // Update form values ref when they change (no save yet)
+  // Save typed values immediately, including before blur or a quick popup close.
   const handleFormValuesChange = useCallback(
     (changedValues: any, allValues: any) => {
       formValuesRef.current = allValues;
+      void saveCurrentState(allValues);
     },
-    []
+    [saveCurrentState]
   );
 
   // Save state when user blurs from input fields
@@ -144,22 +164,6 @@ export const SendSys = () => {
     ) {
       saveCurrentState();
     }
-  }, [selectedAsset, RBF, isMaxSend, saveCurrentState]);
-
-  // Save component state when non-form state changes
-  useEffect(() => {
-    // Don't save on initial mount or when there's no meaningful state
-    if (
-      selectedAsset === null &&
-      RBF === true &&
-      isMaxSend === false &&
-      Object.keys(formValuesRef.current).length === 0
-    ) {
-      return;
-    }
-
-    // Save immediately when these state values change
-    saveCurrentState();
   }, [selectedAsset, RBF, isMaxSend, saveCurrentState]);
 
   // Track if we've already restored form values to prevent duplicate restoration
@@ -184,9 +188,11 @@ export const SendSys = () => {
           ['wallet', 'getRecommendedFee'],
           []
         )) as number;
+        if (!isCurrentForm()) return;
         setFeeRate(fee);
         form.setFieldsValue({ fee });
       } catch (error) {
+        if (!isCurrentForm()) return;
         console.error('Failed to fetch initial fee:', error);
         const fallbackFee = 0.0000001;
         setFeeRate(fallbackFee);
@@ -194,7 +200,7 @@ export const SendSys = () => {
       }
     };
     fetchInitialFee();
-  }, [activeNetwork.chainId, form]);
+  }, [activeNetwork.chainId, form, isCurrentForm]);
 
   // ✅ MEMOIZED: Computed values
   const isAccountImported = useMemo(
@@ -230,11 +236,9 @@ export const SendSys = () => {
 
   // Restore form values if coming back from navigation
   useEffect(() => {
-    if (
-      location.state?.scrollPosition !== undefined &&
-      !hasRestoredRef.current
-    ) {
-      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
+    if (!hasRestoredRef.current) {
+      hasRestoredRef.current = true;
+      const { formValues, isMaxSend: restoredIsMaxSend } = initialDraft;
 
       if (formValues) {
         isRestoringRef.current = true;
@@ -247,6 +251,10 @@ export const SendSys = () => {
         if (restoredIsMaxSend) {
           // Add a small delay to ensure form is fully initialized
           setTimeout(() => {
+            if (!isCurrentForm()) {
+              isRestoringRef.current = false;
+              return;
+            }
             handleMaxButton();
             isRestoringRef.current = false;
           }, 100);
@@ -258,7 +266,7 @@ export const SendSys = () => {
       // Do NOT clear the navigation state here - we need it to persist
       // for when the popup is closed and reopened
     }
-  }, [location.state?.scrollPosition, form, handleMaxButton]);
+  }, [initialDraft, form, handleMaxButton, isCurrentForm]);
 
   // Watch the amount field for changes
   const watchedAmount = Form.useWatch('amount', form);
@@ -354,6 +362,7 @@ export const SendSys = () => {
   );
 
   const nextStep = async ({ receiver, amount }: any) => {
+    if (!isCurrentForm()) return;
     // Prevent submission during restoration
     if (isRestoringRef.current) {
       console.log('[SendSys] Preventing submission during restoration');
@@ -397,6 +406,7 @@ export const SendSys = () => {
                 },
               ]
             )) as { fee: number; psbt: any };
+          if (!isCurrentForm()) return;
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
@@ -406,6 +416,7 @@ export const SendSys = () => {
             throw new Error('Failed to create transaction PSBT');
           }
         } catch (error: any) {
+          if (!isCurrentForm()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -483,6 +494,7 @@ export const SendSys = () => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
+        if (!isCurrentForm()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -515,6 +527,7 @@ export const SendSys = () => {
               },
             ]
           )) as { fee: number; psbt: any };
+          if (!isCurrentForm()) return;
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
@@ -524,6 +537,7 @@ export const SendSys = () => {
             throw new Error('Failed to create token transaction PSBT');
           }
         } catch (error: any) {
+          if (!isCurrentForm()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -574,6 +588,7 @@ export const SendSys = () => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
+        if (!isCurrentForm()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -598,9 +613,13 @@ export const SendSys = () => {
         );
       }
     } catch (error) {
+      if (!isCurrentForm()) return;
       setIsLoading(false);
 
       alert.error(t('send.internalError'));
+    } finally {
+      // A connection interruption cancels preparation while the same form can remain visible.
+      if (isCurrentForm(false)) setIsLoading(false);
     }
   };
 
@@ -690,6 +709,7 @@ export const SendSys = () => {
         id="send-form"
         initialValues={{
           RBF: true,
+          ...initialDraft.formValues,
         }}
         onFinish={nextStep}
         autoComplete="off"
@@ -716,6 +736,10 @@ export const SendSys = () => {
                     value,
                     activeNetwork.chainId
                   );
+                  if (!isCurrentForm())
+                    return Promise.reject(
+                      new Error('Send form is no longer active.')
+                    );
                   if (isValid) {
                     return Promise.resolve();
                   }

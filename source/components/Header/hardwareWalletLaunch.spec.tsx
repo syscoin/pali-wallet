@@ -14,7 +14,10 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) =>
     select({ vault: { activeAccount: { id: 0, type: 'HDAccount' } } }),
 }));
-jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => jest.fn(),
+  useLocation: () => ({ pathname: '/home', search: '', hash: '' }),
+}));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({ navigate: jest.fn(), alert: { error: jest.fn() } }),
 }));
