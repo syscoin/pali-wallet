@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "Cancel",
+    "continue": "Continue",
     "back": "Back",
     "change": "Change",
     "send": "Send",
@@ -393,6 +394,13 @@
     "signingGeneral": "You are signing a message.",
     "rawParameters": "Raw Parameters",
     "structuredData": "Structured Data",
+    "nftOrderReviewTitle": "{{protocol}} order review",
+    "nftOrderWarningTitle": "Check the order terms",
+    "nftOrderAuthorization": "Signing an order can authorize asset transfers when it is filled. It does not send a transaction now.",
+    "nftOrderZeroPayment": "The order lists no token payment to its creator for the NFT. Only proceed if these terms are intended, such as a gift.",
+    "nftOrderNoReturn": "The order lists no assets payable to the order creator in return. Only proceed if this is intended, such as a gift.",
+    "nftOrderReviewLimit": "Based on the signed data only. Pali has not verified the contract, ownership, approvals or whether this order can execute. Review the full terms in Data.",
+    "nftOrderUnrecognized": "Pali cannot reliably summarize this order format. Check the full signed data in Data before deciding.",
     "expected": "Expected: ",
     "actualParams": "Actual params: ",
     "address": "Address: ",

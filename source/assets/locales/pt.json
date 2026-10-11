@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "Cancelar",
+    "continue": "Continuar",
     "back": "Voltar",
     "change": "Alterar",
     "send": "Enviar",
@@ -393,6 +394,13 @@
     "signingGeneral": "Você está assinando uma mensagem.",
     "rawParameters": "Parâmetros Brutos",
     "structuredData": "Dados Estruturados",
+    "nftOrderReviewTitle": "Revisão da ordem de {{protocol}}",
+    "nftOrderWarningTitle": "Confira os termos da ordem",
+    "nftOrderAuthorization": "Assinar uma ordem pode autorizar transferências de ativos quando ela for executada. Isso não envia uma transação agora.",
+    "nftOrderZeroPayment": "A ordem não inclui pagamento em tokens ao criador pelo NFT. Continue apenas se esses termos forem intencionais, como em um presente.",
+    "nftOrderNoReturn": "A ordem não inclui ativos a serem recebidos pelo criador em troca. Continue apenas se isso for intencional, como um presente.",
+    "nftOrderReviewLimit": "Baseado apenas nos dados assinados. A Pali não verificou o contrato, a propriedade, as autorizações nem se esta ordem pode ser executada. Confira os termos completos em Dados.",
+    "nftOrderUnrecognized": "A Pali não consegue resumir este formato de ordem de forma confiável. Confira todos os dados assinados em Dados antes de decidir.",
     "expected": "Esperado: ",
     "actualParams": "Parâmetros atuais: ",
     "address": "Endereço: ",

@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "취소",
+    "continue": "계속",
     "back": "뒤로",
     "change": "변경",
     "send": "보내기",
@@ -393,6 +394,13 @@
     "signingGeneral": "메시지에 서명하고 있습니다.",
     "rawParameters": "원시 매개변수",
     "structuredData": "구조화된 데이터",
+    "nftOrderReviewTitle": "{{protocol}} 주문 검토",
+    "nftOrderWarningTitle": "주문 조건을 확인하세요",
+    "nftOrderAuthorization": "주문에 서명하면 주문 체결 시 자산 전송을 승인할 수 있습니다. 지금 거래를 전송하는 것은 아닙니다.",
+    "nftOrderZeroPayment": "이 주문에는 NFT에 대해 생성자에게 지급할 토큰 대금이 명시되어 있지 않습니다. 선물 등 이러한 조건을 의도한 경우에만 계속하세요.",
+    "nftOrderNoReturn": "이 주문에는 주문 생성자가 대가로 받을 자산이 없습니다. 선물 등 의도한 경우에만 계속하세요.",
+    "nftOrderReviewLimit": "서명할 데이터만을 바탕으로 합니다. Pali는 계약, 소유권, 승인 또는 이 주문의 실행 가능 여부를 확인하지 않았습니다. 데이터에서 전체 조건을 검토하세요.",
+    "nftOrderUnrecognized": "Pali는 이 주문 형식을 신뢰할 수 있게 요약할 수 없습니다. 결정하기 전에 데이터에서 서명할 데이터 전체를 확인하세요.",
     "expected": "예상: ",
     "actualParams": "실제 매개변수: ",
     "address": "주소: ",

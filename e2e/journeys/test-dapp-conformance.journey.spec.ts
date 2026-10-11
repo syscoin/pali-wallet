@@ -17,6 +17,8 @@ import {
 import fs from 'fs';
 import path from 'path';
 
+import enTranslations from '../../source/assets/locales/en.json';
+import typedOrderFixtures from '../../tests/fixtures/typedOrderRequests.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
 import {
@@ -445,6 +447,293 @@ test('official test dapp: isolated standard provider conformance', async () => {
           }
         );
       }
+
+      for (const variant of [
+        'paid-trade',
+        'zero-payment',
+        'no-return',
+      ] as const) {
+        await record(`NFT order terms: ${variant}`, async () => {
+          const data = JSON.parse(
+            JSON.stringify(
+              variant === 'no-return'
+                ? typedOrderFixtures.OrderComponents
+                : typedOrderFixtures.ERC721Order
+            )
+          );
+          data.domain.chainId = LOCAL_CHAINS[0].chainId;
+          if (variant !== 'no-return') data.message.maker = address;
+          if (variant === 'zero-payment') {
+            data.message.erc20TokenAmount = '0';
+            // A fee paid to someone else must not hide absent creator payment.
+            data.message.fees = [
+              {
+                recipient: '0x0000000000000000000000000000000000000001',
+                amount: '1',
+                feeData: '0x',
+              },
+            ];
+          }
+          // Exercise documented version coverage in the real approval UI.
+          if (variant === 'no-return') data.domain.version = '1.4';
+          const original = JSON.stringify(data);
+          const id = await startRequest(page, 'eth_signTypedData_v4', [
+            address,
+            original,
+          ]);
+          const popup = await popupFor(wallet.context, page, id);
+          const warning =
+            variant === 'zero-payment'
+              ? enTranslations.send.nftOrderZeroPayment
+              : enTranslations.send.nftOrderNoReturn;
+          if (variant === 'paid-trade') {
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderAuthorization, {
+                exact: true,
+              })
+            ).toBeVisible();
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderZeroPayment, {
+                exact: true,
+              })
+            ).toHaveCount(0);
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderNoReturn, {
+                exact: true,
+              })
+            ).toHaveCount(0);
+          } else {
+            await expect(
+              popup.getByText(warning, { exact: true })
+            ).toBeVisible();
+            await popup.screenshot({
+              path: path.join(
+                E2E_CONFIG.artifactsDir,
+                `order-${variant}-advisory.png`
+              ),
+            });
+          }
+          const signed = await approve(wallet.context, page, id);
+          expect(signed.params).toEqual([address, original]);
+          const types = { ...data.types };
+          delete types.EIP712Domain;
+          expect(
+            getAddress(
+              verifyTypedData(data.domain, types, data.message, signed.result)
+            )
+          ).toBe(getAddress(address));
+          return signed;
+        });
+      }
+
+      const malformedPopupRequests: Array<[string, any[]]> = [
+        [
+          'eth_signTypedData_v4',
+          [
+            address,
+            {
+              domain: { verifyingContract: 'invalid-address' },
+              types: {
+                EIP712Domain: [{ name: 'verifyingContract', type: 'address' }],
+                Account: [{ name: 'account', type: 'address' }],
+              },
+              primaryType: 'Account',
+              message: { account: address },
+            },
+          ],
+        ],
+        [
+          'eth_signTypedData_v4',
+          [
+            address,
+            {
+              domain: { verifyingContract: address },
+              types: {
+                EIP712Domain: [{ name: 'verifyingContract', type: 'address' }],
+                Account: [{ name: 'account', type: 'address' }],
+              },
+              primaryType: 'Account',
+              message: { account: 'invalid-address' },
+            },
+          ],
+        ],
+        [
+          'eth_sendTransaction',
+          [{ from: address, to: address, value: 'invalid' }],
+        ],
+        [
+          'eth_signTypedData_v4',
+          [
+            address,
+            {
+              domain: {},
+              types: { Account: [{ name: 'account', type: 'address' }] },
+              primaryType: 'MissingType',
+              message: { account: address },
+            },
+          ],
+        ],
+      ];
+      const rejectMalformedBurstWithoutPopups = async () => {
+        const started = Date.now();
+        const openedPages: Page[] = [];
+        const observePage = (opened: Page) => openedPages.push(opened);
+        const rejected = [];
+        wallet.context.on('page', observePage);
+        try {
+          for (const [method, params] of malformedPopupRequests) {
+            const result = await settle(
+              page,
+              await startRequest(page, method, params),
+              2000
+            );
+            expect(result.error?.code).toBe(-32602);
+            expect(result.durationMs).toBeLessThan(2000);
+            expect(result.result).toBeUndefined();
+            expect(openedPages).toHaveLength(0);
+            expect(
+              wallet.context
+                .pages()
+                .some((tab) => tab.url().includes('/external'))
+            ).toBe(false);
+            rejected.push(result);
+          }
+          const durationMs = Date.now() - started;
+          expect(durationMs).toBeLessThan(10_000);
+          return { rejected, durationMs, openedPages: [] };
+        } finally {
+          wallet.context.off('page', observePage);
+        }
+      };
+
+      await record(
+        'rapid malformed requests never open approval or spam warnings',
+        rejectMalformedBurstWithoutPopups
+      );
+      await record(
+        'spam warning counts real rejections and Continue resumes ordinary approval',
+        async () => {
+          const nonceBefore = await localRpc(
+            LOCAL_CHAINS[0].url,
+            'eth_getTransactionCount',
+            [address, 'latest']
+          );
+          const started = Date.now();
+          const genuineRejections = [];
+          for (let attempt = 0; attempt < 2; attempt += 1) {
+            const id = await startRequest(page, 'personal_sign', [
+              '0x70616c69',
+              address,
+            ]);
+            const popup = await popupFor(wallet.context, page, id);
+            await expect(
+              popup.getByRole('heading', {
+                name: enTranslations.spamWarning.title,
+                exact: true,
+              })
+            ).toHaveCount(0);
+            const popupClosed = popup.waitForEvent('close', { timeout: 2000 });
+            await popup
+              .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+              .first()
+              .click();
+            await popupClosed;
+            const rejected = await settle(page, id, 2000);
+            expect(rejected.error?.code).toBe(4001);
+            expect(rejected.result).toBeUndefined();
+            genuineRejections.push(rejected);
+          }
+          const malformed = await rejectMalformedBurstWithoutPopups();
+          const elapsedBeforeThird = Date.now() - started;
+          expect(elapsedBeforeThird).toBeLessThan(10_000);
+          const id = await startRequest(page, 'personal_sign', [
+            '0x70616c69',
+            address,
+          ]);
+          const warning = await popupFor(wallet.context, page, id);
+          await expect(
+            warning.getByRole('heading', {
+              name: enTranslations.spamWarning.title,
+              exact: true,
+            })
+          ).toBeVisible();
+          const warningData = JSON.parse(
+            new URL(warning.url()).searchParams.get('data') || '{}'
+          );
+          expect(warningData.requestCount).toBe(3);
+          await expect(
+            warning.getByRole('button', {
+              name: enTranslations.spamWarning.blockTemporarily,
+              exact: true,
+            })
+          ).toBeVisible();
+          await warning.screenshot({
+            path: path.join(
+              E2E_CONFIG.artifactsDir,
+              'spam-three-real-attempts-warning.png'
+            ),
+          });
+          const warningBody = await warning.locator('body').innerText();
+          const warningClosed = warning.waitForEvent('close', {
+            timeout: 5000,
+          });
+          await warning
+            .getByRole('button', {
+              name: enTranslations.buttons.continue,
+              exact: true,
+            })
+            .click();
+          await warningClosed;
+          const approval = await popupFor(wallet.context, page, id);
+          await expect(
+            approval.getByRole('heading', {
+              name: enTranslations.spamWarning.title,
+              exact: true,
+            })
+          ).toHaveCount(0);
+          await expect(
+            approval.getByRole('button', {
+              name: /(?:^|\s)(sign|confirm)$/i,
+            })
+          ).toBeVisible();
+          await approval.screenshot({
+            path: path.join(
+              E2E_CONFIG.artifactsDir,
+              'spam-continue-ordinary-approval.png'
+            ),
+          });
+          const approvalBody = await approval.locator('body').innerText();
+          const approvalClosed = approval.waitForEvent('close', {
+            timeout: 2000,
+          });
+          await approval
+            .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+            .first()
+            .click();
+          await approvalClosed;
+          const rejected = await settle(page, id, 2000);
+          expect(rejected.error?.code).toBe(4001);
+          expect(rejected.result).toBeUndefined();
+          const nonceAfter = await localRpc(
+            LOCAL_CHAINS[0].url,
+            'eth_getTransactionCount',
+            [address, 'latest']
+          );
+          expect(nonceAfter).toBe(nonceBefore);
+          return {
+            genuineRejections,
+            malformed,
+            elapsedBeforeThird,
+            warningCount: warningData.requestCount,
+            warningBody,
+            approvalBody,
+            finalRejection: rejected,
+            nonceBefore,
+            nonceAfter,
+          };
+        }
+      );
+
       await record('user rejects signing with numeric 4001', async () => {
         const id = await startRequest(page, 'personal_sign', [
           '0x70616c69',

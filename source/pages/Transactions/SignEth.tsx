@@ -11,6 +11,7 @@ import {
   WarningModal,
 } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
+import { TypedOrderReview } from 'components/TypedOrderReview/TypedOrderReview';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -31,6 +32,7 @@ import {
   signPaliErc7739TypedDataV4,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
+import { getTypedOrderReview } from 'utils/typedOrderReview';
 
 interface ISign {
   send?: boolean;
@@ -38,7 +40,8 @@ interface ISign {
 
 const EthSign: React.FC<ISign> = () => {
   const { controllerEmitter } = useController();
-  const { host, ...data } = useQueryData();
+  const requestData = useQueryData();
+  const { host, ...data } = requestData;
   const { t } = useTranslation();
   const { useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -167,6 +170,39 @@ const EthSign: React.FC<ISign> = () => {
     return typeof typedData === 'string' ? JSON.parse(typedData) : typedData;
   };
 
+  // Read the original signed fields locally. These are order-term advisories,
+  // not a threat verdict or a check of the verifying contract on this chain.
+  const typedOrderRequest = useMemo(() => {
+    if (
+      data.eventName !== 'eth_signTypedData_v3' &&
+      data.eventName !== 'eth_signTypedData_v4'
+    )
+      return null;
+    const payload = isActiveAccountAddress(data[0])
+      ? data[1]
+      : isActiveAccountAddress(data[1])
+      ? data[0]
+      : undefined;
+    return { review: getTypedOrderReview(payload) };
+  }, [
+    requestData,
+    data.eventName,
+    data[0],
+    data[1],
+    host,
+    address,
+    activeAccountMeta.id,
+    activeAccountMeta.type,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeAccount.isSmartAccount,
+    activeAccount.isLedgerWallet,
+    activeAccount.isTrezorWallet,
+    isBitcoinBased,
+  ]);
+  const currentTypedOrderRequestRef = React.useRef(typedOrderRequest);
+  currentTypedOrderRequestRef.current = typedOrderRequest;
+
   const getHydratedSmartAccountMetadata =
     async (): Promise<ISmartAccountMetadata> => {
       if (!activeAccount.isSmartAccount || !activeAccount.smartAccount) {
@@ -250,6 +286,7 @@ const EthSign: React.FC<ISign> = () => {
 
   const onSubmit = async () => {
     if (signingRef.current !== 'ready' || confirmed) return;
+    if (typedOrderRequest !== currentTypedOrderRequestRef.current) return;
     // Recheck the current account/origin and the original signed bytes before
     // any signer call, including callbacks captured before a state change.
     if (data.eventName === 'personal_sign') {
@@ -1334,6 +1371,12 @@ const EthSign: React.FC<ISign> = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {typedOrderRequest?.review && (
+              <div className="w-full max-w-md mx-auto mb-6 px-6">
+                <TypedOrderReview review={typedOrderRequest.review} />
               </div>
             )}
 
