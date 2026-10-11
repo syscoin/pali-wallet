@@ -8,6 +8,20 @@ Los respaldos importan porque Pali es no custodial. La billetera no puede recupe
 
 Anota la frase semilla de tu billetera y mantenla offline. Cualquiera con la frase semilla puede controlar las cuentas derivadas.
 
+## Contraseña de desbloqueo
+
+La opción **Sugerir una contraseña fácil de recordar** crea una contraseña de desbloqueo, no tu Frase Secreta de Recuperación. Guárdala en tu gestor de contraseñas. Una passkey de una cuenta inteligente no sustituye la contraseña de desbloqueo de la billetera.
+
+## Si olvidas la contraseña
+
+En la pantalla bloqueada, selecciona **¿Olvidaste la contraseña? Recupera con la semilla**, introduce la Frase Secreta de Recuperación de esta billetera y elige una nueva contraseña. No necesitas la contraseña anterior. Una frase diferente se rechaza antes de restablecer la billetera.
+
+El flujo actual vuelve a crear la primera cuenta HD derivada de la semilla. Vuelve a añadir las demás cuentas derivadas de la semilla en su orden de derivación original. La recuperación no mueve tus fondos.
+
+Tu semilla no puede descifrar las claves importadas por separado y cifradas con la contraseña olvidada; conserva sus propias copias de seguridad. Vuelve a conectar las billeteras de hardware. Los ajustes personalizados y la configuración de cuentas inteligentes y passkeys necesitan sus propios registros o copias de seguridad y no se garantizan solo con la recuperación mediante la semilla.
+
+Si la recuperación falla, comprueba tu frase y vuelve a intentarlo. Si sigue fallando, reinicia tu navegador. Nunca borres los datos de almacenamiento de la billetera para solucionar un error operativo.
+
 ## Desbloqueo y cambios de passkey
 
 Un servicio del navegador no disponible, un problema de almacenamiento o una función criptográfica no compatible pueden impedir el desbloqueo sin que la contraseña sea incorrecta. Lee el error, restablece el servicio o la conexión necesarios y vuelve a intentar desbloquear. No elimines ni reimportes la billetera para solucionar un error operativo. Los errores operativos no cuentan como intentos fallidos de contraseña.

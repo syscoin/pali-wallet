@@ -1,3 +1,6 @@
+/** @jest-environment jsdom */
+
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -14,6 +17,7 @@ const mockNavigate = jest.fn();
 const mockAlert = jest.fn();
 const mockClear = jest.fn();
 const mockReload = jest.fn();
+let mockSecrets: { kind: string; phrase?: string; recoveryTicket?: string };
 jest.mock('utils/reloadWalletForRecovery', () => ({
   reloadWalletForRecovery: () => mockReload(),
 }));
@@ -21,17 +25,37 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 jest.mock('components/index', () => ({
+  Button: ({ children, onClick, id, type }: any) => (
+    <button id={id} type={type} onClick={onClick}>
+      {children}
+    </button>
+  ),
   PasswordForm: ({ onSubmit }: any) => {
     mockSubmit = onSubmit;
-    return null;
+    return (
+      <button
+        type="button"
+        onClick={() => void onSubmit({ password: 'new recovery password' })}
+      >
+        Submit password
+      </button>
+    );
   },
+}));
+jest.mock('components/Layout/OnboardingLayout', () => ({
+  OnboardingLayout: ({ title, children }: any) => (
+    <section>
+      <h1>{title}</h1>
+      {children}
+    </section>
+  ),
 }));
 jest.mock('react-router-dom', () => ({
   Navigate: () => null,
 }));
 jest.mock('hooks/useOnboardingSecrets', () => ({
   useOnboardingSecrets: () => ({
-    secrets: { kind: 'import', phrase: 'test seed' },
+    secrets: mockSecrets,
     clear: mockClear,
   }),
 }));
@@ -58,6 +82,7 @@ describe('new wallet authentication navigation', () => {
     mockAlert.mockClear();
     mockClear.mockClear();
     mockReload.mockClear();
+    mockSecrets = { kind: 'import', phrase: 'test seed' };
     renderToStaticMarkup(<CreatePasswordImport />);
   });
   afterEach(() => {
@@ -100,6 +125,156 @@ describe('new wallet authentication navigation', () => {
     expect(mockReload).toHaveBeenCalledTimes(1);
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(controllerEmitter).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps first-time import on createWallet without issuing a recovery request', async () => {
+    jest
+      .mocked(controllerEmitter)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(true);
+    await mockSubmit({ password: 'test password' });
+    expect(controllerEmitter).toHaveBeenNthCalledWith(
+      1,
+      ['wallet', 'createWallet'],
+      ['test password', 'test seed'],
+      10000,
+      false
+    );
+    expect(
+      jest
+        .mocked(controllerEmitter)
+        .mock.calls.some(([path]) => path[1] === 'recoverWalletFromSeed')
+    ).toBe(false);
+    expect(mockNavigate).toHaveBeenCalledWith('/home', {
+      state: { isWalletImported: true },
+    });
+  });
+
+  it('consumes recovery secrets before awaiting the worker and never asks for the old password', async () => {
+    const ticket = 'synthetic-live-recovery-ticket';
+    mockSecrets = {
+      kind: 'import',
+      phrase: 'test seed',
+      recoveryTicket: ticket,
+    };
+    renderToStaticMarkup(<CreatePasswordImport />);
+    let finishRecovery!: () => void;
+    jest
+      .mocked(controllerEmitter)
+      .mockImplementationOnce(() => {
+        expect(mockClear).toHaveBeenCalledTimes(1);
+        return new Promise<void>((resolve) => {
+          finishRecovery = resolve;
+        });
+      })
+      .mockResolvedValueOnce(true);
+    const submitted = mockSubmit({ password: 'new recovery password' });
+    expect(controllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'recoverWalletFromSeed'],
+      ['new recovery password', 'test seed', ticket],
+      expect.any(Number),
+      false
+    );
+    await mockSubmit({ password: 'new recovery password' });
+    expect(controllerEmitter).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    finishRecovery();
+    await submitted;
+    expect(
+      jest
+        .mocked(controllerEmitter)
+        .mock.calls.some(([path]) => path[1] === 'createWallet')
+    ).toBe(false);
+    expect(mockNavigate).toHaveBeenCalledWith('/home', {
+      state: { isWalletImported: true },
+    });
+  });
+
+  it.each([
+    'Recovery rejected',
+    'Network request timed out',
+    'Receiving end does not exist',
+  ])(
+    'keeps a failed recovery without automatic reload or replay after %s',
+    async (message) => {
+      const ticket = 'synthetic-live-recovery-ticket';
+      mockSecrets = {
+        kind: 'import',
+        phrase: 'test seed',
+        recoveryTicket: ticket,
+      };
+      renderToStaticMarkup(<CreatePasswordImport />);
+      jest.mocked(controllerEmitter).mockRejectedValueOnce(new Error(message));
+      await mockSubmit({ password: 'new recovery password' });
+      await mockSubmit({ password: 'new recovery password' });
+      expect(controllerEmitter).toHaveBeenCalledTimes(1);
+      expect(controllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'recoverWalletFromSeed'],
+        ['new recovery password', 'test seed', ticket],
+        expect.any(Number),
+        false
+      );
+      expect(mockClear).toHaveBeenCalledTimes(1);
+      expect(mockReload).not.toHaveBeenCalled();
+      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(mockAlert).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps recovery failure visible until Check wallet is chosen without replaying the request', async () => {
+    mockSecrets = {
+      kind: 'import',
+      phrase: 'test seed',
+      recoveryTicket: 'synthetic-live-recovery-ticket',
+    };
+    mockClear.mockImplementationOnce(() => {
+      mockSecrets = { kind: 'idle' };
+    });
+    jest
+      .mocked(controllerEmitter)
+      .mockRejectedValueOnce(new Error('Network request timed out'));
+    render(<CreatePasswordImport />);
+    const submitBeforeFailure = mockSubmit;
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Submit password' }));
+    });
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      'settings.walletRecoveryFailed'
+    );
+    expect(screen.getByRole('heading').textContent).toBe(
+      'settings.recoveryTitle'
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Submit password' })
+    ).toBeNull();
+    expect(mockSecrets).toEqual({ kind: 'idle' });
+    expect(mockReload).not.toHaveBeenCalled();
+    expect(mockAlert).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(10000);
+      await submitBeforeFailure({ password: 'new recovery password' });
+    });
+    expect(screen.getByRole('alert').textContent).toBe(
+      'settings.walletRecoveryFailed'
+    );
+    expect(mockReload).not.toHaveBeenCalled();
+    expect(controllerEmitter).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'buttons.checkWallet' })
+    );
+    expect(mockReload).toHaveBeenCalledTimes(1);
+    expect(controllerEmitter).toHaveBeenCalledTimes(1);
+    expect(controllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'recoverWalletFromSeed'],
+      ['new recovery password', 'test seed', 'synthetic-live-recovery-ticket'],
+      10000,
+      false
+    );
   });
 
   it.each([

@@ -147,9 +147,8 @@ export class PaliWallet {
       .click();
 
     await expect(this.page).toHaveURL(/create-password-import/);
-    const passwordFields = this.page.locator('#create-password');
-    await passwordFields.first().fill(E2E_CONFIG.password);
-    await passwordFields.last().fill(E2E_CONFIG.password);
+    await this.page.locator('#create-password').fill(E2E_CONFIG.password);
+    await this.page.locator('#confirm-password').fill(E2E_CONFIG.password);
 
     const nextButton = this.page
       .locator('#create-password-action, button:has-text("Next")')

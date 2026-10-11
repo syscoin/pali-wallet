@@ -1,17 +1,21 @@
 import React, { PropsWithChildren, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import {
   startupFeedbackDelay,
   WALLET_FEEDBACK_TIMEOUT_MS,
+  WALLET_RECOVERY_REQUIRED,
   requestWalletState,
 } from 'utils/requestWalletState';
 
 /** Keep signing and routing unavailable until authoritative state is hydrated. */
 export const WalletBootstrap = ({ children }: PropsWithChildren) => {
+  const { t } = useTranslation();
   const [attempt, setAttempt] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
+  const [recoveryRequired, setRecoveryRequired] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     'loading'
   );
@@ -22,6 +26,7 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
     let active = true;
     setStatus('loading');
     setIsSlow(false);
+    setRecoveryRequired(false);
     const abortController = new AbortController();
     const feedbackTimer = setTimeout(
       () => setIsSlow(true),
@@ -44,8 +49,11 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
         chrome.runtime.sendMessage({ type: 'startPolling' }, () => {
           void chrome.runtime.lastError;
         });
-      } catch {
-        if (active) setStatus('error');
+      } catch (error) {
+        if (active) {
+          setRecoveryRequired(error?.message === WALLET_RECOVERY_REQUIRED);
+          setStatus('error');
+        }
       }
     };
     void initialize();
@@ -62,11 +70,13 @@ export const WalletBootstrap = ({ children }: PropsWithChildren) => {
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#061120] p-6 text-center text-white">
       <h1 className="mb-5 font-poppins text-3xl text-[#4DA2CF]">Pali Wallet</h1>
       <p role="status" aria-live="polite" className="mb-4 text-sm">
-        {status === 'loading' && !isSlow
+        {recoveryRequired
+          ? t('settings.walletRecoveryRestartRequired')
+          : status === 'loading' && !isSlow
           ? 'Connecting to your wallet…'
           : 'Your wallet is taking longer to respond. You can retry while it connects.'}
       </p>
-      {(isSlow || status === 'error') && (
+      {!recoveryRequired && (isSlow || status === 'error') && (
         <button
           type="button"
           onClick={() => {

@@ -2,7 +2,8 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate } from 'react-router-dom';
 
-import { PasswordForm } from 'components/index';
+import { Button, PasswordForm } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
 import { refreshControllerStatus } from 'hooks/controllerStatus';
 import { useUtils } from 'hooks/index';
@@ -14,11 +15,12 @@ export const CreatePasswordImport = () => {
   const { controllerEmitter } = useController();
   const { secrets, clear } = useOnboardingSecrets();
   const [created, setCreated] = useState(false);
+  const [recoveryFailed, setRecoveryFailed] = useState(false);
   const creationRequested = useRef(false);
   const { t } = useTranslation();
 
   const { navigate, alert } = useUtils();
-  const { phrase } = secrets;
+  const { phrase, recoveryTicket } = secrets;
 
   const onSubmit = async ({ password }: { password: string }) => {
     if (creationRequested.current) return;
@@ -27,14 +29,20 @@ export const CreatePasswordImport = () => {
     clear();
     try {
       await controllerEmitter(
-        ['wallet', 'createWallet'],
-        [password, phrase],
+        ['wallet', recoveryTicket ? 'recoverWalletFromSeed' : 'createWallet'],
+        recoveryTicket
+          ? [password, phrase, recoveryTicket]
+          : [password, phrase],
         10000,
         false
       );
     } catch {
       // The worker may have finished despite a lost acknowledgement. Never
       // replay creation: recover through the authoritative wallet startup.
+      if (recoveryTicket) {
+        setRecoveryFailed(true);
+        return;
+      }
       alert.error(t('settings.walletSetupFailed'));
       reloadWalletForRecovery();
       return;
@@ -50,7 +58,20 @@ export const CreatePasswordImport = () => {
     }
   };
 
-  return created ? (
+  return recoveryFailed ? (
+    <OnboardingLayout title={t('settings.recoveryTitle')}>
+      <p role="alert" className="mb-6 text-brand-gray200 text-center text-sm">
+        {t('settings.walletRecoveryFailed')}
+      </p>
+      <Button
+        id="recovery-check-wallet"
+        type="button"
+        onClick={reloadWalletForRecovery}
+      >
+        {t('buttons.checkWallet')}
+      </Button>
+    </OnboardingLayout>
+  ) : created ? (
     <AppLoadingSkeleton />
   ) : secrets.kind === 'import' && phrase ? (
     <PasswordForm onSubmit={onSubmit} />

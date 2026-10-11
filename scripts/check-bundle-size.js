@@ -29,7 +29,14 @@ const pageScripts = (name) => {
 const scripts = {
   app: pageScripts('app'),
   external: pageScripts('external'),
-  background: [path.join(directory, 'js/background.bundle.js')],
+  background: [
+    path.join(directory, 'js/background.bundle.js'),
+    // This packaged recovery chunk is preloaded when the worker evaluates.
+    // Include it in startup cost, even though webpack emits a separate file.
+    ...['js/wallet-recovery.bundle.js']
+      .map((file) => path.join(directory, file))
+      .filter((file) => fs.existsSync(file)),
+  ],
   contentScript: [path.join(directory, 'js/contentScript.bundle.js')],
 };
 const report = Object.fromEntries(

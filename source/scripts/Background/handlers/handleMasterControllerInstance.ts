@@ -2,13 +2,14 @@ import { readWalletPresence } from '../utils/readWalletPresence';
 import MasterController from 'scripts/Background/controllers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
-import store from 'state/store';
+import store, { RootState } from 'state/store';
 import vaultCache from 'state/vaultCache';
 import {
   resetLoadingStates,
   setHasEncryptedVault,
   setNetworkRuntimeState,
 } from 'state/vaultGlobal';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 let hasCreatedController = false;
@@ -18,7 +19,36 @@ export const handleMasterControllerInstance = async () => {
   const startTime = performance.now();
 
   // Distinguish an absent state from a failed read before creating controllers.
-  const storageState = await chromeStorage.getItem('state');
+  const records = await chromeStorage.getItems([
+    'state',
+    'pali-wallet-recovery-journal:v1',
+  ]);
+  let storageState = records.state as Partial<RootState> | undefined;
+  if (
+    records['pali-wallet-recovery-journal:v1'] !== undefined &&
+    records['pali-wallet-recovery-journal:v1'] !== null
+  ) {
+    if (hasCreatedController) {
+      throw new Error(
+        'Wallet recovery is pending. Finish recovery before retrying initialization.'
+      );
+    }
+    const { reconcileWalletRecoveryJournal } = await import(
+      '../controllers/walletRecovery'
+    );
+    if (
+      await reconcileWalletRecoveryJournal({
+        getState: store.getState,
+        storage: chromeStorage,
+        persistenceMutex: walletPersistenceMutex,
+        readPresence: readWalletPresence,
+        rehydrate: (state) =>
+          rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
+      })
+    ) {
+      storageState = await chromeStorage.getItem('state');
+    }
+  }
 
   if (storageState) {
     // Run migrations before rehydrating state

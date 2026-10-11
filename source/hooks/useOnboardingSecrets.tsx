@@ -11,11 +11,13 @@ type OnboardingSecrets = {
   kind?: 'create' | 'import';
   password?: string;
   phrase?: string;
+  recoveryTicket?: string;
 };
 
 const OnboardingContext = createContext<{
   beginCreate: (password: string) => void;
-  beginImport: (phrase: string) => void;
+  beginImport: (phrase: string, recoveryTicket?: string) => void;
+  beginRecovery: (recoveryTicket: string) => void;
   clear: () => void;
   secrets: OnboardingSecrets;
   setCreatedPhrase: (phrase: string) => void;
@@ -38,9 +40,17 @@ export const OnboardingSecretsProvider = ({
     []
   );
   const beginImport = useCallback(
-    (phrase: string) => setSecrets({ kind: 'import', phrase }),
+    (phrase: string, recoveryTicket?: string) =>
+      setSecrets({
+        kind: 'import',
+        phrase,
+        ...(recoveryTicket ? { recoveryTicket } : {}),
+      }),
     []
   );
+  const beginRecovery = useCallback((recoveryTicket: string) => {
+    setSecrets({ kind: 'import', recoveryTicket });
+  }, []);
   const setCreatedPhrase = useCallback((phrase: string) => {
     setSecrets((current) =>
       current.kind === 'create' ? { ...current, phrase } : current
@@ -48,6 +58,17 @@ export const OnboardingSecretsProvider = ({
   }, []);
 
   useEffect(() => {
+    if (['/import', '/external/import'].includes(location.pathname)) {
+      setSecrets((current) =>
+        current.recoveryTicket
+          ? { kind: 'import', recoveryTicket: current.recoveryTicket }
+          : {}
+      );
+      return;
+    }
+    if (location.pathname !== '/create-password-import') {
+      setSecrets((current) => (current.recoveryTicket ? {} : current));
+    }
     if (
       !['/phrase', '/external/phrase', '/create-password-import'].includes(
         location.pathname
@@ -102,7 +123,14 @@ export const OnboardingSecretsProvider = ({
 
   return (
     <OnboardingContext.Provider
-      value={{ secrets, beginCreate, beginImport, setCreatedPhrase, clear }}
+      value={{
+        secrets,
+        beginCreate,
+        beginImport,
+        beginRecovery,
+        setCreatedPhrase,
+        clear,
+      }}
     >
       {children}
     </OnboardingContext.Provider>

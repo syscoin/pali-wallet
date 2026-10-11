@@ -8,6 +8,20 @@ Backups importam porque a Pali é não custodial. A carteira não pode recuperar
 
 Anote a seed phrase da sua carteira e mantenha-a offline. Qualquer pessoa com a seed phrase pode controlar as contas derivadas.
 
+## Senha de desbloqueio
+
+A opção **Sugerir uma senha fácil de lembrar** cria uma senha de desbloqueio, não sua Frase de Recuperação Secreta. Salve-a no seu gerenciador de senhas. Uma passkey de uma conta inteligente não substitui a senha de desbloqueio da carteira.
+
+## Se você esquecer a senha
+
+Na tela bloqueada, selecione **Esqueceu a senha? Recupere com a seed**, digite a Frase de Recuperação Secreta desta carteira e escolha uma nova senha. A senha antiga não é necessária. Uma frase diferente é recusada antes de redefinir a carteira.
+
+O fluxo atual recria a primeira conta HD derivada da seed. Adicione novamente as outras contas derivadas da seed na ordem de derivação original. A recuperação não movimenta seus fundos.
+
+Sua seed não pode descriptografar chaves importadas separadamente e criptografadas com a senha esquecida; mantenha seus próprios backups. Reconecte as carteiras de hardware. As configurações personalizadas e a configuração de contas inteligentes e passkeys precisam de seus próprios registros ou backups e não são garantidas apenas pela recuperação com a seed.
+
+Se a recuperação falhar, confira sua frase e tente novamente. Se continuar falhando, reinicie seu navegador. Nunca apague os dados de armazenamento da carteira para contornar um erro operacional.
+
 ## Desbloqueio e alterações de passkey
 
 Um serviço do navegador indisponível, um problema de armazenamento ou um recurso criptográfico sem suporte podem impedir o desbloqueio sem que a senha esteja errada. Leia o erro, restabeleça o serviço ou a conexão necessários e tente desbloquear novamente. Não exclua nem reimporte a carteira para contornar um erro operacional. Erros operacionais não contam como tentativas de senha malsucedidas.

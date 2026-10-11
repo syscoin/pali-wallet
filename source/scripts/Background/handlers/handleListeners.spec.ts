@@ -282,6 +282,39 @@ describe('Background: handleListeners', () => {
       expect(chrome.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
     });
 
+    it.each([
+      ['busy', 'Wallet setup is in progress.'],
+      ['recovery-required', 'PALI_WALLET_RECOVERY_REQUIRED'],
+    ])(
+      'does not expose transient wallet state while setup status is %s',
+      (status, error) => {
+        const wallet = mockMasterController.wallet as any;
+        wallet.getWalletSetupStatus = jest.fn(() => status);
+        try {
+          const listener =
+            chrome.runtime.onMessage.addListener.mock.calls[0][0];
+          expect(
+            listener({ type: 'getCurrentState' }, sender, sendResponse)
+          ).toBe(false);
+          expect(sendResponse).toHaveBeenCalledTimes(1);
+          expect(sendResponse).toHaveBeenCalledWith({ error });
+          expect(sendResponse.mock.calls[0][0]).not.toHaveProperty('vault');
+
+          // Once the same controller finishes recovery, the current listener
+          // must resume returning the ordinary state without re-registration.
+          wallet.getWalletSetupStatus.mockReturnValue(undefined);
+          sendResponse.mockClear();
+          listener({ type: 'getCurrentState' }, sender, sendResponse);
+          expect(sendResponse).toHaveBeenCalledWith(
+            expect.objectContaining({ vault: expect.any(Object) })
+          );
+          expect(chrome.runtime.onMessage.addListener).toHaveBeenCalledTimes(1);
+        } finally {
+          delete wallet.getWalletSetupStatus;
+        }
+      }
+    );
+
     it('should call dapp.setup for pw-msg-background/isInjected message', () => {
       // Get the message listener that was registered
       const addListenerCalls = chrome.runtime.onMessage.addListener.mock.calls;

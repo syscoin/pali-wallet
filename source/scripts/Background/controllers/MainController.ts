@@ -43,6 +43,7 @@ import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices } from 'state/price';
+import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
@@ -257,6 +258,7 @@ class MainController {
   private walletStateGeneration = 0;
   private networkRequestGeneration = 0;
   private isCreatingWallet = false;
+  private recoveryJournalPending = false;
   private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
 
@@ -1704,6 +1706,8 @@ class MainController {
 
   private async unlockKeyring(pwd: string, generation: number) {
     this.assertCurrentWalletSession(generation);
+    await this.prepareWalletRecoveryAccess();
+    this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
     const result = await keyring.unlock(pwd);
     if (
@@ -1768,6 +1772,12 @@ class MainController {
 
   public isUnlocked() {
     return this.getActiveKeyring().isUnlocked();
+  }
+
+  public getWalletSetupStatus(): 'busy' | 'recovery-required' | undefined {
+    if (this.isCreatingWallet || this.isResettingWallet) return 'busy';
+    if (this.recoveryJournalPending) return 'recovery-required';
+    return undefined;
   }
 
   public isAnyKeyringUnlocked() {
@@ -2145,6 +2155,7 @@ class MainController {
   }
 
   private async forgetWalletExclusive(pwd: string) {
+    await this.prepareWalletRecoveryAccess();
     // Check rate limiting before password validation
     const remainingLockout = await this.checkRateLimit();
     if (remainingLockout > 0) {
@@ -2196,6 +2207,8 @@ class MainController {
     pwd: string,
     generation: number
   ): Promise<boolean> {
+    this.assertCurrentWalletSession(generation);
+    await this.prepareWalletRecoveryAccess();
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
     const wasUnlocked = keyring.isUnlocked();
@@ -2443,29 +2456,68 @@ class MainController {
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
+    return this.runWalletSetup(false, password, phrase);
+  }
+
+  public async beginWalletRecovery(): Promise<string> {
+    return (await import('./walletRecovery')).beginWalletRecovery(
+      this,
+      this.walletRecoveryContext()
+    );
+  }
+
+  private walletRecoveryContext() {
+    return {
+      getState: store.getState,
+      persistenceMutex: walletPersistenceMutex,
+      readPresence: readWalletPresence,
+      rehydrate: (state: any) =>
+        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
+      storage: chromeStorage,
+    };
+  }
+
+  private async prepareWalletRecoveryAccess(): Promise<void> {
+    if (this.recoveryJournalPending)
+      await (
+        await import('./walletRecovery')
+      ).prepareWalletRecoveryAccess(this, this.walletRecoveryContext());
+  }
+
+  public async recoverWalletFromSeed(
+    password: string,
+    phrase: string,
+    ticket: string
+  ): Promise<void> {
+    return this.runWalletSetup(true, password, phrase, ticket);
+  }
+
+  private async runWalletSetup(
+    recovery: boolean,
+    password: string,
+    phrase: string,
+    ticket?: string
+  ): Promise<void> {
     if (this.isCreatingWallet)
       throw new Error('Wallet creation is already in progress');
     // Reserve before the mutex await so a lost reply cannot queue a second
     // destructive reset behind the original creation.
     this.isCreatingWallet = true;
     const walletStateGeneration = this.walletStateGeneration;
+    const generation = this.walletSessionGeneration;
     try {
-      return await this.authenticationMutex.runExclusive(async () => {
-        if (walletStateGeneration !== this.walletStateGeneration) {
-          throw new Error('Wallet state changed before reset');
-        }
-        // Only onboarding calls this entry point. A stale document must not
-        // replace a wallet created elsewhere; explicit forgetting owns reset.
-        if (await readWalletPresence()) {
-          throw new Error(
-            'A wallet already exists. Unlock it or explicitly forget it before starting setup.'
-          );
-        }
-        if (walletStateGeneration !== this.walletStateGeneration) {
-          throw new Error('Wallet state changed before reset');
-        }
-        return this.createWalletExclusive(password, phrase);
-      });
+      return await (
+        await import('./walletRecovery')
+      ).runWalletSetup(
+        this,
+        recovery,
+        password,
+        phrase,
+        ticket,
+        walletStateGeneration,
+        generation,
+        this.walletRecoveryContext()
+      );
     } finally {
       this.isCreatingWallet = false;
     }
@@ -2480,7 +2532,6 @@ class MainController {
       throw new Error('WebCrypto is required for wallet creation');
     }
     let creationKeyring: KeyringManager | undefined;
-    this.isCreatingWallet = true;
     try {
       // Ensure a FULL reset before creating a new wallet (import/fresh create)
       await this.resetWalletState({ resetNetworks: true });
@@ -2602,8 +2653,6 @@ class MainController {
       }
       console.error('[MainController] Failed to create wallet:', error);
       throw error;
-    } finally {
-      this.isCreatingWallet = false;
     }
   }
 
@@ -2672,16 +2721,44 @@ class MainController {
     return;
   }
 
+  private accountMutationContext() {
+    const assertAvailable = () => {
+      if (
+        this.isCreatingWallet ||
+        this.isResettingWallet ||
+        this.recoveryJournalPending
+      )
+        throw new Error(
+          'Wallet setup is in progress. Try again after it completes.'
+        );
+    };
+    assertAvailable();
+    const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    return {
+      keyring,
+      assertCurrent: () => {
+        assertAvailable();
+        this.assertCurrentWalletSession(generation);
+        if (keyring !== this.getActiveKeyring())
+          throw new Error(
+            'Wallet session changed. Unlock the wallet and try again.'
+          );
+      },
+    };
+  }
+
   public async createAccount(
     label?: string,
     accountType: KeyringAccountType = KeyringAccountType.HDAccount
   ): Promise<IKeyringAccountState> {
+    const { keyring, assertCurrent } = this.accountMutationContext();
     if (accountType === KeyringAccountType.SmartAccount) {
       return this.createSmartAccountRecord({ label });
     }
 
-    const keyring = this.getActiveKeyring();
     const newAccount = await keyring.addNewAccount(label);
+    assertCurrent();
 
     // Validate account creation was successful before storing in Redux
     if (!newAccount.address || !newAccount.xpub) {
@@ -2757,7 +2834,7 @@ class MainController {
     label?: string;
     metadata?: ISmartAccountMetadata;
   }): Promise<IKeyringAccountState> {
-    const keyring = this.getActiveKeyring();
+    const { keyring, assertCurrent } = this.accountMutationContext();
     const account = await keyring.createSmartAccount({
       address: params.address,
       deriveAccount: params.address
@@ -2767,6 +2844,7 @@ class MainController {
       label: params.label,
       metadata: params.metadata,
     });
+    assertCurrent();
 
     store.dispatch(
       createAccount({
@@ -3962,9 +4040,13 @@ class MainController {
     label?: string,
     options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' | 'p2tr' }
   ) {
-    const importedAccount = await (
-      this.getActiveKeyring() as any
-    ).importAccount(privKey, label, options);
+    const { keyring, assertCurrent } = this.accountMutationContext();
+    const importedAccount = await (keyring as any).importAccount(
+      privKey,
+      label,
+      options
+    );
+    assertCurrent();
     store.dispatch(
       createAccount({
         account: importedAccount,
@@ -3998,9 +4080,12 @@ class MainController {
     identifier: string,
     label?: string
   ) {
-    const importedAccount = await (
-      this.getActiveKeyring() as any
-    ).importWatchOnly(identifier, label);
+    const { keyring, assertCurrent } = this.accountMutationContext();
+    const importedAccount = await (keyring as any).importWatchOnly(
+      identifier,
+      label
+    );
+    assertCurrent();
     store.dispatch(
       createAccount({
         account: importedAccount,
@@ -4026,11 +4111,10 @@ class MainController {
   }
 
   public async importTrezorAccountFromController(label?: string) {
+    const { keyring, assertCurrent } = this.accountMutationContext();
     let importedAccount;
     try {
-      importedAccount = await this.getActiveKeyring().importTrezorAccount(
-        label
-      );
+      importedAccount = await keyring.importTrezorAccount(label);
     } catch (error) {
       console.error('[MainController] Trezor import failed:', error);
 
@@ -4051,6 +4135,7 @@ class MainController {
         'Could not import your account. Please ensure your Trezor is connected and unlocked.'
       );
     }
+    assertCurrent();
 
     store.dispatch(
       createAccount({
@@ -4083,11 +4168,10 @@ class MainController {
   }
 
   public async importLedgerAccountFromController(label?: string) {
+    const { keyring, assertCurrent } = this.accountMutationContext();
     let importedAccount;
     try {
-      importedAccount = await this.getActiveKeyring().importLedgerAccount(
-        label
-      );
+      importedAccount = await keyring.importLedgerAccount(label);
     } catch (error) {
       console.error('[MainController] Ledger import failed:', error);
 
@@ -4112,6 +4196,7 @@ class MainController {
         'Could not import your account. Please ensure your Ledger is connected and the Syscoin app is open.'
       );
     }
+    assertCurrent();
 
     store.dispatch(
       createAccount({

@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,6 +10,7 @@ import {
 import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useOnboardingSecrets } from 'hooks/useOnboardingSecrets';
 
 // Bottom-sheet modal variants, rebuilt as declarative compositions over the
 // Dialog primitive (components/Dialog). Unused legacy sheets were deleted;
@@ -79,9 +80,65 @@ export const ImportWalletWarning = ({
 }: IDefaultModal) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { alert } = useUtils();
+  const { controllerEmitter } = useController();
+  const { beginRecovery } = useOnboardingSecrets();
+  const [isBeginning, setIsBeginning] = useState(false);
+  const requestGeneration = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const discard = () => {
+      requestGeneration.current += 1;
+      if (mounted.current) setIsBeginning(false);
+    };
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') discard();
+    };
+    window.addEventListener('pagehide', discard);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      mounted.current = false;
+      requestGeneration.current += 1;
+      window.removeEventListener('pagehide', discard);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, []);
+  useEffect(() => {
+    if (!show) {
+      requestGeneration.current += 1;
+      setIsBeginning(false);
+    }
+  }, [show]);
+  const close = () => {
+    requestGeneration.current += 1;
+    setIsBeginning(false);
+    if (onClose) onClose(false);
+  };
+  const begin = async () => {
+    if (isBeginning) return;
+    const generation = ++requestGeneration.current;
+    setIsBeginning(true);
+    try {
+      const ticket = await controllerEmitter(
+        ['wallet', 'beginWalletRecovery'],
+        []
+      );
+      if (!mounted.current || generation !== requestGeneration.current) return;
+      beginRecovery(ticket as string);
+      navigate('/import');
+    } catch {
+      if (mounted.current && generation === requestGeneration.current) {
+        alert.error(t('settings.walletRecoveryFailed'));
+      }
+    } finally {
+      if (mounted.current && generation === requestGeneration.current)
+        setIsBeginning(false);
+    }
+  };
 
   return (
-    <ModalBase onClose={onClose} show={show}>
+    <ModalBase onClose={close} show={show}>
       <SheetPanel fullWidth={false}>
         <SheetHeader title={title} />
         <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
@@ -94,9 +151,7 @@ export const ImportWalletWarning = ({
             id="cancel-import-btn"
             type="button"
             className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
-            onClick={() => {
-              if (onClose) onClose(false);
-            }}
+            onClick={close}
           >
             {t('buttons.cancel')}
           </Button>
@@ -104,9 +159,11 @@ export const ImportWalletWarning = ({
             id="confirm-import-btn"
             type="button"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            onClick={() => navigate('/import')}
+            disabled={isBeginning}
+            loading={isBeginning}
+            onClick={begin}
           >
-            {t('buttons.import')}
+            {t('buttons.recoverWallet')}
           </Button>
         </div>
       </SheetPanel>

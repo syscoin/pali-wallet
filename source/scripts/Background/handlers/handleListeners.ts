@@ -252,6 +252,17 @@ export const handleListeners = (masterController: IMasterController) => {
           sendResponse({ error: 'Wallet initialization has not completed.' });
           return false;
         }
+        const setupStatus =
+          currentMasterController.wallet.getWalletSetupStatus?.();
+        if (setupStatus) {
+          sendResponse({
+            error:
+              setupStatus === 'busy'
+                ? 'Wallet setup is in progress.'
+                : 'PALI_WALLET_RECOVERY_REQUIRED',
+          });
+          return false;
+        }
         // Send current state from background store
         const currentState = store.getState();
         sendResponse(currentState);

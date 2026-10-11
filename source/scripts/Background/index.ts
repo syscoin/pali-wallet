@@ -32,6 +32,12 @@ const RETRY_DELAY = 2000; // 2 seconds
 
 console.log('[Background] Initializing controller...');
 
+// Classic service workers must discover packaged imports during evaluation.
+// Register this chunk now; recovery admission still runs only on user request.
+void import(
+  /* webpackChunkName: "wallet-recovery" */ './controllers/walletRecovery'
+).catch(() => undefined);
+
 // Start offscreen preload IMMEDIATELY - don't wait for controller
 // This ensures the popup loads instantly when clicked
 initializeOffscreenPreload().catch((error) => {
