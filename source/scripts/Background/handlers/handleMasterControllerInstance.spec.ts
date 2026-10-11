@@ -181,7 +181,7 @@ describe('cold background transient state recovery', () => {
     expect(mockMasterController).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the current state after committed recovery cleanup without rereading or rolling back it', async () => {
+  it('rereads the current state after committed recovery cleanup without rolling it back', async () => {
     journal = { version: 1, committedFingerprint: 'committed recovery' };
     mockReconcileRecoveryJournal.mockResolvedValueOnce(false);
     mockMigrationController.mockImplementationOnce(async (state) => {
@@ -189,13 +189,73 @@ describe('cold background transient state recovery', () => {
       expect(state).toBe(persisted);
     });
     await initialize();
-    expect(mockGetItem).not.toHaveBeenCalled();
+    expect(mockGetItem).toHaveBeenCalledTimes(1);
+    expect(mockGetItem).toHaveBeenCalledWith('state');
     expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(1);
     expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(60);
     expect(mockMasterController).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['batched read', 'journal validation', 'restored state read'])(
+  it('rereads restored state when overlapping cold initializers observe the same recovery journal', async () => {
+    journal = { version: 1, before: { state: 'original storage' } };
+    const restored = {
+      vaultGlobal: { ...persisted.vaultGlobal, activeSlip44: 57 },
+    };
+    let finishRollback!: () => void;
+    const rollback = new Promise<void>((resolve) => {
+      finishRollback = resolve;
+    });
+    let bothReconciliationsRequested!: () => void;
+    const bothRequested = new Promise<void>((resolve) => {
+      bothReconciliationsRequested = resolve;
+    });
+    let reconciliationRequests = 0;
+    mockReconcileRecoveryJournal.mockImplementation((context) => {
+      reconciliationRequests += 1;
+      if (reconciliationRequests === 2) bothReconciliationsRequested();
+      // Reproduce the real reconciler's serialization and return values: the
+      // first caller restores storage, while the second finds no journal left.
+      return context.persistenceMutex.runExclusive(async () => {
+        if (journal === undefined) return false;
+        await rollback;
+        mockGetItem.mockResolvedValue(restored);
+        journal = undefined;
+        return true;
+      });
+    });
+
+    const first = initialize();
+    const second = initialize();
+    await bothRequested;
+    expect(mockGetItems).toHaveBeenCalledTimes(2);
+    expect(mockMigrationController).not.toHaveBeenCalled();
+    expect(mockGetItem).not.toHaveBeenCalled();
+
+    finishRollback();
+    await Promise.all([first, second]);
+
+    expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(2);
+    expect(
+      mockMigrationController.mock.calls.map(
+        ([state]) => state.vaultGlobal.activeSlip44
+      )
+    ).toEqual([57, 57]);
+    expect(mockGetItem).toHaveBeenCalledTimes(2);
+    expect(mockMigrationController.mock.calls.map(([state]) => state)).toEqual([
+      restored,
+      restored,
+    ]);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledTimes(2);
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(1, 57);
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(2, 57);
+  });
+
+  it.each([
+    'batched read',
+    'journal validation',
+    'restored state read',
+    'state read after concurrent reconciliation',
+  ])(
     'fails closed on %s failure before migration, vault loading, or controller cleanup',
     async (failure) => {
       const before = mockState.vaultGlobal;
@@ -206,7 +266,9 @@ describe('cold background transient state recovery', () => {
         if (failure === 'journal validation')
           mockReconcileRecoveryJournal.mockRejectedValueOnce(error);
         else {
-          mockReconcileRecoveryJournal.mockResolvedValueOnce(true);
+          mockReconcileRecoveryJournal.mockResolvedValueOnce(
+            failure === 'restored state read'
+          );
           mockGetItem.mockRejectedValueOnce(error);
         }
       }

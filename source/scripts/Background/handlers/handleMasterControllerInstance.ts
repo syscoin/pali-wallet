@@ -36,18 +36,17 @@ export const handleMasterControllerInstance = async () => {
     const { reconcileWalletRecoveryJournal } = await import(
       '../controllers/walletRecovery'
     );
-    if (
-      await reconcileWalletRecoveryJournal({
-        getState: store.getState,
-        storage: chromeStorage,
-        persistenceMutex: walletPersistenceMutex,
-        readPresence: readWalletPresence,
-        rehydrate: (state) =>
-          rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
-      })
-    ) {
-      storageState = await chromeStorage.getItem('state');
-    }
+    await reconcileWalletRecoveryJournal({
+      getState: store.getState,
+      storage: chromeStorage,
+      persistenceMutex: walletPersistenceMutex,
+      readPresence: readWalletPresence,
+      rehydrate: (state) =>
+        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
+    });
+    // Another cold initializer may already have restored this journal. Never
+    // migrate the state captured before reconciliation, even on a false result.
+    storageState = await chromeStorage.getItem('state');
   }
 
   if (storageState) {
