@@ -7,7 +7,7 @@ import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
 import { selectEnsNameToAddress } from 'state/vault/selectors';
 import {
   ICustomFeeParams,
@@ -21,9 +21,14 @@ import {
 import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
+import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import { parseUnits, formatEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
+import {
+  IEvmTransactionContext,
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+} from 'utils/evmTransactionContext';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
 import { logError } from 'utils/logger';
@@ -98,6 +103,18 @@ export const SendTransaction = () => {
   const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
+  const [approvedContext] = useState<IEvmTransactionContext>(() => {
+    const current = store.getState();
+    return (
+      externalTx.approvedContext ||
+      state?.approvedContext || {
+        account: { ...activeAccountMeta, address: activeAccount.address },
+        chainId: activeNetwork.chainId,
+        rpcUrl: activeNetwork.url,
+        slip44: current.vaultGlobal.activeSlip44,
+      }
+    );
+  });
   const dataTx: ITransactionParams = isExternal
     ? externalTx.tx
     : state.external
@@ -119,7 +136,8 @@ export const SendTransaction = () => {
   const isLegacyTransaction =
     Boolean(txMetadata.isLegacyTx) ||
     explicitType === 0 ||
-    explicitType === '0x0';
+    explicitType === '0x0' ||
+    dataTx.gasPrice !== undefined;
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
@@ -254,14 +272,15 @@ export const SendTransaction = () => {
       return Boolean(
         fee.gasPrice !== null &&
           fee.gasPrice !== undefined &&
-          customFee.gasPrice &&
-          customFee.gasPrice > 0 &&
+          customFee.gasPrice !== null &&
+          customFee.gasPrice !== undefined &&
+          customFee.gasPrice >= 0 &&
           customFee.gasPrice < fee.gasPrice
       );
     }
 
     return (
-      (customFee.maxFeePerGas > 0 &&
+      (customFee.maxFeePerGas >= 0 &&
         fee.maxFeePerGas > 0 &&
         customFee.maxFeePerGas < fee.maxFeePerGas) ||
       (customFee.maxPriorityFeePerGas >= 0 &&
@@ -310,6 +329,7 @@ export const SendTransaction = () => {
   const validatedDataTxWithoutType = useMemo(
     () => ({
       ...omitTransactionObject,
+      type: dataTx.type,
       data: validateTransactionDataValue(dataTx.data),
     }),
     // Use stable dependencies
@@ -322,6 +342,9 @@ export const SendTransaction = () => {
       dataTx.gasLimit,
       dataTx.maxFeePerGas,
       dataTx.maxPriorityFeePerGas,
+      dataTx.type,
+      dataTx.nonce,
+      dataTx.accessList,
     ]
   );
 
@@ -493,11 +516,51 @@ export const SendTransaction = () => {
   }, []);
 
   const submitTransaction = async (generation: number) => {
+    const current = store.getState();
+    const account =
+      current.vault.accounts[current.vault.activeAccount.type]?.[
+        current.vault.activeAccount.id
+      ];
+    if (
+      current.vault.isBitcoinBased ||
+      current.vault.activeNetwork.chainId !== approvedContext.chainId ||
+      current.vault.activeNetwork.url !== approvedContext.rpcUrl ||
+      current.vaultGlobal.activeSlip44 !== approvedContext.slip44 ||
+      current.vault.activeAccount.id !== approvedContext.account.id ||
+      current.vault.activeAccount.type !== approvedContext.account.type ||
+      account?.address?.toLowerCase() !==
+        approvedContext.account.address.toLowerCase()
+    ) {
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    }
     if (hasInvalidApprovalDetails) {
       alert.error(t('send.invalidApprovalDetails'));
       return;
     }
+    if (activeAccount.isSmartAccount && isLegacyTransaction) {
+      alert.error(t('send.cantCompleteTxs'));
+      return;
+    }
 
+    // Admission validates dapp requests; contain stale/direct navigation too.
+    // Never display/send a default zero for a malformed requested amount.
+    let requestedValue: BigNumber;
+    try {
+      requestedValue = BigNumber.from(dataTx?.value ?? 0);
+      if (requestedValue.lt(0)) throw new Error('Invalid transaction value');
+    } catch {
+      setHasTxDataError(true);
+      alert.error(t('send.txWillFail'));
+      return;
+    }
+    if (
+      !isLegacyTransaction &&
+      customFee.isCustom &&
+      (customFee.maxFeePerGas === 0 || customFee.maxPriorityFeePerGas === 0)
+    ) {
+      alert.error(t('send.invalidFeeRate'));
+      return;
+    }
     setIsPqSigning(false);
     setLoading(true);
 
@@ -513,9 +576,6 @@ export const SendTransaction = () => {
       console.error('Failed to refresh balance before sending:', error);
     }
 
-    const requestedValue = dataTx?.value
-      ? BigNumber.from(dataTx.value)
-      : BigNumber.from(0);
     const canUsePasskeyGasPayer =
       activeAccount?.isSmartAccount && requestedValue.isZero();
 
@@ -590,7 +650,7 @@ export const SendTransaction = () => {
               ? customFee.maxPriorityFeePerGas
               : fee.maxPriorityFeePerGas;
           const maxFeePerGas =
-            customFee.isCustom && customFee.maxFeePerGas > 0
+            customFee.isCustom && customFee.maxFeePerGas >= 0
               ? customFee.maxFeePerGas
               : fee.maxFeePerGas;
 
@@ -601,7 +661,7 @@ export const SendTransaction = () => {
             !maxFeePerGas ||
             maxFeePerGas <= 0
           ) {
-            return undefined;
+            throw new Error('Invalid smart account fee override');
           }
 
           return {
@@ -645,6 +705,7 @@ export const SendTransaction = () => {
               },
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
+            expectedContext: approvedContext,
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -666,7 +727,7 @@ export const SendTransaction = () => {
           ]) as ITxState;
 
           const getLegacyGasFee = Boolean(
-            customFee.isCustom && customFee.gasPrice > 0
+            customFee.isCustom && customFee.gasPrice >= 0
           )
             ? parseUnits(safeToFixed(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
             : fee.gasPrice && fee.gasPrice > 0
@@ -709,7 +770,13 @@ export const SendTransaction = () => {
 
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
-            [baseLegacyTx, isLegacyTransaction],
+            [
+              baseLegacyTx,
+              isLegacyTransaction,
+              undefined,
+              undefined,
+              { expectedContext: approvedContext },
+            ],
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
               : 10000 // Default 10 seconds for regular wallets
@@ -744,7 +811,7 @@ export const SendTransaction = () => {
                 )
               : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
             maxFeePerGas: Boolean(
-              customFee.isCustom && customFee.maxFeePerGas > 0
+              customFee.isCustom && customFee.maxFeePerGas >= 0
             )
               ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
               : tx.maxFeePerGas !== null && tx.maxFeePerGas !== undefined
@@ -768,11 +835,15 @@ export const SendTransaction = () => {
             ...(toField ? { to: toField } : {}),
           };
 
+          assertSupportedEvmFees(base1559Tx);
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
               base1559Tx,
               false, // isLegacy = false for EIP-1559
+              undefined,
+              undefined,
+              { expectedContext: approvedContext },
             ],
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
               ? 300000 // 5 minutes timeout for hardware wallet operations
@@ -810,7 +881,13 @@ export const SendTransaction = () => {
 
         // For all other unhandled errors, show generic message
         logError('error', 'Transaction', error);
-        alert.error(t('send.cantCompleteTxs'));
+        alert.error(
+          t(
+            error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+              ? 'transactions.psbtSigningContextChanged'
+              : 'send.cantCompleteTxs'
+          )
+        );
 
         if (isExternal) {
           if (!mountedRef.current || generation !== closeGenerationRef.current)
@@ -843,6 +920,21 @@ export const SendTransaction = () => {
     approvalActionRef.current = 'submitting';
     try {
       return await submitTransaction(generation);
+    } catch (error: any) {
+      // Preparation/cleanup failures must also settle the UI without an
+      // uncaught promise or permanently disabling cancellation.
+      if (mountedRef.current && generation === closeGenerationRef.current) {
+        setLoading(false);
+        setIsPqSigning(false);
+        logError('preparation failed', 'Transaction', error);
+        alert.error(
+          t(
+            error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+              ? 'transactions.psbtSigningContextChanged'
+              : 'send.cantCompleteTxs'
+          )
+        );
+      }
     } finally {
       if (approvalActionRef.current === 'submitting')
         approvalActionRef.current = 'ready';
@@ -898,7 +990,11 @@ export const SendTransaction = () => {
           nonce,
           isInvalidTxData,
           gasLimitError,
-        } = await fetchGasAndDecodeFunction(txForEstimation, activeNetwork);
+        } = await fetchGasAndDecodeFunction(
+          txForEstimation,
+          activeNetwork,
+          approvedContext
+        );
 
         // Only update state if component is still mounted
         if (isMounted) {

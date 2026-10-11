@@ -25,6 +25,7 @@ jest.mock('utils/navigationState', () => ({
 import { getController } from '..';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { BigNumber } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 
 import MainController from './MainController';
@@ -79,6 +80,55 @@ describe('infrastructure transaction broadcast boundary', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    { maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' },
+    { maxFeePerGas: '0x10', maxPriorityFeePerGas: '0x0' },
+  ])(
+    'blocks zero EIP-1559 fees before the SDK can silently switch to legacy: %p',
+    async (fees) => {
+      await expect(
+        wallet.sendAndSaveEthTransaction({ type: '0x2', ...fees }, false)
+      ).rejects.toMatchObject({ code: 4200 });
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        getBlacklistTargetsForEvmCallWithContractType
+      ).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [{ type: '0x0', gasPrice: '0x0' }, true],
+    [{ type: '0x2', maxFeePerGas: '0x10', maxPriorityFeePerGas: '0x1' }, false],
+  ])(
+    'passes supported fees unchanged to the SDK: %p',
+    async (params, legacy) => {
+      await wallet.sendAndSaveEthTransaction(params, legacy);
+      expect(send).toHaveBeenCalledWith(params, legacy);
+    }
+  );
+
+  it.each([0, 10000000000])(
+    'validates serialized popup priority fees before SDK submission: %s',
+    async (priority) => {
+      const params = JSON.parse(
+        JSON.stringify({
+          type: '0x2',
+          maxFeePerGas: BigNumber.from('50000000000'),
+          maxPriorityFeePerGas: BigNumber.from(priority),
+        })
+      );
+      if (priority === 0) {
+        await expect(
+          wallet.sendAndSaveEthTransaction(params, false)
+        ).rejects.toMatchObject({ code: 4200 });
+        expect(send).not.toHaveBeenCalled();
+      } else {
+        await wallet.sendAndSaveEthTransaction(params, false);
+        expect(send).toHaveBeenCalledWith(params, false);
+      }
+    }
+  );
 
   it.each(['blacklist discovery', 'context validation', 'keyring preparation'])(
     'marks a %s failure as definitely before submission',

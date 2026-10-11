@@ -122,6 +122,7 @@ import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
+import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { namehash } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
@@ -5238,6 +5239,7 @@ class MainController {
     };
     try {
       assertExpectedContext();
+      assertSupportedEvmFees(params, isLegacy);
       const controller = getController();
 
       // Check the call target and obvious calldata recipients/spenders.

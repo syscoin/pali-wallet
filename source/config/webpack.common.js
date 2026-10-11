@@ -83,6 +83,15 @@ module.exports = {
   module: {
     rules: [
       {
+        test: (filename) =>
+          filename
+            .split(String.fromCharCode(92))
+            .join('/')
+            .endsWith('/eth-chains/dist/src/chains.js'),
+        type: 'javascript/auto',
+        use: join(__dirname, 'loaders/compactEthChains.js'),
+      },
+      {
         test: (filename) => {
           const path = filename.split(String.fromCharCode(92)).join('/');
           return (

@@ -64,6 +64,8 @@ export interface IFeeState {
 }
 
 export interface ITransactionParams {
+  accessList?: { address: string; storageKeys: string[] }[];
+  chainId?: string | number;
   data: string;
   from: string;
   gas?: string;
@@ -71,6 +73,7 @@ export interface ITransactionParams {
   gasPrice?: string | number;
   maxFeePerGas?: string | number;
   maxPriorityFeePerGas?: string | number;
+  nonce?: string | number;
   to: string;
   type?: string;
   value?: string | number; // Should be string for wei values to avoid precision loss
