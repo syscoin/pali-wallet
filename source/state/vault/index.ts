@@ -972,15 +972,8 @@ const VaultState = createSlice({
               ) === 'replaced'
             )
               return false;
-            if (
-              transaction.isReplaced &&
-              confirmedOrMaterializedReplacementHashesByOriginal.has(
-                transactionId.toLowerCase()
-              )
-            ) {
-              return false;
-            }
-
+            // A pending successor can lose; retain each attempt's local intent
+            // and provenance until the mined-nonce checks above settle it.
             if (transaction.isSpeedUp || transaction.isCancel) {
               const replacedTransactionId = transaction.replacesHash
                 ? String(transaction.replacesHash).toLowerCase()
