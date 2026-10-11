@@ -95,5 +95,27 @@ module.exports = function compactAbiJson(source) {
         '};}'
     )
     .join('\n');
-  return declarations + '\nmodule.exports=' + encode(value) + ';';
+  const generated = declarations + '\nmodule.exports=' + encode(value) + ';';
+  // Only pool immutable strings; every object and array still has its own literal.
+  // Generated strings are JSON literals, so escaped quotes and backslashes stay intact.
+  const stringLiteral = /"(?:[^"\\]|\\.)*"/g;
+  const counts = new Map();
+  for (const [string] of generated.matchAll(stringLiteral)) {
+    counts.set(string, (counts.get(string) || 0) + 1);
+  }
+  // Production minification gives local constants short names. Skip literals whose
+  // repeated references would not repay their declaration and initializer.
+  const pooled = [...counts]
+    .filter(
+      ([string, count]) => (string.length - 1) * count > string.length + 8
+    )
+    .sort((left, right) => right[1] - left[1]);
+  if (!pooled.length) return generated;
+  const names = new Map(pooled.map(([string], index) => [string, 's' + index]));
+  return (
+    'const ' +
+    pooled.map(([string], index) => 's' + index + '=' + string).join(',') +
+    ';' +
+    generated.replace(stringLiteral, (string) => names.get(string) || string)
+  );
 };

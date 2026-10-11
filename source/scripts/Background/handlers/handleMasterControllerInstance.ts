@@ -42,7 +42,7 @@ export const handleMasterControllerInstance = async () => {
       persistenceMutex: walletPersistenceMutex,
       readPresence: readWalletPresence,
       rehydrate: (state) =>
-        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
+        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44, false),
     });
     // Another cold initializer may already have restored this journal. Never
     // migrate the state captured before reconciliation, even on a false result.

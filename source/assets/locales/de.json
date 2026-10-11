@@ -437,9 +437,9 @@
   "settings": {
     "walletSetupFailed": "Die Wallet-Einrichtung konnte nicht bestätigt werden. Bewahre deine Wiederherstellungsphrase auf und prüfe den Status der Wallet.",
     "recoveryTitle": "Wallet wiederherstellen",
-    "recoveryIntro": "Verwende deine geheime Wiederherstellungsphrase, um diese Wallet wiederherzustellen und ein neues Passwort festzulegen.",
+    "recoveryIntro": "Verwende deine geheime Wiederherstellungsphrase, um nur das erste vom Seed abgeleitete Konto (HD) wiederherzustellen und ein neues Passwort festzulegen. Füge weitere Konten aus derselben Phrase erneut hinzu.",
     "recoverySeedHelp": "Gib die Phrase für diese Wallet ein. Eine andere Phrase kann ihre Konten nicht wiederherstellen.",
-    "recoveryLimitations": "Möglicherweise musst du weitere vom Seed abgeleitete Konten erneut hinzufügen. Importierte Schlüssel, Hardware-Verbindungen, benutzerdefinierte Einstellungen und die Smart-Account-/Passkey-Einrichtung benötigen eigene Sicherungen oder eine erneute Verbindung. Die Wiederherstellung bewegt dein Guthaben nicht.",
+    "recoveryLimitations": "Die Wiederherstellung löscht die lokal gespeicherten verschlüsselten Datensätze importierter privater Schlüssel. Ohne separate Sicherungen dieser Schlüssel kannst du dauerhaft den Zugriff auf diese Konten verlieren. Hardware-Verbindungen, benutzerdefinierte Einstellungen und die Smart-Account-/Passkey-Einrichtung benötigen eigene Sicherungen oder eine erneute Verbindung. Die Wiederherstellung bewegt dein Guthaben nicht.",
     "walletRecoveryFailed": "Die Wallet-Wiederherstellung konnte nicht abgeschlossen werden. Prüfe deine Phrase und versuche es erneut. Wenn es weiterhin fehlschlägt, starte deinen Browser neu. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletRecoveryRestartRequired": "Die Wiederherstellung muss abgeschlossen sein, bevor du die Wallet verwenden kannst. Starte deinen Browser neu, prüfe dann deine Wallet und versuche bei Bedarf erneut, sie wiederherzustellen. Lösche die gespeicherten Wallet-Daten nicht.",
     "walletWindowCheckSlow": "Wallet-Fenster brauchen länger, um zu antworten. Versuche die Prüfung erneut.",

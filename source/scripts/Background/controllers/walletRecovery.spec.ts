@@ -37,6 +37,7 @@ jest.mock('utils/storageAPI', () => ({
 }));
 
 import { readWalletPresence } from '../utils/readWalletPresence';
+import { walletPersistenceGate } from 'state/paliStorage';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -133,6 +134,7 @@ const submit = async (
 
 describe('explicit seed recovery transaction', () => {
   beforeEach(() => {
+    walletPersistenceGate.blocked = false;
     Object.defineProperty(globalThis, 'crypto', {
       value: webcrypto,
       configurable: true,
@@ -225,6 +227,7 @@ describe('explicit seed recovery transaction', () => {
   });
 
   afterEach(() => {
+    walletPersistenceGate.blocked = false;
     global.chrome = originalChrome;
     if (originalCrypto)
       Object.defineProperty(globalThis, 'crypto', originalCrypto);

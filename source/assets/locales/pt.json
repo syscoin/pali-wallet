@@ -437,9 +437,9 @@
   "settings": {
     "walletSetupFailed": "Não foi possível confirmar a configuração da carteira. Guarde sua frase de recuperação e verifique o estado da carteira.",
     "recoveryTitle": "Recuperar carteira",
-    "recoveryIntro": "Use sua Frase de Recuperação Secreta para restaurar esta carteira e escolher uma nova senha.",
+    "recoveryIntro": "Use sua Frase de Recuperação Secreta para restaurar apenas a primeira conta derivada da seed (HD) e escolher uma nova senha. Adicione novamente as outras contas derivadas da mesma frase.",
     "recoverySeedHelp": "Digite a frase desta carteira. Uma frase diferente não pode restaurar suas contas.",
-    "recoveryLimitations": "Talvez você precise adicionar novamente outras contas derivadas da seed. As chaves importadas, as conexões de hardware, as configurações personalizadas e a configuração de contas inteligentes e passkeys precisam de seus próprios backups ou de uma nova conexão. A recuperação não movimenta seus fundos.",
+    "recoveryLimitations": "A recuperação exclui os registros criptografados das chaves privadas importadas armazenados localmente. Sem backups separados dessas chaves, você pode perder permanentemente o acesso a essas contas. As conexões de hardware, as configurações personalizadas e a configuração de contas inteligentes e passkeys precisam de seus próprios backups ou de uma nova conexão. A recuperação não movimenta seus fundos.",
     "walletRecoveryFailed": "Não foi possível concluir a recuperação da carteira. Confira sua frase e tente novamente. Se continuar falhando, reinicie seu navegador. Não apague os dados de armazenamento da carteira.",
     "walletRecoveryRestartRequired": "É preciso concluir a recuperação antes de usar a carteira. Reinicie seu navegador, depois verifique sua carteira e tente recuperá-la novamente se necessário. Não apague os dados de armazenamento da carteira.",
     "walletWindowCheckSlow": "As janelas da carteira estão demorando mais para responder. Tente verificar novamente.",

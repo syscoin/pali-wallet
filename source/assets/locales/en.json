@@ -437,9 +437,9 @@
   "settings": {
     "walletSetupFailed": "Could not confirm wallet setup. Keep your recovery phrase and check the wallet status.",
     "recoveryTitle": "Recover wallet",
-    "recoveryIntro": "Use your Secret Recovery Phrase to restore this wallet and choose a new password.",
+    "recoveryIntro": "Use your Secret Recovery Phrase to restore only the first seed-derived (HD) account and choose a new password. Re-add other accounts derived from the same phrase.",
     "recoverySeedHelp": "Enter the phrase for this wallet. A different phrase cannot restore its accounts.",
-    "recoveryLimitations": "You may need to re-add other seed-derived accounts. Imported keys, hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection. Recovery does not move your funds.",
+    "recoveryLimitations": "Recovery deletes the locally stored encrypted records of imported private keys. Without separate backups of those keys, you may permanently lose access to those accounts. Hardware connections, custom settings and smart-account/passkey setup need their own backups or reconnection. Recovery does not move your funds.",
     "walletRecoveryFailed": "Wallet recovery could not be completed. Check your phrase and try again. If it keeps failing, restart your browser. Do not clear wallet storage.",
     "walletRecoveryRestartRequired": "Recovery needs to finish before you can use the wallet. Restart your browser, then check your wallet and try recovery again if needed. Do not clear wallet storage.",
     "walletWindowCheckSlow": "Wallet windows are taking longer to respond. Try checking again.",

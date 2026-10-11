@@ -176,7 +176,13 @@ describe('cold background transient state recovery', () => {
     expect(mockGetItem).toHaveBeenCalledTimes(1);
     expect(mockGetItem).toHaveBeenCalledWith('state');
     expect(mockMigrationController).toHaveBeenCalledWith(restored);
-    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(57);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
     expect(mockState.vaultGlobal.activeSlip44).toBe(57);
     expect(mockMasterController).toHaveBeenCalledTimes(1);
   });
@@ -192,7 +198,13 @@ describe('cold background transient state recovery', () => {
     expect(mockGetItem).toHaveBeenCalledTimes(1);
     expect(mockGetItem).toHaveBeenCalledWith('state');
     expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(1);
-    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(60);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(
+      60,
+      undefined,
+      false,
+      undefined,
+      true
+    );
     expect(mockMasterController).toHaveBeenCalledTimes(1);
   });
 
@@ -246,8 +258,22 @@ describe('cold background transient state recovery', () => {
       restored,
     ]);
     expect(loadAndActivateSlip44Vault).toHaveBeenCalledTimes(2);
-    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(1, 57);
-    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(2, 57);
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(
+      1,
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(
+      2,
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
   });
 
   it.each([

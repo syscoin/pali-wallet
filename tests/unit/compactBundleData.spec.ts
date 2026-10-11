@@ -199,6 +199,66 @@ describe('lossless compact contract ABI data', () => {
     expect(emitted[2]).toEqual(original[2]);
   });
 
+  it('pools repeated strings without sharing arrays or objects', () => {
+    const repeated = 'repeated immutable ABI string';
+    const source = JSON.stringify(
+      Array.from({ length: 8 }, (_, id) => ({
+        id,
+        first: repeated,
+        second: repeated,
+        nested: [{ value: repeated }],
+      }))
+    );
+    const original: JsonValue[] = JSON.parse(source);
+    const generated = compactAbiJson(source);
+    const emitted = executeGenerated<JsonValue[]>(generated);
+
+    expect(generated.split(JSON.stringify(repeated))).toHaveLength(2);
+    expect(JSON.stringify(emitted)).toBe(source);
+    expectExactMutableJson(original, emitted);
+    const first = emitted[0] as Record<string, JsonValue>;
+    (first.nested as JsonValue[]).push('changed');
+    expect(emitted[1]).toEqual(original[1]);
+    expect(executeGenerated<JsonValue[]>(generated)).toEqual(original);
+  });
+
+  it('preserves pooled escaped strings and prototype-looking property names', () => {
+    const escaped =
+      'quotes " \\ newline\n tab\t Unicode 😀 lone surrogate \ud800';
+    const source = JSON.stringify(
+      Array.from({ length: 8 }, (_, id) =>
+        JSON.parse(
+          JSON.stringify({
+            ['__proto__']: { value: escaped },
+            constructor: [escaped],
+            [escaped]: escaped,
+            ['differentShape' + id]: id,
+          })
+        )
+      )
+    );
+    const original: JsonValue[] = JSON.parse(source);
+    const generated = compactAbiJson(source);
+    const emitted = executeGenerated<JsonValue[]>(generated);
+
+    expect(generated.split(JSON.stringify(escaped))).toHaveLength(2);
+    expect(generated.split(JSON.stringify('__proto__'))).toHaveLength(2);
+    expect(generated.split(JSON.stringify('constructor'))).toHaveLength(2);
+    expect(JSON.stringify(emitted)).toBe(source);
+    expectExactMutableJson(original, emitted);
+    const first = emitted[0] as Record<string, JsonValue>;
+    expect(Object.hasOwn(first, '__proto__')).toBe(true);
+    expect('value' in first).toBe(false);
+    const constructorValues = Object.getOwnPropertyDescriptor(
+      first,
+      'constructor'
+    )!.value as JsonValue[];
+    constructorValues.push('changed');
+    (first.__proto__ as Record<string, JsonValue>).value = 'changed';
+    expect(emitted[1]).toEqual(original[1]);
+    expect(executeGenerated<JsonValue[]>(generated)).toEqual(original);
+  });
+
   it('rejects a non-array contract ABI', () => {
     expect(() => compactAbiJson('{"type":"function"}')).toThrow(
       'Expected a contract ABI array'

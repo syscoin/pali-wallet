@@ -11,7 +11,8 @@ import { loadAndActivateSlip44Vault } from './store';
 export const rehydrateStore = async (
   store: Store,
   state?: any,
-  slip44?: number
+  slip44?: number,
+  persistMigrations = true
 ) => {
   try {
     let storageState = state;
@@ -49,7 +50,11 @@ export const rehydrateStore = async (
           );
 
           const hasExistingVaultState = await loadAndActivateSlip44Vault(
-            targetSlip44
+            targetSlip44,
+            undefined,
+            false,
+            undefined,
+            persistMigrations
           );
 
           if (hasExistingVaultState) {

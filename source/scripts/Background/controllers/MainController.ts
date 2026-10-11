@@ -42,6 +42,7 @@ import {
 import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
+import { assertWalletPersistenceAllowed } from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
@@ -2489,7 +2490,7 @@ class MainController {
       persistenceMutex: walletPersistenceMutex,
       readPresence: readWalletPresence,
       rehydrate: (state: any) =>
-        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44),
+        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44, false),
       storage: chromeStorage,
     };
   }
@@ -8774,29 +8775,35 @@ class MainController {
   // Manual cleanup utility for vault data in main state
   public async cleanupMainStateVault() {
     try {
-      // Load current main state
-      const currentState = await chromeStorage.getItem('state');
+      const generation = this.walletStateGeneration;
+      return await walletPersistenceMutex.runExclusive(async () => {
+        assertWalletPersistenceAllowed();
+        // Load current main state
+        const currentState = await chromeStorage.getItem('state');
+        assertWalletPersistenceAllowed();
+        if (generation !== this.walletStateGeneration) return false;
 
-      if (currentState && currentState.vault) {
-        console.log(
-          '[MainController] Found vault data in main state, cleaning up...'
-        );
+        if (currentState && currentState.vault) {
+          console.log(
+            '[MainController] Found vault data in main state, cleaning up...'
+          );
 
-        // Remove vault data from state
-        const { vault: _vault, ...cleanState } = currentState;
-        void _vault; // Mark as intentionally unused
+          // Remove vault data from state
+          const { vault: _vault, ...cleanState } = currentState;
+          void _vault; // Mark as intentionally unused
 
-        // Save cleaned state
-        await chromeStorage.setItem('state', cleanState);
+          // Save cleaned state
+          await chromeStorage.setItem('state', cleanState);
 
-        console.log(
-          '[MainController] Successfully cleaned vault data from main state'
-        );
-        return true;
-      }
+          console.log(
+            '[MainController] Successfully cleaned vault data from main state'
+          );
+          return true;
+        }
 
-      console.log('[MainController] No vault data found in main state');
-      return false;
+        console.log('[MainController] No vault data found in main state');
+        return false;
+      });
     } catch (error) {
       console.error('[MainController] Error cleaning up main state:', error);
       return false;

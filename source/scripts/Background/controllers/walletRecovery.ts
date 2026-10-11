@@ -19,6 +19,7 @@ const { dataSlice, hexlify } =
   require('ethers/utils') as typeof import('ethers/utils');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+import { walletPersistenceGate } from 'state/paliStorage';
 import type { RootState } from 'state/store';
 import type { AsyncMutex } from 'utils/asyncMutex';
 import type { chromeStorage } from 'utils/storageAPI';
@@ -384,16 +385,36 @@ const validateJournal = async (record: any): Promise<RecoveryJournal> => {
   return record;
 };
 
+const recoveryAccountRecords = (accounts: any) =>
+  Object.keys(accounts)
+    .sort()
+    .flatMap((type) =>
+      Object.entries(accounts[type] || {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([id, account]: [string, any]) => {
+          // Hydration normalizes legacy coin types and refreshes balances.
+          // Compare every other saved field, including signer metadata/keys.
+          const { balances, slip44, ...record } = account;
+          void balances;
+          void slip44;
+          return [type, id, record];
+        })
+    );
+
 const reconcileWithinLock = async (
   context: WalletRecoveryContext
 ): Promise<boolean> => {
   const current = await getAll();
   const stored = current[JOURNAL_KEY];
-  if (stored === undefined || stored === null) return false;
+  if (stored === undefined || stored === null) {
+    walletPersistenceGate.blocked = false;
+    return false;
+  }
   const journal = await validateJournal(stored);
   if (journal.committedFingerprint) {
     await assertCommittedRecords(current, journal);
     await context.storage.removeItem(JOURNAL_KEY);
+    walletPersistenceGate.blocked = false;
     return false;
   }
   // One batch restores the old pair and state while nulling any scoped records
@@ -406,15 +427,59 @@ const reconcileWithinLock = async (
     ),
     ...journal.before,
   });
+  const originalState = journal.before.state;
+  const slip44 = originalState?.vaultGlobal?.activeSlip44;
+  const isolatedVault = journal.before[`state-vault-${slip44}`];
+  const vault = isolatedVault || originalState?.vault;
+  const profileKey = `state-vault-${slip44}-passkey-profile`;
+  if (!originalState || !vault?.accounts || !Number.isSafeInteger(slip44))
+    throw new Error('Wallet recovery snapshot is incomplete');
+  const state = { ...originalState };
+  // Match ordinary startup's authority: an inline copy must never replace the
+  // isolated vault. A legacy inline-only snapshot still needs detached-profile
+  // precedence, which the frontend-style hydration branch cannot load itself.
+  if (isolatedVault) delete state.vault;
+  else {
+    const profile =
+      journal.before[profileKey]?.passkeyCredentialProfile ||
+      vault.passkeyCredentialProfile;
+    state.vault = profile
+      ? { ...vault, passkeyCredentialProfile: profile }
+      : vault;
+  }
+  // Read-only hydration stays inside the persistence lock. Neither an empty
+  // fallback nor a no-op callback may retire the only durable old snapshot.
+  await context.rehydrate(state);
+  const restored = context.getState().vault;
+  if (
+    JSON.stringify(recoveryAccountRecords(restored.accounts)) !==
+      JSON.stringify(recoveryAccountRecords(vault.accounts)) ||
+    restored.activeNetwork?.slip44 !== vault.activeNetwork?.slip44
+  )
+    throw new Error('Wallet recovery account restoration is incomplete');
+  // Preserve the loader's embedded-profile migration without letting ordinary
+  // Redux saves through the gate or recursively acquiring the persistence lock.
+  if (
+    vault.passkeyCredentialProfile &&
+    !journal.before[profileKey]?.passkeyCredentialProfile
+  )
+    await context.storage.setItem(profileKey, {
+      passkeyCredentialProfile: vault.passkeyCredentialProfile,
+    });
   await context.storage.removeItem(JOURNAL_KEY);
+  walletPersistenceGate.blocked = false;
   return true;
 };
 
 /** Run before migrations/rehydration on cold startup; failed reads fail closed. */
 export const reconcileWalletRecoveryJournal = (
   context: WalletRecoveryContext
-): Promise<boolean> =>
-  context.persistenceMutex.runExclusive(() => reconcileWithinLock(context));
+): Promise<boolean> => {
+  walletPersistenceGate.blocked = true;
+  return context.persistenceMutex.runExclusive(() =>
+    reconcileWithinLock(context)
+  );
+};
 
 /** A failed same-worker cleanup must finish before any keyring is usable. */
 export const prepareWalletRecoveryAccess = async (
@@ -433,6 +498,7 @@ export const prepareWalletRecoveryAccess = async (
     await assertCommittedRecords(current, journal);
     await context.storage.removeItem(JOURNAL_KEY);
     wallet.recoveryJournalPending = false;
+    walletPersistenceGate.blocked = false;
   });
 };
 
@@ -443,6 +509,7 @@ const cleanupCommittedRecovery = async (
   try {
     await context.storage.removeItem(JOURNAL_KEY);
     wallet.recoveryJournalPending = false;
+    walletPersistenceGate.blocked = false;
   } catch {
     // Keep the committed pair and journal. No signing/mutation may proceed
     // until cleanup succeeds or cold startup reconciles the durable marker.
@@ -576,6 +643,7 @@ export const runWalletSetup = async (
     } catch {
       // Secondary reads/validation can fail too. Invalidate the new session
       // before any awaited reconciliation, while preserving its ciphertext.
+      walletPersistenceGate.blocked = true;
       wallet.lock();
       // An acknowledgement can fail after the commit marker reached disk.
       // Check it before teardown; a committed new pair must never be deleted.
@@ -591,8 +659,6 @@ export const runWalletSetup = async (
       await wallet.resetWalletState({ resetNetworks: true });
       await reconcileWalletRecoveryJournal(context);
       wallet.recoveryJournalPending = false;
-      const originalState = journal!.before.state;
-      if (originalState) await context.rehydrate(originalState);
       throw new Error(
         'Wallet recovery failed. Your previous wallet was restored'
       );
