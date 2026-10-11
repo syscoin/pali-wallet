@@ -17,6 +17,8 @@ import {
 import fs from 'fs';
 import path from 'path';
 
+import enTranslations from '../../source/assets/locales/en.json';
+import typedOrderFixtures from '../../tests/fixtures/typedOrderRequests.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
 import {
@@ -445,6 +447,73 @@ test('official test dapp: isolated standard provider conformance', async () => {
           }
         );
       }
+
+      for (const variant of [
+        'paid-trade',
+        'zero-payment',
+        'no-return',
+      ] as const) {
+        await record(`NFT order terms: ${variant}`, async () => {
+          const data = JSON.parse(
+            JSON.stringify(
+              variant === 'no-return'
+                ? typedOrderFixtures.OrderComponents
+                : typedOrderFixtures.ERC721Order
+            )
+          );
+          data.domain.chainId = LOCAL_CHAINS[0].chainId;
+          if (variant !== 'no-return') data.message.maker = address;
+          if (variant === 'zero-payment') data.message.erc20TokenAmount = '0';
+          const original = JSON.stringify(data);
+          const id = await startRequest(page, 'eth_signTypedData_v4', [
+            address,
+            original,
+          ]);
+          const popup = await popupFor(wallet.context, page, id);
+          const warning =
+            variant === 'zero-payment'
+              ? enTranslations.send.nftOrderZeroPayment
+              : enTranslations.send.nftOrderNoReturn;
+          if (variant === 'paid-trade') {
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderAuthorization, {
+                exact: true,
+              })
+            ).toBeVisible();
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderZeroPayment, {
+                exact: true,
+              })
+            ).toHaveCount(0);
+            await expect(
+              popup.getByText(enTranslations.send.nftOrderNoReturn, {
+                exact: true,
+              })
+            ).toHaveCount(0);
+          } else {
+            await expect(
+              popup.getByText(warning, { exact: true })
+            ).toBeVisible();
+            await popup.screenshot({
+              path: path.join(
+                E2E_CONFIG.artifactsDir,
+                `order-${variant}-advisory.png`
+              ),
+            });
+          }
+          const signed = await approve(wallet.context, page, id);
+          expect(signed.params).toEqual([address, original]);
+          const types = { ...data.types };
+          delete types.EIP712Domain;
+          expect(
+            getAddress(
+              verifyTypedData(data.domain, types, data.message, signed.result)
+            )
+          ).toBe(getAddress(address));
+          return signed;
+        });
+      }
+
       await record('user rejects signing with numeric 4001', async () => {
         const id = await startRequest(page, 'personal_sign', [
           '0x70616c69',

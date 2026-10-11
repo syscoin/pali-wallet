@@ -68,6 +68,14 @@ authentication session.
 V1 recovery uses the already locked `@metamask/eth-sig-util` verifier; V3/V4
 and personal/SIWE recovery use Ethers independently of Pali's provider result.
 
+The journey also checks NFT-order advisories on the disposable local chain:
+a paid 0x order receives no guessed scam warning, a zero-payment sale receives
+its factual advisory, and a Seaport order without assets payable to the order
+creator receives its factual advisory. Signatures remain user-approved and
+are independently recovered against the original unchanged typed data.
+These checks validate order-term explanations, not threat intelligence,
+contract deployment, token ownership or whether the order can be filled.
+
 Intentional policy differences are recorded: unsafe raw `eth_sign` is disabled
 (`4200` or registry-level `-32601`), and WebSocket subscription methods reject
 with `4200`. EIP-1559 transactions requesting a zero maximum or zero priority
