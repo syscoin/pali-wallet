@@ -7,8 +7,12 @@ import vaultGlobal, {
 
 let mockState: any;
 const mockGetItem = jest.fn();
+const mockGetItems = jest.fn();
 const mockReadWalletPresence = jest.fn();
 const mockMasterController = jest.fn();
+const mockMigrationController = jest.fn();
+const mockRecoveryModuleLoaded = jest.fn();
+const mockReconcileRecoveryJournal = jest.fn();
 const controller = {
   wallet: {
     cleanupMainStateVault: jest.fn().mockResolvedValue(undefined),
@@ -22,13 +26,23 @@ jest.mock('scripts/Background/controllers', () => ({
 }));
 jest.mock('scripts/Background/controllers/MigrationController', () => ({
   __esModule: true,
-  default: jest.fn().mockResolvedValue(undefined),
+  default: (...args: any[]) => mockMigrationController(...args),
 }));
+jest.mock('../controllers/walletRecovery', () => {
+  mockRecoveryModuleLoaded();
+  return {
+    reconcileWalletRecoveryJournal: (...args: any[]) =>
+      mockReconcileRecoveryJournal(...args),
+  };
+});
 jest.mock('../utils/readWalletPresence', () => ({
   readWalletPresence: () => mockReadWalletPresence(),
 }));
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: (...args: any[]) => mockGetItem(...args) },
+  chromeStorage: {
+    getItem: (...args: any[]) => mockGetItem(...args),
+    getItems: (...args: any[]) => mockGetItems(...args),
+  },
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -50,8 +64,10 @@ describe('cold background transient state recovery', () => {
   const originalChrome = global.chrome;
   let initialize: () => Promise<unknown>;
   let persisted: any;
+  let journal: any;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = vaultGlobal(undefined, { type: '@@INIT' });
@@ -76,6 +92,14 @@ describe('cold background transient state recovery', () => {
       },
     };
     mockGetItem.mockReset().mockResolvedValue(persisted);
+    journal = undefined;
+    mockGetItems.mockReset().mockImplementation(async () => ({
+      state: persisted,
+      'pali-wallet-recovery-journal:v1': journal,
+    }));
+    mockMigrationController.mockReset().mockResolvedValue(undefined);
+    mockRecoveryModuleLoaded.mockReset();
+    mockReconcileRecoveryJournal.mockReset().mockResolvedValue(false);
     mockReadWalletPresence.mockReset().mockResolvedValue(true);
     mockMasterController.mockReset().mockReturnValue(controller);
     (loadAndActivateSlip44Vault as jest.Mock)
@@ -88,6 +112,201 @@ describe('cold background transient state recovery', () => {
       ).handleMasterControllerInstance;
     });
   });
+
+  it('starts an ordinary wallet with one batched storage read without loading recovery crypto', async () => {
+    await initialize();
+    expect(mockGetItems).toHaveBeenCalledTimes(1);
+    expect(mockGetItems).toHaveBeenCalledWith([
+      'state',
+      'pali-wallet-recovery-journal:v1',
+    ]);
+    expect(mockGetItem).not.toHaveBeenCalled();
+    expect(mockRecoveryModuleLoaded).not.toHaveBeenCalled();
+    expect(mockReconcileRecoveryJournal).not.toHaveBeenCalled();
+    expect(mockMigrationController).toHaveBeenCalledTimes(1);
+    expect(mockReadWalletPresence).toHaveBeenCalledTimes(1);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledTimes(1);
+    expect(mockMasterController).toHaveBeenCalledTimes(1);
+  });
+
+  it('awaits interrupted recovery rollback before migrating or loading the restored wallet', async () => {
+    journal = { version: 1, before: { state: 'original storage' } };
+    const restored = {
+      vaultGlobal: { ...persisted.vaultGlobal, activeSlip44: 57 },
+    };
+    mockGetItem.mockResolvedValueOnce(restored);
+    let finishReconcile!: (value: boolean) => void;
+    let markReconcileStarted!: () => void;
+    const reconcileStarted = new Promise<void>((resolve) => {
+      markReconcileStarted = resolve;
+    });
+    mockReconcileRecoveryJournal.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finishReconcile = resolve;
+          markReconcileStarted();
+        })
+    );
+    const initializing = initialize();
+    // Dynamic import and storage reads must finish admission, while migration
+    // and all wallet construction remain gated by the unresolved rollback.
+    await reconcileStarted;
+    expect(finishReconcile).toBeDefined();
+    const context = mockReconcileRecoveryJournal.mock.calls[0][0];
+    expect(context).toEqual({
+      getState: expect.any(Function),
+      persistenceMutex: expect.objectContaining({
+        runExclusive: expect.any(Function),
+      }),
+      readPresence: expect.any(Function),
+      rehydrate: expect.any(Function),
+      storage: expect.objectContaining({
+        getItem: expect.any(Function),
+        getItems: expect.any(Function),
+      }),
+    });
+    expect(context.getState()).toBe(mockState);
+    expect(mockMigrationController).not.toHaveBeenCalled();
+    expect(loadAndActivateSlip44Vault).not.toHaveBeenCalled();
+    expect(mockReadWalletPresence).not.toHaveBeenCalled();
+    expect(mockMasterController).not.toHaveBeenCalled();
+    expect(mockGetItem).not.toHaveBeenCalled();
+    finishReconcile(true);
+    await initializing;
+    expect(mockGetItem).toHaveBeenCalledTimes(1);
+    expect(mockGetItem).toHaveBeenCalledWith('state');
+    expect(mockMigrationController).toHaveBeenCalledWith(restored);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
+    expect(mockState.vaultGlobal.activeSlip44).toBe(57);
+    expect(mockMasterController).toHaveBeenCalledTimes(1);
+  });
+
+  it('rereads the current state after committed recovery cleanup without rolling it back', async () => {
+    journal = { version: 1, committedFingerprint: 'committed recovery' };
+    mockReconcileRecoveryJournal.mockResolvedValueOnce(false);
+    mockMigrationController.mockImplementationOnce(async (state) => {
+      expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(1);
+      expect(state).toBe(persisted);
+    });
+    await initialize();
+    expect(mockGetItem).toHaveBeenCalledTimes(1);
+    expect(mockGetItem).toHaveBeenCalledWith('state');
+    expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(1);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledWith(
+      60,
+      undefined,
+      false,
+      undefined,
+      true
+    );
+    expect(mockMasterController).toHaveBeenCalledTimes(1);
+  });
+
+  it('rereads restored state when overlapping cold initializers observe the same recovery journal', async () => {
+    journal = { version: 1, before: { state: 'original storage' } };
+    const restored = {
+      vaultGlobal: { ...persisted.vaultGlobal, activeSlip44: 57 },
+    };
+    let finishRollback!: () => void;
+    const rollback = new Promise<void>((resolve) => {
+      finishRollback = resolve;
+    });
+    let bothReconciliationsRequested!: () => void;
+    const bothRequested = new Promise<void>((resolve) => {
+      bothReconciliationsRequested = resolve;
+    });
+    let reconciliationRequests = 0;
+    mockReconcileRecoveryJournal.mockImplementation((context) => {
+      reconciliationRequests += 1;
+      if (reconciliationRequests === 2) bothReconciliationsRequested();
+      // Reproduce the real reconciler's serialization and return values: the
+      // first caller restores storage, while the second finds no journal left.
+      return context.persistenceMutex.runExclusive(async () => {
+        if (journal === undefined) return false;
+        await rollback;
+        mockGetItem.mockResolvedValue(restored);
+        journal = undefined;
+        return true;
+      });
+    });
+
+    const first = initialize();
+    const second = initialize();
+    await bothRequested;
+    expect(mockGetItems).toHaveBeenCalledTimes(2);
+    expect(mockMigrationController).not.toHaveBeenCalled();
+    expect(mockGetItem).not.toHaveBeenCalled();
+
+    finishRollback();
+    await Promise.all([first, second]);
+
+    expect(mockReconcileRecoveryJournal).toHaveBeenCalledTimes(2);
+    expect(
+      mockMigrationController.mock.calls.map(
+        ([state]) => state.vaultGlobal.activeSlip44
+      )
+    ).toEqual([57, 57]);
+    expect(mockGetItem).toHaveBeenCalledTimes(2);
+    expect(mockMigrationController.mock.calls.map(([state]) => state)).toEqual([
+      restored,
+      restored,
+    ]);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledTimes(2);
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(
+      1,
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
+    expect(loadAndActivateSlip44Vault).toHaveBeenNthCalledWith(
+      2,
+      57,
+      undefined,
+      false,
+      undefined,
+      true
+    );
+  });
+
+  it.each([
+    'batched read',
+    'journal validation',
+    'restored state read',
+    'state read after concurrent reconciliation',
+  ])(
+    'fails closed on %s failure before migration, vault loading, or controller cleanup',
+    async (failure) => {
+      const before = mockState.vaultGlobal;
+      const error = new Error(`Synthetic ${failure} failure`);
+      if (failure === 'batched read') mockGetItems.mockRejectedValueOnce(error);
+      else {
+        journal = { version: 1 };
+        if (failure === 'journal validation')
+          mockReconcileRecoveryJournal.mockRejectedValueOnce(error);
+        else {
+          mockReconcileRecoveryJournal.mockResolvedValueOnce(
+            failure === 'restored state read'
+          );
+          mockGetItem.mockRejectedValueOnce(error);
+        }
+      }
+      await expect(initialize()).rejects.toThrow(error.message);
+      expect(mockMigrationController).not.toHaveBeenCalled();
+      expect(loadAndActivateSlip44Vault).not.toHaveBeenCalled();
+      expect(mockReadWalletPresence).not.toHaveBeenCalled();
+      expect(mockMasterController).not.toHaveBeenCalled();
+      expect(controller.wallet.cleanupMainStateVault).not.toHaveBeenCalled();
+      expect(mockState.vaultGlobal).toBe(before);
+    }
+  );
 
   afterEach(() => {
     global.chrome = originalChrome;
@@ -139,6 +358,29 @@ describe('cold background transient state recovery', () => {
     store.dispatch(setIsSwitchingAccount(true));
     await initialize();
     expect(mockState.vaultGlobal.isSwitchingAccount).toBe(true);
+  });
+
+  it('does not reconcile or load a live recovery journal during same-worker retry', async () => {
+    await initialize();
+    const before = mockState.vaultGlobal;
+    journal = { version: 1, before: { state: 'live recovery snapshot' } };
+    const cleanupCalls =
+      controller.wallet.cleanupMainStateVault.mock.calls.length;
+
+    await expect(initialize()).rejects.toThrow('Wallet recovery is pending');
+
+    expect(mockGetItems).toHaveBeenCalledTimes(2);
+    expect(mockRecoveryModuleLoaded).not.toHaveBeenCalled();
+    expect(mockReconcileRecoveryJournal).not.toHaveBeenCalled();
+    expect(mockGetItem).not.toHaveBeenCalled();
+    expect(mockMigrationController).toHaveBeenCalledTimes(1);
+    expect(loadAndActivateSlip44Vault).toHaveBeenCalledTimes(1);
+    expect(mockReadWalletPresence).toHaveBeenCalledTimes(1);
+    expect(mockMasterController).toHaveBeenCalledTimes(1);
+    expect(controller.wallet.cleanupMainStateVault).toHaveBeenCalledTimes(
+      cleanupCalls
+    );
+    expect(mockState.vaultGlobal).toBe(before);
   });
 
   it('allows cold recovery again when controller construction failed', async () => {

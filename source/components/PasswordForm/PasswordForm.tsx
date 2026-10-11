@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
+import { generateMemorablePassword } from 'utils/memorablePassword';
 
 type FormErrors = {
   [key: string]: string;
@@ -24,6 +25,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   const [isLoading, setIsLoading] = useState(false);
   const submitting = useRef(false);
   const [submitFailed, setSubmitFailed] = useState(false);
+  const [generationFailed, setGenerationFailed] = useState(false);
 
   const buttonIsValidStyle = useMemo(
     () =>
@@ -34,6 +36,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   );
 
   const onValuesChange = useCallback(() => {
+    setGenerationFailed(false);
     form
       .validateFields()
       .then(() => setFormErrors({}))
@@ -46,6 +49,17 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         );
       });
   }, []);
+
+  const suggestPassword = () => {
+    if (submitting.current) return;
+    try {
+      const password = generateMemorablePassword();
+      form.setFieldsValue({ password, repassword: '' });
+      onValuesChange();
+    } catch {
+      setGenerationFailed(true);
+    }
+  };
 
   const handleSubmit = async (values: any) => {
     if (submitting.current) return;
@@ -71,7 +85,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         name="basic"
         initialValues={{ remember: true }}
         onFinish={handleSubmit}
-        autoComplete="off"
+        autoComplete="on"
         className="password flex flex-col gap-4 items-center justify-center w-full max-w-md text-center"
       >
         <Form.Item
@@ -94,12 +108,13 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           <Input.Password
             className="custom-input-password relative"
             id="create-password"
+            name="password"
+            autoComplete="new-password"
             placeholder={t('components.newPassword')}
           />
         </Form.Item>
 
         <Form.Item
-          id="create-password"
           name="repassword"
           className="w-full"
           hasFeedback
@@ -121,10 +136,29 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         >
           <Input.Password
             className="custom-input-password relative"
-            id="create-password"
+            id="confirm-password"
+            name="repassword"
+            autoComplete="new-password"
             placeholder={t('components.confirmPassword')}
           />
         </Form.Item>
+
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={isLoading}
+          onClick={suggestPassword}
+        >
+          {t('components.suggestPassword')}
+        </Button>
+        <p className="px-3 text-center text-brand-gray200 text-xs">
+          {t('components.memorablePasswordHelp')}
+        </p>
+        {generationFailed && (
+          <p role="alert" className="text-warning-error text-sm">
+            {t('components.passwordGenerationFailed')}
+          </p>
+        )}
 
         <span className="px-3 mt-6 mb-4 w-full text-left text-brand-blue100 text-xs">
           {t('components.atLeast')} {'   '}

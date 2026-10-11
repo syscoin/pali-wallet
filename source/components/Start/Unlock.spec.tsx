@@ -20,7 +20,19 @@ jest.mock('antd', () => {
     return children;
   };
   MockForm.Item = ({ children }: any) => children;
-  return { Form: MockForm, Input: { Password: () => null } };
+  return {
+    Form: MockForm,
+    Input: {
+      Password: ({ placeholder, autoComplete, id }: any) => (
+        <input
+          type="password"
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          id={id}
+        />
+      ),
+    },
+  };
 });
 jest.mock('components/index', () => ({ Button: () => null }));
 jest.mock('components/Loader/AppLoadingSkeleton', () => ({
@@ -131,6 +143,10 @@ describe('Unlock authentication navigation', () => {
         <ProtectedRoute element={<main>Wallet home</main>} />
       )
     ).toBe('<main>Wallet home</main>');
+  });
+
+  it('identifies the unlock password as the current password for password managers', () => {
+    expect(renderUnlock()).toContain('autoComplete="current-password"');
   });
 
   it('cleans only transaction state on external login completion after fresh unlock confirmation', async () => {

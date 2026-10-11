@@ -8,6 +8,20 @@ Les sauvegardes sont importantes parce que Pali est non dépositaire. Le portefe
 
 Notez la phrase de récupération de votre portefeuille et gardez-la hors ligne. Toute personne qui possède la phrase de récupération peut contrôler les comptes dérivés.
 
+## Mot de passe de déverrouillage
+
+L’option **Suggérer un mot de passe mémorisable** crée un mot de passe de déverrouillage, pas votre phrase de récupération secrète. Enregistrez-le dans votre gestionnaire de mots de passe. Une passkey de compte intelligent ne remplace pas le mot de passe de déverrouillage du portefeuille.
+
+## Si vous oubliez le mot de passe
+
+Sur l’écran verrouillé, sélectionnez **Mot de passe oublié ? Récupérez avec la phrase**, saisissez la phrase de récupération secrète de ce portefeuille et choisissez un nouveau mot de passe. L’ancien mot de passe n’est pas nécessaire. Une autre phrase est refusée avant la réinitialisation du portefeuille.
+
+Le parcours actuel recrée le premier compte HD dérivé de la phrase de récupération. Ajoutez à nouveau les autres comptes dérivés dans leur ordre de dérivation d’origine. La récupération ne déplace pas vos fonds.
+
+Votre phrase ne peut pas déchiffrer les clés importées séparément et chiffrées avec le mot de passe oublié ; conservez leurs propres sauvegardes. Reconnectez les portefeuilles matériels. Les paramètres personnalisés et la configuration des comptes intelligents et des passkeys nécessitent leurs propres enregistrements ou sauvegardes et ne sont pas garantis par la seule récupération avec la phrase.
+
+Si la récupération échoue, vérifiez votre phrase et réessayez. Si le problème persiste, redémarrez votre navigateur. Ne supprimez jamais les données du portefeuille pour contourner une erreur de fonctionnement.
+
 ## Déverrouillage et changements de passkey
 
 Un service du navigateur indisponible, un problème de stockage ou une fonctionnalité cryptographique non prise en charge peuvent empêcher le déverrouillage sans que votre mot de passe soit incorrect. Lisez l’erreur, rétablissez le service ou la connexion nécessaires, puis réessayez de déverrouiller le portefeuille. Ne supprimez pas et ne réimportez pas le portefeuille pour contourner une erreur de fonctionnement. Les erreurs de fonctionnement ne comptent pas comme des tentatives de mot de passe échouées.

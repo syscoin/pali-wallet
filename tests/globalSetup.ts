@@ -49,15 +49,16 @@ export default async function globalSetup() {
 
   const password = process.env.TEST_WALLET_PASSWORD;
 
-  const passwordFields = page.locator('#create-password');
+  const passwordField = page.locator('#create-password');
+  const confirmationField = page.locator('#confirm-password');
 
-  passwordFields.first().fill(password);
+  passwordField.fill(password);
 
-  await expect(passwordFields.first()).toHaveValue(password);
+  await expect(passwordField).toHaveValue(password);
 
-  passwordFields.last().fill(password);
+  confirmationField.fill(password);
 
-  await expect(passwordFields.last()).toHaveValue(password);
+  await expect(confirmationField).toHaveValue(password);
 
   await expect(createButton).toBeEnabled();
 

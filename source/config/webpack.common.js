@@ -18,7 +18,12 @@ const passkeyGuardianShortRecoveryDelaySeconds = Number(
 
 module.exports = {
   entry: {
-    background: join(sourcePath, 'scripts/Background', 'index.ts'),
+    background: {
+      import: join(sourcePath, 'scripts/Background', 'index.ts'),
+      // MV3 runs without a DOM. Only packaged scripts may load in its worker.
+      chunkLoading:
+        process.env.MANIFEST_TYPE === 'MV2' ? 'jsonp' : 'import-scripts',
+    },
     inpage: join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     pali: join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),
     handleWindowProperties: join(
@@ -77,6 +82,28 @@ module.exports = {
   },
   module: {
     rules: [
+      {
+        test: (filename) => {
+          const path = filename.split(String.fromCharCode(92)).join('/');
+          return (
+            path.includes('@sidhujag/sysweb3-utils/cjs/abi/') &&
+            ['erc20.json', 'erc721.json', 'erc1155.json'].includes(
+              path.split('/').pop()
+            )
+          );
+        },
+        type: 'javascript/auto',
+        use: join(__dirname, 'loaders/compactAbiJson.js'),
+      },
+      {
+        test: (filename) =>
+          filename
+            .split(String.fromCharCode(92))
+            .join('/')
+            .endsWith('/bip39/src/wordlists/english.json'),
+        type: 'javascript/auto',
+        use: join(__dirname, 'loaders/compactEnglishWordlist.js'),
+      },
       {
         test: /\.png$/i,
         resourceQuery: /inline/,

@@ -11,9 +11,16 @@ import {
 
 const password = 'Synthetic-only-password-729!';
 const phrase = 'synthetic recovery phrase fixture';
+const recoveryTicket = 'synthetic-recovery-ticket-fixture';
 const Probe = () => {
-  const { secrets, beginCreate, beginImport, setCreatedPhrase, clear } =
-    useOnboardingSecrets();
+  const {
+    secrets,
+    beginCreate,
+    beginImport,
+    beginRecovery,
+    setCreatedPhrase,
+    clear,
+  } = useOnboardingSecrets();
   const navigate = useNavigate();
   const location = useLocation();
   return (
@@ -38,12 +45,24 @@ const Probe = () => {
       </button>
       <button
         onClick={() => {
-          beginImport(phrase);
+          beginImport(phrase, secrets.recoveryTicket);
           navigate('/create-password-import');
         }}
       >
         import
       </button>
+      <button
+        onClick={() => {
+          beginRecovery(recoveryTicket);
+          navigate('/import');
+        }}
+      >
+        recover
+      </button>
+      <button onClick={() => navigate('/external/import')}>
+        external import
+      </button>
+      <button onClick={() => navigate('/phrase')}>creation phrase</button>
       <button onClick={() => navigate('/home')}>leave</button>
       <button onClick={() => navigate('/create-password')}>restart</button>
       <button onClick={clear}>complete</button>
@@ -69,6 +88,7 @@ const expectNoPersistedSecrets = () => {
   });
   expect(persisted).not.toContain(password);
   expect(persisted).not.toContain(phrase);
+  expect(persisted).not.toContain(recoveryTicket);
 };
 
 describe('onboarding secret lifetime', () => {
@@ -98,6 +118,67 @@ describe('onboarding secret lifetime', () => {
     expectNoPersistedSecrets();
     fireEvent.click(screen.getByText('leave'));
     expect(screen.getByTestId('secrets').textContent).toBe('{}');
+  });
+
+  it('carries a recovery ticket only in memory from seed import to the new password form', () => {
+    mount();
+    fireEvent.click(screen.getByText('recover'));
+    expect(screen.getByTestId('route').textContent).toBe('/import');
+    expect(screen.getByTestId('secrets').textContent).toContain(recoveryTicket);
+    expect(screen.getByTestId('secrets').textContent).not.toContain(password);
+    expectNoPersistedSecrets();
+    fireEvent.click(screen.getByText('external import'));
+    expect(screen.getByTestId('secrets').textContent).toContain(recoveryTicket);
+    fireEvent.click(screen.getByText('import'));
+    expect(screen.getByTestId('route').textContent).toBe(
+      '/create-password-import'
+    );
+    expect(JSON.parse(screen.getByTestId('secrets').textContent!)).toEqual({
+      kind: 'import',
+      phrase,
+      recoveryTicket,
+    });
+    expectNoPersistedSecrets();
+    fireEvent.click(screen.getByText('external import'));
+    expect(JSON.parse(screen.getByTestId('secrets').textContent!)).toEqual({
+      kind: 'import',
+      recoveryTicket,
+    });
+    fireEvent.click(screen.getByText('complete'));
+    expect(screen.getByTestId('secrets').textContent).toBe('{}');
+  });
+
+  it.each(['leave', 'restart', 'creation phrase'])(
+    'clears a recovery ticket when navigating to %s instead of its import flow',
+    (action) => {
+      mount();
+      fireEvent.click(screen.getByText('recover'));
+      fireEvent.click(screen.getByText(action));
+      expect(screen.getByTestId('secrets').textContent).toBe('{}');
+      expectNoPersistedSecrets();
+    }
+  );
+
+  it('drops a normal imported phrase when returning to the seed entry page', () => {
+    mount();
+    fireEvent.click(screen.getByText('import'));
+    expect(screen.getByTestId('secrets').textContent).toContain(phrase);
+    fireEvent.click(screen.getByText('external import'));
+    expect(screen.getByTestId('secrets').textContent).toBe('{}');
+    expectNoPersistedSecrets();
+  });
+
+  it('clears a pending recovery ticket when the popup closes and cannot restore it in a new document', () => {
+    const view = mount();
+    fireEvent.click(screen.getByText('recover'));
+    fireEvent(window, new Event('pagehide'));
+    expect(screen.getByTestId('secrets').textContent).toBe('{}');
+    expect(screen.getByTestId('route').textContent).toBe('/');
+    view.unmount();
+    window.history.replaceState(null, '', '/import');
+    mount();
+    expect(screen.getByTestId('secrets').textContent).toBe('{}');
+    expectNoPersistedSecrets();
   });
 
   it('clears creation material when restarting, including browser back to the password page', () => {

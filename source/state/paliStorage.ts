@@ -1,6 +1,17 @@
 import { chromeStorage } from 'utils/storageAPI';
 
+// Recovery owns the durable snapshot until the restored Redux vault is usable.
+// This survives a failed same-worker restoration; a cold worker starts closed
+// again when it reconciles the retained journal.
+export const walletPersistenceGate = { blocked: false };
+
+export const assertWalletPersistenceAllowed = () => {
+  if (walletPersistenceGate.blocked)
+    throw new Error('Wallet recovery must finish before saving state');
+};
+
 export const saveState = async (appState: any) => {
+  assertWalletPersistenceAllowed();
   try {
     await chromeStorage.setItem('state', appState);
   } catch (e) {
@@ -9,6 +20,7 @@ export const saveState = async (appState: any) => {
 };
 
 export const saveSlip44State = async (slip44: number, vaultState: any) => {
+  assertWalletPersistenceAllowed();
   try {
     await chromeStorage.setItem(`state-vault-${slip44}`, vaultState);
   } catch (error) {
@@ -25,6 +37,7 @@ export const saveCommittedWalletState = async (
   vaultState: any,
   mainState?: any
 ) => {
+  assertWalletPersistenceAllowed();
   const items: Record<string, any> = {
     [`state-vault-${slip44}`]: vaultState,
   };
@@ -40,6 +53,7 @@ export const savePasskeyCredentialProfileState = async (
   slip44: number,
   passkeyCredentialProfile: any
 ) => {
+  assertWalletPersistenceAllowed();
   try {
     await chromeStorage.setItem(`state-vault-${slip44}-passkey-profile`, {
       passkeyCredentialProfile: passkeyCredentialProfile || null,

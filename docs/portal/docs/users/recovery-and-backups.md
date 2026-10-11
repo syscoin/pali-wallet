@@ -8,6 +8,20 @@ Backups matter because Pali is non-custodial. The wallet cannot recover a seed p
 
 Write down your wallet seed phrase and keep it offline. Anyone with the seed phrase can control the derived accounts.
 
+## Unlock password
+
+The optional **Suggest a memorable password** action creates an unlock password, not your Secret Recovery Phrase. Save it in your password manager. A smart-account passkey does not replace the wallet unlock password.
+
+## If you forget the password
+
+On the locked screen, select **Forgot password? Recover with seed**, enter this wallet's Secret Recovery Phrase, and choose a new password. The old password is not required. A different phrase is refused before the wallet is reset.
+
+The current flow recreates the first seed-derived HD account. Re-add other seed-derived accounts in their original derivation order. Recovery does not move your funds.
+
+Your seed cannot decrypt separately imported keys encrypted with the forgotten password; keep their own backups. Reconnect hardware wallets. Custom settings and smart-account/passkey setup need their own records or backups and are not guaranteed by seed recovery alone.
+
+If recovery fails, check your phrase and retry. If it keeps failing, restart your browser. Never clear wallet storage to work around an operational error.
+
 ## Unlocking and passkey changes
 
 An unavailable browser service, storage problem, or unsupported cryptographic capability can prevent unlocking without meaning that your password is wrong. Read the error, restore the required service or connection, and retry unlocking. Do not delete or reimport the wallet to work around an operational error. Operational errors do not count as failed password attempts.

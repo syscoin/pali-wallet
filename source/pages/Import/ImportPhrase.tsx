@@ -2,7 +2,7 @@ import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { Button } from 'components/index';
 import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
@@ -23,14 +23,41 @@ const ImportPhrase: React.FC = () => {
   const { controllerEmitter } = useController();
   const [form] = useForm();
   const navigate = useNavigate();
-  const { beginImport } = useOnboardingSecrets();
-  const mounted = useRef(true);
+  const location = useLocation();
+  const { beginImport, secrets } = useOnboardingSecrets();
+  const isRecovery = Boolean(secrets.recoveryTicket);
+  const active = useRef(true);
+  const requestGeneration = useRef(0);
+  const submissionPending = useRef(false);
+  const routeKey = useRef(location.key);
+  routeKey.current = location.key;
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
+    active.current = ['/import', '/external/import'].includes(
+      location.pathname
+    );
+    const discard = () => {
+      // Invalidate before the provider clears secrets: RPC replies can arrive
+      // before navigation unmounts this form.
+      active.current = false;
+      requestGeneration.current += 1;
+      submissionPending.current = false;
     };
-  }, []);
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') discard();
+    };
+    window.addEventListener('pagehide', discard);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      discard();
+      window.removeEventListener('pagehide', discard);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [location.key, location.pathname]);
+  const isCurrent = (generation: number, url: string) =>
+    active.current &&
+    generation === requestGeneration.current &&
+    routeKey.current === location.key &&
+    window.location.href === url;
   const { t } = useTranslation();
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
   const [visible, setVisible] = useState<boolean>(false);
@@ -50,17 +77,29 @@ const ImportPhrase: React.FC = () => {
     [seedIsValid]
   );
 
-  const onSubmit = ({ phrase }: { phrase: string }) => {
-    controllerEmitter(['wallet', 'isSeedValid'], [phrase]).then(
-      (isSeedValid: boolean) => {
-        if (isSeedValid && mounted.current) {
-          beginImport(phrase);
-          navigate('/create-password-import', {
-            state: { isWalletImported: true },
-          });
-        }
+  const onSubmit = async ({ phrase }: { phrase: string }) => {
+    const url = window.location.href;
+    if (!isCurrent(requestGeneration.current, url) || submissionPending.current)
+      return;
+    submissionPending.current = true;
+    const generation = ++requestGeneration.current;
+    try {
+      const isSeedValid = await controllerEmitter(
+        ['wallet', 'isSeedValid'],
+        [phrase]
+      );
+      if (isSeedValid && isCurrent(generation, url)) {
+        beginImport(phrase, secrets.recoveryTicket);
+        navigate('/create-password-import', {
+          state: { isWalletImported: true },
+        });
       }
-    );
+    } catch {
+      if (isCurrent(generation, url)) setSeedIsValid(false);
+    } finally {
+      if (generation === requestGeneration.current)
+        submissionPending.current = false;
+    }
   };
 
   const handleKeypress = (event) => {
@@ -70,7 +109,9 @@ const ImportPhrase: React.FC = () => {
   };
 
   return (
-    <OnboardingLayout title={t('titles.importWallet')}>
+    <OnboardingLayout
+      title={t(isRecovery ? 'settings.recoveryTitle' : 'titles.importWallet')}
+    >
       <StatusModal
         status="warn"
         title={t('import.importModalWordMissing')}
@@ -98,6 +139,12 @@ const ImportPhrase: React.FC = () => {
             },
             () => ({
               validator(_, value) {
+                const generation = requestGeneration.current;
+                const url = window.location.href;
+                if (!isCurrent(generation, url))
+                  return Promise.reject(
+                    new Error('Seed import is no longer active.')
+                  );
                 value = formatSeedPhrase(value);
                 form.setFieldsValue({ phrase: value });
 
@@ -106,6 +153,8 @@ const ImportPhrase: React.FC = () => {
                   ['wallet', 'isSeedValid'],
                   [value]
                 ).then((isSeedValid: boolean) => {
+                  if (!isCurrent(generation, url))
+                    throw new Error('Seed import is no longer active.');
                   if (isSeedValid) {
                     setSeedIsValid(isSeedValid && value);
 
@@ -179,7 +228,7 @@ const ImportPhrase: React.FC = () => {
                 : 'cursor-not-allowed opacity-60'
             } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl`}
           >
-            {t('buttons.import')}
+            {t(isRecovery ? 'buttons.recoverWallet' : 'buttons.import')}
           </Button>
         </div>
       </Form>

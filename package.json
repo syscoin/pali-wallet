@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "4.0.80",
+  "version": "4.0.81",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
@@ -50,6 +50,7 @@
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
+    "@bitcoinerlab/secp256k1": "^1.2.0",
     "@ant-design/icons": "^6.0.0",
     "@babel/preset-react": "^7.25.9",
     "@babel/preset-typescript": "^7.25.9",
@@ -67,6 +68,8 @@
     "antd": "^6.0.0",
     "axios": "^1.18.1",
     "bignumber.js": "^9.1.2",
+    "bip32": "^5.0.1",
+    "bip39": "^3.1.0",
     "buffer": "^6.0.3",
     "currency-symbol-map": "^5.1.0",
     "currency.js": "^2.0.4",

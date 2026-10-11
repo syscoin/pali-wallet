@@ -2,6 +2,7 @@ import {
   requestWalletState,
   WALLET_BOOTSTRAP_TIMEOUT_MS,
   WALLET_FEEDBACK_TIMEOUT_MS,
+  WALLET_RECOVERY_REQUIRED,
 } from './requestWalletState';
 
 describe('authoritative wallet startup', () => {
@@ -63,6 +64,57 @@ describe('authoritative wallet startup', () => {
     reply(state);
     await expect(result).resolves.toBe(state);
     expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('rejects required recovery immediately and ignores a later valid state', async () => {
+    const result = requestWalletState();
+    const rejected = expect(result).rejects.toThrow(WALLET_RECOVERY_REQUIRED);
+    reply({ error: WALLET_RECOVERY_REQUIRED });
+    await rejected;
+
+    expect(jest.getTimerCount()).toBe(0);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(1);
+    reply(state);
+    await expect(result).rejects.toThrow(WALLET_RECOVERY_REQUIRED);
+    jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('stops retrying a busy worker when it reports required recovery', async () => {
+    runtime.sendMessage
+      .mockImplementationOnce((_message, callback) => callback({ busy: true }))
+      .mockImplementationOnce((_message, callback) => {
+        reply = callback;
+        callback({ error: WALLET_RECOVERY_REQUIRED });
+      });
+    const result = requestWalletState();
+    const rejected = expect(result).rejects.toThrow(WALLET_RECOVERY_REQUIRED);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(100);
+    await rejected;
+
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
+    reply(state);
+    jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps repeated busy responses within the original request deadline', async () => {
+    runtime.sendMessage.mockImplementation((_message, callback) =>
+      callback({ busy: true })
+    );
+    const result = requestWalletState(350);
+    const rejected = expect(result).rejects.toThrow('taking longer');
+    jest.advanceTimersByTime(349);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
+    jest.advanceTimersByTime(1);
+    await rejected;
+
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(WALLET_BOOTSTRAP_TIMEOUT_MS);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(4);
   });
 
   it.each([0, 2000])(
