@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "Annuler",
+    "continue": "Continuer",
     "back": "Retour",
     "change": "Modifier",
     "send": "Envoyer",

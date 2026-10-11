@@ -62,7 +62,7 @@ export const SpamWarning: React.FC = () => {
     }
   };
 
-  const handleCancel = async () => {
+  const handleContinue = async () => {
     setIsLoading(true);
     try {
       // Send response to background
@@ -182,11 +182,11 @@ export const SpamWarning: React.FC = () => {
           </button>
 
           <button
-            onClick={handleCancel}
+            onClick={handleContinue}
             disabled={isLoading}
             className="w-full bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('buttons.cancel')}
+            {t('buttons.continue')}
           </button>
         </div>
       </div>

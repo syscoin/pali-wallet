@@ -47,6 +47,10 @@ class RequestCoordinator {
   private activePopupRequest: Promise<any> | null = null;
   private activePopupRoute: MethodRoute | null = null;
   private activePopupOrigin: string | null = null;
+  private popupGuards = new WeakMap<
+    IEnhancedRequestContext,
+    () => Promise<void>
+  >();
   private requestExecutor: RequestExecutor | null = null;
   private requestQueue: Array<{
     context: IEnhancedRequestContext;
@@ -131,7 +135,7 @@ class RequestCoordinator {
     }
 
     // Execute the popup request
-    this.activePopupRequest = this.executePopupRequest(popupFunction);
+    this.activePopupRequest = this.executePopupRequest(context, popupFunction);
     this.activePopupRoute = currentRoute;
     this.activePopupOrigin = context.originalRequest.host;
 
@@ -152,15 +156,36 @@ class RequestCoordinator {
   }
 
   private async executePopupRequest(
+    context: IEnhancedRequestContext,
     popupFunction: () => Promise<any>
   ): Promise<any> {
     try {
       // give it some time to ensure any previous popup is closed
       await new Promise((resolve) => setTimeout(resolve, 100));
+      assertRequestActive(context.originalRequest.signal);
+      // This trusted guard runs once, inside the held popup slot, only when the
+      // request reaches an actual opening attempt. It may warn before approval
+      // without recursively entering the coordinator or counting bad payloads.
+      const guard = this.popupGuards.get(context);
+      this.popupGuards.delete(context);
+      if (guard) await guard();
+      assertRequestActive(context.originalRequest.signal);
       return await popupFunction();
     } catch (error) {
       throw error;
     }
+  }
+
+  registerPopupGuard(
+    context: IEnhancedRequestContext,
+    guard: () => Promise<void>
+  ): () => void {
+    this.popupGuards.set(context, guard);
+    return () => {
+      if (this.popupGuards.get(context) === guard) {
+        this.popupGuards.delete(context);
+      }
+    };
   }
 
   private processQueue(): void {

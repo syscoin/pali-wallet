@@ -59,9 +59,15 @@ and fee-field evidence, legacy inference from a gas-price-only request,
 uppercase quantity-prefix normalization, an explicit
 below-estimate dapp-fee choice, local
 contract creation with omitted `from`/`to`, rejected transaction nonce stability, and
-account-revocation events versus continued RPC connectivity. Negative approvals
-are paced outside the wallet's ten-second spam window without changing its
-guard configuration. The official
+account-revocation events versus continued RPC connectivity. A rapid malformed
+typed-signing/transaction burst must settle with numeric errors without opening
+approval or spam windows. Another case rejects two real signing approvals,
+repeats malformed requests within ten seconds, and verifies that the next real
+attempt shows the three-request warning. Continue must open the ordinary
+approval, which the test rejects; screenshots and unchanged local nonce are
+recorded. These cases keep the production thresholds and block duration intact.
+Unrelated negative approvals are paced outside the wallet's ten-second spam
+window so they exercise their own validation. The official
 SIWE fixture contains an old issue date and chain ID 1; its ordinary EOA signature
 is checked as message signing rather than claiming a complete relying-party
 authentication session.

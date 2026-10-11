@@ -1,6 +1,7 @@
 {
   "buttons": {
     "cancel": "취소",
+    "continue": "계속",
     "back": "뒤로",
     "change": "변경",
     "send": "보내기",
