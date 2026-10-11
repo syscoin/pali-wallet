@@ -206,6 +206,41 @@ describe('Background: handleListeners', () => {
     handleListeners(mockMasterController);
   });
 
+  it.each(['alarm', 'message', 'port'])(
+    'retries partial %s registration without declaring listeners ready',
+    (failure) => {
+      resetListenersFlag();
+      const registrations = {
+        alarm: chrome.alarms.onAlarm.addListener,
+        message: chrome.runtime.onMessage.addListener,
+        port: chrome.runtime.onConnect.addListener,
+      };
+      Object.values(registrations).forEach((register) => register.mockClear());
+      registrations[failure].mockImplementationOnce(() => {
+        throw new Error('Registration unavailable');
+      });
+
+      expect(() => handleListeners(mockMasterController)).toThrow(
+        'Registration unavailable'
+      );
+      handleListeners(mockMasterController);
+      expect(registrations[failure]).toHaveBeenCalledTimes(2);
+      Object.values(registrations).forEach((register) =>
+        expect(register).toHaveBeenLastCalledWith(expect.any(Function))
+      );
+
+      const counts = Object.values(registrations).map(
+        (register) => register.mock.calls.length
+      );
+      handleListeners(mockMasterController);
+      expect(
+        Object.values(registrations).map(
+          (register) => register.mock.calls.length
+        )
+      ).toEqual(counts);
+    }
+  );
+
   describe('onAlarm Listener', () => {
     it('should call checkForUpdates and startPolling for check_for_updates alarm', async () => {
       // Get the alarm listener that was registered

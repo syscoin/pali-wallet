@@ -85,8 +85,6 @@ export const handleListeners = (masterController: IMasterController) => {
     console.log('🧹 Removed existing message listener');
   }
 
-  listenersInitialized = true;
-
   // Create and store alarm listener
   alarmListener = (alarm) => {
     console.log(`Alarm triggered: ${alarm.name}`);
@@ -306,4 +304,6 @@ export const handleListeners = (masterController: IMasterController) => {
       });
     }
   });
+  // A failed registration can retry after removing the partial listeners.
+  listenersInitialized = true;
 };
