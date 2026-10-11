@@ -276,6 +276,7 @@ function makeHost() {
     walletStateGeneration: 0,
     isCreatingWallet: false,
     recoveryJournalPending: false,
+    resetRateLimitState: () => undefined,
     authenticationMutex: new AsyncMutex(),
     isAnyKeyringUnlocked: () => unlocked,
     isUnlocked: () => unlocked,

@@ -195,6 +195,7 @@ describe('explicit seed recovery transaction', () => {
       walletStateGeneration: 0,
       isCreatingWallet: false,
       recoveryJournalPending: false,
+      resetRateLimitState: jest.fn(),
       authenticationMutex: new AsyncMutex(),
       isAnyKeyringUnlocked: () => unlocked,
       isUnlocked: () => unlocked,

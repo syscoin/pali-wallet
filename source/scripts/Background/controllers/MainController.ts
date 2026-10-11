@@ -1615,6 +1615,8 @@ class MainController {
 
     try {
       const stored = await chromeStorage.getItem(this.RATE_LIMIT_STORAGE_KEY);
+      // A committed recovery can reset authentication while this read waits.
+      if (this.rateLimitInitialized) return;
       if (stored && typeof stored === 'object') {
         const { failedAttempts, lastFailedTime } = stored as {
           failedAttempts: number;
@@ -1690,9 +1692,14 @@ class MainController {
   /**
    * Reset rate limiting on successful authentication
    */
-  private async resetRateLimit(): Promise<void> {
+  private resetRateLimitState(): void {
     this.failedUnlockAttempts = 0;
     this.lastFailedUnlockTime = 0;
+    this.rateLimitInitialized = true;
+  }
+
+  private async resetRateLimit(): Promise<void> {
+    this.resetRateLimitState();
     await this.saveRateLimitState();
   }
 
@@ -1743,6 +1750,8 @@ class MainController {
   }
 
   private async unlockWithRateLimit(pwd: string, generation: number) {
+    this.assertCurrentWalletSession(generation);
+    await this.prepareWalletRecoveryAccess();
     this.assertCurrentWalletSession(generation);
     console.log('[MainController] Attempting to unlock wallet');
 

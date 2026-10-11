@@ -48,6 +48,7 @@ type RecoveryHost = {
   isUnlocked: () => boolean;
   lock: () => void;
   recoveryJournalPending: boolean;
+  resetRateLimitState: () => void;
   resetWalletState: (options?: { resetNetworks?: boolean }) => Promise<void>;
   walletSessionGeneration: number;
   walletStateGeneration: number;
@@ -401,6 +402,22 @@ const recoveryAccountRecords = (accounts: any) =>
         })
     );
 
+const retireCommittedJournal = async (
+  context: WalletRecoveryContext,
+  wallet?: RecoveryHost
+) => {
+  // The new password owns the committed vault. Retain its journal if clearing
+  // the old password's durable lockout fails, so restart can safely retry.
+  await context.storage.setItem('pali_rate_limit_state', {
+    failedAttempts: 0,
+    lastFailedTime: 0,
+  });
+  wallet?.resetRateLimitState();
+  await context.storage.removeItem(JOURNAL_KEY);
+  if (wallet) wallet.recoveryJournalPending = false;
+  walletPersistenceGate.blocked = false;
+};
+
 const reconcileWithinLock = async (
   context: WalletRecoveryContext
 ): Promise<boolean> => {
@@ -413,8 +430,7 @@ const reconcileWithinLock = async (
   const journal = await validateJournal(stored);
   if (journal.committedFingerprint) {
     await assertCommittedRecords(current, journal);
-    await context.storage.removeItem(JOURNAL_KEY);
-    walletPersistenceGate.blocked = false;
+    await retireCommittedJournal(context);
     return false;
   }
   // One batch restores the old pair and state while nulling any scoped records
@@ -505,9 +521,7 @@ export const prepareWalletRecoveryAccess = async (
     if (!journal.committedFingerprint)
       throw new Error('Reload the extension to finish wallet recovery');
     await assertCommittedRecords(current, journal);
-    await context.storage.removeItem(JOURNAL_KEY);
-    wallet.recoveryJournalPending = false;
-    walletPersistenceGate.blocked = false;
+    await retireCommittedJournal(context, wallet);
   });
 };
 
@@ -516,9 +530,7 @@ const cleanupCommittedRecovery = async (
   context: WalletRecoveryContext
 ) => {
   try {
-    await context.storage.removeItem(JOURNAL_KEY);
-    wallet.recoveryJournalPending = false;
-    walletPersistenceGate.blocked = false;
+    await retireCommittedJournal(context, wallet);
   } catch {
     // Keep the committed pair and journal. No signing/mutation may proceed
     // until cleanup succeeds or cold startup reconciles the durable marker.
