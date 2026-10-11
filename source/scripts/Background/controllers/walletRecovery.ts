@@ -616,7 +616,16 @@ export const runWalletSetup = async (
       assertCurrent();
       assertLocked(wallet);
       wallet.recoveryJournalPending = true;
-      await context.storage.setItem(JOURNAL_KEY, candidate);
+      try {
+        await context.storage.setItem(JOURNAL_KEY, candidate);
+      } catch (error) {
+        // A failed acknowledgement may still have saved the backup. Release
+        // admission only after a successful read proves no journal exists.
+        const pending = await context.storage.getItems([JOURNAL_KEY]);
+        if (pending[JOURNAL_KEY] === undefined || pending[JOURNAL_KEY] === null)
+          wallet.recoveryJournalPending = false;
+        throw error;
+      }
       journal = candidate;
     });
     try {

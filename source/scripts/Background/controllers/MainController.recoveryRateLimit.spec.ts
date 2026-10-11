@@ -410,6 +410,135 @@ describe('seed recovery unlock throttle', () => {
     expect(await wallet.getRemainingLockoutTime()).toBe(300);
   });
 
+  it.each([undefined, null])(
+    'admits ordinary unlock when the initial journal write fails and a read proves no backup exists: %s',
+    async (absentJournal) => {
+      if (absentJournal === null) records[JOURNAL] = null;
+      const before = clone(records);
+      const initialize = jest.spyOn(wallet, 'createWalletExclusive');
+      const reset = jest.spyOn(wallet, 'resetWalletState');
+      failedSetKey = JOURNAL;
+
+      await expect(recover()).rejects.toMatchObject({
+        message: 'controlled recovery cleanup write failure',
+      });
+
+      expect(records).toEqual(before);
+      expect(initialize).not.toHaveBeenCalled();
+      expect(reset).not.toHaveBeenCalled();
+      expect(wallet.isCreatingWallet).toBe(false);
+      expect(wallet.recoveryJournalPending).toBe(false);
+      expect(wallet.getWalletSetupStatus()).toBeUndefined();
+      await expect(wallet.unlock(OLD_PASSWORD)).resolves.toEqual({
+        canLogin: true,
+      });
+      expect(keyring.unlock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('keeps a persisted initial journal closed after a lost acknowledgement, then safely restores it on restart', async () => {
+    const before = clone(records);
+    const initialize = jest.spyOn(wallet, 'createWalletExclusive');
+    const reset = jest.spyOn(wallet, 'resetWalletState');
+    failedSetKey = JOURNAL;
+    failAfterSet = true;
+
+    await expect(recover()).rejects.toMatchObject({
+      message: 'controlled recovery cleanup write failure',
+    });
+
+    expect(initialize).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    expect(records[JOURNAL].committedFingerprint).toBeUndefined();
+    const { [JOURNAL]: backup, ...unchanged } = records;
+    expect(backup.before['state-vault-60'].accounts.Imported[7].xprv).toBe(
+      'synthetic-imported-ciphertext'
+    );
+    expect(unchanged).toEqual(before);
+    expect(wallet.recoveryJournalPending).toBe(true);
+    expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
+    await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
+      'finish wallet recovery'
+    );
+    expect(keyring.unlock).not.toHaveBeenCalled();
+
+    await finishColdRecovery();
+    expect(records).toEqual(before);
+    expect(walletPersistenceGate.blocked).toBe(false);
+    expect(store.getState().vault.accounts.Imported[7].xprv).toBe(
+      'synthetic-imported-ciphertext'
+    );
+    await expect(wallet.unlock(OLD_PASSWORD)).resolves.toEqual({
+      canLogin: true,
+    });
+  });
+
+  it.each([false, true])(
+    'fails closed when the initial journal write and verification read fail (write applied: %s)',
+    async (writeApplied) => {
+      const before = clone(records);
+      const initialize = jest.spyOn(wallet, 'createWalletExclusive');
+      const reset = jest.spyOn(wallet, 'resetWalletState');
+      failedSetKey = JOURNAL;
+      failAfterSet = writeApplied;
+      failedReadKey = JOURNAL;
+
+      await expect(recover()).rejects.toMatchObject({
+        message: 'controlled restored vault read failure',
+      });
+
+      expect(initialize).not.toHaveBeenCalled();
+      expect(reset).not.toHaveBeenCalled();
+      expect(wallet.recoveryJournalPending).toBe(true);
+      expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
+      expect(records[JOURNAL] !== undefined).toBe(writeApplied);
+      const { [JOURNAL]: backup, ...unchanged } = records;
+      if (writeApplied) expect(backup.before).toBeDefined();
+      expect(unchanged).toEqual(before);
+      await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
+        'finish wallet recovery'
+      );
+      expect(keyring.unlock).not.toHaveBeenCalled();
+
+      await finishColdRecovery();
+      expect(records).toEqual(before);
+      expect(walletPersistenceGate.blocked).toBe(false);
+      await expect(wallet.unlock(OLD_PASSWORD)).resolves.toEqual({
+        canLogin: true,
+      });
+    }
+  );
+
+  it('preserves a different journal found after the initial write fails and does not admit unlock', async () => {
+    const before = clone(records);
+    const otherJournal = { version: 1, preserved: 'synthetic prior backup' };
+    const write = chromeStorage.setItem;
+    jest
+      .spyOn(chromeStorage, 'setItem')
+      .mockImplementation(async (key, value) => {
+        if (key === JOURNAL) {
+          records[JOURNAL] = clone(otherJournal);
+          throw new Error('controlled journal write failure');
+        }
+        await write(key, value);
+      });
+    const initialize = jest.spyOn(wallet, 'createWalletExclusive');
+    const reset = jest.spyOn(wallet, 'resetWalletState');
+
+    await expect(recover()).rejects.toThrow('controlled journal write failure');
+
+    expect(records).toEqual({ ...before, [JOURNAL]: otherJournal });
+    expect(initialize).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    expect(wallet.recoveryJournalPending).toBe(true);
+    expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
+    await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
+      'Wallet recovery journal is invalid'
+    );
+    expect(keyring.unlock).not.toHaveBeenCalled();
+    expect(records[JOURNAL]).toEqual(otherJournal);
+  });
+
   it.each([false, true])(
     'keeps committed cleanup pending when throttle reset fails (write applied: %s), then retries on cold startup',
     async (writeApplied) => {
