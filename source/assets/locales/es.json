@@ -41,7 +41,6 @@
     "newPassword": "Nueva contraseña (mín. 12 caracteres)",
     "confirmPassword": "Confirmar contraseña",
     "atLeast": "Al menos 12 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial (!@#$%^&*...).",
-    "doNotForget": "No olvides guardar tu contraseña. Necesitarás esta contraseña para desbloquear tu billetera.",
     "suggestPassword": "Sugerir una contraseña fácil de recordar",
     "memorablePasswordHelp": "Esta es tu contraseña de desbloqueo, no tu Frase Secreta de Recuperación. Guárdala en tu gestor de contraseñas.",
     "passwordGenerationFailed": "No se pudo generar una contraseña segura. Introduce tu propia contraseña fuerte.",

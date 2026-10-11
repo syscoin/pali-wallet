@@ -41,7 +41,6 @@
     "newPassword": "Nova senha (mín. 12 caracteres)",
     "confirmPassword": "Confirmar senha",
     "atLeast": "Pelo menos 12 caracteres, 1 maiúscula, 1 minúscula, 1 número e 1 caractere especial (!@#$%^&*...).",
-    "doNotForget": "Não esqueça de salvar sua senha. Você precisará desta senha para desbloquear sua carteira.",
     "suggestPassword": "Sugerir uma senha fácil de lembrar",
     "memorablePasswordHelp": "Esta é sua senha de desbloqueio, não sua Frase de Recuperação Secreta. Salve-a no seu gerenciador de senhas.",
     "passwordGenerationFailed": "Não foi possível gerar uma senha segura. Digite sua própria senha forte.",

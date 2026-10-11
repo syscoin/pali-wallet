@@ -41,7 +41,6 @@
     "newPassword": "New password (min 12 chars)",
     "confirmPassword": "Confirm password",
     "atLeast": "At least 12 characters, 1 uppercase, 1 lowercase, 1 number, and 1 special character (!@#$%^&*...).",
-    "doNotForget": "Do not forget to save your password. You will need this password to unlock your wallet.",
     "suggestPassword": "Suggest a memorable password",
     "memorablePasswordHelp": "This is your unlock password, not your Secret Recovery Phrase. Save it in your password manager.",
     "passwordGenerationFailed": "Could not generate a secure password. Enter your own strong password.",
