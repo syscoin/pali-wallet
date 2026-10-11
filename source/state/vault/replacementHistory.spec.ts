@@ -353,6 +353,122 @@ describe('replacement history reducer refresh', () => {
     expect(settlement(original, state)).toBe('replaced');
   });
 
+  it.each([
+    [undefined, 'intermediate cancellation'],
+    [SMART, 'intermediate cancellation'],
+    [undefined, 'latest speedup'],
+    [SMART, 'latest speedup'],
+  ])(
+    'retains pending cancellation metadata across popup rehydration until %s owner / %s wins',
+    (owner, winningAttempt) => {
+      const accountType = owner
+        ? KeyringAccountType.SmartAccount
+        : KeyringAccountType.HDAccount;
+      const metadata = owner ? { smartAccountExecutionFrom: owner } : {};
+      const cancellationHash = hash('d');
+      const cancellation = tx(cancellationHash, {
+        to: SENDER,
+        value: '0',
+        isCancel: true,
+        isReplaced: true,
+        status: 'replaced',
+        replacesHash: PARENT,
+        replacementRootHash: ROOT,
+        ...metadata,
+      });
+      const pendingSpeedup = incomingWinner({
+        blockNumber: null,
+        confirmations: 0,
+      });
+      let state = insert(initial(), root(metadata), accountType);
+      state = insert(
+        state,
+        tx(PARENT, {
+          isSpeedUp: true,
+          isReplaced: true,
+          status: 'replaced',
+          replacesHash: ROOT,
+          replacementRootHash: ROOT,
+          ...metadata,
+        }),
+        accountType
+      );
+      state = insert(state, cancellation, accountType);
+      state = insert(
+        state,
+        localWinner({ replacesHash: cancellationHash, ...metadata }),
+        accountType
+      );
+
+      // The provider only returns the newest pending attempt; another attempt
+      // with this nonce can still mine. Closing the popup must preserve intent.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        state = refresh(state, [pendingSpeedup], accountType);
+        state = JSON.parse(JSON.stringify(state));
+        const retainedCancel = rows(state, accountType).find(
+          (row) => row.hash === cancellationHash
+        );
+        expect(retainedCancel).toMatchObject({
+          isCancel: true,
+          replacesHash: PARENT,
+          replacementRootHash: ROOT,
+          type: 2,
+          r: '0xabc',
+          s: '0xdef',
+          v: 1,
+          ...metadata,
+        });
+        expect(settlement(retainedCancel, state, accountType)).toBe(
+          'replacementPending'
+        );
+      }
+
+      const cancellationWon = winningAttempt === 'intermediate cancellation';
+      const minedHash = cancellationWon ? cancellationHash : WINNER;
+      const losingHash = cancellationWon ? WINNER : cancellationHash;
+      // Both explorer rows omit wallet intent, type and signatures. Previously
+      // recorded metadata must bind to the winning hash, never to its sibling.
+      state = refresh(
+        state,
+        [
+          incomingWinner({ hash: minedHash }),
+          incomingWinner({
+            hash: losingHash,
+            blockNumber: null,
+            confirmations: 0,
+          }),
+        ],
+        accountType
+      );
+      expect(
+        rows(state, accountType)
+          .map((row) => row.hash)
+          .sort()
+      ).toEqual([ROOT, minedHash].sort());
+      const winner = rows(state, accountType).find(
+        (row) => row.hash === minedHash
+      );
+      expect(winner).toMatchObject({
+        isCancel: true,
+        replacementRootHash: ROOT,
+        type: 2,
+        r: '0xabc',
+        s: '0xdef',
+        v: 1,
+        ...metadata,
+      });
+      expect(Boolean(winner.isSpeedUp)).toBe(!cancellationWon);
+      expect(settlement(winner, state, accountType)).toBe('confirmed');
+      expect(
+        settlement(
+          rows(state, accountType).find((row) => row.hash === ROOT),
+          state,
+          accountType
+        )
+      ).toBe('replaced');
+    }
+  );
+
   it.each([undefined, SMART])(
     'retains the public root and metadata when a strong outer winner refresh omits intent/type/signature (AA owner %s)',
     (owner) => {
