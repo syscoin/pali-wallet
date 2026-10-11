@@ -192,7 +192,9 @@ const matchesDomain = (value: unknown, protocol: OrderProtocol) =>
   value.name === (protocol === '0x' ? 'ZeroEx' : 'Seaport') &&
   (protocol === '0x'
     ? value.version === '1.0.0'
-    : value.version === '1.1' || value.version === '1.6') &&
+    : value.version === '1.1' ||
+      value.version === '1.5' ||
+      value.version === '1.6') &&
   uint(value.chainId) !== null &&
   isAddress(value.verifyingContract);
 
@@ -301,12 +303,18 @@ export const getTypedOrderReview = (
         !validZeroEx(data.message)
       )
         return unrecognized;
+      // The buyer pays fees separately from the sale price. Only a fee paid
+      // directly to the maker counts as a signed return to that creator.
+      const maker = (data.message.maker as string).toLowerCase();
+      const makerFee = (data.message.fees as RecordValue[]).some(
+        (fee) =>
+          (fee.recipient as string).toLowerCase() === maker &&
+          (uint(fee.amount) as bigint) > BigInt(0)
+      );
       if (
         uint(data.message.direction) === BigInt(0) &&
         uint(data.message.erc20TokenAmount) === BigInt(0) &&
-        (data.message.fees as RecordValue[]).every(
-          (fee) => uint(fee.amount) === BigInt(0)
-        )
+        !makerFee
       )
         warnings.push('send.nftOrderZeroPayment');
     } else {

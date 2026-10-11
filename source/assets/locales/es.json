@@ -397,7 +397,7 @@
     "nftOrderReviewTitle": "Revisión de la orden de {{protocol}}",
     "nftOrderWarningTitle": "Revisa las condiciones de la orden",
     "nftOrderAuthorization": "Firmar una orden puede autorizar transferencias de activos cuando se ejecute. No envía una transacción ahora.",
-    "nftOrderZeroPayment": "El creador de la orden ofrece un NFT sin recibir tokens a cambio. Continúa solo si es intencional, por ejemplo, un regalo.",
+    "nftOrderZeroPayment": "La orden no incluye un pago en tokens al creador por el NFT. Continúa solo si estas condiciones son intencionales, por ejemplo, para un regalo.",
     "nftOrderNoReturn": "La orden no incluye activos que el creador vaya a recibir a cambio. Continúa solo si es intencional, por ejemplo, un regalo.",
     "nftOrderReviewLimit": "Basado únicamente en los datos firmados. Pali no ha verificado el contrato, la propiedad, las autorizaciones ni si esta orden puede ejecutarse. Revisa todas las condiciones en Datos.",
     "nftOrderUnrecognized": "Pali no puede resumir de forma fiable este formato de orden. Revisa todos los datos firmados en Datos antes de decidir.",

@@ -397,7 +397,7 @@
     "nftOrderReviewTitle": "Vérification de l’ordre {{protocol}}",
     "nftOrderWarningTitle": "Vérifiez les conditions de l’ordre",
     "nftOrderAuthorization": "Signer un ordre peut autoriser des transferts d’actifs lorsqu’il est exécuté. Cela n’envoie pas de transaction maintenant.",
-    "nftOrderZeroPayment": "Le créateur de l’ordre propose un NFT sans paiement en jetons en retour. Ne continuez que si cela est voulu, par exemple pour un cadeau.",
+    "nftOrderZeroPayment": "L’ordre ne prévoit aucun paiement en jetons au créateur pour le NFT. Ne continuez que si ces conditions sont voulues, par exemple pour un cadeau.",
     "nftOrderNoReturn": "L’ordre ne prévoit aucun actif à recevoir en retour par son créateur. Ne continuez que si cela est voulu, par exemple pour un cadeau.",
     "nftOrderReviewLimit": "Basé uniquement sur les données signées. Pali n’a pas vérifié le contrat, la propriété, les autorisations ni si cet ordre peut être exécuté. Consultez les conditions complètes dans Données.",
     "nftOrderUnrecognized": "Pali ne peut pas résumer ce format d’ordre de manière fiable. Consultez toutes les données signées dans Données avant de décider.",

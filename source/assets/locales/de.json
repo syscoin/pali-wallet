@@ -397,7 +397,7 @@
     "nftOrderReviewTitle": "{{protocol}}-Auftrag prüfen",
     "nftOrderWarningTitle": "Prüfe die Auftragsbedingungen",
     "nftOrderAuthorization": "Das Signieren eines Auftrags kann bei dessen Ausführung Vermögensübertragungen autorisieren. Es sendet jetzt keine Transaktion.",
-    "nftOrderZeroPayment": "Der Auftragsersteller bietet ein NFT ohne Token-Zahlung als Gegenleistung an. Fahre nur fort, wenn dies beabsichtigt ist, etwa als Geschenk.",
+    "nftOrderZeroPayment": "Der Auftrag sieht keine Token-Zahlung an den Ersteller für das NFT vor. Fahre nur fort, wenn diese Bedingungen beabsichtigt sind, etwa für ein Geschenk.",
     "nftOrderNoReturn": "Der Auftrag sieht keine Vermögenswerte als Gegenleistung für den Auftragsersteller vor. Fahre nur fort, wenn dies beabsichtigt ist, etwa als Geschenk.",
     "nftOrderReviewLimit": "Basiert nur auf den signierten Daten. Pali hat den Vertrag, die Eigentumsverhältnisse, die Freigaben und die Ausführbarkeit dieses Auftrags nicht geprüft. Prüfe die vollständigen Bedingungen unter Daten.",
     "nftOrderUnrecognized": "Pali kann dieses Auftragsformat nicht zuverlässig zusammenfassen. Prüfe die vollständigen signierten Daten unter Daten, bevor du dich entscheidest.",

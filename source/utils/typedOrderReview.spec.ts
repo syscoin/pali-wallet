@@ -182,13 +182,75 @@ describe('deterministic typed-order review', () => {
     expect(getTypedOrderReview(payload)).toEqual(recognized('0x'));
   });
 
-  it.each([OTHER, OFFERER])(
-    'does not claim zero token payment when a positive fee goes to %s',
-    (recipient) => {
+  it.each([
+    {
+      name: 'a positive third-party fee',
+      maker: OFFERER,
+      fees: [{ recipient: OTHER, amount: '1', feeData: '0x' }],
+      warnings: ['send.nftOrderZeroPayment'],
+    },
+    {
+      name: 'a positive fee to the maker',
+      maker: OFFERER,
+      fees: [{ recipient: OFFERER, amount: '1', feeData: '0x' }],
+      warnings: [],
+    },
+    {
+      name: 'a mixed-case fee recipient matching the maker',
+      maker: OFFERER,
+      fees: [
+        {
+          recipient: OFFERER.toUpperCase().replace('0X', '0x'),
+          amount: '1',
+          feeData: '0x',
+        },
+      ],
+      warnings: [],
+    },
+    {
+      name: 'a mixed-case maker matching the fee recipient',
+      maker: OFFERER.toUpperCase().replace('0X', '0x'),
+      fees: [{ recipient: OFFERER, amount: '1', feeData: '0x' }],
+      warnings: [],
+    },
+    {
+      name: 'positive fees to both a third party and the maker',
+      maker: OFFERER,
+      fees: [
+        { recipient: OTHER, amount: '1', feeData: '0x' },
+        { recipient: OFFERER, amount: '1', feeData: '0x' },
+      ],
+      warnings: [],
+    },
+    {
+      name: 'a zero maker fee and a positive third-party fee',
+      maker: OFFERER,
+      fees: [
+        { recipient: OFFERER, amount: '0', feeData: '0x' },
+        { recipient: OTHER, amount: '1', feeData: '0x' },
+      ],
+      warnings: ['send.nftOrderZeroPayment'],
+    },
+    {
+      name: 'multiple positive third-party fees',
+      maker: OFFERER,
+      fees: [
+        { recipient: OTHER, amount: '1', feeData: '0x' },
+        { recipient: ZERO, amount: '2', feeData: '0x' },
+      ],
+      warnings: ['send.nftOrderZeroPayment'],
+    },
+  ])(
+    "uses only the maker's signed return for $name",
+    ({ maker, fees, warnings }) => {
       const payload = trade();
       payload.message.erc20TokenAmount = '0';
-      payload.message.fees.push({ recipient, amount: '1', feeData: '0x' });
-      expect(getTypedOrderReview(payload)).toEqual(recognized('0x'));
+      payload.message.maker = maker;
+      payload.message.fees = fees;
+      expect(getTypedOrderReview(payload)).toEqual(recognized('0x', warnings));
+      expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+        recognized('0x', warnings)
+      );
     }
   );
 
@@ -212,7 +274,7 @@ describe('deterministic typed-order review', () => {
     expect(getTypedOrderReview(payload)).toEqual(recognized('0x'));
   });
 
-  it.each(['1.1', '1.6'])(
+  it.each(['1.1', '1.5', '1.6'])(
     'warns about no required return in the Seaport %s fixture despite its expired timestamp',
     (version) => {
       const payload = seaport();
@@ -222,6 +284,44 @@ describe('deterministic typed-order review', () => {
       );
     }
   );
+
+  it('recognizes a canonical Seaport 1.5 order with a positive creator return', () => {
+    const payload = seaport();
+    payload.domain.version = '1.5';
+    payload.message.consideration = [
+      {
+        ...payload.message.consideration[0],
+        recipient: payload.message.offerer,
+      },
+    ];
+    expect(getTypedOrderReview(payload)).toEqual(recognized('Seaport'));
+    expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+      recognized('Seaport')
+    );
+  });
+
+  it.each([
+    [
+      'a changed signed schema',
+      (payload: any) => {
+        payload.types.OrderComponents[4].type = 'uint256';
+      },
+    ],
+    [
+      'extra unsigned consideration data',
+      (payload: any) => {
+        payload.message.consideration[0].hidden = '1';
+      },
+    ],
+  ])('does not recognize Seaport 1.5 with %s', (_name, change) => {
+    const payload = seaport();
+    payload.domain.version = '1.5';
+    change(payload);
+    expect(getTypedOrderReview(payload)).toEqual(unrecognized('Seaport'));
+    expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+      unrecognized('Seaport')
+    );
+  });
 
   it.each(['0', '1', '2', '3'])(
     'does not infer execution safety from Seaport order type %s',
