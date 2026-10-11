@@ -252,6 +252,10 @@ export const treatAndSortTransactions = (
 
     // Normal deduplication by hash
     const existing = txMap.get(id);
+    const sameTransaction =
+      existing &&
+      ('hash' in existing ? existing.hash : existing.txid).toLowerCase() ===
+        ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
 
     // Two mined rows under the same id with different block hashes mean a
     // reorg moved the transaction; the later-observed row (provider rows are
@@ -279,8 +283,8 @@ export const treatAndSortTransactions = (
       // If this is a new tx or has better status, it becomes our candidate
       const mergedTx = existing ? { ...tx } : tx;
 
-      // If we had an existing tx, preserve earliest timestamps
-      if (existing) {
+      // Timestamps belong to a hash, not the nonce shared by its replacements.
+      if (existing && sameTransaction) {
         const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
         const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
@@ -323,6 +327,7 @@ export const treatAndSortTransactions = (
       }
 
       if (
+        sameTransaction &&
         tx[TSTAMP_PROP] &&
         (!existing[TSTAMP_PROP] || tx[TSTAMP_PROP] < existing[TSTAMP_PROP])
       ) {
@@ -331,6 +336,7 @@ export const treatAndSortTransactions = (
       }
 
       if (
+        sameTransaction &&
         tx[BLOCKTIME_PROP] &&
         (!existing[BLOCKTIME_PROP] ||
           tx[BLOCKTIME_PROP] < existing[BLOCKTIME_PROP])

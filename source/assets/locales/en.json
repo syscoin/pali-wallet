@@ -204,6 +204,7 @@
     "recoveryPhrase": "Recovery Phrase"
   },
   "send": {
+    "smartAccountWrongNetwork": "This smart account belongs to another network. Switch networks or choose a different recipient.",
     "details": "Details",
     "sign": "Sign",
     "encryptKey": "Encrypt Key",

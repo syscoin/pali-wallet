@@ -48,6 +48,7 @@ import {
 } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
+import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import { formatGweiValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
@@ -116,17 +117,10 @@ export const SendConfirm = () => {
       ),
     [activeAccount?.address, currentEvmTransactions]
   );
-  const localEvmAddresses = useMemo(() => {
-    const addresses: string[] = [];
-    Object.values(accounts || {}).forEach((byId: any) => {
-      Object.values(byId || {}).forEach((account: any) => {
-        if (String(account?.address || '').startsWith('0x')) {
-          addresses.push(account.address);
-        }
-      });
-    });
-    return addresses;
-  }, [accounts]);
+  const { addresses: localEvmAddresses, incompatibleSmartAddresses } = useMemo(
+    () => getLocalEvmRecipients(accounts, activeNetwork),
+    [accounts, activeNetwork]
+  );
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
   // when using the default routing, state will have the tx data
@@ -228,6 +222,10 @@ export const SendConfirm = () => {
       trustedRecentRecipients,
     ]
   );
+
+  const recipientWrongNetwork =
+    !isBitcoinBased &&
+    incompatibleSmartAddresses.has((resolvedToAddress || toRaw).toLowerCase());
 
   // We always display addresses; ENS names are only used as input and resolved to addresses
 
@@ -470,6 +468,10 @@ export const SendConfirm = () => {
 
   const performConfirm = async () => {
     const submitEmitter = submission.controllerEmitter;
+    if (recipientWrongNetwork) {
+      alert.error(t('send.smartAccountWrongNetwork'));
+      return;
+    }
     if (recipientPoisoningCollision) {
       alert.error(
         t('send.addressPoisoningBlocked', {
@@ -1319,12 +1321,17 @@ export const SendConfirm = () => {
     }
   };
 
-  const handleConfirm = () =>
-    submission.run(performConfirm).catch((error) => {
+  const handleConfirm = () => {
+    if (recipientWrongNetwork) {
+      alert.error(t('send.smartAccountWrongNetwork'));
+      return;
+    }
+    return submission.run(performConfirm).catch((error) => {
       if (!submission.isActive()) return;
       logError('error', 'Transaction', error);
       alert.error(t('send.cantCompleteTxs'));
     });
+  };
 
   // Initialize fee for UTXO transactions
   useEffect(() => {
@@ -1342,7 +1349,7 @@ export const SendConfirm = () => {
   }, [isBitcoinBased, basicTxValues?.fee]);
 
   useEffect(() => {
-    if (!basicTxValues || isBitcoinBased) return;
+    if (!basicTxValues || isBitcoinBased || recipientWrongNetwork) return;
     const eipModeUnknown = isEIP1559Compatible === undefined;
 
     // Skip fee recalculation when using custom fees
@@ -1574,6 +1581,7 @@ export const SendConfirm = () => {
     isBitcoinBased,
     isEIP1559Compatible,
     activeNetwork.chainId,
+    recipientWrongNetwork,
     resolvedToAddress,
     customFee.isCustom,
     customFee.gasLimit,
@@ -1941,6 +1949,14 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </div>
+            {recipientWrongNetwork && (
+              <p
+                role="alert"
+                className="w-full mt-3 p-3 rounded-lg border border-warning-error text-warning-error text-xs"
+              >
+                {t('send.smartAccountWrongNetwork')}
+              </p>
+            )}
             {recipientPoisoningCollision && (
               <div className="w-full mt-3 p-3 rounded-lg border border-warning-error bg-warning-error bg-opacity-10">
                 <div className="flex items-start gap-2">
@@ -2328,6 +2344,7 @@ export const SendConfirm = () => {
                 confirmed ||
                 submission.blocked ||
                 Boolean(recipientPoisoningCollision) ||
+                recipientWrongNetwork ||
                 isCalculatingFees ||
                 (!isBitcoinBased && !!feeCalculationError)
               }

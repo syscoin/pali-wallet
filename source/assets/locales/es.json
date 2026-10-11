@@ -204,6 +204,7 @@
     "recoveryPhrase": "Frase de Recuperación"
   },
   "send": {
+    "smartAccountWrongNetwork": "Esta cuenta inteligente pertenece a otra red. Cambia de red o elige otro destinatario.",
     "details": "Detalles",
     "sign": "Firmar",
     "encryptKey": "Cifrar Clave",
