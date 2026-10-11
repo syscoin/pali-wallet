@@ -204,6 +204,7 @@
     "recoveryPhrase": "Wiederherstellungsphrase"
   },
   "send": {
+    "smartAccountWrongNetwork": "Dieses Smart-Konto gehört zu einem anderen Netzwerk. Wechsle das Netzwerk oder wähle einen anderen Empfänger.",
     "details": "Details",
     "sign": "Signieren",
     "encryptKey": "Schlüssel Verschlüsseln",

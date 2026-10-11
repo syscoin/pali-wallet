@@ -17,6 +17,7 @@ let mockReceiverValidator: (_: unknown, value: string) => Promise<void>;
 const mockSave = jest.fn();
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
+const mockAlert = { info: jest.fn(), error: jest.fn(), success: jest.fn() };
 const mockStatus = {
   isUnlocked: true,
   isLoading: false,
@@ -42,7 +43,7 @@ jest.mock('hooks/useController', () => ({
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
     navigate: mockNavigate,
-    alert: { info: jest.fn(), error: jest.fn(), success: jest.fn() },
+    alert: mockAlert,
     useCopyClipboard: () => [false, jest.fn()],
   }),
 }));
@@ -233,6 +234,167 @@ describe('send forms across wallet navigation', () => {
       .mockReset()
       .mockImplementation(() => new Promise(() => undefined));
   });
+
+  const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
+  const currentNetworkSmartAddress =
+    '0x4444444444444444444444444444444444444444';
+  const addSmartRecipients = () => {
+    mockState.vault.accounts.SmartAccount = {
+      0: {
+        id: 0,
+        label: 'Smart account on another network',
+        address: wrongNetworkSmartAddress,
+        isSmartAccount: true,
+        smartAccount: { chainId: 5700 },
+      },
+      1: {
+        id: 1,
+        label: 'Undeployed smart account on this network',
+        address: currentNetworkSmartAddress,
+        isSmartAccount: true,
+        smartAccount: { chainId: 1, isDeployed: false },
+      },
+    };
+    mockState.vault.accounts.HDAccount[1].label = 'Local EOA';
+  };
+
+  it('suggests only smart accounts belonging to the current network while keeping local EOAs', () => {
+    addSmartRecipients();
+    mockState.vault.accountTransactions = {
+      HDAccount: {
+        0: {
+          ethereum: {
+            1: [
+              {
+                from: mockState.vault.accounts.HDAccount[0].address,
+                to: wrongNetworkSmartAddress,
+                input: '0x',
+                isError: '0',
+              },
+            ],
+          },
+        },
+      },
+    };
+    render(<SendEth />);
+    fireEvent.focus(screen.getByPlaceholderText('send.receiver'));
+    expect(
+      screen.queryByRole('button', {
+        name: /Smart account on another network/,
+      })
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', {
+        name: new RegExp(wrongNetworkSmartAddress),
+      })
+    ).toBeNull();
+    expect(
+      screen.getByRole('button', {
+        name: /Undeployed smart account on this network/,
+      })
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Local EOA/ })).toBeTruthy();
+  });
+
+  it.each(['typed', 'restored'])(
+    'rejects a %s wrong-network smart recipient before advancing or preparing a transaction',
+    async (source) => {
+      addSmartRecipients();
+      if (source === 'restored') {
+        mockLocation.state = {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: wrongNetworkSmartAddress, amount: '1' },
+        };
+      }
+      render(<SendEth />);
+      if (source === 'typed') {
+        fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+          target: { value: wrongNetworkSmartAddress },
+        });
+        fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+          target: { value: '1' },
+        });
+      }
+      mockEmitter.mockClear();
+      await expect(
+        mockReceiverValidator(undefined, wrongNetworkSmartAddress)
+      ).rejects.toThrow('send.smartAccountWrongNetwork');
+      // Exercise onFinish directly as well: a stale validation result must not
+      // let a restored or manually entered recipient bypass the submit guard.
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'send.smartAccountWrongNetwork'
+      );
+      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(navigateWithContext).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects an ENS recipient resolving to a smart account on another network without advancing', async () => {
+    addSmartRecipients();
+    mockEmitter.mockImplementation(([, method]: string[]) =>
+      method === 'resolveEns'
+        ? Promise.resolve(wrongNetworkSmartAddress)
+        : new Promise(() => undefined)
+    );
+    render(<SendEth />);
+    fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+      target: { value: 'wrong-network.eth' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '1' },
+    });
+    mockEmitter.mockClear();
+    await act(async () => {
+      await expect(
+        mockReceiverValidator(undefined, 'wrong-network.eth')
+      ).rejects.toThrow('send.smartAccountWrongNetwork');
+    });
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    expect(navigateWithContext).not.toHaveBeenCalled();
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'send.smartAccountWrongNetwork'
+    );
+    expect(
+      mockEmitter.mock.calls.filter(([[, method]]) => method !== 'resolveEns')
+    ).toHaveLength(0);
+  });
+
+  it.each(['undeployed smart account', 'EOA'])(
+    'keeps a compatible %s valid for sending without a deployment lookup',
+    async (kind) => {
+      addSmartRecipients();
+      const receiver =
+        kind === 'EOA'
+          ? mockState.vault.accounts.HDAccount[1].address
+          : currentNetworkSmartAddress;
+      mockLocation.state = {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver, amount: '1' },
+      };
+      render(<SendEth />);
+      mockEmitter.mockClear();
+      await expect(
+        mockReceiverValidator(undefined, receiver)
+      ).resolves.toBeUndefined();
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(navigateWithContext).toHaveBeenCalledWith(
+        mockNavigate,
+        '/send/confirm',
+        expect.objectContaining({
+          tx: expect.objectContaining({ receivingAddress: receiver }),
+        }),
+        expect.any(Object)
+      );
+      expect(mockEmitter).not.toHaveBeenCalled();
+    }
+  );
 
   it.each(
     ['native', 'token'].flatMap((kind) =>

@@ -31,6 +31,7 @@ import {
 } from 'utils/addressPoisoning';
 import { parseEther, parseUnits, formatUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
+import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import {
   getAssetBalance,
   ellipsis,
@@ -140,6 +141,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Use valid (non-expired) ENS cache for security
   const ensCache = useSelector(selectValidEnsCache);
   const ensNameToAddress = useSelector(selectEnsNameToAddress);
+  const resolvedEnsRecipient = useRef<{
+    address: string;
+    input: string;
+  } | null>(null);
   const vaultActiveAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -165,17 +170,14 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       ),
     [activeAccount?.address, currentEvmTransactions]
   );
-  const localEvmAddresses = useMemo(() => {
-    const addresses: string[] = [];
-    Object.values(accounts || {}).forEach((byId: any) => {
-      Object.values(byId || {}).forEach((account: any) => {
-        if (String(account?.address || '').startsWith('0x')) {
-          addresses.push(account.address);
-        }
-      });
-    });
-    return addresses;
-  }, [accounts]);
+  const {
+    accounts: localRecipientAccounts,
+    addresses: localEvmAddresses,
+    incompatibleSmartAddresses,
+  } = useMemo(
+    () => getLocalEvmRecipients(accounts, activeNetwork),
+    [accounts, activeNetwork]
+  );
 
   // Disable MAX sends when there is a pending outgoing tx.
   // Many RPCs do not expose a reliable "pending spendable" balance, so allowing MAX
@@ -343,21 +345,19 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
       // Local accounts (EVM)
       try {
-        Object.values(accounts || {}).forEach((byId: any) => {
-          Object.values(byId || {}).forEach((acct: any) => {
-            const addressLower = String(acct?.address || '').toLowerCase();
-            const labelLower = String(acct?.label || '').toLowerCase();
-            if (!addressLower) return;
-            // Only show EVM-style addresses here
-            if (!addressLower.startsWith('0x')) return;
-            if (!q || addressLower.includes(q) || labelLower.includes(q)) {
-              results.push({
-                label: acct?.label || acct?.address,
-                address: acct.address,
-                type: 'account',
-              });
-            }
-          });
+        localRecipientAccounts.forEach((acct) => {
+          const addressLower = String(acct?.address || '').toLowerCase();
+          const labelLower = String(acct?.label || '').toLowerCase();
+          if (!addressLower) return;
+          // Only show EVM-style addresses here
+          if (!addressLower.startsWith('0x')) return;
+          if (!q || addressLower.includes(q) || labelLower.includes(q)) {
+            results.push({
+              label: acct?.label || acct?.address,
+              address: acct.address,
+              type: 'account',
+            });
+          }
         });
       } catch {}
 
@@ -365,6 +365,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       // recent. Incoming dust and explorer token-event placeholders are never
       // promoted into an address-selection surface.
       trustedRecentRecipients.forEach((address) => {
+        if (incompatibleSmartAddresses.has(address.toLowerCase())) return;
         const maybeName = (ensCache as any)?.[address]?.name;
         const display = maybeName || address;
         if (!q || String(display).toLowerCase().includes(q)) {
@@ -393,7 +394,12 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       }
       setSuggestions(deduped.slice(0, 10));
     },
-    [accounts, ensCache, trustedRecentRecipients]
+    [
+      localRecipientAccounts,
+      incompatibleSmartAddresses,
+      ensCache,
+      trustedRecentRecipients,
+    ]
   );
 
   // Save state when user blurs from input fields
@@ -571,6 +577,25 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     async (values: any) => {
       if (!isCurrentForm()) return;
       try {
+        const receiver = String(values.receiver || '');
+        const destination = receiver.toLowerCase().endsWith('.eth')
+          ? ensNameToAddress[receiver.toLowerCase()] ||
+            (resolvedEnsRecipient.current?.input === receiver.toLowerCase()
+              ? resolvedEnsRecipient.current.address
+              : null)
+          : receiver;
+        if (!destination) {
+          alert.error(t('send.unableToResolveEns'));
+          return;
+        }
+        if (
+          destination &&
+          incompatibleSmartAddresses.has(destination.toLowerCase())
+        ) {
+          alert.error(t('send.smartAccountWrongNetwork'));
+          return;
+        }
+        values = { ...values, receiver: destination };
         // Determine transaction type based on selected asset
         let transactionType: TransactionType;
         if (selectedAsset) {
@@ -683,6 +708,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       hasPendingOutgoingEvmTx,
       location.state?.returnContext,
       isCurrentForm,
+      incompatibleSmartAddresses,
+      ensNameToAddress,
     ]
   );
 
@@ -1199,6 +1226,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   }
 
                   const assertNotPoisoned = (address: string) => {
+                    if (incompatibleSmartAddresses.has(address.toLowerCase())) {
+                      throw new Error(t('send.smartAccountWrongNetwork'));
+                    }
                     const collision = findEvmAddressPoisoningCollision(
                       address,
                       trustedRecentRecipients,
@@ -1230,6 +1260,10 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                         new Error('Send form is no longer active.')
                       );
                     if (resolved) {
+                      resolvedEnsRecipient.current = {
+                        input: String(value).toLowerCase(),
+                        address: resolved,
+                      };
                       assertNotPoisoned(resolved);
                       // Replace input with resolved address for submission
                       form.setFieldValue('receiver', resolved);

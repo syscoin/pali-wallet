@@ -204,6 +204,7 @@
     "recoveryPhrase": "恢复短语"
   },
   "send": {
+    "smartAccountWrongNetwork": "此智能账户属于其他网络。请切换网络或选择其他收款人。",
     "details": "详情",
     "sign": "签名",
     "encryptKey": "加密密钥",

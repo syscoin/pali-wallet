@@ -204,6 +204,7 @@
     "recoveryPhrase": "リカバリーフレーズ"
   },
   "send": {
+    "smartAccountWrongNetwork": "このスマートアカウントは別のネットワークに属しています。ネットワークを切り替えるか、別の送信先を選択してください。",
     "details": "詳細",
     "sign": "署名",
     "encryptKey": "キー暗号化",

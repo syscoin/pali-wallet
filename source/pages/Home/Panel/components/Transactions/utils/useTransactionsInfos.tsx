@@ -98,7 +98,12 @@ export const useTransactionsListConfig = (
         if (a[blocktime] < b[blocktime]) {
           return 1;
         }
-        return 0;
+        // Equal-second EVM attempts must not follow changing refresh order.
+        return isBitcoinBased
+          ? 0
+          : String(a.hash || '')
+              .toLowerCase()
+              .localeCompare(String(b.hash || '').toLowerCase());
       });
   }, [userTransactions, isBitcoinBased, chainId, blocktime]);
 

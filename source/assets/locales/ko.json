@@ -204,6 +204,7 @@
     "recoveryPhrase": "복구 구문"
   },
   "send": {
+    "smartAccountWrongNetwork": "이 스마트 계정은 다른 네트워크에 속해 있습니다. 네트워크를 전환하거나 다른 수신자를 선택하세요.",
     "details": "세부사항",
     "sign": "서명",
     "encryptKey": "키 암호화",

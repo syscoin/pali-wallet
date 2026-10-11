@@ -9,6 +9,9 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import { INetworkType } from 'types/network';
+import { TransactionType } from 'types/transactions';
+
 import { SendConfirm } from './Confirm';
 
 const mockControllerEmitter = jest.fn();
@@ -25,12 +28,13 @@ let mockPublishedAuth: typeof mockAuth | undefined;
 const mockAlert = { error: jest.fn(), success: jest.fn(), info: jest.fn() };
 let mockLocation: any;
 let mockEntry = 0;
+let mockConfirmClick: () => void;
 let mockNavigationScope = {
   account: 'synthetic-account',
   network: 'synthetic-network',
 };
 
-const mockState = {
+const mockState: any = {
   vault: {
     activeNetwork: { chainId: 57, currency: 'SYS' },
     isBitcoinBased: true,
@@ -83,11 +87,14 @@ jest.mock('state/vault/selectors', () => ({
   selectValidEnsCache: () => ({}),
 }));
 jest.mock('components/index', () => ({
-  Button: ({ children, onClick, disabled }: any) => (
-    <button onClick={onClick} disabled={disabled}>
-      {children}
-    </button>
-  ),
+  Button: ({ children, onClick, disabled }: any) => {
+    if (children === 'buttons.confirm') mockConfirmClick = onClick;
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    );
+  },
   Icon: () => null,
   Tooltip: ({ children }: any) => <>{children}</>,
   IconButton: ({ children, onClick }: any) => (
@@ -143,6 +150,16 @@ beforeEach(() => {
     navigate(context?.returnRoute || '/home');
   });
   mockState.vault.isBitcoinBased = true;
+  mockState.vault.activeNetwork = { chainId: 57, currency: 'SYS' };
+  mockState.vault.accounts = {
+    HDAccount: {
+      0: {
+        id: 0,
+        address: 'synthetic-sender',
+        balances: { syscoin: '100' },
+      },
+    },
+  };
   mockNavigationScope = {
     account: 'synthetic-account',
     network: 'synthetic-network',
@@ -176,6 +193,107 @@ beforeEach(() => {
     return undefined;
   });
 });
+
+const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
+const currentNetworkSmartAddress = '0x4444444444444444444444444444444444444444';
+const prepareEvmRecipientConfirmation = (receiver: string) => {
+  mockState.vault.isBitcoinBased = false;
+  mockState.vault.activeNetwork = {
+    kind: INetworkType.Ethereum,
+    chainId: 5700,
+    currency: 'TSYS',
+    url: 'https://rpc.example',
+  };
+  const sender = '0x1111111111111111111111111111111111111111';
+  mockState.vault.accounts.HDAccount[0] = {
+    id: 0,
+    address: sender,
+    balances: { ethereum: '100' },
+  };
+  mockState.vault.accounts.SmartAccount = {
+    0: {
+      id: 0,
+      address: wrongNetworkSmartAddress,
+      isSmartAccount: true,
+      smartAccount: { chainId: 57042 },
+    },
+    1: {
+      id: 1,
+      address: currentNetworkSmartAddress,
+      isSmartAccount: true,
+      smartAccount: { chainId: 5700, isDeployed: false },
+    },
+  };
+  mockLocation.state.tx = {
+    sender,
+    receivingAddress: receiver,
+    amount: '1',
+    transactionType: TransactionType.NATIVE_ETH,
+    defaultGasLimit: 21000,
+  };
+  mockLocation.state.returnContext.returnRoute = '/send/eth';
+  mockControllerEmitter.mockImplementation(async (path: string[]) => {
+    const method = path.at(-1);
+    if (method === 'refreshActiveAccountBalances')
+      return { nativeBalance: '100' };
+    if (method === 'getRecommendedGasPrice') return '1000000000';
+    if (method === 'getTxGasLimit') return '21000';
+    if (method === 'sendAndSaveEthTransaction')
+      return { hash: 'synthetic-evm-hash' };
+    return undefined;
+  });
+};
+
+it('blocks a stale wrong-network smart recipient in confirmation before fee preparation or submission', async () => {
+  prepareEvmRecipientConfirmation(wrongNetworkSmartAddress);
+  render(<SendConfirm />);
+  const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+  expect(screen.getByText('send.smartAccountWrongNetwork')).toBeTruthy();
+  expect(confirm.hasAttribute('disabled')).toBe(true);
+  expect(mockControllerEmitter).not.toHaveBeenCalled();
+  // Calling the captured callback bypasses the DOM disabled attribute and
+  // verifies that the submission boundary independently rejects the recipient.
+  await act(async () => {
+    mockConfirmClick();
+  });
+  expect(mockAlert.error).toHaveBeenCalledWith('send.smartAccountWrongNetwork');
+  expect(mockControllerEmitter).not.toHaveBeenCalled();
+  expect(mockClearNavigationState).not.toHaveBeenCalled();
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it.each(['undeployed smart account', 'EOA'])(
+  'allows confirmation to send to a compatible %s using the normal transaction path',
+  async (kind) => {
+    const receiver =
+      kind === 'EOA'
+        ? '0x2222222222222222222222222222222222222222'
+        : currentNetworkSmartAddress;
+    prepareEvmRecipientConfirmation(receiver);
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.confirm' })
+          .hasAttribute('disabled')
+      ).toBe(false)
+    );
+    expect(screen.queryByText('send.smartAccountWrongNetwork')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(mockControllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'sendAndSaveEthTransaction'],
+        [expect.objectContaining({ to: receiver }), true],
+        expect.any(Number)
+      )
+    );
+    expect(
+      mockControllerEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'getCode'
+      )
+    ).toBe(false);
+  }
+);
 
 it.each([
   { state: undefined, isBitcoinBased: true },
