@@ -1,6 +1,6 @@
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, ready_for_review]
 jobs:
   test:
     name: yarn test-all
@@ -41,6 +41,44 @@ jobs:
           path: |
             e2e/visual/__screenshots__/
             e2e/artifacts/
+          retention-days: 14
+  conformance:
+    name: test dapp conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    concurrency:
+      group: test-dapp-conformance-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '23.11.1'
+          check-latest: true
+      - run: yarn install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+      - name: Install local conformance chain fixture
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1
+        with:
+          version: v1.7.1
+      - name: Build extension
+        run: yarn build:chrome
+      - name: Run isolated test dapp conformance
+        env:
+          PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          PALI_TEST_DAPP_REVISION: ${{ github.sha }}
+          PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
+        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts
+      - name: Upload conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: conformance-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: e2e/artifacts/
           retention-days: 14
   secrets:
     name: Create env file with gh secrets

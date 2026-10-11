@@ -15,9 +15,13 @@ PALI_TEST_DAPP_ANVIL="$(command -v anvil)" \
 yarn e2e:harness test-dapp-conformance.journey.spec.ts
 ```
 
-The existing nightly/manual `e2e-harness.yml` workflow installs Anvil v1.7.1
-through a pinned Foundry action and labels the report with the tested
-`github.sha`. This journey does not create a separate schedule.
+The `test dapp conformance` job in `main.yml` runs this focused journey on
+every PR, alongside the unit and visual checks. It uses only disposable local
+accounts and chains, requires no wallet secrets, cancels superseded runs for
+the same PR, and uploads the report, screenshots, videos and failure traces.
+The broader wallet journeys remain in the existing nightly/manual
+`e2e-harness.yml` workflow. Both workflows install Anvil v1.7.1 through a pinned
+Foundry action and label reports with the tested checkout's `github.sha`.
 
 The journey owns and stops two Anvil processes, chains 31337 and 31338. Default
 loopback ports are 28545 and 28546; set `PALI_TEST_DAPP_PORT_A` and
