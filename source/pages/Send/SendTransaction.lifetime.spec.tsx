@@ -184,6 +184,152 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('rejects a malformed requested value without signing or latching the spinner', async () => {
+  mockQuery.tx.value = 'invalid';
+  await prepare();
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledWith('send.txWillFail');
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.cancel',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+  await act(async () => mockButtonHandlers['buttons.cancel']());
+  expect(mockClose).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  { legacy: true, typed: true },
+  { legacy: true, typed: false },
+  { legacy: false, typed: true },
+])(
+  'honors supported zero legacy fees and refuses unsupported zero EIP-1559 fees %p',
+  async ({ legacy, typed }) => {
+    if (typed) mockQuery.tx.type = legacy ? '0x0' : '0x2';
+    if (legacy) mockQuery.tx.gasPrice = '0x0';
+    else {
+      mockQuery.tx.maxFeePerGas = '0x0';
+      mockQuery.tx.maxPriorityFeePerGas = '0x0';
+    }
+    mockFee.mockImplementation(async () => ({
+      feeDetails: {
+        gasLimit: 21000,
+        gasPrice: 2,
+        maxFeePerGas: 2,
+        maxPriorityFeePerGas: 1,
+      },
+      feeSafety: legacy
+        ? { gasPrice: { requested: 0, recommended: 2 } }
+        : {
+            maxFeePerGas: { requested: 0, recommended: 2 },
+            maxPriorityFeePerGas: { requested: 0, recommended: 1 },
+          },
+      formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000) },
+      nonce: 0,
+      isInvalidTxData: false,
+      gasLimitError: false,
+    }));
+    await prepare();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useDappFeeRequest' })
+    );
+    if (legacy)
+      expect(
+        screen.getByText('send.customFeeBelowEstimateWarning')
+      ).toBeDefined();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const submitted = mockEmitter.mock.calls.find(
+      ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+    );
+    if (legacy) {
+      expect(submitted).toBeDefined();
+      expect(BigNumber.from(submitted![1][0].gasPrice).isZero()).toBe(true);
+    } else {
+      expect(submitted).toBeUndefined();
+      expect(mockAlert.error).toHaveBeenCalledWith('send.invalidFeeRate');
+      expect(mockEmitter).not.toHaveBeenCalled();
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.cancel',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+    }
+  }
+);
+
+it('refuses a stale/direct smart-account legacy review before requesting a signature', async () => {
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  mockQuery.tx.gasPrice = '0x1';
+  await prepare();
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledWith('send.cantCompleteTxs');
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.cancel',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+});
+
+it.each(['chain', 'rpc', 'account', 'slip44'])(
+  'a stale transaction review cannot submit after the %s context changes',
+  async (field) => {
+    await prepare();
+    const confirm = mockButtonHandlers['buttons.confirm'];
+    if (field === 'chain') mockState.vault.activeNetwork.chainId = 2;
+    if (field === 'rpc')
+      mockState.vault.activeNetwork.url = 'https://rpc.other';
+    if (field === 'slip44') mockState.vaultGlobal.activeSlip44 = 1;
+    if (field === 'account')
+      mockState.vault.accounts.HDAccount[0].address = `0x${'33'.repeat(20)}`;
+    await act(async () => confirm());
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockAlert.error).toHaveBeenCalledWith(
+      'transactions.psbtSigningContextChanged'
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.cancel',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  }
+);
+
+it('passes the immutable reviewed context after a delayed balance refresh', async () => {
+  await prepare();
+  let finish!: (value: any) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  act(() => {
+    void mockButtonHandlers['buttons.confirm']();
+  });
+  mockState.vault.activeNetwork.chainId = 2;
+  await act(async () => finish({ nativeBalance: '1' }));
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+  );
+  expect(submitted![1][4].expectedContext).toEqual({
+    account: { type: 'HDAccount', id: 0, address: `0x${'11'.repeat(20)}` },
+    chainId: 1,
+    rpcUrl: 'https://rpc.example',
+    slip44: 60,
+  });
+});
+
 it.each(['before render', 'after render'])(
   'SendTransaction cancellation blocks confirmation %s during cleanup',
   async (phase) => {

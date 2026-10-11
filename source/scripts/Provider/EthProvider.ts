@@ -9,10 +9,17 @@ import {
   IEnhancedRequestContext,
   MethodRoute,
 } from 'scripts/Background/controllers/message-handler/types';
+import store from 'state/store';
+import { KeyringAccountType } from 'types/network';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { normalizeDappTransaction } from 'utils/dappTransaction';
 import { getAddress } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 export const EthProvider = (
@@ -20,9 +27,11 @@ export const EthProvider = (
   context?: IEnhancedRequestContext
 ) => {
   const sendTransaction = async (params: ITransactionParams) => {
+    const tx = normalizeDappTransaction(params);
+    const { wallet } = getController();
     const {
       ethereumTransaction: { web3Provider },
-    } = getController().wallet;
+    } = wallet;
 
     // Safety check: ensure web3Provider exists for EVM networks
     if (!web3Provider) {
@@ -34,7 +43,6 @@ export const EthProvider = (
     }
 
     // Inject the connected account's address as 'from' if missing
-    const tx = { ...params };
     if (!tx.from) {
       const { dapp } = getController();
       const connectedAccount = dapp.getAccount(host);
@@ -48,14 +56,111 @@ export const EthProvider = (
         );
       }
     }
+    const { vault, vaultGlobal } = store.getState();
+    const { activeNetwork, activeAccount: accountMeta, accounts } = vault;
+    if (
+      tx.chainId !== undefined &&
+      BigInt(tx.chainId) !== BigInt(activeNetwork.chainId)
+    )
+      throw ethErrors.rpc.invalidParams(
+        'Transaction chainId does not match the active network'
+      );
+    const activeAccount = accounts[accountMeta.type]?.[accountMeta.id];
+    const contextChanged = () => {
+      throw ethErrors.provider.unauthorized(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    if (
+      !activeAccount?.address ||
+      activeAccount.address.toLowerCase() !== tx.from.toLowerCase()
+    )
+      return contextChanged();
+    // Account selection consent runs in the pipeline before this handler.
+    // Keep that selected context across RPC work and the coordinator's delay.
+    const approvedContext: IEvmTransactionContext = {
+      account: {
+        address: activeAccount.address,
+        id: accountMeta.id,
+        type: accountMeta.type,
+      },
+      chainId: activeNetwork.chainId,
+      rpcUrl: activeNetwork.url,
+      sessionGeneration: wallet.getWalletSessionGeneration(),
+      slip44: vaultGlobal.activeSlip44,
+    };
+    const accountFlags = [
+      Boolean(activeAccount.isLedgerWallet),
+      Boolean(activeAccount.isTrezorWallet),
+      Boolean(activeAccount.isSmartAccount),
+    ];
+    const assertCurrentContext = () => {
+      const { vault: current, vaultGlobal: currentGlobal } = store.getState();
+      const account =
+        current.accounts[current.activeAccount.type]?.[
+          current.activeAccount.id
+        ];
+      if (
+        current.isBitcoinBased ||
+        current.activeNetwork.chainId !== approvedContext.chainId ||
+        current.activeNetwork.url !== approvedContext.rpcUrl ||
+        currentGlobal.activeSlip44 !== approvedContext.slip44 ||
+        current.activeAccount.id !== approvedContext.account.id ||
+        current.activeAccount.type !== approvedContext.account.type ||
+        account?.address?.toLowerCase() !==
+          approvedContext.account.address.toLowerCase() ||
+        Boolean(account?.isLedgerWallet) !== accountFlags[0] ||
+        Boolean(account?.isTrezorWallet) !== accountFlags[1] ||
+        Boolean(account?.isSmartAccount) !== accountFlags[2] ||
+        wallet.getWalletSessionGeneration() !==
+          approvedContext.sessionGeneration
+      )
+        contextChanged();
+    };
+    assertCurrentContext();
+    if (
+      tx.nonce !== undefined &&
+      (activeAccount.isLedgerWallet ||
+        activeAccount.isTrezorWallet ||
+        activeAccount.isSmartAccount ||
+        [
+          KeyringAccountType.Ledger,
+          KeyringAccountType.Trezor,
+          KeyringAccountType.SmartAccount,
+        ].includes(accountMeta.type))
+    )
+      throw ethErrors.provider.unsupportedMethod(
+        'An explicit transaction nonce is not supported for this account'
+      );
+    if (
+      tx.accessList?.length &&
+      (activeAccount.isSmartAccount ||
+        accountMeta.type === KeyringAccountType.SmartAccount)
+    )
+      throw ethErrors.provider.unsupportedMethod(
+        'Transaction access lists are not supported for smart accounts'
+      );
+    if (
+      (activeAccount.isSmartAccount ||
+        accountMeta.type === KeyringAccountType.SmartAccount) &&
+      (tx.type === '0x0' || tx.gasPrice !== undefined)
+    )
+      throw ethErrors.provider.unsupportedMethod(
+        'Smart accounts support EIP-1559 fee overrides, not legacy transaction fees.'
+      );
     // Get current block to check EIP1559 compatibility
     const currentBlock = await web3Provider.getBlock('latest');
+    assertCurrentContext();
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
+    assertCurrentContext();
+    if (isLegacyTx && (tx.type === '0x2' || tx.accessList !== undefined))
+      throw ethErrors.provider.unsupportedMethod(
+        'This network does not support EIP-1559 transactions'
+      );
     const decodedTx = (await decodeTransactionData(
-      tx,
+      tx as ITransactionParams,
       web3Provider,
-      getController().wallet
+      wallet
     )) as IDecodedTx;
+    assertCurrentContext();
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     // Always use SendEthTx route, pass transaction type as metadata
@@ -74,7 +179,7 @@ export const EthProvider = (
 
     // Pass transaction metadata for the component to handle appropriately
     const txMetadata = {
-      isLegacyTx,
+      isLegacyTx: isLegacyTx || tx.type === '0x0' || tx.gasPrice !== undefined,
       isContractInteraction,
       isApproval,
       isDeployment,
@@ -88,15 +193,23 @@ export const EthProvider = (
     if (context) {
       return requestCoordinator.coordinatePopupRequest(
         context,
-        () =>
-          popupPromise({
+        () => {
+          assertCurrentContext();
+          return popupPromise({
             signal: context?.originalRequest.signal,
             sender: context?.originalRequest.sender,
             host,
-            data: { tx, decodedTx, txMetadata, external: true },
+            data: {
+              tx,
+              decodedTx,
+              txMetadata,
+              approvedContext,
+              external: true,
+            },
             route,
             eventName,
-          }),
+          });
+        },
         route
       );
     } else {
@@ -104,7 +217,7 @@ export const EthProvider = (
         signal: context?.originalRequest.signal,
         sender: context?.originalRequest.sender,
         host,
-        data: { tx, decodedTx, txMetadata, external: true },
+        data: { tx, decodedTx, txMetadata, approvedContext, external: true },
         route,
         eventName,
       });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -22,6 +22,7 @@ import { handleTransactionError } from 'utils/errorHandling';
 import { hashMessage } from 'utils/ethersV6Compat';
 import { arrayify, isHexString } from 'utils/ethersV6Compat';
 import { getNetworkChain } from 'utils/network';
+import { getPersonalSignReview } from 'utils/personalSignReview';
 import {
   assertPaliErc7739TypedDataV4Method,
   encodeSmartAccountAuthenticatorSignature,
@@ -48,6 +49,9 @@ const EthSign: React.FC<ISign> = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [isPqSigning, setIsPqSigning] = useState(false);
   const [message, setMessage] = useState<string>('');
+  const signingRef = React.useRef<'ready' | 'submitting' | 'completed'>(
+    'ready'
+  );
   const [blacklistWarning, setBlacklistWarning] = useState<{
     address?: string;
     fieldName?: string;
@@ -122,6 +126,21 @@ const EthSign: React.FC<ISign> = () => {
 
     throw { message: t('send.signingForWrongAddress') };
   };
+
+  const reviewPersonalSign = () => {
+    try {
+      return getPersonalSignReview(getPersonalSignMessage(), host, address);
+    } catch {
+      return { message: '', error: 'send.signingForWrongAddress' as const };
+    }
+  };
+
+  const personalSignReview = useMemo(
+    () => (data.eventName === 'personal_sign' ? reviewPersonalSign() : null),
+    [data.eventName, data[0], data[1], host, address]
+  );
+  const currentPersonalSignReviewRef = React.useRef(personalSignReview);
+  currentPersonalSignReviewRef.current = personalSignReview;
 
   const getEthSignPayload = () => {
     if (isActiveAccountAddress(data[0])) {
@@ -230,10 +249,23 @@ const EthSign: React.FC<ISign> = () => {
   };
 
   const onSubmit = async () => {
+    if (signingRef.current !== 'ready' || confirmed) return;
+    // Recheck the current account/origin and the original signed bytes before
+    // any signer call, including callbacks captured before a state change.
+    if (data.eventName === 'personal_sign') {
+      if (personalSignReview !== currentPersonalSignReviewRef.current) return;
+      const review = reviewPersonalSign();
+      if (review.error) {
+        setErrorMsg(t(review.error));
+        return;
+      }
+    }
+    signingRef.current = 'submitting';
     setLoading(true);
 
     // Safety check: signing is only for EVM networks
     if (isBitcoinBased) {
+      signingRef.current = 'ready';
       setLoading(false);
       setErrorMsg(t('send.messageSigningNotAvailable'));
       createTemporaryAlarm({
@@ -338,6 +370,7 @@ const EthSign: React.FC<ISign> = () => {
         }
       }
       setConfirmed(true);
+      signingRef.current = 'completed';
       setLoading(false);
 
       // Dispatch event right before closing
@@ -374,8 +407,23 @@ const EthSign: React.FC<ISign> = () => {
         delayInSeconds: 40,
         callback: () => window.close(),
       });
+    } finally {
+      if (signingRef.current === 'submitting') signingRef.current = 'ready';
     }
   };
+
+  // Review locally so display and confirmation share the same validation.
+  useEffect(() => {
+    if (!personalSignReview) return;
+    setMessage(personalSignReview.message);
+    setErrorMsg(
+      isBitcoinBased
+        ? t('send.ethSigningNotAvailable')
+        : personalSignReview.error
+        ? t(personalSignReview.error)
+        : ''
+    );
+  }, [personalSignReview, isBitcoinBased, t]);
 
   // Handle initial data loading
   useEffect(() => {
@@ -403,104 +451,6 @@ const EthSign: React.FC<ISign> = () => {
       setErrorMsg(t('send.ethSigningNotAvailable'));
       return;
     }
-    if (data.eventName === 'personal_sign') {
-      let msg = '';
-      try {
-        msg = getPersonalSignMessage();
-      } catch {
-        setErrorMsg(t('send.signingForWrongAddress'));
-        return;
-      }
-
-      // Check if the message is hex encoded UTF-8 text or just a string starting with 0x
-      if (msg.startsWith('0x') && msg.length > 2) {
-        // Try to parse as hex, but only if it's likely to be encoded text
-        // Ethereum addresses are 42 characters (0x + 40 hex), so skip those
-        if (msg.length === 42) {
-          // This is likely an Ethereum address, show as-is
-          setMessage(msg);
-        } else {
-          // This might be hex-encoded text, try to parse it
-          controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'parsePersonalMessage'],
-            [msg]
-          )
-            .then((res: string) => {
-              // Only use parsed result if it contains readable text
-              if (res && /^[\x20-\x7E\s]*$/.test(res)) {
-                setMessage(res);
-
-                // Check for SIWE (Sign-In With Ethereum) messages
-                // These messages contain an embedded address that should match the signing account
-                const siwePattern =
-                  /wants you to sign in with your Ethereum account:\s*\n\s*(0x[a-fA-F0-9]{40})/i;
-                const match = res.match(siwePattern);
-
-                if (match && match[1]) {
-                  const embeddedAddress = match[1];
-                  if (
-                    embeddedAddress.toLowerCase() !==
-                    activeAccount.address.toLowerCase()
-                  ) {
-                    setErrorMsg(t('send.signingForWrongAddress'));
-                  }
-                }
-
-                // Check if domain in SIWE message matches the requesting domain
-                const domainPattern = /^([^\s]+)\s+wants you to sign in/i;
-                const domainMatch = res.match(domainPattern);
-
-                if (domainMatch && domainMatch[1]) {
-                  const messageDomain = domainMatch[1];
-                  if (messageDomain.toLowerCase() !== host.toLowerCase()) {
-                    setErrorMsg(t('send.suspiciousSignInRequest'));
-                  }
-                }
-              } else {
-                // Parsed result is not readable text, show original
-                setMessage(msg);
-              }
-            })
-            .catch(() => {
-              // If parsing fails, show the original message
-              setMessage(msg);
-            });
-        }
-      } else {
-        // Message is plain text, show it directly
-        setMessage(msg);
-
-        // Check for SIWE messages in plain text too
-        const siwePattern =
-          /wants you to sign in with your Ethereum account:\s*\n\s*(0x[a-fA-F0-9]{40})/i;
-        const match = msg.match(siwePattern);
-
-        if (match && match[1]) {
-          const embeddedAddress = match[1];
-          if (
-            embeddedAddress.toLowerCase() !==
-            activeAccount.address.toLowerCase()
-          ) {
-            setErrorMsg(t('send.signingForWrongAddress'));
-          }
-        }
-
-        // Check if domain in SIWE message matches the requesting domain
-        const domainPattern = /^([^\s]+)\s+wants you to sign in/i;
-        const domainMatch = msg.match(domainPattern);
-
-        if (domainMatch && domainMatch[1]) {
-          const messageDomain = domainMatch[1];
-          if (messageDomain.toLowerCase() !== host.toLowerCase()) {
-            setErrorMsg(
-              t('send.suspiciousSignInRequest') ||
-                "The site making the request is not the site you're signing into. This could be an attempt to steal your login credentials."
-            );
-          }
-        }
-      }
-    }
-
     if (data.eventName === 'eth_sign') {
       // eth_sign parameters should be [address, message]
       let messageToSign = '';
@@ -1440,7 +1390,7 @@ const EthSign: React.FC<ISign> = () => {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={confirmed}
+                disabled={confirmed || Boolean(personalSignReview?.error)}
                 loading={loading}
                 onClick={onSubmit}
               >

@@ -1,9 +1,13 @@
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
-import { INetwork } from 'types/network';
+import { INetwork, KeyringAccountType } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
 import { Block } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
+import {
+  EVM_TRANSACTION_CONTEXT_CHANGED,
+  IEvmTransactionContext,
+} from 'utils/evmTransactionContext';
 
 import { safeBigNumber } from './safeBigNumber';
 
@@ -14,16 +18,73 @@ const toGweiNumber = (value: BigNumber) => Number(value.toString()) / 1e9;
 
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
-  activeNetwork: INetwork
+  activeNetwork: INetwork,
+  approvedContext?: IEvmTransactionContext
 ) => {
   // Safety check: this function is only for EVM networks
-  const { isBitcoinBased } = store.getState().vault;
+  const { vault, vaultGlobal } = store.getState();
+  const { isBitcoinBased } = vault;
   if (isBitcoinBased) {
     throw new Error(
       'fetchGasAndDecodeFunction is not available on UTXO networks'
     );
   }
+  const account =
+    vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+  if (!account?.address) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+  const expectedContext: IEvmTransactionContext = approvedContext || {
+    account: {
+      address: account.address,
+      id: vault.activeAccount.id,
+      type: vault.activeAccount.type,
+    },
+    chainId: activeNetwork.chainId,
+    rpcUrl: activeNetwork.url,
+    slip44: vaultGlobal.activeSlip44,
+  };
+  const assertCurrentContext = () => {
+    const { vault: current, vaultGlobal: currentGlobal } = store.getState();
+    const currentAccount =
+      current.accounts[current.activeAccount.type]?.[current.activeAccount.id];
+    const unsupportedNonce =
+      dataTx.nonce !== undefined &&
+      (currentAccount?.isLedgerWallet ||
+        currentAccount?.isTrezorWallet ||
+        currentAccount?.isSmartAccount ||
+        [
+          KeyringAccountType.Ledger,
+          KeyringAccountType.Trezor,
+          KeyringAccountType.SmartAccount,
+        ].includes(current.activeAccount.type));
+    const unsupportedAccessList =
+      dataTx.accessList?.length &&
+      (currentAccount?.isSmartAccount ||
+        current.activeAccount.type === KeyringAccountType.SmartAccount);
+    if (
+      !expectedContext.account.address ||
+      current.isBitcoinBased ||
+      current.activeNetwork.chainId !== expectedContext.chainId ||
+      current.activeNetwork.url !== expectedContext.rpcUrl ||
+      activeNetwork.chainId !== expectedContext.chainId ||
+      activeNetwork.url !== expectedContext.rpcUrl ||
+      currentGlobal.activeSlip44 !== expectedContext.slip44 ||
+      current.activeAccount.id !== expectedContext.account.id ||
+      current.activeAccount.type !== expectedContext.account.type ||
+      currentAccount?.address?.toLowerCase() !==
+        expectedContext.account.address.toLowerCase() ||
+      (dataTx.from &&
+        dataTx.from.toLowerCase() !==
+          expectedContext.account.address.toLowerCase()) ||
+      (dataTx.chainId !== undefined &&
+        BigInt(dataTx.chainId) !== BigInt(expectedContext.chainId)) ||
+      unsupportedNonce ||
+      unsupportedAccessList
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+  };
+  assertCurrentContext();
   const blockData = await controllerEmitter(['wallet', 'getCurrentBlock'], []);
+  assertCurrentContext();
   const currentBlock = blockData as Block;
 
   const gasLimitFromCurrentBlock = Math.floor(
@@ -45,6 +106,7 @@ export const fetchGasAndDecodeFunction = async (
       'getFeeDataWithDynamicMaxPriorityFeePerGas',
     ]);
   } catch (error) {
+    assertCurrentContext();
     console.error('Failed to fetch fee data:', error);
     // Use default fallback values if fee fetch fails
     feeData = {
@@ -52,6 +114,7 @@ export const fetchGasAndDecodeFunction = async (
       maxPriorityFeePerGas: BigNumber.from('0x3b9aca00'), // 1 Gwei fallback
     };
   }
+  assertCurrentContext();
 
   const networkMaxFeePerGas = safeBigNumber(
     feeData?.maxFeePerGas || feeData?.gasPrice,
@@ -102,13 +165,23 @@ export const fetchGasAndDecodeFunction = async (
     ? maxBigNumber(dappGasPrice, networkGasPrice)
     : networkGasPrice;
 
-  const nonce = (await controllerEmitter(
-    ['wallet', 'getRecommendedEvmNonce'],
-    [dataTx.from]
-  )) as number; // This also need possibility for customization //todo: adjust to get from new keyringmanager
+  const nonce =
+    dataTx.nonce !== undefined
+      ? BigNumber.from(dataTx.nonce).toNumber()
+      : ((await controllerEmitter(
+          ['wallet', 'getRecommendedEvmNonce'],
+          [dataTx.from]
+        )) as number);
+  assertCurrentContext();
+  const isLegacyTransaction =
+    dataTx.type === '0x0' ||
+    (dataTx.type !== '0x2' &&
+      dataTx.gasPrice !== undefined &&
+      dataTx.maxFeePerGas === undefined);
 
   // Preserve the transaction type based on what dApp sent
   const formTx: {
+    accessList?: ITransactionParams['accessList'];
     chainId: number;
     data: string;
     from: string;
@@ -118,8 +191,13 @@ export const fetchGasAndDecodeFunction = async (
     maxPriorityFeePerGas: BigNumber;
     nonce: number;
     to: string;
+    type?: ITransactionParams['type'];
     value: any; // BigNumber or compatible type
   } = {
+    ...(dataTx.accessList !== undefined
+      ? { accessList: dataTx.accessList }
+      : {}),
+    ...(dataTx.type !== undefined ? { type: dataTx.type } : {}),
     data: dataTx.data,
     from: dataTx.from,
     to: dataTx.to,
@@ -127,7 +205,7 @@ export const fetchGasAndDecodeFunction = async (
       ? safeBigNumber(dataTx.value, '0x0', 'tx value')
       : BigNumber.from(0),
     nonce: nonce,
-    chainId: activeNetwork.chainId,
+    chainId: expectedContext.chainId,
     gasLimit: BigNumber.from(0), //todo: adjust to get from new keyringmanager
     // Always initialize these fields, will be overwritten below
     maxFeePerGas: BigNumber.from(0),
@@ -135,7 +213,7 @@ export const fetchGasAndDecodeFunction = async (
   };
 
   // If dApp sent gasPrice, make it a Type 0 (legacy) transaction
-  if (dataTx?.gasPrice && !dataTx?.maxFeePerGas) {
+  if (isLegacyTransaction) {
     formTx.gasPrice = legacyGasPrice.toString();
     // For legacy transactions, set EIP-1559 fields to gasPrice value for compatibility
     formTx.maxPriorityFeePerGas = legacyGasPrice;
@@ -147,6 +225,9 @@ export const fetchGasAndDecodeFunction = async (
   }
 
   const baseTx = {
+    ...(dataTx.accessList !== undefined
+      ? { accessList: dataTx.accessList }
+      : {}),
     from: dataTx.from,
     to: dataTx.to,
     value: dataTx?.value ? dataTx.value : 0,
@@ -194,10 +275,12 @@ export const fetchGasAndDecodeFunction = async (
       );
     }
   } catch (error) {
+    assertCurrentContext();
     if (!error.message.includes('reverted')) {
       isInvalidTxData = true;
     }
   }
+  assertCurrentContext();
 
   let estimatedGasLimit: BigNumber | null = null;
   try {
@@ -216,9 +299,11 @@ export const fetchGasAndDecodeFunction = async (
       );
     }
   } catch (error) {
+    assertCurrentContext();
     console.error(error);
     gasLimitError = true;
   }
+  assertCurrentContext();
 
   // Determine minimum gas based on transaction type
   // Simple ETH transfers (no data) need 42,000 gas
@@ -248,7 +333,6 @@ export const fetchGasAndDecodeFunction = async (
         fallbackGasLimit;
 
   // Check if this is a legacy transaction
-  const isLegacyTransaction = dataTx?.gasPrice && !dataTx?.maxFeePerGas;
 
   const gasLimitString = formTx.gasLimit.toString();
   const gasLimitNumber = parseInt(gasLimitString, 10);

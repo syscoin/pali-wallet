@@ -2,6 +2,7 @@ import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { normalizeDappTransaction } from 'utils/dappTransaction';
 import { assertProviderRequestBudget } from 'utils/requestPayloadBudget';
 
 import {
@@ -91,6 +92,62 @@ export const methodRequest = async (
     !Array.isArray(data.params)
   ) {
     data.params = [data.params];
+  }
+
+  if (data.method === 'eth_sendTransaction') {
+    if (!data.params || data.params.length !== 1)
+      throw ethErrors.rpc.invalidParams('Expected one transaction');
+    data.params = [normalizeDappTransaction(data.params[0])];
+  }
+  if (data.method === 'personal_sign') {
+    const params = data.params;
+    const isAddress = (value: unknown) =>
+      typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value);
+    if (
+      !params ||
+      params.length < 2 ||
+      !(
+        (isAddress(params[0]) && typeof params[1] === 'string') ||
+        (isAddress(params[1]) && typeof params[0] === 'string')
+      )
+    )
+      throw ethErrors.rpc.invalidParams(
+        'personal_sign requires a message and an account address'
+      );
+  }
+  if (
+    data.method === 'wallet_switchEthereumChain' ||
+    data.method === 'wallet_addEthereumChain'
+  ) {
+    const params = data.params;
+    const chain = params?.[0];
+    const chainId = chain?.chainId;
+    if (
+      !params ||
+      params.length !== 1 ||
+      !chain ||
+      typeof chain !== 'object' ||
+      Array.isArray(chain) ||
+      typeof chainId !== 'string' ||
+      !/^0x[\da-f]+$/i.test(chainId) ||
+      !Number.isSafeInteger(Number(chainId)) ||
+      Number(chainId) <= 0
+    )
+      throw ethErrors.rpc.invalidParams('Invalid chainId');
+    if (
+      data.method === 'wallet_addEthereumChain' &&
+      (!Array.isArray(chain.rpcUrls) ||
+        !chain.rpcUrls.length ||
+        chain.rpcUrls.some((url: unknown) => {
+          if (typeof url !== 'string') return true;
+          try {
+            return !['https:', 'http:'].includes(new URL(url).protocol);
+          } catch {
+            return true;
+          }
+        }))
+    )
+      throw ethErrors.rpc.invalidParams('Valid rpcUrls are required');
   }
 
   // Parse the method prefix and name
