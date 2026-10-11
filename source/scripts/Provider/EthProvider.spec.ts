@@ -418,6 +418,74 @@ describe('EthProvider transaction admission', () => {
     expect(popupMock).not.toHaveBeenCalled();
   });
 
+  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+    'rejects untyped %s on a legacy network before decoding or approval',
+    async (field) => {
+      rpc.getBlock.mockResolvedValue({});
+      const context = { originalRequest: {} } as any;
+      await expect(
+        EthProvider(HOST, context).sendTransaction({
+          ...transaction,
+          [field]: '0x1',
+        } as any)
+      ).rejects.toMatchObject({ code: 4200 });
+      expect(rpc.getBlock).toHaveBeenCalledTimes(1);
+      expect(rpc.getBlock).toHaveBeenCalledWith('latest');
+      expect(rpc.send).not.toHaveBeenCalled();
+      expect(decodeMock).not.toHaveBeenCalled();
+      expect(coordinateMock).not.toHaveBeenCalled();
+      expect(popupMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+    'rejects untyped zero %s before querying network compatibility',
+    async (field) => {
+      rpc.getBlock.mockResolvedValue({});
+      await expect(
+        EthProvider(HOST).sendTransaction({
+          ...transaction,
+          [field]: '0x0',
+        } as any)
+      ).rejects.toMatchObject({ code: 4200 });
+      expect(controllerMock).not.toHaveBeenCalled();
+      expectNoRpcOrPopup();
+    }
+  );
+
+  it('preserves untyped gasPrice-only requests on a legacy network', async () => {
+    rpc.getBlock.mockResolvedValue({});
+    await expect(
+      EthProvider(HOST).sendTransaction({
+        ...transaction,
+        gasPrice: '0x3b9aca00',
+      } as any)
+    ).resolves.toBe(HASH);
+    const data = popupMock.mock.calls[0][0].data;
+    expect(data.tx).toEqual({
+      ...transaction,
+      data: '0x',
+      gasPrice: '0x3b9aca00',
+    });
+    expect(data.txMetadata.isLegacyTx).toBe(true);
+  });
+
+  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+    'preserves untyped %s for EIP-1559 approval',
+    async (field) => {
+      await expect(
+        EthProvider(HOST).sendTransaction({
+          ...transaction,
+          [field]: '0x1',
+        } as any)
+      ).resolves.toBe(HASH);
+      const data = popupMock.mock.calls[0][0].data;
+      expect(data.tx).toEqual({ ...transaction, data: '0x', [field]: '0x1' });
+      expect(data.txMetadata.isLegacyTx).toBe(false);
+      expect(decodeMock).toHaveBeenCalledWith(data.tx, rpc, wallet);
+    }
+  );
+
   it('uses the request coordinator with the normalized transaction', async () => {
     const context = { originalRequest: { sender: { tab: { id: 7 } } } } as any;
     await EthProvider(HOST, context).sendTransaction({

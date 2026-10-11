@@ -151,7 +151,13 @@ export const EthProvider = (
     assertCurrentContext();
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
     assertCurrentContext();
-    if (isLegacyTx && (tx.type === '0x2' || tx.accessList !== undefined))
+    if (
+      isLegacyTx &&
+      (tx.type === '0x2' ||
+        tx.accessList !== undefined ||
+        tx.maxFeePerGas !== undefined ||
+        tx.maxPriorityFeePerGas !== undefined)
+    )
       throw ethErrors.provider.unsupportedMethod(
         'This network does not support EIP-1559 transactions'
       );
