@@ -13,6 +13,13 @@ let backgroundIsBitcoinBased: boolean;
 let holdChainReplies: boolean;
 let pendingChainReplies: string[];
 let onChainRequest: (() => void) | undefined;
+let holdProviderStateReplies: boolean;
+let pendingProviderStateReplies: string[];
+let onProviderStateRequest: (() => void) | undefined;
+let notifyOnGrant: boolean;
+let holdAccountReplies: boolean;
+let pendingAccountReplies: Array<{ id: string; result: string[] }>;
+let onAccountRequest: (() => void) | undefined;
 let notificationListeners: EventListener[];
 let postMessageMock: jest.SpyInstance;
 
@@ -25,6 +32,14 @@ const notify = (method: string, params: unknown) =>
 
 const exposedAccounts = () =>
   approved && unlocked && !backgroundIsBitcoinBased ? [ADDRESS] : [];
+
+const providerState = () => ({
+  accounts: exposedAccounts(),
+  chainId: connectedChainId,
+  networkVersion: String(parseInt(connectedChainId, 16)),
+  isBitcoinBased: backgroundIsBitcoinBased,
+  isUnlocked: unlocked,
+});
 
 const reply = (id: string, result: unknown) =>
   window.dispatchEvent(
@@ -46,6 +61,13 @@ beforeEach(() => {
   holdChainReplies = false;
   pendingChainReplies = [];
   onChainRequest = undefined;
+  holdProviderStateReplies = false;
+  pendingProviderStateReplies = [];
+  onProviderStateRequest = undefined;
+  notifyOnGrant = false;
+  holdAccountReplies = false;
+  pendingAccountReplies = [];
+  onAccountRequest = undefined;
   notificationListeners = [];
   const addEventListener = window.addEventListener.bind(window);
   jest
@@ -71,16 +93,23 @@ beforeEach(() => {
         }
         switch (message.data.method) {
           case 'wallet_getProviderState':
-            reply(message.id, {
-              accounts: exposedAccounts(),
-              chainId: connectedChainId,
-              networkVersion: String(parseInt(connectedChainId, 16)),
-              isBitcoinBased: backgroundIsBitcoinBased,
-              isUnlocked: unlocked,
-            });
+            if (holdProviderStateReplies) {
+              pendingProviderStateReplies.push(message.id);
+              onProviderStateRequest?.();
+            } else {
+              reply(message.id, providerState());
+            }
             break;
           case 'eth_accounts':
-            reply(message.id, exposedAccounts());
+            if (holdAccountReplies) {
+              pendingAccountReplies.push({
+                id: message.id,
+                result: exposedAccounts(),
+              });
+              onAccountRequest?.();
+            } else {
+              reply(message.id, exposedAccounts());
+            }
             break;
           case 'wallet_getPermissions':
             reply(message.id, approved ? [permission] : []);
@@ -97,6 +126,8 @@ beforeEach(() => {
               });
             } else {
               approved = true;
+              if (notifyOnGrant)
+                notify('pali_accountsChanged', exposedAccounts());
               reply(message.id, exposedAccounts());
             }
             break;
@@ -777,6 +808,203 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     expect(provider.accounts).toEqual([ADDRESS]);
     expect(provider.selectedAddress).toBe(ADDRESS);
     expect(accountsChanged.mock.calls).toEqual([[[ADDRESS]]]);
+  });
+
+  it('recovers an initial EVM grant when the unconnected origin missed network notifications', async () => {
+    approved = false;
+    backgroundIsBitcoinBased = true;
+    connectedChainId = '0x39';
+    const { provider } = await initialize();
+    const accountsChanged = jest.fn();
+    provider.on('accountsChanged', accountsChanged);
+    backgroundIsBitcoinBased = false;
+    connectedChainId = '0x7a69';
+    notifyOnGrant = true;
+    await expect(provider.request({ method: 'eth_chainId' })).resolves.toBe(
+      '0x7a69'
+    );
+    expect(provider.isBitcoinBased()).toBe(true);
+    await expect(
+      provider.request({ method: 'eth_requestAccounts' })
+    ).resolves.toEqual([ADDRESS]);
+    expect(provider.isBitcoinBased()).toBe(false);
+    expect(provider.accounts).toEqual([ADDRESS]);
+    expect(provider.selectedAddress).toBe(ADDRESS);
+    expect(accountsChanged.mock.calls).toEqual([[[ADDRESS]]]);
+    expect(
+      postMessageMock.mock.calls.filter(
+        ([message]) => message.data.method === 'wallet_getProviderState'
+      )
+    ).toHaveLength(2);
+    await provider.request({ method: 'eth_accounts' });
+    expect(
+      postMessageMock.mock.calls.filter(
+        ([message]) => message.data.method === 'wallet_getProviderState'
+      )
+    ).toHaveLength(2);
+  });
+
+  it.each(['lock', 'revocation'])(
+    'uses the current snapshot disclosure after %s during a first grant',
+    async (change) => {
+      approved = false;
+      backgroundIsBitcoinBased = true;
+      const { provider } = await initialize();
+      const accountsChanged = jest.fn();
+      provider.on('accountsChanged', accountsChanged);
+      backgroundIsBitcoinBased = false;
+      holdProviderStateReplies = true;
+      const snapshotStarted = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      const pending = provider.request({ method: 'eth_requestAccounts' });
+      await snapshotStarted;
+      if (change === 'lock') unlocked = false;
+      else approved = false;
+      reply(pendingProviderStateReplies[0], providerState());
+      await expect(pending).resolves.toEqual([ADDRESS]);
+      expect(provider.isBitcoinBased()).toBe(false);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(accountsChanged).not.toHaveBeenCalled();
+      expect(await provider._metamask.isUnlocked()).toBe(change !== 'lock');
+    }
+  );
+
+  it('does not let an old account snapshot replace newer network and account notifications', async () => {
+    approved = false;
+    backgroundIsBitcoinBased = true;
+    const { provider } = await initialize();
+    backgroundIsBitcoinBased = false;
+    holdProviderStateReplies = true;
+    const snapshotStarted = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_requestAccounts' });
+    await snapshotStarted;
+    const oldSnapshot = providerState();
+    const newerAccount = `0x${'22'.repeat(20)}`;
+    notify('pali_chainChanged', {
+      chainId: '0x3',
+      networkVersion: '3',
+      isBitcoinBased: false,
+    });
+    notify('pali_accountsChanged', [newerAccount]);
+    reply(pendingProviderStateReplies[0], oldSnapshot);
+    await expect(pending).resolves.toEqual([ADDRESS]);
+    expect(provider.chainId).toBe('0x3');
+    expect(provider.accounts).toEqual([newerAccount]);
+    expect(provider.selectedAddress).toBe(newerAccount);
+  });
+
+  it.each(['lock', 'revocation'])(
+    'rejects a captured old account snapshot after a %s notification',
+    async (change) => {
+      approved = false;
+      backgroundIsBitcoinBased = true;
+      const { provider } = await initialize();
+      backgroundIsBitcoinBased = false;
+      holdProviderStateReplies = true;
+      const snapshotStarted = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      const pending = provider.request({ method: 'eth_requestAccounts' });
+      await snapshotStarted;
+      const oldSnapshot = providerState();
+      expect(oldSnapshot.accounts).toEqual([ADDRESS]);
+      expect(oldSnapshot.isUnlocked).toBe(true);
+      if (change === 'lock') {
+        notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+      } else {
+        notify('pali_accountsChanged', []);
+      }
+      reply(pendingProviderStateReplies[0], oldSnapshot);
+      await expect(pending).resolves.toEqual([ADDRESS]);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(provider.isBitcoinBased()).toBe(true);
+      expect(await provider._metamask.isUnlocked()).toBe(change !== 'lock');
+    }
+  );
+
+  it('rejects an old unlocked snapshot after a lock notification that matches the cached locked state', async () => {
+    approved = false;
+    unlocked = false;
+    backgroundIsBitcoinBased = true;
+    const { provider } = await initialize();
+    expect(await provider._metamask.isUnlocked()).toBe(false);
+    backgroundIsBitcoinBased = false;
+    unlocked = true;
+    holdProviderStateReplies = true;
+    const snapshotStarted = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_requestAccounts' });
+    await snapshotStarted;
+    const oldSnapshot = providerState();
+    notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+    reply(pendingProviderStateReplies[0], oldSnapshot);
+    await expect(pending).resolves.toEqual([ADDRESS]);
+    expect(await provider._metamask.isUnlocked()).toBe(false);
+    expect(provider.accounts).toEqual([]);
+    expect(provider.selectedAddress).toBeNull();
+  });
+
+  it.each(['lock', 'revocation'])(
+    'does not restore accounts from a normal RPC reply delayed beyond %s',
+    async (change) => {
+      const { provider } = await initialize();
+      holdAccountReplies = true;
+      const accountRequestStarted = new Promise<void>((resolve) => {
+        onAccountRequest = resolve;
+      });
+      const pending = provider.request({ method: 'eth_accounts' });
+      await accountRequestStarted;
+      const oldReply = pendingAccountReplies[0];
+      expect(oldReply.result).toEqual([ADDRESS]);
+      if (change === 'lock')
+        notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+      else notify('pali_accountsChanged', []);
+      reply(oldReply.id, oldReply.result);
+      await expect(pending).resolves.toEqual([ADDRESS]);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(provider.isConnected()).toBe(true);
+    }
+  );
+
+  it('bounds first-grant metadata to two seconds and ignores a snapshot arriving after timeout', async () => {
+    approved = false;
+    backgroundIsBitcoinBased = true;
+    const { provider } = await initialize();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    backgroundIsBitcoinBased = false;
+    holdProviderStateReplies = true;
+    const snapshotStarted = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_requestAccounts' });
+    let settled = false;
+    pending.then(() => {
+      settled = true;
+    });
+    await snapshotStarted;
+    await jest.advanceTimersByTimeAsync(1999);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toEqual([ADDRESS]);
+    expect(provider.isBitcoinBased()).toBe(true);
+    expect(provider.accounts).toEqual([]);
+    reply(pendingProviderStateReplies[0], providerState());
+    await jest.advanceTimersByTimeAsync(0);
+    expect(provider.isBitcoinBased()).toBe(true);
+    expect(provider.accounts).toEqual([]);
+    holdProviderStateReplies = false;
+    await expect(provider.request({ method: 'eth_accounts' })).resolves.toEqual(
+      [ADDRESS]
+    );
+    expect(provider.isBitcoinBased()).toBe(false);
+    expect(provider.accounts).toEqual([ADDRESS]);
   });
 
   it.each([true, false])(
