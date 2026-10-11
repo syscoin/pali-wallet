@@ -463,7 +463,19 @@ test('official test dapp: isolated standard provider conformance', async () => {
           );
           data.domain.chainId = LOCAL_CHAINS[0].chainId;
           if (variant !== 'no-return') data.message.maker = address;
-          if (variant === 'zero-payment') data.message.erc20TokenAmount = '0';
+          if (variant === 'zero-payment') {
+            data.message.erc20TokenAmount = '0';
+            // A fee paid to someone else must not hide absent creator payment.
+            data.message.fees = [
+              {
+                recipient: '0x0000000000000000000000000000000000000001',
+                amount: '1',
+                feeData: '0x',
+              },
+            ];
+          }
+          // Exercise documented version coverage in the real approval UI.
+          if (variant === 'no-return') data.domain.version = '1.4';
           const original = JSON.stringify(data);
           const id = await startRequest(page, 'eth_signTypedData_v4', [
             address,

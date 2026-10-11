@@ -6,6 +6,7 @@ const ZERO = `0x${'00'.repeat(20)}`;
 const ZERO_HASH = `0x${'00'.repeat(32)}`;
 const MAX_UINT256 =
   '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+const SEAPORT_VERSIONS = ['1.1', '1.2', '1.3', '1.4', '1.5', '1.6'];
 const fields = (entries: [string, string][]) =>
   entries.map(([name, type]) => ({ name, type }));
 const domainType = () =>
@@ -274,7 +275,7 @@ describe('deterministic typed-order review', () => {
     expect(getTypedOrderReview(payload)).toEqual(recognized('0x'));
   });
 
-  it.each(['1.1', '1.5', '1.6'])(
+  it.each(SEAPORT_VERSIONS)(
     'warns about no required return in the Seaport %s fixture despite its expired timestamp',
     (version) => {
       const payload = seaport();
@@ -282,46 +283,63 @@ describe('deterministic typed-order review', () => {
       expect(getTypedOrderReview(payload)).toEqual(
         recognized('Seaport', ['send.nftOrderNoReturn'])
       );
+      expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+        recognized('Seaport', ['send.nftOrderNoReturn'])
+      );
     }
   );
 
-  it('recognizes a canonical Seaport 1.5 order with a positive creator return', () => {
-    const payload = seaport();
-    payload.domain.version = '1.5';
-    payload.message.consideration = [
-      {
-        ...payload.message.consideration[0],
-        recipient: payload.message.offerer,
-      },
-    ];
-    expect(getTypedOrderReview(payload)).toEqual(recognized('Seaport'));
-    expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
-      recognized('Seaport')
-    );
+  it.each(SEAPORT_VERSIONS)(
+    'recognizes a canonical Seaport %s order with a positive creator return',
+    (version) => {
+      const payload = seaport();
+      payload.domain.version = version;
+      payload.message.consideration = [
+        {
+          ...payload.message.consideration[0],
+          recipient: payload.message.offerer,
+        },
+      ];
+      expect(getTypedOrderReview(payload)).toEqual(recognized('Seaport'));
+      expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+        recognized('Seaport')
+      );
+    }
+  );
+
+  describe.each(SEAPORT_VERSIONS)('Seaport %s exact format', (version) => {
+    it.each([
+      [
+        'a changed signed schema',
+        (payload: any) => {
+          payload.types.OrderComponents[4].type = 'uint256';
+        },
+      ],
+      [
+        'extra unsigned consideration data',
+        (payload: any) => {
+          payload.message.consideration[0].hidden = '1';
+        },
+      ],
+    ])('does not recognize %s', (_name, change) => {
+      const payload = seaport();
+      payload.domain.version = version;
+      change(payload);
+      expect(getTypedOrderReview(payload)).toEqual(unrecognized('Seaport'));
+      expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
+        unrecognized('Seaport')
+      );
+    });
   });
 
-  it.each([
-    [
-      'a changed signed schema',
-      (payload: any) => {
-        payload.types.OrderComponents[4].type = 'uint256';
-      },
-    ],
-    [
-      'extra unsigned consideration data',
-      (payload: any) => {
-        payload.message.consideration[0].hidden = '1';
-      },
-    ],
-  ])('does not recognize Seaport 1.5 with %s', (_name, change) => {
-    const payload = seaport();
-    payload.domain.version = '1.5';
-    change(payload);
-    expect(getTypedOrderReview(payload)).toEqual(unrecognized('Seaport'));
-    expect(getTypedOrderReview(JSON.stringify(payload))).toEqual(
-      unrecognized('Seaport')
-    );
-  });
+  it.each(['1.0', '1.7', '2.0', '1.5.0', '1.4-extra', '', 1.4])(
+    'does not infer support for an unrecognized Seaport version %p',
+    (version) => {
+      const payload: any = seaport();
+      payload.domain.version = version;
+      expect(getTypedOrderReview(payload)).toEqual(unrecognized('Seaport'));
+    }
+  );
 
   it.each(['0', '1', '2', '3'])(
     'does not infer execution safety from Seaport order type %s',

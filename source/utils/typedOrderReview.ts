@@ -193,6 +193,9 @@ const matchesDomain = (value: unknown, protocol: OrderProtocol) =>
   (protocol === '0x'
     ? value.version === '1.0.0'
     : value.version === '1.1' ||
+      value.version === '1.2' ||
+      value.version === '1.3' ||
+      value.version === '1.4' ||
       value.version === '1.5' ||
       value.version === '1.6') &&
   uint(value.chainId) !== null &&
