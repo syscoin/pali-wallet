@@ -109,7 +109,10 @@ const resetOwned = (key: string) =>
   key.startsWith('sysweb3-vault-') ||
   key === 'state' ||
   key.startsWith('state-') ||
-  key.startsWith('pali-slh-dsa-state:');
+  key.startsWith('pali-slh-dsa-state:') ||
+  key.startsWith('pali-slh-dsa-precompute:') ||
+  key.startsWith('pali-slh-dsa-smart-account-setup:') ||
+  key.startsWith('pali-slh-dsa-prepared-smart-account-signer:v1:');
 const assertOriginal = () => {
   for (const [key, value] of Object.entries(originalRecords()))
     expect(mockRecords[key]).toEqual(value);
@@ -438,6 +441,117 @@ describe('explicit seed recovery transaction', () => {
     expect(mockState).toEqual(mockOriginalState);
   });
 
+  it.each([
+    'state-vault-60',
+    'state-vault-57-passkey-profile',
+    'state-vault-60-passkey-profile',
+    'sysweb3-vault-60',
+    'pali-slh-dsa-state:old',
+    'pali-slh-dsa-precompute:old',
+    'pali-slh-dsa-smart-account-setup:old',
+    'pali-slh-dsa-prepared-smart-account-signer:v1:old',
+  ])(
+    'rolls back when reset leaves the old %s record beside the newly initialized wallet',
+    async (key) => {
+      const oldRecord = { encrypted: `original encrypted ${key}` };
+      mockRecords[key] ??= oldRecord;
+      const original = structuredClone(mockRecords);
+      const ticket = await beginWalletRecovery(wallet);
+      const reset = wallet.resetWalletState.getMockImplementation();
+      wallet.resetWalletState.mockImplementation(async () => {
+        const surviving = structuredClone(mockRecords[key]);
+        await reset();
+        // MainController reset intentionally catches deletion errors. This
+        // models a record whose failed deletion leaves its original value.
+        mockRecords[key] = surviving;
+      });
+
+      await expect(submit(ticket)).rejects.toThrow(
+        'previous wallet was restored'
+      );
+
+      for (const [recordKey, record] of Object.entries(original))
+        expect(mockRecords[recordKey]).toEqual(record);
+      expect(mockRecords[JOURNAL]).toBeUndefined();
+      expect(mockRecords['state-vault-57'] ?? null).toBeNull();
+      expect(unlocked).toBe(false);
+      expect(wallet.resetWalletState).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each([
+    'extra HD account',
+    'imported account',
+    'smart account',
+    'embedded passkey profile',
+    'inline main-state vault',
+    'HD0 smart account metadata',
+    'old HD0 encrypted private key',
+    'extra account assets',
+    'extra account transactions',
+  ])(
+    'rejects an old %s copy even when the new cipher pair and HD0 are present',
+    async (copy) => {
+      const ticket = await beginWalletRecovery(wallet);
+      const initialize = wallet.createWalletExclusive.getMockImplementation();
+      wallet.createWalletExclusive.mockImplementation(async () => {
+        await initialize();
+        const vault = mockRecords['state-vault-57'];
+        const oldAccount = { id: 1, xprv: 'original encrypted imported key' };
+        if (copy === 'extra HD account')
+          vault.accounts.HDAccount[1] = oldAccount;
+        if (copy === 'imported account')
+          vault.accounts.Imported = { 1: oldAccount };
+        if (copy === 'smart account')
+          vault.accounts.SmartAccount = { 1: oldAccount };
+        if (copy === 'embedded passkey profile')
+          vault.passkeyCredentialProfile = {
+            id: 'original passkey credential',
+          };
+        if (copy === 'inline main-state vault')
+          mockRecords.state.vault = {
+            accounts: { Imported: { 1: oldAccount } },
+          };
+        if (copy === 'HD0 smart account metadata')
+          vault.accounts.HDAccount[0].smartAccount = {
+            authenticator: 'original passkey credential',
+          };
+        if (copy === 'old HD0 encrypted private key') {
+          mockState.vault.accounts.HDAccount[0].xprv = 'new encrypted HD key';
+          vault.accounts.HDAccount[0].xprv = 'original encrypted HD key';
+        }
+        if (copy === 'extra account assets')
+          vault.accountAssets = { Imported: { 1: { syscoin: [] } } };
+        if (copy === 'extra account transactions')
+          vault.accountTransactions = { Imported: { 1: { syscoin: {} } } };
+      });
+
+      await expect(submit(ticket)).rejects.toThrow(
+        'previous wallet was restored'
+      );
+      assertOriginal();
+      expect(unlocked).toBe(false);
+    }
+  );
+
+  it('allows null tombstones for reset-owned records without reviving old data', async () => {
+    const ticket = await beginWalletRecovery(wallet);
+    const initialize = wallet.createWalletExclusive.getMockImplementation();
+    wallet.createWalletExclusive.mockImplementation(async () => {
+      await initialize();
+      mockRecords['state-vault-60'] = null;
+      mockRecords['state-vault-57-passkey-profile'] = null;
+      mockRecords['pali-slh-dsa-state:old'] = null;
+    });
+
+    await submit(ticket);
+    expect(mockRecords[JOURNAL]).toBeUndefined();
+    expect(mockRecords['sysweb3-vault']).toBe(
+      'new authenticated encrypted mnemonic'
+    );
+    expect(mockRecords['state-vault-60']).toBeNull();
+  });
+
   it.each([false, true])(
     'handles a commit-marker failure after durable write: %s',
     async (afterWrite) => {
@@ -501,6 +615,31 @@ describe('explicit seed recovery transaction', () => {
     );
     expect(mockRecords[JOURNAL]).toBeUndefined();
   });
+
+  it.each(['cold startup', 'same-worker access'])(
+    'keeps the committed pair and backup closed during %s when old records remain',
+    async (path) => {
+      const ticket = await beginWalletRecovery(wallet);
+      jest
+        .mocked(chromeStorage.removeItem)
+        .mockRejectedValueOnce(new Error('worker stopped'));
+      await expect(submit(ticket)).rejects.toThrow('recovery cleanup');
+      mockRecords['state-vault-60'] = structuredClone(
+        mockRecords[JOURNAL].before['state-vault-60']
+      );
+      const before = structuredClone(mockRecords);
+
+      await expect(
+        path === 'cold startup'
+          ? reconcileWalletRecoveryJournal()
+          : prepareWalletRecoveryAccess(wallet)
+      ).rejects.toThrow('unexpected wallet data');
+
+      expect(mockRecords).toEqual(before);
+      expect(wallet.recoveryJournalPending).toBe(true);
+      expect(unlocked).toBe(false);
+    }
+  );
 
   it('locks the initialized session before a secondary recovery read can fail', async () => {
     const ticket = await beginWalletRecovery(wallet);
@@ -574,6 +713,94 @@ describe('explicit seed recovery transaction', () => {
     expect(mockRecords['sysweb3-vault']).toBe(
       'new authenticated encrypted mnemonic'
     );
+  });
+
+  it('accepts canonical HD0 asset/history updates and real UTXO receiving-address advancement', async () => {
+    const { getSyscoinSigners } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/signers'
+    );
+    const {
+      default: vaultReducer,
+      createAccount,
+      initializeCleanVaultForSlip44,
+      setAccountAssets,
+      setSingleTransactionToState,
+    } = jest.requireActual('state/vault');
+    const { SYSCOIN_UTXO_MAINNET_NETWORK: network } =
+      jest.requireActual('utils/constants');
+    const { hd } = getSyscoinSigners({
+      mnemonic: PHRASE,
+      rpc: {
+        formattedNetwork: network,
+        networkConfig: getNetworkConfig(network.slip44, network.currency),
+      },
+    });
+    hd.createAccountAtIndex(0, 84);
+    const ticket = await beginWalletRecovery(wallet);
+    const initialize = wallet.createWalletExclusive.getMockImplementation();
+    wallet.createWalletExclusive.mockImplementation(async () => {
+      await initialize();
+      let vault = vaultReducer(
+        undefined,
+        initializeCleanVaultForSlip44(network)
+      );
+      vault = vaultReducer(
+        vault,
+        createAccount({
+          accountType: 'HDAccount',
+          account: {
+            id: 0,
+            address: hd.createAddress(0, false, 84),
+            xpub: hd.getAccountXpub(),
+            xprv: 'new encrypted HD0 key',
+          },
+        })
+      );
+      vault = vaultReducer(
+        vault,
+        setAccountAssets({
+          accountId: 0,
+          accountType: 'HDAccount',
+          assets: { syscoin: [{ assetGuid: '123', balance: 1 }], ethereum: [] },
+        })
+      );
+      vault = vaultReducer(
+        vault,
+        setSingleTransactionToState({
+          accountId: 0,
+          accountType: 'HDAccount',
+          networkType: 'syscoin',
+          chainId: network.chainId,
+          transaction: { txid: 'public-history-fixture', confirmations: 1 },
+        })
+      );
+      mockState.vault = vault;
+      mockRecords['state-vault-57'] = structuredClone(vault);
+    });
+    jest
+      .mocked(chromeStorage.removeItem)
+      .mockRejectedValueOnce(new Error('worker stopped'));
+    await expect(submit(ticket)).rejects.toThrow('recovery cleanup');
+
+    const firstAddress =
+      mockRecords['state-vault-57'].accounts.HDAccount[0].address;
+    const nextAddress = hd.createAddress(1, false, 84);
+    expect(nextAddress).not.toBe(firstAddress);
+    mockRecords['state-vault-57'].accounts.HDAccount[0].address = nextAddress;
+    await expect(reconcileWalletRecoveryJournal()).resolves.toBe(false);
+
+    expect(mockRecords[JOURNAL]).toBeUndefined();
+    expect(mockRecords['state-vault-57'].accounts.HDAccount[0].xpub).toBe(
+      hd.getAccountXpub()
+    );
+    expect(
+      mockRecords['state-vault-57'].accountAssets.HDAccount[0].syscoin
+    ).toEqual([{ assetGuid: '123', balance: 1 }]);
+    expect(
+      mockRecords['state-vault-57'].accountTransactions.HDAccount[0].syscoin[
+        network.chainId
+      ]
+    ).toHaveLength(1);
   });
 
   it('fails closed if the committed public identity no longer matches its marker', async () => {

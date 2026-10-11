@@ -132,6 +132,49 @@ const assertStoredPair = (records: Records) => {
     throw new Error('Wallet recovery storage is incomplete');
 };
 
+const assertFreshWalletRecords = (records: Records, slip44: number) => {
+  const vaultKey = `state-vault-${slip44}`;
+  const expectedKeys = new Set([
+    'sysweb3-vault',
+    'sysweb3-vault-keys',
+    'state',
+    vaultKey,
+  ]);
+  const hasStoredValue = (value: unknown) =>
+    value !== undefined && value !== null;
+  const hasExtraAccount = (groups: any) =>
+    !groups ||
+    typeof groups !== 'object' ||
+    Array.isArray(groups) ||
+    Object.entries(groups).some(
+      ([type, accounts]) =>
+        !accounts ||
+        typeof accounts !== 'object' ||
+        Array.isArray(accounts) ||
+        Object.keys(accounts).some((id) => type !== 'HDAccount' || id !== '0')
+    );
+  const vault = records[vaultKey];
+  if (
+    Object.keys(records).some(
+      (key) =>
+        resetOwnedKey(key) &&
+        hasStoredValue(records[key]) &&
+        !expectedKeys.has(key)
+    ) ||
+    Object.keys(records.state).some(
+      (key) => !['dapp', 'price', 'vaultGlobal'].includes(key)
+    ) ||
+    hasStoredValue(vault.passkeyCredentialProfile) ||
+    hasStoredValue(vault.accounts.HDAccount[0].smartAccount) ||
+    vault.accounts.HDAccount[0].isSmartAccount ||
+    hasExtraAccount(vault.accounts) ||
+    ['accountAssets', 'accountTransactions'].some(
+      (key) => vault[key] !== undefined && hasExtraAccount(vault[key])
+    )
+  )
+    throw new Error('Recovered wallet contains unexpected wallet data');
+};
+
 const savedCommittedIdentity = (
   records: Records,
   slip44: number = records.state?.vaultGlobal?.activeSlip44
@@ -151,6 +194,10 @@ const savedCommittedIdentity = (
     account.isLedgerWallet
   )
     throw new Error('Recovered wallet account state was not durably saved');
+  // A successful reset creates only the new pair, main state and HD0 vault.
+  // Validate every owned record before dropping the backup, and again if a
+  // committed marker survives cleanup. Null rollback tombstones carry no data.
+  assertFreshWalletRecords(records, slip44);
   // UTXO receiving addresses advance normally. The HD xpub anchors identity.
   return { slip44, id: 0, xpub: account.xpub };
 };
@@ -505,7 +552,8 @@ export const runWalletSetup = async (
             .HDAccount[0];
         if (
           liveAccount?.address !== savedAccount.address ||
-          liveAccount?.xpub !== committedIdentity.xpub
+          liveAccount?.xpub !== committedIdentity.xpub ||
+          liveAccount?.xprv !== savedAccount.xprv
         )
           throw new Error(
             'Recovered wallet account state was not durably saved'

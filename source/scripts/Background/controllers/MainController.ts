@@ -480,9 +480,13 @@ class MainController {
         );
 
         if (keysToRemove.length > 0) {
-          await Promise.all(
+          const removals = await Promise.allSettled(
             keysToRemove.map((key) => chromeStorage.removeItem(key))
           );
+          const failed = removals.find(
+            (result) => result.status === 'rejected'
+          );
+          if (failed?.status === 'rejected') throw failed.reason;
         }
       } catch (error) {
         console.error(
@@ -1462,10 +1466,12 @@ class MainController {
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
   public get syscoinTransaction() {
+    this.assertWalletReadyForSigning();
     return this.getActiveKeyring().syscoinTransaction;
   }
 
   public get ethereumTransaction() {
+    this.assertWalletReadyForSigning();
     return this.getActiveKeyring().ethereumTransaction;
   }
 
@@ -1491,6 +1497,7 @@ class MainController {
   }
 
   public async getSeed(pwd: string) {
+    this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
     return this.authenticationMutex.runExclusive(() =>
       this.getSeedForCurrentSession(pwd, generation)
@@ -1498,6 +1505,8 @@ class MainController {
   }
 
   private async getSeedForCurrentSession(pwd: string, generation: number) {
+    // This pre-admitted export owns authenticationMutex; setup cannot begin
+    // its reset until it finishes. Session checks still reject a later lock.
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
     // Check rate limiting before password validation
@@ -1529,6 +1538,7 @@ class MainController {
     accountType: any,
     pwd: string
   ) {
+    this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
     return this.authenticationMutex.runExclusive(() =>
       this.getPrivateKeyForCurrentSession(id, accountType, pwd, generation)
@@ -1778,6 +1788,13 @@ class MainController {
     if (this.isCreatingWallet || this.isResettingWallet) return 'busy';
     if (this.recoveryJournalPending) return 'recovery-required';
     return undefined;
+  }
+
+  private assertWalletReadyForSigning(): void {
+    if (this.getWalletSetupStatus())
+      throw new Error(
+        'Wallet setup is in progress. Try again after it completes.'
+      );
   }
 
   public isAnyKeyringUnlocked() {
@@ -2722,23 +2739,13 @@ class MainController {
   }
 
   private accountMutationContext() {
-    const assertAvailable = () => {
-      if (
-        this.isCreatingWallet ||
-        this.isResettingWallet ||
-        this.recoveryJournalPending
-      )
-        throw new Error(
-          'Wallet setup is in progress. Try again after it completes.'
-        );
-    };
-    assertAvailable();
+    this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
     const keyring = this.getActiveKeyring();
     return {
       keyring,
       assertCurrent: () => {
-        assertAvailable();
+        this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(generation);
         if (keyring !== this.getActiveKeyring())
           throw new Error(
@@ -2893,10 +2900,12 @@ class MainController {
     factoryAddress: string;
     metadata: ISmartAccountMetadata;
   }> {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.prepareSmartAccount(params);
   }
 
   public async registerSmartAccountOnChain(params: { accountId: number }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.registerSmartAccountOnChain(params);
   }
 
@@ -2953,6 +2962,7 @@ class MainController {
   }
 
   public deploySmartAccountInfrastructure() {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.deploySmartAccountInfrastructure();
   }
 
@@ -2985,6 +2995,7 @@ class MainController {
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.prepareSmartAccountExecution(params);
   }
 
@@ -3030,6 +3041,7 @@ class MainController {
     userOperation: SmartAccountPackedUserOperation;
     validator: string;
   }> {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.prepareSmartAccountExecutions(
       params,
       accountId,
@@ -3061,6 +3073,7 @@ class MainController {
     validator?: string;
     waitForConfirmation?: boolean;
   }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.submitSmartAccountExecution(params);
   }
 
@@ -3110,6 +3123,7 @@ class MainController {
     }>;
     signature: string;
   }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.submitSmartAccountGuardianPolicyTransaction(
       params
     );
@@ -3120,6 +3134,7 @@ class MainController {
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.submitSmartAccountGuardianStartRecovery(params);
   }
 
@@ -3128,6 +3143,7 @@ class MainController {
     guardian: string;
     target: PaliRecoveryTarget;
   }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.prepareSmartAccountGuardianStartRecovery(params);
   }
 
@@ -3138,6 +3154,7 @@ class MainController {
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
   }) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.submitPreparedSmartAccountGuardianStartRecovery(
       params
     );
@@ -3164,6 +3181,7 @@ class MainController {
       salt: string;
     }
   ) {
+    this.assertWalletReadyForSigning();
     return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
   }
 
@@ -3410,6 +3428,7 @@ class MainController {
         'Wallet reset is in progress. Retry the network change after it completes.'
       );
     }
+    this.assertWalletReadyForSigning();
     const requestGeneration = ++this.networkRequestGeneration;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {
@@ -4243,6 +4262,7 @@ class MainController {
     signerAddress?: string,
     options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
   ) {
+    this.assertWalletReadyForSigning();
     const { vault } = store.getState();
     const accountInfo = { ...vault.activeAccount };
     const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
@@ -4318,6 +4338,7 @@ class MainController {
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
     const assertCurrentContext = () => {
+      this.assertWalletReadyForSigning();
       const current = store.getState();
       const currentScope = getWalletNavigationScope();
       const currentAccount =
@@ -4396,6 +4417,7 @@ class MainController {
     fallbackNonce?: number,
     signerAddress?: string
   ) {
+    this.assertWalletReadyForSigning();
     const { accounts, activeAccount } = store.getState().vault;
     const normalizedSignerAddress = signerAddress?.toLowerCase();
     const canUseSignerOverride =
@@ -5094,6 +5116,7 @@ class MainController {
     isTrezor?: boolean;
     psbt?: any;
   }): Promise<any> {
+    this.assertWalletReadyForSigning();
     const { isBitcoinBased } = store.getState().vault;
 
     try {
@@ -5168,12 +5191,17 @@ class MainController {
     let submissionStarted = false;
     const expectedContext = saveOptions?.expectedContext;
     const sessionGeneration = this.walletSessionGeneration;
-    const assertExpectedContext = () => {
+    const assertExpectedContext = (beforeSubmission = true) => {
+      if (beforeSubmission && !expectedContext) {
+        this.assertWalletReadyForSigning();
+        this.assertCurrentWalletSession(sessionGeneration);
+      }
       if (!expectedContext) return;
       const { vault, vaultGlobal } = store.getState();
       const currentAccount =
         vault.accounts?.[vault.activeAccount.type]?.[vault.activeAccount.id];
       if (
+        (beforeSubmission && this.getWalletSetupStatus()) ||
         this.walletSessionGeneration !== sessionGeneration ||
         (expectedContext.sessionGeneration !== undefined &&
           this.walletSessionGeneration !== expectedContext.sessionGeneration) ||
@@ -5286,12 +5314,20 @@ class MainController {
       // wallet/network the UI selects while the broadcast is in flight.
       if (saveOptions?.onBroadcast) await saveOptions.onBroadcast(txResponse);
       saveOptions?.assertCurrentContext?.();
-      assertExpectedContext();
+      assertExpectedContext(false);
 
       // Save the transaction and discard its draft while retaining public browsing.
       const txToSave = transactionMetadata
         ? ({ ...txResponse, ...transactionMetadata } as IEvmTransactionResponse)
         : txResponse;
+      // An acknowledged broadcast remains authoritative. A generic caller
+      // must not persist it into a wallet being replaced or another session.
+      if (
+        !expectedContext &&
+        (this.getWalletSetupStatus() ||
+          this.walletSessionGeneration !== sessionGeneration)
+      )
+        return txToSave;
       await this.sendAndSaveTransaction(txToSave, targetAccount, saveOptions);
 
       return txToSave;
@@ -5351,7 +5387,10 @@ class MainController {
     targetAccount: { id: number; type: KeyringAccountType },
     executionContextId?: string
   ): Promise<string> {
+    const generation = this.walletSessionGeneration;
     const assertContext = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
     };
@@ -5397,6 +5436,7 @@ class MainController {
     executionContextId: string,
     actionHash?: string
   ): void {
+    this.assertWalletReadyForSigning();
     this.smartAccount.assertSmartAccountExecutionContext(
       executionContextId,
       actionHash
@@ -5464,18 +5504,25 @@ class MainController {
     derivationLabel: string;
     setupSecretHex: string;
   }> {
+    this.assertWalletReadyForSigning();
     const keyring = this.getActiveKeyring() as any;
+    const generation = this.walletSessionGeneration;
     if (typeof keyring.deriveSLHDSASetupSecretForAccount !== 'function') {
       throw new Error(
         'Current sysweb3-keyring build does not support SLH-DSA key derivation'
       );
     }
-    return keyring.deriveSLHDSASetupSecretForAccount(params);
+    const secret = await keyring.deriveSLHDSASetupSecretForAccount(params);
+    this.assertWalletReadyForSigning();
+    this.assertCurrentWalletSession(generation, keyring);
+    return secret;
   }
 
   private getSLHDSASessionStateCrypto() {
-    const getKeyring = () => {
+    const run = async (method: string, value: string) => {
+      this.assertWalletReadyForSigning();
       const keyring = this.getActiveKeyring() as any;
+      const generation = this.walletSessionGeneration;
       if (
         typeof keyring.encryptSLHDSASessionState !== 'function' ||
         typeof keyring.decryptSLHDSASessionState !== 'function'
@@ -5484,13 +5531,16 @@ class MainController {
           'Current sysweb3-keyring build does not support SLH-DSA session state encryption'
         );
       }
-      return keyring;
+      const result = await keyring[method](value);
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation, keyring);
+      return result;
     };
     return {
       decrypt: (cipherText: string) =>
-        getKeyring().decryptSLHDSASessionState(cipherText),
+        run('decryptSLHDSASessionState', cipherText),
       encrypt: (plainText: string) =>
-        getKeyring().encryptSLHDSASessionState(plainText),
+        run('encryptSLHDSASessionState', plainText),
     };
   }
 
@@ -5502,6 +5552,7 @@ class MainController {
     accountId: number;
     force?: boolean;
   }): Promise<SLHDSASmartAccountSetupStatus> {
+    this.assertWalletReadyForSigning();
     this.configureSLHDSASessionStateCrypto();
     const { accountIndex } = this.getSLHDSASmartAccountDerivationContext(
       params.accountId
@@ -5520,6 +5571,7 @@ class MainController {
   public async provisionSLHDSASmartAccountValidator(params: {
     accountId: number;
   }): Promise<SLHDSASmartAccountSetupStatus['config']> {
+    this.assertWalletReadyForSigning();
     this.configureSLHDSASessionStateCrypto();
     const { accountIndex } = this.getSLHDSASmartAccountDerivationContext(
       params.accountId
@@ -5598,7 +5650,10 @@ class MainController {
   public async signSLHDSAActionHash(
     params: SLHDSASignActionHashParams & { executionContextId?: string }
   ): Promise<string> {
+    const generation = this.walletSessionGeneration;
     const assertContext = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
       if (params.executionContextId)
         this.assertSmartAccountExecutionContext(
           params.executionContextId,
@@ -5647,10 +5702,21 @@ class MainController {
   private async signSLHDSARecoveryTargetActionHash(
     params: SLHDSASignActionHashParams
   ): Promise<string> {
+    const generation = this.walletSessionGeneration;
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
+    };
+    assertCurrent();
     this.configureSLHDSASessionStateCrypto();
     const sessionGeneration = getSLHDSASessionGeneration();
     try {
-      return await signSLHDSAActionHashLocal(params, sessionGeneration);
+      const signature = await signSLHDSAActionHashLocal(
+        params,
+        sessionGeneration
+      );
+      assertCurrent();
+      return signature;
     } catch (error: any) {
       const message = error?.message || String(error);
       if (!message.includes('not available in this unlocked session')) {
@@ -5660,6 +5726,7 @@ class MainController {
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
       });
+      assertCurrent();
       if (!state) {
         throw new Error(
           `SLH-DSA encrypted local signer state was not found at ${getSLHDSAStateStorageKey(
@@ -5669,7 +5736,12 @@ class MainController {
       }
       putRuntimeSLHDSAState(state, sessionGeneration);
       try {
-        return await signSLHDSAActionHashLocal(params, sessionGeneration);
+        const signature = await signSLHDSAActionHashLocal(
+          params,
+          sessionGeneration
+        );
+        assertCurrent();
+        return signature;
       } catch (retryError: any) {
         if (
           String(retryError?.message || retryError).includes(
@@ -5836,6 +5908,7 @@ class MainController {
     tokenType: 'ERC20' | 'ERC721' | 'ERC1155',
     params: any
   ): Promise<IEvmTransactionResponse> {
+    this.assertWalletReadyForSigning();
     try {
       const controller = getController();
 
@@ -7619,6 +7692,7 @@ class MainController {
   };
 
   private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
+    this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
     const keyring = this.getActiveKeyring();
     const { vault, vaultGlobal } = store.getState();
@@ -7652,6 +7726,7 @@ class MainController {
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const assertCurrent = () => {
       try {
+        this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(generation, keyring);
       } catch {
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);

@@ -143,6 +143,36 @@ export const handleMasterControllerResponses = (
 
       const { methods, params } = data;
 
+      const assertSetupAdmission = () => {
+        if (!MasterControllerInstance.wallet?.getWalletSetupStatus?.()) return;
+        // Member traversal also reaches SDK objects and TypeScript-private
+        // members. During setup, permit only exact lifecycle/onboarding calls.
+        if (
+          !Array.isArray(methods) ||
+          methods.length !== 2 ||
+          methods[0] !== 'wallet' ||
+          ![
+            'getWalletSetupStatus',
+            'getWalletSessionGeneration',
+            'isUnlocked',
+            'isAnyKeyringUnlocked',
+            'isSeedValid',
+            'createNewSeed',
+            'beginWalletRecovery',
+            'createWallet',
+            'recoverWalletFromSeed',
+            'unlock',
+            'unlockFromController',
+            'resetAutoLockTimer',
+            'lock',
+          ].includes(methods[1])
+        )
+          throw new Error(
+            'Wallet setup is in progress. Signing is unavailable.'
+          );
+      };
+      assertSetupAdmission();
+
       let targetMethod = MasterControllerInstance;
 
       for (const method of methods) {
@@ -156,6 +186,7 @@ export const handleMasterControllerResponses = (
       if (typeof targetMethod === 'function') {
         Promise.resolve()
           .then(async () => {
+            assertSetupAdmission();
             // Always execute the method; never attempt to send functions over messaging
             const response = await (targetMethod as any)(...params);
             return response;
