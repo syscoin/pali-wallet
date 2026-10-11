@@ -41,7 +41,6 @@
     "newPassword": "Nouveau mot de passe (12 caractères min.)",
     "confirmPassword": "Confirmer le mot de passe",
     "atLeast": "Au moins 12 caractères, 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial (!@#$%^&*...).",
-    "doNotForget": "N'oubliez pas de sauvegarder votre mot de passe. Vous aurez besoin de ce mot de passe pour déverrouiller votre portefeuille.",
     "suggestPassword": "Suggérer un mot de passe mémorisable",
     "memorablePasswordHelp": "Ceci est votre mot de passe de déverrouillage, pas votre phrase de récupération secrète. Enregistrez-le dans votre gestionnaire de mots de passe.",
     "passwordGenerationFailed": "Impossible de générer un mot de passe sûr. Saisissez votre propre mot de passe fort.",
