@@ -77,7 +77,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   };
 
   return (
-    <OnboardingLayout title={t('settings.password')}>
+    <OnboardingLayout title={t('settings.password')} scrollable>
       <Form
         form={form}
         onValuesChange={onValuesChange}
@@ -86,11 +86,11 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         initialValues={{ remember: true }}
         onFinish={handleSubmit}
         autoComplete="on"
-        className="password flex flex-col gap-4 items-center justify-center w-full max-w-md text-center"
+        className="password flex flex-col gap-4 items-center w-full max-w-md pb-6 text-center"
       >
         <Form.Item
           name="password"
-          className="w-full"
+          className="!mb-0 w-full"
           hasFeedback
           rules={[
             {
@@ -114,9 +114,13 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           />
         </Form.Item>
 
+        <p className="w-full text-left text-brand-blue100 text-xs leading-relaxed">
+          {t('components.atLeast')}
+        </p>
+
         <Form.Item
           name="repassword"
-          className="w-full"
+          className="!mb-0 w-full"
           hasFeedback
           dependencies={['password']}
           rules={[
@@ -146,12 +150,14 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         <Button
           type="button"
           variant="ghost"
+          fullWidth
+          className="!h-auto min-h-[2.5rem] px-4 py-3 leading-5"
           disabled={isLoading}
           onClick={suggestPassword}
         >
           {t('components.suggestPassword')}
         </Button>
-        <p className="px-3 text-center text-brand-gray200 text-xs">
+        <p className="text-center text-brand-gray200 text-xs leading-relaxed">
           {t('components.memorablePasswordHelp')}
         </p>
         {generationFailed && (
@@ -160,26 +166,19 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           </p>
         )}
 
-        <span className="px-3 mt-6 mb-4 w-full text-left text-brand-blue100 text-xs">
-          {t('components.atLeast')} {'   '}
-        </span>
-
-        <span className="px-3 text-center text-brand-gray200 text-xs">
-          {t('components.doNotForget')}
-        </span>
-
         {submitFailed && (
           <p role="alert" className="text-warning-error text-sm">
             {t('settings.walletSetupFailed')}
           </p>
         )}
 
-        <div className="absolute bottom-12 md:bottom-32">
+        <div className="w-full pt-2">
           <Button
             type="submit"
             id="create-password-action"
             disabled={Object.keys(formErrors).length > 0}
-            className={`${buttonIsValidStyle} bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+            useDefaultWidth={false}
+            className={`${buttonIsValidStyle} bg-brand-deepPink100 w-full h-10 text-white text-base font-base font-medium rounded-2xl`}
             loading={isLoading}
           >
             {t('buttons.next')}

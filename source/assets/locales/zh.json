@@ -41,7 +41,6 @@
     "newPassword": "新密码（至少12个字符）",
     "confirmPassword": "确认密码",
     "atLeast": "至少12个字符，1个大写字母，1个小写字母，1个数字和1个特殊字符（!@#$%^&*...）。",
-    "doNotForget": "不要忘记保存您的密码。您需要此密码来解锁您的钱包。",
     "suggestPassword": "推荐易记的密码",
     "memorablePasswordHelp": "这是您的解锁密码，不是您的秘密恢复短语。请将它保存在密码管理器中。",
     "passwordGenerationFailed": "无法生成安全密码。请输入您自己的强密码。",

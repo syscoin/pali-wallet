@@ -5,6 +5,7 @@ import { LogoHeader, Tooltip } from 'components/index';
 
 interface IOnboardingLayout {
   children: ReactNode;
+  scrollable?: boolean;
   title: string;
   tooltipText?: string;
 }
@@ -12,10 +13,19 @@ interface IOnboardingLayout {
 export const OnboardingLayout: FC<IOnboardingLayout> = ({
   title,
   children,
+  scrollable = false,
   tooltipText,
 }) => (
-  <div className="flex h-full flex-col gap-4 items-center md:pt-20 bg-gradient">
-    <div className="w-full h-max bg-no-repeat bg-[url('../../../source/assets/all_assets/Dots.png')] flex flex-col items-center md:pt-20 z-20">
+  <div
+    className={`flex flex-col gap-4 items-center md:pt-20 bg-gradient ${
+      scrollable ? 'h-screen min-h-0 overflow-y-auto' : 'h-full'
+    }`}
+  >
+    <div
+      className={`w-full h-max bg-no-repeat bg-[url('../../../source/assets/all_assets/Dots.png')] flex flex-col items-center md:pt-20 z-20 ${
+        scrollable ? 'shrink-0' : ''
+      }`}
+    >
       <LogoHeader />
 
       <section>
