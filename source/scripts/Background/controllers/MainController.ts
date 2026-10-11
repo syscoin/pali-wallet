@@ -31,6 +31,7 @@ import { getController, notificationManager } from '..';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
+  getWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import {
@@ -58,7 +59,6 @@ import {
   setAccountBalanceForNetwork,
   setAccountPropertyByIdAndType,
   setActiveAccount,
-  setTransactionStatusToReplaced,
   setFaucetModalState,
   setNetworkChange,
   setSingleTransactionToState,
@@ -4143,50 +4143,164 @@ class MainController {
     return importedAccount;
   }
 
-  public setEvmTransactionAsAccelerated(
+  public async setEvmTransactionAsAccelerated(
     oldTxHash: string,
     chainID: number,
     newTxValue: IEvmTransactionResponse
   ) {
-    // Mark the old transaction as replaced
-    store.dispatch(
-      setTransactionStatusToReplaced({
-        oldTxHash,
-        chainID,
-      })
-    );
+    return this.recordEvmReplacement(oldTxHash, chainID, newTxValue, false);
+  }
 
-    // Add metadata to the new transaction to indicate it's a speed-up
-    const transactionWithMetadata = {
-      ...newTxValue,
-      chainId: chainID,
-      timestamp: Math.floor(Date.now() / 1000), // Convert to seconds
-      isSpeedUp: true,
-      replacesHash: oldTxHash,
+  public async speedUpEvmTransaction(
+    txHash: string,
+    isLegacy: boolean,
+    chainId: number,
+    signerAddress?: string,
+    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
+  ) {
+    const { vault } = store.getState();
+    const accountInfo = { ...vault.activeAccount };
+    const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
+    const network = { ...vault.activeNetwork };
+    const generation = this.walletSessionGeneration;
+    const { account: accountScope, network: networkScope } =
+      getWalletNavigationScope();
+    const findOriginal = (currentVault = vault) =>
+      currentVault.accountTransactions[accountInfo.type]?.[
+        accountInfo.id
+      ]?.ethereum?.[chainId]?.find(
+        (tx: any) => tx.hash?.toLowerCase() === txHash.toLowerCase()
+      ) as any;
+    const original = findOriginal();
+    const sender = original?.from?.toLowerCase();
+    const nonce = getEoaNonceFromHistoryTransaction(
+      { ...original, smartAccountExecutionFrom: undefined },
+      sender || ''
+    );
+    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
+      Object.assign(new Error(message), {
+        transactionNotBroadcast: true,
+      });
+    const isPendingOriginal = (tx: any) =>
+      tx &&
+      !tx.isReplaced &&
+      tx.status !== 'replaced' &&
+      !isTransactionInBlock(tx) &&
+      tx.smartAccountExecutionFrom?.toLowerCase() ===
+        account.address?.toLowerCase() &&
+      (tx.chainId === undefined || Number(tx.chainId) === chainId);
+    if (
+      vault.isBitcoinBased ||
+      this.isResettingWallet ||
+      accountInfo.type !== KeyringAccountType.SmartAccount ||
+      network.kind !== INetworkType.Ethereum ||
+      network.chainId !== chainId ||
+      !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
+      !sender ||
+      nonce === undefined ||
+      !isPendingOriginal(original) ||
+      (signerAddress && signerAddress.toLowerCase() !== sender)
+    )
+      throw contextError();
+
+    let targetAccount: { id: number; type: KeyringAccountType } | undefined;
+    for (const [type, accounts] of Object.entries(vault.accounts)) {
+      if (type === KeyringAccountType.SmartAccount) continue;
+      const found = Object.entries(accounts).find(
+        ([, value]) =>
+          value.address?.toLowerCase() === sender &&
+          isAccountCompatibleWithNetwork(
+            value,
+            type as KeyringAccountType,
+            network
+          ) &&
+          (type === KeyringAccountType.Ledger ||
+            type === KeyringAccountType.Trezor ||
+            Boolean(value.xprv))
+      );
+      if (found) {
+        targetAccount = {
+          id: Number(found[0]),
+          type: type as KeyringAccountType,
+        };
+        break;
+      }
+    }
+    if (!targetAccount)
+      throw contextError('Original gas payer unavailable locally');
+
+    const keyring = this.getActiveKeyring();
+    const transactionController = keyring.ethereumTransaction;
+    const provider = transactionController.web3Provider;
+    const assertCurrentContext = () => {
+      const current = store.getState();
+      const currentScope = getWalletNavigationScope();
+      const currentAccount =
+        current.vault.accounts[accountInfo.type]?.[accountInfo.id];
+      const payer =
+        current.vault.accounts[targetAccount.type]?.[targetAccount.id];
+      const tracked = findOriginal(current.vault);
+      if (
+        this.isResettingWallet ||
+        this.walletSessionGeneration !== generation ||
+        current.vault.isBitcoinBased ||
+        currentScope.account !== accountScope ||
+        currentScope.network !== networkScope ||
+        !isAccountCompatibleWithNetwork(
+          currentAccount,
+          accountInfo.type,
+          network
+        ) ||
+        this.getActiveKeyring() !== keyring ||
+        keyring.ethereumTransaction !== transactionController ||
+        transactionController.web3Provider !== provider ||
+        payer?.address?.toLowerCase() !== sender ||
+        !isAccountCompatibleWithNetwork(payer, targetAccount.type, network) ||
+        !isPendingOriginal(tracked) ||
+        tracked.from?.toLowerCase() !== sender ||
+        Number(tracked.nonce) !== nonce
+      )
+        throw contextError();
     };
-
-    // Add the new transaction
-    store.dispatch(
-      setSingleTransactionToState({
-        chainId: chainID,
-        networkType: TransactionsType.Ethereum,
-        transaction: transactionWithMetadata,
-      })
-    );
-
-    // Notify about new accelerated/replacement transaction (shows as pending)
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
-    const account = accounts[activeAccount.type]?.[activeAccount.id];
-    if (account) {
-      notificationManager.notifyTransaction({
-        transaction: transactionWithMetadata,
-        type: 'pending',
-        account: {
-          address: account.address,
-          label: account.label,
-        },
-        network: activeNetwork,
-        isEvm: true,
+    const validateOriginal = (transaction: any) => {
+      assertCurrentContext();
+      if (
+        isTransactionInBlock(transaction) ||
+        transaction.hash?.toLowerCase() !== txHash.toLowerCase() ||
+        getEoaNonceFromHistoryTransaction(transaction, sender) !== nonce ||
+        (transaction.chainId !== undefined &&
+          Number(transaction.chainId) !== chainId) ||
+        (original.to !== undefined &&
+          transaction.to?.toLowerCase() !== original.to?.toLowerCase()) ||
+        (original.value !== undefined &&
+          BigInt(String(transaction.value)) !==
+            BigInt(String(original.value))) ||
+        ((original.input !== undefined || original.data !== undefined) &&
+          (transaction.data || '0x').toLowerCase() !==
+            (original.input ?? original.data).toLowerCase())
+      )
+        throw contextError();
+    };
+    let broadcastStarted = false;
+    try {
+      assertCurrentContext();
+      return await transactionController.sendTransactionWithEditedFee(
+        txHash,
+        isLegacy,
+        {
+          ...options,
+          targetAccount,
+          assertCurrentContext,
+          validateOriginal,
+          beforeBroadcast: () => {
+            assertCurrentContext();
+            broadcastStarted = true;
+          },
+        }
+      );
+    } catch (error) {
+      throw Object.assign(error, {
+        transactionNotBroadcast: !broadcastStarted,
       });
     }
   }
@@ -4263,7 +4377,7 @@ class MainController {
     }
   }
 
-  public setEvmTransactionCancelSubmitted(
+  public async setEvmTransactionCancelSubmitted(
     oldTxHash: string,
     chainID: number,
     newTxValue?: IEvmTransactionResponse
@@ -4271,59 +4385,183 @@ class MainController {
     if (!newTxValue) {
       throw new Error('Cancel transaction response was not returned');
     }
+    return this.recordEvmReplacement(oldTxHash, chainID, newTxValue, true);
+  }
 
-    // A cancel is a replacement transaction. The original is not finalized as
-    // canceled until the replacement confirms, so users can still manage the
-    // pending cancel transaction if it stalls.
-    store.dispatch(
-      setTransactionStatusToReplaced({
-        oldTxHash,
-        chainID,
-      })
+  private async recordEvmReplacement(
+    oldTxHash: string,
+    chainId: number,
+    transaction: IEvmTransactionResponse,
+    cancellation: boolean
+  ) {
+    const submittedError = (message: string) =>
+      Object.assign(new Error(message), {
+        transactionHash: transaction.hash,
+        transactionNotBroadcast: false,
+      });
+    const { vault, vaultGlobal } = store.getState();
+    const accountInfo = { ...vault.activeAccount };
+    const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
+    const network = { ...vault.activeNetwork };
+    const slip44 = vaultGlobal.activeSlip44;
+    const generation = this.walletSessionGeneration;
+    const currentTransactions =
+      vault.accountTransactions[accountInfo.type]?.[accountInfo.id]?.ethereum?.[
+        chainId
+      ] || [];
+    const byHash = new Map<string, any>(
+      currentTransactions.map((tx: any) => [String(tx.hash).toLowerCase(), tx])
     );
+    const original = byHash.get(oldTxHash.toLowerCase());
+    const sender = transaction.from?.toLowerCase();
+    const originalNonce = getEoaNonceFromHistoryTransaction(
+      { ...original, smartAccountExecutionFrom: undefined },
+      sender || ''
+    );
+    const submittedNonce = getEoaNonceFromHistoryTransaction(
+      { ...transaction, smartAccountExecutionFrom: undefined },
+      sender || ''
+    );
+    const ownsSender =
+      accountInfo.type === KeyringAccountType.SmartAccount
+        ? original?.smartAccountExecutionFrom?.toLowerCase() ===
+            account?.address?.toLowerCase() &&
+          sender === original?.from?.toLowerCase()
+        : sender === account?.address?.toLowerCase();
+    if (
+      vault.isBitcoinBased ||
+      this.isResettingWallet ||
+      !account?.address ||
+      network.kind !== INetworkType.Ethereum ||
+      network.chainId !== chainId ||
+      !original ||
+      (transaction.chainId !== undefined &&
+        Number(transaction.chainId) !== chainId) ||
+      (original?.chainId !== undefined &&
+        Number(original.chainId) !== chainId) ||
+      !ownsSender ||
+      originalNonce === undefined ||
+      submittedNonce !== originalNonce
+    )
+      throw submittedError(EVM_TRANSACTION_CONTEXT_CHANGED);
 
-    const { accountTransactions, activeAccount: vaultActiveAccount } =
-      store.getState().vault;
-    const currentAccountTransactions =
-      accountTransactions[vaultActiveAccount.type]?.[vaultActiveAccount.id]?.[
-        TransactionsType.Ethereum
-      ]?.[chainID] || [];
-    const originalTransaction = currentAccountTransactions.find(
-      (tx: IEvmTransactionResponse | any) =>
-        tx?.hash?.toLowerCase?.() === oldTxHash.toLowerCase()
-    ) as any;
-
-    const transactionWithMetadata = {
-      ...newTxValue,
-      chainId: chainID,
-      timestamp: Math.floor(Date.now() / 1000),
-      isCancel: true,
-      replacesHash: oldTxHash,
-      smartAccountExecutionFrom: originalTransaction?.smartAccountExecutionFrom,
+    const transactionController = this.ethereumTransaction;
+    const provider = transactionController?.web3Provider;
+    const isCurrent = () => {
+      const current = store.getState();
+      return (
+        !this.isResettingWallet &&
+        this.walletSessionGeneration === generation &&
+        !current.vault.isBitcoinBased &&
+        current.vault.activeAccount.id === accountInfo.id &&
+        current.vault.activeAccount.type === accountInfo.type &&
+        current.vault.accounts[accountInfo.type]?.[
+          accountInfo.id
+        ]?.address?.toLowerCase() === account.address.toLowerCase() &&
+        current.vault.activeNetwork.chainId === chainId &&
+        current.vault.activeNetwork.url === network.url &&
+        current.vault.activeNetwork.kind === network.kind &&
+        current.vault.activeNetwork.slip44 === network.slip44 &&
+        current.vaultGlobal.activeSlip44 === slip44 &&
+        this.ethereumTransaction === transactionController &&
+        this.ethereumTransaction?.web3Provider === provider
+      );
     };
-
+    let rootHash = original.replacementRootHash || oldTxHash;
+    let inheritedCancellation = original.isCancel === true;
+    const visited = new Set([oldTxHash.toLowerCase()]);
+    let ancestor = original;
+    for (let depth = 0; ancestor?.replacesHash && depth < 30; depth += 1) {
+      const parentHash = String(ancestor.replacesHash);
+      if (visited.has(parentHash.toLowerCase())) break;
+      visited.add(parentHash.toLowerCase());
+      const parent = byHash.get(parentHash.toLowerCase());
+      if (
+        !parent ||
+        (parent.chainId !== undefined && Number(parent.chainId) !== chainId) ||
+        getEoaNonceFromHistoryTransaction(
+          { ...parent, smartAccountExecutionFrom: undefined },
+          sender || ''
+        ) !== originalNonce
+      )
+        break;
+      // Legacy speedups may have lost the label but retain a recorded cancel
+      // ancestor. Only the same outer transaction nonce can carry that intent.
+      inheritedCancellation ||= parent.isCancel === true;
+      if (!original.replacementRootHash)
+        rootHash = parent.replacementRootHash || parentHash;
+      ancestor = parent;
+    }
+    const transactionWithMetadata = {
+      ...transaction,
+      chainId,
+      timestamp: Math.floor(Date.now() / 1000),
+      isCancel: cancellation || inheritedCancellation,
+      isSpeedUp: !cancellation,
+      replacesHash: oldTxHash,
+      replacementRootHash: rootHash,
+      smartAccountExecutionFrom: original?.smartAccountExecutionFrom,
+      balanceRefreshTokenAddresses: original?.balanceRefreshTokenAddresses,
+      balanceRefreshNativeAddresses: original?.balanceRefreshNativeAddresses,
+    };
+    if (original && !isTransactionInBlock(original))
+      store.dispatch(
+        setSingleTransactionToState({
+          accountId: accountInfo.id,
+          accountType: accountInfo.type,
+          chainId,
+          networkType: TransactionsType.Ethereum,
+          transaction: { ...original, isReplaced: true, status: 'replaced' },
+        })
+      );
     store.dispatch(
       setSingleTransactionToState({
-        chainId: chainID,
+        accountId: accountInfo.id,
+        accountType: accountInfo.type,
+        chainId,
         networkType: TransactionsType.Ethereum,
         transaction: transactionWithMetadata,
       })
     );
-
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
-    const account = accounts[activeAccount.type]?.[activeAccount.id];
-    if (account) {
+    try {
+      await persistCommittedWalletState(true, true, isCurrent);
+      if (!isCurrent()) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    } catch (error) {
+      throw submittedError(
+        error?.message || 'Replacement history could not be saved'
+      );
+    }
+    const tracked = store
+      .getState()
+      .vault.accountTransactions[accountInfo.type]?.[
+        accountInfo.id
+      ]?.ethereum?.[chainId]?.find(
+        (tx: any) => tx.hash?.toLowerCase() === transaction.hash.toLowerCase()
+      );
+    if (tracked && !tracked.isReplaced && !isTransactionInBlock(tracked)) {
       notificationManager.notifyTransaction({
-        transaction: transactionWithMetadata,
+        transaction: tracked,
         type: 'pending',
-        account: {
-          address: account.address,
-          label: account.label,
-        },
-        network: activeNetwork,
+        account: { address: account.address, label: account.label },
+        network,
         isEvm: true,
       });
+      try {
+        this.startRapidTransactionPolling(
+          transaction.hash,
+          chainId,
+          false,
+          accountInfo,
+          isCurrent
+        );
+      } catch (error) {
+        console.error(
+          '[MainController] Failed to schedule replacement polling:',
+          error
+        );
+      }
     }
+    return transactionWithMetadata;
   }
 
   private getEvmMinedTransactionNotificationType(
@@ -6295,7 +6533,8 @@ class MainController {
     txHash: string,
     chainId: number,
     isBitcoinBased: boolean,
-    targetAccount?: { id: number; type: KeyringAccountType }
+    targetAccount?: { id: number; type: KeyringAccountType },
+    contextIsCurrent?: () => boolean
   ) {
     const pollKey = `${txHash}_${chainId}`;
     const maxPolls = 4;
@@ -6322,7 +6561,11 @@ class MainController {
       try {
         const { activeAccount, activeNetwork } = store.getState().vault;
 
-        if (!activeAccount || activeNetwork.chainId !== chainId) {
+        if (
+          !activeAccount ||
+          activeNetwork.chainId !== chainId ||
+          contextIsCurrent?.() === false
+        ) {
           console.log(
             '[RapidPoll] Network or account changed, stopping rapid poll'
           );
@@ -6338,6 +6581,7 @@ class MainController {
           } = store.getState().vault;
 
           if (
+            contextIsCurrent?.() === false ||
             postLookupActiveNetwork.chainId !== chainId ||
             (!targetAccount &&
               (postLookupActiveAccount.id !== activeAccount.id ||
@@ -6376,6 +6620,7 @@ class MainController {
         } = store.getState().vault;
 
         if (
+          contextIsCurrent?.() === false ||
           latestActiveNetwork.chainId !== chainId ||
           (!targetAccount &&
             (latestActiveAccount.id !== activeAccount.id ||
@@ -7705,7 +7950,7 @@ class MainController {
       const provider = this.ethereumTransaction.web3Provider;
       // Get transaction from provider
       const tx = await provider.getTransaction(hash);
-      if (!tx) return null;
+      if (!tx || tx.hash?.toLowerCase() !== hash.toLowerCase()) return null;
 
       // Get receipt for confirmation status
       let receipt = null;

@@ -26,6 +26,14 @@ import {
 } from 'utils/addressPoisoning';
 import { formatMethodName } from 'utils/commonMethodSignatures';
 import { formatUnits } from 'utils/ethersV6Compat';
+import { parseEvmInteger } from 'utils/evmNonce';
+import {
+  buildEvmMinedNonceIndex,
+  getEvmSettlementStatus,
+  hasEvmCancellationIntent,
+  evmSettlementLabel,
+  evmSettlementClass,
+} from 'utils/evmReplacement';
 import { camelCaseToText } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
@@ -40,6 +48,13 @@ import {
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
+import {
+  compactReplacementWinner,
+  mergeReplacementWinnerIndex,
+  replacementHash,
+  ReplacementWinner,
+} from './replacementWinner';
+
 // Transaction details cache with TTL (5 minutes)
 const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
 const decodedTxCache = new Map<
@@ -51,6 +66,17 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // A cached pending lookup must not overwrite newer authoritative activity status.
 const mergeTransactionDetails = (summary: any, enhanced: any) => {
   const merged = { ...summary, ...enhanced };
+  // Intent and replacement links are wallet annotations, not RPC fields.
+  for (const field of [
+    'isCancel',
+    'isSpeedUp',
+    'isReplaced',
+    'replacesHash',
+    'replacementRootHash',
+  ]) {
+    if (summary?.[field] !== undefined) merged[field] = summary[field];
+    else delete merged[field];
+  }
   if (
     summary &&
     enhanced &&
@@ -79,8 +105,12 @@ const mergeTransactionDetails = (summary: any, enhanced: any) => {
 export const EvmTransactionDetailsEnhanced = ({
   hash,
   tx,
+  replacementWinnerHash,
+  replacementWinner,
 }: {
   hash: string;
+  replacementWinner?: ReplacementWinner;
+  replacementWinnerHash?: string;
   tx?: IEvmTransactionResponse;
 }) => {
   const { controllerEmitter } = useController();
@@ -96,11 +126,16 @@ export const EvmTransactionDetailsEnhanced = ({
   const scope = `${walletScope.account}:${walletScope.network}:${normalizedHash}`;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
+  const matchesChain = (data: any) =>
+    data?.chainId === undefined || parseEvmInteger(data.chainId) === chainId;
   const matchingTx =
-    tx?.hash?.toLowerCase() === normalizedHash ? tx : undefined;
+    tx?.hash?.toLowerCase() === normalizedHash && matchesChain(tx)
+      ? tx
+      : undefined;
   const matchesHash = (data: any) =>
     typeof data?.hash === 'string' &&
-    data.hash.toLowerCase() === normalizedHash;
+    data.hash.toLowerCase() === normalizedHash &&
+    matchesChain(data);
   const usableLookup = (data: any) =>
     matchesHash(data) &&
     (matchingTx ||
@@ -110,6 +145,25 @@ export const EvmTransactionDetailsEnhanced = ({
   const activeAccountTransactions = useSelector(
     selectActiveAccountTransactions
   );
+  const history = activeAccountTransactions?.ethereum?.[chainId] || [];
+  const minedNonceIndex = useMemo(
+    () => buildEvmMinedNonceIndex(history, chainId),
+    [activeAccountTransactions, chainId]
+  );
+  const winnerHash =
+    replacementHash(normalizedHash) &&
+    replacementHash(replacementWinnerHash) !== normalizedHash
+      ? replacementHash(replacementWinnerHash)
+      : undefined;
+  const hasLiveWinner = Boolean(
+    winnerHash &&
+      history.some((row: any) => replacementHash(row?.hash) === winnerHash)
+  );
+  const winnerScope = `${scope}:${winnerHash || ''}`;
+  const [winnerLookup, setWinnerLookup] = useContextualState<{
+    candidate?: ReplacementWinner;
+    settled: boolean;
+  }>(winnerScope, { settled: false });
   const trustedRecipients = useMemo(
     () =>
       getTrustedEvmRecipients(
@@ -122,8 +176,7 @@ export const EvmTransactionDetailsEnhanced = ({
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const { getTxStatusIcons, getTxStatus, getTxType } =
-    useTransactionsListConfig();
+  const { getTxStatusIcons, getTxType } = useTransactionsListConfig();
 
   const [, copy] = useCopyClipboard();
   const [enhancedDetails, setEnhancedDetails] = useContextualState<any>(
@@ -148,8 +201,6 @@ export const EvmTransactionDetailsEnhanced = ({
       tokenId?: string;
     } | null>(scope, null);
 
-  let isTxCanceled: boolean;
-  let isConfirmed: boolean;
   let isTxSent: boolean;
   const mergedTransaction = useMemo(
     () =>
@@ -230,6 +281,53 @@ export const EvmTransactionDetailsEnhanced = ({
   ]);
   const displayTransaction = displayContext.transaction;
   let transactionTx: IEvmTransactionResponse | undefined = mergedTransaction;
+  const candidate = winnerLookup.settled
+    ? winnerLookup.candidate
+    : replacementWinner;
+  const settlementIndex = useMemo(
+    () =>
+      mergeReplacementWinnerIndex(
+        history,
+        mergedTransaction,
+        replacementHash(candidate?.hash) === winnerHash ? candidate : undefined,
+        chainId,
+        minedNonceIndex
+      ),
+    [mergedTransaction, candidate, winnerHash, minedNonceIndex, chainId]
+  );
+
+  // A paginated proof is provisional. Revalidate once per scoped details visit,
+  // without using the original transaction's five-minute lookup cache.
+  useEffect(() => {
+    let cancelled = false;
+    const isCurrent = () => !cancelled && scopeRef.current === scope;
+    if (!winnerHash || hasLiveWinner) {
+      setWinnerLookup({ settled: true });
+      return;
+    }
+    const fetchWinner = async () => {
+      try {
+        const result: any = await controllerEmitter(
+          ['wallet', 'getEvmTransactionFromProvider'],
+          [winnerHash]
+        );
+        if (isCurrent())
+          setWinnerLookup({
+            settled: true,
+            candidate:
+              replacementHash(result?.hash) === winnerHash
+                ? compactReplacementWinner(result, chainId)
+                : undefined,
+          });
+      } catch {
+        if (isCurrent()) setWinnerLookup({ settled: true });
+      }
+    };
+    fetchWinner();
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, winnerHash, hasLiveWinner]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -451,10 +549,6 @@ export const EvmTransactionDetailsEnhanced = ({
 
     transactionTx = txLocal as any;
 
-    isConfirmed = isTransactionInBlock(txLocal);
-    isTxCanceled =
-      txLocal?.isCanceled === true ||
-      (txLocal?.isCancel === true && isConfirmed);
     isTxSent =
       typeof displayTransaction?.from === 'string' &&
       displayTransaction.from.toLowerCase() ===
@@ -651,16 +745,41 @@ export const EvmTransactionDetailsEnhanced = ({
             typeof address === 'string' &&
             address.toLowerCase() === accountAddress
         )));
-  const txType = hasAccountDirection
+  const settlement = getEvmSettlementStatus(
+    displayContext.isOperation && displayContext.success !== undefined
+      ? {
+          ...transactionTx,
+          // eslint-disable-next-line camelcase -- RPC receipt status field.
+          txreceipt_status: displayContext.success ? '1' : '0',
+        }
+      : transactionTx,
+    chainId,
+    settlementIndex
+  );
+  const isCancellation = hasEvmCancellationIntent(
+    transactionTx,
+    history,
+    chainId
+  );
+  const directionLabel = hasAccountDirection
     ? getTxType(displayTransaction || transactionTx, isTxSent)
     : 'Transaction';
+  const txType = isCancellation
+    ? t('transactions.cancellation')
+    : directionLabel;
   return (
     <>
       <TransactionHeader
         txType={txType}
-        statusIcon={getTxStatusIcons(txType, true)}
+        statusIcon={getTxStatusIcons(directionLabel, true)}
         displayInfo={displayTransaction ? transactionDisplayInfo : null}
-        txStatus={getTxStatus(isTxCanceled, isConfirmed)}
+        txStatus={
+          <p
+            className={`text-xs font-normal ${evmSettlementClass(settlement)}`}
+          >
+            {t(evmSettlementLabel(settlement))}
+          </p>
+        }
         isLoading={isLoadingDetails}
       />
 

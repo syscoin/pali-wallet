@@ -1,0 +1,810 @@
+import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
+import { KeyringManager } from '@sidhujag/sysweb3-keyring/cjs/keyring-manager';
+import {
+  privateKeyToAccount,
+  sendLocalEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
+import { Transaction } from 'ethers/transaction';
+import { Wallet } from 'ethers/wallet';
+
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import vaultReducer from 'state/vault';
+import { INetworkType, KeyringAccountType } from 'types/network';
+import { getWalletNavigationScope } from 'utils/navigationState';
+import {
+  handleUpdateTransaction,
+  previewSpeedUpTransaction,
+  UpdateTxAction,
+} from 'utils/transactions';
+
+import MainController from './MainController';
+
+jest.mock('..', () => ({
+  getController: jest.fn(),
+  notificationManager: { notifyTransaction: jest.fn() },
+}));
+jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
+  patchFetchWithPaliHeaders: jest.fn(),
+}));
+jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
+  controllerEmitter: jest.fn(),
+}));
+jest.mock('@sidhujag/sysweb3-keyring', () => ({
+  KeyringManager: jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/keyring-manager'
+  ).KeyringManager,
+  CustomJsonRpcProvider: jest.fn(),
+  PsbtUtils: {},
+}));
+let mockState: any;
+const mockPersist = jest.fn();
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: {
+    getState: () => mockState,
+    dispatch: (action: any) => {
+      mockState = {
+        ...mockState,
+        vault: vaultReducer(mockState.vault, action),
+      };
+    },
+  },
+  persistCommittedWalletState: (...args: any[]) => mockPersist(...args),
+}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer',
+  () => ({
+    ...jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer'
+    ),
+    privateKeyToAccount: jest.fn(),
+    sendLocalEvmTransaction: jest.fn(),
+  })
+);
+jest.mock('crypto-js', () => ({
+  ...jest.requireActual('crypto-js'),
+  AES: { ...jest.requireActual('crypto-js').AES, decrypt: jest.fn() },
+}));
+jest.mock('syscoinjs-lib', () => ({
+  utils: { bitcoinjs: {} },
+  networks: { bitcoin: {}, syscoin: {} },
+}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager-singleton',
+  () => ({
+    HardwareWalletManagerSingleton: { getInstance: () => ({}) },
+  })
+);
+jest.mock('@sidhujag/sysweb3-keyring/cjs/ledger', () => ({
+  LedgerKeyring: jest.fn(),
+}));
+jest.mock('@sidhujag/sysweb3-keyring/cjs/trezor', () => ({
+  TrezorKeyring: jest.fn(),
+}));
+
+const aes = jest.requireMock('crypto-js').AES;
+// Public deterministic fixtures; signing and broadcast remain mocked below.
+const testWallet = new Wallet(`0x${'01'.repeat(32)}`);
+const otherTestWallet = new Wallet(`0x${'02'.repeat(32)}`);
+const PAYER = testWallet.address.toLowerCase();
+const SMART = `0x${'22'.repeat(20)}`;
+const TARGET = `0x${'33'.repeat(20)}`;
+const REPLACEMENT = `0x${'55'.repeat(32)}`;
+const CHAIN = 5700;
+const APPROVED_MAXIMUM_FEE = '100000000000';
+const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
+const signedOriginal = (legacy = false, type = legacy ? 0 : 2) => {
+  const unsigned = Transaction.from({
+    type,
+    chainId: CHAIN,
+    nonce: 8,
+    to: TARGET,
+    value: BigInt(7),
+    data: '0x1234',
+    gasLimit: BigInt(21000),
+    ...(type !== 2
+      ? { gasPrice: BigInt(100), ...(type === 1 ? { accessList: [] } : {}) }
+      : {
+          maxFeePerGas: BigInt(100),
+          maxPriorityFeePerGas: BigInt(10),
+          accessList: [],
+        }),
+  });
+  unsigned.signature = testWallet.signingKey.sign(unsigned.unsignedHash);
+  const signed = Transaction.from(unsigned.serialized);
+  return {
+    hash: signed.hash!,
+    from: signed.from!.toLowerCase(),
+    to: signed.to!,
+    nonce: signed.nonce,
+    chainId: Number(signed.chainId),
+    type: signed.type,
+    accessList: signed.accessList,
+    signature: signed.signature!,
+    r: signed.signature!.r,
+    s: signed.signature!.s,
+    v: signed.signature!.networkV?.toString() ?? signed.signature!.v,
+    blockNumber: null,
+    value: BigNumber.from(signed.value),
+    data: signed.data,
+    gasLimit: BigNumber.from(signed.gasLimit),
+    gasPrice: BigNumber.from(signed.gasPrice ?? BigInt(100)),
+    maxFeePerGas:
+      signed.maxFeePerGas === null
+        ? undefined
+        : BigNumber.from(signed.maxFeePerGas),
+    maxPriorityFeePerGas:
+      signed.maxPriorityFeePerGas === null
+        ? undefined
+        : BigNumber.from(signed.maxPriorityFeePerGas),
+  };
+};
+let original = signedOriginal();
+let ORIGINAL = original.hash;
+const rawOriginal = (fields: any = {}) => ({ ...original, ...fields });
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((finish) => (resolve = finish));
+  return { promise, resolve };
+};
+
+describe('SmartAccount speedup utility to actual keyring handoff', () => {
+  let wallet: any;
+  let keyring: any;
+  let provider: any;
+  let currentProvider: any;
+  let replaceGetter: jest.SpyInstance;
+  let alert: { error: jest.Mock; success: jest.Mock; warning: jest.Mock };
+  let response: any;
+  const transactions = () =>
+    mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN];
+  const useSignedOriginal = (legacy = false, type?: number) => {
+    original = signedOriginal(legacy, type);
+    ORIGINAL = original.hash;
+    Object.assign(transactions()[0], rawOriginal());
+    provider.getTransaction.mockResolvedValue(rawOriginal());
+    response = { ...rawOriginal(), hash: REPLACEMENT };
+    provider.sendTransaction.mockResolvedValue(response);
+  };
+  const run = (
+    legacy = false,
+    signer = PAYER,
+    approvedMaximumFee: string | null = APPROVED_MAXIMUM_FEE,
+    walletScope?: ReturnType<typeof getWalletNavigationScope>
+  ) =>
+    handleUpdateTransaction({
+      t: (key, options) => (options ? `${key}: ${options.hash}` : key),
+      updateData: {
+        alert,
+        chainId: CHAIN,
+        isLegacy: legacy,
+        txHash: ORIGINAL,
+        updateType: UpdateTxAction.SpeedUp,
+        signerAddress: signer,
+        approvedMaximumFee: approvedMaximumFee ?? undefined,
+        walletScope,
+      },
+    });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    original = signedOriginal();
+    ORIGINAL = original.hash;
+    response = { ...rawOriginal(), hash: REPLACEMENT };
+    const initial: any = vaultReducer(undefined, { type: 'test/init' });
+    mockState = {
+      vault: {
+        ...initial,
+        isBitcoinBased: false,
+        activeAccount: owner,
+        activeNetwork: {
+          chainId: CHAIN,
+          kind: INetworkType.Ethereum,
+          slip44: 60,
+          currency: 'tsys',
+          url: 'rpc-a',
+        },
+        accounts: {
+          ...initial.accounts,
+          HDAccount: {
+            3: { id: 3, address: PAYER, xprv: 'synthetic-payer-ciphertext' },
+          },
+          SmartAccount: {
+            7: { id: 7, address: SMART, smartAccount: { chainId: CHAIN } },
+          },
+        },
+        accountTransactions: {
+          ...initial.accountTransactions,
+          SmartAccount: {
+            7: {
+              syscoin: {},
+              ethereum: {
+                [CHAIN]: [
+                  {
+                    ...rawOriginal(),
+                    value: '7',
+                    input: '0x1234',
+                    smartAccountExecutionFrom: SMART,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+      vaultGlobal: { activeSlip44: 60 },
+    };
+    provider = {
+      getTransaction: jest.fn().mockResolvedValue(rawOriginal()),
+      getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
+      sendTransaction: jest.fn().mockResolvedValue(response),
+    };
+    currentProvider = provider;
+    keyring = new KeyringManager();
+    keyring.setVaultStateGetter(() => mockState.vault);
+    replaceGetter = jest.spyOn(keyring, 'setVaultStateGetter');
+    keyring.sessionPassword = {};
+    keyring.withSecureData = (read: (password: string) => unknown) =>
+      read('synthetic-session-password');
+    aes.decrypt.mockReturnValue({ toString: () => 'mocked-private-key' });
+    jest.mocked(privateKeyToAccount).mockReturnValue({ address: PAYER } as any);
+    Object.defineProperty(keyring.ethereumTransaction, 'web3Provider', {
+      configurable: true,
+      get: () => currentProvider,
+    });
+    wallet = Object.create(MainController.prototype);
+    wallet.walletSessionGeneration = 5;
+    wallet.isResettingWallet = false;
+    wallet.getActiveKeyring = jest.fn(() => keyring);
+    wallet.startRapidTransactionPolling = jest.fn();
+    mockPersist.mockImplementation(async (_include, _skip, current) => {
+      if (!current()) throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
+    });
+    jest
+      .mocked(controllerEmitter)
+      .mockImplementation(async (route: string[], args: any[]) => {
+        let target: any = { wallet };
+        for (const name of route.slice(0, -1)) target = target[name];
+        return target[route[route.length - 1]](...args);
+      });
+    jest
+      .mocked(sendLocalEvmTransaction)
+      .mockImplementation(
+        async (capturedProvider, _key, _tx, beforeBroadcast, beforeSign) => {
+          await Promise.resolve();
+          beforeSign?.();
+          beforeBroadcast?.();
+          return capturedProvider.sendTransaction('mocked-signed-transaction');
+        }
+      );
+    alert = { error: jest.fn(), warning: jest.fn(), success: jest.fn() };
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([false, true])(
+    'uses the actual recorded payer credential and preserves payload/metadata (legacy=%s)',
+    async (legacy) => {
+      if (legacy) useSignedOriginal(true);
+      await run(legacy);
+      expect(alert.success).toHaveBeenCalledWith(
+        'transactions.transactionAcceleratedSuccessfully'
+      );
+      expect(alert.error).not.toHaveBeenCalled();
+      expect(aes.decrypt).toHaveBeenCalledWith(
+        'synthetic-payer-ciphertext',
+        'synthetic-session-password'
+      );
+      expect(replaceGetter).not.toHaveBeenCalled();
+      expect(mockState.vault.activeAccount).toEqual(owner);
+      const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+      expect(replacement.from.toLowerCase()).toBe(PAYER);
+      expect(replacement).toMatchObject({
+        to: TARGET,
+        nonce: 8,
+        data: '0x1234',
+        chainId: CHAIN,
+      });
+      expect(replacement.value.toString()).toBe('7');
+      expect(
+        (legacy ? replacement.gasPrice : replacement.maxFeePerGas).toString()
+      ).toBe('120');
+      expect(
+        transactions().find((tx: any) => tx.hash === REPLACEMENT)
+      ).toMatchObject({
+        isSpeedUp: true,
+        smartAccountExecutionFrom: SMART,
+        replacesHash: ORIGINAL,
+        replacementRootHash: ORIGINAL,
+      });
+      expect(mockPersist).toHaveBeenCalledTimes(1);
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+      expect(
+        jest.mocked(controllerEmitter).mock.calls.map(([route]) => route)
+      ).toEqual([
+        ['wallet', 'speedUpEvmTransaction'],
+        ['wallet', 'setEvmTransactionAsAccelerated'],
+      ]);
+    }
+  );
+
+  it.each([false, true])(
+    'previews the authenticated maximum without keys and carries approval through the real utility (legacy=%s)',
+    async (legacy) => {
+      if (legacy) useSignedOriginal(true);
+      const scope = getWalletNavigationScope();
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        legacy,
+        CHAIN,
+        PAYER
+      );
+      expect(maximumFee).toBe('3024000');
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+      expect(controllerEmitter).toHaveBeenLastCalledWith(
+        ['wallet', 'speedUpEvmTransaction'],
+        [ORIGINAL, legacy, CHAIN, PAYER, { previewOnly: true }]
+      );
+
+      await run(legacy, PAYER, maximumFee, scope);
+
+      expect(controllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'speedUpEvmTransaction'],
+        [ORIGINAL, legacy, CHAIN, PAYER, { approvedMaximumFee: maximumFee }]
+      );
+      expect(aes.decrypt).toHaveBeenCalledTimes(1);
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+      expect(mockPersist).toHaveBeenCalledTimes(1);
+      expect(alert.success).toHaveBeenCalled();
+    }
+  );
+
+  it.each([false, true])(
+    'derives final fee mode from signed type despite a poisoned history type (signed legacy=%s)',
+    async (legacy) => {
+      useSignedOriginal(legacy);
+      transactions()[0].type = legacy ? 2 : 0;
+      provider.getGasPrice = jest.fn();
+      provider.getFeeData = jest.fn();
+      const enrichFees = jest.spyOn(
+        keyring.ethereumTransaction,
+        'getFeeDataWithDynamicMaxPriorityFeePerGas'
+      );
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        !legacy,
+        CHAIN,
+        PAYER
+      );
+      await run(!legacy, PAYER, maximumFee);
+      const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+      expect(
+        (legacy ? replacement.gasPrice : replacement.maxFeePerGas).toString()
+      ).toBe('120');
+      expect(replacement.data).toBe('0x1234');
+      expect(replacement.nonce).toBe(8);
+      expect(replacement.value.toString()).toBe('7');
+      expect(provider.getGasPrice).not.toHaveBeenCalled();
+      expect(provider.getFeeData).not.toHaveBeenCalled();
+      expect(enrichFees).not.toHaveBeenCalled();
+      expect(alert.success).toHaveBeenCalled();
+    }
+  );
+
+  it('uses the authenticated type1 gas price for both dynamic fee fields without RPC enrichment', async () => {
+    useSignedOriginal(false, 1);
+    provider.getGasPrice = jest.fn();
+    provider.getFeeData = jest.fn();
+    const enrichFees = jest.spyOn(
+      keyring.ethereumTransaction,
+      'getFeeDataWithDynamicMaxPriorityFeePerGas'
+    );
+    const maximumFee = await previewSpeedUpTransaction(
+      ORIGINAL,
+      false,
+      CHAIN,
+      PAYER
+    );
+    await run(false, PAYER, maximumFee);
+    const replacement = jest.mocked(sendLocalEvmTransaction).mock.calls[0][2];
+    expect(replacement.maxFeePerGas.toString()).toBe('120');
+    expect(replacement.maxPriorityFeePerGas.toString()).toBe('120');
+    expect(replacement.accessList).toEqual([]);
+    expect(provider.getGasPrice).not.toHaveBeenCalled();
+    expect(provider.getFeeData).not.toHaveBeenCalled();
+    expect(enrichFees).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [KeyringAccountType.HDAccount, null],
+    [KeyringAccountType.HDAccount, '3023999'],
+    [KeyringAccountType.Ledger, null],
+    [KeyringAccountType.Ledger, '3023999'],
+    [KeyringAccountType.Trezor, null],
+    [KeyringAccountType.Trezor, '3023999'],
+  ])(
+    'rejects %s missing or insufficient fee approval %p before credentials/devices',
+    async (signerType, cap) => {
+      mockState.vault.accounts.HDAccount =
+        signerType === KeyringAccountType.HDAccount
+          ? { 3: { id: 3, address: PAYER, xprv: 'synthetic-payer-ciphertext' } }
+          : {};
+      if (signerType !== KeyringAccountType.HDAccount)
+        mockState.vault.accounts[signerType] = { 4: { id: 4, address: PAYER } };
+      const ledgerSign = jest.fn();
+      const trezorSign = jest.fn();
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      await run(false, PAYER, cap);
+      expect(alert.error).toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
+    'previews %s fees without invoking the device or broadcast',
+    async (signerType) => {
+      mockState.vault.accounts.HDAccount = {};
+      mockState.vault.accounts[signerType] = { 4: { id: 4, address: PAYER } };
+      const ledgerSign = jest.fn();
+      const trezorSign = jest.fn();
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      await expect(
+        previewSpeedUpTransaction(ORIGINAL, false, CHAIN, PAYER)
+      ).resolves.toBe('3024000');
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'RPC', 'chain', 'provider', 'session', 'payer'])(
+    'rejects a %s change while fee preview is in flight',
+    async (axis) => {
+      const pending = deferred<any>();
+      const started = deferred<void>();
+      provider.getTransaction.mockImplementationOnce(() => {
+        started.resolve();
+        return pending.promise;
+      });
+      const previewing = previewSpeedUpTransaction(
+        ORIGINAL,
+        false,
+        CHAIN,
+        PAYER
+      );
+      await started.promise;
+      if (axis === 'account')
+        mockState.vault.activeAccount = { ...owner, id: 8 };
+      if (axis === 'RPC') mockState.vault.activeNetwork.url = 'rpc-b';
+      if (axis === 'chain') mockState.vault.activeNetwork.chainId = 1;
+      if (axis === 'provider') currentProvider = {};
+      if (axis === 'session') wallet.walletSessionGeneration++;
+      if (axis === 'payer')
+        mockState.vault.accounts.HDAccount[3].address = TARGET;
+      pending.resolve(rawOriginal());
+      await expect(previewing).rejects.toThrow();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'RPC'])(
+    'does not reuse fee approval after %s changes between preview and final submission',
+    async (axis) => {
+      const scope = getWalletNavigationScope();
+      const maximumFee = await previewSpeedUpTransaction(
+        ORIGINAL,
+        false,
+        CHAIN,
+        PAYER
+      );
+      provider.getTransaction.mockClear();
+      if (axis === 'account')
+        mockState.vault.activeAccount = { ...owner, id: 8 };
+      else mockState.vault.activeNetwork.url = 'rpc-b';
+      await run(false, PAYER, maximumFee, scope);
+      expect(alert.error).toHaveBeenCalled();
+      expect(provider.getTransaction).not.toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    'missing payer',
+    'missing owner',
+    'wrong owner chain',
+    'wrong caller signer',
+    'superseded original',
+    'replacement status',
+  ])('refuses %s before RPC or credential access', async (failure) => {
+    if (failure === 'missing payer') mockState.vault.accounts.HDAccount = {};
+    if (failure === 'missing owner')
+      transactions()[0].smartAccountExecutionFrom = undefined;
+    if (failure === 'wrong owner chain')
+      mockState.vault.accounts.SmartAccount[7].smartAccount.chainId = 1;
+    if (failure === 'superseded original') transactions()[0].isReplaced = true;
+    if (failure === 'replacement status') transactions()[0].status = 'replaced';
+    await run(false, failure === 'wrong caller signer' ? TARGET : PAYER);
+    expect(alert.error).toHaveBeenCalled();
+    expect(provider.getTransaction).not.toHaveBeenCalled();
+    expect(aes.decrypt).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { hash: REPLACEMENT },
+    { from: TARGET },
+    { nonce: 9 },
+    { chainId: 1 },
+    { to: SMART },
+    { value: BigNumber.from(8) },
+    { data: '0xabcd' },
+    { blockNumber: 123 },
+  ])('refuses changed RPC original %j before signing', async (fields) => {
+    provider.getTransaction.mockResolvedValue(rawOriginal(fields));
+    await run();
+    expect(alert.error).toHaveBeenCalled();
+    expect(aes.decrypt).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+  });
+
+  it('rejects wrong-hash provider details before receipt queries or SmartAccount owner lookup', async () => {
+    const readOwner = jest.fn(() => SMART);
+    Object.defineProperty(transactions()[0], 'smartAccountExecutionFrom', {
+      configurable: true,
+      get: readOwner,
+    });
+    const wrongTransaction = rawOriginal({ hash: REPLACEMENT });
+    provider.getTransaction.mockResolvedValue(wrongTransaction);
+    provider.getTransactionReceipt = jest.fn().mockResolvedValue(null);
+    provider.getBlockNumber = jest.fn().mockResolvedValue(123);
+
+    await expect(
+      wallet.getEvmTransactionFromProvider(ORIGINAL)
+    ).resolves.toBeNull();
+
+    expect(provider.getTransaction).toHaveBeenCalledWith(ORIGINAL);
+    expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(provider.getBlockNumber).not.toHaveBeenCalled();
+    expect(readOwner).not.toHaveBeenCalled();
+    expect(wrongTransaction).not.toHaveProperty('smartAccountExecutionFrom');
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [KeyringAccountType.HDAccount, 'payload'],
+    [KeyringAccountType.HDAccount, 'payer'],
+    [KeyringAccountType.Ledger, 'payload'],
+    [KeyringAccountType.Ledger, 'payer'],
+    [KeyringAccountType.Trezor, 'payload'],
+    [KeyringAccountType.Trezor, 'payer'],
+  ])(
+    'authenticates jointly changed history and RPC %s %s before any signing handoff',
+    async (signerType, changedField) => {
+      const selectedPayer =
+        changedField === 'payer'
+          ? otherTestWallet.address.toLowerCase()
+          : PAYER;
+      const fields =
+        changedField === 'payer'
+          ? { from: selectedPayer }
+          : { to: SMART, value: BigNumber.from(8), data: '0xabcd' };
+      Object.assign(transactions()[0], fields);
+      if (changedField === 'payload') {
+        transactions()[0].value = '8';
+        transactions()[0].input = '0xabcd';
+      }
+      // Both untrusted descriptions agree; the original hash/signature still
+      // authenticates the unchanged public fixture, so neither is authority.
+      provider.getTransaction.mockResolvedValue(rawOriginal(fields));
+      mockState.vault.accounts.HDAccount =
+        signerType === KeyringAccountType.HDAccount
+          ? {
+              3: {
+                id: 3,
+                address: selectedPayer,
+                xprv: 'synthetic-payer-ciphertext',
+              },
+            }
+          : {};
+      if (signerType !== KeyringAccountType.HDAccount)
+        mockState.vault.accounts[signerType] = {
+          4: { id: 4, address: selectedPayer },
+        };
+      const ledgerSign = jest
+        .fn()
+        .mockRejectedValue(new Error('Unexpected device signing'));
+      const trezorSign = jest
+        .fn()
+        .mockRejectedValue(new Error('Unexpected device signing'));
+      keyring.ledgerSigner.evm = { signEVMTransaction: ledgerSign };
+      keyring.trezorSigner.signEthTransaction = trezorSign;
+      jest
+        .mocked(privateKeyToAccount)
+        .mockReturnValue({ address: selectedPayer } as any);
+      await run(false, selectedPayer);
+      expect(alert.error).toHaveBeenCalled();
+      expect(alert.warning).not.toHaveBeenCalled();
+      expect(provider.getBalance).not.toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(privateKeyToAccount).not.toHaveBeenCalled();
+      expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+      expect(ledgerSign).not.toHaveBeenCalled();
+      expect(trezorSign).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+      expect(mockPersist).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'RPC', 'chain', 'provider', 'session', 'payer'])(
+    'refuses a %s change during original lookup',
+    async (axis) => {
+      const pending = deferred<any>();
+      const started = deferred<void>();
+      provider.getTransaction.mockImplementationOnce(() => {
+        started.resolve();
+        return pending.promise;
+      });
+      const sending = run();
+      await started.promise;
+      if (axis === 'account')
+        mockState.vault.activeAccount = { ...owner, id: 8 };
+      if (axis === 'RPC') mockState.vault.activeNetwork.url = 'rpc-b';
+      if (axis === 'chain') mockState.vault.activeNetwork.chainId = 1;
+      if (axis === 'provider') currentProvider = {};
+      if (axis === 'session') wallet.walletSessionGeneration++;
+      if (axis === 'payer')
+        mockState.vault.accounts.HDAccount[3].address = TARGET;
+      pending.resolve(rawOriginal());
+      await sending;
+      expect(alert.error).toHaveBeenCalled();
+      expect(aes.decrypt).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('blocks software signing/broadcast when context changes after credential handoff', async () => {
+    jest
+      .mocked(sendLocalEvmTransaction)
+      .mockImplementationOnce(
+        async (_provider, _key, _tx, beforeBroadcast, beforeSign) => {
+          wallet.walletSessionGeneration++;
+          beforeSign?.();
+          beforeBroadcast?.();
+          return response as any;
+        }
+      );
+    await run();
+    expect(aes.decrypt).toHaveBeenCalledTimes(1);
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+    expect(alert.success).not.toHaveBeenCalled();
+  });
+
+  it('blocks credential access and signing when the original mines during a delayed fee read', async () => {
+    const pending = deferred<any>();
+    const started = deferred<void>();
+    provider.getBalance.mockImplementationOnce(() => {
+      started.resolve();
+      return pending.promise;
+    });
+    const sending = run();
+    await started.promise;
+    transactions()[0].blockNumber = 123;
+    transactions()[0].confirmations = 1;
+    pending.resolve(BigNumber.from('1000000000'));
+    await sending;
+    expect(aes.decrypt).not.toHaveBeenCalled();
+    expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+    expect(alert.success).not.toHaveBeenCalled();
+  });
+
+  it('discards a valid hardware signature when the original is superseded during the device request', async () => {
+    const hardwareWallet = testWallet;
+    const hardwareAddress = hardwareWallet.address.toLowerCase();
+    mockState.vault.accounts.HDAccount = {};
+    mockState.vault.accounts.Ledger = {
+      4: { id: 4, address: hardwareAddress },
+    };
+    transactions()[0].from = hardwareAddress;
+    provider.getTransaction.mockResolvedValue(
+      rawOriginal({ from: hardwareAddress })
+    );
+    const pending = deferred<void>();
+    const started = deferred<void>();
+    const sign = jest.fn(async ({ rawTx }) => {
+      started.resolve();
+      await pending.promise;
+      const signature = hardwareWallet.signingKey.sign(
+        Transaction.from(`0x${rawTx}`).unsignedHash
+      );
+      return {
+        r: signature.r.slice(2),
+        s: signature.s.slice(2),
+        v: signature.v.toString(16),
+      };
+    });
+    keyring.ledgerSigner.evm = { signEVMTransaction: sign };
+    const sending = run(false, hardwareAddress);
+    await started.promise;
+    transactions()[0].isReplaced = true;
+    transactions()[0].status = 'replaced';
+    pending.resolve();
+    await sending;
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+    expect(mockPersist).not.toHaveBeenCalled();
+    expect(alert.success).not.toHaveBeenCalled();
+  });
+
+  it('waits for history persistence after broadcast before reporting success', async () => {
+    const saved = deferred<void>();
+    const started = deferred<void>();
+    mockPersist.mockImplementationOnce(() => {
+      started.resolve();
+      return saved.promise;
+    });
+    const sending = run();
+    await started.promise;
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(alert.success).not.toHaveBeenCalled();
+    saved.resolve();
+    await sending;
+    expect(alert.success).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the acknowledged hash on a history save failure without sending again', async () => {
+    mockPersist.mockRejectedValueOnce(new Error('Storage failed'));
+    await expect(run()).resolves.toBe(REPLACEMENT);
+    expect(alert.warning).toHaveBeenCalledWith(
+      `transactions.replacementHistoryWarning: ${REPLACEMENT}`
+    );
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the acknowledged hash when the UI account changes after broadcast', async () => {
+    provider.sendTransaction.mockImplementationOnce(async () => {
+      mockState.vault.activeAccount = {
+        type: KeyringAccountType.HDAccount,
+        id: 3,
+      };
+      wallet.walletSessionGeneration++;
+      return response;
+    });
+    await expect(run()).resolves.toBe(REPLACEMENT);
+    expect(alert.warning).toHaveBeenCalledWith(
+      `transactions.replacementHistoryWarning: ${REPLACEMENT}`
+    );
+    expect(alert.error).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(mockPersist).not.toHaveBeenCalled();
+  });
+});

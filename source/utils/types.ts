@@ -1,4 +1,5 @@
 import type { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
+import type { IWalletNavigationScope } from 'utils/navigationState';
 
 import { UpdateTxAction } from './transactions';
 
@@ -25,14 +26,16 @@ export interface ITransactionOptions {
     t: (key: string) => string;
     updateData: {
       alert: any;
+      approvedMaximumFee?: string;
       chainId: number;
       isLegacy: boolean;
       nonce?: number;
       signerAddress?: string;
       txHash: string;
       updateType: UpdateTxAction;
+      walletScope?: IWalletNavigationScope;
     };
-  }) => Promise<void>;
+  }) => Promise<void | string>;
   isOpen?: boolean;
   onClose?: any;
   setIsOpenModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -40,6 +43,7 @@ export interface ITransactionOptions {
     React.SetStateAction<{
       buttonText: string;
       description: string;
+      isButtonLoading?: boolean;
       onClick: () => void;
       onClose: () => void;
       title: string;

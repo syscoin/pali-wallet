@@ -51,6 +51,8 @@ export interface IEvmTransaction {
 
   replacementIndexed?: boolean;
 
+  replacementRootHash?: string;
+
   replacesHash?: string;
 
   s?: string;

@@ -14,6 +14,7 @@ import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
 import { TransactionDetails } from './TransactionDetails';
+import { replacementHash } from './Transactions/EVM/replacementWinner';
 
 export const DetailsView = () => {
   const activeNetwork = useSelector(
@@ -38,11 +39,21 @@ export const DetailsView = () => {
     typeof rawHash === 'string' && rawHash.trim() ? rawHash : undefined;
 
   const routeScope = location.state?.walletScope;
-  const routeTransaction =
+  const isCurrentRoute =
     routeScope?.account === walletScope.account &&
-    routeScope?.network === walletScope.network
-      ? tx
+    routeScope?.network === walletScope.network;
+  const routeTransaction = isCurrentRoute ? tx : undefined;
+  const winnerHash =
+    isCurrentRoute && !isBitcoinBased
+      ? replacementHash(location.state?.replacementWinnerHash)
       : undefined;
+  const winnerProps =
+    winnerHash && replacementHash(hash) && winnerHash !== replacementHash(hash)
+      ? {
+          replacementWinnerHash: winnerHash,
+          replacementWinner: location.state?.replacementWinner,
+        }
+      : {};
 
   const isAsset = id && !hash;
   const isNft = Boolean(nftCollection && nftData?.contractAddress);
@@ -96,6 +107,7 @@ export const DetailsView = () => {
         <TransactionDetails
           hash={hash}
           tx={restoredTransaction || routeTransaction}
+          {...winnerProps}
         />
       )}
 

@@ -23,6 +23,37 @@ const fetchExplorerApi = (url: string, options?: RequestInit) =>
     ? fetchRoutescan(url, options)
     : retryableFetch(url, options);
 
+const mapExplorerReceiptStatus = (item: any) => {
+  const binaryStatus = (value: unknown): '0' | '1' | null => {
+    if (
+      value === 0 ||
+      value === '0' ||
+      (typeof value === 'string' && /^0x0+$/i.test(value))
+    )
+      return '0';
+    if (
+      value === 1 ||
+      value === '1' ||
+      (typeof value === 'string' && /^0x0*1$/i.test(value))
+    )
+      return '1';
+    return null;
+  };
+  const error = binaryStatus(
+    typeof item.isError === 'boolean' ? Number(item.isError) : item.isError
+  );
+  const status =
+    binaryStatus(item.txreceipt_status) ??
+    (error === null ? null : error === '0' ? '1' : '0');
+  return {
+    // A receipt status describes success; isError describes the opposite.
+    // Keep both coherent when explicit receipt status overrides explorer flags.
+    // eslint-disable-next-line camelcase
+    txreceipt_status: status,
+    isError: status === null ? null : status === '0' ? '1' : '0',
+  };
+};
+
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     numBlocks: number,
@@ -208,9 +239,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         s: item.s,
         v: parseEvmInteger(item.v),
         historySource,
-        // eslint-disable-next-line camelcase
-        txreceipt_status: item.txreceipt_status || item.isError || null,
-        isError: item.isError || null,
+        ...mapExplorerReceiptStatus(item),
       } as any;
     };
     if (!apiUrl) return { transactions: null, error: 'No API URL provided' };
@@ -450,9 +479,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             contractAddress: tx.contractAddress || null,
             cumulativeGasUsed: tx.cumulativeGasUsed || null,
             gasUsed: tx.gasUsed || null,
-            isError: tx.isError || null,
-            // eslint-disable-next-line camelcase
-            txreceipt_status: tx.txreceipt_status || null,
+            ...mapExplorerReceiptStatus(tx),
             transactionIndex:
               tx.transactionIndex !== undefined ? tx.transactionIndex : null,
           }));
@@ -666,9 +693,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           s: item.s,
           v: parseEvmInteger(item.v),
           historySource,
-          // eslint-disable-next-line camelcase
-          txreceipt_status: item.txreceipt_status || item.isError || null,
-          isError: item.isError || null,
+          ...mapExplorerReceiptStatus(item),
         } as any;
       }
 

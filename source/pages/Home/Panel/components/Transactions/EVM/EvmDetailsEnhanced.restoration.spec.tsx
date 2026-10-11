@@ -11,8 +11,10 @@ import {
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 
 let mockState: any;
+let mockHistory: any[];
 const mockEmitter = jest.fn();
 const mockDisplay = jest.fn();
+const mockStatusIcons = jest.fn<null, [string, boolean]>(() => null);
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OTHER = '0x2222222222222222222222222222222222222222';
 const TARGET = '0x3333333333333333333333333333333333333333';
@@ -22,7 +24,19 @@ jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) =>
+      ((
+        {
+          'send.confirmed': 'Confirmed',
+          'send.pending': 'Pending',
+          'send.failed': 'Failed',
+          'transactions.replaced': 'Replaced',
+          'transactions.replacementPending': 'Replacement pending',
+          'transactions.cancellation': 'Cancellation',
+        } as Record<string, string>
+      )[key] || key),
+  }),
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({ controllerEmitter: mockEmitter }),
@@ -39,7 +53,9 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccount: (state: any) => state.account,
-  selectActiveAccountTransactions: () => ({ ethereum: {} }),
+  selectActiveAccountTransactions: () => ({
+    ethereum: { [mockState.vault.activeNetwork.chainId]: mockHistory },
+  }),
   selectValidEnsCache: () => ({}),
 }));
 jest.mock('hooks/index', () => ({
@@ -49,7 +65,8 @@ jest.mock('hooks/index', () => ({
   }),
   useTransactionsListConfig: () => ({
     getTxType: (_tx: any, sent: boolean) => (sent ? 'Sent' : 'Received'),
-    getTxStatusIcons: () => null,
+    getTxStatusIcons: (label: string, detail: boolean) =>
+      mockStatusIcons(label, detail),
     getTxStatus: (_canceled: boolean, confirmed: boolean) =>
       confirmed ? 'Confirmed' : 'Pending',
   }),
@@ -162,6 +179,7 @@ const operationLog = (
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockHistory = [];
   mockState = {
     refType: 'HDAccount',
     account: { id: 0, address: ACCOUNT },
@@ -414,7 +432,7 @@ it.each(['supported', 'unsupported'])(
       expect(screen.getByText(/Success:Failed/)).toBeTruthy()
     );
     expect(screen.getByTestId('header').textContent).toBe(
-      'Transaction|-|Confirmed'
+      'Transaction|-|Failed'
     );
     expect(mockDisplay).not.toHaveBeenCalled();
   }
@@ -527,8 +545,457 @@ it('immediately hides previously displayed operation amount when current summary
       tx={{ ...summary, txreceipt_status: '0' } as any}
     />
   );
-  expect(screen.getByTestId('header').textContent).toBe(
-    'Transaction|-|Confirmed'
-  );
+  expect(screen.getByTestId('header').textContent).toBe('Transaction|-|Failed');
   expect(screen.getByText(/Success:Failed/)).toBeTruthy();
 });
+
+const replacementHash = (digit: string) => `0x${digit.repeat(64)}`;
+const replacementTx = (digit: string, fields: any = {}) =>
+  fullTx(replacementHash(digit), {
+    chainId: 1,
+    type: 2,
+    nonce: 8,
+    blockNumber: null,
+    confirmations: 0,
+    ...fields,
+  });
+
+it('shows a replaced original even when its RPC lookup remains pending', async () => {
+  const original = replacementTx('a', { isReplaced: true });
+  mockHistory = [
+    original,
+    replacementTx('b', { blockNumber: 42, confirmations: 3 }),
+  ];
+  mockEmitter.mockResolvedValue({ ...original, isReplaced: undefined });
+  render(
+    <EvmTransactionDetailsEnhanced hash={original.hash} tx={original as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+  );
+});
+
+it('updates the open original from replacement pending to replaced when the winner arrives', async () => {
+  const original = replacementTx('c', { isReplaced: true });
+  mockHistory = [original];
+  mockEmitter.mockResolvedValue(null);
+  const view = render(
+    <EvmTransactionDetailsEnhanced hash={original.hash} tx={original as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+  mockHistory = [
+    original,
+    replacementTx('d', { blockNumber: 42, confirmations: 3 }),
+  ];
+  view.rerender(
+    <EvmTransactionDetailsEnhanced hash={original.hash} tx={original as any} />
+  );
+  expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced');
+});
+
+it.each(['1', '0'])(
+  'uses an original own receipt %s despite a stale replacement marker',
+  async (receipt) => {
+    const original = replacementTx(receipt, {
+      blockNumber: 43,
+      confirmations: 4,
+      isReplaced: true,
+      // eslint-disable-next-line camelcase
+      txreceipt_status: receipt,
+    });
+    mockHistory = [original, replacementTx('e', { blockNumber: 42 })];
+    mockEmitter.mockResolvedValue(replacementTx(receipt));
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        `Sent|7|${receipt === '1' ? 'Confirmed' : 'Failed'}`
+      )
+    );
+  }
+);
+
+it('keeps cancellation purpose, confirmed settlement and outgoing icon after acceleration', async () => {
+  const cancellation = replacementTx('f', {
+    to: ACCOUNT,
+    value: '0',
+    blockNumber: 42,
+    isCancel: true,
+    isSpeedUp: true,
+    replacesHash: replacementHash('9'),
+  });
+  mockHistory = [cancellation];
+  mockEmitter.mockResolvedValue({ ...cancellation, isCancel: undefined });
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={cancellation.hash}
+      tx={cancellation as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Cancellation|0|Confirmed'
+    )
+  );
+  expect(mockStatusIcons).toHaveBeenLastCalledWith('Sent', true);
+});
+
+it('recovers known legacy cancellation ancestry without guessing from a self-transfer', async () => {
+  const cancellation = replacementTx('8', { isCancel: true, to: ACCOUNT });
+  const speedup = replacementTx('7', {
+    to: ACCOUNT,
+    value: '0',
+    blockNumber: 42,
+    isSpeedUp: true,
+    replacesHash: cancellation.hash,
+  });
+  mockHistory = [cancellation, speedup];
+  mockEmitter.mockResolvedValue(null);
+  render(
+    <EvmTransactionDetailsEnhanced hash={speedup.hash} tx={speedup as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Cancellation|0|Confirmed'
+    )
+  );
+});
+
+it.each([false, true])(
+  'ignores provider-supplied cancellation intent (hash-only restoration=%s)',
+  async (hashOnly) => {
+    const tx = replacementTx(hashOnly ? '6' : '5', {
+      to: ACCOUNT,
+      value: '0',
+      blockNumber: 42,
+    });
+    mockEmitter.mockResolvedValue({ ...tx, isCancel: true, isSpeedUp: true });
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={tx.hash}
+        tx={hashOnly ? undefined : (tx as any)}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe('Sent|0|Confirmed')
+    );
+  }
+);
+
+it('keeps an original neutral when a token-event placeholder has the same nonce', async () => {
+  const original = replacementTx('4', { isReplaced: true });
+  mockHistory = [
+    original,
+    replacementTx('3', {
+      blockNumber: 42,
+      historySource: 'explorer-tokentx',
+    }),
+  ];
+  mockEmitter.mockResolvedValue(null);
+  render(
+    <EvmTransactionDetailsEnhanced hash={original.hash} tx={original as any} />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+});
+
+it('rejects a matching provider hash explicitly belonging to another chain', async () => {
+  const hash = replacementHash('2');
+  mockEmitter.mockResolvedValue(fullTx(hash, { chainId: 57 }));
+  render(<EvmTransactionDetailsEnhanced hash={hash} />);
+  await screen.findByText('transactions.transactionNotFoundOrPending');
+  expect(mockDisplay).not.toHaveBeenCalled();
+});
+
+let nextPaginatedHash = 100;
+const paginatedTx = (fields: any = {}) =>
+  replacementTx('a', {
+    hash: `0x${(nextPaginatedHash++).toString(16).padStart(64, '0')}`,
+    ...fields,
+  });
+const lookupPaginated = (original: any, winner: any) =>
+  mockEmitter.mockImplementation(async (method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider'
+      ? args[0] === original.hash
+        ? original
+        : winner
+      : null
+  );
+
+it('restores a paginated winner by its saved hash without receiving a transaction payload', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({
+    blockNumber: 42,
+    to: ACCOUNT,
+    value: '0',
+    isCancel: true,
+  });
+  mockHistory = [original];
+  lookupPaginated(original, winner);
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+  );
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'getEvmTransactionFromProvider'],
+    [winner.hash]
+  );
+  expect(mockHistory).toEqual([original]);
+  expect(screen.queryByText(/Cancellation/)).toBeNull();
+  expect(
+    mockDisplay.mock.calls.every(([tx]) => tx.hash === original.hash)
+  ).toBe(true);
+});
+
+it('uses the ephemeral paginated proof only while fresh revalidation is pending', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  const pending = deferred();
+  mockHistory = [original];
+  mockEmitter.mockImplementation((method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+      ? pending.promise
+      : Promise.resolve(null)
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+  );
+  await act(async () => pending.resolve(null));
+  expect(screen.getByTestId('header').textContent).toBe(
+    'Sent|7|Replacement pending'
+  );
+});
+
+it.each([
+  { blockNumber: null, confirmations: 1, blockHash: ZERO },
+  { from: OTHER },
+  { nonce: 9 },
+  { chainId: 57 },
+  { hash: replacementHash('f') },
+  { historySource: 'explorer-tokentx' },
+  { type: '0x7f' },
+  { type: undefined },
+  { r: '0x0', s: '0x0', v: '0x0' },
+])(
+  'revokes a paginated snapshot after fresh invalid winner data %j',
+  async (fields) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    mockHistory = [original];
+    lookupPaginated(original, { ...winner, ...fields });
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        'Sent|7|Replacement pending'
+      )
+    );
+  }
+);
+
+it('revokes a paginated snapshot when fresh winner lookup rejects', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockHistory = [original];
+  mockEmitter.mockImplementation((method: string[], args: any[]) =>
+    method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve(null)
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+});
+
+it('keeps conflicting current mined winners ambiguous instead of choosing a paginated snapshot', async () => {
+  const original = paginatedTx({ isReplaced: true });
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockHistory = [original, paginatedTx({ blockNumber: 43 })];
+  lookupPaginated(original, winner);
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      tx={original as any}
+      replacementWinnerHash={winner.hash}
+      replacementWinner={winner as any}
+    />
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('header').textContent).toBe(
+      'Sent|7|Replacement pending'
+    )
+  );
+  expect(screen.queryByText(/\|Replaced$/)).toBeNull();
+});
+
+it.each([null, 42])(
+  'prefers a live same-hash winner row at block %p and skips its redundant lookup',
+  async (blockNumber) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    mockHistory = [original, { ...winner, blockNumber }];
+    lookupPaginated(original, winner);
+    render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe(
+        `Sent|7|${blockNumber ? 'Replaced' : 'Replacement pending'}`
+      )
+    );
+    expect(mockEmitter).not.toHaveBeenCalledWith(
+      ['wallet', 'getEvmTransactionFromProvider'],
+      [winner.hash]
+    );
+  }
+);
+
+it.each(['1', '0'])(
+  'uses the original own receipt %s after a paginated winner lookup settles',
+  async (receipt) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    const pending = deferred();
+    mockHistory = [original];
+    mockEmitter.mockImplementation((method: string[], args: any[]) =>
+      method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+        ? pending.promise
+        : Promise.resolve(null)
+    );
+    const view = render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('header').textContent).toBe('Sent|7|Replaced')
+    );
+    // eslint-disable-next-line camelcase
+    const mined = { ...original, blockNumber: 43, txreceipt_status: receipt };
+    mockHistory = [mined];
+    view.rerender(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={mined as any}
+        replacementWinnerHash={winner.hash}
+        replacementWinner={winner as any}
+      />
+    );
+    await act(async () => pending.resolve(winner));
+    expect(screen.getByTestId('header').textContent).toBe(
+      `Sent|7|${receipt === '1' ? 'Confirmed' : 'Failed'}`
+    );
+  }
+);
+
+it('does not reconstruct a missing original tuple from a restored winner hash', async () => {
+  const original = paginatedTx();
+  const winner = paginatedTx({ blockNumber: 42 });
+  mockEmitter.mockImplementation(async (_method: string[], args: any[]) =>
+    args[0] === winner.hash ? winner : null
+  );
+  render(
+    <EvmTransactionDetailsEnhanced
+      hash={original.hash}
+      replacementWinnerHash={winner.hash}
+    />
+  );
+  await screen.findByText('transactions.transactionNotFoundOrPending');
+  expect(mockDisplay).not.toHaveBeenCalled();
+});
+
+it.each(['account', 'endpoint', 'hash', 'unmount'])(
+  'drops a late winner reply after changing %s',
+  async (change) => {
+    const original = paginatedTx({ isReplaced: true });
+    const winner = paginatedTx({ blockNumber: 42 });
+    const nextOriginal = paginatedTx({ isReplaced: true });
+    const pending = deferred();
+    mockHistory = [original];
+    mockEmitter.mockImplementation((method: string[], args: any[]) =>
+      method[1] === 'getEvmTransactionFromProvider' && args[0] === winner.hash
+        ? pending.promise
+        : Promise.resolve(null)
+    );
+    const view = render(
+      <EvmTransactionDetailsEnhanced
+        hash={original.hash}
+        tx={original as any}
+        replacementWinnerHash={winner.hash}
+      />
+    );
+    await waitFor(() =>
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'getEvmTransactionFromProvider'],
+        [winner.hash]
+      )
+    );
+    if (change === 'unmount') view.unmount();
+    else {
+      if (change === 'account') mockState.account = { id: 1, address: OTHER };
+      if (change === 'endpoint')
+        mockState.vault.activeNetwork.url = 'https://rpc-b.example';
+      view.rerender(
+        <EvmTransactionDetailsEnhanced
+          hash={change === 'hash' ? nextOriginal.hash : original.hash}
+          tx={(change === 'hash' ? nextOriginal : original) as any}
+        />
+      );
+    }
+    await act(async () => pending.resolve(winner));
+    if (change === 'unmount') expect(screen.queryByTestId('header')).toBeNull();
+    else
+      expect(screen.getByTestId('header').textContent).toBe(
+        `${change === 'account' ? 'Received' : 'Sent'}|7|Replacement pending`
+      );
+  }
+);

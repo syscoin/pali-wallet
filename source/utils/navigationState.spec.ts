@@ -83,6 +83,69 @@ it('preserves a string transaction hash across popup restoration', async () => {
   expect((await loadNavigationState())?.state.hash).toBe(hash);
 });
 
+it('restores only the paginated replacement lookup hash, not receipt evidence or payloads', async () => {
+  const hash = `0x${'a'.repeat(64)}`;
+  const winner = `0x${'B'.repeat(64)}`;
+  await saveNavigationState('/home/details', undefined, {
+    hash,
+    replacementWinnerHash: winner,
+    replacementWinner: { hash: winner, blockNumber: 42, signed: 'private' },
+    tx: { hash, input: 'private' },
+  });
+  expect((await loadNavigationState())?.state).toEqual({
+    hash,
+    replacementWinnerHash: winner.toLowerCase(),
+  });
+  expect(JSON.stringify(mockStored)).not.toMatch(/private|blockNumber/);
+});
+
+it.each([true, 123, {}, [], 'https://rpc.test/secret', `0x${'a'.repeat(64)}`])(
+  'drops an invalid or self-referential replacement lookup %j',
+  async (replacementWinnerHash) => {
+    await saveNavigationState('/home/details', undefined, {
+      hash: `0x${'a'.repeat(64)}`,
+      replacementWinnerHash,
+    });
+    expect((await loadNavigationState())?.state).not.toHaveProperty(
+      'replacementWinnerHash'
+    );
+  }
+);
+
+it.each(['account', 'network'])(
+  'drops a saved replacement lookup when the %s scope changes',
+  async (field) => {
+    await saveNavigationState('/home/details', undefined, {
+      hash: `0x${'a'.repeat(64)}`,
+      replacementWinnerHash: `0x${'b'.repeat(64)}`,
+    });
+    if (field === 'account') mockState.vault.activeAccount.id = 2;
+    else mockState.vault.activeNetwork.chainId = 2;
+    expect((await loadNavigationState())?.state).not.toHaveProperty(
+      'replacementWinnerHash'
+    );
+  }
+);
+
+it('does not persist replacement lookups outside EVM transaction details', async () => {
+  for (const hash of ['asset-id', `0x${'a'.repeat(64)}`]) {
+    await saveNavigationState('/home?tab=activity', undefined, {
+      hash,
+      replacementWinnerHash: `0x${'b'.repeat(64)}`,
+    });
+    expect((await loadNavigationState())?.state).not.toHaveProperty(
+      'replacementWinnerHash'
+    );
+  }
+  await saveNavigationState('/home/details', undefined, {
+    hash: 'asset-id',
+    replacementWinnerHash: `0x${'b'.repeat(64)}`,
+  });
+  expect((await loadNavigationState())?.state).not.toHaveProperty(
+    'replacementWinnerHash'
+  );
+});
+
 it('restores exact amount and token ID strings without storing secrets, endpoints, verification or signed transaction fields', async () => {
   const amount = '0.000000000000000001';
   const tokenId =

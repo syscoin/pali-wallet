@@ -110,8 +110,7 @@
     "speedUp": "加速",
     "cancelTx": "取消交易",
     "cancelTxMessage": "您确定要取消此交易吗？",
-    "speedTx": "加速交易",
-    "speedTxMessage": "您确定要加速此交易吗？"
+    "speedTx": "加速交易"
   },
   "connections": {
     "searchAccounts": "搜索账户",
@@ -754,8 +753,10 @@
     "transactionNotFoundOrPending": "交易未找到或仍在等待中",
     "transactionMayNotExistYet": "此交易可能尚不存在或仍在处理中。",
     "transactionCancelSubmitted": "取消已提交。替换交易确认后将完成。",
+    "replacementHistoryWarning": "替换交易已提交（{{hash}}），但无法保存其历史记录。重试前请先检查其状态。",
     "transactionCancelFailed": "尝试取消您的交易时出现了问题，请稍后重试！",
     "cancelSubmitted": "取消已提交",
+    "cancellation": "取消",
     "transactionCancelled": "交易已取消",
     "transactionAcceleratedSuccessfully": "您的交易已成功加速。",
     "transactionSpeedUpFailed": "加速交易时出现问题，请稍后重试！",
@@ -777,6 +778,7 @@
     "seeDetails": "查看详情",
     "seeOnBlockExplorer": "在区块浏览器中查看",
     "replaced": "已替换",
+    "replacementPending": "等待替换",
     "replaces": "替换",
     "unknownDecimals": "小数位未知",
     "contractDeploy": "合约部署",
@@ -862,7 +864,10 @@
     "confirmOnDevice": "请在设备上确认",
     "checkYourDevice": "请在 {{device}} 上批准此请求",
     "useYourPasskey": "使用您的通行密钥",
-    "passkeyPrompt": "请按照浏览器提示使用通行密钥签名"
+    "passkeyPrompt": "请按照浏览器提示使用通行密钥签名",
+    "speedUpFeePreview": "正在检查网络费用…",
+    "speedUpFeeConsent": "是否以最高 {{fee}} {{currency}} 的网络费用加速此交易？",
+    "speedUpFeeUnavailable": "无法检查费用。请重试。"
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

@@ -110,8 +110,7 @@
     "speedUp": "スピードアップ",
     "cancelTx": "取引をキャンセル",
     "cancelTxMessage": "本当にこの取引をキャンセルしますか？",
-    "speedTx": "取引をスピードアップ",
-    "speedTxMessage": "本当にこの取引をスピードアップしますか？"
+    "speedTx": "取引をスピードアップ"
   },
   "connections": {
     "searchAccounts": "アカウントを検索",
@@ -754,8 +753,10 @@
     "transactionNotFoundOrPending": "取引が見つからないか、まだ保留中です",
     "transactionMayNotExistYet": "この取引はまだ存在しないか、まだ処理中の可能性があります。",
     "transactionCancelSubmitted": "キャンセルを送信しました。置換トランザクションが承認されると完了します。",
+    "replacementHistoryWarning": "置換トランザクションを送信しました（{{hash}}）が、履歴を保存できませんでした。再試行する前に状態を確認してください。",
     "transactionCancelFailed": "取引のキャンセルを試行中に問題が発生しました。後でもう一度お試しください！",
     "cancelSubmitted": "キャンセルを送信しました",
+    "cancellation": "キャンセル",
     "transactionCancelled": "トランザクションがキャンセルされました",
     "transactionAcceleratedSuccessfully": "あなたの取引は正常に加速されました。",
     "transactionSpeedUpFailed": "取引の高速化を試行中に問題が発生しました。後でもう一度お試しください！",
@@ -777,6 +778,7 @@
     "seeDetails": "詳細を表示",
     "seeOnBlockExplorer": "ブロックエクスプローラーで表示",
     "replaced": "置き換えられました",
+    "replacementPending": "置き換え待ち",
     "replaces": "置き換え",
     "unknownDecimals": "小数点不明",
     "contractDeploy": "コントラクトデプロイ",
@@ -862,7 +864,10 @@
     "confirmOnDevice": "デバイスで確認してください",
     "checkYourDevice": "{{device}} でこのリクエストを承認してください",
     "useYourPasskey": "パスキーを使用してください",
-    "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください"
+    "passkeyPrompt": "ブラウザの指示に従ってパスキーで署名してください",
+    "speedUpFeePreview": "ネットワーク手数料を確認中…",
+    "speedUpFeeConsent": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引を高速化しますか？",
+    "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

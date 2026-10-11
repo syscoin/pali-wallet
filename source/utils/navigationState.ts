@@ -333,6 +333,17 @@ export const sanitizeBrowsingState = (
       state,
       pick(input, [...PUBLIC_ASSET_FIELDS, 'isImportPreview'])
     );
+  // Keep only lookup identifiers; paginated receipt evidence stays in memory.
+  const subject = input?.hash;
+  const winner = input?.replacementWinnerHash;
+  if (
+    pathname === '/home/details' &&
+    [subject, winner].every(
+      (hash) => typeof hash === 'string' && /^0x[0-9a-f]{64}$/i.test(hash)
+    ) &&
+    subject.toLowerCase() !== winner.toLowerCase()
+  )
+    state.replacementWinnerHash = winner.toLowerCase();
   for (const key of ['homeAssets', 'homeActivity', 'nftView']) {
     const saved = input?.[key];
     if (

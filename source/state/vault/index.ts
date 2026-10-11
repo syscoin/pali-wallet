@@ -16,10 +16,21 @@ import {
 } from 'types/network';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import {
+  buildEvmMinedNonceIndex,
+  buildEvmMinedSenderNonceIndex,
+  buildEvmTransactionHashIndex,
+  getEvmSettlementStatus,
+  getEvmReplacementRootHash,
+  hasEvmCancellationIntent,
+  isEvmNonceReplacement,
+  isEvmStalePendingNonce,
+} from 'utils/evmReplacement';
+import {
   getFreshNativeBalance,
   isSameBalanceNetwork,
   updateNativeBalanceCache,
 } from 'utils/nativeBalanceCache';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
   IVaultState,
@@ -27,6 +38,37 @@ import {
   IAccountAssets,
   IAccountTransactions,
 } from './types';
+
+// Targeted RPC/metadata updates can finish after a receipt was recorded. A
+// weaker pending response must not erase that receipt; full history refreshes
+// remain the reconciliation path for canonical chain changes.
+const mergeKnownMinedReceipt = (previous: any, incoming: any) => {
+  const merged = { ...previous, ...incoming };
+  if (isTransactionInBlock(previous) && !isTransactionInBlock(incoming)) {
+    for (const field of [
+      'blockNumber',
+      'blockHash',
+      'blockHeight',
+      'height',
+      'confirmations',
+      'txreceipt_status',
+      'isError',
+      'success',
+      'logs',
+      'gasUsed',
+      'cumulativeGasUsed',
+      'effectiveGasPrice',
+      'transactionIndex',
+      'timestamp',
+      'status',
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(previous, field))
+        merged[field] = previous[field];
+      else delete merged[field];
+    }
+  }
+  return merged;
+};
 
 const initialState: IVaultState = {
   accounts: {
@@ -654,6 +696,8 @@ const VaultState = createSlice({
               Boolean(transactionAny.smartAccountExecutionFrom) ||
               Boolean(existingTxAny.smartAccountExecutionFrom);
             const hasReplacementMetadata =
+              Boolean(transactionAny.isReplaced) ||
+              Boolean(existingTxAny.isReplaced) ||
               Boolean(transactionAny.isCancel) ||
               Boolean(existingTxAny.isCancel) ||
               Boolean(transactionAny.isSpeedUp) ||
@@ -665,8 +709,7 @@ const VaultState = createSlice({
 
             if (isSmartAccountExecution) {
               currentUserTransactions[existingTxIndex] = {
-                ...existingTxAny,
-                ...transactionAny,
+                ...mergeKnownMinedReceipt(existingTxAny, transactionAny),
                 smartAccountExecutionFrom:
                   transactionAny.smartAccountExecutionFrom ||
                   existingTxAny.smartAccountExecutionFrom,
@@ -674,18 +717,31 @@ const VaultState = createSlice({
                 isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
                 replacesHash:
                   existingTxAny.replacesHash || transactionAny.replacesHash,
+                replacementRootHash:
+                  existingTxAny.replacementRootHash ||
+                  transactionAny.replacementRootHash,
+                type: transactionAny.type ?? existingTxAny.type,
+                r: transactionAny.r ?? existingTxAny.r,
+                s: transactionAny.s ?? existingTxAny.s,
+                v: transactionAny.v ?? existingTxAny.v,
                 replacementIndexed:
                   existingTxAny.replacementIndexed ||
                   transactionAny.replacementIndexed,
               } as any;
             } else if (hasReplacementMetadata) {
               currentUserTransactions[existingTxIndex] = {
-                ...existingTxAny,
-                ...transactionAny,
+                ...mergeKnownMinedReceipt(existingTxAny, transactionAny),
                 isCancel: existingTxAny.isCancel || transactionAny.isCancel,
                 isSpeedUp: existingTxAny.isSpeedUp || transactionAny.isSpeedUp,
                 replacesHash:
                   existingTxAny.replacesHash || transactionAny.replacesHash,
+                replacementRootHash:
+                  existingTxAny.replacementRootHash ||
+                  transactionAny.replacementRootHash,
+                type: transactionAny.type ?? existingTxAny.type,
+                r: transactionAny.r ?? existingTxAny.r,
+                s: transactionAny.s ?? existingTxAny.s,
+                v: transactionAny.v ?? existingTxAny.v,
                 replacementIndexed:
                   existingTxAny.replacementIndexed ||
                   transactionAny.replacementIndexed,
@@ -699,7 +755,7 @@ const VaultState = createSlice({
           } else {
             // New transaction, add it
             // Check if the array length is 30
-            if (currentUserTransactions.length === 30) {
+            if (currentUserTransactions.length >= 30) {
               // Create a new array by adding the new transaction at the beginning and limiting to 30 items
               const updatedTransactions = take(
                 [transaction, ...currentUserTransactions],
@@ -807,95 +863,259 @@ const VaultState = createSlice({
           })
           .filter(Boolean) as string[]
       );
+      const incomingMinedNonces =
+        networkType === TransactionsType.Ethereum
+          ? buildEvmMinedNonceIndex(
+              transactions.map((transaction: any) => {
+                const existing = existingTransactionsById.get(
+                  String(transaction.hash || '').toLowerCase()
+                ) as any;
+                return {
+                  ...transaction,
+                  type: transaction.type ?? existing?.type,
+                  r: transaction.r ?? existing?.r,
+                  s: transaction.s ?? existing?.s,
+                  v: transaction.v ?? existing?.v,
+                };
+              }),
+              chainId
+            )
+          : new Map();
+      const existingHashIndex =
+        networkType === TransactionsType.Ethereum
+          ? buildEvmTransactionHashIndex(existingTransactions)
+          : new Map();
+      const minedSenderNonces =
+        buildEvmMinedSenderNonceIndex(incomingMinedNonces);
+      const incomingByHash = new Map(
+        transactions.map((transaction: any) => [
+          String(transaction.hash || '').toLowerCase(),
+          transaction,
+        ])
+      );
+      const pendingReplacementRoots = new Set<string>();
+      if (networkType === TransactionsType.Ethereum) {
+        for (const local of existingTransactions as any[]) {
+          if (!local.replacesHash) continue;
+          const incoming = incomingByHash.get(String(local.hash).toLowerCase());
+          const latest = incoming
+            ? {
+                ...local,
+                ...incoming,
+                type: incoming.type ?? local.type,
+                r: incoming.r ?? local.r,
+                s: incoming.s ?? local.s,
+                v: incoming.v ?? local.v,
+              }
+            : local;
+          if (
+            isTransactionInBlock(latest) ||
+            isEvmStalePendingNonce(latest, chainId, minedSenderNonces)
+          )
+            continue;
+          let parent = local.replacementRootHash || local.replacesHash;
+          const seen = new Set<string>();
+          for (
+            let depth = 0;
+            typeof parent === 'string' && depth < 30;
+            depth += 1
+          ) {
+            const key = parent.toLowerCase();
+            if (seen.has(key)) break;
+            seen.add(key);
+            const ancestor = existingHashIndex.get(key);
+            if (!ancestor || !isEvmNonceReplacement(ancestor, latest, chainId))
+              break;
+            if (
+              ancestor.isReplaced &&
+              !ancestor.replacesHash &&
+              !isTransactionInBlock(ancestor)
+            ) {
+              pendingReplacementRoots.add(key);
+              break;
+            }
+            parent = ancestor.replacesHash;
+          }
+        }
+      }
       const preservedLocalPendingTransactions = (
         existingTransactions as Array<IEvmTransaction | ISysTransaction>
-      ).filter((transaction: any) => {
-        const transactionId = transaction.hash || transaction.txid;
-        if (!transactionId) return false;
-        if (incomingTransactionIds.has(transactionId.toLowerCase())) {
-          return false;
-        }
-        if (networkType === TransactionsType.Ethereum) {
-          if (
-            transaction.isReplaced &&
-            confirmedOrMaterializedReplacementHashesByOriginal.has(
-              transactionId.toLowerCase()
-            )
-          ) {
+      )
+        .filter((transaction: any) => {
+          const transactionId = transaction.hash || transaction.txid;
+          if (!transactionId) return false;
+          if (incomingTransactionIds.has(transactionId.toLowerCase())) {
             return false;
           }
-
-          if (transaction.isSpeedUp || transaction.isCancel) {
-            const replacedTransactionId = transaction.replacesHash
-              ? String(transaction.replacesHash).toLowerCase()
-              : undefined;
+          if (networkType === TransactionsType.Ethereum) {
+            // Retain a public original while its known replacement is pending,
+            // then only while a strong mined winner remains in this window.
+            // A settled AA root must not fall through to pending-AA retention.
+            if (transaction.isReplaced && !transaction.replacesHash)
+              return (
+                getEvmSettlementStatus(
+                  transaction,
+                  chainId,
+                  incomingMinedNonces
+                ) === 'replaced' ||
+                pendingReplacementRoots.has(transactionId.toLowerCase())
+              );
+            if (isEvmStalePendingNonce(transaction, chainId, minedSenderNonces))
+              return false;
+            // A mined winner consumes the nonce of all losing intermediate hops.
             if (
-              replacedTransactionId &&
-              confirmedIncomingTransactionIds.has(replacedTransactionId)
+              transaction.replacesHash &&
+              getEvmSettlementStatus(
+                transaction,
+                chainId,
+                incomingMinedNonces
+              ) === 'replaced'
+            )
+              return false;
+            if (
+              transaction.isReplaced &&
+              confirmedOrMaterializedReplacementHashesByOriginal.has(
+                transactionId.toLowerCase()
+              )
             ) {
               return false;
             }
 
-            return (
-              !isTransactionConfirmed(transaction) ||
-              !transaction.replacementIndexed
-            );
+            if (transaction.isSpeedUp || transaction.isCancel) {
+              const replacedTransactionId = transaction.replacesHash
+                ? String(transaction.replacesHash).toLowerCase()
+                : undefined;
+              if (
+                replacedTransactionId &&
+                confirmedIncomingTransactionIds.has(replacedTransactionId)
+              ) {
+                return false;
+              }
+
+              return (
+                !isTransactionConfirmed(transaction) ||
+                !transaction.replacementIndexed
+              );
+            }
+
+            return Boolean(transaction.smartAccountExecutionFrom);
           }
 
-          return Boolean(transaction.smartAccountExecutionFrom);
-        }
-
-        return !isTransactionConfirmed(transaction);
-      });
-      const refreshedTransactions = transactions.map((transaction: any) => {
-        const transactionId = transaction.hash || transaction.txid;
-        const transactionIdLower = transactionId?.toLowerCase();
-        const existingTransaction = transactionIdLower
-          ? (existingTransactionsById.get(transactionIdLower) as any)
-          : undefined;
-
-        if (networkType !== TransactionsType.Ethereum || !existingTransaction) {
-          return transaction;
-        }
-
-        const isReplacement =
-          Boolean(existingTransaction.isCancel) ||
-          Boolean(transaction.isCancel) ||
-          Boolean(existingTransaction.isSpeedUp) ||
-          Boolean(transaction.isSpeedUp) ||
-          Boolean(existingTransaction.replacesHash) ||
-          Boolean(transaction.replacesHash);
-        const replacementKnownForOriginal =
-          transactionIdLower &&
-          confirmedOrMaterializedReplacementHashesByOriginal.has(
-            transactionIdLower
+          return !isTransactionConfirmed(transaction);
+        })
+        .map((transaction: any) =>
+          networkType === TransactionsType.Ethereum && transaction.replacesHash
+            ? {
+                ...transaction,
+                isCancel: hasEvmCancellationIntent(
+                  transaction,
+                  existingTransactions,
+                  chainId,
+                  existingHashIndex
+                ),
+                replacementRootHash:
+                  transaction.replacementRootHash ||
+                  getEvmReplacementRootHash(
+                    transaction,
+                    chainId,
+                    existingHashIndex
+                  ),
+              }
+            : transaction
+        );
+      const refreshedTransactions = transactions
+        .filter((transaction: any) => {
+          if (networkType !== TransactionsType.Ethereum) return true;
+          const existing = existingTransactionsById.get(
+            String(transaction.hash || '').toLowerCase()
+          ) as any;
+          const candidate = {
+            ...existing,
+            ...transaction,
+            from: transaction.from ?? existing?.from,
+            nonce: transaction.nonce ?? existing?.nonce,
+          };
+          if (isEvmStalePendingNonce(candidate, chainId, minedSenderNonces))
+            return false;
+          if (!existing?.replacesHash && !transaction.replacesHash) return true;
+          // Indexers can return a pending descendant beside the mined winner.
+          // Discard that losing hop now so it cannot revive a root after expiry.
+          return (
+            getEvmSettlementStatus(candidate, chainId, incomingMinedNonces) !==
+            'replaced'
           );
-        const originalConfirmedWithoutReplacement =
-          isTransactionConfirmed(transaction) && !replacementKnownForOriginal;
-        const isReplaced =
-          (Boolean(existingTransaction.isReplaced) ||
-            Boolean(transaction.isReplaced)) &&
-          !originalConfirmedWithoutReplacement;
+        })
+        .map((transaction: any) => {
+          const transactionId = transaction.hash || transaction.txid;
+          const transactionIdLower = transactionId?.toLowerCase();
+          const existingTransaction = transactionIdLower
+            ? (existingTransactionsById.get(transactionIdLower) as any)
+            : undefined;
 
-        return {
-          ...transaction,
-          smartAccountExecutionFrom:
-            existingTransaction.smartAccountExecutionFrom ||
-            transaction.smartAccountExecutionFrom,
-          isCancel: existingTransaction.isCancel || transaction.isCancel,
-          isSpeedUp: existingTransaction.isSpeedUp || transaction.isSpeedUp,
-          replacesHash:
-            existingTransaction.replacesHash || transaction.replacesHash,
-          replacementIndexed:
-            existingTransaction.replacementIndexed ||
-            transaction.replacementIndexed ||
-            isReplacement,
-          isReplaced,
-          status: isReplaced
-            ? existingTransaction.status || transaction.status || 'replaced'
-            : transaction.status,
-        } as any;
-      });
+          if (
+            networkType !== TransactionsType.Ethereum ||
+            !existingTransaction
+          ) {
+            return transaction;
+          }
+
+          const isReplacement =
+            Boolean(existingTransaction.isCancel) ||
+            Boolean(transaction.isCancel) ||
+            Boolean(existingTransaction.isSpeedUp) ||
+            Boolean(transaction.isSpeedUp) ||
+            Boolean(existingTransaction.replacesHash) ||
+            Boolean(transaction.replacesHash);
+          const replacementKnownForOriginal =
+            transactionIdLower &&
+            confirmedOrMaterializedReplacementHashesByOriginal.has(
+              transactionIdLower
+            );
+          const originalConfirmedWithoutReplacement =
+            isTransactionConfirmed(transaction) && !replacementKnownForOriginal;
+          const isReplaced =
+            (Boolean(existingTransaction.isReplaced) ||
+              Boolean(transaction.isReplaced)) &&
+            !originalConfirmedWithoutReplacement;
+
+          return {
+            ...transaction,
+            smartAccountExecutionFrom:
+              existingTransaction.smartAccountExecutionFrom ||
+              transaction.smartAccountExecutionFrom,
+            isCancel:
+              hasEvmCancellationIntent(
+                existingTransaction,
+                existingTransactions,
+                chainId,
+                existingHashIndex
+              ) || transaction.isCancel,
+            isSpeedUp: existingTransaction.isSpeedUp || transaction.isSpeedUp,
+            replacesHash:
+              existingTransaction.replacesHash || transaction.replacesHash,
+            replacementRootHash:
+              existingTransaction.replacementRootHash ||
+              transaction.replacementRootHash ||
+              (existingTransaction.replacesHash &&
+                getEvmReplacementRootHash(
+                  existingTransaction,
+                  chainId,
+                  existingHashIndex
+                )),
+            type: transaction.type ?? existingTransaction.type,
+            r: transaction.r ?? existingTransaction.r,
+            s: transaction.s ?? existingTransaction.s,
+            v: transaction.v ?? existingTransaction.v,
+            replacementIndexed:
+              existingTransaction.replacementIndexed ||
+              transaction.replacementIndexed ||
+              isReplacement,
+            isReplaced,
+            status: isReplaced
+              ? existingTransaction.status || transaction.status || 'replaced'
+              : transaction.status,
+          } as any;
+        });
       const mergedTransactions = [
         ...preservedLocalPendingTransactions,
         ...refreshedTransactions,

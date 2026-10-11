@@ -89,6 +89,7 @@ export interface ITransactionInfoEvm {
 export type modalDataType = {
   buttonText: string;
   description: string;
+  isButtonLoading?: boolean;
   onClick: () => void;
   onClose: () => void;
   title: string;

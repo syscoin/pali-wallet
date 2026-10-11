@@ -110,8 +110,7 @@
     "speedUp": "Acelerar",
     "cancelTx": "Cancelar Transação",
     "cancelTxMessage": "Tem certeza de que deseja cancelar esta transação?",
-    "speedTx": "Acelerar Transação",
-    "speedTxMessage": "Tem certeza de que deseja acelerar esta transação?"
+    "speedTx": "Acelerar Transação"
   },
   "connections": {
     "searchAccounts": "Pesquisar contas",
@@ -754,8 +753,10 @@
     "transactionNotFoundOrPending": "Transação não encontrada ou ainda pendente",
     "transactionMayNotExistYet": "Esta transação pode ainda não existir ou ainda está sendo processada.",
     "transactionCancelSubmitted": "Cancelamento enviado. Ele será concluído quando a transação de substituição for confirmada.",
+    "replacementHistoryWarning": "Substituição enviada ({{hash}}), mas não foi possível salvar seu histórico. Verifique o status antes de tentar novamente.",
     "transactionCancelFailed": "Algo deu errado ao tentar cancelar sua transação, tente novamente mais tarde!",
     "cancelSubmitted": "Cancelamento enviado",
+    "cancellation": "Cancelamento",
     "transactionCancelled": "Transação Cancelada",
     "transactionAcceleratedSuccessfully": "Sua transação foi acelerada com sucesso.",
     "transactionSpeedUpFailed": "Algo deu errado ao tentar acelerar sua transação, tente novamente mais tarde!",
@@ -777,6 +778,7 @@
     "seeDetails": "Ver detalhes",
     "seeOnBlockExplorer": "Ver no explorador de blocos",
     "replaced": "Substituída",
+    "replacementPending": "Substituição pendente",
     "replaces": "Substitui",
     "unknownDecimals": "Decimais desconhecidos",
     "contractDeploy": "Implantação de Contrato",
@@ -862,7 +864,10 @@
     "confirmOnDevice": "Confirme no seu dispositivo",
     "checkYourDevice": "Verifique seu {{device}} para aprovar esta solicitação",
     "useYourPasskey": "Use sua chave de acesso",
-    "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso"
+    "passkeyPrompt": "Siga as instruções do navegador para assinar com sua chave de acesso",
+    "speedUpFeePreview": "Verificando a taxa de rede…",
+    "speedUpFeeConsent": "Acelerar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}?",
+    "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente."
   },
   "switchNetworkPage": {
     "connectedOn": "Você está conectado em",
