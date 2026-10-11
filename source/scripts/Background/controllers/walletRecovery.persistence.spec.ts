@@ -80,6 +80,8 @@ let records: Record<string, any>;
 let writes: Record<string, any>[];
 let readFault: { key: string; missing?: boolean } | undefined;
 let failedRemoveKey: string | undefined;
+let failedWriteKey: string | undefined;
+let failedWriteAfterApply: boolean;
 let delayedRead:
   | { entered: () => void; key: string; release?: () => void }
   | undefined;
@@ -148,6 +150,16 @@ function installStorage() {
         },
         set: (items: any, callback: any) => {
           writes.push(clone(items));
+          if (failedWriteKey && failedWriteKey in items) {
+            failedWriteKey = undefined;
+            if (failedWriteAfterApply) Object.assign(records, clone(items));
+            (global.chrome.runtime as any).lastError = {
+              message: 'controlled isolated vault migration failure',
+            };
+            callback();
+            delete (global.chrome.runtime as any).lastError;
+            return;
+          }
           Object.assign(records, clone(items));
           callback();
         },
@@ -241,6 +253,19 @@ async function establishOriginal(activeSlip44: number) {
     ...(activeSlip44 === 60 ? { 'state-vault-60': clone(activeVault) } : {}),
   };
   vaultCache.clearCache();
+  return clone(records);
+}
+
+async function establishInlineOnlyOriginal() {
+  await establishOriginal(57);
+  records.state.vault = {
+    ...clone(records['state-vault-57']),
+    passkeyCredentialProfile: clone(EMBEDDED_PROFILE),
+  };
+  delete records['state-vault-57'];
+  records['state-vault-57-passkey-profile'] = {
+    passkeyCredentialProfile: clone(DETACHED_PROFILE),
+  };
   return clone(records);
 }
 
@@ -345,6 +370,19 @@ async function reloadAndReadImported() {
   return reconciled;
 }
 
+async function coldStartupHydration() {
+  vaultCache.clearCache();
+  store.dispatch(forgetWallet());
+  walletPersistenceGate.blocked = false;
+  const reconciled = await reconcileWalletRecoveryJournal(context);
+  const mainState = await chromeStorage.getItem('state');
+  // Cold startup removes the legacy inline copy before the actual background
+  // loader selects its isolated vault. Do not repair storage via a popup save.
+  delete mainState.vault;
+  await rehydrateStore(store, mainState, mainState.vaultGlobal.activeSlip44);
+  return reconciled;
+}
+
 function holdRead(key: string) {
   const entered = new Promise<void>((resolve) => {
     delayedRead = { key, entered: resolve };
@@ -366,6 +404,8 @@ describe('wallet recovery persistence boundaries', () => {
     writes = [];
     readFault = undefined;
     failedRemoveKey = undefined;
+    failedWriteKey = undefined;
+    failedWriteAfterApply = false;
     delayedRead = undefined;
     walletPersistenceGate.blocked = false;
     Object.defineProperty(globalThis, 'crypto', {
@@ -670,15 +710,7 @@ describe('wallet recovery persistence boundaries', () => {
   });
 
   it('uses the detached profile when restoring a legacy inline-only vault', async () => {
-    await establishOriginal(57);
-    records.state.vault = {
-      ...clone(records['state-vault-57']),
-      passkeyCredentialProfile: clone(EMBEDDED_PROFILE),
-    };
-    delete records['state-vault-57'];
-    records['state-vault-57-passkey-profile'] = {
-      passkeyCredentialProfile: clone(DETACHED_PROFILE),
-    };
+    await establishInlineOnlyOriginal();
     const host = makeHost();
     const ticket = await beginWalletRecovery(host, context);
     await expect(submit(host, ticket)).rejects.toThrow(
@@ -697,6 +729,65 @@ describe('wallet recovery persistence boundaries', () => {
       DETACHED_PROFILE
     );
   });
+
+  it('durably migrates an inline-only rollback before cold startup drops its inline copy', async () => {
+    const before = await establishInlineOnlyOriginal();
+    const host = makeHost();
+    const ticket = await beginWalletRecovery(host, context);
+    await expect(submit(host, ticket)).rejects.toThrow(
+      'Your previous wallet was restored'
+    );
+    expect(records[JOURNAL]).toBeUndefined();
+    expect(await coldStartupHydration()).toBe(false);
+    expect(store.getState().vault.accounts.Imported[7]?.xprv).toBe(IMPORTED);
+    expect(store.getState().vault.passkeyCredentialProfile).toEqual(
+      DETACHED_PROFILE
+    );
+    expect(records['state-vault-57'].accounts.Imported[7].xprv).toBe(IMPORTED);
+    expect(records['sysweb3-vault']).toBe(before['sysweb3-vault']);
+    expect(records['state-vault-57-passkey-profile']).toEqual({
+      passkeyCredentialProfile: DETACHED_PROFILE,
+    });
+  });
+
+  it.each([false, true])(
+    'keeps the backup and gate when inline migration fails (write applied: %s), then retries on restart',
+    async (writeApplied) => {
+      const before = await establishInlineOnlyOriginal();
+      const host = makeHost();
+      const ticket = await beginWalletRecovery(host, context);
+      failedWriteKey = 'state-vault-57';
+      failedWriteAfterApply = writeApplied;
+      await expect(submit(host, ticket)).rejects.toMatchObject({
+        message: expect.stringContaining(
+          'controlled isolated vault migration failure'
+        ),
+      });
+      expect(records[JOURNAL].before).toEqual(before);
+      expect(walletPersistenceGate.blocked).toBe(true);
+      expect(host.recoveryJournalPending).toBe(true);
+      if (writeApplied) {
+        expect(records['state-vault-57'].accounts.Imported[7].xprv).toBe(
+          IMPORTED
+        );
+      } else expect(records['state-vault-57']).toBeUndefined();
+      const durable = clone(records);
+      await popupClose(host);
+      expect(records).toEqual(durable);
+
+      expect(await coldStartupHydration()).toBe(true);
+      expect(store.getState().vault.accounts.Imported[7]?.xprv).toBe(IMPORTED);
+      expect(store.getState().vault.passkeyCredentialProfile).toEqual(
+        DETACHED_PROFILE
+      );
+      expect(records['state-vault-57'].accounts.Imported[7].xprv).toBe(
+        IMPORTED
+      );
+      expect(records['sysweb3-vault']).toBe(before['sysweb3-vault']);
+      expect(records[JOURNAL]).toBeUndefined();
+      expect(walletPersistenceGate.blocked).toBe(false);
+    }
+  );
 
   it('retains the backup when a restored active vault reads as absent', async () => {
     const before = await establishOriginal(57);

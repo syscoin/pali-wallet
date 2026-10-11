@@ -454,7 +454,8 @@ const reconcileWithinLock = async (
   if (
     JSON.stringify(recoveryAccountRecords(restored.accounts)) !==
       JSON.stringify(recoveryAccountRecords(vault.accounts)) ||
-    restored.activeNetwork?.slip44 !== vault.activeNetwork?.slip44
+    restored.activeNetwork?.slip44 !== vault.activeNetwork?.slip44 ||
+    restored.activeNetwork?.slip44 !== slip44
   )
     throw new Error('Wallet recovery account restoration is incomplete');
   // Preserve the loader's embedded-profile migration without letting ordinary
@@ -466,6 +467,14 @@ const reconcileWithinLock = async (
     await context.storage.setItem(profileKey, {
       passkeyCredentialProfile: vault.passkeyCredentialProfile,
     });
+  if (!isolatedVault) {
+    // Cold startup hydrates only the isolated record. Make a legacy inline-only
+    // restoration durable before retiring its last backup, even without a later
+    // popup-close save. The detached profile is already durable above.
+    const { passkeyCredentialProfile, ...isolated } = restored;
+    void passkeyCredentialProfile;
+    await context.storage.setItem(`state-vault-${slip44}`, isolated);
+  }
   await context.storage.removeItem(JOURNAL_KEY);
   walletPersistenceGate.blocked = false;
   return true;
