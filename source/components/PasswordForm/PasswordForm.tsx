@@ -77,7 +77,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   };
 
   return (
-    <OnboardingLayout title={t('settings.password')}>
+    <OnboardingLayout title={t('settings.password')} scrollable>
       <Form
         form={form}
         onValuesChange={onValuesChange}
