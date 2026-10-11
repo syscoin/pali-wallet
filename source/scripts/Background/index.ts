@@ -27,10 +27,20 @@ declare global {
 let MasterControllerInstance = {} as IMasterController;
 let isReady = false;
 let initializationAttempts = 0;
+let initializationPromise: Promise<void> | null = null;
+let initializedController: IMasterController | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let observesState = false;
 const MAX_INIT_ATTEMPTS = 3;
 const RETRY_DELAY = 2000; // 2 seconds
 
 console.log('[Background] Initializing controller...');
+
+// Classic service workers must discover packaged imports during evaluation.
+// Register this chunk now; recovery admission still runs only on user request.
+void import(
+  /* webpackChunkName: "wallet-recovery" */ './controllers/walletRecovery'
+).catch(() => undefined);
 
 // Start offscreen preload IMMEDIATELY - don't wait for controller
 // This ensures the popup loads instantly when clicked
@@ -39,16 +49,19 @@ initializeOffscreenPreload().catch((error) => {
 });
 
 // Initialize with retry logic
-const initializeWithRetry = async (attempt = 1): Promise<void> => {
+const initializeAttempt = async (attempt: number): Promise<void> => {
   try {
     console.log(
       `[Background] Initialization attempt ${attempt}/${MAX_INIT_ATTEMPTS}`
     );
 
     await restrictStorageAccess();
-    const controller = await handleMasterControllerInstance();
+    // Registration retries must retain the already constructed wallet rather
+    // than migrate or rehydrate disk state over the live store again.
+    const controller =
+      initializedController || (await handleMasterControllerInstance());
+    initializedController = controller;
     MasterControllerInstance = controller;
-    isReady = true;
 
     console.log(
       '[Background] Controller initialized successfully at',
@@ -58,7 +71,10 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
     // Initialize all handlers
     handleMasterControllerResponses(controller);
     handleListeners(controller);
-    handleObserveStateChanges();
+    if (!observesState) {
+      handleObserveStateChanges();
+      observesState = true;
+    }
     handleStartPolling();
     handleFiatPrice();
 
@@ -70,26 +86,33 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
 
     // Reset attempt counter on success
     initializationAttempts = 0;
+    isReady = true;
   } catch (error) {
     console.error(
       `[Background] Initialization attempt ${attempt} failed:`,
       error
     );
     initializationAttempts = attempt;
+    isReady = false;
 
     if (attempt < MAX_INIT_ATTEMPTS) {
       console.log(
         `[Background] Retrying initialization in ${RETRY_DELAY}ms...`
       );
-      setTimeout(() => {
-        initializeWithRetry(attempt + 1);
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        void initializeWithRetry(attempt + 1);
       }, RETRY_DELAY);
     } else {
       console.error(
         '[Background] Failed to initialize controller after all attempts.',
         'Entering degraded mode.'
       );
+    }
 
+    // A partially registered controller must not expose wallet actions while
+    // startup is incomplete. Keep its instance privately for the next retry.
+    if (attempt >= MAX_INIT_ATTEMPTS || initializedController) {
       // Set up a minimal controller that can handle initialization status checks
       // This will be handled by the existing message handler system
       MasterControllerInstance = {
@@ -111,6 +134,21 @@ const initializeWithRetry = async (attempt = 1): Promise<void> => {
       handleListeners(MasterControllerInstance);
     }
   }
+};
+
+const initializeWithRetry = (attempt = 1): Promise<void> => {
+  if (isReady) return Promise.resolve();
+  if (initializationPromise) return initializationPromise;
+  clearTimeout(retryTimer);
+  retryTimer = undefined;
+  // Install ownership before storage callbacks can run. Concurrent trusted
+  // retries share migration, construction, publication and registration.
+  initializationPromise = Promise.resolve()
+    .then(() => initializeAttempt(attempt))
+    .finally(() => {
+      initializationPromise = null;
+    });
+  return initializationPromise;
 };
 
 // Start initialization

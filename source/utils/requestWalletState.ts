@@ -2,6 +2,7 @@
 // Feedback is independent of acceptance: slow but healthy workers can still reply.
 export const WALLET_FEEDBACK_TIMEOUT_MS = 1800;
 export const WALLET_BOOTSTRAP_TIMEOUT_MS = 10000;
+export const WALLET_RECOVERY_REQUIRED = 'PALI_WALLET_RECOVERY_REQUIRED';
 
 export const startupFeedbackDelay = () =>
   Math.max(0, WALLET_FEEDBACK_TIMEOUT_MS - performance.now());
@@ -43,6 +44,10 @@ export const requestWalletState = (
           // Always consume lastError, including a late callback after timeout.
           const error = chrome.runtime.lastError;
           if (settled) return;
+          if (state?.error === WALLET_RECOVERY_REQUIRED) {
+            finish(new Error(WALLET_RECOVERY_REQUIRED));
+            return;
+          }
           if (error || !state || !state.vault || !state.vaultGlobal) {
             retryWhenStarting();
           } else {

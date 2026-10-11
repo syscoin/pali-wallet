@@ -89,7 +89,7 @@ const Unlock: React.FC<{
         className="flex flex-col gap-6 items-center justify-center w-full max-w-md text-center"
         name="basic"
         onFinish={onSubmit}
-        autoComplete="off"
+        autoComplete="on"
         id="login"
       >
         <Form.Item
@@ -103,6 +103,7 @@ const Unlock: React.FC<{
             className="custom-input-password relative"
             placeholder={t('settings.enterYourPassword')}
             id="password"
+            autoComplete="current-password"
           />
         </Form.Item>
 

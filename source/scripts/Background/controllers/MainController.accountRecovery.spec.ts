@@ -31,6 +31,7 @@ import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   SYSCOIN_MAINNET_NETWORK,
 } from 'utils/constants';
+import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
 
@@ -71,6 +72,8 @@ describe('non-destructive account recovery boundaries', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+    // Ordinary setup now also rejects an unfinished durable recovery journal.
+    jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
     jest.spyOn(console, 'log').mockImplementation();
     jest.spyOn(console, 'warn').mockImplementation();
     jest.spyOn(console, 'error').mockImplementation();
@@ -907,16 +910,23 @@ describe('non-destructive account recovery boundaries', () => {
 
   it('rejects a duplicate creation while the first reset is queued or running', async () => {
     let release!: () => void;
+    let started!: () => void;
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    wallet.createWalletExclusive = jest.fn(() => pending);
+    const initializationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    wallet.createWalletExclusive = jest.fn(() => {
+      started();
+      return pending;
+    });
     const first = wallet.createWallet('password', 'test seed');
     const second = wallet.createWallet('password', 'test seed');
     await expect(second).rejects.toThrow(
       'Wallet creation is already in progress'
     );
-    await Promise.resolve();
+    await initializationStarted;
     expect(wallet.createWalletExclusive).toHaveBeenCalledTimes(1);
     expect(wallet.isCreatingWallet).toBe(true);
     release();

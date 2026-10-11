@@ -15,11 +15,13 @@ import { walletPersistenceMutex } from 'utils/asyncMutex';
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
 import {
+  assertWalletPersistenceAllowed,
   loadPasskeyCredentialProfileState,
   loadState,
   saveCommittedWalletState,
   saveState,
   savePasskeyCredentialProfileState,
+  walletPersistenceGate,
 } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
@@ -120,6 +122,7 @@ const isMainStateUnchanged = (state: ReturnType<typeof store.getState>) =>
 
 // Internal variant for callers that already hold walletPersistenceMutex.
 export async function saveMainStateWithinPersistenceLock() {
+  if (walletPersistenceGate.blocked) return false;
   try {
     const state = store.getState();
 
@@ -158,6 +161,7 @@ export async function persistCommittedWalletState(
   isCurrent: () => boolean = () => true
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
+    assertWalletPersistenceAllowed();
     if (!isCurrent())
       throw new Error('Wallet state changed before persistence');
     const state = store.getState();
@@ -188,7 +192,8 @@ export async function loadAndActivateSlip44Vault(
   slip44: number,
   targetNetwork?: INetwork,
   deferActiveSlip44Update = false,
-  isCurrent: () => boolean = () => true
+  isCurrent: () => boolean = () => true,
+  persistMigrations = true
 ): Promise<boolean> {
   const assertCurrent = () => {
     if (!isCurrent())
@@ -229,7 +234,7 @@ export async function loadAndActivateSlip44Vault(
       const vaultStateWithoutPasskeyProfile = { ...slip44VaultState };
       delete vaultStateWithoutPasskeyProfile.passkeyCredentialProfile;
 
-      if (embeddedPasskeyCredentialProfile) {
+      if (embeddedPasskeyCredentialProfile && persistMigrations) {
         if (!passkeyProfileState?.passkeyCredentialProfile) {
           await walletPersistenceMutex.runExclusive(async () => {
             assertCurrent();
@@ -265,6 +270,8 @@ export async function loadAndActivateSlip44Vault(
       console.log(`[Store] Successfully loaded slip44 vault: ${slip44}`);
       return true;
     } else {
+      if (!persistMigrations)
+        throw new Error('Restored wallet account data is missing');
       console.log(
         `[Store] No vault data found for slip44: ${slip44} - initializing clean vault state`
       );

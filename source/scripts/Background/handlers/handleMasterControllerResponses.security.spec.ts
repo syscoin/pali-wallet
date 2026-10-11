@@ -202,3 +202,150 @@ describe('controller action sender authorization', () => {
     expect(sendResponse).toHaveBeenCalledWith(error);
   });
 });
+
+describe('controller actions during wallet setup', () => {
+  const addListener = chrome.runtime.onMessage.addListener as jest.Mock;
+  const sender = {
+    id: 'pali-extension',
+    url: 'chrome-extension://pali-extension/app.html',
+  };
+  let status: 'busy' | 'recovery-required' | undefined;
+  let calls: Record<string, jest.Mock>;
+  let sdkGetter: jest.Mock;
+  let sendResponse: jest.Mock;
+  let listener: any;
+  let logging: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Object.assign(chrome.runtime, {
+      getURL: jest.fn(
+        (path = '') => `chrome-extension://pali-extension/${path}`
+      ),
+      id: 'pali-extension',
+    });
+    status = undefined;
+    logging = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    calls = Object.fromEntries(
+      [
+        'signSyscoinPsbt',
+        'signPSBT',
+        'ethSendTransaction',
+        'signAction',
+        'getActiveKeyring',
+        'lock',
+        'createWallet',
+        'recoverWalletFromSeed',
+        'isSeedValid',
+        'isUnlocked',
+        'getBalance',
+      ].map((name) => [name, jest.fn().mockResolvedValue(`${name} result`)])
+    );
+    const sdk = {
+      signPSBT: calls.signPSBT,
+      ethSendTransaction: calls.ethSendTransaction,
+      getBalance: calls.getBalance,
+    };
+    sdkGetter = jest.fn(() => sdk);
+    const wallet = {
+      ...calls,
+      getWalletSetupStatus: () => status,
+    };
+    Object.defineProperties(wallet, {
+      syscoinTransaction: { get: sdkGetter },
+      ethereumTransaction: { get: sdkGetter },
+    });
+    handleMasterControllerResponses({
+      wallet,
+      smartAccount: { signAction: calls.signAction },
+    } as any);
+    listener = addListener.mock.calls[0][0];
+    sendResponse = jest.fn();
+  });
+
+  afterEach(() => logging.mockRestore());
+
+  const invoke = (methods: string[]) =>
+    listener(
+      {
+        type: 'CONTROLLER_ACTION',
+        data: { methods, params: [] },
+      },
+      sender,
+      sendResponse
+    );
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it.each(['busy', 'recovery-required'] as const)(
+    'rejects signing and raw/nested aliases before member traversal while %s',
+    async (setupStatus) => {
+      status = setupStatus;
+      for (const methods of [
+        ['wallet', 'signSyscoinPsbt'],
+        ['wallet', 'syscoinTransaction', 'signPSBT'],
+        ['wallet', 'ethereumTransaction', 'ethSendTransaction'],
+        ['wallet', 'getActiveKeyring'],
+        ['wallet', 'isUnlocked', 'constructor'],
+        ['smartAccount', 'signAction'],
+      ]) {
+        expect(invoke(methods)).toBe(false);
+      }
+      await settle();
+      expect(sdkGetter).not.toHaveBeenCalled();
+      for (const call of Object.values(calls))
+        expect(call).not.toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledTimes(6);
+      expect(sendResponse).toHaveBeenCalledWith({
+        error: 'Wallet setup is in progress. Signing is unavailable.',
+        success: false,
+      });
+    }
+  );
+
+  it('rechecks admission before invoking a previously resolved SDK signing method', async () => {
+    expect(invoke(['wallet', 'syscoinTransaction', 'signPSBT'])).toBe(true);
+    expect(sdkGetter).toHaveBeenCalledTimes(1);
+    status = 'busy';
+    await settle();
+    expect(calls.signPSBT).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: 'Wallet setup is in progress. Signing is unavailable.',
+      success: false,
+    });
+  });
+
+  it.each(['busy', 'recovery-required'] as const)(
+    'preserves exact onboarding/status/lock calls while %s',
+    async (setupStatus) => {
+      status = setupStatus;
+      for (const name of [
+        'lock',
+        'createWallet',
+        'recoverWalletFromSeed',
+        'isSeedValid',
+        'isUnlocked',
+      ]) {
+        expect(invoke(['wallet', name])).toBe(true);
+      }
+      await settle();
+      for (const name of [
+        'lock',
+        'createWallet',
+        'recoverWalletFromSeed',
+        'isSeedValid',
+        'isUnlocked',
+      ]) {
+        expect(calls[name]).toHaveBeenCalledTimes(1);
+      }
+      expect(sendResponse).toHaveBeenCalledTimes(5);
+    }
+  );
+
+  it('preserves normal SDK read access after setup completes', async () => {
+    status = undefined;
+    expect(invoke(['wallet', 'ethereumTransaction', 'getBalance'])).toBe(true);
+    await settle();
+    expect(calls.getBalance).toHaveBeenCalledTimes(1);
+    expect(sendResponse).toHaveBeenCalledWith('getBalance result');
+  });
+});

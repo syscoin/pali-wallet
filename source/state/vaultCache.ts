@@ -1,7 +1,12 @@
 import { INetwork, INetworkType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 
-import { loadSlip44State, saveSlip44State } from './paliStorage';
+import {
+  assertWalletPersistenceAllowed,
+  loadSlip44State,
+  saveSlip44State,
+  walletPersistenceGate,
+} from './paliStorage';
 import store, { saveMainStateWithinPersistenceLock } from './store';
 import { ISlip44State } from './vault/types';
 
@@ -126,6 +131,7 @@ class VaultCache {
    * storage keys in one Chrome storage operation.
    */
   prepareSlip44Vault(slip44: number, slip44State: ISlip44State): ISlip44State {
+    assertWalletPersistenceAllowed();
     // 🛡️ SAFEGUARD: Validate slip44 matches before saving
     if (!validateVaultSlip44(slip44State, slip44)) {
       throw new Error(
@@ -177,10 +183,12 @@ class VaultCache {
    * Always saves everything regardless of dirty flags - better safe than sorry
    */
   async emergencySave(): Promise<void> {
+    if (walletPersistenceGate.blocked) return;
     console.log('[VaultCache] 🚨 Emergency save triggered');
 
     // Use mutex to ensure only one emergency save runs at a time
     return walletPersistenceMutex.runExclusive(async () => {
+      if (walletPersistenceGate.blocked) return;
       const globalState = store.getState().vaultGlobal;
       const activeSlip44 = globalState.activeSlip44;
       const liveVaultState = store.getState().vault;

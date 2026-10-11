@@ -8,6 +8,20 @@ Backups sind wichtig, weil Pali nicht verwahrend ist. Die Wallet kann eine Seed-
 
 Schreiben Sie die Seed-Phrase Ihrer Wallet auf und bewahren Sie sie offline auf. Jeder, der die Seed-Phrase besitzt, kann die daraus abgeleiteten Konten kontrollieren.
 
+## Passwort zum Entsperren
+
+Die Option **Ein merkbares Passwort vorschlagen** erzeugt ein Passwort zum Entsperren, nicht Ihre geheime Wiederherstellungsphrase. Speichern Sie es in Ihrem Passwortmanager. Ein Smart-Account-Passkey ersetzt das Passwort zum Entsperren der Wallet nicht.
+
+## Wenn Sie das Passwort vergessen
+
+Wählen Sie auf dem gesperrten Bildschirm **Passwort vergessen? Mit Seed wiederherstellen**, geben Sie die geheime Wiederherstellungsphrase dieser Wallet ein und legen Sie ein neues Passwort fest. Das alte Passwort wird nicht benötigt. Eine andere Phrase wird abgelehnt, bevor die Wallet zurückgesetzt wird.
+
+Der aktuelle Ablauf erstellt das erste vom Seed abgeleitete HD-Konto neu. Fügen Sie weitere vom Seed abgeleitete Konten in der ursprünglichen Ableitungsreihenfolge erneut hinzu. Die Wiederherstellung bewegt Ihr Guthaben nicht.
+
+Ihr Seed kann separat importierte Schlüssel, die mit dem vergessenen Passwort verschlüsselt wurden, nicht entschlüsseln; bewahren Sie deren eigene Sicherungen auf. Verbinden Sie Hardware-Wallets erneut. Benutzerdefinierte Einstellungen und die Smart-Account-/Passkey-Einrichtung benötigen eigene Aufzeichnungen oder Sicherungen und sind durch die Seed-Wiederherstellung allein nicht gewährleistet.
+
+Wenn die Wiederherstellung fehlschlägt, prüfen Sie Ihre Phrase und versuchen Sie es erneut. Wenn der Fehler weiterhin auftritt, starten Sie Ihren Browser neu. Löschen Sie niemals gespeicherte Wallet-Daten, um einen Betriebsfehler zu umgehen.
+
 ## Entsperren und Passkey-Änderungen
 
 Ein nicht verfügbarer Browserdienst, ein Speicherproblem oder eine nicht unterstützte Kryptografiefunktion kann das Entsperren verhindern, ohne dass Ihr Passwort falsch ist. Lesen Sie die Fehlermeldung, stellen Sie den erforderlichen Dienst oder die Verbindung wieder her und versuchen Sie erneut, die Wallet zu entsperren. Löschen oder importieren Sie die Wallet nicht erneut, um einen Betriebsfehler zu umgehen. Betriebsfehler zählen nicht als fehlgeschlagene Passwortversuche.

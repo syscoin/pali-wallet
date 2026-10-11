@@ -49,10 +49,10 @@ export const Start = (props: any) => {
       <div className="particle-6"></div>
 
       <ImportWalletWarning
-        title={t('settings.importWalletWarning')}
-        phraseOne={t('settings.thisActionErases')}
-        phraseTwo={t('settings.toRestoreThis')}
-        phraseThree={t('settings.allYourSettings')}
+        title={t('settings.recoveryTitle')}
+        phraseOne={t('settings.recoveryIntro')}
+        phraseTwo={t('settings.recoverySeedHelp')}
+        phraseThree={t('settings.recoveryLimitations')}
         onClose={setIsOpenValidation}
         show={isOpenValidation}
       />
