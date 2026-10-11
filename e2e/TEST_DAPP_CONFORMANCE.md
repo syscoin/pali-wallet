@@ -51,7 +51,9 @@ Coverage includes discovery, unauthorized account/permission reads, explicit
 connection, origin-scoped permissions, signature recovery independent of Pali,
 official personal-sign and typed-data V1/V3/V4 fixtures, reversed personal-sign
 compatibility, current local-chain SIWE with scheme/resources, SIWE negatives,
-numeric malformed-request errors without popups, valid unknown-chain errors,
+numeric malformed-request errors without popups, non-hex and odd-length
+personal-sign bytes in both parameter orders without approval windows,
+valid unknown-chain errors,
 local add/switch-chain events, mined legacy and EIP-1559 transaction receipts
 and fee-field evidence, legacy inference from a gas-price-only request,
 uppercase quantity-prefix normalization, an explicit

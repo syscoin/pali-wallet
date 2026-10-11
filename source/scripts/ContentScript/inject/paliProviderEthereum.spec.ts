@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
 
+import { getMethodConfig } from 'scripts/Background/controllers/message-handler/method-registry';
+import {
+  clearProviderCache,
+  executeMethodWithCache,
+} from 'scripts/Background/controllers/message-handler/provider-cache';
+
 import { PaliInpageProviderEth } from './paliProviderEthereum';
 
 const ADDRESS = `0x${'11'.repeat(20)}`;
@@ -23,6 +29,9 @@ let pendingAccountReplies: Array<{ id: string; result: string[] }>;
 let onAccountRequest: (() => void) | undefined;
 let notificationListeners: EventListener[];
 let postMessageMock: jest.SpyInstance;
+let useBackgroundProviderCache: boolean;
+let providerStateReads: number;
+let accountReads: number;
 
 const notify = (method: string, params: unknown) =>
   window.dispatchEvent(
@@ -42,6 +51,29 @@ const providerState = () => ({
   isUnlocked: unlocked,
 });
 
+const readBackgroundProviderResult = (
+  method: 'wallet_getProviderState' | 'eth_accounts'
+) =>
+  executeMethodWithCache(
+    {
+      methodConfig: getMethodConfig(method)!,
+      originalRequest: {
+        host: 'https://provider.example',
+        method,
+        sender: { tab: { id: 1 } } as chrome.runtime.MessageSender,
+        type: 'METHOD_REQUEST',
+      },
+    },
+    async () => {
+      if (method === 'wallet_getProviderState') {
+        providerStateReads += 1;
+        return providerState();
+      }
+      accountReads += 1;
+      return exposedAccounts();
+    }
+  );
+
 const reply = (id: string, result: unknown) =>
   window.dispatchEvent(
     new CustomEvent(id, {
@@ -53,6 +85,10 @@ const reply = (id: string, result: unknown) =>
   );
 
 beforeEach(() => {
+  clearProviderCache();
+  useBackgroundProviderCache = false;
+  providerStateReads = 0;
+  accountReads = 0;
   approved = true;
   unlocked = true;
   failNext = undefined;
@@ -98,6 +134,10 @@ beforeEach(() => {
             if (holdProviderStateReplies) {
               pendingProviderStateReplies.push(message.id);
               onProviderStateRequest?.();
+            } else if (useBackgroundProviderCache) {
+              void readBackgroundProviderResult('wallet_getProviderState').then(
+                (state) => reply(message.id, state)
+              );
             } else {
               reply(message.id, providerState());
             }
@@ -109,6 +149,10 @@ beforeEach(() => {
                 result: exposedAccounts(),
               });
               onAccountRequest?.();
+            } else if (useBackgroundProviderCache) {
+              void readBackgroundProviderResult('eth_accounts').then(
+                (accounts) => reply(message.id, accounts)
+              );
             } else {
               reply(message.id, exposedAccounts());
             }
@@ -275,6 +319,114 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     ).rejects.toMatchObject({ code: 4100 });
     expect(provider.isConnected()).toBe(true);
     expect(disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['lock', false],
+    ['revocation', false],
+    ['lock', true],
+    ['revocation', true],
+  ])(
+    'keeps accounts hidden after %s (recovery=%p) with the real background cache',
+    async (change, recover) => {
+      useBackgroundProviderCache = true;
+      const { provider } = await initialize();
+      expect(provider.accounts).toEqual([ADDRESS]);
+      expect(providerStateReads).toBe(1);
+      await expect(
+        provider.request({ method: 'eth_accounts' })
+      ).resolves.toEqual([ADDRESS]);
+      expect(accountReads).toBe(1);
+      const accountsChanged = jest.fn();
+      provider.on('accountsChanged', accountsChanged);
+
+      if (change === 'lock') {
+        unlocked = false;
+        notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+      } else {
+        await provider.request({
+          method: 'wallet_revokePermissions',
+          params: [Object.fromEntries([['eth_accounts', {}]])],
+        });
+      }
+      expect(provider.accounts).toEqual([]);
+      if (recover) {
+        failNext = { code: 4900, message: 'All chains disconnected' };
+        await expect(
+          provider.request({ method: 'eth_blockNumber' })
+        ).rejects.toMatchObject({ code: 4900 });
+
+        await expect(provider.request({ method: 'eth_chainId' })).resolves.toBe(
+          '0x1'
+        );
+      }
+      expect(provider.accounts).toEqual([]);
+      await expect(
+        provider.request({ method: 'eth_accounts' })
+      ).resolves.toEqual([]);
+      expect(provider.isConnected()).toBe(true);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(await provider._metamask.isUnlocked()).toBe(change !== 'lock');
+      expect(accountsChanged.mock.calls).toEqual([[[]]]);
+      expect(providerStateReads).toBe(recover ? 2 : 1);
+      expect(accountReads).toBe(2);
+
+      if (change === 'lock') {
+        unlocked = true;
+        notify('pali_unlockStateChanged', {
+          isUnlocked: true,
+          accounts: [ADDRESS],
+        });
+      } else {
+        notifyOnGrant = true;
+        await expect(
+          provider.request({ method: 'eth_requestAccounts' })
+        ).resolves.toEqual([ADDRESS]);
+      }
+      await expect(
+        provider.request({ method: 'eth_accounts' })
+      ).resolves.toEqual([ADDRESS]);
+      expect(provider.selectedAddress).toBe(ADDRESS);
+      expect(await provider._metamask.isUnlocked()).toBe(true);
+      expect(accountsChanged.mock.calls).toEqual([[[]], [[ADDRESS]]]);
+      expect(accountReads).toBe(3);
+    }
+  );
+
+  it('recovers a current unlock and first grant with the real background cache', async () => {
+    useBackgroundProviderCache = true;
+    approved = false;
+    unlocked = false;
+    const { provider } = await initialize();
+    expect(provider.accounts).toEqual([]);
+    expect(providerStateReads).toBe(1);
+    await expect(provider.request({ method: 'eth_accounts' })).resolves.toEqual(
+      []
+    );
+    unlocked = true;
+    notify('pali_unlockStateChanged', { isUnlocked: true, accounts: [] });
+    const accountsChanged = jest.fn();
+    provider.on('accountsChanged', accountsChanged);
+    notifyOnGrant = true;
+    failNext = { code: 4900, message: 'All chains disconnected' };
+    await expect(
+      provider.request({ method: 'eth_blockNumber' })
+    ).rejects.toMatchObject({ code: 4900 });
+
+    await expect(
+      provider.request({ method: 'eth_requestAccounts' })
+    ).resolves.toEqual([ADDRESS]);
+    await expect(provider.request({ method: 'eth_accounts' })).resolves.toEqual(
+      [ADDRESS]
+    );
+    expect(provider.isConnected()).toBe(true);
+    expect(provider.accounts).toEqual([ADDRESS]);
+    expect(provider.selectedAddress).toBe(ADDRESS);
+    expect(await provider._metamask.isUnlocked()).toBe(true);
+    expect(accountsChanged.mock.calls).toEqual([[[ADDRESS]]]);
+    expect(providerStateReads).toBe(2);
+    expect(accountReads).toBe(2);
   });
 
   it('initializes locked accounts privately without hiding RPC connectivity', async () => {

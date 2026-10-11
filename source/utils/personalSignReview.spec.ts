@@ -1,4 +1,7 @@
-import { getPersonalSignReview } from './personalSignReview';
+import {
+  getPersonalSignReview,
+  isValidPersonalSignMessage,
+} from './personalSignReview';
 
 const ADDRESS = '0x1111111111111111111111111111111111111111';
 const ORIGIN = 'https://metamask.github.io';
@@ -129,13 +132,43 @@ it.each([
   ['Hello Pali', 'Hello Pali'],
   [encode('Hello Pali'), 'Hello Pali'],
   ['0xdeadbeef', '0xdeadbeef'],
-  ['0xmalformed', '0xmalformed'],
+  ['Hello Pali 日本語', 'Hello Pali 日本語'],
+  ['0Xmalformed', '0Xmalformed'],
+  ['0x', '0x'],
+  ['0xAbCd', '0xAbCd'],
   [ADDRESS, ADDRESS],
 ])('preserves ordinary personal_sign review for %s', (payload, display) => {
   expect(getPersonalSignReview(payload, ORIGIN, ADDRESS)).toEqual({
     message: display,
   });
 });
+
+it.each([
+  '0xmalformed',
+  '0xabc',
+  '0x123z45',
+  '0x1234\n',
+  `${encode(message('victim.example'))}zz`,
+  `${encode(message('victim.example'))}a`,
+  `${encode(message(undefined, `0x${'22'.repeat(20)}`))}zz`,
+])('rejects ambiguous signing bytes before SIWE parsing: %s', (payload) => {
+  expect(isValidPersonalSignMessage(payload)).toBe(false);
+  expect(getPersonalSignReview(payload, ORIGIN, ADDRESS)).toEqual({
+    message: payload,
+    error: 'send.invalidPersonalSignMessage',
+  });
+});
+
+it.each([null, undefined, 123, {}, ['Hello Pali']])(
+  'rejects a non-string signing message: %p',
+  (payload) => {
+    expect(isValidPersonalSignMessage(payload)).toBe(false);
+    expect(getPersonalSignReview(payload, ORIGIN, ADDRESS)).toEqual({
+      message: '',
+      error: 'send.invalidPersonalSignMessage',
+    });
+  }
+);
 
 it('supports omitted and explicitly empty statements permitted by ERC-4361', () => {
   const withoutStatement = message().replace(

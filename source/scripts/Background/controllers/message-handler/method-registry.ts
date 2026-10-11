@@ -300,8 +300,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkPreference: NetworkPreference.EVM,
     networkEnforcement: NetworkEnforcement.Never,
     hasPopup: false,
-    cacheKey: 'providerState',
-    cacheTTL: 10000, // 10 seconds
+    // Recovery snapshots must reflect current unlock and origin permissions.
   },
 
   wallet_getSysProviderState: {
@@ -467,8 +466,8 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkEnforcement: NetworkEnforcement.Never,
     hasPopup: false,
     returnsArray: true,
+    // Keep local disclosure handling, but recheck unlock and permissions each time.
     cacheKey: 'accounts',
-    cacheTTL: 10000, // 10 seconds
   },
 
   eth_requestAccounts: {

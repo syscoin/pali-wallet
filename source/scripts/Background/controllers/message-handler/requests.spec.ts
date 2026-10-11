@@ -9,6 +9,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 import { getController } from 'scripts/Background';
 
 import { getMethodConfig } from './method-registry';
+import { getPipelineInstance } from './request-pipeline';
 import { methodRequest } from './requests';
 
 describe('malformed transaction requests settle before admission', () => {
@@ -99,4 +100,70 @@ describe('provider-facing signing methods', () => {
       code: 4200,
     });
   });
+});
+
+describe('personal_sign byte encoding admission', () => {
+  const address = `0x${'11'.repeat(20)}`;
+  const siwe = `victim.example wants you to sign in with your Ethereum account:\n${address}\n\n\nURI: https://victim.example\nVersion: 1\nChain ID: 1\nNonce: 12345678\nIssued At: 2026-10-11T10:00:00.000Z`;
+  const encodedSiwe = `0x${Buffer.from(siwe).toString('hex')}`;
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each(
+    [
+      '0xmalformed',
+      '0xabc',
+      '0x12z34',
+      '0x1234\n',
+      `${encodedSiwe}zz`,
+      `${encodedSiwe}a`,
+    ].flatMap((payload) => [
+      [payload, address],
+      [address, payload],
+    ])
+  )(
+    'rejects ambiguous bytes in either parameter order before prompting: %p',
+    async (...params) => {
+      jest.mocked(getController).mockClear();
+      const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+      await expect(
+        methodRequest('https://requester.example', {
+          method: 'personal_sign',
+          params,
+        })
+      ).rejects.toMatchObject({
+        code: -32602,
+        message:
+          'personal_sign hexadecimal messages must contain complete bytes',
+      });
+      expect(execute).not.toHaveBeenCalled();
+      expect(getController).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(
+    ['', '0x', '0xAbCd', 'An ordinary message 日本語', '0Xmalformed'].flatMap(
+      (payload) => [
+        [payload, address, '0xlegacy-password'],
+        [address, payload, '0xlegacy-password'],
+      ]
+    )
+  )(
+    'preserves valid messages and original parameter order: %p',
+    async (...params) => {
+      const original = [...params];
+      const execute = jest
+        .spyOn(getPipelineInstance()!, 'execute')
+        .mockResolvedValue('0xsignature');
+      await expect(
+        methodRequest('https://requester.example', {
+          method: 'personal_sign',
+          params,
+        })
+      ).resolves.toBe('0xsignature');
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute.mock.calls[0][0].originalRequest.params).toEqual(original);
+      expect(params).toEqual(original);
+    }
+  );
 });

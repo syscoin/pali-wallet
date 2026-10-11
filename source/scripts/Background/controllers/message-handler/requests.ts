@@ -3,6 +3,7 @@ import { ethErrors } from 'helpers/errors';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { normalizeDappTransaction } from 'utils/dappTransaction';
+import { isValidPersonalSignMessage } from 'utils/personalSignReview';
 import { assertProviderRequestBudget } from 'utils/requestPayloadBudget';
 
 import {
@@ -113,6 +114,10 @@ export const methodRequest = async (
     )
       throw ethErrors.rpc.invalidParams(
         'personal_sign requires a message and an account address'
+      );
+    if (!params.slice(0, 2).every(isValidPersonalSignMessage))
+      throw ethErrors.rpc.invalidParams(
+        'personal_sign hexadecimal messages must contain complete bytes'
       );
   }
   if (

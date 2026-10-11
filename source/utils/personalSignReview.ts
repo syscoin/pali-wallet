@@ -1,4 +1,5 @@
 type PersonalSignError =
+  | 'send.invalidPersonalSignMessage'
   | 'send.signingForWrongAddress'
   | 'send.suspiciousSignInRequest';
 
@@ -6,6 +7,14 @@ export interface IPersonalSignReview {
   error?: PersonalSignError;
   message: string;
 }
+
+// Lowercase 0x reserves a byte-encoded message. Reject ambiguous encodings
+// rather than allowing a hardware adapter to truncate or pad the message.
+export const isValidPersonalSignMessage = (
+  payload: unknown
+): payload is string =>
+  typeof payload === 'string' &&
+  (!payload.startsWith('0x') || /^0x(?:[A-Fa-f0-9]{2})*$/.test(payload));
 
 const SIWE_PHRASE = 'wants you to sign in with your Ethereum account';
 const REG_NAME = "(?:[A-Za-z0-9._~!$&'()*+,;=-]|%[A-Fa-f0-9]{2})";
@@ -125,12 +134,13 @@ export const getPersonalSignReview = (
   requesterOrigin: string,
   signerAddress: string
 ): IPersonalSignReview => {
-  if (typeof payload !== 'string')
-    return { message: '', error: 'send.suspiciousSignInRequest' };
+  if (!isValidPersonalSignMessage(payload))
+    return {
+      message: typeof payload === 'string' ? payload : '',
+      error: 'send.invalidPersonalSignMessage',
+    };
 
-  // Match the signer's complete, even-length hex decoding. Malformed 0x strings
-  // are signed as literal text; never partially decode them for review.
-  const text = /^0x(?:[A-Fa-f0-9]{2})*$/.test(payload)
+  const text = payload.startsWith('0x')
     ? Buffer.from(payload.slice(2), 'hex').toString('utf8')
     : payload;
   const message =

@@ -4,7 +4,7 @@ import {
   recoverTypedSignature,
   SignTypedDataVersion,
 } from '@metamask/eth-sig-util';
-import { expect, test } from '@playwright/test';
+import { type Page, expect, test } from '@playwright/test';
 import {
   getAddress,
   getCreateAddress,
@@ -177,7 +177,11 @@ test('official test dapp: isolated standard provider conformance', async () => {
       '0x56bc75e2d63100000',
     ]);
     await wallet.step('official dapp connected to local chain', async () => {
-      expect(await providerRequest(page, 'eth_accounts')).toEqual([address]);
+      // Account RPCs may differ in checksum casing; compare the full address
+      // list by identity while still rejecting malformed or unexpected accounts.
+      expect(
+        (await providerRequest(page, 'eth_accounts')).map(getAddress)
+      ).toEqual([getAddress(address)]);
       expect(await providerRequest(page, 'eth_chainId')).toBe(
         LOCAL_CHAINS[0].hexId
       );
@@ -513,6 +517,48 @@ test('official test dapp: isolated standard provider conformance', async () => {
           return result;
         });
       }
+      await record(
+        'malformed personal_sign bytes reject before approval in both orders',
+        async () => {
+          const message = `victim.example wants you to sign in with your Ethereum account:\n${address}\n\nSign in to the isolated Pali conformance fixture.\n\nURI: https://victim.example/\nVersion: 1\nChain ID: ${
+            LOCAL_CHAINS[0].chainId
+          }\nNonce: 32891757\nIssued At: ${new Date().toISOString()}`;
+          const encoded = hexlify(toUtf8Bytes(message));
+          const rejected = [];
+          const openedPages: string[] = [];
+          const observePage = (opened: Page) => openedPages.push(opened.url());
+          wallet.context.on('page', observePage);
+          try {
+            for (const suffix of ['zz', 'a']) {
+              for (const accountFirst of [false, true]) {
+                const malformed = encoded + suffix;
+                const result = await settle(
+                  page,
+                  await startRequest(
+                    page,
+                    'personal_sign',
+                    accountFirst ? [address, malformed] : [malformed, address]
+                  ),
+                  2000
+                );
+                expect(result.error?.code).toBe(-32602);
+                expect(result.durationMs).toBeLessThan(2000);
+                expect(openedPages).toEqual([]);
+                expect(
+                  wallet.context
+                    .pages()
+                    .some((tab) => tab.url().includes('/external'))
+                ).toBe(false);
+                expect(result.result).toBeUndefined();
+                rejected.push(result);
+              }
+            }
+            return { rejected, openedPages };
+          } finally {
+            wallet.context.off('page', observePage);
+          }
+        }
+      );
       await record(
         'zero EIP-1559 fee choices reject before unsupported SDK conversion',
         async () => {

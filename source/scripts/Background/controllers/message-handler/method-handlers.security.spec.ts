@@ -38,12 +38,15 @@ jest.mock('./sendCallsBundles', () => ({
   resolveCallsStatus: jest.fn(),
 }));
 
+import { EthProvider } from 'scripts/Provider/EthProvider';
+
 import {
   clearProviderCache,
   EthMethodHandler,
   MAX_PROVIDER_CACHE_ENTRIES,
   WalletMethodHandler,
 } from './method-handlers';
+import { getMethodConfig } from './method-registry';
 import {
   IEnhancedRequestContext,
   MethodHandlerType,
@@ -312,6 +315,35 @@ describe('origin-scoped provider data', () => {
     expect(connectedResult).toEqual([CONNECTED_ADDRESS.toLowerCase()]);
     expect(unconnectedResult).toEqual([]);
   });
+
+  it.each(['lock', 'revocation'])(
+    'rechecks local eth_accounts disclosure after %s without falling through to RPC',
+    async (change) => {
+      const context = makeContext(
+        'eth_accounts',
+        'https://connected.example',
+        MethodHandlerType.Eth
+      );
+      context.methodConfig = getMethodConfig('eth_accounts')!;
+      const handler = new EthMethodHandler();
+      isUnlocked.mockReturnValue(true);
+      getAccount.mockReturnValue(connectedAccount);
+      await expect(handler.handle(context)).resolves.toEqual([
+        CONNECTED_ADDRESS.toLowerCase(),
+      ]);
+
+      if (change === 'lock') isUnlocked.mockReturnValue(false);
+      else getAccount.mockReturnValue(null);
+      await expect(handler.handle(context)).resolves.toEqual([]);
+
+      isUnlocked.mockReturnValue(true);
+      getAccount.mockReturnValue(connectedAccount);
+      await expect(handler.handle(context)).resolves.toEqual([
+        CONNECTED_ADDRESS.toLowerCase(),
+      ]);
+      expect(EthProvider).not.toHaveBeenCalled();
+    }
+  );
 
   it('bounds the host-scoped provider cache and evicts the least recently used entry', async () => {
     getAccount.mockReturnValue(connectedAccount);

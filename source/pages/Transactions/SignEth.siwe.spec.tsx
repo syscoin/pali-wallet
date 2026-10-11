@@ -124,7 +124,9 @@ it.each([
   ],
   ['An ordinary message', false],
   [encode('An ordinary message'), false],
-  ['0xmalformed', true],
+  ['A message 日本語', true],
+  ['0Xmalformed', true],
+  ['0x', false],
 ])(
   'signs valid personal_sign without changing original params or their order',
   async (payload, reversed) => {
@@ -157,6 +159,15 @@ it.each([
 it.each([
   [message('metamask.badactor.io'), 'send.suspiciousSignInRequest'],
   [encode(message('metamask.badactor.io')), 'send.suspiciousSignInRequest'],
+  [
+    `${encode(message('metamask.badactor.io'))}zz`,
+    'send.invalidPersonalSignMessage',
+  ],
+  [
+    `${encode(message('metamask.badactor.io'))}a`,
+    'send.invalidPersonalSignMessage',
+  ],
+  ['0xmalformed', 'send.invalidPersonalSignMessage'],
   [
     encode(message('metamask.github.io', `0x${'22'.repeat(20)}`)),
     'send.signingForWrongAddress',
@@ -206,6 +217,46 @@ it.each(['account', 'origin', 'message'])(
     });
     expect(screen.getByRole('alert')).toBeDefined();
     expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+describe.each(['software', 'Ledger', 'Trezor', 'SmartAccount'])(
+  'ambiguous personal_sign bytes for %s',
+  (signer) => {
+    it.each([false, true])(
+      'blocks odd/nonhex SIWE suffixes and direct callbacks (reversed: %s)',
+      async (reversed) => {
+        const account = mockState.vault.accounts.HDAccount[0];
+        account.isLedgerWallet = signer === 'Ledger';
+        account.isTrezorWallet = signer === 'Trezor';
+        account.isSmartAccount = signer === 'SmartAccount';
+        if (account.isSmartAccount) account.smartAccount = { chainId: 1 };
+        const view = await prepare(
+          `${encode(message('victim.example'))}zz`,
+          reversed
+        );
+        expect(screen.getByRole('alert').textContent).toBe(
+          'send.invalidPersonalSignMessage'
+        );
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'buttons.confirm',
+            }) as HTMLButtonElement
+          ).disabled
+        ).toBe(true);
+        await act(async () => {
+          await mockConfirm();
+        });
+        mockQuery[reversed ? 1 : 0] = `${encode(message('victim.example'))}a`;
+        view.rerender(<EthSign />);
+        await act(async () => {
+          await mockConfirm();
+        });
+        expect(mockEmitter).not.toHaveBeenCalled();
+        expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+      }
+    );
   }
 );
 
