@@ -9,6 +9,7 @@ let unlocked: boolean;
 let failNext: { code: number; message: string } | undefined;
 let denyAccountRequest: boolean;
 let connectedChainId: string;
+let connectedNetworkVersion: string;
 let backgroundIsBitcoinBased: boolean;
 let holdChainReplies: boolean;
 let pendingChainReplies: string[];
@@ -36,7 +37,7 @@ const exposedAccounts = () =>
 const providerState = () => ({
   accounts: exposedAccounts(),
   chainId: connectedChainId,
-  networkVersion: String(parseInt(connectedChainId, 16)),
+  networkVersion: connectedNetworkVersion,
   isBitcoinBased: backgroundIsBitcoinBased,
   isUnlocked: unlocked,
 });
@@ -57,6 +58,7 @@ beforeEach(() => {
   failNext = undefined;
   denyAccountRequest = false;
   connectedChainId = '0x1';
+  connectedNetworkVersion = '1';
   backgroundIsBitcoinBased = false;
   holdChainReplies = false;
   pendingChainReplies = [];
@@ -91,7 +93,7 @@ beforeEach(() => {
           reply(message.id, { error });
           return;
         }
-        switch (message.data.method) {
+        switch (message.data?.method) {
           case 'wallet_getProviderState':
             if (holdProviderStateReplies) {
               pendingProviderStateReplies.push(message.id);
@@ -128,7 +130,15 @@ beforeEach(() => {
               approved = true;
               if (notifyOnGrant)
                 notify('pali_accountsChanged', exposedAccounts());
-              reply(message.id, exposedAccounts());
+              if (holdAccountReplies) {
+                pendingAccountReplies.push({
+                  id: message.id,
+                  result: exposedAccounts(),
+                });
+                onAccountRequest?.();
+              } else {
+                reply(message.id, exposedAccounts());
+              }
             }
             break;
           case 'eth_blockNumber':
@@ -411,21 +421,33 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
   it('updates a changed chain before emitting reconnect and emits chainChanged once', async () => {
     const { provider, connect } = await initialize();
     const chainChanged = jest.fn();
-    const chainSeenOnConnect: Array<string | null> = [];
+    const observedMetadata: unknown[] = [];
+    const observe = () =>
+      observedMetadata.push({
+        chainId: provider.chainId,
+        networkVersion: provider.networkVersion,
+        syncVersion: (provider.send({ method: 'net_version' }) as any).result,
+      });
     provider.on('chainChanged', chainChanged);
-    provider.on('connect', () => chainSeenOnConnect.push(provider.chainId));
+    provider.on('chainChanged', observe);
+    provider.on('connect', observe);
     connect.mockClear();
     failNext = { code: 4900, message: 'All chains disconnected' };
     await expect(
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
     connectedChainId = '0x2';
+    connectedNetworkVersion = '2002';
 
     await expect(provider.request({ method: 'eth_chainId' })).resolves.toBe(
       '0x2'
     );
     expect(provider.chainId).toBe('0x2');
-    expect(chainSeenOnConnect).toEqual(['0x2']);
+    expect(provider.networkVersion).toBe('2002');
+    expect(observedMetadata).toEqual([
+      { chainId: '0x2', networkVersion: '2002', syncVersion: '2002' },
+      { chainId: '0x2', networkVersion: '2002', syncVersion: '2002' },
+    ]);
     expect(connect.mock.calls).toEqual([[{ chainId: '0x2' }]]);
     expect(chainChanged.mock.calls).toEqual([['0x2']]);
     await provider.request({ method: 'eth_chainId' });
@@ -535,9 +557,9 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await expect(
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
-    holdChainReplies = true;
+    holdProviderStateReplies = true;
     const firstLookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const firstRecovery = provider.request({ method: 'eth_blockNumber' });
     await firstLookupStarted;
@@ -546,18 +568,22 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
     const secondLookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const secondRecovery = provider.request({ method: 'eth_blockNumber' });
     await secondLookupStarted;
-    expect(pendingChainReplies).toHaveLength(2);
-    reply(pendingChainReplies[0], '0x1');
+    expect(pendingProviderStateReplies).toHaveLength(2);
+    reply(pendingProviderStateReplies[0], providerState());
     await expect(firstRecovery).resolves.toBe('0x1');
     expect(provider.isConnected()).toBe(false);
     const concurrentRecovery = provider.request({ method: 'eth_blockNumber' });
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    expect(pendingChainReplies).toHaveLength(2);
-    reply(pendingChainReplies[1], '0x2');
+    expect(pendingProviderStateReplies).toHaveLength(2);
+    reply(pendingProviderStateReplies[1], {
+      ...providerState(),
+      chainId: '0x2',
+      networkVersion: '2002',
+    });
     await expect(
       Promise.all([secondRecovery, concurrentRecovery])
     ).resolves.toEqual(['0x1', '0x1']);
@@ -590,8 +616,12 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
         reply(pendingChainReplies[0], '0x2');
         await expect(older).resolves.toBe('0x2');
       } else {
+        connectedChainId = '0x2';
+        connectedNetworkVersion = '2002';
         reply(pendingChainReplies[0], '0x2');
         await expect(older).resolves.toBe('0x2');
+        connectedChainId = '0x1';
+        connectedNetworkVersion = '1';
         reply(pendingChainReplies[1], '0x1');
         await expect(newer).resolves.toBe('0x1');
       }
@@ -612,9 +642,9 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await expect(
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
-    holdChainReplies = true;
+    holdProviderStateReplies = true;
     const lookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const pending = provider.request({ method: 'eth_blockNumber' });
     await lookupStarted;
@@ -626,7 +656,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await expect(pending).resolves.toBe('0x1');
     expect(provider.chainId).toBe('0x2');
     expect(connect.mock.calls).toEqual([[{ chainId: '0x2' }]]);
-    reply(pendingChainReplies[0], '0x1');
+    reply(pendingProviderStateReplies[0], providerState());
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(provider.chainId).toBe('0x2');
     expect(chainChanged.mock.calls).toEqual([['0x2']]);
@@ -640,9 +670,9 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await expect(
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
-    holdChainReplies = true;
+    holdProviderStateReplies = true;
     const lookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const pending = provider.request({ method: 'eth_blockNumber' });
     let settled = false;
@@ -655,12 +685,17 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await jest.advanceTimersByTimeAsync(1);
     await expect(pending).resolves.toBe('0x1');
     expect(provider.isConnected()).toBe(false);
-    reply(pendingChainReplies[0], '0x2');
+    reply(pendingProviderStateReplies[0], {
+      ...providerState(),
+      chainId: '0x2',
+      networkVersion: '2002',
+    });
     await jest.advanceTimersByTimeAsync(0);
     expect(provider.chainId).toBe('0x1');
     expect(connect).not.toHaveBeenCalled();
-    holdChainReplies = false;
+    holdProviderStateReplies = false;
     connectedChainId = '0x2';
+    connectedNetworkVersion = '2002';
     await expect(provider.request({ method: 'eth_blockNumber' })).resolves.toBe(
       '0x1'
     );
@@ -669,7 +704,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     expect(connect.mock.calls).toEqual([[{ chainId: '0x2' }]]);
   });
 
-  it('shares one chain lookup after an outage and adds no lookup to normal RPC calls', async () => {
+  it('shares one local snapshot after an outage and adds no lookup to normal RPC calls', async () => {
     const { provider, connect } = await initialize();
     const chainChanged = jest.fn();
     provider.on('chainChanged', chainChanged);
@@ -677,27 +712,28 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await provider.request({ method: 'eth_blockNumber' });
     expect(
       postMessageMock.mock.calls.filter(
-        ([message]) => message.data.method === 'eth_chainId'
+        ([message]) => message.data.method === 'wallet_getProviderState'
       )
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     failNext = { code: 4900, message: 'All chains disconnected' };
     await expect(
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
     connectedChainId = '0x2';
-    holdChainReplies = true;
+    connectedNetworkVersion = '2002';
+    holdProviderStateReplies = true;
     const lookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const pending = Promise.all([
       provider.request({ method: 'eth_blockNumber' }),
       provider.request({ method: 'eth_blockNumber' }),
     ]);
     await lookupStarted;
-    expect(pendingChainReplies).toHaveLength(1);
+    expect(pendingProviderStateReplies).toHaveLength(1);
     expect(provider.isConnected()).toBe(false);
     expect(connect).not.toHaveBeenCalled();
-    reply(pendingChainReplies[0], connectedChainId);
+    reply(pendingProviderStateReplies[0], providerState());
     await expect(pending).resolves.toEqual(['0x1', '0x1']);
     expect(provider.chainId).toBe('0x2');
     expect(provider.isConnected()).toBe(true);
@@ -706,9 +742,9 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await provider.request({ method: 'eth_blockNumber' });
     expect(
       postMessageMock.mock.calls.filter(
-        ([message]) => message.data.method === 'eth_chainId'
+        ([message]) => message.data.method === 'wallet_getProviderState'
       )
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it('preserves a successful RPC result when recovery lookup fails and permits a later recovery', async () => {
@@ -719,13 +755,14 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
       provider.request({ method: 'eth_blockNumber' })
     ).rejects.toMatchObject({ code: 4900 });
     connectedChainId = '0x2';
-    holdChainReplies = true;
+    connectedNetworkVersion = '2002';
+    holdProviderStateReplies = true;
     const lookupStarted = new Promise<void>((resolve) => {
-      onChainRequest = resolve;
+      onProviderStateRequest = resolve;
     });
     const pending = provider.request({ method: 'eth_blockNumber' });
     await lookupStarted;
-    reply(pendingChainReplies[0], {
+    reply(pendingProviderStateReplies[0], {
       error: { code: -32603, message: 'Chain query failed' },
     });
     await expect(pending).resolves.toBe('0x1');
@@ -733,7 +770,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     expect(connect).not.toHaveBeenCalled();
     expect(provider.accounts).toEqual([ADDRESS]);
 
-    holdChainReplies = false;
+    holdProviderStateReplies = false;
     await expect(provider.request({ method: 'eth_blockNumber' })).resolves.toBe(
       '0x1'
     );
@@ -742,9 +779,9 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     expect(connect.mock.calls).toEqual([[{ chainId: '0x2' }]]);
     expect(
       postMessageMock.mock.calls.filter(
-        ([message]) => message.data.method === 'eth_chainId'
+        ([message]) => message.data.method === 'wallet_getProviderState'
       )
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it('preserves UTXO and EVM transition metadata without repeating stable-chain events', async () => {
@@ -823,7 +860,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await expect(provider.request({ method: 'eth_chainId' })).resolves.toBe(
       '0x7a69'
     );
-    expect(provider.isBitcoinBased()).toBe(true);
+    expect(provider.isBitcoinBased()).toBe(false);
     await expect(
       provider.request({ method: 'eth_requestAccounts' })
     ).resolves.toEqual([ADDRESS]);
@@ -862,7 +899,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
       if (change === 'lock') unlocked = false;
       else approved = false;
       reply(pendingProviderStateReplies[0], providerState());
-      await expect(pending).resolves.toEqual([ADDRESS]);
+      await expect(pending).resolves.toEqual([]);
       expect(provider.isBitcoinBased()).toBe(false);
       expect(provider.accounts).toEqual([]);
       expect(provider.selectedAddress).toBeNull();
@@ -891,7 +928,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     });
     notify('pali_accountsChanged', [newerAccount]);
     reply(pendingProviderStateReplies[0], oldSnapshot);
-    await expect(pending).resolves.toEqual([ADDRESS]);
+    await expect(pending).resolves.toEqual([newerAccount]);
     expect(provider.chainId).toBe('0x3');
     expect(provider.accounts).toEqual([newerAccount]);
     expect(provider.selectedAddress).toBe(newerAccount);
@@ -919,7 +956,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
         notify('pali_accountsChanged', []);
       }
       reply(pendingProviderStateReplies[0], oldSnapshot);
-      await expect(pending).resolves.toEqual([ADDRESS]);
+      await expect(pending).resolves.toEqual([]);
       expect(provider.accounts).toEqual([]);
       expect(provider.selectedAddress).toBeNull();
       expect(provider.isBitcoinBased()).toBe(true);
@@ -944,21 +981,26 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     const oldSnapshot = providerState();
     notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
     reply(pendingProviderStateReplies[0], oldSnapshot);
-    await expect(pending).resolves.toEqual([ADDRESS]);
+    await expect(pending).resolves.toEqual([]);
     expect(await provider._metamask.isUnlocked()).toBe(false);
     expect(provider.accounts).toEqual([]);
     expect(provider.selectedAddress).toBeNull();
   });
 
-  it.each(['lock', 'revocation'])(
-    'does not restore accounts from a normal RPC reply delayed beyond %s',
-    async (change) => {
+  it.each([
+    ['eth_accounts', 'lock'],
+    ['eth_accounts', 'revocation'],
+    ['eth_requestAccounts', 'lock'],
+    ['eth_requestAccounts', 'revocation'],
+  ])(
+    'does not return or restore a delayed %s reply after %s',
+    async (method, change) => {
       const { provider } = await initialize();
       holdAccountReplies = true;
       const accountRequestStarted = new Promise<void>((resolve) => {
         onAccountRequest = resolve;
       });
-      const pending = provider.request({ method: 'eth_accounts' });
+      const pending = provider.request({ method });
       await accountRequestStarted;
       const oldReply = pendingAccountReplies[0];
       expect(oldReply.result).toEqual([ADDRESS]);
@@ -966,7 +1008,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
         notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
       else notify('pali_accountsChanged', []);
       reply(oldReply.id, oldReply.result);
-      await expect(pending).resolves.toEqual([ADDRESS]);
+      await expect(pending).resolves.toEqual([]);
       expect(provider.accounts).toEqual([]);
       expect(provider.selectedAddress).toBeNull();
       expect(provider.isConnected()).toBe(true);
@@ -992,7 +1034,7 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
     await jest.advanceTimersByTimeAsync(1999);
     expect(settled).toBe(false);
     await jest.advanceTimersByTimeAsync(1);
-    await expect(pending).resolves.toEqual([ADDRESS]);
+    await expect(pending).resolves.toEqual([]);
     expect(provider.isBitcoinBased()).toBe(true);
     expect(provider.accounts).toEqual([]);
     reply(pendingProviderStateReplies[0], providerState());
@@ -1022,6 +1064,458 @@ describe('Ethereum provider account exposure and RPC connectivity', () => {
       expect(provider.accounts).toEqual(isBitcoinBased ? [] : [ADDRESS]);
       expect(provider.selectedAddress).toBe(isBitcoinBased ? null : ADDRESS);
       expect(chainChanged.mock.calls).toEqual(isBitcoinBased ? [] : [['0x2']]);
+    }
+  );
+  it('commits initial network metadata and disclosure before connect listeners run', async () => {
+    connectedChainId = '0x2';
+    connectedNetworkVersion = '9002';
+    const provider = new PaliInpageProviderEth();
+    const seen: unknown[] = [];
+    provider.on('connect', () =>
+      seen.push({
+        chainId: provider.chainId,
+        networkVersion: provider.networkVersion,
+        syncVersion: (provider.send({ method: 'net_version' }) as any).result,
+        accounts: [...provider.accounts],
+        selectedAddress: provider.selectedAddress,
+      })
+    );
+    await new Promise<void>((resolve) =>
+      provider.once('_initialized', resolve)
+    );
+    expect(seen).toEqual([
+      {
+        chainId: '0x2',
+        networkVersion: '9002',
+        syncVersion: '9002',
+        accounts: [ADDRESS],
+        selectedAddress: ADDRESS,
+      },
+    ]);
+  });
+
+  it('confirms a changed scalar chain using full current metadata before chain events', async () => {
+    const { provider } = await initialize();
+    const seen: unknown[] = [];
+    provider.on('chainChanged', (chainId) =>
+      seen.push({
+        chainId,
+        publicChainId: provider.chainId,
+        networkVersion: provider.networkVersion,
+        syncVersion: (provider.send({ method: 'net_version' }) as any).result,
+        accounts: [...provider.accounts],
+        selectedAddress: provider.selectedAddress,
+      })
+    );
+    holdProviderStateReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    connectedChainId = '0x2';
+    const pending = provider.request({ method: 'eth_chainId' });
+    await started;
+    expect(provider.chainId).toBe('0x1');
+    expect(provider.networkVersion).toBe('1');
+    expect(seen).toEqual([]);
+    // The wallet can move again between the scalar response and the local snapshot.
+    reply(pendingProviderStateReplies[0], {
+      ...providerState(),
+      chainId: '0x3',
+      networkVersion: '9003',
+      isUnlocked: false,
+      accounts: [ADDRESS],
+    });
+    await expect(pending).resolves.toBe('0x2');
+    expect(seen).toEqual([
+      {
+        chainId: '0x3',
+        publicChainId: '0x3',
+        networkVersion: '9003',
+        syncVersion: '9003',
+        accounts: [],
+        selectedAddress: null,
+      },
+    ]);
+    expect(await provider._metamask.isUnlocked()).toBe(false);
+  });
+
+  it('rejects delayed full metadata after a newer notification without restoring networkVersion or disclosure', async () => {
+    const { provider } = await initialize();
+    const changed = jest.fn();
+    provider.on('chainChanged', changed);
+    holdProviderStateReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    connectedChainId = '0x2';
+    connectedNetworkVersion = '9002';
+    const pending = provider.request({ method: 'eth_chainId' });
+    await started;
+    const oldSnapshot = providerState();
+    notify('pali_chainChanged', {
+      chainId: '0x3',
+      networkVersion: '9003',
+      isBitcoinBased: false,
+    });
+    notify('pali_accountsChanged', []);
+    await expect(pending).resolves.toBe('0x2');
+    reply(pendingProviderStateReplies[0], oldSnapshot);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(provider.chainId).toBe('0x3');
+    expect(provider.networkVersion).toBe('9003');
+    expect((provider.send({ method: 'net_version' }) as any).result).toBe(
+      '9003'
+    );
+    expect(provider.accounts).toEqual([]);
+    expect(changed.mock.calls).toEqual([['0x3']]);
+  });
+
+  it('lets a newer unchanged scalar observation supersede an older pending full snapshot', async () => {
+    const { provider } = await initialize();
+    const changed = jest.fn();
+    provider.on('chainChanged', changed);
+    connectedChainId = '0x2';
+    connectedNetworkVersion = '9002';
+    holdProviderStateReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const older = provider.request({ method: 'eth_chainId' });
+    await started;
+    const oldSnapshot = providerState();
+    connectedChainId = '0x1';
+    connectedNetworkVersion = '1';
+    await expect(provider.request({ method: 'eth_chainId' })).resolves.toBe(
+      '0x1'
+    );
+    reply(pendingProviderStateReplies[0], oldSnapshot);
+    await expect(older).resolves.toBe('0x2');
+    expect(provider.chainId).toBe('0x1');
+    expect(provider.networkVersion).toBe('1');
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it.each(['eth_chainId', 'eth_blockNumber', 'eth_accounts'])(
+    'recovers both network identifiers after an outage through %s',
+    async (method) => {
+      const { provider, connect } = await initialize();
+      connect.mockClear();
+      failNext = { code: 4900, message: 'All chains disconnected' };
+      await expect(
+        provider.request({ method: 'eth_blockNumber' })
+      ).rejects.toMatchObject({ code: 4900 });
+      connectedChainId = '0x2';
+      connectedNetworkVersion = '9002';
+      const seen: unknown[] = [];
+      const observe = () =>
+        seen.push({
+          chainId: provider.chainId,
+          networkVersion: provider.networkVersion,
+          syncVersion: (provider.send({ method: 'net_version' }) as any).result,
+        });
+      provider.on('connect', observe);
+      provider.on('chainChanged', observe);
+      await expect(provider.request({ method })).resolves.toEqual(
+        method === 'eth_chainId'
+          ? '0x2'
+          : method === 'eth_accounts'
+          ? [ADDRESS]
+          : '0x1'
+      );
+      expect(seen).toEqual([
+        { chainId: '0x2', networkVersion: '9002', syncVersion: '9002' },
+        { chainId: '0x2', networkVersion: '9002', syncVersion: '9002' },
+      ]);
+      const count = () =>
+        postMessageMock.mock.calls.filter(
+          ([message]) => message.data.method === 'wallet_getProviderState'
+        ).length;
+      expect(count()).toBe(2);
+      await provider.request({ method: 'eth_chainId' });
+      await provider.request({ method: 'eth_accounts' });
+      await provider.request({ method: 'eth_blockNumber' });
+      expect(count()).toBe(2);
+    }
+  );
+
+  it.each(['eth_accounts', 'eth_requestAccounts'])(
+    'returns the latest authorized selection after a delayed %s reply',
+    async (method) => {
+      const { provider } = await initialize();
+      holdAccountReplies = true;
+      const started = new Promise<void>((resolve) => {
+        onAccountRequest = resolve;
+      });
+      const pending = provider.request<string[]>({ method });
+      await started;
+      const newer = `0x${'22'.repeat(20)}`;
+      notify('pali_accountsChanged', [newer]);
+      reply(pendingAccountReplies[0].id, pendingAccountReplies[0].result);
+      const returned = await pending;
+      expect(returned).toEqual([newer]);
+      expect(provider.accounts).toEqual([newer]);
+      returned.length = 0;
+      expect(provider.accounts).toEqual([newer]);
+    }
+  );
+
+  it('preserves a legitimate first EVM grant notification while the cached unlock flag is false', async () => {
+    approved = false;
+    unlocked = false;
+    const { provider } = await initialize();
+    unlocked = true;
+    notifyOnGrant = true;
+    const changed = jest.fn();
+    provider.on('accountsChanged', changed);
+    await expect(
+      provider.request({ method: 'eth_requestAccounts' })
+    ).resolves.toEqual([ADDRESS]);
+    expect(changed.mock.calls).toEqual([[[ADDRESS]]]);
+    expect(provider.accounts).toEqual([ADDRESS]);
+    expect(await provider._metamask.isUnlocked()).toBe(false);
+    notify('pali_unlockStateChanged', {
+      isUnlocked: false,
+      accounts: [ADDRESS],
+    });
+    expect(provider.accounts).toEqual([]);
+    expect(provider.selectedAddress).toBeNull();
+    expect(changed.mock.calls).toEqual([[[ADDRESS]], [[]]]);
+  });
+
+  it.each(['send', 'sendAsync', 'send callback', 'sendAsync callback'])(
+    'fences delayed account results delivered through %s',
+    async (api) => {
+      const { provider } = await initialize();
+      holdAccountReplies = true;
+      const started = new Promise<void>((resolve) => {
+        onAccountRequest = resolve;
+      });
+      const payload = { id: 42, jsonrpc: '2.0', method: 'eth_accounts' };
+      const pending =
+        api === 'send'
+          ? (provider.send('eth_accounts') as Promise<unknown>)
+          : api === 'sendAsync'
+          ? (provider.sendAsync(payload) as Promise<unknown>)
+          : new Promise((resolve, reject) => {
+              const cb = (err: Error | null, res: unknown) =>
+                err ? reject(err) : resolve(res);
+              if (api === 'send callback') provider.send(payload, cb);
+              else provider.sendAsync(payload, cb);
+            });
+      await started;
+      notify('pali_accountsChanged', []);
+      reply(pendingAccountReplies[0].id, pendingAccountReplies[0].result);
+      await expect(pending).resolves.toEqual(
+        api === 'send' ? [] : { id: 42, jsonrpc: '2.0', result: [] }
+      );
+    }
+  );
+
+  it('refences batch account envelopes at delivery and preserves other IDs and RPC errors', async () => {
+    const { provider } = await initialize();
+    holdChainReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onChainRequest = resolve;
+    });
+    const pending = provider.sendAsync([
+      { id: 17, method: 'eth_accounts' },
+      { id: 18, method: 'eth_chainId' },
+      { id: 19, method: 'unknown' },
+      null,
+    ]) as Promise<any>;
+    await started;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    notify('pali_accountsChanged', []);
+    reply(pendingChainReplies[0], '0x1');
+    await expect(pending).resolves.toEqual([
+      { id: 17, jsonrpc: '2.0', result: [] },
+      { id: 18, jsonrpc: '2.0', result: '0x1' },
+      {
+        id: 19,
+        jsonrpc: '2.0',
+        error: { code: 4200, message: 'Unsupported method' },
+      },
+      {
+        id: 1,
+        jsonrpc: '2.0',
+        error: { code: 4200, message: 'Unsupported method' },
+      },
+    ]);
+    expect(provider.accounts).toEqual([]);
+  });
+
+  it('allows a batched legitimate first grant while applying the account fence', async () => {
+    approved = false;
+    const { provider } = await initialize();
+    notifyOnGrant = true;
+    await expect(
+      provider.sendAsync([
+        { id: 7, method: 'eth_requestAccounts' },
+        { id: 8, method: 'eth_blockNumber' },
+      ])
+    ).resolves.toEqual([
+      { id: 7, jsonrpc: '2.0', result: [ADDRESS] },
+      { id: 8, jsonrpc: '2.0', result: '0x1' },
+    ]);
+  });
+  it('bounds a first grant during an outage to one shared metadata wait', async () => {
+    approved = false;
+    backgroundIsBitcoinBased = true;
+    const { provider } = await initialize();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    failNext = { code: 4900, message: 'All chains disconnected' };
+    await expect(
+      provider.request({ method: 'eth_blockNumber' })
+    ).rejects.toMatchObject({ code: 4900 });
+    backgroundIsBitcoinBased = false;
+    holdProviderStateReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_requestAccounts' });
+    await started;
+    await jest.advanceTimersByTimeAsync(2000);
+    await expect(pending).resolves.toEqual([]);
+    expect(pendingProviderStateReplies).toHaveLength(1);
+    expect(provider.accounts).toEqual([]);
+    expect(provider.isConnected()).toBe(false);
+  });
+
+  it.each(['missing kind', 'invalid network ID', 'read error'])(
+    'fails closed when the first-grant snapshot has %s',
+    async (invalid) => {
+      approved = false;
+      backgroundIsBitcoinBased = true;
+      const { provider } = await initialize();
+      backgroundIsBitcoinBased = false;
+      holdProviderStateReplies = true;
+      const started = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      const pending = provider.request({ method: 'eth_requestAccounts' });
+      await started;
+      const snapshot: any = providerState();
+      if (invalid === 'missing kind') delete snapshot.isBitcoinBased;
+      else if (invalid === 'invalid network ID') snapshot.networkVersion = '';
+      reply(
+        pendingProviderStateReplies[0],
+        invalid === 'read error'
+          ? { error: { code: -32603, message: 'State read failed' } }
+          : snapshot
+      );
+      await expect(pending).resolves.toEqual([]);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(provider.isBitcoinBased()).toBe(true);
+    }
+  );
+  it.each(['grant', 'lock', 'revocation'])(
+    'handles a first-grant notification arriving during metadata, followed by %s',
+    async (change) => {
+      approved = false;
+      backgroundIsBitcoinBased = true;
+      const { provider } = await initialize();
+      backgroundIsBitcoinBased = false;
+      holdProviderStateReplies = true;
+      const firstStarted = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      const changed = jest.fn();
+      provider.on('accountsChanged', changed);
+      const pending = provider.request({ method: 'eth_requestAccounts' });
+      await firstStarted;
+      const oldSnapshot = providerState();
+      const retryStarted = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      notify('pali_accountsChanged', [ADDRESS]);
+      await retryStarted;
+      const freshSnapshot = providerState();
+      expect(pendingProviderStateReplies).toHaveLength(2);
+      reply(pendingProviderStateReplies[0], oldSnapshot);
+      expect(provider.accounts).toEqual([]);
+      if (change === 'lock')
+        notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+      else if (change === 'revocation') notify('pali_accountsChanged', []);
+      reply(pendingProviderStateReplies[1], freshSnapshot);
+      await expect(pending).resolves.toEqual(
+        change === 'grant' ? [ADDRESS] : []
+      );
+      expect(provider.accounts).toEqual(change === 'grant' ? [ADDRESS] : []);
+      expect(changed.mock.calls).toEqual(
+        change === 'grant' ? [[[ADDRESS]]] : []
+      );
+    }
+  );
+
+  it('keeps a metadata retry after a late grant inside the original two-second deadline', async () => {
+    approved = false;
+    backgroundIsBitcoinBased = true;
+    const { provider } = await initialize();
+    backgroundIsBitcoinBased = false;
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+    holdProviderStateReplies = true;
+    const firstStarted = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_requestAccounts' });
+    await firstStarted;
+    await jest.advanceTimersByTimeAsync(1999);
+    const retryStarted = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    notify('pali_accountsChanged', [ADDRESS]);
+    await retryStarted;
+    await jest.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toEqual([]);
+    expect(pendingProviderStateReplies).toHaveLength(2);
+    reply(pendingProviderStateReplies[1], providerState());
+    await jest.advanceTimersByTimeAsync(0);
+    expect(provider.accounts).toEqual([]);
+    expect(provider.isBitcoinBased()).toBe(true);
+  });
+  it.each(['lock', 'revocation', 'chain change'])(
+    'preserves newer notifications when a constructor snapshot arrives after %s',
+    async (change) => {
+      const capturedSnapshot = providerState();
+      expect(capturedSnapshot.accounts).toEqual([ADDRESS]);
+      expect(capturedSnapshot.isUnlocked).toBe(true);
+      holdProviderStateReplies = true;
+      const started = new Promise<void>((resolve) => {
+        onProviderStateRequest = resolve;
+      });
+      const provider = new PaliInpageProviderEth();
+      const connect = jest.fn();
+      provider.on('connect', connect);
+      const initialized = new Promise<void>((resolve) =>
+        provider.once('_initialized', resolve)
+      );
+      await started;
+      if (change === 'lock')
+        notify('pali_unlockStateChanged', { isUnlocked: false, accounts: [] });
+      else if (change === 'revocation') notify('pali_accountsChanged', []);
+      else
+        notify('pali_chainChanged', {
+          chainId: '0x2',
+          networkVersion: '2002',
+          isBitcoinBased: false,
+        });
+      reply(pendingProviderStateReplies[0], capturedSnapshot);
+      await initialized;
+      expect(provider.isInitialized()).toBe(true);
+      expect(provider.accounts).toEqual([]);
+      expect(provider.selectedAddress).toBeNull();
+      expect(await provider._metamask.isUnlocked()).toBe(false);
+      expect(provider.chainId).toBe(change === 'chain change' ? '0x2' : null);
+      if (change === 'chain change') {
+        expect(provider.networkVersion).toBe('2002');
+        expect((provider.send({ method: 'net_version' }) as any).result).toBe(
+          '2002'
+        );
+        expect(connect.mock.calls).toEqual([[{ chainId: '0x2' }]]);
+      } else {
+        expect(connect).not.toHaveBeenCalled();
+      }
     }
   );
 });

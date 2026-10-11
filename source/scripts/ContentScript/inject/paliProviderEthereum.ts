@@ -57,10 +57,20 @@ interface EthereumProviderState {
   isUnlocked: boolean;
 }
 
+interface IProviderSnapshot {
+  accounts: string[];
+  chainId: string;
+  isBitcoinBased: boolean;
+  isUnlocked: boolean;
+  networkVersion?: string;
+}
+
 interface IConnectionRecovery {
+  deadline: number;
   finish: () => void;
   generation: number;
   promise: Promise<void>;
+  sequence: number;
 }
 
 export class PaliInpageProviderEth extends BaseProvider {
@@ -85,7 +95,9 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _chainStateGeneration = 0;
   private _rpcRequestSequence = 0;
   private _lastChainReplySequence = 0;
+  private _lastChainStateSequence = 0;
   private _accountDisclosureGeneration = 0;
+  private _pendingEvmGrantGeneration: number | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('ethereum', maxEventListeners, wallet);
@@ -130,12 +142,19 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _initializeEthereumProvider() {
+    const chainGeneration = this._chainStateGeneration;
+    const accountGeneration = this._accountDisclosureGeneration;
     return this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
           PaliInpageProviderEth['_initializeState']
         >[0];
-        this._initializeState(initialState);
+        this._initializeState(
+          chainGeneration === this._chainStateGeneration &&
+            accountGeneration === this._accountDisclosureGeneration
+            ? initialState
+            : undefined
+        );
       })
       .catch((error) => {
         console.error(
@@ -161,18 +180,25 @@ export class PaliInpageProviderEth extends BaseProvider {
 
           switch (method) {
             case 'pali_accountsChanged':
-              this._accountDisclosureGeneration += 1;
               // Ensure params is always an array
               const accountsParams = Array.isArray(params)
                 ? params
                 : params
                 ? [params]
                 : [];
+              this._advanceAccountDisclosure(
+                accountsParams.length > 0 &&
+                  accountsParams.every(
+                    (account) =>
+                      typeof account === 'string' &&
+                      /^0x[\da-f]{40}$/i.test(account)
+                  )
+              );
               this._handleAccountsChanged(accountsParams);
               break;
             case 'pali_unlockStateChanged':
               if (typeof params?.isUnlocked === 'boolean') {
-                this._accountDisclosureGeneration += 1;
+                this._advanceAccountDisclosure();
               }
               this._handleUnlockStateChanged(params);
               break;
@@ -351,6 +377,42 @@ export class PaliInpageProviderEth extends BaseProvider {
     payload: UnvalidatedJsonRpcRequest | UnvalidatedJsonRpcRequest[], //TODO: refactor to accept incoming batched requests
     callback: (...args: any[]) => void
   ) {
+    if (Array.isArray(payload)) {
+      try {
+        const responses = await Promise.all(
+          payload.map(
+            (request) =>
+              new Promise((resolve) => {
+                const fail = (error: unknown) =>
+                  resolve({ id: request?.id || 1, jsonrpc: '2.0', error });
+                this._rpcRequest(request, (error, response) => {
+                  if (error) fail(error);
+                  else resolve(response);
+                }).catch(fail);
+              })
+          )
+        );
+        // A member may have settled before a later member revoked access.
+        const currentResponses = responses.map((response: any, index) =>
+          !response.error &&
+          ['eth_accounts', 'eth_requestAccounts'].includes(
+            payload[index]?.method
+          )
+            ? { ...response, result: this._currentAccounts() }
+            : response
+        );
+        return callback(null, currentResponses);
+      } catch (error) {
+        return callback(
+          {
+            code: -32603,
+            message: 'Internal error processing batch request',
+            data: error,
+          },
+          null
+        );
+      }
+    }
     const chainGeneration = this._chainStateGeneration;
     const requestSequence = ++this._rpcRequestSequence;
     const accountGeneration = this._accountDisclosureGeneration;
@@ -358,70 +420,96 @@ export class PaliInpageProviderEth extends BaseProvider {
       err: Error & { code?: number },
       res: JsonRpcSuccessStruct
     ) => {
-      if (!Array.isArray(payload)) {
+      if (
+        err &&
+        chainGeneration === this._chainStateGeneration &&
+        requestSequence >= this._lastChainStateSequence &&
+        (err.code === 4900 ||
+          /^Pali: (?:Background (?:script|connection) temporarily unavailable|Connection interrupted\.)/.test(
+            err.message || ''
+          ))
+      ) {
+        this._handleDisconnect(true, err.message);
+      } else if (!err) {
+        // Account access is independent of the provider's RPC connection.
         if (
-          err &&
-          chainGeneration === this._chainStateGeneration &&
-          requestSequence >= this._lastChainReplySequence &&
-          (err.code === 4900 ||
-            /^Pali: (?:Background (?:script|connection) temporarily unavailable|Connection interrupted\.)/.test(
-              err.message || ''
-            ))
+          payload.method === 'eth_requestAccounts' ||
+          payload.method === 'eth_accounts'
         ) {
-          this._handleDisconnect(true, err.message);
-        } else if (!err) {
-          // Account access is independent of the provider's RPC connection.
-          if (
-            payload.method === 'eth_requestAccounts' ||
-            payload.method === 'eth_accounts'
-          ) {
-            const accounts = res?.result || [];
-            if (
+          const accounts = res?.result || [];
+          const needsKindSnapshot =
+            this._state.isBitcoinBased &&
+            chainGeneration === this._chainStateGeneration &&
+            Array.isArray(accounts) &&
+            accounts.length > 0 &&
+            accounts.every(
+              (account) =>
+                typeof account === 'string' && /^0x[\da-f]{40}$/i.test(account)
+            );
+          if (needsKindSnapshot) {
+            // Unconnected origins can miss network notifications. Confirm
+            // the wallet's current kind and disclosure before exposing accounts.
+            const deadline = Date.now() + 2000;
+            let disclosureGeneration: number;
+            do {
+              disclosureGeneration = this._accountDisclosureGeneration;
+              await this._refreshProviderState(chainGeneration, 0, deadline);
+              // A first grant notification may arrive after the account RPC
+              // but before the kind snapshot. Read the current disclosure epoch
+              // within the original deadline, never exposing the old response.
+            } while (
               this._state.isBitcoinBased &&
               chainGeneration === this._chainStateGeneration &&
-              Array.isArray(accounts) &&
-              accounts.length > 0 &&
-              accounts.every(
-                (account) =>
-                  typeof account === 'string' &&
-                  /^0x[\da-f]{40}$/i.test(account)
-              )
-            ) {
-              // Unconnected origins can miss network notifications. Confirm
-              // the wallet's current kind and disclosure before exposing accounts.
-              await this._refreshAccountProviderState(chainGeneration);
-            } else if (
-              accountGeneration === this._accountDisclosureGeneration
-            ) {
-              this._handleAccountsChanged(accounts);
-            }
-          } else if (payload.method === 'eth_chainId') {
-            if (
-              chainGeneration === this._chainStateGeneration &&
-              requestSequence > this._lastChainReplySequence &&
-              isValidChainId(res?.result)
-            ) {
-              const previousChainId = this.chainId;
-              this._lastChainReplySequence = requestSequence;
-              this.chainId = res.result;
-              this._handleConnect(res.result);
-              if (
-                this._state.initialized &&
-                previousChainId &&
-                previousChainId !== this.chainId
-              ) {
-                this.emit('chainChanged', this.chainId);
-              }
-            }
+              disclosureGeneration !== this._accountDisclosureGeneration &&
+              this._pendingEvmGrantGeneration ===
+                this._accountDisclosureGeneration &&
+              Date.now() < deadline
+            );
           } else if (
-            payload.method.startsWith('eth_') &&
+            chainGeneration === this._chainStateGeneration &&
+            accountGeneration === this._accountDisclosureGeneration
+          ) {
+            this._handleAccountsChanged(accounts);
+          }
+          if (
+            !needsKindSnapshot &&
             chainGeneration === this._chainStateGeneration &&
             !this._state.isConnected
           ) {
-            // An outage may have missed a chain notification. Refresh once on
-            // recovery, rather than reconnecting with the cached chain ID.
-            await this._recoverConnection(chainGeneration);
+            await this._refreshProviderState(chainGeneration);
           }
+          // A lock, revocation, or account change can supersede the original
+          // response while it is in flight, including during metadata recovery.
+          res = {
+            ...res,
+            result: this._currentAccounts(),
+          };
+        } else if (payload.method === 'eth_chainId') {
+          if (
+            chainGeneration === this._chainStateGeneration &&
+            requestSequence > this._lastChainReplySequence &&
+            isValidChainId(res?.result)
+          ) {
+            this._lastChainReplySequence = requestSequence;
+            this._lastChainStateSequence = Math.max(
+              this._lastChainStateSequence,
+              requestSequence
+            );
+            if (res.result !== this.chainId || !this._state.isConnected) {
+              // A scalar chain ID cannot supply the independent network ID
+              // or the current wallet kind and account disclosure.
+              await this._refreshProviderState(
+                chainGeneration,
+                requestSequence
+              );
+            }
+          }
+        } else if (
+          payload.method.startsWith('eth_') &&
+          chainGeneration === this._chainStateGeneration &&
+          !this._state.isConnected
+        ) {
+          await this._refreshProviderState(chainGeneration);
         }
       }
       callback(err, res);
@@ -429,70 +517,37 @@ export class PaliInpageProviderEth extends BaseProvider {
     return super._rpcRequest(payload, cb);
   }
 
-  private _refreshAccountProviderState(generation: number): Promise<void> {
-    const accountGeneration = this._accountDisclosureGeneration;
-    return new Promise<void>((resolve) => {
-      let active = true;
-      const finish = () => {
-        if (!active) return;
-        active = false;
-        clearTimeout(timeout);
-        resolve();
-      };
-      const timeout = setTimeout(finish, 2000);
-      this.request<any>({ method: 'wallet_getProviderState' })
-        .then((snapshot) => {
-          if (
-            !active ||
-            generation !== this._chainStateGeneration ||
-            accountGeneration !== this._accountDisclosureGeneration ||
-            !snapshot ||
-            typeof snapshot.isBitcoinBased !== 'boolean' ||
-            typeof snapshot.isUnlocked !== 'boolean' ||
-            !isValidChainId(snapshot.chainId) ||
-            !isValidNetworkVersion(snapshot.networkVersion) ||
-            !Array.isArray(snapshot.accounts) ||
-            snapshot.accounts.some(
-              (account: unknown) =>
-                typeof account !== 'string' || !/^0x[\da-f]{40}$/i.test(account)
-            )
-          ) {
-            return;
-          }
-          this._handleChainChanged(snapshot);
-          this._handleUnlockStateChanged(snapshot);
-          this._handleAccountsChanged(
-            snapshot.isUnlocked ? snapshot.accounts : []
-          );
-        })
-        .then(finish, finish);
-    });
-  }
-
-  private _recoverConnection(generation: number): Promise<void> {
-    if (generation !== this._chainStateGeneration || this._state.isConnected) {
-      return Promise.resolve();
-    }
-    if (this._connectionRecovery?.generation === generation) {
+  private _refreshProviderState(
+    generation: number,
+    minimumSequence = 0,
+    deadline = Date.now() + 2000
+  ): Promise<void> {
+    if (generation !== this._chainStateGeneration) return Promise.resolve();
+    if (
+      this._connectionRecovery?.generation === generation &&
+      this._connectionRecovery.sequence >= minimumSequence &&
+      this._connectionRecovery.deadline <= deadline
+    ) {
       return this._connectionRecovery.promise;
     }
     this._connectionRecovery?.finish();
+    const accountGeneration = this._accountDisclosureGeneration;
     let resolveRecovery!: () => void;
     const promise = new Promise<void>((resolve) => {
       resolveRecovery = resolve;
     });
-    const recovery: IConnectionRecovery = { generation, promise, finish: NOOP };
+    const recovery: IConnectionRecovery = {
+      deadline,
+      generation,
+      promise,
+      sequence: 0,
+      finish: NOOP,
+    };
     let finished = false;
-    const timeout = setTimeout(() => {
-      if (
-        this._connectionRecovery === recovery &&
-        generation === this._chainStateGeneration
-      ) {
-        this._advanceChainState();
-      } else {
-        recovery.finish();
-      }
-    }, 2000);
+    const timeout = setTimeout(
+      () => recovery.finish(),
+      Math.max(0, deadline - Date.now())
+    );
     recovery.finish = () => {
       if (finished) return;
       finished = true;
@@ -502,15 +557,91 @@ export class PaliInpageProviderEth extends BaseProvider {
       resolveRecovery();
     };
     this._connectionRecovery = recovery;
-    this.request({ method: 'eth_chainId' }).then(
-      recovery.finish,
-      recovery.finish
-    );
+    const snapshotRequest = this.request<any>({
+      method: 'wallet_getProviderState',
+    });
+    recovery.sequence = this._rpcRequestSequence;
+    snapshotRequest
+      .then((snapshot) => {
+        if (
+          finished ||
+          generation !== this._chainStateGeneration ||
+          accountGeneration !== this._accountDisclosureGeneration ||
+          recovery.sequence < this._lastChainReplySequence ||
+          !snapshot ||
+          typeof snapshot.isBitcoinBased !== 'boolean' ||
+          typeof snapshot.isUnlocked !== 'boolean' ||
+          !isValidChainId(snapshot.chainId) ||
+          !isValidNetworkVersion(snapshot.networkVersion) ||
+          !Array.isArray(snapshot.accounts) ||
+          snapshot.accounts.some(
+            (account: unknown) =>
+              typeof account !== 'string' || !/^0x[\da-f]{40}$/i.test(account)
+          )
+        ) {
+          return;
+        }
+        this._lastChainStateSequence = recovery.sequence;
+        this._accountDisclosureGeneration += 1;
+        this._applyProviderState(snapshot as IProviderSnapshot);
+      })
+      .then(recovery.finish, recovery.finish);
     return promise;
+  }
+
+  private _applyProviderState(
+    snapshot: IProviderSnapshot,
+    initializing = false
+  ): void {
+    const previousChainId = this.chainId;
+    const previousAccounts = this._state.accounts;
+    // Commit the complete snapshot before events can synchronously read
+    // chain metadata or account disclosure from the provider.
+    this._state.isBitcoinBased = snapshot.isBitcoinBased;
+    this._state.isUnlocked = snapshot.isUnlocked;
+    this._state.accounts =
+      snapshot.isUnlocked && !snapshot.isBitcoinBased
+        ? [...snapshot.accounts]
+        : [];
+    this.selectedAddress = this._state.accounts[0] || null;
+    this.chainId = snapshot.chainId;
+    this.networkVersion = isValidNetworkVersion(snapshot.networkVersion)
+      ? String(snapshot.networkVersion)
+      : null;
+    this._connectionRecovery?.finish();
+    if (initializing || !snapshot.isBitcoinBased)
+      this._handleConnect(snapshot.chainId);
+    if (
+      previousChainId &&
+      previousChainId !== this.chainId &&
+      this._state.initialized &&
+      !snapshot.isBitcoinBased
+    ) {
+      this.emit('chainChanged', this.chainId);
+    }
+    if (
+      this._state.initialized &&
+      JSON.stringify(previousAccounts) !== JSON.stringify(this._state.accounts)
+    ) {
+      this.emit('accountsChanged', this._state.accounts);
+    }
+  }
+
+  private _currentAccounts(): string[] {
+    return this._state.isBitcoinBased ? [] : [...this.accounts];
+  }
+
+  private _advanceAccountDisclosure(isEvmGrant = false): void {
+    this._accountDisclosureGeneration += 1;
+    this._pendingEvmGrantGeneration = isEvmGrant
+      ? this._accountDisclosureGeneration
+      : null;
+    this._connectionRecovery?.finish();
   }
 
   private _advanceChainState(): void {
     this._chainStateGeneration += 1;
+    this._pendingEvmGrantGeneration = null;
     this._connectionRecovery?.finish();
   }
 
@@ -782,7 +913,7 @@ export class PaliInpageProviderEth extends BaseProvider {
    * Calls the accounts changed handler with the received accounts, or an empty
    * array.
    *
-   * Does nothing if the received value is equal to the existing value.
+   * A lock always clears accounts, including repeated lock notifications.
    * There are no lock/unlock events.
    *
    * @param opts - Options bag.
@@ -800,7 +931,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       return;
     }
 
-    if (isUnlocked !== this._state.isUnlocked) {
+    if (!isUnlocked || isUnlocked !== this._state.isUnlocked) {
       this._state.isUnlocked = isUnlocked;
       this._handleAccountsChanged(isUnlocked ? accounts || [] : []);
     }
@@ -827,15 +958,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     if (initialState) {
-      const { accounts, chainId, isUnlocked, networkVersion, isBitcoinBased } =
-        initialState;
-
-      // EIP-1193 connect
-      this._handleConnect(chainId);
-      this._handleChainChanged({ chainId, networkVersion, isBitcoinBased });
-      this._handleUnlockStateChanged({ accounts, isUnlocked });
-      this._handleAccountsChanged(isUnlocked ? accounts : []);
-      this._handleIsBitcoinBased({ isBitcoinBased });
+      this._applyProviderState(initialState, true);
     }
 
     // Mark provider as initialized regardless of whether initial state was

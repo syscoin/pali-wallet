@@ -64,9 +64,12 @@ export const startDappServer = async (): Promise<DappServer> => {
 
   return {
     close: () =>
-      new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve()))
-      ),
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        // Chromium can leave speculative TCP connections without a request.
+        // Close this fixture's sockets rather than waiting for browser expiry.
+        server.closeAllConnections();
+      }),
     url: `http://127.0.0.1:${port}/`,
   };
 };
