@@ -29,7 +29,7 @@ const approvedContext: IEvmTransactionContext = {
   slip44: 60,
 };
 const emitterMock = controllerEmitter as jest.Mock;
-let estimatedGas: number;
+let estimatedGas: number | string;
 let state: any;
 
 beforeEach(() => {
@@ -88,6 +88,55 @@ const callsFor = (operation: string) =>
   emitterMock.mock.calls.filter(([path]) => path.join('.') === operation);
 
 describe('dapp transaction fee preparation', () => {
+  it.each([
+    'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas',
+    'wallet.ethereumTransaction.web3Provider.send',
+    'wallet.ethereumTransaction.getTxGasLimit',
+  ])(
+    'propagates a flattened RPC integrity error from %s without inventing a quote',
+    async (operation) => {
+      const previous = emitterMock.getMockImplementation();
+      const error = new Error(
+        '[SYSWEB3_RPC_RESPONSE_INVALID] Wrong response id'
+      );
+      emitterMock.mockImplementation((path, args) => {
+        if (path.join('.') === operation) throw error;
+        return previous(path, args);
+      });
+      await expect(prepare({ to: undefined, data: '0x60016000' })).rejects.toBe(
+        error
+      );
+    }
+  );
+
+  it.each([
+    ['inexact', (BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1)).toString()],
+    ['overflowing', `0x${'ff'.repeat(512)}`],
+  ])(
+    'rejects an unsafe estimated gas limit before creating fee state (%s)',
+    async (_case, gasLimit) => {
+      estimatedGas = gasLimit;
+      await expect(
+        prepare({ to: undefined, data: '0x60016000' })
+      ).rejects.toThrow('Invalid transaction gas limit');
+    }
+  );
+
+  it('rejects a wide provided gas limit without rounding or replacing the approved gas', async () => {
+    await expect(
+      prepare({ gas: `0x${(BigInt(1) << BigInt(200)).toString(16)}` })
+    ).rejects.toThrow('Invalid transaction gas limit');
+  });
+
+  it('keeps the exact largest supported numeric gas limit', async () => {
+    estimatedGas = String(Number.MAX_SAFE_INTEGER);
+    const result = await prepare();
+    expect(result.feeDetails.gasLimit).toBe(Number.MAX_SAFE_INTEGER);
+    expect(result.formTx.gasLimit.toString()).toBe(
+      String(Number.MAX_SAFE_INTEGER)
+    );
+  });
+
   it('preserves exact calldata, wide values, explicit nonce and ordered duplicate access lists', async () => {
     const slot = `0x${'33'.repeat(32)}`;
     const secondSlot = `0x${'44'.repeat(32)}`;

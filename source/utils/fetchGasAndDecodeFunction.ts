@@ -16,6 +16,13 @@ const maxBigNumber = (left: BigNumber, right: BigNumber) =>
 
 const toGweiNumber = (value: BigNumber) => Number(value.toString()) / 1e9;
 
+// Controller messages flatten SDK errors, so retain the integrity sentinel.
+// A reply for another RPC request must never become a fallback fee quote.
+const isRpcIntegrityError = (error: any) =>
+  error?.code === 'SYSWEB3_RPC_RESPONSE_INVALID' ||
+  (typeof error?.message === 'string' &&
+    error.message.startsWith('[SYSWEB3_RPC_RESPONSE_INVALID]'));
+
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetwork,
@@ -107,6 +114,7 @@ export const fetchGasAndDecodeFunction = async (
     ]);
   } catch (error) {
     assertCurrentContext();
+    if (isRpcIntegrityError(error)) throw error;
     console.error('Failed to fetch fee data:', error);
     // Use default fallback values if fee fetch fails
     feeData = {
@@ -276,6 +284,7 @@ export const fetchGasAndDecodeFunction = async (
     }
   } catch (error) {
     assertCurrentContext();
+    if (isRpcIntegrityError(error)) throw error;
     if (!error.message.includes('reverted')) {
       isInvalidTxData = true;
     }
@@ -300,6 +309,7 @@ export const fetchGasAndDecodeFunction = async (
     }
   } catch (error) {
     assertCurrentContext();
+    if (isRpcIntegrityError(error)) throw error;
     console.error(error);
     gasLimitError = true;
   }
@@ -334,14 +344,12 @@ export const fetchGasAndDecodeFunction = async (
 
   // Check if this is a legacy transaction
 
-  const gasLimitString = formTx.gasLimit.toString();
-  const gasLimitNumber = parseInt(gasLimitString, 10);
-
-  // Ensure we have a valid number
-  const finalGasLimitNumber =
-    isNaN(gasLimitNumber) || gasLimitNumber === 0
-      ? parseInt(formTx.gasLimit.toString(), 10)
-      : gasLimitNumber;
+  // Fee editing uses numeric gas limits. Refuse an inexact or overflowing
+  // quote before it reaches rendering or can change the gas the user approves.
+  const finalGasLimitNumber = Number(formTx.gasLimit.toString());
+  if (!Number.isSafeInteger(finalGasLimitNumber) || finalGasLimitNumber <= 0) {
+    throw new Error('Invalid transaction gas limit');
+  }
 
   const feeDetails: {
     baseFee: number;

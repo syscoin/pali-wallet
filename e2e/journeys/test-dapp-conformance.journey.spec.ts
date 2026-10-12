@@ -4,11 +4,18 @@ import {
   recoverTypedSignature,
   SignTypedDataVersion,
 } from '@metamask/eth-sig-util';
-import { type Page, expect, test } from '@playwright/test';
+import {
+  type Page,
+  type Response,
+  type Route,
+  expect,
+  test,
+} from '@playwright/test';
 import {
   getAddress,
   getCreateAddress,
   hexlify,
+  Interface,
   toUtf8Bytes,
   verifyMessage,
   verifyTypedData,
@@ -18,6 +25,7 @@ import fs from 'fs';
 import path from 'path';
 
 import enTranslations from '../../source/assets/locales/en.json';
+import officialDeploymentContracts from '../../tests/fixtures/officialDeploymentContracts.json';
 import typedOrderFixtures from '../../tests/fixtures/typedOrderRequests.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
@@ -190,66 +198,622 @@ test('official test dapp: isolated standard provider conformance', async () => {
     });
     setupCompleted = true;
 
-    await record('valid SIWE through official button', async () => {
-      const id = await page.evaluate(
+    const deploymentScope =
+      process.env.PALI_TEST_DAPP_SCOPE?.startsWith('deployments');
+    const runOfficialDeployment = async (
+      kind: keyof typeof officialDeploymentContracts.contracts,
+      cancel = false,
+      walletQuoteFault?: 'overflow' | 'replay'
+    ) => {
+      const invalidWalletEstimate = walletQuoteFault === 'overflow';
+      const replayWalletEstimate = walletQuoteFault === 'replay';
+      const fixture = officialDeploymentContracts.contracts[kind];
+      const abi = new Interface(fixture.abi);
+      const expectedData =
+        fixture.bytecode +
+        abi
+          .encodeDeploy(kind === 'erc20' ? [10, 'TST', 4, 'TST'] : [])
+          .slice(2);
+      const before = await localRpc(
+        LOCAL_CHAINS[0].url,
+        'eth_getTransactionCount',
+        [address, 'latest']
+      );
+      const requestStart = await page.evaluate(
         () => (window as any).__paliConformance.requests.length
       );
-      await page.locator('#siwe').click();
-      const popup = await popupFor(wallet.context, page, id);
-      await popup.screenshot({
-        path: path.join(E2E_CONFIG.artifactsDir, 'siwe-valid-popup.png'),
-      });
-      const signed = await approve(wallet.context, page, id);
-      const params = signed.params as string[];
-      expect(
-        getAddress(
-          verifyMessage(Buffer.from(params[0].slice(2), 'hex'), signed.result)
-        )
-      ).toBe(getAddress(address));
-      return signed;
-    });
-
-    await record(
-      'invalid transaction value settles without popup',
-      async () => {
-        const id = await startRequest(page, 'eth_sendTransaction', [
-          { from: address, to: address, value: 'invalid' },
-        ]);
-        let result;
+      const errors: Array<{ message: string; type: string; url: string }> = [];
+      const watched: Array<{
+        console: (message: any) => void;
+        error: (error: Error) => void;
+        page: Page;
+      }> = [];
+      const rpcEstimates: any[] = [];
+      const rpcCalls: any[] = [];
+      const pendingEstimates: Array<Promise<void>> = [];
+      const estimateAttempts: any[] = [];
+      let matchingEstimates = 0;
+      let injectedEstimate: any;
+      let priorCallReply: any;
+      let priorCallRequest: any;
+      const faultRoute = async (route: Route) => {
+        const request = route.request();
+        let payload: any;
         try {
-          result = await settle(page, id, 2000);
-        } catch (error) {
-          const popup = wallet.context
-            .pages()
-            .find((candidate) => candidate.url().includes('/external'));
-          if (popup) {
-            await popup.screenshot({
-              path: path.join(
-                E2E_CONFIG.artifactsDir,
-                'invalid-value-popup.png'
+          payload = request.postDataJSON();
+        } catch {
+          /* Preserve the primary broadcast guard for unrelated requests. */
+        }
+        const rpc = Array.isArray(payload)
+          ? payload.length === 1
+            ? payload[0]
+            : undefined
+          : payload;
+        if (
+          new URL(request.url()).origin === LOCAL_CHAINS[0].url &&
+          rpc?.method === 'eth_estimateGas' &&
+          rpc.params?.[0]?.data?.toLowerCase() === expectedData.toLowerCase()
+        ) {
+          matchingEstimates += 1;
+          estimateAttempts.push({
+            url: request.url(),
+            request: JSON.parse(JSON.stringify(rpc)),
+          });
+          if (matchingEstimates === 2) {
+            // The first estimate belongs to the official dapp and remains
+            // finite. Only the wallet's later quote gets an injected fault.
+            if (replayWalletEstimate) {
+              await expect
+                .poll(() => priorCallReply, { timeout: 2000 })
+                .toBeDefined();
+              expect(priorCallReply.id).toBe(priorCallRequest.id);
+              expect(priorCallReply.id).not.toBe(rpc.id);
+              expect(priorCallReply.jsonrpc).toBe('2.0');
+              expect(priorCallReply.result).toMatch(/^0x[0-9a-f]+$/i);
+              expect(priorCallReply.result.length).toBeGreaterThan(2000);
+              // Replay the actual prior call reply, including its wrong ID
+              // and runtime code, rather than inventing an oversized gas.
+              injectedEstimate = JSON.parse(JSON.stringify(priorCallReply));
+            } else {
+              injectedEstimate = {
+                jsonrpc: '2.0',
+                id: rpc.id,
+                result: `0x${'f'.repeat(300)}`,
+              };
+            }
+            await route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify(
+                Array.isArray(payload) ? [injectedEstimate] : injectedEstimate
               ),
             });
-            checks.push({
-              name: 'invalid-value observed popup',
-              status: 'evidence',
-              body: await popup.locator('body').innerText(),
-              rpc: await rpcObservation(page, id),
-            });
+            return;
           }
-          throw error;
         }
-        expect(result.error?.code).toBe(-32602);
-        expect(result.durationMs).toBeLessThan(2000);
+        await route.fallback();
+      };
+      const observeEstimate = (response: Response) => {
+        const request = response.request();
+        if (new URL(request.url()).origin !== LOCAL_CHAINS[0].url) return;
+        let payload: any;
+        try {
+          payload = request.postDataJSON();
+        } catch {
+          return;
+        }
+        const quoteRequests = (
+          Array.isArray(payload) ? payload : [payload]
+        ).filter(
+          (rpc: any) =>
+            ['eth_call', 'eth_estimateGas'].includes(rpc?.method) &&
+            rpc.params?.[0]?.data?.toLowerCase() === expectedData.toLowerCase()
+        );
+        if (!quoteRequests.length) return;
+        pendingEstimates.push(
+          response
+            .json()
+            .then((result) => {
+              const evidence = {
+                url: response.url(),
+                requests: quoteRequests,
+                response: result,
+                serviceWorker: request.serviceWorker()?.url(),
+              };
+              if (quoteRequests.some((rpc) => rpc.method === 'eth_estimateGas'))
+                rpcEstimates.push(evidence);
+              const call = quoteRequests.find(
+                (rpc) => rpc.method === 'eth_call'
+              );
+              if (call) {
+                rpcCalls.push(evidence);
+                priorCallReply = Array.isArray(result)
+                  ? result.find((reply) => reply.id === call.id)
+                  : result;
+                priorCallRequest = call;
+              }
+            })
+            .catch((error) => {
+              rpcEstimates.push({ error: error.message });
+            })
+        );
+      };
+      const observePopup = (opened: Page) => {
+        const onError = (error: Error) =>
+          errors.push({
+            url: opened.url(),
+            type: 'pageerror',
+            message: error.message,
+          });
+        const onConsole = (message: any) => {
+          if (message.type() === 'error')
+            errors.push({
+              url: opened.url(),
+              type: 'console',
+              message: message.text(),
+            });
+        };
+        opened.on('pageerror', onError);
+        opened.on('console', onConsole);
+        watched.push({ page: opened, error: onError, console: onConsole });
+      };
+      wallet.context.on('page', observePopup);
+      wallet.context.on('response', observeEstimate);
+      let requestId: number | undefined;
+      try {
+        if (walletQuoteFault) await wallet.context.route('**/*', faultRoute);
+        if (kind === 'erc20') await page.locator('#tokenDecimals').fill('4');
+        await expect(page.locator(`#${fixture.button}`)).toBeEnabled();
+        await page.locator(`#${fixture.button}`).click();
+        await expect
+          .poll(
+            async () => {
+              requestId = await page.evaluate(
+                (start) =>
+                  (window as any).__paliConformance.requests
+                    .slice(start)
+                    .find(
+                      (request: any) => request.method === 'eth_sendTransaction'
+                    )?.id,
+                requestStart
+              );
+              return requestId;
+            },
+            { timeout: 10_000 }
+          )
+          .toBeDefined();
+        const request = await rpcObservation(page, requestId!);
+        const submitted = (request.params as any[])[0];
+        expect(submitted.data.toLowerCase()).toBe(expectedData.toLowerCase());
+        expect(submitted.to ?? null).toBeNull();
+        expect((expectedData.length - 2) / 2).toBeGreaterThan(10_000);
+        const popup = await popupFor(wallet.context, page, requestId!);
+        const confirm = popup
+          .getByRole('button', { name: /(?:^|\s)confirm$/i })
+          .last();
+        const reject = popup
+          .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+          .first();
+        if (invalidWalletEstimate) {
+          const closed = popup.waitForEvent('close', { timeout: 7000 });
+          await expect(popup.locator('body')).toContainText(
+            enTranslations.send.txWillFail,
+            { timeout: 2500 }
+          );
+          await expect(confirm).toBeHidden();
+          const approvalBody = await popup.locator('body').innerText();
+          await popup.screenshot({
+            path: path.join(
+              E2E_CONFIG.artifactsDir,
+              'official-erc20-invalid-wallet-estimate.png'
+            ),
+          });
+          await closed;
+          const rejected = await settle(page, requestId!, 5000);
+          expect(typeof rejected.error?.code).toBe('number');
+          expect(rejected.result).toBeUndefined();
+          expect(injectedEstimate).toBeDefined();
+          expect(matchingEstimates).toBe(2);
+          // The original dapp gas remains the finite first RPC estimate.
+          expect(Number.isSafeInteger(Number(BigInt(submitted.gas)))).toBe(
+            true
+          );
+          expect(BigInt(submitted.gas)).toBeGreaterThan(BigInt(0));
+          expect(
+            errors.filter(
+              (error) =>
+                error.type === 'pageerror' ||
+                /Infinity|NaN|RangeError|Cannot convert.*BigInt/i.test(
+                  error.message
+                )
+            )
+          ).toEqual([]);
+          expect(
+            await localRpc(LOCAL_CHAINS[0].url, 'eth_getTransactionCount', [
+              address,
+              'latest',
+            ])
+          ).toBe(before);
+          expect(forbidden).toEqual([]);
+          return {
+            request: rejected,
+            approvalBody,
+            injectedEstimate,
+            nonceBefore: before,
+          };
+        }
+        await expect(reject).toBeVisible({ timeout: 2000 });
+        await expect(confirm).toBeVisible({ timeout: 2000 });
+        await expect(confirm).toBeEnabled({ timeout: 10_000 });
+        await expect(popup.locator('body')).not.toContainText(/Infinity|NaN/);
+        if (replayWalletEstimate) {
+          expect(matchingEstimates).toBe(3);
+          expect(estimateAttempts).toHaveLength(3);
+          expect(injectedEstimate).toEqual(priorCallReply);
+          const firstWalletAttempt = estimateAttempts[1];
+          const recoveryAttempt = estimateAttempts[2];
+          const firstUrl = new URL(firstWalletAttempt.url);
+          const recoveryUrl = new URL(recoveryAttempt.url);
+          expect(firstUrl.origin).toBe(LOCAL_CHAINS[0].url);
+          expect(recoveryUrl.origin).toBe(firstUrl.origin);
+          expect(recoveryUrl.pathname).toBe(firstUrl.pathname);
+          expect(firstUrl.search).toBe('');
+          expect([...recoveryUrl.searchParams.keys()]).toEqual([
+            'sysweb3_rpc_request',
+          ]);
+          expect(
+            recoveryUrl.searchParams.get('sysweb3_rpc_request')
+          ).toBeTruthy();
+          expect(recoveryAttempt.request.method).toBe('eth_estimateGas');
+          expect(recoveryAttempt.request.params).toEqual(
+            firstWalletAttempt.request.params
+          );
+          const ids = estimateAttempts.map((attempt) => attempt.request.id);
+          expect(ids.every(Number.isSafeInteger)).toBe(true);
+          expect(new Set(ids).size).toBe(3);
+          expect(Number.isSafeInteger(Number(BigInt(submitted.gas)))).toBe(
+            true
+          );
+          expect(BigInt(submitted.gas)).toBeGreaterThan(BigInt(0));
+          await Promise.all(pendingEstimates);
+          const recoveryReply = rpcEstimates.find(
+            (estimate) => estimate.url === recoveryAttempt.url
+          );
+          const response = Array.isArray(recoveryReply?.response)
+            ? recoveryReply.response[0]
+            : recoveryReply?.response;
+          expect(response?.id).toBe(recoveryAttempt.request.id);
+          const firstEstimate = rpcEstimates.find((estimate) =>
+            estimate.requests.some((rpc: any) => rpc.id === ids[0])
+          );
+          const firstReply = Array.isArray(firstEstimate?.response)
+            ? firstEstimate.response[0]
+            : firstEstimate?.response;
+          expect(response?.result).toBe(firstReply?.result);
+        }
+        const screenshotPhase = replayWalletEstimate
+          ? 'replay-recovery'
+          : cancel
+          ? 'cancel'
+          : 'deploy';
+        await popup.screenshot({
+          path: path.join(
+            E2E_CONFIG.artifactsDir,
+            `official-${kind}-${screenshotPhase}-approval.png`
+          ),
+        });
+        const approvalBody = await popup.locator('body').innerText();
+        expect(approvalBody).toContain('Contract Deployment');
+        await popup
+          .locator('#tabExample')
+          .getByText('Hex', { exact: true })
+          .click();
+        await expect(popup.locator('#hexTab')).toBeVisible();
+        expect(await popup.locator('#hexTab p').textContent()).toBe(
+          submitted.data
+        );
+        await popup.screenshot({
+          path: path.join(
+            E2E_CONFIG.artifactsDir,
+            `official-${kind}-${screenshotPhase}-hex.png`
+          ),
+        });
+        if (cancel) {
+          const closed = popup.waitForEvent('close', { timeout: 5000 });
+          await reject.click();
+          await closed;
+          const rejected = await settle(page, requestId!, 5000);
+          expect(rejected.error?.code).toBe(4001);
+          expect(rejected.result).toBeUndefined();
+          expect(
+            await localRpc(LOCAL_CHAINS[0].url, 'eth_getTransactionCount', [
+              address,
+              'latest',
+            ])
+          ).toBe(before);
+          expect(errors.filter((error) => error.type === 'pageerror')).toEqual(
+            []
+          );
+          return { request: rejected, approvalBody, nonceBefore: before };
+        }
+        const result = await approve(wallet.context, page, requestId!);
+        expect(result.result).toMatch(/^0x[0-9a-fA-F]{64}$/);
+        let receipt: any;
+        await expect
+          .poll(
+            async () => {
+              receipt = await localRpc(
+                LOCAL_CHAINS[0].url,
+                'eth_getTransactionReceipt',
+                [result.result]
+              );
+              return receipt?.status;
+            },
+            { timeout: 5000 }
+          )
+          .toBe('0x1');
+        const transaction = await localRpc(
+          LOCAL_CHAINS[0].url,
+          'eth_getTransactionByHash',
+          [result.result]
+        );
+        expect(transaction.input.toLowerCase()).toBe(
+          expectedData.toLowerCase()
+        );
+        expect(getAddress(transaction.from)).toBe(getAddress(address));
+        expect(getAddress(receipt.from)).toBe(getAddress(address));
+        expect(transaction.to).toBeNull();
+        expect(receipt.to).toBeNull();
+        expect(transaction.chainId).toBe(LOCAL_CHAINS[0].hexId);
+        expect(BigInt(transaction.nonce)).toBe(BigInt(before));
+        expect(getAddress(receipt.contractAddress)).toBe(
+          getCreateAddress({ from: address, nonce: BigInt(before) })
+        );
+        expect(BigInt(transaction.value)).toBe(BigInt(0));
         expect(
-          wallet.context
-            .pages()
-            .some((candidate) => candidate.url().includes('/external'))
-        ).toBe(false);
-        return result;
+          BigInt(
+            await localRpc(LOCAL_CHAINS[0].url, 'eth_getTransactionCount', [
+              address,
+              'latest',
+            ])
+          )
+        ).toBe(BigInt(before) + BigInt(1));
+        const code = await localRpc(LOCAL_CHAINS[0].url, 'eth_getCode', [
+          receipt.contractAddress,
+          'latest',
+        ]);
+        expect((code.length - 2) / 2).toBeGreaterThan(1000);
+        const read = async (method: string, args: any[] = []) =>
+          abi.decodeFunctionResult(
+            method,
+            await localRpc(LOCAL_CHAINS[0].url, 'eth_call', [
+              {
+                to: receipt.contractAddress,
+                data: abi.encodeFunctionData(method, args),
+              },
+              'latest',
+            ])
+          )[0];
+        const constructorState: Record<string, string | boolean> = {};
+        if (kind === 'erc20') {
+          constructorState.name = await read('name');
+          constructorState.symbol = await read('symbol');
+          constructorState.decimals = (await read('decimals')).toString();
+          constructorState.totalSupply = (await read('totalSupply')).toString();
+          constructorState.balance = (
+            await read('balanceOf', [address])
+          ).toString();
+          constructorState.owner = getAddress(await read('owner'));
+          expect(constructorState).toEqual({
+            name: 'TST',
+            symbol: 'TST',
+            decimals: '4',
+            totalSupply: '100000',
+            balance: '100000',
+            owner: getAddress(address),
+          });
+        } else if (kind === 'erc721') {
+          constructorState.name = await read('name');
+          constructorState.symbol = await read('symbol');
+          constructorState.currentTokenId = (
+            await read('currentTokenId')
+          ).toString();
+          constructorState.balance = (
+            await read('balanceOf', [address])
+          ).toString();
+          constructorState.erc721 = await read('supportsInterface', [
+            '0x80ac58cd',
+          ]);
+          expect(constructorState).toEqual({
+            name: 'TestDappNFTs',
+            symbol: 'TDN',
+            currentTokenId: '0',
+            balance: '0',
+            erc721: true,
+          });
+        } else {
+          constructorState.name = await read('name');
+          constructorState.owner = getAddress(await read('owner'));
+          constructorState.uri = await read('uri', [1]);
+          constructorState.balance = (
+            await read('balanceOf', [address, 1])
+          ).toString();
+          constructorState.erc1155 = await read('supportsInterface', [
+            '0xd9b67a26',
+          ]);
+          expect(constructorState).toEqual({
+            name: 'ERC1155',
+            owner: getAddress(address),
+            uri: 'ipfs://bafybeidxfmwycgzcp4v2togflpqh2gnibuexjy4m4qqwxp7nh3jx5zlh4y/1.json',
+            balance: '0',
+            erc1155: true,
+          });
+        }
+        expect(forbidden).toEqual([]);
+        if (replayWalletEstimate) expect(matchingEstimates).toBe(3);
+        expect(errors.filter((error) => error.type === 'pageerror')).toEqual(
+          []
+        );
+        wallet.summary.addTxHash(result.result);
+        return {
+          source: officialDeploymentContracts.source,
+          request: result,
+          approvalBody,
+          initcodeBytes: (expectedData.length - 2) / 2,
+          receipt,
+          transaction,
+          runtimeCodeBytes: (code.length - 2) / 2,
+          constructorState,
+          popupErrors: errors,
+          replayRecovery: replayWalletEstimate
+            ? {
+                estimateAttempts,
+                injectedEstimate,
+                priorCallReply,
+                priorCallRequest,
+                rpcEstimates,
+              }
+            : undefined,
+        };
+      } finally {
+        if (walletQuoteFault) await wallet.context.unroute('**/*', faultRoute);
+        wallet.context.off('page', observePopup);
+        wallet.context.off('response', observeEstimate);
+        await Promise.all(pendingEstimates);
+        watched.forEach((observed) => {
+          observed.page.off('pageerror', observed.error);
+          observed.page.off('console', observed.console);
+        });
+        checks.push({
+          name: `official ${kind} ${
+            invalidWalletEstimate
+              ? 'invalid wallet-estimate'
+              : replayWalletEstimate
+              ? 'replay-recovery'
+              : cancel
+              ? 'cancel'
+              : 'deployment'
+          } diagnostics`,
+          status: 'evidence',
+          requestId,
+          requests: await page.evaluate(
+            (start) => (window as any).__paliConformance.requests.slice(start),
+            requestStart
+          ),
+          popupErrors: errors,
+          rpcEstimates,
+          rpcCalls,
+          injectedEstimate,
+          matchingEstimates,
+          estimateAttempts,
+        });
       }
-    );
+    };
+    const runOfficialDeploymentCases = async () => {
+      await record('official ERC20 Create Token long deployment', () =>
+        runOfficialDeployment('erc20')
+      );
+      if (process.env.PALI_TEST_DAPP_SCOPE === 'deployments-erc20') return;
+      await record('official ERC721 long deployment', () =>
+        runOfficialDeployment('erc721')
+      );
+      await record('official ERC1155 long deployment', () =>
+        runOfficialDeployment('erc1155')
+      );
+      await record(
+        'replayed deployment call reply recovers with one read-only retry',
+        () => runOfficialDeployment('erc20', false, 'replay')
+      );
+      await record(
+        'official long deployment cancellation preserves nonce',
+        () => runOfficialDeployment('erc20', true)
+      );
+      await record(
+        'invalid wallet-side deployment quote fails without render crash',
+        () => runOfficialDeployment('erc20', false, 'overflow')
+      );
+    };
+    if (deploymentScope) {
+      if (process.env.PALI_TEST_DAPP_SCOPE === 'deployments-fault') {
+        await record(
+          'invalid wallet-side deployment quote fails without render crash',
+          () => runOfficialDeployment('erc20', false, 'overflow')
+        );
+      } else if (process.env.PALI_TEST_DAPP_SCOPE === 'deployments-replay') {
+        await record(
+          'replayed deployment call reply recovers with one read-only retry',
+          () => runOfficialDeployment('erc20', false, 'replay')
+        );
+      } else {
+        await runOfficialDeploymentCases();
+      }
+    }
 
-    if (process.env.PALI_TEST_DAPP_SCOPE !== 'regressions') {
+    if (!deploymentScope) {
+      await record('valid SIWE through official button', async () => {
+        const id = await page.evaluate(
+          () => (window as any).__paliConformance.requests.length
+        );
+        await page.locator('#siwe').click();
+        const popup = await popupFor(wallet.context, page, id);
+        await popup.screenshot({
+          path: path.join(E2E_CONFIG.artifactsDir, 'siwe-valid-popup.png'),
+        });
+        const signed = await approve(wallet.context, page, id);
+        const params = signed.params as string[];
+        expect(
+          getAddress(
+            verifyMessage(Buffer.from(params[0].slice(2), 'hex'), signed.result)
+          )
+        ).toBe(getAddress(address));
+        return signed;
+      });
+
+      await record(
+        'invalid transaction value settles without popup',
+        async () => {
+          const id = await startRequest(page, 'eth_sendTransaction', [
+            { from: address, to: address, value: 'invalid' },
+          ]);
+          let result;
+          try {
+            result = await settle(page, id, 2000);
+          } catch (error) {
+            const popup = wallet.context
+              .pages()
+              .find((candidate) => candidate.url().includes('/external'));
+            if (popup) {
+              await popup.screenshot({
+                path: path.join(
+                  E2E_CONFIG.artifactsDir,
+                  'invalid-value-popup.png'
+                ),
+              });
+              checks.push({
+                name: 'invalid-value observed popup',
+                status: 'evidence',
+                body: await popup.locator('body').innerText(),
+                rpc: await rpcObservation(page, id),
+              });
+            }
+            throw error;
+          }
+          expect(result.error?.code).toBe(-32602);
+          expect(result.durationMs).toBeLessThan(2000);
+          expect(
+            wallet.context
+              .pages()
+              .some((candidate) => candidate.url().includes('/external'))
+          ).toBe(false);
+          return result;
+        }
+      );
+    }
+
+    if (
+      process.env.PALI_TEST_DAPP_SCOPE !== 'regressions' &&
+      !deploymentScope
+    ) {
       await record(
         'EIP-6963 discovery and window.ethereum fallback',
         async () => {
@@ -1128,6 +1692,11 @@ test('official test dapp: isolated standard provider conformance', async () => {
           return { request: result, receipt, transaction };
         }
       );
+      await runOfficialDeploymentCases();
+      // Cancellation and the injected quote error are genuine approval
+      // attempts. Keep the next unrelated rejection outside the unchanged
+      // production spam window, rather than weakening its threshold.
+      await new Promise((resolve) => setTimeout(resolve, 10_100));
       await record(
         'user rejects local transaction without broadcast',
         async () => {

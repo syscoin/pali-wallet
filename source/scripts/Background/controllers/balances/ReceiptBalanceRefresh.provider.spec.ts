@@ -29,7 +29,7 @@ it('passes the same abort signal and captured endpoint to each minimal receipt R
       return {
         ok: true,
         status: 200,
-        json: async () => ({ id: request.id, result }),
+        json: async () => ({ jsonrpc: '2.0', id: request.id, result }),
       } as Response;
     });
   try {
