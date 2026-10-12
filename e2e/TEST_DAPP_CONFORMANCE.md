@@ -74,6 +74,31 @@ authentication session.
 V1 recovery uses the already locked `@metamask/eth-sig-util` verifier; V3/V4
 and personal/SIWE recovery use Ethers independently of Pali's provider result.
 
+The actual ERC20 Create Token (four decimals), ERC721 Deploy and ERC1155 Deploy
+buttons also run against the owned local chain. Their 12–15 kB initcode and
+constructor arguments are pinned from the official test-dapp constants at
+`c92f83b119f2fa49c69759dafc40c637bd55b137` in
+`tests/fixtures/officialDeploymentContracts.json`. Approval must retain the
+exact original bytes in Hex, identify Contract Deployment, display finite fees
+and usable controls, and mine
+from the permitted account with the expected nonce and creation address.
+Independent local reads check runtime code, ERC20 supply/decimals/balance,
+ERC721 identity/interface support and ERC1155 ownership/URI/interface support.
+Cancelling a long deployment must return `4001` without consuming a nonce.
+Each case records the original dapp requests, matching raw gas-estimate RPC
+replies, approval text and popup errors. These are local deployment tests;
+they do not establish behavior on a public RPC or hardware wallet.
+A separate fault case leaves the dapp's first finite gas estimate unchanged
+and deliberately corrupts only the wallet's second local RPC estimate. It must
+show the existing fee error, settle the request with a numeric error, close
+without a rendering exception and consume no nonce. This injected invalid RPC
+reply is not classified as an ordinary deployment failure. Its temporary route
+falls back to the unchanged broadcast guard for every unrelated request.
+
+To run only these deployment cases, set `PALI_TEST_DAPP_SCOPE=deployments`;
+`deployments-erc20` runs just the ERC20 reproduction.
+`deployments-fault` runs only the injected wallet-quote case.
+
 The journey also checks NFT-order advisories on the disposable local chain:
 a paid 0x order receives no guessed scam warning, a zero-payment sale with a
 third-party fee receives its factual advisory, and a Seaport 1.4 order without

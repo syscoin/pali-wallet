@@ -1,7 +1,11 @@
+import { ITransactionParams } from 'types/transactions';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { hexConcat } from 'utils/ethersV6Compat';
 
-import { decodeSmartAccountTransactionData } from './ethUtil';
+import {
+  decodeSmartAccountTransactionData,
+  decodeTransactionData,
+} from './ethUtil';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   paliEntryPointInterface,
@@ -15,6 +19,50 @@ const SMART_ACCOUNT = '0x1111111111111111111111111111111111111111';
 const TARGET = '0x2222222222222222222222222222222222222222';
 const BENEFICIARY = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
+
+describe('contract creation decoding', () => {
+  it.each([
+    '0x6080604052',
+    '0x6001600c60003960016000f300',
+    `0x095ea7b3${'ff'.repeat(128)}`,
+  ])(
+    'classifies initcode without a compiler-prefix heuristic or provider reads',
+    async (data) => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockRejectedValue(new Error('Unexpected signature lookup'));
+      const provider = { getCode: jest.fn(), call: jest.fn() };
+      const tx = { from: SMART_ACCOUNT, data } as ITransactionParams;
+      const snapshot = { ...tx };
+      try {
+        expect(await decodeTransactionData(tx, provider)).toEqual({
+          method: 'Contract Deployment',
+          types: [],
+          inputs: [],
+          names: [],
+        });
+        expect(tx).toEqual(snapshot);
+        expect(provider.getCode).not.toHaveBeenCalled();
+        expect(provider.call).not.toHaveBeenCalled();
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    }
+  );
+
+  it('keeps the normal transfer classification for an addressed transaction', async () => {
+    expect(
+      await decodeTransactionData({
+        from: SMART_ACCOUNT,
+        to: TARGET,
+        data: '0x',
+      })
+    ).toMatchObject({
+      method: 'Send',
+    });
+  });
+});
 
 describe('smart account transaction decoding', () => {
   it('decodes ERC-7579 single execute payloads', () => {

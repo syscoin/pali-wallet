@@ -334,14 +334,12 @@ export const fetchGasAndDecodeFunction = async (
 
   // Check if this is a legacy transaction
 
-  const gasLimitString = formTx.gasLimit.toString();
-  const gasLimitNumber = parseInt(gasLimitString, 10);
-
-  // Ensure we have a valid number
-  const finalGasLimitNumber =
-    isNaN(gasLimitNumber) || gasLimitNumber === 0
-      ? parseInt(formTx.gasLimit.toString(), 10)
-      : gasLimitNumber;
+  // Fee editing uses numeric gas limits. Refuse an inexact or overflowing
+  // quote before it reaches rendering or can change the gas the user approves.
+  const finalGasLimitNumber = Number(formTx.gasLimit.toString());
+  if (!Number.isSafeInteger(finalGasLimitNumber) || finalGasLimitNumber <= 0) {
+    throw new Error('Invalid transaction gas limit');
+  }
 
   const feeDetails: {
     baseFee: number;

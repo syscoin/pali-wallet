@@ -338,7 +338,6 @@ export const decodeTransactionData = async (
   web3Provider?: any,
   controller?: any
 ) => {
-  const contractCreationInitialBytes = '0x60806040';
   const zeroAddress = '0x0000000000000000000000000000000000000000';
   try {
     const { data } = params;
@@ -349,6 +348,17 @@ export const decodeTransactionData = async (
         normalizedData !== '0x' &&
         normalizedData !== '0x0'
     );
+
+    // Creation is identified by the absent destination, not a compiler prefix.
+    // Initcode is not function calldata and must not enter approval decoding.
+    if (dataValidation && !params.to) {
+      return {
+        method: 'Contract Deployment',
+        types: [],
+        inputs: [],
+        names: [],
+      };
+    }
 
     // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
     // so we need to transform it on Bytes32.
@@ -454,29 +464,6 @@ export const decodeTransactionData = async (
         names: [],
       };
       return emptyDecoderObject;
-    }
-
-    // Handle contract deployment: no 'to' address + contract bytecode
-    if (!params?.to) {
-      if (
-        dataValidation &&
-        data.slice(0, 10) === contractCreationInitialBytes
-      ) {
-        return {
-          method: 'Contract Deployment',
-          types: [],
-          inputs: [],
-          names: [],
-        };
-      } else {
-        // No 'to' address but not contract deployment - probably malformed
-        return {
-          method: 'Transaction',
-          types: [],
-          inputs: [],
-          names: [],
-        };
-      }
     }
 
     // Handle explicit zero address (burning)
