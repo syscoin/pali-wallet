@@ -89,6 +89,27 @@ const callsFor = (operation: string) =>
 
 describe('dapp transaction fee preparation', () => {
   it.each([
+    'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas',
+    'wallet.ethereumTransaction.web3Provider.send',
+    'wallet.ethereumTransaction.getTxGasLimit',
+  ])(
+    'propagates a flattened RPC integrity error from %s without inventing a quote',
+    async (operation) => {
+      const previous = emitterMock.getMockImplementation();
+      const error = new Error(
+        '[SYSWEB3_RPC_RESPONSE_INVALID] Wrong response id'
+      );
+      emitterMock.mockImplementation((path, args) => {
+        if (path.join('.') === operation) throw error;
+        return previous(path, args);
+      });
+      await expect(prepare({ to: undefined, data: '0x60016000' })).rejects.toBe(
+        error
+      );
+    }
+  );
+
+  it.each([
     ['inexact', (BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1)).toString()],
     ['overflowing', `0x${'ff'.repeat(512)}`],
   ])(
