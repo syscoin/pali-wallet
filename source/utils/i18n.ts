@@ -18,6 +18,7 @@ export const availableLanguages = [
   'ru',
 ];
 export const defaultLocale = 'en';
+let languageSelectionGeneration = 0;
 
 // Cache for loaded languages
 const loadedLanguages: { [key: string]: any } = {
@@ -117,9 +118,12 @@ const determineLngFn = async (code: string): Promise<string> => {
 };
 
 const initI18next = async () => {
-  const fallbackLng = await determineLngFn('');
-
+  const initialSelectionGeneration = languageSelectionGeneration;
+  // Register a ready instance before the first await. Rendering useTranslation
+  // without one changes its hook order when language storage later responds.
   await i18next.use(initReactI18next).init({
+    initImmediate: false,
+    lng: defaultLocale,
     react: {
       useSuspense: false,
     },
@@ -131,7 +135,7 @@ const initI18next = async () => {
     },
     load: 'languageOnly',
     lowerCaseLng: true,
-    fallbackLng: fallbackLng,
+    fallbackLng: defaultLocale,
     fallbackNS: 'translation',
     keySeparator: '.',
     interpolation: { escapeValue: true },
@@ -142,9 +146,15 @@ const initI18next = async () => {
     },
   });
 
-  // Load the user's language if it's not English
-  if (fallbackLng !== 'en') {
-    await changeLanguage(fallbackLng);
+  // Restore supported preferences asynchronously; English remains available
+  // while storage and any lazy translation chunk are loading.
+  const storedLocale = await determineLngFn('');
+  if (
+    languageSelectionGeneration === initialSelectionGeneration &&
+    storedLocale !== defaultLocale &&
+    availableLanguages.includes(storedLocale)
+  ) {
+    await changeLanguage(storedLocale);
   }
 };
 
@@ -154,20 +164,26 @@ export const changeLanguage = async (lng: string): Promise<void> => {
     console.warn(`[i18n] Language ${lng} not available`);
     return;
   }
+  // A late startup read must not replace a preference chosen after first paint.
+  const selectionGeneration = ++languageSelectionGeneration;
 
   // Load language if not already loaded
   if (!i18next.hasResourceBundle(lng, 'translation')) {
     const translations = await loadLanguage(lng);
+    if (selectionGeneration !== languageSelectionGeneration) return;
     i18next.addResourceBundle(lng, 'translation', translations, true, true);
   }
 
   // Change the language
   await i18next.changeLanguage(lng);
+  if (selectionGeneration !== languageSelectionGeneration) return;
 
   // Save to storage
   await chromeStorage.setItem('language', lng);
 };
 
-initI18next();
+void initI18next().catch((error) => {
+  console.error('[i18n] Failed to initialize translations:', error);
+});
 
 export { i18next };
