@@ -203,8 +203,10 @@ test('official test dapp: isolated standard provider conformance', async () => {
     const runOfficialDeployment = async (
       kind: keyof typeof officialDeploymentContracts.contracts,
       cancel = false,
-      invalidWalletEstimate = false
+      walletQuoteFault?: 'overflow' | 'replay'
     ) => {
+      const invalidWalletEstimate = walletQuoteFault === 'overflow';
+      const replayWalletEstimate = walletQuoteFault === 'replay';
       const fixture = officialDeploymentContracts.contracts[kind];
       const abi = new Interface(fixture.abi);
       const expectedData =
@@ -227,36 +229,64 @@ test('official test dapp: isolated standard provider conformance', async () => {
         page: Page;
       }> = [];
       const rpcEstimates: any[] = [];
+      const rpcCalls: any[] = [];
       const pendingEstimates: Array<Promise<void>> = [];
+      const estimateAttempts: any[] = [];
       let matchingEstimates = 0;
       let injectedEstimate: any;
+      let priorCallReply: any;
+      let priorCallRequest: any;
       const faultRoute = async (route: Route) => {
         const request = route.request();
-        let rpc: any;
+        let payload: any;
         try {
-          rpc = request.postDataJSON();
+          payload = request.postDataJSON();
         } catch {
           /* Preserve the primary broadcast guard for unrelated requests. */
         }
+        const rpc = Array.isArray(payload)
+          ? payload.length === 1
+            ? payload[0]
+            : undefined
+          : payload;
         if (
           new URL(request.url()).origin === LOCAL_CHAINS[0].url &&
           rpc?.method === 'eth_estimateGas' &&
           rpc.params?.[0]?.data?.toLowerCase() === expectedData.toLowerCase()
         ) {
           matchingEstimates += 1;
+          estimateAttempts.push({
+            url: request.url(),
+            request: JSON.parse(JSON.stringify(rpc)),
+          });
           if (matchingEstimates === 2) {
             // The first estimate belongs to the official dapp and remains
-            // finite. Only the wallet's later quote gets a deliberately
-            // invalid RPC quantity; this is not a normal deployment request.
-            injectedEstimate = {
-              jsonrpc: '2.0',
-              id: rpc.id,
-              result: `0x${'f'.repeat(300)}`,
-            };
+            // finite. Only the wallet's later quote gets an injected fault.
+            if (replayWalletEstimate) {
+              await expect
+                .poll(() => priorCallReply, { timeout: 2000 })
+                .toBeDefined();
+              expect(priorCallReply.id).toBe(priorCallRequest.id);
+              expect(priorCallReply.id).not.toBe(rpc.id);
+              expect(priorCallReply.jsonrpc).toBe('2.0');
+              expect(priorCallReply.result).toMatch(/^0x[0-9a-f]+$/i);
+              expect(priorCallReply.result.length).toBeGreaterThan(2000);
+              // Replay the actual prior call reply, including its wrong ID
+              // and runtime code, rather than inventing an oversized gas.
+              injectedEstimate = JSON.parse(JSON.stringify(priorCallReply));
+            } else {
+              injectedEstimate = {
+                jsonrpc: '2.0',
+                id: rpc.id,
+                result: `0x${'f'.repeat(300)}`,
+              };
+            }
             await route.fulfill({
               status: 200,
               contentType: 'application/json',
-              body: JSON.stringify(injectedEstimate),
+              body: JSON.stringify(
+                Array.isArray(payload) ? [injectedEstimate] : injectedEstimate
+              ),
             });
             return;
           }
@@ -272,22 +302,36 @@ test('official test dapp: isolated standard provider conformance', async () => {
         } catch {
           return;
         }
-        const estimates = (Array.isArray(payload) ? payload : [payload]).filter(
+        const quoteRequests = (
+          Array.isArray(payload) ? payload : [payload]
+        ).filter(
           (rpc: any) =>
-            rpc?.method === 'eth_estimateGas' &&
+            ['eth_call', 'eth_estimateGas'].includes(rpc?.method) &&
             rpc.params?.[0]?.data?.toLowerCase() === expectedData.toLowerCase()
         );
-        if (!estimates.length) return;
+        if (!quoteRequests.length) return;
         pendingEstimates.push(
           response
             .json()
             .then((result) => {
-              rpcEstimates.push({
+              const evidence = {
                 url: response.url(),
-                requests: estimates,
+                requests: quoteRequests,
                 response: result,
                 serviceWorker: request.serviceWorker()?.url(),
-              });
+              };
+              if (quoteRequests.some((rpc) => rpc.method === 'eth_estimateGas'))
+                rpcEstimates.push(evidence);
+              const call = quoteRequests.find(
+                (rpc) => rpc.method === 'eth_call'
+              );
+              if (call) {
+                rpcCalls.push(evidence);
+                priorCallReply = Array.isArray(result)
+                  ? result.find((reply) => reply.id === call.id)
+                  : result;
+                priorCallRequest = call;
+              }
             })
             .catch((error) => {
               rpcEstimates.push({ error: error.message });
@@ -317,8 +361,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
       wallet.context.on('response', observeEstimate);
       let requestId: number | undefined;
       try {
-        if (invalidWalletEstimate)
-          await wallet.context.route('**/*', faultRoute);
+        if (walletQuoteFault) await wallet.context.route('**/*', faultRoute);
         if (kind === 'erc20') await page.locator('#tokenDecimals').fill('4');
         await expect(page.locator(`#${fixture.button}`)).toBeEnabled();
         await page.locator(`#${fixture.button}`).click();
@@ -370,7 +413,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
           expect(typeof rejected.error?.code).toBe('number');
           expect(rejected.result).toBeUndefined();
           expect(injectedEstimate).toBeDefined();
-          expect(matchingEstimates).toBeGreaterThanOrEqual(2);
+          expect(matchingEstimates).toBe(2);
           // The original dapp gas remains the finite first RPC estimate.
           expect(Number.isSafeInteger(Number(BigInt(submitted.gas)))).toBe(
             true
@@ -403,10 +446,60 @@ test('official test dapp: isolated standard provider conformance', async () => {
         await expect(confirm).toBeVisible({ timeout: 2000 });
         await expect(confirm).toBeEnabled({ timeout: 10_000 });
         await expect(popup.locator('body')).not.toContainText(/Infinity|NaN/);
+        if (replayWalletEstimate) {
+          expect(matchingEstimates).toBe(3);
+          expect(estimateAttempts).toHaveLength(3);
+          expect(injectedEstimate).toEqual(priorCallReply);
+          const firstWalletAttempt = estimateAttempts[1];
+          const recoveryAttempt = estimateAttempts[2];
+          const firstUrl = new URL(firstWalletAttempt.url);
+          const recoveryUrl = new URL(recoveryAttempt.url);
+          expect(firstUrl.origin).toBe(LOCAL_CHAINS[0].url);
+          expect(recoveryUrl.origin).toBe(firstUrl.origin);
+          expect(recoveryUrl.pathname).toBe(firstUrl.pathname);
+          expect(firstUrl.search).toBe('');
+          expect([...recoveryUrl.searchParams.keys()]).toEqual([
+            'sysweb3_rpc_request',
+          ]);
+          expect(
+            recoveryUrl.searchParams.get('sysweb3_rpc_request')
+          ).toBeTruthy();
+          expect(recoveryAttempt.request.method).toBe('eth_estimateGas');
+          expect(recoveryAttempt.request.params).toEqual(
+            firstWalletAttempt.request.params
+          );
+          const ids = estimateAttempts.map((attempt) => attempt.request.id);
+          expect(ids.every(Number.isSafeInteger)).toBe(true);
+          expect(new Set(ids).size).toBe(3);
+          expect(Number.isSafeInteger(Number(BigInt(submitted.gas)))).toBe(
+            true
+          );
+          expect(BigInt(submitted.gas)).toBeGreaterThan(BigInt(0));
+          await Promise.all(pendingEstimates);
+          const recoveryReply = rpcEstimates.find(
+            (estimate) => estimate.url === recoveryAttempt.url
+          );
+          const response = Array.isArray(recoveryReply?.response)
+            ? recoveryReply.response[0]
+            : recoveryReply?.response;
+          expect(response?.id).toBe(recoveryAttempt.request.id);
+          const firstEstimate = rpcEstimates.find((estimate) =>
+            estimate.requests.some((rpc: any) => rpc.id === ids[0])
+          );
+          const firstReply = Array.isArray(firstEstimate?.response)
+            ? firstEstimate.response[0]
+            : firstEstimate?.response;
+          expect(response?.result).toBe(firstReply?.result);
+        }
+        const screenshotPhase = replayWalletEstimate
+          ? 'replay-recovery'
+          : cancel
+          ? 'cancel'
+          : 'deploy';
         await popup.screenshot({
           path: path.join(
             E2E_CONFIG.artifactsDir,
-            `official-${kind}-${cancel ? 'cancel' : 'deploy'}-approval.png`
+            `official-${kind}-${screenshotPhase}-approval.png`
           ),
         });
         const approvalBody = await popup.locator('body').innerText();
@@ -422,7 +515,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
         await popup.screenshot({
           path: path.join(
             E2E_CONFIG.artifactsDir,
-            `official-${kind}-${cancel ? 'cancel' : 'deploy'}-hex.png`
+            `official-${kind}-${screenshotPhase}-hex.png`
           ),
         });
         if (cancel) {
@@ -557,6 +650,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
           });
         }
         expect(forbidden).toEqual([]);
+        if (replayWalletEstimate) expect(matchingEstimates).toBe(3);
         expect(errors.filter((error) => error.type === 'pageerror')).toEqual(
           []
         );
@@ -571,10 +665,18 @@ test('official test dapp: isolated standard provider conformance', async () => {
           runtimeCodeBytes: (code.length - 2) / 2,
           constructorState,
           popupErrors: errors,
+          replayRecovery: replayWalletEstimate
+            ? {
+                estimateAttempts,
+                injectedEstimate,
+                priorCallReply,
+                priorCallRequest,
+                rpcEstimates,
+              }
+            : undefined,
         };
       } finally {
-        if (invalidWalletEstimate)
-          await wallet.context.unroute('**/*', faultRoute);
+        if (walletQuoteFault) await wallet.context.unroute('**/*', faultRoute);
         wallet.context.off('page', observePopup);
         wallet.context.off('response', observeEstimate);
         await Promise.all(pendingEstimates);
@@ -586,6 +688,8 @@ test('official test dapp: isolated standard provider conformance', async () => {
           name: `official ${kind} ${
             invalidWalletEstimate
               ? 'invalid wallet-estimate'
+              : replayWalletEstimate
+              ? 'replay-recovery'
               : cancel
               ? 'cancel'
               : 'deployment'
@@ -598,8 +702,10 @@ test('official test dapp: isolated standard provider conformance', async () => {
           ),
           popupErrors: errors,
           rpcEstimates,
+          rpcCalls,
           injectedEstimate,
           matchingEstimates,
+          estimateAttempts,
         });
       }
     };
@@ -615,19 +721,28 @@ test('official test dapp: isolated standard provider conformance', async () => {
         runOfficialDeployment('erc1155')
       );
       await record(
+        'replayed deployment call reply recovers with one read-only retry',
+        () => runOfficialDeployment('erc20', false, 'replay')
+      );
+      await record(
         'official long deployment cancellation preserves nonce',
         () => runOfficialDeployment('erc20', true)
       );
       await record(
         'invalid wallet-side deployment quote fails without render crash',
-        () => runOfficialDeployment('erc20', false, true)
+        () => runOfficialDeployment('erc20', false, 'overflow')
       );
     };
     if (deploymentScope) {
       if (process.env.PALI_TEST_DAPP_SCOPE === 'deployments-fault') {
         await record(
           'invalid wallet-side deployment quote fails without render crash',
-          () => runOfficialDeployment('erc20', false, true)
+          () => runOfficialDeployment('erc20', false, 'overflow')
+        );
+      } else if (process.env.PALI_TEST_DAPP_SCOPE === 'deployments-replay') {
+        await record(
+          'replayed deployment call reply recovers with one read-only retry',
+          () => runOfficialDeployment('erc20', false, 'replay')
         );
       } else {
         await runOfficialDeploymentCases();

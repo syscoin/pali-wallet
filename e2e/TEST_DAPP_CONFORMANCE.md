@@ -95,9 +95,21 @@ without a rendering exception and consume no nonce. This injected invalid RPC
 reply is not classified as an ordinary deployment failure. Its temporary route
 falls back to the unchanged broadcast guard for every unrelated request.
 
+Another case replays the real local `eth_call` reply as the wallet's second
+`eth_estimateGas` reply, retaining that prior reply's wrong ID and runtime
+bytecode. The SDK must discard it and make exactly one read-only retry with a
+fresh ID and `sysweb3_rpc_request` query on the same RPC origin and path.
+The correctly correlated retry must restore usable approval controls while
+preserving the original dapp request, full Hex and constructor arguments.
+Confirmation then mines only on the owned Anvil chain and checks the same
+receipt, nonce, deployment address and constructor state. This recovery case
+runs before unrelated cancellation/error cases so it retains the production
+spam policy. The matched-ID oversized-quote rejection remains a separate case.
+
 To run only these deployment cases, set `PALI_TEST_DAPP_SCOPE=deployments`;
 `deployments-erc20` runs just the ERC20 reproduction.
 `deployments-fault` runs only the injected wallet-quote case.
+`deployments-replay` runs only the mismatched-ID reply recovery case.
 
 The journey also checks NFT-order advisories on the disposable local chain:
 a paid 0x order receives no guessed scam warning, a zero-payment sale with a
