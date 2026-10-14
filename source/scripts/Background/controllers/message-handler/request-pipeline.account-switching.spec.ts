@@ -172,6 +172,80 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    [true, true],
+    [true, false],
+    [false, true],
+    [false, false],
+  ])(
+    'puts only public account display fields in the popup URL (EVM=%s, accepted=%s)',
+    async (isEvm, accepted) => {
+      const connected = {
+        ...accountA,
+        address: isEvm ? accountA.address : 'sys1connected-account',
+        label: 'Connected test account',
+        xprv: 'fixture-only-encrypted-xprv',
+        xpub: 'fixture-only-wallet-xpub',
+        privateKey: 'fixture-only-private-key',
+        mnemonic: 'fixture-only-seed',
+        smartAccount: { privateMetadata: 'fixture-only-nested-secret' },
+      };
+      getDappAccount.mockReturnValue(connected);
+      mockGetState.mockReturnValue({
+        vault: {
+          accounts: { HDAccount: { 0: connected, 1: accountB } },
+          activeAccount: { id: 1, type: KeyringAccountType.HDAccount },
+        },
+      });
+      jest.mocked(popupPromise).mockImplementation(async () => {
+        if (!accepted) throw new Error('user rejected');
+        return null;
+      });
+      jest
+        .spyOn(requestCoordinator, 'coordinatePopupRequest')
+        .mockImplementation(async (_context, openPopup) => openPopup());
+      const context = createContext();
+      context.originalRequest.method = isEvm
+        ? 'eth_sendTransaction'
+        : 'sys_sign';
+      context.originalRequest.params = isEvm
+        ? [{ from: connected.address }]
+        : [{ psbt: 'opaque-psbt' }];
+      const next = jest.fn();
+
+      if (accepted) await accountSwitchingMiddleware(context, next);
+      else
+        await expect(
+          accountSwitchingMiddleware(context, next)
+        ).rejects.toMatchObject({ code: 4100 });
+
+      const popupData = jest.mocked(popupPromise).mock.calls[0][0].data;
+      expect(popupData).toEqual({
+        connectedAccount: {
+          id: connected.id,
+          address: connected.address,
+          label: connected.label,
+        },
+        accountType: KeyringAccountType.HDAccount,
+      });
+      const query = new URLSearchParams({ data: JSON.stringify(popupData) });
+      const serialized = decodeURIComponent(query.toString());
+      for (const privateField of [
+        'xprv',
+        'xpub',
+        'privateKey',
+        'mnemonic',
+        'smartAccount',
+        'privateMetadata',
+      ]) {
+        expect(serialized).not.toContain(privateField);
+      }
+      expect(serialized).not.toContain('fixture-only');
+      expect(connected.xprv).toBe('fixture-only-encrypted-xprv');
+      expect(next).toHaveBeenCalledTimes(accepted ? 1 : 0);
+    }
+  );
+
   it('requires selection consent before connecting an already-active requested account', async () => {
     mockGetState.mockReturnValue({
       vault: {

@@ -874,7 +874,15 @@ const promptAccountSwitch = async (
         route: MethodRoute.ChangeActiveConnectedAccount,
         eventName: 'changeActiveConnected',
         data: {
-          connectedAccount: targetAccount,
+          // Popup data is serialized into its URL. Never forward a vault record,
+          // including encrypted keys or unrelated account metadata, to that URL.
+          connectedAccount: {
+            id: targetAccount.id,
+            address: targetAccount.address,
+            ...(typeof targetAccount.label === 'string'
+              ? { label: targetAccount.label }
+              : {}),
+          },
           accountType: targetAccountType,
         },
       }),
