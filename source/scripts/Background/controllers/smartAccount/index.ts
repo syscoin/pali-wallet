@@ -1898,73 +1898,83 @@ class SmartAccountController {
     validator?: string;
     waitForConfirmation?: boolean;
   }) {
-    const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
-    const assertContext = () => {
-      if (params.expectedContext) {
-        this.assertExpectedExecutionContext(
-          params.expectedContext,
-          params.accountId
-        );
-        if (!params.executionContextId)
-          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-            transactionNotBroadcast: true,
-          });
-      }
-      if (params.executionContextId) {
-        this.assertSmartAccountExecutionContext(params.executionContextId);
-        const context = this.executionContexts.get(params.executionContextId)!;
-        if (
-          (params.accountId !== undefined &&
-            params.accountId !== context.accountId) ||
-          !params.userOperation ||
-          params.gasPrice !== context.gasPrice ||
-          Object.entries(context.userOperation).some(
-            ([key, value]) => params.userOperation[key] !== value
-          )
-        )
-          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-            transactionNotBroadcast: true,
-          });
-      }
-    };
-    assertContext();
-    const active = Number.isInteger(params.accountId)
-      ? this.getSmartAccountById(params.accountId as number)
-      : this.getActiveSmartAccount();
-    if (!params.userOperation) {
-      throw new Error(
-        'Signed ERC-4337 UserOperation is required for smart account execution'
-      );
-    }
-    if (
-      getAddress(params.userOperation.sender) !==
-      getAddress(active.account.address)
-    ) {
-      throw new Error(
-        'Signed UserOperation does not match the active smart account'
-      );
-    }
-    const gasPayer = await this.getWalletGasPayerAccount(
-      params.gasPayer || active.metadata.deploymentGasPayer,
-      undefined,
-      { requirePreferred: Boolean(params.gasPayer) }
-    );
-    assertContext();
-    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
-    const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
-    const signedUserOperation: SmartAccountPackedUserOperation = {
-      ...params.userOperation,
-      signature: params.signature,
-    };
-    const callData = entryPoint.interface.encodeFunctionData('handleOps', [
-      [signedUserOperation],
-      gasPayer.address,
-    ]);
-    const recipientAccounts = this.getLocalNativeExecutionRecipients(
-      params.executions || []
-    );
-
+    // The call may first fund a counterfactual account, then submit handleOps.
+    // Only failures before either sender is entered are definitely read-only.
+    let financialSubmissionAttempted = false;
     try {
+      const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
+      const assertContext = () => {
+        if (params.expectedContext) {
+          this.assertExpectedExecutionContext(
+            params.expectedContext,
+            params.accountId
+          );
+          if (!params.executionContextId)
+            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+              transactionNotBroadcast: true,
+            });
+        }
+        if (params.executionContextId) {
+          this.assertSmartAccountExecutionContext(params.executionContextId);
+          const context = this.executionContexts.get(
+            params.executionContextId
+          )!;
+          if (
+            (params.accountId !== undefined &&
+              params.accountId !== context.accountId) ||
+            !params.userOperation ||
+            params.gasPrice !== context.gasPrice ||
+            Object.entries(context.userOperation).some(
+              ([key, value]) => params.userOperation[key] !== value
+            )
+          )
+            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+              transactionNotBroadcast: true,
+            });
+        }
+      };
+      assertContext();
+      const active = Number.isInteger(params.accountId)
+        ? this.getSmartAccountById(params.accountId as number)
+        : this.getActiveSmartAccount();
+      if (!params.userOperation) {
+        throw new Error(
+          'Signed ERC-4337 UserOperation is required for smart account execution'
+        );
+      }
+      if (
+        getAddress(params.userOperation.sender) !==
+        getAddress(active.account.address)
+      ) {
+        throw new Error(
+          'Signed UserOperation does not match the active smart account'
+        );
+      }
+      const gasPayer = await this.getWalletGasPayerAccount(
+        params.gasPayer || active.metadata.deploymentGasPayer,
+        undefined,
+        { requirePreferred: Boolean(params.gasPayer) }
+      );
+      assertContext();
+      const entryPointAddress = getPaliEntryPointAddress(
+        active.metadata.chainId
+      );
+      const entryPoint = new Contract(
+        entryPointAddress,
+        PALI_ENTRYPOINT_V09_ABI
+      );
+      const signedUserOperation: SmartAccountPackedUserOperation = {
+        ...params.userOperation,
+        signature: params.signature,
+      };
+      const callData = entryPoint.interface.encodeFunctionData('handleOps', [
+        [signedUserOperation],
+        gasPayer.address,
+      ]);
+      const recipientAccounts = this.getLocalNativeExecutionRecipients(
+        params.executions || []
+      );
+
       const requiredPrefund =
         getSmartAccountUserOpRequiredPrefund(signedUserOperation);
       const usesZkSysGasTank =
@@ -1999,7 +2009,10 @@ class SmartAccountController {
           entryPointAddress,
           gasPayer,
           active.metadata.chainId,
-          assertContext
+          assertContext,
+          () => {
+            financialSubmissionAttempted = true;
+          }
         );
         assertContext();
       }
@@ -2026,6 +2039,7 @@ class SmartAccountController {
         assertContext();
       }
       assertContext();
+      financialSubmissionAttempted = true;
       const response = await this.deps.sendAndSaveEthTransaction(
         {
           chainId: active.metadata.chainId,
@@ -2094,14 +2108,17 @@ class SmartAccountController {
         : hasSmartAccountSignatureFailure(error)
         ? SMART_ACCOUNT_SIGNATURE_ERROR
         : undefined;
+      const transactionNotBroadcast = financialSubmissionAttempted
+        ? error?.transactionNotBroadcast
+        : true;
       if (normalizedMessage) {
         const normalizedError = new Error(normalizedMessage);
         // Keep trusted submission facts when replacing provider text with a
         // UI sentinel. Losing false could permit an unsafe retry; losing true
         // would strand a definite rejection as an unknown submission.
-        if (typeof error?.transactionNotBroadcast === 'boolean')
+        if (typeof transactionNotBroadcast === 'boolean')
           Object.assign(normalizedError, {
-            transactionNotBroadcast: error.transactionNotBroadcast,
+            transactionNotBroadcast,
           });
         if (
           typeof error?.transactionHash === 'string' &&
@@ -2111,6 +2128,18 @@ class SmartAccountController {
             transactionHash: error.transactionHash,
           });
         throw normalizedError;
+      }
+      if (!financialSubmissionAttempted) {
+        // Do not mutate a frozen provider error or forward arbitrary fields.
+        // After a prefund/send attempt, retain its existing outcome instead.
+        const preflightError = new Error(
+          typeof error?.message === 'string'
+            ? error.message
+            : 'Smart account preflight failed'
+        );
+        if (typeof error?.code === 'number')
+          Object.assign(preflightError, { code: error.code });
+        throw Object.assign(preflightError, { transactionNotBroadcast: true });
       }
       throw error;
     }
@@ -2208,7 +2237,8 @@ class SmartAccountController {
     entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
-    assertCurrentContext?: () => void
+    assertCurrentContext?: () => void,
+    onSubmissionAttempt?: () => void
   ): Promise<void> {
     assertCurrentContext?.();
     const provider = this.ethereumTransaction?.web3Provider;
@@ -2231,6 +2261,7 @@ class SmartAccountController {
     if (shortfall.lte(0)) {
       return;
     }
+    onSubmissionAttempt?.();
     const response = await this.deps.sendAndSaveEthTransaction(
       {
         chainId,

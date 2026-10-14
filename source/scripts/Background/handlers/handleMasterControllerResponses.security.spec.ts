@@ -1,4 +1,60 @@
+import { watchApprovalSubmission } from './approvalSubmission';
 import { handleMasterControllerResponses } from './handleMasterControllerResponses';
+
+describe('native approval controller submission lifecycle', () => {
+  it.each([true, false, undefined])(
+    'clears possible submission only for an actual controller transactionNotBroadcast=%s result',
+    async (transactionNotBroadcast) => {
+      Object.assign(chrome.runtime, {
+        getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+        id: 'pali-extension',
+      });
+      const send = jest
+        .fn()
+        .mockRejectedValue(
+          Object.assign(Error('submission failed'), { transactionNotBroadcast })
+        );
+      handleMasterControllerResponses({
+        wallet: { sendAndSaveEthTransaction: send },
+      } as any);
+      const add = chrome.runtime.onMessage.addListener as jest.Mock;
+      const listener = add.mock.calls[add.mock.calls.length - 1][0];
+      const possible = jest.fn();
+      const stop = watchApprovalSubmission(
+        'native-approval-document',
+        possible
+      );
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        listener(
+          {
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', 'sendAndSaveEthTransaction'],
+              params: [{}],
+            },
+          },
+          {
+            id: 'pali-extension',
+            documentId: 'native-approval-document',
+            url: 'chrome-extension://pali-extension/external/tx/send/ethTx',
+          },
+          jest.fn()
+        );
+        expect(possible).toHaveBeenCalledWith(true);
+        expect(send).not.toHaveBeenCalled();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(possible.mock.calls.map(([value]) => value)).toEqual(
+          transactionNotBroadcast === true ? [true, false] : [true]
+        );
+      } finally {
+        stop();
+        logging.mockRestore();
+      }
+    }
+  );
+});
 
 describe('controller action sender authorization', () => {
   const addListener = chrome.runtime.onMessage.addListener as jest.Mock;

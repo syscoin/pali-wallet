@@ -1,6 +1,7 @@
 import { IMasterController } from 'scripts/Background/controllers';
 import { extractErrorMessage } from 'utils/index';
 
+import { beginApprovalSubmission } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 
 const AA21_PREFUND_REASON_HEX =
@@ -184,6 +185,7 @@ export const handleMasterControllerResponses = (
       }
 
       if (typeof targetMethod === 'function') {
+        const finishSubmission = beginApprovalSubmission(sender, methods);
         Promise.resolve()
           .then(async () => {
             assertSetupAdmission();
@@ -191,8 +193,12 @@ export const handleMasterControllerResponses = (
             const response = await (targetMethod as any)(...params);
             return response;
           })
-          .then(sendResponse)
+          .then((response) => {
+            finishSubmission();
+            sendResponse(response);
+          })
           .catch((error) => {
+            finishSubmission(error);
             console.error('Error executing method:', error);
             // Preserve structured errors from syscoinjs-lib
             if (

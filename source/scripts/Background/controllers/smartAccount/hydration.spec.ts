@@ -285,6 +285,123 @@ describe('SmartAccountController smart account execution fees', () => {
     ).rejects.toBe(error);
   });
 
+  it('marks a removed preferred gas payer as prebroadcast before estimating or sending', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    controller.getWalletGasPayerAccount.mockRejectedValueOnce(
+      new Error('Selected gas payer is no longer available')
+    );
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('marks a missing signed user operation as prebroadcast', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('marks an outer estimate failure before either sender as definitely not broadcast', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    const error = Object.freeze(new Error('execution reverted'));
+    estimateGas.mockRejectedValueOnce(error);
+
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      })
+    ).rejects.toMatchObject({
+      message: 'execution reverted',
+      transactionNotBroadcast: true,
+    });
+    expect(error).not.toHaveProperty('transactionNotBroadcast');
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('still marks a failed estimate as prebroadcast when deployment prefunding made no send', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    controller.ensureSmartAccountDeploymentPrefund = jest
+      .fn()
+      .mockResolvedValue(undefined);
+    estimateGas.mockRejectedValueOnce(new Error('execution reverted'));
+    const userOperation = { ...buildUserOperation(), initCode: '0x1234' };
+
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation,
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(controller.ensureSmartAccountDeploymentPrefund).toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'does not relabel a failure after a prefund sender was entered (prefund returned=%s)',
+    async (prefundReturned) => {
+      const { controller, estimateGas, sendAndSaveEthTransaction } =
+        buildController();
+      const error = new Error('RPC timed out');
+      controller.ensureSmartAccountDeploymentPrefund = jest.fn(
+        async (...args: any[]) => {
+          args[6]();
+          if (!prefundReturned) throw error;
+        }
+      );
+      estimateGas.mockRejectedValueOnce(error);
+
+      await expect(
+        controller.submitSmartAccountExecution({
+          executions: [],
+          gasPayer,
+          signature: '0x1234',
+          userOperation: { ...buildUserOperation(), initCode: '0x1234' },
+        })
+      ).rejects.toBe(error);
+      expect(error).not.toHaveProperty('transactionNotBroadcast');
+      expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not relabel an unclassified outer sender failure as prebroadcast', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+    const error = new Error('RPC timed out');
+    sendAndSaveEthTransaction.mockRejectedValueOnce(error);
+
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      })
+    ).rejects.toBe(error);
+    expect(error).not.toHaveProperty('transactionNotBroadcast');
+  });
+
   it('does not add EIP-1559 outer fees when legacy preparation has no priority fee', async () => {
     const { controller, sendAndSaveEthTransaction } = buildController();
 

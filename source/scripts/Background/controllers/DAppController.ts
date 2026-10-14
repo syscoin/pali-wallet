@@ -8,6 +8,7 @@ import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { getDappOrigin } from 'utils/dappOrigin';
 
 import { clearProviderCache } from './message-handler/provider-cache';
@@ -49,7 +50,9 @@ const dispatchPropertyChange = async (
  *
  * DApps connections use the site host as id
  */
-const DAppController = (): IDAppController => {
+const DAppController = (
+  isWalletUnlocked: () => boolean = () => false
+): IDAppController => {
   const _dapps: IDappsSession = {};
 
   const persistDappState = async (operation: string) => {
@@ -451,31 +454,7 @@ const DAppController = (): IDAppController => {
           return;
         }
 
-        for (const host of hosts) {
-          if (id === PaliEvents.lockStateChanged && _dapps[host]) {
-            // For lock state, we need to customize the event with dapp's connected account
-            const lockStateData = {
-              method: PaliSyscoinEvents.lockStateChanged,
-              params: {
-                ...data.params,
-                accounts: data.params.isUnlocked
-                  ? [_dapps[host].activeAddress]
-                  : [],
-                xpub: data.params.isUnlocked
-                  ? _dapps[host].activeAddress
-                  : null,
-              },
-            };
-            _dispatchPaliEvent(
-              host,
-              lockStateData,
-              PaliSyscoinEvents.lockStateChanged
-            );
-          } else {
-            // For all other events, dispatch as-is (including accountsChanged from wallet)
-            _dispatchPaliEvent(host, data, id);
-          }
-        }
+        for (const host of hosts) _dispatchPaliEvent(host, data, id);
         resolve();
       } catch (error) {
         reject(`${error}`);
@@ -493,6 +472,58 @@ const DAppController = (): IDAppController => {
       }
       resolve();
     });
+
+  const publicAccountEvent = (
+    host: string,
+    data: { method: string; params: any }
+  ) => {
+    if (
+      data.method !== PaliEvents.accountsChanged &&
+      data.method !== PaliSyscoinEvents.xpubChanged &&
+      data.method !== PaliEvents.lockStateChanged
+    ) {
+      return data;
+    }
+
+    // Re-read after the asynchronous tab lookup. A global account change must
+    // never disclose another site's account, nor a revoked/locked connection.
+    const { vault, dapp } = store.getState();
+    const connection = dapp?.dapps?.[host];
+    const account = connection
+      ? vault.accounts[connection.accountType]?.[connection.accountId]
+      : undefined;
+    const isUnlocked =
+      isWalletUnlocked() &&
+      (data.method !== PaliEvents.lockStateChanged ||
+        data.params?.isUnlocked === true);
+    const mayDisclose =
+      isUnlocked &&
+      connection &&
+      isAccountCompatibleWithNetwork(
+        account,
+        connection.accountType,
+        vault.activeNetwork
+      );
+    const address = mayDisclose ? account.address : null;
+    const xpub =
+      mayDisclose && vault.isBitcoinBased ? account.xpub || null : null;
+
+    if (data.method === PaliEvents.lockStateChanged) {
+      return {
+        method: data.method,
+        params: { isUnlocked, accounts: address ? [address] : [], xpub },
+      };
+    }
+    return {
+      method: data.method,
+      params:
+        data.method === PaliEvents.accountsChanged
+          ? address
+            ? [address]
+            : []
+          : xpub,
+    };
+  };
 
   const _dispatchPaliEvent = async (
     host: string,
@@ -588,7 +619,7 @@ const DAppController = (): IDAppController => {
                   });
                   window.dispatchEvent(event);
                 },
-                args: [{ id, data }, origin],
+                args: [{ id, data: publicAccountEvent(host, data) }, origin],
               });
             } catch (error) {
               // Don't let individual tab failures crash the service worker

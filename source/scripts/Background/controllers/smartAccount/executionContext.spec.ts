@@ -15,10 +15,12 @@ jest.mock('utils/smartAccount', () => ({
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { Contract, Interface } from 'utils/ethersV6Compat';
+import { BigNumber, Contract, Interface } from 'utils/ethersV6Compat';
 import {
+  buildSmartAccountUserOperation,
   encodeEcdsaValidatorInitData,
   encodeSmartAccountGasFees,
+  encodeSmartAccountGasLimits,
   estimateSmartAccountUserOpGas,
 } from 'utils/smartAccount';
 
@@ -303,6 +305,50 @@ describe('smart-account execution approval context', () => {
       expect.objectContaining({ assertCurrentContext: expect.any(Function) })
     );
   });
+
+  it.each([false, true])(
+    'marks the real prefund sender boundary only when a topup is needed (already funded=%s)',
+    async (alreadyFunded) => {
+      const onSubmissionAttempt = jest.fn();
+      const wait = jest.fn().mockResolvedValue(undefined);
+      provider.getBalance = jest
+        .fn()
+        .mockResolvedValue(BigNumber.from(alreadyFunded ? 2 : 0));
+      (Contract as unknown as jest.Mock).mockImplementation(() => ({
+        balanceOf: jest.fn().mockResolvedValue(0),
+      }));
+      send.mockImplementation(async () => {
+        expect(onSubmissionAttempt).toHaveBeenCalledTimes(1);
+        return { hash: HASH, wait };
+      });
+      const userOperation = buildSmartAccountUserOperation({
+        accountGasLimits: encodeSmartAccountGasLimits({
+          callGasLimit: 1,
+          verificationGasLimit: 1,
+        }),
+        callData: '0x',
+        gasFees: encodeSmartAccountGasFees({
+          maxFeePerGas: 1,
+          maxPriorityFeePerGas: 0,
+        }),
+        nonce: '0',
+        preVerificationGas: '0',
+        sender: ADDRESS,
+      });
+      await controller.ensureSmartAccountDeploymentPrefund(
+        ADDRESS,
+        userOperation,
+        TARGET,
+        payer,
+        1,
+        undefined,
+        onSubmissionAttempt
+      );
+      expect(onSubmissionAttempt).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
+      expect(send).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
+      expect(wait).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
+    }
+  );
 
   it('preserves an explicit legacy price below a higher provider recommendation through the UserOp and outer send', async () => {
     const prepared = await controller.prepareSmartAccountExecutions(calls, 7, {

@@ -23,7 +23,7 @@ jest.mock('./message-handler/provider-cache', () => ({
 
 import { runInNewContext } from 'vm';
 
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 
 import DAppController from './DAppController';
 import { clearProviderCache } from './message-handler/provider-cache';
@@ -197,6 +197,173 @@ describe('legacy dapp permission isolation', () => {
     expect(receive('http://example.com')).not.toHaveBeenCalled();
     expect(receive('https://example.com:8443')).not.toHaveBeenCalled();
     expect(receive('https://example.com')).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('per-site account notification disclosure', () => {
+  const originA = 'https://site-a.example';
+  const originB = 'https://site-b.example';
+  const addressA = `0x${'11'.repeat(20)}`;
+  const addressB = `0x${'22'.repeat(20)}`;
+  let state: any;
+  let unlocked: boolean;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    unlocked = true;
+    state = {
+      dapp: {
+        dapps: {
+          [originA]: {
+            accountId: 0,
+            accountType: KeyringAccountType.HDAccount,
+          },
+          [originB]: {
+            accountId: 1,
+            accountType: KeyringAccountType.HDAccount,
+          },
+        },
+      },
+      vault: {
+        activeNetwork: {
+          chainId: 57057,
+          kind: INetworkType.Ethereum,
+          slip44: 60,
+        },
+        accounts: {
+          HDAccount: {
+            0: { id: 0, address: addressA, xpub: 'public-xpub-a' },
+            1: { id: 1, address: addressB, xpub: 'public-xpub-b' },
+          },
+        },
+        isBitcoinBased: false,
+      },
+    };
+    getStateMock.mockImplementation(() => state);
+    (chrome.runtime as any).id = 'test-extension';
+    (chrome as any).tabs = {
+      query: jest.fn(({ url }, callback) =>
+        callback([
+          { id: url.startsWith(originA) ? 1 : 2, url: url.slice(0, -1) },
+        ])
+      ),
+    };
+    (chrome as any).scripting = {
+      executeScript: jest.fn().mockResolvedValue([]),
+    };
+  });
+
+  const controller = () => {
+    const instance = DAppController(() => unlocked);
+    instance.setup({ url: `${originA}/page` });
+    instance.setup({ url: `${originB}/page` });
+    return instance;
+  };
+  const deliver = async (instance, method, params) => {
+    await instance.handleStateChange(method, { method, params });
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+  const messages = (tabId: number) =>
+    (chrome.scripting.executeScript as jest.Mock).mock.calls
+      .filter(([call]) => call.target.tabId === tabId)
+      .map(([call]) => call.args[0].data);
+
+  it('does not disclose the globally active EVM account to other site connections', async () => {
+    await deliver(controller(), PaliEvents.accountsChanged, [addressB]);
+    expect(messages(1)).toEqual([
+      { method: PaliEvents.accountsChanged, params: [addressA] },
+    ]);
+    expect(messages(2)).toEqual([
+      { method: PaliEvents.accountsChanged, params: [addressB] },
+    ]);
+  });
+
+  it('projects UTXO address and xpub separately for each site', async () => {
+    state.vault.activeNetwork = {
+      chainId: 57,
+      kind: INetworkType.Syscoin,
+      slip44: 57,
+    };
+    state.vault.isBitcoinBased = true;
+    state.vault.accounts.HDAccount[0].address = 'sys-account-a';
+    state.vault.accounts.HDAccount[1].address = 'sys-account-b';
+    const instance = controller();
+    await deliver(instance, PaliEvents.accountsChanged, ['sys-account-b']);
+    await deliver(instance, PaliEvents.xpubChanged, 'public-xpub-b');
+    expect(messages(1)).toEqual([
+      { method: PaliEvents.accountsChanged, params: ['sys-account-a'] },
+      { method: PaliEvents.xpubChanged, params: 'public-xpub-a' },
+    ]);
+    expect(messages(2)).toEqual([
+      { method: PaliEvents.accountsChanged, params: ['sys-account-b'] },
+      { method: PaliEvents.xpubChanged, params: 'public-xpub-b' },
+    ]);
+  });
+
+  it('sends no account or xpub while the wallet is locked', async () => {
+    const instance = controller();
+    unlocked = false;
+    await deliver(instance, PaliEvents.accountsChanged, [addressB]);
+    await deliver(instance, PaliEvents.xpubChanged, 'public-xpub-b');
+    expect(messages(1)).toEqual([
+      { method: PaliEvents.accountsChanged, params: [] },
+      { method: PaliEvents.xpubChanged, params: null },
+    ]);
+  });
+
+  it('rechecks a revoked connection after the asynchronous tab lookup', async () => {
+    const instance = controller();
+    (chrome.tabs.query as jest.Mock).mockImplementation(({ url }, callback) => {
+      if (url.startsWith(originA)) delete state.dapp.dapps[originA];
+      callback([
+        { id: url.startsWith(originA) ? 1 : 2, url: url.slice(0, -1) },
+      ]);
+    });
+    await deliver(instance, PaliEvents.accountsChanged, [addressB]);
+    expect(messages(1)).toEqual([
+      { method: PaliEvents.accountsChanged, params: [] },
+    ]);
+    expect(messages(2)[0].params).toEqual([addressB]);
+  });
+
+  it('does not disclose a wrong-chain smart account or UTXO-family address', async () => {
+    const instance = controller();
+    state.dapp.dapps[originA] = {
+      accountId: 0,
+      accountType: KeyringAccountType.SmartAccount,
+    };
+    state.vault.accounts.SmartAccount = {
+      0: { address: addressA, smartAccount: { chainId: 5700 } },
+    };
+    state.vault.accounts.HDAccount[1].address = 'sys-account-b';
+    await deliver(instance, PaliEvents.accountsChanged, [addressA]);
+    expect(messages(1)[0].params).toEqual([]);
+    expect(messages(2)[0].params).toEqual([]);
+  });
+
+  it('never sends an EVM account xpub and keeps unrelated public events intact', async () => {
+    const instance = controller();
+    await deliver(instance, PaliEvents.xpubChanged, 'public-xpub-b');
+    await deliver(instance, PaliEvents.chainChanged, { chainId: '0xdee1' });
+    expect(messages(1)).toEqual([
+      { method: PaliEvents.xpubChanged, params: null },
+      { method: PaliEvents.chainChanged, params: { chainId: '0xdee1' } },
+    ]);
+  });
+
+  it('projects only public lock state fields and the site account on unlock', async () => {
+    await deliver(controller(), PaliEvents.lockStateChanged, {
+      isUnlocked: true,
+      accounts: [addressB],
+      xpub: 'public-xpub-b',
+      unexpectedVaultData: 'fixture-private-data',
+    });
+    expect(messages(1)).toEqual([
+      {
+        method: PaliEvents.lockStateChanged,
+        params: { isUnlocked: true, accounts: [addressA], xpub: null },
+      },
+    ]);
   });
 });
 

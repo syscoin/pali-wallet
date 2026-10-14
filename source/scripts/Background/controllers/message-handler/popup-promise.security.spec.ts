@@ -3,6 +3,7 @@ jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: createPopupMock }),
 }));
 
+import { beginApprovalSubmission } from '../../handlers/approvalSubmission';
 import { createExternalWalletView } from '../externalWalletCreation';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
@@ -131,6 +132,170 @@ describe('approval popup boundary', () => {
     }
     return { pending };
   };
+
+  const startSubmission = (
+    senderOverrides: any = {},
+    methods = ['wallet', 'sendAndSaveEthTransaction']
+  ) =>
+    beginApprovalSubmission(
+      {
+        id: 'pali',
+        frameId: 0,
+        documentId: 'approval-document',
+        tab: { id: 19, windowId: 9 },
+        url: source(`external/${MethodRoute.SendEthTx}`).url,
+        ...senderOverrides,
+      },
+      methods
+    );
+
+  it.each(['sendAndSaveEthTransaction', 'submitSmartAccountExecution'])(
+    'reports an unknown outcome when a submitting %s popup closes',
+    async (method) => {
+      const { pending } = await begin(
+        undefined,
+        undefined,
+        true,
+        MethodRoute.SendEthTx
+      );
+      const rejected = expect(pending).rejects.toMatchObject({
+        code: -32603,
+        message: expect.stringContaining('outcome is unknown'),
+      });
+      expect(typeof startSubmission({}, ['wallet', method])).toBe('function');
+      windowRemovalListener(9);
+      await rejected;
+    }
+  );
+
+  it('does not turn a submitting approval into a user rejection on document abort', async () => {
+    const abort = new AbortController();
+    const { pending } = await begin(
+      abort.signal,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+    startSubmission();
+    abort.abort();
+    await rejected;
+  });
+
+  it.each(['sendAndSaveEthTransaction', 'submitSmartAccountExecution'])(
+    'recognizes native extension-page %s submission without tab/frame metadata',
+    async (method) => {
+      const { pending } = await begin(
+        undefined,
+        undefined,
+        true,
+        MethodRoute.SendEthTx
+      );
+      const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+      startSubmission({ tab: undefined, frameId: undefined }, [
+        'wallet',
+        method,
+      ]);
+      windowRemovalListener(9);
+      await rejected;
+    }
+  );
+
+  it.each([
+    { documentId: 'another-document' },
+    { documentId: undefined, tab: undefined, frameId: undefined },
+    { id: 'another-extension' },
+    { documentId: 'another-frame', frameId: 1 },
+    { documentId: 'another-window', tab: { id: 20, windowId: 10 } },
+    { url: 'https://site.test/' },
+  ])('ignores a submission claim from another sender: %p', async (sender) => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    startSubmission(sender);
+    windowRemovalListener(9);
+    await rejected;
+  });
+
+  it('restores pre-submission cancellation only after a definite controller failure', async () => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const finish = startSubmission({ tab: undefined, frameId: undefined });
+    finish(
+      Object.assign(Error('before broadcast'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    windowRemovalListener(9);
+    await rejected;
+  });
+
+  it('does not clear another unresolved attempt on a definite failure', async () => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const first = startSubmission();
+    startSubmission();
+    first(
+      Object.assign(Error('before broadcast'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+    windowRemovalListener(9);
+    await rejected;
+  });
+
+  it.each([
+    { methods: ['wallet', 'refreshActiveAccountBalances'] },
+    { methods: ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'] },
+  ])(
+    'does not mark a read or a different controller path as submission: %p',
+    async ({ methods }) => {
+      const { pending } = await begin(
+        undefined,
+        undefined,
+        true,
+        MethodRoute.SendEthTx
+      );
+      const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+      startSubmission({}, methods);
+      windowRemovalListener(9);
+      await rejected;
+    }
+  );
+
+  it('still delivers the actual late hash if the submitting popup remains open', async () => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    startSubmission();
+    const hash = `0x${'ab'.repeat(32)}`;
+    messageListener({
+      source: source(`external/${MethodRoute.SendEthTx}`),
+      data: {
+        eventName: 'personal_sign.https://site.test',
+        detail: JSON.stringify(hash),
+      },
+    });
+    await expect(pending).resolves.toBe(hash);
+    windowRemovalListener(9);
+  });
 
   it('allows a dapp approval while an ordinary main wallet tab is open', async () => {
     (chrome.runtime.getContexts as jest.Mock).mockImplementation(

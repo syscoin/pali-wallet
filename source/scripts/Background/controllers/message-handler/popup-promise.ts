@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
+import { watchApprovalSubmission } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -120,6 +121,8 @@ export const popupPromise = async ({
   let popup = null;
   let approvalClientId: string | null = null;
   let approvalDocumentId: string | null = null;
+  let submissionStarted = false;
+  let stopWatchingSubmission: (() => void) | undefined;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -187,6 +190,17 @@ export const popupPromise = async ({
       const available = !approvalClientId || approvalClientId === source.id;
       if (available) {
         approvalClientId = source.id;
+        if (
+          route === MethodRoute.SendEthTx &&
+          approvalDocumentId &&
+          !stopWatchingSubmission
+        )
+          stopWatchingSubmission = watchApprovalSubmission(
+            approvalDocumentId,
+            (possible) => {
+              submissionStarted = possible;
+            }
+          );
         onClientBound?.();
       }
       port.postMessage({
@@ -239,6 +253,8 @@ export const popupPromise = async ({
 
     // Clean up function to remove listeners
     const cleanup = () => {
+      stopWatchingSubmission?.();
+      stopWatchingSubmission = undefined;
       if (livenessInterval) clearInterval(livenessInterval);
       if (bindingDeadline) clearTimeout(bindingDeadline);
       if (onAbort) signal?.removeEventListener('abort', onAbort);
@@ -276,6 +292,16 @@ export const popupPromise = async ({
       );
       resolve(result);
     };
+    const cancellationError = () =>
+      submissionStarted
+        ? cleanErrorStack(
+            ethErrors.rpc.internal(
+              'Transaction submission outcome is unknown. Check the wallet activity and chain before submitting again.'
+            )
+          )
+        : cleanErrorStack(
+            ethErrors.provider.userRejectedRequest('User closed popup window')
+          );
 
     // Message handler
     responseHandler = (swEvent: any) => {
@@ -319,11 +345,7 @@ export const popupPromise = async ({
       // This allows null to be used as a valid success response
       cleanup();
       resolved = true; // Mark as resolved to prevent double resolution
-      reject(
-        cleanErrorStack(
-          ethErrors.provider.userRejectedRequest('User closed popup window')
-        )
-      );
+      reject(cancellationError());
     };
 
     onAbort = () => {
@@ -335,7 +357,7 @@ export const popupPromise = async ({
       chrome.windows.remove(popup.id, () => {
         void chrome.runtime.lastError;
       });
-      reject(requestCancelledError());
+      reject(submissionStarted ? cancellationError() : requestCancelledError());
     };
 
     // Add listeners
