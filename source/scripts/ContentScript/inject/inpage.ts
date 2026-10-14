@@ -26,6 +26,9 @@ if ((window as any).__paliWalletInjected) {
   // Get the existing provider instances
   ethereumProvider = (window as any).paliProvider?.ethereumProvider;
   proxiedProvider = (window as any).paliProvider?.proxiedProvider;
+  // Re-enabling Ethereum can follow the normal removal of our fallback.
+  // Reuse its identity without replacing another wallet's current provider.
+  if (proxiedProvider && !window.ethereum) window.ethereum = proxiedProvider;
 } else {
   (window as any).__paliWalletInjected = true;
   console.log('[Pali] Creating new provider instance');

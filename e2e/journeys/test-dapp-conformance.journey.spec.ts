@@ -824,6 +824,12 @@ test('official test dapp: isolated standard provider conformance', async () => {
               providers: state.providers,
               fallback:
                 window.ethereum === (window as any).__paliConformanceProvider,
+              announcedIsOwned:
+                (window as any).__paliConformanceProvider ===
+                (window as any).paliProvider?.proxiedProvider,
+              foreignFallback:
+                window.ethereum !== (window as any).__paliConformanceProvider &&
+                Boolean(window.ethereum?.isMetaMask),
             };
           });
           expect(info.providers.length).toBeGreaterThan(0);
@@ -834,8 +840,30 @@ test('official test dapp: isolated standard provider conformance', async () => {
             name: 'Pali Wallet',
             rdns: 'com.paliwallet',
           });
-          expect(info.fallback).toBe(true);
-          return info;
+          expect(info.announcedIsOwned).toBe(true);
+          // The official test dapp also initializes MetaMaskSDK, which may
+          // occupy window.ethereum. EIP-6963 must not replace another wallet.
+          expect(info.fallback || info.foreignFallback).toBe(true);
+
+          const fallbackServer = await startDappServer();
+          const fallbackPage = await wallet.context.newPage();
+          try {
+            await fallbackPage.goto(fallbackServer.url);
+            await fallbackPage.waitForFunction(() =>
+              Boolean((window as any).__paliConformanceProvider)
+            );
+            const isolatedFallback = await fallbackPage.evaluate(async () => ({
+              sameProvider:
+                window.ethereum === (window as any).__paliConformanceProvider,
+              chainId: await window.ethereum.request({ method: 'eth_chainId' }),
+            }));
+            expect(isolatedFallback.sameProvider).toBe(true);
+            expect(isolatedFallback.chainId).toBe(LOCAL_CHAINS[0].hexId);
+            return { ...info, isolatedFallback };
+          } finally {
+            await fallbackPage.close();
+            await fallbackServer.close();
+          }
         }
       );
       await record('permissions contain the connected address', async () => {
@@ -1413,12 +1441,18 @@ test('official test dapp: isolated standard provider conformance', async () => {
         }
       );
       await record(
-        'zero EIP-1559 fee choices reject before unsupported SDK conversion',
+        'invalid EIP-1559 fee choices reject before approval',
         async () => {
           const rejected = [];
-          for (const fee of [
-            { maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' },
-            { maxFeePerGas: '0xba43b7400', maxPriorityFeePerGas: '0x0' },
+          for (const { fee, code } of [
+            {
+              fee: { maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' },
+              code: 4200,
+            },
+            {
+              fee: { maxFeePerGas: '0x1', maxPriorityFeePerGas: '0x2' },
+              code: -32602,
+            },
           ]) {
             const result = await settle(
               page,
@@ -1434,7 +1468,7 @@ test('official test dapp: isolated standard provider conformance', async () => {
               ]),
               2000
             );
-            expect(result.error?.code).toBe(4200);
+            expect(result.error?.code).toBe(code);
             expect(result.durationMs).toBeLessThan(2000);
             expect(
               wallet.context
@@ -1546,6 +1580,14 @@ test('official test dapp: isolated standard provider conformance', async () => {
           },
           chooseDappFee: false,
         },
+        {
+          fee: {
+            type: '0x2',
+            maxFeePerGas: '0xba43b7400',
+            maxPriorityFeePerGas: '0x0',
+          },
+          chooseDappFee: true,
+        },
         { fee: { type: '0x0', gasPrice: '0xba43b7400' }, chooseDappFee: false },
         { fee: { type: '0x0', gasPrice: '0x3b9aca00' }, chooseDappFee: true },
       ])
@@ -1579,15 +1621,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
             ]);
             const popup = await popupFor(wallet.context, page, id);
             if (chooseDappFee) {
+              await expect(
+                popup.getByText('Below estimate', { exact: true })
+              ).toBeVisible();
               await popup
                 .getByRole('button', {
                   name: 'Use dapp fee anyway',
                   exact: true,
                 })
                 .click();
-              await expect(
-                popup.getByText('Below estimate', { exact: true })
-              ).toBeVisible();
             }
             await expect(
               popup.getByRole('button', { name: /(?:^|\s)confirm$/i }).last()
