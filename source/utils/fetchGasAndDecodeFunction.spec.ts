@@ -322,6 +322,72 @@ describe('dapp transaction fee preparation', () => {
     );
   });
 
+  it.each(['null', 'absent'])(
+    'accepts gasPrice-only legacy fee data with %s EIP-1559 fields',
+    async (shape) => {
+      delete pendingBlock.baseFeePerGas;
+      networkFees = { gasPrice: BigNumber.from('2000000000') };
+      if (shape === 'null') {
+        networkFees.baseFeePerGas = null;
+        networkFees.maxFeePerGas = null;
+        networkFees.maxPriorityFeePerGas = null;
+      }
+      const result = await prepare({ gas: 70000 });
+      expect(result.formTx.gasPrice).toBe('2000000000');
+      expect(result.feeDetails).toMatchObject({ gasPrice: 2, baseFee: 0 });
+      expect(rpcCalls('eth_estimateGas')).toHaveLength(1);
+      await expect(prepare({ type: '0x2' })).rejects.toThrow(
+        'EIP-1559 fees are unavailable'
+      );
+    }
+  );
+
+  it.each(['null', 'absent'])(
+    'preserves an explicit legacy app price with %s EIP-1559 fields',
+    async (shape) => {
+      pendingBlock.baseFeePerGas = null;
+      networkFees = { gasPrice: BigNumber.from('2000000000') };
+      if (shape === 'null') {
+        networkFees.baseFeePerGas = null;
+        networkFees.maxFeePerGas = null;
+        networkFees.maxPriorityFeePerGas = null;
+      }
+      const result = await prepare({
+        gas: 70000,
+        gasPrice: '1500000000',
+        type: '0x0',
+      });
+      expect(result.formTx.gasPrice).toBe('1500000000');
+      expect(result.recommendationOnly).toBe(true);
+      expect(result.feeSafety.gasPrice).toEqual({
+        requested: 1.5,
+        recommended: 2,
+      });
+    }
+  );
+
+  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+    'does not default a null post-London %s even for an explicit legacy request',
+    async (field) => {
+      networkFees[field] = null;
+      await expect(
+        prepare({ gas: 70000, gasPrice: '1500000000', type: '0x0' })
+      ).rejects.toThrow('Invalid network');
+      expect(rpcCalls('eth_estimateGas')).toHaveLength(0);
+    }
+  );
+
+  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+    'does not default a malformed legacy-network %s',
+    async (field) => {
+      delete pendingBlock.baseFeePerGas;
+      networkFees = { gasPrice: BigNumber.from('2000000000') };
+      networkFees[field] = 'malformed';
+      await expect(prepare()).rejects.toThrow('Invalid network');
+      expect(rpcCalls('eth_estimateGas')).toHaveLength(0);
+    }
+  );
+
   it('refuses a missing post-London basefee instead of silently switching to legacy', async () => {
     delete pendingBlock.baseFeePerGas;
     await expect(prepare()).rejects.toThrow('Inconsistent network fee data');

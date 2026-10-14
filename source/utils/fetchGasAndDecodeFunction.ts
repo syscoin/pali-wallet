@@ -150,19 +150,26 @@ export const fetchGasAndDecodeFunction = async (
   assertCurrentContext();
 
   const networkGasPrice = quantity(feeData?.gasPrice, 'network gas price');
-  const networkMaxFeePerGas = quantity(
-    feeData?.maxFeePerGas,
-    'network maxFeePerGas'
-  );
-  const networkMaxPriorityFeePerGas = quantity(
-    feeData?.maxPriorityFeePerGas,
-    'network maxPriorityFeePerGas'
-  );
+  // Pre-London providers may return gasPrice alone or null EIP-1559 fields.
+  // Only an actually absent pending base fee permits that legacy shape;
+  // present or malformed London caps must still be validated, never defaulted.
+  const networkMaxFeePerGas =
+    !baseFee &&
+    (feeData?.maxFeePerGas === undefined || feeData?.maxFeePerGas === null)
+      ? BigNumber.from(0)
+      : quantity(feeData?.maxFeePerGas, 'network maxFeePerGas');
+  const networkMaxPriorityFeePerGas =
+    !baseFee &&
+    (feeData?.maxPriorityFeePerGas === undefined ||
+      feeData?.maxPriorityFeePerGas === null)
+      ? BigNumber.from(0)
+      : quantity(feeData?.maxPriorityFeePerGas, 'network maxPriorityFeePerGas');
   if (
     networkMaxPriorityFeePerGas.gt(networkMaxFeePerGas) ||
     (baseFee && networkMaxFeePerGas.lt(baseFee)) ||
     (!baseFee &&
-      (feeData?.baseFeePerGas !== undefined ||
+      ((feeData?.baseFeePerGas !== undefined &&
+        feeData?.baseFeePerGas !== null) ||
         !networkMaxFeePerGas.isZero() ||
         !networkMaxPriorityFeePerGas.isZero()))
   )
