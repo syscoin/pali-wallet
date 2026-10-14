@@ -5,7 +5,7 @@ import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store, { saveMainState } from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
-import { IDAppController } from 'types/controllers';
+import { IDAppController, IDAppDisconnectOptions } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
@@ -330,7 +330,11 @@ const DAppController = (
       : account.address;
   };
 
-  const disconnect = async (host: string, persist = true) => {
+  const disconnect = async (
+    host: string,
+    persist = true,
+    options: IDAppDisconnectOptions = {}
+  ) => {
     try {
       const previousConnectedDapps = getAll();
       const isInActiveSession = Boolean(_dapps[host]);
@@ -413,15 +417,15 @@ const DAppController = (
                 error
               );
             });
-          } else {
+          } else if (!options.allowAlreadyDisconnected) {
             throw new Error('DApp not connected');
           }
           break;
       }
     } catch (error) {
       console.error('[DAppController] Error in disconnect:', error);
-      // Re-throw only if it's a known error that should be handled upstream
-      if (error.message === 'DApp not connected') {
+      // Permission revocation needs the real result; keep legacy callers best-effort.
+      if (options.propagateErrors || error.message === 'DApp not connected') {
         throw error;
       }
       // Otherwise, log and continue to prevent service worker crashes

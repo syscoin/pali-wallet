@@ -6,6 +6,11 @@ import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 import { KeyringAccountType, INetwork } from 'types/network';
 
+export interface IDAppDisconnectOptions {
+  allowAlreadyDisconnected?: boolean;
+  propagateErrors?: boolean;
+}
+
 export interface IDAppController {
   /**
    * Changes the account
@@ -25,7 +30,11 @@ export interface IDAppController {
    * Removes a connection with a DApp
    * @emits disconnect
    */
-  disconnect: (host: string, persist?: boolean) => Promise<void>;
+  disconnect: (
+    host: string,
+    persist?: boolean,
+    options?: IDAppDisconnectOptions
+  ) => Promise<void>;
   /**
    * Retrieves a DApp
    */

@@ -101,6 +101,65 @@ const makeContext = (
   },
 });
 
+describe('standard wallet_revokePermissions', () => {
+  const host = 'https://revoking.example';
+  const disconnect = jest.fn();
+
+  const revokeContext = (
+    permissions: Record<string, unknown> = { eth_accounts: {} }
+  ) => {
+    const context = makeContext(
+      'wallet_revokePermissions',
+      host,
+      MethodHandlerType.Wallet
+    );
+    context.methodConfig = getMethodConfig('wallet_revokePermissions')!;
+    context.originalRequest.params = [permissions];
+    return context;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    disconnect.mockResolvedValue(undefined);
+    getControllerMock.mockReturnValue({
+      dapp: { getAccount: jest.fn(() => null), disconnect },
+      wallet: {},
+    });
+    getStateMock.mockReturnValue({
+      vault: {
+        activeNetwork: { chainId: 57057, url: 'https://rpc.example' },
+        isBitcoinBased: false,
+      },
+      vaultGlobal: { networks: { ethereum: {} } },
+    });
+  });
+
+  it('allows an absent connection and requests idempotent error-aware removal', async () => {
+    const context = revokeContext();
+    expect(context.methodConfig.requiresConnection).toBe(false);
+    await expect(new WalletMethodHandler().handle(context)).resolves.toBeNull();
+    expect(disconnect).toHaveBeenCalledWith(host, true, {
+      allowAlreadyDisconnected: true,
+      propagateErrors: true,
+    });
+  });
+
+  it('does not turn a real disconnect failure into success', async () => {
+    const failure = new Error('Storage unavailable');
+    disconnect.mockRejectedValueOnce(failure);
+    await expect(
+      new WalletMethodHandler().handle(revokeContext())
+    ).rejects.toBe(failure);
+  });
+
+  it('keeps an empty permission request a no-op', async () => {
+    await expect(
+      new WalletMethodHandler().handle(revokeContext({}))
+    ).resolves.toBeNull();
+    expect(disconnect).not.toHaveBeenCalled();
+  });
+});
+
 describe('origin-scoped provider data', () => {
   const getAccount = jest.fn();
   const getDapp = jest.fn();
