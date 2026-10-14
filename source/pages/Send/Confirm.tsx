@@ -40,6 +40,7 @@ import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
 } from 'utils/addressPoisoning';
+import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import {
   formatEther,
@@ -249,6 +250,13 @@ export const SendConfirm = () => {
     maxPriorityFeePerGas: 0,
     baseFee: 0,
     gasPrice: 0,
+  });
+  const feeSelectionRef = useRef('');
+  feeSelectionRef.current = JSON.stringify({
+    customFee,
+    fee,
+    gasPrice,
+    isEIP1559Compatible,
   });
 
   // Manual retry function for fee calculation
@@ -468,6 +476,17 @@ export const SendConfirm = () => {
 
   const performConfirm = async () => {
     const submitEmitter = submission.controllerEmitter;
+    const approvedFeeSelection = feeSelectionRef.current;
+    const assertSmartAccountConfirmationCurrent = () => {
+      if (
+        !submission.isActive() ||
+        feeSelectionRef.current !== approvedFeeSelection
+      )
+        throw Object.assign(
+          new Error('Smart account confirmation context or fee changed.'),
+          { transactionNotBroadcast: true }
+        );
+    };
     if (recipientWrongNetwork) {
       alert.error(t('send.smartAccountWrongNetwork'));
       return;
@@ -517,17 +536,20 @@ export const SendConfirm = () => {
         | SmartAccountFeeOverrides
         | undefined => {
         if (isEIP1559Compatible === false) {
-          return undefined;
+          const selectedGasPrice = customFee.isCustom
+            ? parseUnits(safeToFixed(customFee.gasPrice), 9)
+            : BigNumber.from(gasPrice);
+          if (selectedGasPrice.lte(0))
+            throw new Error('Invalid smart account legacy gas price');
+          return { gasPrice: selectedGasPrice.toString() };
         }
 
-        const maxPriorityFeePerGas =
-          customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-            ? customFee.maxPriorityFeePerGas
-            : fee.maxPriorityFeePerGas;
-        const maxFeePerGas =
-          customFee.isCustom && customFee.maxFeePerGas > 0
-            ? customFee.maxFeePerGas
-            : fee.maxFeePerGas;
+        const maxPriorityFeePerGas = customFee.isCustom
+          ? customFee.maxPriorityFeePerGas
+          : fee.maxPriorityFeePerGas;
+        const maxFeePerGas = customFee.isCustom
+          ? customFee.maxFeePerGas
+          : fee.maxFeePerGas;
 
         if (
           maxPriorityFeePerGas === null ||
@@ -536,16 +558,18 @@ export const SendConfirm = () => {
           !maxFeePerGas ||
           maxFeePerGas <= 0
         ) {
-          return undefined;
+          throw new Error('Invalid smart account fee override');
         }
 
-        return {
+        const overrides = {
           maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
           maxPriorityFeePerGas: parseUnits(
             safeToFixed(maxPriorityFeePerGas),
             9
           ).toString(),
         };
+        assertSupportedEvmFees(overrides);
+        return overrides;
       };
 
       const submitSmartAccountExecution = async (
@@ -555,6 +579,7 @@ export const SendConfirm = () => {
         feeOverrides = getSmartAccountFeeOverrides()
       ) => {
         try {
+          assertSmartAccountConfirmationCurrent();
           await signAndSubmitSmartAccountExecutions({
             accountAddress: activeAccount.address,
             accountId: activeAccount.id,
@@ -565,7 +590,10 @@ export const SendConfirm = () => {
             controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
             feeOverrides,
-            onBeforeSubmit: submission.beforeBroadcast,
+            onBeforeSubmit: async () => {
+              assertSmartAccountConfirmationCurrent();
+              await submission.beforeBroadcast();
+            },
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -766,15 +794,25 @@ export const SendConfirm = () => {
                     maxFeePerGas?: BigNumber | string;
                     maxPriorityFeePerGas?: BigNumber | string;
                   };
-                  gasPriceWei = BigNumber.from(feeData.maxFeePerGas || 0);
+                  if (
+                    feeData.maxFeePerGas === undefined ||
+                    feeData.maxPriorityFeePerGas === undefined
+                  )
+                    throw new Error('Incomplete smart account Max fee data');
+                  assertSupportedEvmFees(feeData);
+                  gasPriceWei = BigNumber.from(feeData.maxFeePerGas);
                   maxSendFeeOverrides = {
                     maxFeePerGas: gasPriceWei.toString(),
                     maxPriorityFeePerGas: BigNumber.from(
-                      feeData.maxPriorityFeePerGas ??
-                        parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9)
+                      feeData.maxPriorityFeePerGas
                     ).toString(),
                   };
                 }
+                assertSmartAccountConfirmationCurrent();
+                if (isEIP1559Compatible === false)
+                  // Use the same exact positive price for the Max reserve,
+                  // UserOperation and legacy outer transaction.
+                  maxSendFeeOverrides = { gasPrice: gasPriceWei.toString() };
 
                 if (gasPriceWei.lte(0)) {
                   alert.error(t('send.unableToCalculateFees'));
@@ -801,6 +839,7 @@ export const SendConfirm = () => {
                     reserveError
                   );
                 }
+                assertSmartAccountConfirmationCurrent();
 
                 amountWei = balanceWei
                   .sub(gasUnitsReserve.mul(gasPriceWei))
@@ -972,7 +1011,7 @@ export const SendConfirm = () => {
                   value: value.toHexString(), // Convert to hex string to avoid out-of-safe-range error
                   maxPriorityFeePerGas: parseUnits(
                     Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
                     )
                       ? safeToFixed(customFee.maxPriorityFeePerGas)
                       : safeToFixed(fee.maxPriorityFeePerGas),
@@ -1083,7 +1122,7 @@ export const SendConfirm = () => {
                       maxPriorityFeePerGas: parseUnits(
                         Boolean(
                           customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
+                            customFee.maxPriorityFeePerGas >= 0
                         )
                           ? safeToFixed(customFee.maxPriorityFeePerGas)
                           : safeToFixed(fee.maxPriorityFeePerGas),
@@ -1170,7 +1209,7 @@ export const SendConfirm = () => {
                       maxPriorityFeePerGas: parseUnits(
                         Boolean(
                           customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
+                            customFee.maxPriorityFeePerGas >= 0
                         )
                           ? safeToFixed(customFee.maxPriorityFeePerGas)
                           : safeToFixed(fee.maxPriorityFeePerGas),
@@ -1259,7 +1298,7 @@ export const SendConfirm = () => {
                       maxPriorityFeePerGas: parseUnits(
                         Boolean(
                           customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
+                            customFee.maxPriorityFeePerGas >= 0
                         )
                           ? safeToFixed(customFee.maxPriorityFeePerGas)
                           : safeToFixed(fee.maxPriorityFeePerGas),
@@ -1442,11 +1481,14 @@ export const SendConfirm = () => {
         const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
 
         // Convert hex strings back to BigNumbers (they were serialized for navigation)
-        const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
-        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
+        assertSupportedEvmFees({ maxFeePerGas, maxPriorityFeePerGas });
+        if (maxFeePerGas === undefined || maxPriorityFeePerGas === undefined)
+          throw new Error('Incomplete cached EIP-1559 fee data');
+        const maxFeeBN = BigNumber.from(maxFeePerGas);
+        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas);
 
-        // Guard against invalid zero values from cache
-        if (!maxFeeBN.isZero() && !maxPriorityBN.isZero()) {
+        // A zero priority is a valid type-2 fee, not a cache miss or legacy signal.
+        if (!maxFeeBN.isZero()) {
           const setCachedGasFeeDetails = async () => {
             setIsCalculatingFees(true);
             setFeeCalculationError(null);
@@ -1510,12 +1552,13 @@ export const SendConfirm = () => {
             'getFeeDataWithDynamicMaxPriorityFeePerGas',
           ])) as any;
 
-        // Treat zero/invalid values as an error to avoid endless "Calculating..."
-        const maxFeeBN = BigNumber.from(maxFeePerGas || '0');
-        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas || '0');
-        if (maxFeeBN.isZero() || maxPriorityBN.isZero()) {
-          throw new Error('Invalid fee data (zeros)');
-        }
+        // Missing/invalid data must not become a zero/default quote. A genuine
+        // zero tip remains usable with a positive cap from the qualified SDK.
+        if (maxFeePerGas === undefined || maxPriorityFeePerGas === undefined)
+          throw new Error('Incomplete EIP-1559 fee data');
+        assertSupportedEvmFees({ maxFeePerGas, maxPriorityFeePerGas });
+        const maxFeeBN = BigNumber.from(maxFeePerGas);
+        const maxPriorityBN = BigNumber.from(maxPriorityFeePerGas);
 
         const gasLimit = validateCustomGasLimit
           ? customFee.gasLimit

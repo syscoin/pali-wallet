@@ -49,6 +49,7 @@ import store from 'state/store';
 import {
   loadAndActivateSlip44Vault,
   persistCommittedWalletState,
+  persistHasEthProperty,
   restoreSourceVaultAfterUncommittedSwitch,
   saveMainState,
 } from 'state/store';
@@ -76,7 +77,6 @@ import vaultCache, {
 import {
   setActiveSlip44,
   setAdvancedSettings,
-  setHasEthProperty,
   setHasEncryptedVault,
   setLastLogin,
   resetNetworkStatus,
@@ -263,6 +263,7 @@ class MainController {
   private recoveryJournalPending = false;
   private isResettingWallet = false;
   private authenticationMutex = new AsyncMutex();
+  private ethPropertyMutex = new AsyncMutex();
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
@@ -1918,7 +1919,7 @@ class MainController {
   }
 
   public setHasEthProperty(exist: boolean) {
-    store.dispatch(setHasEthProperty(exist));
+    return persistHasEthProperty(exist);
   }
 
   public async saveCurrentState(
@@ -3522,22 +3523,23 @@ class MainController {
   }
 
   public removeWindowEthProperty() {
-    const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.removeProperty, {
-      method: PaliEvents.removeProperty,
-      params: {
-        type: PaliEvents.removeProperty,
-      },
-    });
+    return this.changeWindowEthProperty(false);
   }
 
   public addWindowEthProperty() {
-    const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.addProperty, {
-      method: PaliEvents.addProperty,
-      params: {
-        type: PaliEvents.addProperty,
-      },
+    return this.changeWindowEthProperty(true);
+  }
+
+  private changeWindowEthProperty(enabled: boolean): Promise<void> {
+    return this.ethPropertyMutex.runExclusive(async () => {
+      await this.setHasEthProperty(enabled);
+      const method = enabled
+        ? PaliEvents.addProperty
+        : PaliEvents.removeProperty;
+      await getController().dapp.handleStateChange(method, {
+        method,
+        params: { type: method },
+      });
     });
   }
 

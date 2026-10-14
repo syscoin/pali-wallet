@@ -11,6 +11,8 @@ import React from 'react';
 
 import { INetworkType } from 'types/network';
 import { TransactionType } from 'types/transactions';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { signAndSubmitSmartAccountExecutions } from 'utils/smartAccount';
 
 import { SendConfirm } from './Confirm';
 
@@ -29,6 +31,10 @@ const mockAlert = { error: jest.fn(), success: jest.fn(), info: jest.fn() };
 let mockLocation: any;
 let mockEntry = 0;
 let mockConfirmClick: () => void;
+let mockEip1559Compatible = false;
+let mockAllowFeeEditing = false;
+let mockAllowLegacyFeeEditing = false;
+let mockEditedLegacyGasPrice = 0.123456789;
 let mockNavigationScope = {
   account: 'synthetic-account',
   network: 'synthetic-network',
@@ -80,7 +86,10 @@ jest.mock('hooks/controllerStatus', () => ({
   getControllerStatus: () => mockPublishedAuth || mockAuth,
 }));
 jest.mock('hooks/useEIP1559', () => ({
-  useEIP1559: () => ({ isEIP1559Compatible: false, forceRecheck: jest.fn() }),
+  useEIP1559: () => ({
+    isEIP1559Compatible: mockEip1559Compatible,
+    forceRecheck: jest.fn(),
+  }),
 }));
 jest.mock('state/vault/selectors', () => ({
   selectEnsNameToAddress: () => ({}),
@@ -106,7 +115,38 @@ jest.mock('components/Loading', () => ({ PqSigningOverlay: () => null }));
 jest.mock('components/TransactionDetails', () => ({
   SyscoinTransactionDetailsFromPSBT: () => null,
 }));
-jest.mock('./EditPriority', () => ({ EditPriorityModal: () => null }));
+jest.mock('./EditPriority', () => ({
+  EditPriorityModal: ({ fee, setCustomFee }: any) =>
+    mockAllowLegacyFeeEditing ? (
+      <button
+        onClick={() =>
+          setCustomFee({
+            isCustom: true,
+            gasLimit: fee.gasLimit,
+            gasPrice: mockEditedLegacyGasPrice,
+            maxFeePerGas: 0,
+            maxPriorityFeePerGas: 0,
+          })
+        }
+      >
+        choose-legacy-price
+      </button>
+    ) : mockAllowFeeEditing ? (
+      <button
+        onClick={() =>
+          setCustomFee({
+            isCustom: true,
+            gasLimit: fee.gasLimit,
+            gasPrice: 0,
+            maxFeePerGas: fee.maxFeePerGas,
+            maxPriorityFeePerGas: 0,
+          })
+        }
+      >
+        choose-zero-tip
+      </button>
+    ) : null,
+}));
 jest.mock('utils/index', () => ({
   clearNavigationState: () => mockClearNavigationState(),
   saveNavigationState: (...args: any[]) => mockSaveNavigationState(...args),
@@ -135,10 +175,23 @@ jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
   signAndSubmitSmartAccountExecutions: jest.fn(),
 }));
+jest.mock('utils/validations', () => ({
+  getErc20Abi: async () => ['function transfer(address,uint256)'],
+  getErc721Abi: async () => [
+    'function safeTransferFrom(address,address,uint256)',
+  ],
+  getErc1155Abi: async () => [
+    'function safeTransferFrom(address,address,uint256,uint256,bytes)',
+  ],
+}));
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockPublishedAuth = undefined;
+  mockEip1559Compatible = false;
+  mockAllowFeeEditing = false;
+  mockAllowLegacyFeeEditing = false;
+  mockEditedLegacyGasPrice = 0.123456789;
   window.history.replaceState(null, '', '/');
   mockAuth = {
     connectionUnavailable: false,
@@ -185,6 +238,9 @@ beforeEach(() => {
     },
   };
   mockClearNavigationState.mockResolvedValue(undefined);
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockResolvedValue({
+    hash: 'synthetic-sa-hash',
+  });
   mockControllerEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '100' };
@@ -243,6 +299,457 @@ const prepareEvmRecipientConfirmation = (receiver: string) => {
     return undefined;
   });
 };
+
+const prepareZeroTipNativeConfirmation = (cached = false) => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  mockEip1559Compatible = true;
+  const fees = {
+    maxFeePerGas: BigNumber.from('2000000000'),
+    maxPriorityFeePerGas: BigNumber.from(0),
+  };
+  if (cached)
+    mockLocation.state.tx.cachedGasData = {
+      maxFeePerGas: fees.maxFeePerGas.toHexString(),
+      maxPriorityFeePerGas: '0x0',
+    };
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation((path: string[]) => {
+    if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+      return fees;
+    return prior(path);
+  });
+  return fees;
+};
+
+const prepareSmartAccountConfirmation = (isMax = false) => {
+  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
+  const sender = mockState.vault.accounts.HDAccount[0];
+  sender.isSmartAccount = true;
+  sender.smartAccount = { chainId: 5700, isDeployed: true };
+  mockLocation.state.tx.isMax = isMax;
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+    if (path.at(-1) === 'getSmartAccountNativeGasStatus')
+      return { gasUnitsReserve: '650000' };
+    if (path.at(-1) === 'checkAddressBlacklist')
+      return { isBlacklisted: false };
+    return prior(path, args);
+  });
+};
+
+it.each([false, true])(
+  'forwards the exact edited positive legacy price to ordinary native SA execution (Max=%s)',
+  async (isMax) => {
+    prepareSmartAccountConfirmation(isMax);
+    mockAllowLegacyFeeEditing = true;
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'choose-legacy-price' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+    );
+    const sent = (signAndSubmitSmartAccountExecutions as jest.Mock).mock
+      .calls[0][0];
+    expect(sent.feeOverrides).toEqual({ gasPrice: '123456789' });
+    expect(sent.executions).toEqual([
+      {
+        target: mockLocation.state.tx.receivingAddress,
+        data: '0x',
+        value: BigNumber.from(
+          isMax
+            ? BigInt('100000000000000000000') -
+                BigInt(650000) * BigInt(123456789) -
+                BigInt('1000000000000')
+            : BigInt('1000000000000000000')
+        ).toHexString(),
+      },
+    ]);
+    expect(sent.onBeforeSubmit).toEqual(expect.any(Function));
+  }
+);
+
+it.each([
+  TransactionType.ERC20,
+  TransactionType.ERC721,
+  TransactionType.ERC1155,
+])(
+  'forwards the same explicit legacy price through the generic SA token consumer (%s)',
+  async (transactionType) => {
+    prepareSmartAccountConfirmation();
+    mockAllowLegacyFeeEditing = true;
+    mockLocation.state.tx.transactionType = transactionType;
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      tokenId: '1',
+      decimals: 18,
+      name: 'Test token',
+      symbol: 'TEST',
+      isNft: transactionType !== TransactionType.ERC20,
+    };
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'choose-legacy-price' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+    );
+    const sent = (signAndSubmitSmartAccountExecutions as jest.Mock).mock
+      .calls[0][0];
+    expect(sent.feeOverrides).toEqual({ gasPrice: '123456789' });
+    expect(sent.executions[0]).toMatchObject({
+      target: mockLocation.state.tx.token.contractAddress,
+      value: '0x0',
+    });
+    expect(sent.executions[0].data).toMatch(/^0x[\da-f]+$/i);
+  }
+);
+
+it('binds the freshly read non-custom legacy Max price to both reserve and ordinary SA publication', async () => {
+  prepareSmartAccountConfirmation(true);
+  let priceReads = 0;
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation(
+    async (path: string[], args: any[]) => {
+      if (path.at(-1) === 'getRecommendedGasPrice')
+        return ++priceReads === 1 ? '1000000000' : '2000000000';
+      return prior(path, args);
+    }
+  );
+  render(<SendConfirm />);
+  await waitFor(() =>
+    expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+  );
+  const sent = (signAndSubmitSmartAccountExecutions as jest.Mock).mock
+    .calls[0][0];
+  expect(sent.feeOverrides).toEqual({ gasPrice: '2000000000' });
+  expect(BigNumber.from(sent.executions[0].value).toString()).toBe(
+    String(
+      BigInt('100000000000000000000') -
+        BigInt(650000) * BigInt('2000000000') -
+        BigInt('1000000000000')
+    )
+  );
+});
+
+it.each([false, true])(
+  'refuses a zero selected legacy SA price instead of fetching or sending different fees (Max=%s)',
+  async (isMax) => {
+    prepareSmartAccountConfirmation(isMax);
+    mockAllowLegacyFeeEditing = true;
+    mockEditedLegacyGasPrice = 0;
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'choose-legacy-price' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+    expect(
+      mockControllerEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'getRecommendedGasPrice'
+      )
+    ).toHaveLength(1);
+  }
+);
+
+it.each(['network', 'fee'])(
+  'refuses to prepare/sign a Max SA execution after %s changes during reserve lookup',
+  async (change) => {
+    prepareSmartAccountConfirmation(true);
+    mockAllowLegacyFeeEditing = true;
+    let finishReserve!: (value: any) => void;
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+      if (path.at(-1) === 'getSmartAccountNativeGasStatus')
+        return new Promise((resolve) => {
+          finishReserve = resolve;
+        });
+      return prior(path, args);
+    });
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(finishReserve).toBeDefined());
+    if (change === 'network')
+      mockNavigationScope = {
+        ...mockNavigationScope,
+        network: 'changed-network',
+      };
+    else
+      fireEvent.click(
+        screen.getByRole('button', { name: 'choose-legacy-price' })
+      );
+    await act(async () => finishReserve({ gasUnitsReserve: '650000' }));
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+  }
+);
+
+it('rechecks the approved native-SA fee selection immediately before publication after authenticator preparation', async () => {
+  prepareSmartAccountConfirmation();
+  mockAllowLegacyFeeEditing = true;
+  let finishPreparation!: () => void;
+  const publication = jest.fn();
+  (signAndSubmitSmartAccountExecutions as jest.Mock).mockImplementation(
+    async (options) => {
+      await new Promise<void>((resolve) => {
+        finishPreparation = resolve;
+      });
+      await options.onBeforeSubmit();
+      publication();
+      return { hash: 'synthetic-sa-hash' };
+    }
+  );
+  render(<SendConfirm />);
+  await waitFor(() =>
+    expect(screen.getAllByText(/0\.000021/).length).toBeGreaterThan(0)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() => expect(finishPreparation).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: 'choose-legacy-price' }));
+  await act(async () => finishPreparation());
+  expect(publication).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalled();
+});
+
+it('retains positive-cap zero-tip EIP1559 SA pricing on the native Max path', async () => {
+  prepareSmartAccountConfirmation(true);
+  mockEip1559Compatible = true;
+  mockAllowFeeEditing = true;
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+    if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+      return {
+        maxFeePerGas: BigNumber.from('2000000000'),
+        maxPriorityFeePerGas: BigNumber.from('1000000000'),
+      };
+    return prior(path, args);
+  });
+  render(<SendConfirm />);
+  await waitFor(() =>
+    expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'choose-zero-tip' }));
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+  );
+  expect(
+    (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[0][0]
+      .feeOverrides
+  ).toEqual({ maxFeePerGas: '2000000000', maxPriorityFeePerGas: '0' });
+});
+
+it.each([undefined, null])(
+  'refuses missing fresh Max priority %p instead of copying an old native-SA tip',
+  async (priority) => {
+    prepareSmartAccountConfirmation(true);
+    mockEip1559Compatible = true;
+    let reads = 0;
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+        return {
+          maxFeePerGas: BigNumber.from('2000000000'),
+          maxPriorityFeePerGas:
+            ++reads === 1 ? BigNumber.from('1000000000') : priority,
+        };
+      return prior(path, args);
+    });
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+    expect(signAndSubmitSmartAccountExecutions).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps a genuinely fresh zero-tip Max quote as EIP1559 SA pricing without a custom selection', async () => {
+  prepareSmartAccountConfirmation(true);
+  mockEip1559Compatible = true;
+  const prior = mockControllerEmitter.getMockImplementation()!;
+  mockControllerEmitter.mockImplementation((path: string[], args: any[]) => {
+    if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+      return {
+        maxFeePerGas: BigNumber.from('2000000000'),
+        maxPriorityFeePerGas: BigNumber.from(0),
+      };
+    return prior(path, args);
+  });
+  render(<SendConfirm />);
+  await waitFor(() =>
+    expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() =>
+    expect(signAndSubmitSmartAccountExecutions).toHaveBeenCalledTimes(1)
+  );
+  expect(
+    (signAndSubmitSmartAccountExecutions as jest.Mock).mock.calls[0][0]
+      .feeOverrides
+  ).toEqual({ maxFeePerGas: '2000000000', maxPriorityFeePerGas: '0' });
+});
+
+it.each([false, true])(
+  'preserves a valid native-send zero tip from fresh/cached fee data (%s)',
+  async (cached) => {
+    const fees = prepareZeroTipNativeConfirmation(cached);
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(
+        mockControllerEmitter.mock.calls.some(
+          ([path]) => path.at(-1) === 'getTxGasLimit'
+        )
+      ).toBe(true)
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.confirm' })
+          .hasAttribute('disabled')
+      ).toBe(false)
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() =>
+      expect(mockControllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'sendAndSaveEthTransaction'],
+        [
+          expect.objectContaining({
+            to: mockLocation.state.tx.receivingAddress,
+            maxFeePerGas: expect.anything(),
+            maxPriorityFeePerGas: expect.anything(),
+          }),
+        ],
+        expect.any(Number)
+      )
+    );
+    const [, [sent, legacy]] = mockControllerEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+    )!;
+    expect(legacy).not.toBe(true);
+    expect(BigNumber.from(sent.maxFeePerGas).toString()).toBe(
+      fees.maxFeePerGas.toString()
+    );
+    expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
+    expect(sent).not.toHaveProperty('gasPrice');
+    if (cached)
+      expect(
+        mockControllerEmitter.mock.calls.some(
+          ([path]) =>
+            path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas'
+        )
+      ).toBe(false);
+  }
+);
+
+it.each([
+  TransactionType.NATIVE_ETH,
+  TransactionType.ERC20,
+  TransactionType.ERC721,
+  TransactionType.ERC1155,
+])(
+  'preserves the user-selected zero tip at actual native/token submission (%s)',
+  async (transactionType) => {
+    const fees = prepareZeroTipNativeConfirmation();
+    fees.maxPriorityFeePerGas = BigNumber.from('1000000000');
+    mockAllowFeeEditing = true;
+    mockLocation.state.tx.transactionType = transactionType;
+    if (transactionType !== TransactionType.NATIVE_ETH) {
+      mockLocation.state.tx.token = {
+        contractAddress: '0x5555555555555555555555555555555555555555',
+        tokenId: '1',
+        decimals: 18,
+        name: 'Test token',
+        symbol: 'TEST',
+        isNft: transactionType !== TransactionType.ERC20,
+      };
+    }
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'choose-zero-tip' }));
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    const method =
+      transactionType === TransactionType.NATIVE_ETH
+        ? 'sendAndSaveEthTransaction'
+        : 'sendAndSaveTokenTransaction';
+    await waitFor(() =>
+      expect(
+        mockControllerEmitter.mock.calls.some(
+          ([path]) => path.at(-1) === method
+        )
+      ).toBe(true)
+    );
+    const [, args] = mockControllerEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === method
+    )!;
+    const sent =
+      transactionType === TransactionType.NATIVE_ETH ? args[0] : args[1];
+    expect(BigNumber.from(sent.maxFeePerGas).toString()).toBe('2000000000');
+    expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
+    if (transactionType === TransactionType.NATIVE_ETH)
+      expect(args[1]).not.toBe(true);
+    else expect(sent.isLegacy).toBe(false);
+  }
+);
+
+it.each([
+  { maxFeePerGas: undefined, maxPriorityFeePerGas: '0' },
+  { maxFeePerGas: '2000000000', maxPriorityFeePerGas: undefined },
+  { maxFeePerGas: '0', maxPriorityFeePerGas: '0' },
+  { maxFeePerGas: '2000000000', maxPriorityFeePerGas: '2000000001' },
+  { maxFeePerGas: '2000000000', maxPriorityFeePerGas: null },
+])(
+  'does not fabricate a native-send zero-tip quote from missing or invalid fees %p',
+  async (fees) => {
+    prepareZeroTipNativeConfirmation();
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation((path: string[]) => {
+      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+        return fees;
+      return prior(path);
+    });
+    render(<SendConfirm />);
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.confirm' })
+          .hasAttribute('disabled')
+      ).toBe(true)
+    );
+    await waitFor(() =>
+      expect(screen.getAllByText('send.unableToLoad').length).toBeGreaterThan(0)
+    );
+    expect(
+      mockControllerEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+  }
+);
 
 it('blocks a stale wrong-network smart recipient in confirmation before fee preparation or submission', async () => {
   prepareEvmRecipientConfirmation(wrongNetworkSmartAddress);

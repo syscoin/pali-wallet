@@ -81,11 +81,8 @@ describe('infrastructure transaction broadcast boundary', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  it.each([
-    { maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' },
-    { maxFeePerGas: '0x10', maxPriorityFeePerGas: '0x0' },
-  ])(
-    'blocks zero EIP-1559 fees before the SDK can silently switch to legacy: %p',
+  it.each([{ maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' }])(
+    'blocks zero EIP-1559 maximum fees before SDK submission: %p',
     async (fees) => {
       await expect(
         wallet.sendAndSaveEthTransaction({ type: '0x2', ...fees }, false)
@@ -100,6 +97,7 @@ describe('infrastructure transaction broadcast boundary', () => {
   it.each([
     [{ type: '0x0', gasPrice: '0x0' }, true],
     [{ type: '0x2', maxFeePerGas: '0x10', maxPriorityFeePerGas: '0x1' }, false],
+    [{ type: '0x2', maxFeePerGas: '0x10', maxPriorityFeePerGas: '0x0' }, false],
   ])(
     'passes supported fees unchanged to the SDK: %p',
     async (params, legacy) => {
@@ -118,15 +116,23 @@ describe('infrastructure transaction broadcast boundary', () => {
           maxPriorityFeePerGas: BigNumber.from(priority),
         })
       );
-      if (priority === 0) {
-        await expect(
-          wallet.sendAndSaveEthTransaction(params, false)
-        ).rejects.toMatchObject({ code: 4200 });
-        expect(send).not.toHaveBeenCalled();
-      } else {
-        await wallet.sendAndSaveEthTransaction(params, false);
-        expect(send).toHaveBeenCalledWith(params, false);
-      }
+      await wallet.sendAndSaveEthTransaction(params, false);
+      expect(send).toHaveBeenCalledWith(params, false);
+    }
+  );
+  it.each([null, '-1', '', { hex: 'broken' }, '0x11'])(
+    'rejects malformed or above-cap priority %p before blacklist/keyring work',
+    async (priority) => {
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          { type: '0x2', maxFeePerGas: '0x10', maxPriorityFeePerGas: priority },
+          false
+        )
+      ).rejects.toThrow();
+      expect(send).not.toHaveBeenCalled();
+      expect(
+        getBlacklistTargetsForEvmCallWithContractType
+      ).not.toHaveBeenCalled();
     }
   );
 

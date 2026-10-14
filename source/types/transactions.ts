@@ -47,6 +47,7 @@ export interface ITxState {
   data: string;
   from: string;
   gasLimit: BigNumber | string | number | undefined;
+  gasPrice?: BigNumber | string | number;
   maxFeePerGas: BigNumber | string | number | undefined;
   maxPriorityFeePerGas: BigNumber | string | number | undefined;
   nonce?: number;
@@ -61,6 +62,9 @@ export interface IFeeState {
   gasPrice?: number;
   maxFeePerGas: number;
   maxPriorityFeePerGas: number;
+  // Internal successful raw estimate for this exact transaction/context.
+  // This is not a wallet/RPC API field or a miner-fee admission guarantee.
+  minimumGasLimit?: number;
 }
 
 export interface ITransactionParams {

@@ -50,6 +50,7 @@ jest.mock('utils/evmCallBlacklist', () => ({
 import { getController } from '..';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
+import { AsyncMutex } from 'utils/asyncMutex';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -59,6 +60,44 @@ import {
 } from 'utils/navigationState';
 
 import MainController from './MainController';
+import { PaliEvents } from './message-handler/types';
+
+it.each([
+  ['removeWindowEthProperty', PaliEvents.removeProperty],
+  ['addWindowEthProperty', PaliEvents.addProperty],
+])(
+  'makes the normal %s controller action await actual property delivery',
+  async (method, event) => {
+    let complete: () => void;
+    const pending = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const handleStateChange = jest.fn().mockReturnValue(pending);
+    (getController as jest.Mock).mockReturnValue({
+      dapp: { handleStateChange },
+    });
+    const wallet: any = Object.create(MainController.prototype);
+    wallet.ethPropertyMutex = new AsyncMutex();
+    wallet.setHasEthProperty = jest.fn().mockResolvedValue(undefined);
+
+    const changed = wallet[method]();
+    let settled = false;
+    void changed.then(() => {
+      settled = true;
+    });
+    await new Promise(setImmediate);
+    expect(wallet.setHasEthProperty).toHaveBeenCalledWith(
+      event === PaliEvents.addProperty
+    );
+    expect(handleStateChange).toHaveBeenCalledWith(event, {
+      method: event,
+      params: { type: event },
+    });
+    expect(settled).toBe(false);
+    complete();
+    await changed;
+  }
+);
 
 it('clears popup browsing and unsigned drafts when the background locks with no UI document', () => {
   const wallet: any = Object.create(MainController.prototype);

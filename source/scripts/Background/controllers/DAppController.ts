@@ -20,6 +20,30 @@ interface IDappsSession {
   };
 }
 
+const dispatchPropertyChange = async (
+  id: PaliEvents.addProperty | PaliEvents.removeProperty
+) => {
+  if (!chrome.tabs || !chrome.runtime?.id) return;
+  const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+    chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }, (result) => {
+      resolve(chrome.runtime.lastError ? [] : result || []);
+    });
+  });
+  // Provider availability is public and independent of account permission.
+  // Use the existing content-script receiver, not the account event channel.
+  await Promise.allSettled(
+    tabs
+      .filter((tab) => tab.id !== undefined && getDappOrigin(tab.url || ''))
+      .map((tab) =>
+        chrome.tabs.sendMessage(
+          tab.id,
+          { id, data: { method: id, params: { type: id } } },
+          { frameId: 0 }
+        )
+      )
+  );
+};
+
 /**
  * Controls the dapp store
  *
@@ -419,6 +443,11 @@ const DAppController = (): IDAppController => {
             { id, data }
           );
           resolve();
+          return;
+        }
+
+        if (id === PaliEvents.addProperty || id === PaliEvents.removeProperty) {
+          dispatchPropertyChange(id).then(resolve, reject);
           return;
         }
 

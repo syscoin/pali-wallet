@@ -133,7 +133,7 @@ describe('dapp transaction admission', () => {
     expect(input.input).toBe('0XABCD');
     expect(input.accessList[0].address).toBe(`0X${'22'.repeat(20)}`);
   });
-  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
+  it.each(['maxFeePerGas'])(
     'refuses unsupported zero %s rather than silently changing transaction type/fees',
     (field) => {
       for (const zero of [
@@ -152,6 +152,53 @@ describe('dapp transaction admission', () => {
       ).toThrow(expect.objectContaining({ code: 4200 }));
     }
   );
+  it.each([
+    0,
+    '0',
+    '0x0',
+    BigNumber.from(0),
+    JSON.parse(JSON.stringify(BigNumber.from(0))),
+  ])(
+    'allows a valid zero-tip popup/background value %p with a positive maximum',
+    (priority) => {
+      expect(() =>
+        assertSupportedEvmFees({
+          maxFeePerGas: '0x10',
+          maxPriorityFeePerGas: priority,
+        })
+      ).not.toThrow();
+    }
+  );
+  it('preserves the explicitly requested type-2 zero tip at dapp admission', () => {
+    expect(
+      normalizeDappTransaction({
+        ...transaction,
+        type: '0x2',
+        maxFeePerGas: '0x10',
+        maxPriorityFeePerGas: '0x0',
+      })
+    ).toMatchObject({
+      type: '0x2',
+      maxFeePerGas: '0x10',
+      maxPriorityFeePerGas: '0x0',
+    });
+  });
+  it.each([null, '', '-1', 'bad', {}, { _isBigNumber: true }, { hex: '' }])(
+    'rejects malformed priority %p instead of interpreting it as a zero tip',
+    (priority) => {
+      expect(() =>
+        assertSupportedEvmFees({
+          maxFeePerGas: '0x10',
+          maxPriorityFeePerGas: priority,
+        })
+      ).toThrow();
+    }
+  );
+  it('rejects a priority above the cap before submission', () => {
+    expect(() =>
+      assertSupportedEvmFees({ maxFeePerGas: '1', maxPriorityFeePerGas: '2' })
+    ).toThrow();
+  });
   it('accepts exact positive BigNumber fees after the popup-to-background JSON round trip', () => {
     const fees = JSON.parse(
       JSON.stringify({

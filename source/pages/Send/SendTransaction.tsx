@@ -200,6 +200,7 @@ export const SendTransaction = () => {
     useState<FeeSafetyAdjustment>({});
   const [acceptedDappFeeRequest, setAcceptedDappFeeRequest] =
     useState<boolean>(false);
+  const [feeRecommendationOnly, setFeeRecommendationOnly] = useState(false);
 
   // Approval-specific state
   const [approvedTokenInfos, setApprovedTokenInfos] =
@@ -319,6 +320,25 @@ export const SendTransaction = () => {
       });
     }
 
+    setAcceptedDappFeeRequest(true);
+  };
+
+  const handleUseNetworkFeeSuggestion = () => {
+    if (!fee) return;
+    setCustomFee({
+      isCustom: true,
+      gasLimit: feeSafetyAdjustment.gasLimit?.recommended ?? fee.gasLimit,
+      gasPrice: isLegacyTransaction
+        ? feeSafetyAdjustment.gasPrice?.recommended ?? fee.gasPrice ?? 0
+        : 0,
+      maxFeePerGas: isLegacyTransaction
+        ? 0
+        : feeSafetyAdjustment.maxFeePerGas?.recommended ?? fee.maxFeePerGas,
+      maxPriorityFeePerGas: isLegacyTransaction
+        ? 0
+        : feeSafetyAdjustment.maxPriorityFeePerGas?.recommended ??
+          fee.maxPriorityFeePerGas,
+    });
     setAcceptedDappFeeRequest(true);
   };
 
@@ -537,7 +557,7 @@ export const SendTransaction = () => {
       alert.error(t('send.invalidApprovalDetails'));
       return;
     }
-    if (activeAccount.isSmartAccount && isLegacyTransaction) {
+    if (activeAccount.isSmartAccount && !activeAccount.smartAccount) {
       alert.error(t('send.cantCompleteTxs'));
       return;
     }
@@ -556,7 +576,9 @@ export const SendTransaction = () => {
     if (
       !isLegacyTransaction &&
       customFee.isCustom &&
-      (customFee.maxFeePerGas === 0 || customFee.maxPriorityFeePerGas === 0)
+      (customFee.maxFeePerGas <= 0 ||
+        customFee.maxPriorityFeePerGas < 0 ||
+        customFee.maxPriorityFeePerGas > customFee.maxFeePerGas)
     ) {
       alert.error(t('send.invalidFeeRate'));
       return;
@@ -641,8 +663,23 @@ export const SendTransaction = () => {
         const getSmartAccountFeeOverrides = ():
           | SmartAccountFeeOverrides
           | undefined => {
-          if (isLegacyTransaction || !fee) {
-            return undefined;
+          if (!fee) return undefined;
+          if (isLegacyTransaction) {
+            if (!customFee.isCustom && txToSend.gasPrice !== undefined)
+              return { gasPrice: BigNumber.from(txToSend.gasPrice).toString() };
+            const gasPrice =
+              customFee.isCustom && customFee.gasPrice >= 0
+                ? customFee.gasPrice
+                : fee.gasPrice;
+            if (
+              gasPrice === undefined ||
+              !Number.isFinite(gasPrice) ||
+              gasPrice < 0
+            )
+              throw new Error('Invalid smart account legacy fee override');
+            return {
+              gasPrice: parseUnits(safeToFixed(gasPrice), 9).toString(),
+            };
           }
 
           const maxPriorityFeePerGas =
@@ -665,11 +702,14 @@ export const SendTransaction = () => {
           }
 
           return {
-            maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
-            maxPriorityFeePerGas: parseUnits(
-              safeToFixed(maxPriorityFeePerGas),
-              9
-            ).toString(),
+            maxFeePerGas:
+              !customFee.isCustom && txToSend.maxFeePerGas !== undefined
+                ? BigNumber.from(txToSend.maxFeePerGas).toString()
+                : parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
+            maxPriorityFeePerGas:
+              !customFee.isCustom && txToSend.maxPriorityFeePerGas !== undefined
+                ? BigNumber.from(txToSend.maxPriorityFeePerGas).toString()
+                : parseUnits(safeToFixed(maxPriorityFeePerGas), 9).toString(),
           };
         };
 
@@ -730,6 +770,8 @@ export const SendTransaction = () => {
             customFee.isCustom && customFee.gasPrice >= 0
           )
             ? parseUnits(safeToFixed(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
+            : txToSend.gasPrice !== undefined
+            ? BigNumber.from(txToSend.gasPrice)
             : fee.gasPrice && fee.gasPrice > 0
             ? parseUnits(safeToFixed(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
             : await controllerEmitter([
@@ -990,6 +1032,7 @@ export const SendTransaction = () => {
           nonce,
           isInvalidTxData,
           gasLimitError,
+          recommendationOnly,
         } = await fetchGasAndDecodeFunction(
           txForEstimation,
           activeNetwork,
@@ -1003,6 +1046,7 @@ export const SendTransaction = () => {
           setFee(feeDetails);
           setFeeSafetyAdjustment(feeSafety || {});
           setAcceptedDappFeeRequest(false);
+          setFeeRecommendationOnly(Boolean(recommendationOnly));
           setTx(formTx);
           setCustomNonce(nonce);
           setInitialLoading(false);
@@ -1486,10 +1530,18 @@ export const SendTransaction = () => {
                 {hasDappFeeSafetyAdjustment && !acceptedDappFeeRequest && (
                   <div className="rounded-xl border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
                     <p className="text-warning-info text-xs font-semibold mb-1">
-                      {t('send.dappFeeRaisedTitle')}
+                      {t(
+                        feeRecommendationOnly
+                          ? 'send.feeBelowEstimateTitle'
+                          : 'send.dappFeeRaisedTitle'
+                      )}
                     </p>
                     <p className="text-warning-info text-xs leading-5">
-                      {t('send.dappFeeRaisedDescription')}
+                      {t(
+                        feeRecommendationOnly
+                          ? 'send.customFeeBelowEstimateWarning'
+                          : 'send.dappFeeRaisedDescription'
+                      )}
                     </p>
                     <button
                       type="button"
@@ -1498,6 +1550,15 @@ export const SendTransaction = () => {
                     >
                       {t('send.useDappFeeRequest')}
                     </button>
+                    {feeRecommendationOnly && (
+                      <button
+                        type="button"
+                        className="mt-2 ml-3 text-xs text-brand-royalblue hover:opacity-80"
+                        onClick={handleUseNetworkFeeSuggestion}
+                      >
+                        {t('send.useNetworkFeeSuggestion')}
+                      </button>
+                    )}
                   </div>
                 )}
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -15,7 +15,8 @@ export const useWalletProviderDefault = () => {
     (state: RootState) => state.vaultGlobal
   );
   const [isHovered, setIsHovered] = useState(false);
-  const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
+  const isEnabled = hasEthProperty;
+  const changing = useRef(false);
   const [isNotVisible, setIsNotVisible] = useState(!!isEnabled);
 
   const containerStyleAnimation = getContainerStyleAnimation(
@@ -26,40 +27,45 @@ export const useWalletProviderDefault = () => {
   const iconStyleAnimation = getIconStyleAnimation(isHovered);
 
   const turnPaliAsDefault = async () => {
-    setIsEnabled(!isEnabled);
-    if (isEnabled) {
-      controllerEmitter(['wallet', 'removeWindowEthProperty']);
-      controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+    if (changing.current) return;
+    changing.current = true;
+    try {
+      if (isEnabled) {
+        await controllerEmitter(['wallet', 'removeWindowEthProperty']);
 
-      try {
-        const response = await controllerEmitter(['dapp', 'getAll']);
-        const dapps = Object.values(response);
+        try {
+          const response = await controllerEmitter(['dapp', 'getAll']);
+          const dapps = Object.values(response);
 
-        if (dapps.length) {
-          await Promise.all(
-            dapps.map(async (dapp: any) => {
-              const isConnected = await controllerEmitter(
-                ['dapp', 'isConnected'],
-                [dapp.host]
-              );
-              if (isConnected) {
-                await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-              }
-            })
-          );
+          if (dapps.length) {
+            await Promise.all(
+              dapps.map(async (dapp: any) => {
+                const isConnected = await controllerEmitter(
+                  ['dapp', 'isConnected'],
+                  [dapp.host]
+                );
+                if (isConnected) {
+                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
+                }
+              })
+            );
 
-          // Now save once after all disconnects are complete
-          await controllerEmitter(
-            ['wallet', 'saveCurrentState'],
-            ['wallet-provider-disconnects']
-          );
+            // Now save once after all disconnects are complete
+            await controllerEmitter(
+              ['wallet', 'saveCurrentState'],
+              ['wallet-provider-disconnects']
+            );
+          }
+        } catch (error) {
+          console.error('Error disconnecting dapps:', error);
         }
-      } catch (error) {
-        console.error('Error disconnecting dapps:', error);
+      } else {
+        await controllerEmitter(['wallet', 'addWindowEthProperty']);
       }
-    } else {
-      controllerEmitter(['wallet', 'addWindowEthProperty']);
-      controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+    } catch (error) {
+      console.error('Error changing Ethereum provider:', error);
+    } finally {
+      changing.current = false;
     }
   };
 
@@ -107,7 +113,6 @@ export const useWalletProviderDefault = () => {
     isHovered,
     setIsHovered,
     isEnabled,
-    setIsEnabled,
     isNotVisible,
     setIsNotVisible,
   };

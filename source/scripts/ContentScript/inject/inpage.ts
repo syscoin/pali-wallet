@@ -26,6 +26,9 @@ if ((window as any).__paliWalletInjected) {
   // Get the existing provider instances
   ethereumProvider = (window as any).paliProvider?.ethereumProvider;
   proxiedProvider = (window as any).paliProvider?.proxiedProvider;
+  // Re-enabling Ethereum can follow the normal removal of our fallback.
+  // Reuse its identity without replacing another wallet's current provider.
+  if (proxiedProvider && !window.ethereum) window.ethereum = proxiedProvider;
 } else {
   (window as any).__paliWalletInjected = true;
   console.log('[Pali] Creating new provider instance');
@@ -68,13 +71,9 @@ if ((window as any).__paliWalletInjected) {
     // eslint-disable-next-line camelcase
     (window as any)._metamask_ethereum = existingEthereum;
 
-    // For bridges that check wallet.ethereum specifically,
-    // we still set window.ethereum but preserve MetaMask access
-    window.ethereum = proxiedProvider;
-
     // Also preserve MetaMask under its own namespace
     (window as any).metamask = existingEthereum;
-  } else {
+  } else if (!existingEthereum) {
     console.log('[Pali] No MetaMask detected, setting as primary provider');
     window.ethereum = proxiedProvider;
   }

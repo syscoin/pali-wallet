@@ -30,7 +30,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     fee,
     setHaveError,
     isSendLegacyTransaction,
-    defaultGasLimit = 42000, // Default fallback
+    defaultGasLimit = 0,
     estimatedFeeFloor,
   } = props;
   // Initialize priority based on whether we have custom fees
@@ -68,8 +68,22 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const maxFeePerGas = fee?.maxFeePerGas ?? 0;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas ?? 0;
   const gasPrice = fee?.gasPrice ?? 0;
-  // ALWAYS have a gas limit - use custom, then fee, then default
-  const gasLimit = customFee.gasLimit || fee?.gasLimit || defaultGasLimit;
+  const gasLimit = customFee.isCustom
+    ? customFee.gasLimit
+    : fee?.gasLimit ?? defaultGasLimit;
+  // Prefer the successful raw estimate for this transaction. Other callers
+  // retain their known quote conservatively; it is not claimed to be raw gas.
+  const minimumGasLimit =
+    fee?.minimumGasLimit ??
+    estimatedFeeFloor?.minimumGasLimit ??
+    fee?.gasLimit ??
+    defaultGasLimit;
+  const isValidGasLimit = (value: number | string) =>
+    Number.isSafeInteger(minimumGasLimit) &&
+    minimumGasLimit > 0 &&
+    (typeof value === 'number' || /^\d+$/.test(value)) &&
+    Number.isSafeInteger(Number(value)) &&
+    Number(value) >= minimumGasLimit;
   const watchedGasLimit = Form.useWatch('gasLimit', form);
   const watchedGasPrice = Form.useWatch('gasPrice', form);
   const watchedMaxFeePerGas = Form.useWatch('maxFeePerGas', form);
@@ -161,7 +175,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
   // Validation functions
   const validateGasLimit = (value: number) => {
-    const isValid = value >= 42000;
+    const isValid = isValidGasLimit(value);
     setGasLimitValid(isValid);
     return isValid;
   };
@@ -218,9 +232,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   React.useEffect(() => {
     if (!showModal) return;
 
-    // Always ensure we have valid gas limit (minimum 42000)
-    const feeGasLimit = fee?.gasLimit || defaultGasLimit;
-    const validGasLimit = Math.max(customFee.gasLimit || feeGasLimit, 42000);
+    // Preserve the quoted/edited gas units; price presets do not change gas.
+    const feeGasLimit = fee?.gasLimit ?? defaultGasLimit;
+    const validGasLimit =
+      form.getFieldValue('gasLimit') ??
+      (customFee.isCustom ? customFee.gasLimit : feeGasLimit);
 
     // If we have custom values, use them
     if (customFee.isCustom) {
@@ -318,6 +334,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     isSendLegacyTransaction,
     maxFeePerGas,
     maxPriorityFeePerGas,
+    minimumGasLimit,
     priority,
   ]);
 
@@ -326,8 +343,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     if (!showModal || customFee.isCustom) return;
 
     const multiplier = priority === 0 ? 0.8 : priority === 2 ? 1.2 : 1;
-    const feeGasLimit = fee?.gasLimit || defaultGasLimit;
-    const validGasLimit = Math.max(customFee.gasLimit || feeGasLimit, 42000);
+    const feeGasLimit = fee?.gasLimit ?? defaultGasLimit;
+    const validGasLimit = form.getFieldValue('gasLimit') ?? feeGasLimit;
 
     if (isSendLegacyTransaction) {
       const validGasPrice = gasPrice ?? 0;
@@ -391,15 +408,14 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      // Ensure gas limit is always set with a valid value
-      const finalGasLimit = values.gasLimit || gasLimit || defaultGasLimit;
+      const finalGasLimit = Number(values.gasLimit);
 
       // Update custom fee with final values based on transaction type
       if (isSendLegacyTransaction) {
         setCustomFee({
           isCustom: true,
           gasLimit: finalGasLimit,
-          gasPrice: values.gasPrice ?? 0,
+          gasPrice: Number(values.gasPrice),
           // Clear EIP-1559 fields for legacy transactions
           maxFeePerGas: 0,
           maxPriorityFeePerGas: 0,
@@ -408,8 +424,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
         setCustomFee({
           isCustom: true,
           gasLimit: finalGasLimit,
-          maxFeePerGas: values.maxFeePerGas ?? 0,
-          maxPriorityFeePerGas: values.maxPriorityFeePerGas ?? 0,
+          maxFeePerGas: Number(values.maxFeePerGas),
+          maxPriorityFeePerGas: Number(values.maxPriorityFeePerGas),
           // Clear gasPrice for EIP-1559 transactions
           gasPrice: 0,
         });
@@ -428,10 +444,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
     // Don't reset validation states - we'll update them after setting new values
 
-    // Always ensure gas limit is set (minimum 42000)
+    // Changing a price preset must not silently replace edited gas units.
     const currentGasLimit =
-      form.getFieldValue('gasLimit') || gasLimit || defaultGasLimit;
-    const validGasLimit = Math.max(currentGasLimit, 42000);
+      form.getFieldValue('gasLimit') ?? gasLimit ?? defaultGasLimit;
+    const validGasLimit = Number(currentGasLimit);
 
     if (isSendLegacyTransaction) {
       const newGasPrice = Number(
@@ -489,19 +505,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   };
 
   const handleFieldChange = (field: string, value: string) => {
-    let validNumValue: number | undefined;
-
     const numValue = value === '' ? 0 : Number(value);
-    validNumValue = isNaN(numValue) ? 0 : numValue;
-
-    // Special handling for gas limit to ensure it's never below minimum
-    if (field === 'gasLimit') {
-      if (validNumValue === 0) {
-        validNumValue = defaultGasLimit;
-      }
-      // Don't enforce minimum while typing, but validate it
-      // This allows users to type values like "4" before typing "42000"
-    }
+    const validNumValue = isNaN(numValue) ? 0 : numValue;
 
     form.setFieldValue(field, validNumValue);
 
@@ -597,9 +602,13 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   rules={[
                     {
                       validator: (_, value) => {
-                        if (value < 42000) {
+                        if (!isValidGasLimit(value)) {
                           return Promise.reject(
-                            new Error(t('send.gasLimitTooLow'))
+                            new Error(
+                              t('send.gasLimitTooLow', {
+                                minimum: minimumGasLimit,
+                              })
+                            )
                           );
                         }
                         return Promise.resolve();
@@ -663,7 +672,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                           placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                           className="w-full"
                           value={
-                            form.getFieldValue('maxPriorityFeePerGas')
+                            form.getFieldValue('maxPriorityFeePerGas') !==
+                            undefined
                               ? removeScientificNotation(
                                   form.getFieldValue('maxPriorityFeePerGas')
                                 )

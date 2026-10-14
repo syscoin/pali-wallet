@@ -225,12 +225,14 @@ const backgroundMessageListener = (message, _sender, sendResponse) => {
   if (data?.params?.type) {
     switch (data.params.type) {
       case 'pali_removeProperty':
+        if (window !== window.top || !shouldInjectProvider()) break;
         injectScriptFile(
           'js/handleWindowProperties.bundle.js',
           'removeProperty'
         );
         break;
       case 'pali_addProperty':
+        if (window !== window.top || !shouldInjectProvider()) break;
         injectScriptFile('js/inpage.bundle.js', 'inpage');
         break;
     }
