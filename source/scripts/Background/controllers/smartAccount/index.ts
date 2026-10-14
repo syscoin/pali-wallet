@@ -1964,6 +1964,9 @@ class SmartAccountController {
       params.executions || []
     );
 
+    // The call may first fund a counterfactual account, then submit handleOps.
+    // Only failures before either sender is entered are definitely read-only.
+    let financialSubmissionAttempted = false;
     try {
       const requiredPrefund =
         getSmartAccountUserOpRequiredPrefund(signedUserOperation);
@@ -1999,7 +2002,10 @@ class SmartAccountController {
           entryPointAddress,
           gasPayer,
           active.metadata.chainId,
-          assertContext
+          assertContext,
+          () => {
+            financialSubmissionAttempted = true;
+          }
         );
         assertContext();
       }
@@ -2026,6 +2032,7 @@ class SmartAccountController {
         assertContext();
       }
       assertContext();
+      financialSubmissionAttempted = true;
       const response = await this.deps.sendAndSaveEthTransaction(
         {
           chainId: active.metadata.chainId,
@@ -2094,14 +2101,17 @@ class SmartAccountController {
         : hasSmartAccountSignatureFailure(error)
         ? SMART_ACCOUNT_SIGNATURE_ERROR
         : undefined;
+      const transactionNotBroadcast = financialSubmissionAttempted
+        ? error?.transactionNotBroadcast
+        : true;
       if (normalizedMessage) {
         const normalizedError = new Error(normalizedMessage);
         // Keep trusted submission facts when replacing provider text with a
         // UI sentinel. Losing false could permit an unsafe retry; losing true
         // would strand a definite rejection as an unknown submission.
-        if (typeof error?.transactionNotBroadcast === 'boolean')
+        if (typeof transactionNotBroadcast === 'boolean')
           Object.assign(normalizedError, {
-            transactionNotBroadcast: error.transactionNotBroadcast,
+            transactionNotBroadcast,
           });
         if (
           typeof error?.transactionHash === 'string' &&
@@ -2111,6 +2121,18 @@ class SmartAccountController {
             transactionHash: error.transactionHash,
           });
         throw normalizedError;
+      }
+      if (!financialSubmissionAttempted) {
+        // Do not mutate a frozen provider error or forward arbitrary fields.
+        // After a prefund/send attempt, retain its existing outcome instead.
+        const preflightError = new Error(
+          typeof error?.message === 'string'
+            ? error.message
+            : 'Smart account preflight failed'
+        );
+        if (typeof error?.code === 'number')
+          Object.assign(preflightError, { code: error.code });
+        throw Object.assign(preflightError, { transactionNotBroadcast: true });
       }
       throw error;
     }
@@ -2208,7 +2230,8 @@ class SmartAccountController {
     entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
-    assertCurrentContext?: () => void
+    assertCurrentContext?: () => void,
+    onSubmissionAttempt?: () => void
   ): Promise<void> {
     assertCurrentContext?.();
     const provider = this.ethereumTransaction?.web3Provider;
@@ -2231,6 +2254,7 @@ class SmartAccountController {
     if (shortfall.lte(0)) {
       return;
     }
+    onSubmissionAttempt?.();
     const response = await this.deps.sendAndSaveEthTransaction(
       {
         chainId,
