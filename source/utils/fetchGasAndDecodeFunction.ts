@@ -2,7 +2,6 @@ import { controllerEmitter } from 'scripts/Background/controllers/controllerEmit
 import store from 'state/store';
 import { INetwork, KeyringAccountType } from 'types/network';
 import { ITransactionParams } from 'types/transactions';
-import { Block } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -15,6 +14,27 @@ const maxBigNumber = (left: BigNumber, right: BigNumber) =>
   left.gte(right) ? left : right;
 
 const toGweiNumber = (value: BigNumber) => Number(value.toString()) / 1e9;
+const rpcHex = (value: BigNumber) =>
+  `0x${BigInt(value.toString()).toString(16)}`;
+
+// RPC quantities and approved transaction fields must not turn into a default
+// fee or gas limit when missing, malformed, or inexact.
+const quantity = (value: unknown, label: string): BigNumber => {
+  if (
+    !BigNumber.isBigNumber(value) &&
+    !(
+      (typeof value === 'number' && Number.isSafeInteger(value)) ||
+      (typeof value === 'string' &&
+        /^(?:0x[\da-f]+|\d+)$/i.test(value) &&
+        value.length <= 80)
+    )
+  )
+    throw new Error(`Invalid ${label}`);
+  const parsed = BigNumber.from(value);
+  if (parsed.lt(0) || parsed.gt(BigNumber.from(2).pow(256).sub(1)))
+    throw new Error(`Invalid ${label}`);
+  return parsed;
+};
 
 // Controller messages flatten SDK errors, so retain the integrity sentinel.
 // A reply for another RPC request must never become a fallback fee quote.
@@ -90,19 +110,30 @@ export const fetchGasAndDecodeFunction = async (
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
   };
   assertCurrentContext();
-  const blockData = await controllerEmitter(['wallet', 'getCurrentBlock'], []);
+  let blockData: any;
+  try {
+    blockData = await controllerEmitter(
+      ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+      ['eth_getBlockByNumber', ['pending', false]]
+    );
+  } catch (error) {
+    assertCurrentContext();
+    throw error;
+  }
   assertCurrentContext();
-  const currentBlock = blockData as Block;
-
-  const gasLimitFromCurrentBlock = Math.floor(
-    Number(currentBlock.gasLimit) * 0.95
-  ); //GasLimit from current block with 5% discount, whole limit from block is too much
-
-  let gasLimitResult = BigNumber.from(gasLimitFromCurrentBlock);
+  if (!blockData || typeof blockData !== 'object')
+    throw new Error('Invalid pending block fee data');
+  const blockGasLimit = quantity(blockData.gasLimit, 'pending block gas limit');
+  if (blockGasLimit.isZero())
+    throw new Error('Invalid pending block gas limit');
+  const baseFee =
+    blockData.baseFeePerGas === undefined || blockData.baseFeePerGas === null
+      ? null
+      : quantity(blockData.baseFeePerGas, 'pending block base fee');
 
   let isInvalidTxData = false;
 
-  let gasLimitError = false;
+  const gasLimitError = false;
 
   // Get fee data - backend already handles EIP-1559 detection
   let feeData: any;
@@ -114,63 +145,62 @@ export const fetchGasAndDecodeFunction = async (
     ]);
   } catch (error) {
     assertCurrentContext();
-    if (isRpcIntegrityError(error)) throw error;
-    console.error('Failed to fetch fee data:', error);
-    // Use default fallback values if fee fetch fails
-    feeData = {
-      maxFeePerGas: BigNumber.from('0x77359400'), // 2 Gwei fallback
-      maxPriorityFeePerGas: BigNumber.from('0x3b9aca00'), // 1 Gwei fallback
-    };
+    throw error;
   }
   assertCurrentContext();
 
-  const networkMaxFeePerGas = safeBigNumber(
-    feeData?.maxFeePerGas || feeData?.gasPrice,
-    '0x77359400',
+  const networkGasPrice = quantity(feeData?.gasPrice, 'network gas price');
+  const networkMaxFeePerGas = quantity(
+    feeData?.maxFeePerGas,
     'network maxFeePerGas'
-  ); // 2 Gwei fallback
-  const networkMaxPriorityFeePerGas = safeBigNumber(
-    feeData?.maxPriorityFeePerGas || feeData?.gasPrice,
-    '0x3b9aca00',
-    'network maxPriorityFeePerGas'
-  ); // 1 Gwei fallback
-  const networkGasPrice = safeBigNumber(
-    feeData?.gasPrice || feeData?.maxFeePerGas,
-    '0x77359400',
-    'network gasPrice'
   );
+  const networkMaxPriorityFeePerGas = quantity(
+    feeData?.maxPriorityFeePerGas,
+    'network maxPriorityFeePerGas'
+  );
+  if (
+    networkMaxPriorityFeePerGas.gt(networkMaxFeePerGas) ||
+    (baseFee && networkMaxFeePerGas.lt(baseFee)) ||
+    (!baseFee &&
+      (feeData?.baseFeePerGas !== undefined ||
+        !networkMaxFeePerGas.isZero() ||
+        !networkMaxPriorityFeePerGas.isZero()))
+  )
+    throw new Error('Inconsistent network fee data');
 
-  const dappMaxFeePerGas = dataTx?.maxFeePerGas
-    ? safeBigNumber(dataTx.maxFeePerGas, '0x77359400', 'dApp maxFeePerGas')
-    : null;
-  const dappMaxPriorityFeePerGas = dataTx?.maxPriorityFeePerGas
-    ? safeBigNumber(
-        dataTx.maxPriorityFeePerGas,
-        '0x3b9aca00',
-        'dApp maxPriorityFeePerGas'
-      )
-    : null;
-  const dappGasPrice = dataTx?.gasPrice
-    ? safeBigNumber(dataTx.gasPrice, '0x77359400', 'dApp gasPrice')
-    : null;
+  const dappMaxFeePerGas =
+    dataTx?.maxFeePerGas !== undefined
+      ? quantity(dataTx.maxFeePerGas, 'dApp maxFeePerGas')
+      : null;
+  const dappMaxPriorityFeePerGas =
+    dataTx?.maxPriorityFeePerGas !== undefined
+      ? quantity(dataTx.maxPriorityFeePerGas, 'dApp maxPriorityFeePerGas')
+      : null;
+  const dappGasPrice =
+    dataTx?.gasPrice !== undefined
+      ? quantity(dataTx.gasPrice, 'dApp gasPrice')
+      : null;
 
-  let maxFeePerGas = dappMaxFeePerGas
-    ? maxBigNumber(dappMaxFeePerGas, networkMaxFeePerGas)
-    : dappGasPrice
-    ? maxBigNumber(dappGasPrice, networkMaxFeePerGas)
-    : networkMaxFeePerGas;
+  // Recommendations (including miner-tip suggestions) are not universal
+  // admission floors. Keep structurally valid app fees by default whenever
+  // they cover the pending base fee, and warn separately about suggestions.
   const maxPriorityFeePerGas = dappMaxPriorityFeePerGas
-    ? maxBigNumber(dappMaxPriorityFeePerGas, networkMaxPriorityFeePerGas)
-    : dappGasPrice
-    ? maxBigNumber(dappGasPrice, networkMaxPriorityFeePerGas)
+    ? dappMaxPriorityFeePerGas
     : networkMaxPriorityFeePerGas;
-
-  if (maxPriorityFeePerGas.gt(maxFeePerGas)) {
-    maxFeePerGas = maxPriorityFeePerGas;
-  }
-
+  const sufficientMaxFee = maxBigNumber(
+    baseFee || BigNumber.from(0),
+    maxPriorityFeePerGas
+  );
+  const maxFeePerGas = dappMaxFeePerGas
+    ? dappMaxFeePerGas.gte(sufficientMaxFee)
+      ? dappMaxFeePerGas
+      : maxBigNumber(networkMaxFeePerGas, sufficientMaxFee)
+    : maxBigNumber(networkMaxFeePerGas, sufficientMaxFee);
+  const requiredLegacyMinimum = baseFee || BigNumber.from(0);
   const legacyGasPrice = dappGasPrice
-    ? maxBigNumber(dappGasPrice, networkGasPrice)
+    ? dappGasPrice.gte(requiredLegacyMinimum)
+      ? dappGasPrice
+      : maxBigNumber(networkGasPrice, requiredLegacyMinimum)
     : networkGasPrice;
 
   const nonce =
@@ -185,7 +215,16 @@ export const fetchGasAndDecodeFunction = async (
     dataTx.type === '0x0' ||
     (dataTx.type !== '0x2' &&
       dataTx.gasPrice !== undefined &&
-      dataTx.maxFeePerGas === undefined);
+      dataTx.maxFeePerGas === undefined) ||
+    (!baseFee && dataTx.type === undefined);
+  if (!isLegacyTransaction && !baseFee)
+    throw new Error('EIP-1559 fees are unavailable on this network');
+  if (
+    dappMaxPriorityFeePerGas &&
+    dappMaxFeePerGas &&
+    dappMaxPriorityFeePerGas.gt(dappMaxFeePerGas)
+  )
+    throw new Error('Invalid dApp priority fee exceeds fee cap');
 
   // Preserve the transaction type based on what dApp sent
   const formTx: {
@@ -238,27 +277,30 @@ export const fetchGasAndDecodeFunction = async (
       : {}),
     from: dataTx.from,
     to: dataTx.to,
-    value: dataTx?.value ? dataTx.value : 0,
+    value: rpcHex(formTx.value),
     data: dataTx.data,
-    nonce: nonce,
+    nonce: rpcHex(BigNumber.from(nonce)),
+    // Estimate gas units without injecting fee caps into the RPC's omitted-
+    // gas affordability ceiling (zkSYS otherwise may reject a feasible call
+    // against that ceiling). This is not proof of miner-fee acceptance or a
+    // full UserOp quote. Selected prices remain exact in formTx; the normal
+    // signer/AA controller checks the actual payer and maximum fees.
   } as any;
   // Check if dataTx.gas or dataTx.gasLimit is provided and is a valid non-zero value
   let providedValue: BigNumber | null = null;
 
-  // Try to get gas limit from either gas or gasLimit field (handles hex strings like "0x5208")
+  // Do not let malformed or oversized app gas become a replacement estimate.
   if (dataTx.gasLimit !== undefined && dataTx.gasLimit !== null) {
-    try {
-      providedValue = BigNumber.from(dataTx.gasLimit);
-    } catch (e) {
-      providedValue = null;
-    }
+    providedValue = quantity(dataTx.gasLimit, 'transaction gas limit');
   } else if (dataTx.gas !== undefined && dataTx.gas !== null) {
-    try {
-      providedValue = BigNumber.from(dataTx.gas);
-    } catch (e) {
-      providedValue = null;
-    }
+    providedValue = quantity(dataTx.gas, 'transaction gas limit');
   }
+  if (
+    providedValue &&
+    (!Number.isSafeInteger(Number(providedValue.toString())) ||
+      providedValue.isZero())
+  )
+    throw new Error('Invalid transaction gas limit');
 
   // verify tx data
   try {
@@ -291,56 +333,40 @@ export const fetchGasAndDecodeFunction = async (
   }
   assertCurrentContext();
 
-  let estimatedGasLimit: BigNumber | null = null;
+  let estimatedGasLimit: BigNumber;
   try {
     // if tx data is valid, Pali is able to estimate gas.
     if (!isInvalidTxData) {
-      gasLimitResult = (await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-        [baseTx]
-      )) as any;
-
-      // Ensure the result from getTxGasLimit is a BigNumber
-      estimatedGasLimit = safeBigNumber(
-        gasLimitResult,
-        gasLimitFromCurrentBlock,
-        'Gas limit estimation result'
+      // The SDK's getTxGasLimit adds a margin and may return fallback gas.
+      // Use only an actual correlated, successful raw estimate as evidence
+      // that an app-provided gas limit is sufficient for this exact call.
+      estimatedGasLimit = quantity(
+        await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+          ['eth_estimateGas', [baseTx]]
+        ),
+        'transaction gas limit'
       );
-    }
+    } else throw new Error('Cannot estimate invalid transaction data');
   } catch (error) {
     assertCurrentContext();
-    if (isRpcIntegrityError(error)) throw error;
-    console.error(error);
-    gasLimitError = true;
+    throw error;
   }
   assertCurrentContext();
 
-  // Determine minimum gas based on transaction type
-  // Simple ETH transfers (no data) need 42,000 gas
-  // Contract interactions need more (use 60,000 as default minimum)
-  const isSimpleTransfer =
-    !dataTx.data || dataTx.data === '0x' || dataTx.data === '0x0';
-  const minimumGas = isSimpleTransfer ? 42000 : 60000;
-  const applyMinimumGas = (gasLimit: BigNumber) =>
-    gasLimit.lt(minimumGas) ? BigNumber.from(minimumGas) : gasLimit;
-
-  const estimatedGasLimitWithMinimum = estimatedGasLimit
-    ? applyMinimumGas(estimatedGasLimit)
-    : null;
-  const providedGasLimitWithMinimum =
-    providedValue && providedValue.gt(0)
-      ? applyMinimumGas(providedValue)
-      : null;
-  const fallbackGasLimit = applyMinimumGas(
-    safeBigNumber(gasLimitResult, gasLimitFromCurrentBlock, 'Gas limit')
-  );
-
+  if (
+    estimatedGasLimit.isZero() ||
+    estimatedGasLimit.gt(blockGasLimit) ||
+    (providedValue && providedValue.gt(blockGasLimit))
+  )
+    throw new Error('Invalid transaction gas limit');
+  const recommendedGasLimit = estimatedGasLimit.mul(120).add(99).div(100);
   formTx.gasLimit =
-    estimatedGasLimitWithMinimum && providedGasLimitWithMinimum
-      ? maxBigNumber(providedGasLimitWithMinimum, estimatedGasLimitWithMinimum)
-      : providedGasLimitWithMinimum ||
-        estimatedGasLimitWithMinimum ||
-        fallbackGasLimit;
+    providedValue && providedValue.gte(estimatedGasLimit)
+      ? providedValue
+      : recommendedGasLimit.lte(blockGasLimit)
+      ? recommendedGasLimit
+      : blockGasLimit;
 
   // Check if this is a legacy transaction
 
@@ -357,8 +383,10 @@ export const fetchGasAndDecodeFunction = async (
     gasPrice?: number;
     maxFeePerGas: number;
     maxPriorityFeePerGas: number;
+    minimumGasLimit: number;
   } = {
     gasLimit: finalGasLimitNumber,
+    minimumGasLimit: Number(estimatedGasLimit.toString()),
     baseFee: 0, // Will be set below
     maxFeePerGas: 0, // Will be set below
     maxPriorityFeePerGas: 0, // Will be set below
@@ -380,26 +408,17 @@ export const fetchGasAndDecodeFunction = async (
     feeDetails.maxFeePerGas = toGweiNumber(maxFeePerGas);
     feeDetails.maxPriorityFeePerGas = toGweiNumber(maxPriorityFeePerGas);
 
-    // Calculate baseFee
-    const baseFeeCalc = maxFeePerGas.gt(maxPriorityFeePerGas)
-      ? maxFeePerGas.sub(maxPriorityFeePerGas)
-      : BigNumber.from(0);
-    feeDetails.baseFee = Number(baseFeeCalc.toString()) / 1e9;
+    feeDetails.baseFee = toGweiNumber(baseFee!);
   }
 
   return {
     feeDetails,
     feeSafety: {
       gasLimit:
-        providedValue &&
-        estimatedGasLimitWithMinimum &&
-        providedValue.lt(estimatedGasLimitWithMinimum)
+        providedValue && providedValue.lt(estimatedGasLimit)
           ? {
               requested: parseInt(providedValue.toString(), 10),
-              recommended: parseInt(
-                estimatedGasLimitWithMinimum.toString(),
-                10
-              ),
+              recommended: parseInt(formTx.gasLimit.toString(), 10),
             }
           : undefined,
       gasPrice:
@@ -428,6 +447,15 @@ export const fetchGasAndDecodeFunction = async (
             }
           : undefined,
     },
+    // Never call a preserved app request "raised" merely because a wallet
+    // recommendation is higher. Suggested miner tips are not proven floors.
+    recommendationOnly:
+      (!providedValue || providedValue.gte(estimatedGasLimit)) &&
+      (isLegacyTransaction
+        ? !dappGasPrice || legacyGasPrice.eq(dappGasPrice)
+        : (!dappMaxFeePerGas || maxFeePerGas.eq(dappMaxFeePerGas)) &&
+          (!dappMaxPriorityFeePerGas ||
+            maxPriorityFeePerGas.eq(dappMaxPriorityFeePerGas))),
     formTx,
     nonce,
     isInvalidTxData,

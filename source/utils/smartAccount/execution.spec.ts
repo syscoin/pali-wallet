@@ -178,81 +178,95 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     ).toBe(true);
   });
 
-  it('does not reuse SLH-DSA submit jobs across different fee overrides', async () => {
-    const executions = [{ data: '0x', target: ENTRY_TARGET, value: '0x0' }];
-    const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
-    const controllerEmitter = jest.fn(
-      async ([, method]: string[], payload: any[]) => {
-        if (method === 'prepareSmartAccountExecutions') {
-          const options = payload[2] || {};
-          return {
-            actionHash:
-              options.feeOverrides?.maxFeePerGas === '2'
-                ? '0x' + '02'.repeat(32)
-                : '0x' + '01'.repeat(32),
-            executionCalldata: '0x',
-            executions,
-            gasPayer: { id: 0, type: KeyringAccountType.HDAccount },
-            maxFeePerGas: options.feeOverrides?.maxFeePerGas,
-            maxPriorityFeePerGas: options.feeOverrides?.maxPriorityFeePerGas,
-            mode: '0x',
-            smartAccount,
-            userOperation: {
-              callData: '0x',
-              initCode: '0x',
-              sender: ACCOUNT_ADDRESS,
-            },
-            validator: VALIDATOR_ADDRESS,
-          };
-        }
+  it.each(['maxFeePerGas', 'gasPrice'])(
+    'does not reuse SLH-DSA submit jobs across different %s overrides',
+    async (feeField) => {
+      const executions = [{ data: '0x', target: ENTRY_TARGET, value: '0x0' }];
+      const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
+      const controllerEmitter = jest.fn(
+        async ([, method]: string[], payload: any[]) => {
+          if (method === 'prepareSmartAccountExecutions') {
+            const options = payload[2] || {};
+            return {
+              actionHash:
+                options.feeOverrides?.[feeField] === '2'
+                  ? '0x' + '02'.repeat(32)
+                  : '0x' + '01'.repeat(32),
+              executionCalldata: '0x',
+              executions,
+              gasPayer: { id: 0, type: KeyringAccountType.HDAccount },
+              gasPrice: options.feeOverrides?.gasPrice,
+              maxFeePerGas: options.feeOverrides?.maxFeePerGas,
+              maxPriorityFeePerGas: options.feeOverrides?.maxPriorityFeePerGas,
+              mode: '0x',
+              smartAccount,
+              userOperation: {
+                callData: '0x',
+                initCode: '0x',
+                sender: ACCOUNT_ADDRESS,
+              },
+              validator: VALIDATOR_ADDRESS,
+            };
+          }
 
-        if (method === 'submitSmartAccountExecution') {
-          return payload[0];
-        }
+          if (method === 'submitSmartAccountExecution') {
+            return payload[0];
+          }
 
-        throw new Error(`Unexpected method ${method}`);
+          throw new Error(`Unexpected method ${method}`);
+        }
+      );
+
+      const baseParams = {
+        accountAddress: ACCOUNT_ADDRESS,
+        accountId: 0,
+        authenticatorContexts: {
+          'slh-dsa': { signActionHash },
+        },
+        controllerEmitter,
+        executions,
+        smartAccount,
+      };
+
+      await Promise.all([
+        signAndSubmitSmartAccountExecutions({
+          ...baseParams,
+          feeOverrides: {
+            [feeField]: '1',
+            ...(feeField === 'maxFeePerGas'
+              ? { maxPriorityFeePerGas: '0' }
+              : {}),
+          },
+        }),
+        signAndSubmitSmartAccountExecutions({
+          ...baseParams,
+          feeOverrides: {
+            [feeField]: '2',
+            ...(feeField === 'maxFeePerGas'
+              ? { maxPriorityFeePerGas: '0' }
+              : {}),
+          },
+        }),
+      ]);
+
+      const prepareCalls = controllerEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'prepareSmartAccountExecutions'
+      );
+      const submitCalls = controllerEmitter.mock.calls.filter(
+        ([[, method]]) => method === 'submitSmartAccountExecution'
+      );
+
+      expect(prepareCalls).toHaveLength(2);
+      expect(submitCalls).toHaveLength(2);
+      if (feeField === 'gasPrice') {
+        expect(submitCalls.map((call) => call[1][0].gasPrice).sort()).toEqual([
+          '1',
+          '2',
+        ]);
       }
-    );
-
-    const baseParams = {
-      accountAddress: ACCOUNT_ADDRESS,
-      accountId: 0,
-      authenticatorContexts: {
-        'slh-dsa': { signActionHash },
-      },
-      controllerEmitter,
-      executions,
-      smartAccount,
-    };
-
-    await Promise.all([
-      signAndSubmitSmartAccountExecutions({
-        ...baseParams,
-        feeOverrides: {
-          maxFeePerGas: '1',
-          maxPriorityFeePerGas: '0',
-        },
-      }),
-      signAndSubmitSmartAccountExecutions({
-        ...baseParams,
-        feeOverrides: {
-          maxFeePerGas: '2',
-          maxPriorityFeePerGas: '0',
-        },
-      }),
-    ]);
-
-    const prepareCalls = controllerEmitter.mock.calls.filter(
-      ([[, method]]) => method === 'prepareSmartAccountExecutions'
-    );
-    const submitCalls = controllerEmitter.mock.calls.filter(
-      ([[, method]]) => method === 'submitSmartAccountExecution'
-    );
-
-    expect(prepareCalls).toHaveLength(2);
-    expect(submitCalls).toHaveLength(2);
-    expect(signActionHash).toHaveBeenCalledTimes(2);
-  });
+      expect(signActionHash).toHaveBeenCalledTimes(2);
+    }
+  );
 
   it.each([
     { marker: undefined, acknowledged: false, expected: 1 },

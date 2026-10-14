@@ -336,6 +336,35 @@ const hasSmartAccountSignatureFailure = (error: unknown): boolean => {
   return failedOpReason.includes('AA24') || message.includes('AA24');
 };
 
+const getExplicitSmartAccountGasPrice = (fees?: {
+  gasPrice?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
+}): string | undefined => {
+  if (fees?.gasPrice === null || fees?.gasPrice === undefined) return undefined;
+  try {
+    if (
+      (fees.maxFeePerGas !== null && fees.maxFeePerGas !== undefined) ||
+      (fees.maxPriorityFeePerGas !== null &&
+        fees.maxPriorityFeePerGas !== undefined)
+    )
+      throw new Error('Legacy gasPrice cannot be combined with EIP-1559 fees');
+    const price = BigNumber.from(fees.gasPrice);
+    if (price.lt(0) || price.gte(BigNumber.from(2).pow(128)))
+      throw new Error('Invalid smart-account legacy gas price');
+    return price.toString();
+  } catch (error) {
+    throw Object.assign(
+      error instanceof Error
+        ? error
+        : new Error('Invalid smart-account legacy gas price'),
+      {
+        transactionNotBroadcast: true,
+      }
+    );
+  }
+};
+
 class SmartAccountController {
   private readonly executionContexts = new Map<
     string,
@@ -343,6 +372,7 @@ class SmartAccountController {
       accountId: number;
       actionHash: string;
       expiresAt: number;
+      gasPrice?: string;
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation: SmartAccountPackedUserOperation;
     }
@@ -1532,6 +1562,7 @@ class SmartAccountController {
     options: {
       expectedContext?: IEvmTransactionContext;
       feeOverrides?: {
+        gasPrice?: string;
         maxFeePerGas?: string;
         maxPriorityFeePerGas?: string;
       };
@@ -1540,6 +1571,8 @@ class SmartAccountController {
   ) {
     if (options.expectedContext)
       this.assertExpectedExecutionContext(options.expectedContext, accountId);
+    const feeOverrides = { ...options.feeOverrides };
+    const legacyGasPrice = getExplicitSmartAccountGasPrice(feeOverrides);
     const snapshot = this.infrastructureContext();
     const assertContext = () => {
       try {
@@ -1640,6 +1673,23 @@ class SmartAccountController {
     const callData = smartAccount.encodeCalls(params);
     const feeData = await provider.getFeeData();
     assertContext();
+    // A recommendation is not a minimum. Only a known protocol base fee can
+    // reject the selected legacy price here; the outer preflight remains authoritative.
+    if (
+      legacyGasPrice !== undefined &&
+      feeData.lastBaseFeePerGas !== null &&
+      feeData.lastBaseFeePerGas !== undefined &&
+      BigNumber.from(legacyGasPrice).lt(feeData.lastBaseFeePerGas)
+    ) {
+      throw Object.assign(
+        new Error(
+          'Legacy gas price is below the current base fee. Refresh the app quote.'
+        ),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
+    }
     // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
     // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
     // the per-validator table (limits are inside the signed hash).
@@ -1654,22 +1704,25 @@ class SmartAccountController {
     });
     assertContext();
     const hasOuterEip1559FeeParams =
-      (options.feeOverrides?.maxFeePerGas !== null &&
-        options.feeOverrides?.maxFeePerGas !== undefined &&
-        options.feeOverrides?.maxPriorityFeePerGas !== null &&
-        options.feeOverrides?.maxPriorityFeePerGas !== undefined) ||
-      (feeData.maxFeePerGas !== null &&
-        feeData.maxFeePerGas !== undefined &&
-        feeData.maxPriorityFeePerGas !== null &&
-        feeData.maxPriorityFeePerGas !== undefined);
+      legacyGasPrice === undefined &&
+      ((feeOverrides.maxFeePerGas !== null &&
+        feeOverrides.maxFeePerGas !== undefined &&
+        feeOverrides.maxPriorityFeePerGas !== null &&
+        feeOverrides.maxPriorityFeePerGas !== undefined) ||
+        (feeData.maxFeePerGas !== null &&
+          feeData.maxFeePerGas !== undefined &&
+          feeData.maxPriorityFeePerGas !== null &&
+          feeData.maxPriorityFeePerGas !== undefined));
     const maxFeePerGas = BigNumber.from(
-      options.feeOverrides?.maxFeePerGas ??
+      legacyGasPrice ??
+        feeOverrides.maxFeePerGas ??
         feeData.maxFeePerGas ??
         feeData.gasPrice ??
         0
     );
     const maxPriorityFeePerGas = BigNumber.from(
-      options.feeOverrides?.maxPriorityFeePerGas ??
+      legacyGasPrice ??
+        feeOverrides.maxPriorityFeePerGas ??
         feeData.maxPriorityFeePerGas ??
         0
     );
@@ -1730,6 +1783,7 @@ class SmartAccountController {
       accountId: active.account.id,
       actionHash,
       expiresAt: Date.now() + 15 * 60 * 1000,
+      gasPrice: legacyGasPrice,
       snapshot,
       userOperation: { ...userOperation },
     });
@@ -1745,7 +1799,9 @@ class SmartAccountController {
       executionCalldata: prepared.executionCalldata,
       executions,
       gasPayer,
-      maxFeePerGas: maxFeePerGas.toString(),
+      gasPrice: legacyGasPrice,
+      maxFeePerGas:
+        legacyGasPrice === undefined ? maxFeePerGas.toString() : undefined,
       maxPriorityFeePerGas: hasOuterEip1559FeeParams
         ? maxPriorityFeePerGas.toString()
         : undefined,
@@ -1832,6 +1888,7 @@ class SmartAccountController {
       id: number;
       type: PaliKeyringAccountType;
     };
+    gasPrice?: string;
     maxFeePerGas?: string;
     maxPriorityFeePerGas?: string;
     mode?: string;
@@ -1841,6 +1898,7 @@ class SmartAccountController {
     validator?: string;
     waitForConfirmation?: boolean;
   }) {
+    const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
     const assertContext = () => {
       if (params.expectedContext) {
         this.assertExpectedExecutionContext(
@@ -1859,6 +1917,7 @@ class SmartAccountController {
           (params.accountId !== undefined &&
             params.accountId !== context.accountId) ||
           !params.userOperation ||
+          params.gasPrice !== context.gasPrice ||
           Object.entries(context.userOperation).some(
             ([key, value]) => params.userOperation[key] !== value
           )
@@ -1916,7 +1975,8 @@ class SmartAccountController {
         outerGasLimit = await this.assertZkSysGasTankCoversTransaction({
           chainId: active.metadata.chainId,
           gasPayerAddress: gasPayer.address,
-          maxFeePerGas: params.maxFeePerGas,
+          gasPrice: legacyGasPrice,
+          maxFeePerGas: legacyGasPrice ?? params.maxFeePerGas,
           transaction: {
             data: callData,
             to: entryPointAddress,
@@ -1943,14 +2003,10 @@ class SmartAccountController {
         );
         assertContext();
       }
-      // zkSYS derives an omitted estimateGas ceiling from balance / baseFee,
-      // then validates that ceiling against maxFeePerGas. Supplying EIP-1559
-      // caps during estimation therefore creates a self-scaling
-      // LackOfFundForMaxFee failure whenever maxFeePerGas exceeds baseFee.
-      // Estimate the outer handleOps call without fee fields, then provide the
-      // resolved limit alongside the selected caps so the signing path does
-      // not estimate it a second time. Tank mode already made this exact
-      // estimate while checking credit, so reuse it instead of calling twice.
+      // A supplied legacy price must reach the actual handleOps preflight;
+      // estimation must not validate a different fee model from publication.
+      // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
+      // preflight, and the resolved gas limit avoids a second signer estimate.
       if (!outerGasLimit) {
         const provider = this.ethereumTransaction?.web3Provider;
         if (!provider) {
@@ -1960,6 +2016,9 @@ class SmartAccountController {
           await provider.estimateGas({
             data: callData,
             from: gasPayer.address,
+            ...(legacyGasPrice !== undefined
+              ? { gasPrice: legacyGasPrice }
+              : {}),
             to: entryPointAddress,
             value: '0x0',
           })
@@ -1973,7 +2032,9 @@ class SmartAccountController {
           data: callData,
           from: gasPayer.address,
           gasLimit: outerGasLimit.toString(),
-          ...(params.maxFeePerGas && params.maxPriorityFeePerGas
+          ...(legacyGasPrice !== undefined
+            ? { gasPrice: legacyGasPrice }
+            : params.maxFeePerGas && params.maxPriorityFeePerGas
             ? {
                 maxFeePerGas: params.maxFeePerGas,
                 maxPriorityFeePerGas: params.maxPriorityFeePerGas,
@@ -1982,7 +2043,7 @@ class SmartAccountController {
           to: entryPointAddress,
           value: '0x0',
         },
-        false,
+        legacyGasPrice !== undefined,
         { id: gasPayer.id, type: gasPayer.type },
         {
           smartAccountExecution: true,
@@ -2091,12 +2152,14 @@ class SmartAccountController {
 
   private async assertZkSysGasTankCoversTransaction({
     chainId,
+    gasPrice,
     gasPayerAddress,
     maxFeePerGas,
     transaction,
   }: {
     chainId: number;
     gasPayerAddress: string;
+    gasPrice?: string;
     maxFeePerGas?: string;
     transaction: { data?: string; to: string; value?: string };
   }): Promise<BigNumber> {
@@ -2109,6 +2172,7 @@ class SmartAccountController {
       provider.estimateGas({
         data: transaction.data || '0x',
         from: gasPayerAddress,
+        ...(gasPrice !== undefined ? { gasPrice } : {}),
         to: transaction.to,
         value: transaction.value || '0x0',
       }),

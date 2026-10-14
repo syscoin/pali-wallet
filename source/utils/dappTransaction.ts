@@ -1,7 +1,5 @@
 import { ethErrors } from 'helpers/errors';
 
-import { BigNumber } from 'utils/ethersV6Compat';
-
 const ADDRESS = /^0x[\da-f]{40}$/i;
 const BYTES = /^0x(?:[\da-f]{2})*$/i;
 const MAX_UINT256 = (BigInt(1) << BigInt(256)) - BigInt(1);
@@ -9,23 +7,34 @@ const invalid = (field: string) => {
   throw ethErrors.rpc.invalidParams(`Invalid transaction ${field}`);
 };
 
-// Keyring 1.0.615 replaces zero EIP-1559 fees with a legacy gas price.
-// Refuse that unsupported choice rather than sign different approved fees.
+// Paired with the qualified keyring zero-tip implementation: zero priority is
+// valid, while a zero maximum or priority above maximum remains unsupported.
+// Do not deploy this guard change with the older model-switching SDK.
 export const assertSupportedEvmFees = (
   tx: Record<string, any>,
   isLegacy = false
 ) => {
   if (isLegacy) return;
-  for (const field of ['maxFeePerGas', 'maxPriorityFeePerGas']) {
-    if (
-      tx[field] !== undefined &&
-      tx[field] !== null &&
-      BigNumber.from(tx[field]).isZero()
-    )
-      throw ethErrors.provider.unsupportedMethod(
-        'Zero EIP-1559 fees are not currently supported.'
-      );
-  }
+  const feeQuantity = (value: any, field: string) => {
+    if (value !== null && typeof value === 'object')
+      value = value._hex ?? value.hex ?? value.toString?.();
+    if (typeof value === 'bigint') value = value.toString();
+    return quantity(value, field);
+  };
+  const maximum =
+    tx.maxFeePerGas === undefined
+      ? undefined
+      : feeQuantity(tx.maxFeePerGas, 'maximum fee');
+  const priority =
+    tx.maxPriorityFeePerGas === undefined
+      ? undefined
+      : feeQuantity(tx.maxPriorityFeePerGas, 'priority fee');
+  if (maximum === BigInt(0))
+    throw ethErrors.provider.unsupportedMethod(
+      'A positive EIP-1559 maximum fee is required.'
+    );
+  if (maximum !== undefined && priority !== undefined && priority > maximum)
+    return invalid('priority fee');
 };
 
 // Accept the wallet's existing integer/decimal/padded-hex compatibility forms,

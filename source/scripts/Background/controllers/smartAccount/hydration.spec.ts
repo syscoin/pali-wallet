@@ -17,6 +17,10 @@ jest.mock('utils/security/blacklistService', () => ({
   blacklistService: {},
 }));
 
+import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
+import { Transaction } from 'ethers/transaction';
+import { Wallet } from 'ethers/wallet';
+
 import { KeyringAccountType } from 'types/network';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
@@ -381,4 +385,102 @@ describe('SmartAccountController smart account execution fees', () => {
       expect.any(Object)
     );
   });
+
+  it('checks tank credit at the exact legacy price and reuses that outer estimate', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    controller.getActiveSmartAccount.mockReturnValue({
+      account: { address: ACCOUNT_ADDRESS, id: 9 },
+      metadata: { chainId: 57057, deploymentGasPayer: gasPayer },
+    });
+    controller.assertZkSysGasTankCoversTransaction = jest
+      .fn()
+      .mockResolvedValue(BigNumber.from('143280'));
+    const userOperation = buildUserOperation();
+    userOperation.gasFees = encodeSmartAccountGasFees({
+      maxFeePerGas: 0,
+      maxPriorityFeePerGas: 0,
+    });
+    await controller.submitSmartAccountExecution({
+      executions: [],
+      gasPayer,
+      gasPrice: '13',
+      signature: '0x1234',
+      userOperation,
+    });
+    expect(controller.assertZkSysGasTankCoversTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' })
+    );
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction.mock.calls[0][0]).toMatchObject({
+      gasPrice: '13',
+      gasLimit: '143280',
+    });
+    expect(sendAndSaveEthTransaction.mock.calls[0][1]).toBe(true);
+  });
+
+  it.each(['0', '13'])(
+    'published SDK signs type-0 at exact gasPrice=%s without fetching a higher recommendation',
+    async (gasPrice) => {
+      // Synthetic public fixture only. The published signer is real; all RPC
+      // edges are local mocks and signed bytes never leave this test.
+      const fixtureKey = `0x${'11'.repeat(32)}`;
+      const owner = new Wallet(fixtureKey);
+      const fixturePayer = {
+        address: owner.address,
+        id: 0,
+        type: KeyringAccountType.HDAccount,
+      };
+      let signedBytes = '';
+      const provider = {
+        verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+        getTransactionCount: jest.fn().mockResolvedValue(7),
+        getNetwork: jest.fn().mockResolvedValue({ chainId: CHAIN_ID }),
+        getGasPrice: jest.fn().mockResolvedValue(BigNumber.from('999999999')),
+        getFeeData: jest
+          .fn()
+          .mockResolvedValue({ gasPrice: BigNumber.from('999999999') }),
+        sendTransaction: jest.fn(async (raw: string) => {
+          signedBytes = raw;
+          return { hash: Transaction.from(raw).hash, wait: jest.fn() };
+        }),
+      };
+      const sdk = new EthereumTransactions(
+        () => ({ chainId: CHAIN_ID } as any),
+        () => ({ address: owner.address, decryptedPrivateKey: fixtureKey }),
+        () =>
+          ({
+            activeAccountId: 0,
+            activeAccountType: KeyringAccountType.HDAccount,
+            accounts: {
+              [KeyringAccountType.HDAccount]: { 0: { address: owner.address } },
+            },
+            activeNetwork: { chainId: CHAIN_ID },
+          } as any),
+        {} as any,
+        {} as any
+      );
+      Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
+      const { controller, sendAndSaveEthTransaction } = buildController();
+      controller.getWalletGasPayerAccount.mockResolvedValue(fixturePayer);
+      sendAndSaveEthTransaction.mockImplementation((transaction, legacy) =>
+        sdk.sendFormattedTransaction(transaction, legacy)
+      );
+      await controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer: fixturePayer,
+        gasPrice,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      });
+      const signed = Transaction.from(signedBytes);
+      expect(signed.type).toBe(0);
+      expect(signed.gasPrice).toBe(BigInt(gasPrice));
+      expect(signed.from).toBe(owner.address);
+      expect(signed.chainId).toBe(BigInt(CHAIN_ID));
+      expect(provider.getGasPrice).not.toHaveBeenCalled();
+      expect(provider.getFeeData).not.toHaveBeenCalled();
+      expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    }
+  );
 });

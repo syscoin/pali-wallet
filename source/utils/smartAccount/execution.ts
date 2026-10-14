@@ -102,6 +102,7 @@ const getSmartAccountSubmitJobKey = async ({
         value: execution.value,
       })),
       feeOverrides: {
+        gasPrice: feeOverrides?.gasPrice ?? null,
         maxFeePerGas: feeOverrides?.maxFeePerGas ?? null,
         maxPriorityFeePerGas: feeOverrides?.maxPriorityFeePerGas ?? null,
       },
@@ -299,6 +300,7 @@ export type SubmitSmartAccountExecutionsParams = {
 };
 
 export type SmartAccountFeeOverrides = {
+  gasPrice?: string;
   maxFeePerGas?: string;
   maxPriorityFeePerGas?: string;
 };
@@ -934,6 +936,7 @@ export const signAndSubmitSmartAccountExecutions = async (
           executionContextId: prepared.executionContextId,
           expectedContext,
           gasPayer: prepared.gasPayer,
+          gasPrice: prepared.gasPrice,
           maxFeePerGas: prepared.maxFeePerGas,
           maxPriorityFeePerGas: prepared.maxPriorityFeePerGas,
           mode: prepared.mode,

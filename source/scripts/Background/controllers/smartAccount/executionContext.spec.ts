@@ -18,6 +18,7 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import { Contract, Interface } from 'utils/ethersV6Compat';
 import {
   encodeEcdsaValidatorInitData,
+  encodeSmartAccountGasFees,
   estimateSmartAccountUserOpGas,
 } from 'utils/smartAccount';
 
@@ -88,6 +89,7 @@ describe('smart-account execution approval context', () => {
       executions: prepared.executions,
       expectedContext,
       gasPayer: payer,
+      gasPrice: prepared.gasPrice,
       signature: '0x1234',
       userOperation: prepared.userOperation,
       ...changes,
@@ -300,5 +302,138 @@ describe('smart-account execution approval context', () => {
       expect.objectContaining({ smartAccountExecutionFrom: ADDRESS }),
       expect.objectContaining({ assertCurrentContext: expect.any(Function) })
     );
+  });
+
+  it('preserves an explicit legacy price below a higher provider recommendation through the UserOp and outer send', async () => {
+    const prepared = await controller.prepareSmartAccountExecutions(calls, 7, {
+      expectedContext,
+      feeOverrides: { gasPrice: '13' },
+    });
+    expect(prepared).toMatchObject({
+      gasPrice: '13',
+      maxFeePerGas: undefined,
+      maxPriorityFeePerGas: undefined,
+    });
+    expect(prepared.userOperation.gasFees).toBe(
+      encodeSmartAccountGasFees({
+        maxFeePerGas: '13',
+        maxPriorityFeePerGas: '13',
+      })
+    );
+    await expect(submit(prepared)).resolves.toEqual({ hash: HASH });
+    expect(provider.estimateGas).toHaveBeenCalledWith(
+      expect.objectContaining({ gasPrice: '13', from: OWNER })
+    );
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ gasPrice: '13', gasLimit: '200000' }),
+      true,
+      { id: payer.id, type: payer.type },
+      expect.any(Object),
+      expect.any(Object)
+    );
+    expect(send.mock.calls[0][0]).not.toHaveProperty('maxFeePerGas');
+    expect(send.mock.calls[0][0]).not.toHaveProperty('maxPriorityFeePerGas');
+  });
+
+  it('keeps an explicit zero legacy price instead of treating it as an absent override', async () => {
+    provider.getFeeData.mockResolvedValue({
+      gasPrice: 1000,
+      lastBaseFeePerGas: 0,
+      maxFeePerGas: 2000,
+      maxPriorityFeePerGas: 1,
+    });
+    const prepared = await controller.prepareSmartAccountExecutions(calls, 7, {
+      expectedContext,
+      feeOverrides: { gasPrice: '0' },
+    });
+    expect(prepared.gasPrice).toBe('0');
+    expect(prepared.userOperation.gasFees).toBe(
+      encodeSmartAccountGasFees({
+        maxFeePerGas: '0',
+        maxPriorityFeePerGas: '0',
+      })
+    );
+    await submit(prepared);
+    expect(send.mock.calls[0][0].gasPrice).toBe('0');
+    expect(send.mock.calls[0][1]).toBe(true);
+  });
+
+  it('rejects an explicit legacy price below a known protocol base fee without substituting the recommendation', async () => {
+    provider.getFeeData.mockResolvedValue({
+      gasPrice: 1000,
+      lastBaseFeePerGas: 20,
+    });
+    await expect(
+      controller.prepareSmartAccountExecutions(calls, 7, {
+        expectedContext,
+        feeOverrides: { gasPrice: '13' },
+      })
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('current base fee'),
+      transactionNotBroadcast: true,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { gasPrice: '13', maxFeePerGas: '13' },
+    { gasPrice: '13', maxPriorityFeePerGas: '0' },
+    { gasPrice: '-1' },
+    { gasPrice: 'not-a-price' },
+    { gasPrice: (BigInt(1) << BigInt(128)).toString() },
+  ])(
+    'rejects an invalid or mixed legacy override before preparing: %j',
+    async (feeOverrides) => {
+      await expect(
+        controller.prepareSmartAccountExecutions(calls, 7, {
+          expectedContext,
+          feeOverrides,
+        })
+      ).rejects.toMatchObject({ transactionNotBroadcast: true });
+      expect(
+        controller.assertSmartAccountExecutionTargetsAllowed
+      ).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it('freezes the explicit override before asynchronous preparation reads', async () => {
+    const gate = deferred<void>();
+    controller.assertSmartAccountExecutionTargetsAllowed.mockReturnValue(
+      gate.promise
+    );
+    const feeOverrides = { gasPrice: '13' };
+    const preparing = controller.prepareSmartAccountExecutions(calls, 7, {
+      expectedContext,
+      feeOverrides,
+    });
+    feeOverrides.gasPrice = '99';
+    gate.resolve();
+    expect((await preparing).gasPrice).toBe('13');
+  });
+
+  it.each([undefined, '14'])(
+    'rejects a changed or missing prepared legacy price before estimation: %s',
+    async (gasPrice) => {
+      const prepared = await controller.prepareSmartAccountExecutions(
+        calls,
+        7,
+        { expectedContext, feeOverrides: { gasPrice: '13' } }
+      );
+      await expect(submit(prepared, { gasPrice })).rejects.toMatchObject({
+        transactionNotBroadcast: true,
+      });
+      expect(provider.estimateGas).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it('cannot replace an EIP-1559 preparation with a legacy outer send', async () => {
+    const prepared = await prepare();
+    await expect(submit(prepared, { gasPrice: '13' })).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    expect(provider.estimateGas).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 });

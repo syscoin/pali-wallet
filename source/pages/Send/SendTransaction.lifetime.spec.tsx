@@ -21,6 +21,7 @@ const mockGet = jest.fn();
 const mockSet = jest.fn();
 const mockRemove = jest.fn();
 const mockFee = jest.fn();
+const mockSmartSubmit = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn(), info: jest.fn() };
 let mockStorage: Record<string, any>;
 let mockButtonHandlers: Record<string, () => any>;
@@ -59,6 +60,11 @@ jest.mock('utils/storageAPI', () => ({
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/fetchGasAndDecodeFunction', () => ({
   fetchGasAndDecodeFunction: (...args: any[]) => mockFee(...args),
+}));
+jest.mock('utils/smartAccount', () => ({
+  ...jest.requireActual('utils/smartAccount'),
+  signAndSubmitSmartAccountExecutions: (...args: any[]) =>
+    mockSmartSubmit(...args),
 }));
 jest.mock('utils/errorHandling', () => ({
   handleTransactionError: () => false,
@@ -181,8 +187,52 @@ beforeEach(() => {
     gasLimitError: false,
   }));
   jest.spyOn(window, 'close').mockImplementation(mockClose);
+  mockSmartSubmit.mockResolvedValue({ hash: 'public-sa-test-hash' });
 });
 afterEach(() => jest.restoreAllMocks());
+
+it.each([false, true])(
+  'preserves the app fee by default and uses the network suggestion only after a click (%s)',
+  async (chooseSuggestion) => {
+    mockQuery.tx.gasPrice = '0x3b9aca00';
+    mockFee.mockImplementation(async () => ({
+      feeDetails: {
+        gasLimit: 21000,
+        gasPrice: 1,
+        maxFeePerGas: 1,
+        maxPriorityFeePerGas: 1,
+      },
+      feeSafety: { gasPrice: { requested: 1, recommended: 2 } },
+      recommendationOnly: true,
+      formTx: {
+        ...mockQuery.tx,
+        gasPrice: '1000000000',
+        gasLimit: BigNumber.from(21000),
+      },
+      nonce: 0,
+      isInvalidTxData: false,
+      gasLimitError: false,
+    }));
+    await prepare();
+    expect(screen.queryByText('send.dappFeeRaisedDescription')).toBeNull();
+    expect(
+      screen.getByText('send.customFeeBelowEstimateWarning')
+    ).toBeDefined();
+    if (chooseSuggestion)
+      fireEvent.click(
+        screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+      );
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const submitted = mockEmitter.mock.calls.find(
+      ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+    );
+    expect(submitted).toBeDefined();
+    expect(BigNumber.from(submitted![1][0].gasPrice).toString()).toBe(
+      chooseSuggestion ? '2000000000' : '1000000000'
+    );
+    expect(BigNumber.from(submitted![1][0].gasLimit).toString()).toBe('21000');
+  }
+);
 
 it('rejects a malformed requested value without signing or latching the spinner', async () => {
   mockQuery.tx.value = 'invalid';
@@ -205,13 +255,14 @@ it.each([
   { legacy: true, typed: true },
   { legacy: true, typed: false },
   { legacy: false, typed: true },
+  { legacy: false, typed: true, zeroTipOnly: true },
 ])(
-  'honors supported zero legacy fees and refuses unsupported zero EIP-1559 fees %p',
-  async ({ legacy, typed }) => {
+  'honors zero legacy fees and zero tips while refusing zero EIP-1559 maxima %p',
+  async ({ legacy, typed, zeroTipOnly }) => {
     if (typed) mockQuery.tx.type = legacy ? '0x0' : '0x2';
     if (legacy) mockQuery.tx.gasPrice = '0x0';
     else {
-      mockQuery.tx.maxFeePerGas = '0x0';
+      mockQuery.tx.maxFeePerGas = zeroTipOnly ? '0x77359400' : '0x0';
       mockQuery.tx.maxPriorityFeePerGas = '0x0';
     }
     mockFee.mockImplementation(async () => ({
@@ -224,7 +275,9 @@ it.each([
       feeSafety: legacy
         ? { gasPrice: { requested: 0, recommended: 2 } }
         : {
-            maxFeePerGas: { requested: 0, recommended: 2 },
+            maxFeePerGas: zeroTipOnly
+              ? undefined
+              : { requested: 0, recommended: 2 },
             maxPriorityFeePerGas: { requested: 0, recommended: 1 },
           },
       formTx: { ...mockQuery.tx, gasLimit: BigNumber.from(21000) },
@@ -236,7 +289,7 @@ it.each([
     fireEvent.click(
       screen.getByRole('button', { name: 'send.useDappFeeRequest' })
     );
-    if (legacy)
+    if (legacy || zeroTipOnly)
       expect(
         screen.getByText('send.customFeeBelowEstimateWarning')
       ).toBeDefined();
@@ -244,9 +297,20 @@ it.each([
     const submitted = mockEmitter.mock.calls.find(
       ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
     );
-    if (legacy) {
+    if (legacy || zeroTipOnly) {
       expect(submitted).toBeDefined();
-      expect(BigNumber.from(submitted![1][0].gasPrice).isZero()).toBe(true);
+      if (legacy)
+        expect(BigNumber.from(submitted![1][0].gasPrice).isZero()).toBe(true);
+      else {
+        expect(BigNumber.from(submitted![1][0].maxFeePerGas).toString()).toBe(
+          '2000000000'
+        );
+        expect(
+          BigNumber.from(submitted![1][0].maxPriorityFeePerGas).isZero()
+        ).toBe(true);
+        expect(submitted![1][1]).toBe(false);
+        expect(submitted![1][0]).not.toHaveProperty('gasPrice');
+      }
     } else {
       expect(submitted).toBeUndefined();
       expect(mockAlert.error).toHaveBeenCalledWith('send.invalidFeeRate');
@@ -262,13 +326,13 @@ it.each([
   }
 );
 
-it('refuses a stale/direct smart-account legacy review before requesting a signature', async () => {
+it('refuses smart-account review without account metadata before requesting a signature', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
-  mockState.vault.accounts.HDAccount[0].smartAccount = {};
   mockQuery.tx.gasPrice = '0x1';
   await prepare();
   await act(async () => mockButtonHandlers['buttons.confirm']());
   expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockSmartSubmit).not.toHaveBeenCalled();
   expect(mockAlert.error).toHaveBeenCalledWith('send.cantCompleteTxs');
   expect(
     (
@@ -278,6 +342,55 @@ it('refuses a stale/direct smart-account legacy review before requesting a signa
     ).disabled
   ).toBe(false);
 });
+
+it.each([false, true])(
+  'preserves an exact app legacy price for smart-account=%s without float repricing',
+  async (smartAccount) => {
+    const price = '1152921504606846977';
+    mockQuery.tx.gasPrice = BigNumber.from(price).toHexString();
+    if (smartAccount) {
+      mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+      mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    }
+    mockFee.mockImplementation(async () => ({
+      feeDetails: {
+        gasLimit: 21000,
+        gasPrice: Number(price) / 1e9,
+        maxFeePerGas: 1,
+        maxPriorityFeePerGas: 1,
+      },
+      formTx: {
+        ...mockQuery.tx,
+        gasPrice: price,
+        gasLimit: BigNumber.from(21000),
+      },
+      nonce: 0,
+      isInvalidTxData: false,
+      gasLimitError: false,
+    }));
+    await prepare();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    if (smartAccount) {
+      expect(mockSmartSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feeOverrides: { gasPrice: price },
+          executions: [{ target: mockQuery.tx.to, value: '0x00', data: '0x' }],
+        })
+      );
+      expect(
+        mockEmitter.mock.calls.every(
+          ([path]) => path.join('.') === 'wallet.refreshActiveAccountBalances'
+        )
+      ).toBe(true);
+    } else {
+      const submitted = mockEmitter.mock.calls.find(
+        ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+      );
+      expect(BigNumber.from(submitted![1][0].gasPrice).toString()).toBe(price);
+      expect(mockSmartSubmit).not.toHaveBeenCalled();
+    }
+  }
+);
 
 it.each(['chain', 'rpc', 'account', 'slip44'])(
   'a stale transaction review cannot submit after the %s context changes',
