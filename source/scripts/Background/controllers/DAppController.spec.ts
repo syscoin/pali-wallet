@@ -1,6 +1,7 @@
 const dispatchMock = jest.fn();
 const getStateMock = jest.fn();
 const saveMainStateMock = jest.fn();
+const persistMainStateStrictMock = jest.fn();
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -9,6 +10,8 @@ jest.mock('state/store', () => ({
     getState: () => getStateMock(),
   },
   saveMainState: (...args: any[]) => saveMainStateMock(...args),
+  persistMainStateStrict: (...args: any[]) =>
+    persistMainStateStrictMock(...args),
 }));
 
 jest.mock('../notification-manager', () => ({
@@ -40,13 +43,15 @@ describe('DAppController idempotent permission revocation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    dispatchMock.mockReset();
     errorSpy = jest.spyOn(console, 'error').mockImplementation();
     (chrome.runtime as any).id = 'test-extension';
     (chrome as any).tabs = {
       query: jest.fn((_query, callback) => callback([])),
     };
     (chrome as any).scripting = { executeScript: jest.fn() };
-    saveMainStateMock.mockResolvedValue(undefined);
+    saveMainStateMock.mockResolvedValue(true);
+    persistMainStateStrictMock.mockResolvedValue(undefined);
     state = {
       dapp: { dapps: {} },
       vault: {
@@ -65,14 +70,18 @@ describe('DAppController idempotent permission revocation', () => {
     getStateMock.mockImplementation(() => state);
   });
 
-  afterEach(() => errorSpy.mockRestore());
+  afterEach(() => {
+    errorSpy.mockRestore();
+    dispatchMock.mockReset();
+  });
 
-  it('does nothing when the origin is already absent', async () => {
+  it('flushes absent permissions before acknowledging an already absent origin', async () => {
     await expect(
       DAppController().disconnect(host, true, options)
     ).resolves.toBeUndefined();
     expect(dispatchMock).not.toHaveBeenCalled();
     expect(saveMainStateMock).not.toHaveBeenCalled();
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
   });
 
   it('preserves the legacy missing-connection rejection by default', async () => {
@@ -88,7 +97,8 @@ describe('DAppController idempotent permission revocation', () => {
       type: 'dapp/removeDApp',
       payload: host,
     });
-    expect(saveMainStateMock).toHaveBeenCalledTimes(1);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
   it('removes and persists an active connection', async () => {
@@ -103,23 +113,26 @@ describe('DAppController idempotent permission revocation', () => {
     });
     dispatchMock.mockClear();
     saveMainStateMock.mockClear();
+    persistMainStateStrictMock.mockClear();
 
     await controller.disconnect(host, true, options);
     expect(dispatchMock).toHaveBeenCalledWith({
       type: 'dapp/removeDApp',
       payload: host,
     });
-    expect(saveMainStateMock).toHaveBeenCalledTimes(1);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
   it('propagates real persistence failures for permission revocation', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
     const failure = new Error('Storage unavailable');
-    saveMainStateMock.mockRejectedValueOnce(failure);
+    persistMainStateStrictMock.mockRejectedValueOnce(failure);
     await expect(DAppController().disconnect(host, true, options)).rejects.toBe(
       failure
     );
-    expect(saveMainStateMock).toHaveBeenCalledTimes(1);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
   it('preserves legacy best-effort persistence behavior by default', async () => {
@@ -127,7 +140,53 @@ describe('DAppController idempotent permission revocation', () => {
     saveMainStateMock.mockRejectedValueOnce(new Error('Storage unavailable'));
     await expect(DAppController().disconnect(host)).resolves.toBeUndefined();
     expect(saveMainStateMock).toHaveBeenCalledTimes(1);
+    expect(persistMainStateStrictMock).not.toHaveBeenCalled();
   });
+
+  it('does not mistake a legacy false result for a durable revocation', async () => {
+    state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
+    saveMainStateMock.mockResolvedValue(false);
+    await DAppController().disconnect(host, true, options);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(saveMainStateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'retries a failed revocation durably after the in-memory removal (active=%s)',
+    async (active) => {
+      state.dapp.dapps[host] = {
+        host,
+        accountId: 0,
+        accountType: 'HDAccount',
+      };
+      const controller = DAppController();
+      if (active) {
+        controller.connect({
+          host,
+          accountId: 0,
+          accountType: KeyringAccountType.HDAccount,
+          chain: INetworkType.Ethereum,
+          chainId: 57057,
+          date: Date.now(),
+        });
+      }
+      dispatchMock.mockImplementation((action) => {
+        if (action.type === 'dapp/removeDApp') delete state.dapp.dapps[host];
+      });
+      const failure = new Error('Storage unavailable');
+      persistMainStateStrictMock.mockRejectedValueOnce(failure);
+
+      await expect(controller.disconnect(host, true, options)).rejects.toBe(
+        failure
+      );
+      expect(state.dapp.dapps[host]).toBeUndefined();
+      await expect(
+        controller.disconnect(host, true, options)
+      ).resolves.toBeUndefined();
+      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(saveMainStateMock).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('DAppController account changes', () => {
@@ -145,7 +204,7 @@ describe('DAppController account changes', () => {
       query: jest.fn((_query, callback) => callback([])),
     };
     (chrome as any).scripting = { executeScript: jest.fn() };
-    saveMainStateMock.mockResolvedValue(undefined);
+    saveMainStateMock.mockResolvedValue(true);
     getStateMock.mockReturnValue({
       dapp: {
         dapps: {

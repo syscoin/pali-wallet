@@ -3,7 +3,7 @@ import { INetwork } from '@sidhujag/sysweb3-network';
 import { notificationManager } from '../notification-manager';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
-import store, { saveMainState } from 'state/store';
+import store, { persistMainStateStrict, saveMainState } from 'state/store';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController, IDAppDisconnectOptions } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
@@ -55,9 +55,10 @@ const DAppController = (
 ): IDAppController => {
   const _dapps: IDappsSession = {};
 
-  const persistDappState = async (operation: string) => {
+  const persistDappState = async (operation: string, strict = false) => {
     try {
-      await saveMainState();
+      if (strict) await persistMainStateStrict();
+      else await saveMainState();
     } catch (error) {
       console.error(`[DAppController] Failed to persist ${operation}:`, error);
       throw error;
@@ -344,7 +345,7 @@ const DAppController = (
           delete _dapps[host];
           store.dispatch(removeDApp(host));
           if (persist) {
-            await persistDappState('dapp disconnect');
+            await persistDappState('dapp disconnect', options.propagateErrors);
           }
 
           // Trigger disconnection notification
@@ -383,7 +384,10 @@ const DAppController = (
           if (previousConnectedDapps[host]) {
             store.dispatch(removeDApp(host));
             if (persist) {
-              await persistDappState('dapp disconnect');
+              await persistDappState(
+                'dapp disconnect',
+                options.propagateErrors
+              );
             }
 
             // Trigger disconnection notification
@@ -417,7 +421,13 @@ const DAppController = (
                 error
               );
             });
-          } else if (!options.allowAlreadyDisconnected) {
+          } else if (options.allowAlreadyDisconnected) {
+            // A failed earlier save may already have removed the in-memory
+            // connection. Flush that absence before acknowledging a retry.
+            if (persist && options.propagateErrors) {
+              await persistDappState('dapp disconnect', true);
+            }
+          } else {
             throw new Error('DApp not connected');
           }
           break;
