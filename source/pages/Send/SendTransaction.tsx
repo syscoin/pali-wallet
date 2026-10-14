@@ -170,7 +170,7 @@ export const SendTransaction = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [closing, setClosing] = useState(false);
   const approvalActionRef = React.useRef<
-    'ready' | 'submitting' | 'dismissed' | 'completed'
+    'ready' | 'submitting' | 'outcome-unknown' | 'dismissed' | 'completed'
   >('ready');
   const mountedRef = React.useRef(true);
   const closeGenerationRef = React.useRef(0);
@@ -505,7 +505,7 @@ export const SendTransaction = () => {
         !mountedRef.current ||
         generation !== closeGenerationRef.current ||
         closeTimeoutRef.current !== timeout ||
-        approvalActionRef.current !== 'ready'
+        !['ready', 'outcome-unknown'].includes(approvalActionRef.current)
       )
         return;
       approvalActionRef.current = 'dismissed';
@@ -655,6 +655,7 @@ export const SendTransaction = () => {
       }
       // For NFT approvals, the transaction data remains unchanged
 
+      let submissionRequested = false;
       try {
         let response;
         const isPasskeyAccount = Boolean(
@@ -810,6 +811,7 @@ export const SendTransaction = () => {
             ...(toField ? { to: toField } : {}),
           };
 
+          submissionRequested = true;
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
@@ -878,6 +880,7 @@ export const SendTransaction = () => {
           };
 
           assertSupportedEvmFees(base1559Tx);
+          submissionRequested = true;
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
@@ -906,6 +909,11 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
+        // A local controller timeout does not cancel the background send.
+        // Keep the attempt consumed unless the background explicitly proved
+        // that it failed before any broadcast attempt.
+        if (submissionRequested && error?.transactionNotBroadcast !== true)
+          approvalActionRef.current = 'outcome-unknown';
         // Handle specific errors (blacklist, cancellation, device issues, etc.)
         const wasHandledSpecifically = handleTransactionError(
           error,

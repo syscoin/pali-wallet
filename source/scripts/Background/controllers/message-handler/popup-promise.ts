@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
+import { isTrustedExtensionPageSender } from '../../handlers/internalMessageAuthorization';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -120,6 +121,7 @@ export const popupPromise = async ({
   let popup = null;
   let approvalClientId: string | null = null;
   let approvalDocumentId: string | null = null;
+  let submissionStarted = false;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -147,6 +149,29 @@ export const popupPromise = async ({
     registrationSender: chrome.runtime.MessageSender,
     reply: (response: any) => void
   ) => {
+    // Observe the existing internal controller dispatch before its asynchronous
+    // execution. A closed or timed-out approval cannot prove that this send
+    // was cancelled. Browser-supplied document/window identity binds the claim
+    // to this approval, not another wallet tab or a content script.
+    if (
+      route === MethodRoute.SendEthTx &&
+      approvalClientId &&
+      approvalDocumentId &&
+      message?.type === 'CONTROLLER_ACTION' &&
+      isTrustedExtensionPageSender(registrationSender) &&
+      registrationSender.frameId === 0 &&
+      registrationSender.documentId === approvalDocumentId &&
+      registrationSender.tab?.windowId === popup?.id &&
+      Array.isArray(message.data?.methods) &&
+      message.data.methods.length === 2 &&
+      message.data.methods[0] === 'wallet' &&
+      ['sendAndSaveEthTransaction', 'submitSmartAccountExecution'].includes(
+        message.data.methods[1]
+      )
+    ) {
+      submissionStarted = true;
+      return false;
+    }
     if (
       message?.type !== APPROVAL_REGISTER ||
       message.approvalId !== approvalId
@@ -276,6 +301,16 @@ export const popupPromise = async ({
       );
       resolve(result);
     };
+    const cancellationError = () =>
+      submissionStarted
+        ? cleanErrorStack(
+            ethErrors.rpc.internal(
+              'Transaction submission outcome is unknown. Check the wallet activity and chain before submitting again.'
+            )
+          )
+        : cleanErrorStack(
+            ethErrors.provider.userRejectedRequest('User closed popup window')
+          );
 
     // Message handler
     responseHandler = (swEvent: any) => {
@@ -319,11 +354,7 @@ export const popupPromise = async ({
       // This allows null to be used as a valid success response
       cleanup();
       resolved = true; // Mark as resolved to prevent double resolution
-      reject(
-        cleanErrorStack(
-          ethErrors.provider.userRejectedRequest('User closed popup window')
-        )
-      );
+      reject(cancellationError());
     };
 
     onAbort = () => {
@@ -335,7 +366,7 @@ export const popupPromise = async ({
       chrome.windows.remove(popup.id, () => {
         void chrome.runtime.lastError;
       });
-      reject(requestCancelledError());
+      reject(submissionStarted ? cancellationError() : requestCancelledError());
     };
 
     // Add listeners

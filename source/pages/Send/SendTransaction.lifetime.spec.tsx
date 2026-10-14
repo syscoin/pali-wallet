@@ -586,7 +586,11 @@ describe('SendTransaction error close lifetimes', () => {
       } else {
         mockEmitter
           .mockResolvedValueOnce({ nativeBalance: '1' })
-          .mockRejectedValueOnce(Error('RPC refused'));
+          .mockRejectedValueOnce(
+            Object.assign(Error('RPC refused'), {
+              transactionNotBroadcast: true,
+            })
+          );
         await act(async () => mockButtonHandlers['buttons.confirm']());
         timer = closeTimer(4000);
       }
@@ -603,6 +607,22 @@ describe('SendTransaction error close lifetimes', () => {
       expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
     }
   );
+
+  it('does not offer a second submission after a controller timeout', async () => {
+    await prepare();
+    mockEmitter
+      .mockResolvedValueOnce({ nativeBalance: '1' })
+      .mockRejectedValueOnce(Error('Network request timed out'));
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const timer = closeTimer(4000);
+    mockEmitter.mockClear();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    await act(async () => mockButtonHandlers['buttons.cancel']());
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockClose).not.toHaveBeenCalled();
+    await act(async () => timer.callback());
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
 
   it('a first error cannot close the lifetime of a failed retry', async () => {
     await prepare();
