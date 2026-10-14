@@ -71,13 +71,9 @@ if ((window as any).__paliWalletInjected) {
     // eslint-disable-next-line camelcase
     (window as any)._metamask_ethereum = existingEthereum;
 
-    // For bridges that check wallet.ethereum specifically,
-    // we still set window.ethereum but preserve MetaMask access
-    window.ethereum = proxiedProvider;
-
     // Also preserve MetaMask under its own namespace
     (window as any).metamask = existingEthereum;
-  } else {
+  } else if (!existingEthereum) {
     console.log('[Pali] No MetaMask detected, setting as primary provider');
     window.ethereum = proxiedProvider;
   }

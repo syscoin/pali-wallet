@@ -60,6 +60,20 @@ it('does not overwrite another wallet fallback on reinjection', () => {
   expect(page.paliProvider.proxiedProvider).toBe(provider);
 });
 
+it.each([true, false])(
+  'preserves an existing foreign fallback on first injection (MetaMask=%s)',
+  (isMetaMask) => {
+    const other = { request: jest.fn(), isMetaMask };
+    page.ethereum = other;
+
+    inject();
+
+    expect(page.ethereum).toBe(other);
+    expect(page.paliProvider.proxiedProvider).not.toBe(other);
+    expect(page.paliProvider.uuid).toBe('fixture-provider-uuid');
+  }
+);
+
 it('does not synthesize a provider when the previous injection is unavailable', () => {
   page.__paliWalletInjected = true;
 

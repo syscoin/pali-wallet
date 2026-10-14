@@ -28,8 +28,8 @@ export const useWalletProviderDefault = () => {
   const turnPaliAsDefault = async () => {
     setIsEnabled(!isEnabled);
     if (isEnabled) {
-      controllerEmitter(['wallet', 'removeWindowEthProperty']);
-      controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+      await controllerEmitter(['wallet', 'removeWindowEthProperty']);
+      await controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
 
       try {
         const response = await controllerEmitter(['dapp', 'getAll']);
@@ -58,8 +58,8 @@ export const useWalletProviderDefault = () => {
         console.error('Error disconnecting dapps:', error);
       }
     } else {
-      controllerEmitter(['wallet', 'addWindowEthProperty']);
-      controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+      await controllerEmitter(['wallet', 'addWindowEthProperty']);
+      await controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
     }
   };
 

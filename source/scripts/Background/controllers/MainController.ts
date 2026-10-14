@@ -3523,7 +3523,7 @@ class MainController {
 
   public removeWindowEthProperty() {
     const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.removeProperty, {
+    return controller.dapp.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
       params: {
         type: PaliEvents.removeProperty,
@@ -3533,7 +3533,7 @@ class MainController {
 
   public addWindowEthProperty() {
     const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.addProperty, {
+    return controller.dapp.handleStateChange(PaliEvents.addProperty, {
       method: PaliEvents.addProperty,
       params: {
         type: PaliEvents.addProperty,

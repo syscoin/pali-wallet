@@ -27,6 +27,7 @@ import { KeyringAccountType } from 'types/network';
 
 import DAppController from './DAppController';
 import { clearProviderCache } from './message-handler/provider-cache';
+import { PaliEvents } from './message-handler/types';
 
 describe('DAppController account changes', () => {
   const account = {
@@ -196,5 +197,148 @@ describe('legacy dapp permission isolation', () => {
     expect(receive('http://example.com')).not.toHaveBeenCalled();
     expect(receive('https://example.com:8443')).not.toHaveBeenCalled();
     expect(receive('https://example.com')).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Ethereum property toggle dispatch', () => {
+  const origin = 'https://connected.example';
+  let state: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    state = {
+      dapp: {
+        dapps: {
+          [origin]: {
+            host: origin,
+            accountId: 0,
+            accountType: KeyringAccountType.HDAccount,
+          },
+        },
+      },
+      vault: {
+        accounts: { HDAccount: { 0: { address: '0x1234', xpub: 'xpub' } } },
+        isBitcoinBased: false,
+      },
+    };
+    getStateMock.mockImplementation(() => state);
+    dispatchMock.mockImplementation((action) => {
+      if (action.type === 'dapp/removeDApp')
+        delete state.dapp.dapps[action.payload];
+    });
+    saveMainStateMock.mockResolvedValue(undefined);
+    (chrome.runtime as any).id = 'test-extension';
+    (chrome as any).tabs = {
+      query: jest.fn((_query, callback) =>
+        callback([
+          { id: 7, url: `${origin}/page` },
+          { id: 8, url: 'http://unconnected.example/page' },
+          { id: 9, url: 'chrome://settings' },
+          { id: 10, url: 'chrome-extension://other/app.html' },
+          { id: 11, url: 'file:///tmp/test.html' },
+          { id: 12 },
+          { url: 'https://missing-id.example/' },
+        ])
+      ),
+      sendMessage: jest.fn().mockResolvedValue(undefined),
+    };
+    (chrome as any).scripting = {
+      executeScript: jest.fn().mockResolvedValue([]),
+    };
+  });
+
+  it('delivers normal remove, disconnect and re-enable to live top-frame tabs without reconnecting', async () => {
+    const controller = DAppController();
+    controller.setup({ url: `${origin}/page` });
+    await controller.handleStateChange(PaliEvents.removeProperty, {
+      method: PaliEvents.removeProperty,
+      params: { type: PaliEvents.removeProperty },
+    });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      {
+        id: PaliEvents.removeProperty,
+        data: {
+          method: PaliEvents.removeProperty,
+          params: { type: PaliEvents.removeProperty },
+        },
+      },
+      { frameId: 0 }
+    );
+
+    await controller.disconnect(origin);
+    await new Promise(setImmediate);
+    expect(controller.getAll()).toEqual({});
+    (chrome.tabs.sendMessage as jest.Mock).mockClear();
+    (chrome.tabs.query as jest.Mock).mockClear();
+    (chrome.scripting.executeScript as jest.Mock).mockClear();
+    dispatchMock.mockClear();
+
+    await controller.handleStateChange(PaliEvents.addProperty, {
+      method: PaliEvents.addProperty,
+      params: { type: PaliEvents.addProperty },
+    });
+
+    expect(chrome.tabs.query).toHaveBeenCalledWith(
+      { url: ['http://*/*', 'https://*/*'] },
+      expect.any(Function)
+    );
+    expect((chrome.tabs.sendMessage as jest.Mock).mock.calls).toEqual(
+      [7, 8].map((tabId) => [
+        tabId,
+        {
+          id: PaliEvents.addProperty,
+          data: {
+            method: PaliEvents.addProperty,
+            params: { type: PaliEvents.addProperty },
+          },
+        },
+        { frameId: 0 },
+      ])
+    );
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(controller.isConnected(origin)).toBe(false);
+    expect(controller.getAll()).toEqual({});
+  });
+
+  it('broadcasts only the fixed public property notification, not attached account data', async () => {
+    state.dapp.dapps = {};
+    await DAppController().handleStateChange(PaliEvents.addProperty, {
+      method: PaliEvents.addProperty,
+      params: { type: PaliEvents.addProperty, accounts: ['private-account'] },
+    });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+    expect((chrome.tabs.sendMessage as jest.Mock).mock.calls[0][1]).toEqual({
+      id: PaliEvents.addProperty,
+      data: {
+        method: PaliEvents.addProperty,
+        params: { type: PaliEvents.addProperty },
+      },
+    });
+  });
+
+  it('keeps account notifications scoped to connected sessions', async () => {
+    state.dapp.dapps = {};
+    await DAppController().handleStateChange(PaliEvents.accountsChanged, {
+      method: PaliEvents.accountsChanged,
+      params: ['private-account'],
+    });
+    expect(chrome.tabs.query).not.toHaveBeenCalled();
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('finishes other tab deliveries if one document has closed', async () => {
+    (chrome.tabs.sendMessage as jest.Mock).mockRejectedValueOnce(
+      new Error('Receiving end does not exist')
+    );
+    await expect(
+      DAppController().handleStateChange(PaliEvents.addProperty, {
+        method: PaliEvents.addProperty,
+        params: { type: PaliEvents.addProperty },
+      })
+    ).resolves.toBeUndefined();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
   });
 });

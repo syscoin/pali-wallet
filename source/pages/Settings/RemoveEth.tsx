@@ -22,6 +22,7 @@ const RemoveEthView = () => {
   const location = useLocation();
 
   const onSubmit = async () => {
+    if (loading) return;
     setLoading(true);
 
     setIsEnabled(!isEnabled);
@@ -120,6 +121,7 @@ const RemoveEthView = () => {
 
         <button
           onClick={onSubmit}
+          disabled={loading}
           className="flex items-center justify-center w-[352px] border-2 border-white rounded-[100px] py-2 px-[13px] text-base font-medium"
         >
           {isEnabled ? (

@@ -59,6 +59,28 @@ import {
 } from 'utils/navigationState';
 
 import MainController from './MainController';
+import { PaliEvents } from './message-handler/types';
+
+it.each([
+  ['removeWindowEthProperty', PaliEvents.removeProperty],
+  ['addWindowEthProperty', PaliEvents.addProperty],
+])(
+  'makes the normal %s controller action await actual property delivery',
+  (method, event) => {
+    const pending = new Promise<void>(() => undefined);
+    const handleStateChange = jest.fn().mockReturnValue(pending);
+    (getController as jest.Mock).mockReturnValue({
+      dapp: { handleStateChange },
+    });
+    const wallet: any = Object.create(MainController.prototype);
+
+    expect(wallet[method]()).toBe(pending);
+    expect(handleStateChange).toHaveBeenCalledWith(event, {
+      method: event,
+      params: { type: event },
+    });
+  }
+);
 
 it('clears popup browsing and unsigned drafts when the background locks with no UI document', () => {
   const wallet: any = Object.create(MainController.prototype);
