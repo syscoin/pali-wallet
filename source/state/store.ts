@@ -11,6 +11,7 @@ import { thunk, ThunkMiddleware } from 'redux-thunk';
 import { INetwork } from 'types/network';
 import { ISpamFilterState } from 'types/security';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
+import { chromeStorage } from 'utils/storageAPI';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
@@ -34,7 +35,7 @@ import vault, {
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
 import vaultCache from './vaultCache';
-import vaultGlobal, { setActiveSlip44 } from './vaultGlobal';
+import vaultGlobal, { setActiveSlip44, setHasEthProperty } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
 // For now, let's assume RootState will be defined later and use 'any' for the thunk state type.
@@ -148,6 +149,26 @@ export async function saveMainState() {
   return walletPersistenceMutex.runExclusive(() =>
     saveMainStateWithinPersistenceLock()
   );
+}
+
+/** Commit provider availability before new content scripts can observe it. */
+export async function persistHasEthProperty(enabled: boolean): Promise<void> {
+  if (typeof enabled !== 'boolean')
+    throw new Error('Invalid provider preference');
+  return walletPersistenceMutex.runExclusive(async () => {
+    assertWalletPersistenceAllowed();
+    const state = store.getState();
+    const mainState = {
+      ...getMainStateForStorage(state),
+      vaultGlobal: { ...state.vaultGlobal, hasEthProperty: enabled },
+    };
+    // This boundary must reject storage failure, unlike legacy best-effort saves.
+    await chromeStorage.setItem('state', mainState);
+    lastPersistedState = mainState;
+    assertWalletPersistenceAllowed();
+    // Preserve other Redux changes that occurred while storage was pending.
+    store.dispatch(setHasEthProperty(enabled));
+  });
 }
 
 /**

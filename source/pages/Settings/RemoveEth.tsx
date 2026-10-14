@@ -15,7 +15,7 @@ const RemoveEthView = () => {
   );
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
+  const isEnabled = hasEthProperty;
   const [loading, setLoading] = useState<boolean>(false);
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
@@ -25,53 +25,56 @@ const RemoveEthView = () => {
     if (loading) return;
     setLoading(true);
 
-    setIsEnabled(!isEnabled);
+    try {
+      switch (isEnabled) {
+        case true:
+          await controllerEmitter(['wallet', 'removeWindowEthProperty']);
 
-    switch (isEnabled) {
-      case true:
-        await controllerEmitter(['wallet', 'removeWindowEthProperty']);
-        await controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+          // Get all dapps and disconnect them efficiently
+          try {
+            const dapps = await controllerEmitter(['dapp', 'getAll']);
+            const dappEntries = Object.values(dapps);
 
-        // Get all dapps and disconnect them efficiently
-        try {
-          const dapps = await controllerEmitter(['dapp', 'getAll']);
-          const dappEntries = Object.values(dapps);
+            if (dappEntries.length > 0) {
+              await Promise.all(
+                dappEntries.map(async (dapp: any) => {
+                  const isConnected = await controllerEmitter(
+                    ['dapp', 'isConnected'],
+                    [dapp.host]
+                  );
+                  if (isConnected) {
+                    await controllerEmitter(
+                      ['dapp', 'disconnect'],
+                      [dapp.host]
+                    );
+                  }
+                })
+              );
 
-          if (dappEntries.length > 0) {
-            await Promise.all(
-              dappEntries.map(async (dapp: any) => {
-                const isConnected = await controllerEmitter(
-                  ['dapp', 'isConnected'],
-                  [dapp.host]
-                );
-                if (isConnected) {
-                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-                }
-              })
-            );
-
-            // Now save once after all disconnects are complete
-            await controllerEmitter(
-              ['wallet', 'saveCurrentState'],
-              ['remove-eth-disconnects']
-            );
+              // Now save once after all disconnects are complete
+              await controllerEmitter(
+                ['wallet', 'saveCurrentState'],
+                ['remove-eth-disconnects']
+              );
+            }
+          } catch (error) {
+            console.error('Error disconnecting dapps:', error);
           }
-        } catch (error) {
-          console.error('Error disconnecting dapps:', error);
-        }
 
-        setConfirmed(true);
-        setLoading(false);
-        break;
-      case false:
-        await controllerEmitter(['wallet', 'addWindowEthProperty']);
-        await controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+          setConfirmed(true);
+          break;
+        case false:
+          await controllerEmitter(['wallet', 'addWindowEthProperty']);
 
-        setConfirmed(true);
-        setLoading(false);
-        break;
-      default:
-        break;
+          setConfirmed(true);
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error('Error changing Ethereum provider:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
