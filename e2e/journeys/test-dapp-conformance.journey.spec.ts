@@ -29,6 +29,7 @@ import officialDeploymentContracts from '../../tests/fixtures/officialDeployment
 import typedOrderFixtures from '../../tests/fixtures/typedOrderRequests.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
+import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
 import {
   LOCAL_CHAINS,
   TEST_DAPP_MNEMONIC,
@@ -1370,9 +1371,14 @@ test('official test dapp: isolated standard provider conformance', async () => {
               .getByRole('button', { name: /(?:^|\s)(sign|confirm)$/i })
               .count()
           ).toBe(0);
-          await popup.getByRole('button', { name: /(?:^|\s)ok$/i }).click();
-          const rejected = await settle(page, id, 5000);
+          const rejected = await dismissRejectedApproval({
+            click: () =>
+              popup.getByRole('button', { name: /(?:^|\s)ok$/i }).click(),
+            isClosed: () => popup.isClosed(),
+            settle: () => settle(page, id, 5000),
+          });
           expect(typeof rejected.error?.code).toBe('number');
+          expect(rejected.result).toBeUndefined();
           return { request: rejected, body };
         });
       }
