@@ -29,6 +29,16 @@ describe('verified rejection popup dismissal', () => {
     expect(options.click).toHaveBeenCalledTimes(1);
   });
 
+  it('accepts a Cancel self-close only after the exact request returns user rejection', async () => {
+    const options = setup();
+    options.click.mockRejectedValue(closedTarget);
+    await expect(dismissRejectedApproval(options)).resolves.toEqual({
+      error: { code: 4001 },
+    });
+    expect(options.click).toHaveBeenCalledTimes(1);
+    expect(options.settle).toHaveBeenCalledTimes(1);
+  });
+
   it('does not swallow a closed-target error while the popup remains open', async () => {
     const options = setup();
     options.click.mockRejectedValue(closedTarget);

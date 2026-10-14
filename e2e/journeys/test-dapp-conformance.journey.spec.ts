@@ -520,10 +520,11 @@ test('official test dapp: isolated standard provider conformance', async () => {
           ),
         });
         if (cancel) {
-          const closed = popup.waitForEvent('close', { timeout: 5000 });
-          await reject.click();
-          await closed;
-          const rejected = await settle(page, requestId!, 5000);
+          const rejected = await dismissRejectedApproval({
+            click: () => reject.click(),
+            isClosed: () => popup.isClosed(),
+            settle: () => settle(page, requestId!, 5000),
+          });
           expect(rejected.error?.code).toBe(4001);
           expect(rejected.result).toBeUndefined();
           expect(
@@ -1225,13 +1226,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
                 exact: true,
               })
             ).toHaveCount(0);
-            const popupClosed = popup.waitForEvent('close', { timeout: 2000 });
-            await popup
-              .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
-              .first()
-              .click();
-            await popupClosed;
-            const rejected = await settle(page, id, 2000);
+            const rejected = await dismissRejectedApproval({
+              click: () =>
+                popup
+                  .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+                  .first()
+                  .click(),
+              isClosed: () => popup.isClosed(),
+              settle: () => settle(page, id, 2000),
+            });
             expect(rejected.error?.code).toBe(4001);
             expect(rejected.result).toBeUndefined();
             genuineRejections.push(rejected);
@@ -1296,15 +1299,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
             ),
           });
           const approvalBody = await approval.locator('body').innerText();
-          const approvalClosed = approval.waitForEvent('close', {
-            timeout: 2000,
+          const rejected = await dismissRejectedApproval({
+            click: () =>
+              approval
+                .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+                .first()
+                .click(),
+            isClosed: () => approval.isClosed(),
+            settle: () => settle(page, id, 2000),
           });
-          await approval
-            .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
-            .first()
-            .click();
-          await approvalClosed;
-          const rejected = await settle(page, id, 2000);
           expect(rejected.error?.code).toBe(4001);
           expect(rejected.result).toBeUndefined();
           const nonceAfter = await localRpc(
@@ -1333,12 +1336,17 @@ test('official test dapp: isolated standard provider conformance', async () => {
           address,
         ]);
         const popup = await popupFor(wallet.context, page, id);
-        await popup
-          .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
-          .first()
-          .click();
-        const rejected = await settle(page, id, 5000);
+        const rejected = await dismissRejectedApproval({
+          click: () =>
+            popup
+              .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+              .first()
+              .click(),
+          isClosed: () => popup.isClosed(),
+          settle: () => settle(page, id, 5000),
+        });
         expect(rejected.error?.code).toBe(4001);
+        expect(rejected.result).toBeUndefined();
         return rejected;
       });
       for (const button of [
@@ -1757,12 +1765,17 @@ test('official test dapp: isolated standard provider conformance', async () => {
             { from: address, to: address, value: '0x0', gas: '0x5208' },
           ]);
           const popup = await popupFor(wallet.context, page, id);
-          await popup
-            .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
-            .first()
-            .click();
-          const result = await settle(page, id, 5000);
+          const result = await dismissRejectedApproval({
+            click: () =>
+              popup
+                .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
+                .first()
+                .click(),
+            isClosed: () => popup.isClosed(),
+            settle: () => settle(page, id, 5000),
+          });
           expect(result.error?.code).toBe(4001);
+          expect(result.result).toBeUndefined();
           expect(
             await localRpc(LOCAL_CHAINS[0].url, 'eth_getTransactionCount', [
               address,
