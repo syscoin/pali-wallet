@@ -335,8 +335,7 @@ const DAppController = (
       : account.address;
   };
 
-  const notifyDisconnected = (host: string) => {
-    notificationManager.notifyDappConnection(host, false);
+  const dispatchDisconnectedAccounts = (host: string) => {
     _dispatchPaliEvent(
       host,
       { method: PaliEvents.accountsChanged, params: [] },
@@ -359,6 +358,11 @@ const DAppController = (
     });
   };
 
+  const notifyDisconnected = (host: string) => {
+    notificationManager.notifyDappConnection(host, false);
+    dispatchDisconnectedAccounts(host);
+  };
+
   const disconnectDurably = (
     host: string,
     allowAlreadyDisconnected: boolean
@@ -378,7 +382,13 @@ const DAppController = (
       return pending.inFlight;
     }
     if (!pending && !_dapps[host] && !getAll()[host]) {
-      if (allowAlreadyDisconnected) return Promise.resolve();
+      if (allowAlreadyDisconnected) {
+        // Another main-state save may have persisted a failed removal before
+        // the worker restarted and lost its retry map. Reconcile the caller's
+        // provider state without another storage write or connection toast.
+        dispatchDisconnectedAccounts(host);
+        return Promise.resolve();
+      }
       return Promise.reject(new Error('DApp not connected'));
     }
     if (!pending && pendingRevocations.size >= MAX_PENDING_REVOCATIONS) {
