@@ -54,6 +54,10 @@ const DAppController = (
   isWalletUnlocked: () => boolean = () => false
 ): IDAppController => {
   const _dapps: IDappsSession = {};
+  // Only origins whose real permission removal is pending may occupy this
+  // bounded retry state. Unconnected pages cannot populate it or force writes.
+  const pendingRevocations = new Map<string, { inFlight?: Promise<void> }>();
+  const MAX_PENDING_REVOCATIONS = 256;
 
   const persistDappState = async (operation: string, strict = false) => {
     try {
@@ -331,12 +335,94 @@ const DAppController = (
       : account.address;
   };
 
+  const notifyDisconnected = (host: string) => {
+    notificationManager.notifyDappConnection(host, false);
+    _dispatchPaliEvent(
+      host,
+      { method: PaliEvents.accountsChanged, params: [] },
+      PaliEvents.accountsChanged
+    ).catch((error) => {
+      console.warn(
+        '[DAppController] Failed to dispatch accountsChanged on disconnect:',
+        error
+      );
+    });
+    _dispatchPaliEvent(
+      host,
+      { method: PaliSyscoinEvents.xpubChanged, params: null },
+      PaliSyscoinEvents.xpubChanged
+    ).catch((error) => {
+      console.warn(
+        '[DAppController] Failed to dispatch xpubChanged on disconnect:',
+        error
+      );
+    });
+  };
+
+  const disconnectDurably = (
+    host: string,
+    allowAlreadyDisconnected: boolean
+  ): Promise<void> => {
+    const pending = pendingRevocations.get(host);
+    if (pending?.inFlight) {
+      if (_dapps[host] || getAll()[host]) {
+        // A newly approved permission is a separate removal, not covered by
+        // the write already in flight. Process this request after that attempt.
+        const revokeCurrentPermission = () =>
+          disconnectDurably(host, allowAlreadyDisconnected);
+        return pending.inFlight.then(
+          revokeCurrentPermission,
+          revokeCurrentPermission
+        );
+      }
+      return pending.inFlight;
+    }
+    if (!pending && !_dapps[host] && !getAll()[host]) {
+      if (allowAlreadyDisconnected) return Promise.resolve();
+      return Promise.reject(new Error('DApp not connected'));
+    }
+    if (!pending && pendingRevocations.size >= MAX_PENDING_REVOCATIONS) {
+      return Promise.reject(
+        new Error('Too many pending revocations; retry an earlier revocation')
+      );
+    }
+    const entry = pending || {};
+    pendingRevocations.set(host, entry);
+    // Install the shared promise before work begins so concurrent same-origin
+    // requests cannot write or emit the disconnect events more than once.
+    entry.inFlight = Promise.resolve()
+      .then(async () => {
+        await persistDappState('dapp disconnect', true);
+        // A newly approved connection must not receive stale disconnect UI.
+        if (!_dapps[host] && !getAll()[host]) notifyDisconnected(host);
+        pendingRevocations.delete(host);
+      })
+      .catch((error) => {
+        entry.inFlight = undefined;
+        throw error;
+      });
+    // Remove synchronously after installing the shared attempt, so another
+    // ordinary revoke joins it rather than mistaking this permission for new.
+    if (_dapps[host] || getAll()[host]) {
+      delete _dapps[host];
+      store.dispatch(removeDApp(host));
+    }
+    return entry.inFlight;
+  };
+
   const disconnect = async (
     host: string,
     persist = true,
     options: IDAppDisconnectOptions = {}
   ) => {
     try {
+      if (persist && options.propagateErrors) {
+        await disconnectDurably(
+          host,
+          Boolean(options.allowAlreadyDisconnected)
+        );
+        return;
+      }
       const previousConnectedDapps = getAll();
       const isInActiveSession = Boolean(_dapps[host]);
 
@@ -348,37 +434,7 @@ const DAppController = (
             await persistDappState('dapp disconnect', options.propagateErrors);
           }
 
-          // Trigger disconnection notification
-          notificationManager.notifyDappConnection(host, false);
-
-          // Dispatch events but don't await them to prevent blocking
-          _dispatchPaliEvent(
-            host,
-            {
-              method: PaliEvents.accountsChanged,
-              params: [],
-            },
-            PaliEvents.accountsChanged
-          ).catch((error) => {
-            console.warn(
-              `[DAppController] Failed to dispatch accountsChanged on disconnect:`,
-              error
-            );
-          });
-
-          _dispatchPaliEvent(
-            host,
-            {
-              method: PaliSyscoinEvents.xpubChanged,
-              params: null,
-            },
-            PaliSyscoinEvents.xpubChanged
-          ).catch((error) => {
-            console.warn(
-              `[DAppController] Failed to dispatch xpubChanged on disconnect:`,
-              error
-            );
-          });
+          notifyDisconnected(host);
           break;
         case false:
           if (previousConnectedDapps[host]) {
@@ -390,44 +446,8 @@ const DAppController = (
               );
             }
 
-            // Trigger disconnection notification
-            notificationManager.notifyDappConnection(host, false);
-
-            // Dispatch events but don't await them to prevent blocking
-            _dispatchPaliEvent(
-              host,
-              {
-                method: PaliEvents.accountsChanged,
-                params: [],
-              },
-              PaliEvents.accountsChanged
-            ).catch((error) => {
-              console.warn(
-                `[DAppController] Failed to dispatch accountsChanged on disconnect:`,
-                error
-              );
-            });
-
-            _dispatchPaliEvent(
-              host,
-              {
-                method: PaliSyscoinEvents.xpubChanged,
-                params: null,
-              },
-              PaliSyscoinEvents.xpubChanged
-            ).catch((error) => {
-              console.warn(
-                `[DAppController] Failed to dispatch xpubChanged on disconnect:`,
-                error
-              );
-            });
-          } else if (options.allowAlreadyDisconnected) {
-            // A failed earlier save may already have removed the in-memory
-            // connection. Flush that absence before acknowledging a retry.
-            if (persist && options.propagateErrors) {
-              await persistDappState('dapp disconnect', true);
-            }
-          } else {
+            notifyDisconnected(host);
+          } else if (!options.allowAlreadyDisconnected) {
             throw new Error('DApp not connected');
           }
           break;

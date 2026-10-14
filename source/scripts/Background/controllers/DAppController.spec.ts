@@ -26,11 +26,12 @@ jest.mock('./message-handler/provider-cache', () => ({
 
 import { runInNewContext } from 'vm';
 
+import { notificationManager } from '../notification-manager';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import DAppController from './DAppController';
 import { clearProviderCache } from './message-handler/provider-cache';
-import { PaliEvents } from './message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 describe('DAppController idempotent permission revocation', () => {
   const host = 'https://revoking.example';
@@ -68,6 +69,12 @@ describe('DAppController idempotent permission revocation', () => {
       },
     };
     getStateMock.mockImplementation(() => state);
+    dispatchMock.mockImplementation((action) => {
+      if (action.type === 'dapp/removeDApp')
+        delete state.dapp.dapps[action.payload];
+      if (action.type === 'dapp/addDApp')
+        state.dapp.dapps[action.payload.host] = action.payload;
+    });
   });
 
   afterEach(() => {
@@ -75,13 +82,20 @@ describe('DAppController idempotent permission revocation', () => {
     dispatchMock.mockReset();
   });
 
-  it('flushes absent permissions before acknowledging an already absent origin', async () => {
-    await expect(
-      DAppController().disconnect(host, true, options)
-    ).resolves.toBeUndefined();
+  it('makes sequential revocations from never-connected origins read-only no-ops', async () => {
+    const controller = DAppController();
+    for (let i = 0; i < 100; i++) {
+      await expect(
+        controller.disconnect(host, true, options)
+      ).resolves.toBeUndefined();
+      await expect(
+        controller.disconnect(`https://untrusted-${i}.example`, true, options)
+      ).resolves.toBeUndefined();
+    }
     expect(dispatchMock).not.toHaveBeenCalled();
     expect(saveMainStateMock).not.toHaveBeenCalled();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(persistMainStateStrictMock).not.toHaveBeenCalled();
+    expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
   });
 
   it('preserves the legacy missing-connection rejection by default', async () => {
@@ -170,6 +184,15 @@ describe('DAppController idempotent permission revocation', () => {
           date: Date.now(),
         });
       }
+      (notificationManager.notifyDappConnection as jest.Mock).mockClear();
+      (chrome.tabs.query as jest.Mock).mockImplementation((_query, callback) =>
+        callback([
+          { id: 1, url: `${host}/one` },
+          { id: 2, url: `${host}/two` },
+          { id: 3, url: 'https://another-origin.example' },
+        ])
+      );
+      (chrome.scripting.executeScript as jest.Mock).mockResolvedValue([]);
       dispatchMock.mockImplementation((action) => {
         if (action.type === 'dapp/removeDApp') delete state.dapp.dapps[host];
       });
@@ -180,13 +203,130 @@ describe('DAppController idempotent permission revocation', () => {
         failure
       );
       expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
+      expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+      await controller.disconnect('https://unrelated.example', true, options);
+      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
       await expect(
         controller.disconnect(host, true, options)
       ).resolves.toBeUndefined();
+      await new Promise((resolve) => setImmediate(resolve));
       expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
       expect(saveMainStateMock).not.toHaveBeenCalled();
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
+        host,
+        false
+      );
+      for (const tabId of [1, 2]) {
+        expect(
+          (chrome.scripting.executeScript as jest.Mock).mock.calls
+            .filter(([call]) => call.target.tabId === tabId)
+            .map(([call]) => call.args[0].data)
+        ).toEqual([
+          { method: PaliEvents.accountsChanged, params: [] },
+          { method: PaliSyscoinEvents.xpubChanged, params: null },
+        ]);
+      }
+      expect(
+        (chrome.scripting.executeScript as jest.Mock).mock.calls.some(
+          ([call]) => call.target.tabId === 3
+        )
+      ).toBe(false);
+      await controller.disconnect(host, true, options);
+      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
     }
   );
+
+  it('coalesces concurrent same-origin revocations into one write and one notification', async () => {
+    state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
+    const controller = DAppController();
+    let release!: () => void;
+    persistMainStateStrictMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const first = controller.disconnect(host, true, options);
+    const second = controller.disconnect(host, true, options);
+    await Promise.resolve();
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.all([first, second]);
+    expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
+    await controller.disconnect(host, true, options);
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])(
+    'revokes a newly reconnected permission after the earlier write settles (failed=%s)',
+    async (failed) => {
+      state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
+      const controller = DAppController();
+      let finish!: () => void;
+      persistMainStateStrictMock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finish = () =>
+              failed ? reject(new Error('first write failed')) : resolve();
+          })
+      );
+      const first = controller.disconnect(host, true, options);
+      const firstResult = first.catch(() => undefined);
+      await Promise.resolve();
+      expect(state.dapp.dapps[host]).toBeUndefined();
+      controller.connect({
+        host,
+        accountId: 0,
+        accountType: KeyringAccountType.HDAccount,
+        chain: INetworkType.Ethereum,
+        chainId: 57057,
+        date: Date.now(),
+      });
+      (notificationManager.notifyDappConnection as jest.Mock).mockClear();
+      const second = controller.disconnect(host, true, options);
+      finish();
+      await firstResult;
+      await second;
+      expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
+      expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
+        host,
+        false
+      );
+    }
+  );
+
+  it('bounds failed-origin retry state without removing another permission at capacity', async () => {
+    const controller = DAppController();
+    const failure = new Error('Storage unavailable');
+    persistMainStateStrictMock.mockRejectedValue(failure);
+    for (let i = 0; i < 256; i++) {
+      const origin = `https://connected-${i}.example`;
+      state.dapp.dapps[origin] = {
+        host: origin,
+        accountId: 0,
+        accountType: 'HDAccount',
+      };
+      await expect(controller.disconnect(origin, true, options)).rejects.toBe(
+        failure
+      );
+    }
+    state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
+    await expect(controller.disconnect(host, true, options)).rejects.toThrow(
+      'Too many pending revocations'
+    );
+    expect(state.dapp.dapps[host]).toBeDefined();
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(256);
+    persistMainStateStrictMock.mockResolvedValue(undefined);
+    await controller.disconnect('https://connected-0.example', true, options);
+    await controller.disconnect(host, true, options);
+    expect(state.dapp.dapps[host]).toBeUndefined();
+    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(258);
+  });
 });
 
 describe('DAppController account changes', () => {
