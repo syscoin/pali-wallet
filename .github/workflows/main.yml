@@ -67,6 +67,8 @@ jobs:
           version: v1.7.1
       - name: Build extension
         run: yarn build:chrome
+      - name: Check isolated approval layout hit targets
+        run: yarn jest --runInBand --coverage=false --runTestsByPath e2e/layout/switchChainLayout.spec.tsx --testPathIgnorePatterns /node_modules/
       - name: Run isolated test dapp conformance
         env:
           PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}

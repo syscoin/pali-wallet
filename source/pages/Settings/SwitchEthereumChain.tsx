@@ -97,8 +97,8 @@ const SwitchChain: React.FC = () => {
   };
   return (
     <>
-      <div className="flex flex-col items-center justify-center w-full">
-        <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
+      <div className="flex flex-col items-center justify-center w-full gap-6 pb-6">
+        <div className="mt-12 flex flex-col pb-4 pt-4 w-full gap-4">
           <h2 className="text-center text-base">
             {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
           </h2>
@@ -119,7 +119,7 @@ const SwitchChain: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
+        <div className="w-full px-4 flex items-center justify-between">
           <Button
             variant="ghost"
             type="button"
