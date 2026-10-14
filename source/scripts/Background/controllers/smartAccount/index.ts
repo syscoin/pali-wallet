@@ -1898,76 +1898,83 @@ class SmartAccountController {
     validator?: string;
     waitForConfirmation?: boolean;
   }) {
-    const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
-    const assertContext = () => {
-      if (params.expectedContext) {
-        this.assertExpectedExecutionContext(
-          params.expectedContext,
-          params.accountId
-        );
-        if (!params.executionContextId)
-          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-            transactionNotBroadcast: true,
-          });
-      }
-      if (params.executionContextId) {
-        this.assertSmartAccountExecutionContext(params.executionContextId);
-        const context = this.executionContexts.get(params.executionContextId)!;
-        if (
-          (params.accountId !== undefined &&
-            params.accountId !== context.accountId) ||
-          !params.userOperation ||
-          params.gasPrice !== context.gasPrice ||
-          Object.entries(context.userOperation).some(
-            ([key, value]) => params.userOperation[key] !== value
-          )
-        )
-          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-            transactionNotBroadcast: true,
-          });
-      }
-    };
-    assertContext();
-    const active = Number.isInteger(params.accountId)
-      ? this.getSmartAccountById(params.accountId as number)
-      : this.getActiveSmartAccount();
-    if (!params.userOperation) {
-      throw new Error(
-        'Signed ERC-4337 UserOperation is required for smart account execution'
-      );
-    }
-    if (
-      getAddress(params.userOperation.sender) !==
-      getAddress(active.account.address)
-    ) {
-      throw new Error(
-        'Signed UserOperation does not match the active smart account'
-      );
-    }
-    const gasPayer = await this.getWalletGasPayerAccount(
-      params.gasPayer || active.metadata.deploymentGasPayer,
-      undefined,
-      { requirePreferred: Boolean(params.gasPayer) }
-    );
-    assertContext();
-    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
-    const entryPoint = new Contract(entryPointAddress, PALI_ENTRYPOINT_V09_ABI);
-    const signedUserOperation: SmartAccountPackedUserOperation = {
-      ...params.userOperation,
-      signature: params.signature,
-    };
-    const callData = entryPoint.interface.encodeFunctionData('handleOps', [
-      [signedUserOperation],
-      gasPayer.address,
-    ]);
-    const recipientAccounts = this.getLocalNativeExecutionRecipients(
-      params.executions || []
-    );
-
     // The call may first fund a counterfactual account, then submit handleOps.
     // Only failures before either sender is entered are definitely read-only.
     let financialSubmissionAttempted = false;
     try {
+      const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
+      const assertContext = () => {
+        if (params.expectedContext) {
+          this.assertExpectedExecutionContext(
+            params.expectedContext,
+            params.accountId
+          );
+          if (!params.executionContextId)
+            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+              transactionNotBroadcast: true,
+            });
+        }
+        if (params.executionContextId) {
+          this.assertSmartAccountExecutionContext(params.executionContextId);
+          const context = this.executionContexts.get(
+            params.executionContextId
+          )!;
+          if (
+            (params.accountId !== undefined &&
+              params.accountId !== context.accountId) ||
+            !params.userOperation ||
+            params.gasPrice !== context.gasPrice ||
+            Object.entries(context.userOperation).some(
+              ([key, value]) => params.userOperation[key] !== value
+            )
+          )
+            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+              transactionNotBroadcast: true,
+            });
+        }
+      };
+      assertContext();
+      const active = Number.isInteger(params.accountId)
+        ? this.getSmartAccountById(params.accountId as number)
+        : this.getActiveSmartAccount();
+      if (!params.userOperation) {
+        throw new Error(
+          'Signed ERC-4337 UserOperation is required for smart account execution'
+        );
+      }
+      if (
+        getAddress(params.userOperation.sender) !==
+        getAddress(active.account.address)
+      ) {
+        throw new Error(
+          'Signed UserOperation does not match the active smart account'
+        );
+      }
+      const gasPayer = await this.getWalletGasPayerAccount(
+        params.gasPayer || active.metadata.deploymentGasPayer,
+        undefined,
+        { requirePreferred: Boolean(params.gasPayer) }
+      );
+      assertContext();
+      const entryPointAddress = getPaliEntryPointAddress(
+        active.metadata.chainId
+      );
+      const entryPoint = new Contract(
+        entryPointAddress,
+        PALI_ENTRYPOINT_V09_ABI
+      );
+      const signedUserOperation: SmartAccountPackedUserOperation = {
+        ...params.userOperation,
+        signature: params.signature,
+      };
+      const callData = entryPoint.interface.encodeFunctionData('handleOps', [
+        [signedUserOperation],
+        gasPayer.address,
+      ]);
+      const recipientAccounts = this.getLocalNativeExecutionRecipients(
+        params.executions || []
+      );
+
       const requiredPrefund =
         getSmartAccountUserOpRequiredPrefund(signedUserOperation);
       const usesZkSysGasTank =

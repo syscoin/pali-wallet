@@ -285,6 +285,38 @@ describe('SmartAccountController smart account execution fees', () => {
     ).rejects.toBe(error);
   });
 
+  it('marks a removed preferred gas payer as prebroadcast before estimating or sending', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    controller.getWalletGasPayerAccount.mockRejectedValueOnce(
+      new Error('Selected gas payer is no longer available')
+    );
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: buildUserOperation(),
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('marks a missing signed user operation as prebroadcast', async () => {
+    const { controller, estimateGas, sendAndSaveEthTransaction } =
+      buildController();
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(estimateGas).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
   it('marks an outer estimate failure before either sender as definitely not broadcast', async () => {
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
