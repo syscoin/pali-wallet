@@ -151,6 +151,20 @@ export async function saveMainState() {
   );
 }
 
+/** Persist an acknowledged permission change without best-effort save semantics. */
+export async function persistMainStateStrict(): Promise<void> {
+  return walletPersistenceMutex.runExclusive(async () => {
+    assertWalletPersistenceAllowed();
+    const mainState = getMainStateForStorage(store.getState());
+    // Both saveMainState and saveState intentionally swallow some failures.
+    // A permission revocation must instead observe the actual storage result,
+    // even if a prior best-effort save left the cache claiming no change.
+    await chromeStorage.setItem('state', mainState);
+    lastPersistedState = mainState;
+    assertWalletPersistenceAllowed();
+  });
+}
+
 /** Commit provider availability before new content scripts can observe it. */
 export async function persistHasEthProperty(enabled: boolean): Promise<void> {
   if (typeof enabled !== 'boolean')
