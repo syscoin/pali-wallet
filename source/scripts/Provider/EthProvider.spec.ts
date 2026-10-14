@@ -438,20 +438,55 @@ describe('EthProvider transaction admission', () => {
     }
   );
 
-  it.each(['maxFeePerGas', 'maxPriorityFeePerGas'])(
-    'rejects untyped zero %s before querying network compatibility',
-    async (field) => {
-      rpc.getBlock.mockResolvedValue({});
+  it.each([undefined, '0x0'])(
+    'rejects an untyped zero maximum fee with priority %s before RPC work',
+    async (priority) => {
       await expect(
         EthProvider(HOST).sendTransaction({
           ...transaction,
-          [field]: '0x0',
+          maxFeePerGas: '0x0',
+          ...(priority === undefined ? {} : { maxPriorityFeePerGas: priority }),
         } as any)
       ).rejects.toMatchObject({ code: 4200 });
       expect(controllerMock).not.toHaveBeenCalled();
       expectNoRpcOrPopup();
     }
   );
+
+  it('rejects an untyped zero priority fee on a legacy network after checking compatibility', async () => {
+    rpc.getBlock.mockResolvedValue({});
+    await expect(
+      EthProvider(HOST).sendTransaction({
+        ...transaction,
+        maxPriorityFeePerGas: '0x0',
+      } as any)
+    ).rejects.toMatchObject({ code: 4200 });
+    expect(rpc.getBlock).toHaveBeenCalledTimes(1);
+    expect(rpc.getBlock).toHaveBeenCalledWith('latest');
+    expect(rpc.send).not.toHaveBeenCalled();
+    expect(decodeMock).not.toHaveBeenCalled();
+    expect(coordinateMock).not.toHaveBeenCalled();
+    expect(popupMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves an untyped positive fee cap and zero priority for London approval', async () => {
+    await expect(
+      EthProvider(HOST).sendTransaction({
+        ...transaction,
+        maxFeePerGas: '0x77359400',
+        maxPriorityFeePerGas: '0x0',
+      } as any)
+    ).resolves.toBe(HASH);
+    const data = popupMock.mock.calls[0][0].data;
+    expect(data.tx).toEqual({
+      ...transaction,
+      data: '0x',
+      maxFeePerGas: '0x77359400',
+      maxPriorityFeePerGas: '0x0',
+    });
+    expect(data.txMetadata.isLegacyTx).toBe(false);
+    expect(decodeMock).toHaveBeenCalledWith(data.tx, rpc, wallet);
+  });
 
   it('preserves untyped gasPrice-only requests on a legacy network', async () => {
     rpc.getBlock.mockResolvedValue({});

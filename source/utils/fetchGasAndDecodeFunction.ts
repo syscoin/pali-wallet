@@ -20,6 +20,20 @@ const rpcHex = (value: BigNumber) =>
 // RPC quantities and approved transaction fields must not turn into a default
 // fee or gas limit when missing, malformed, or inexact.
 const quantity = (value: unknown, label: string): BigNumber => {
+  // Chrome's controller messaging uses JSON serialization. SDK BigNumbers
+  // therefore arrive as their toJSON() shape, not live class instances.
+  // Decode only that tagged hex representation, then apply the same bounded
+  // quantity checks below; never coerce arbitrary objects into default fees.
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    (value as { type?: unknown }).type === 'BigNumber'
+  ) {
+    const hex = (value as { hex?: unknown }).hex;
+    if (typeof hex !== 'string' || !/^0x[\da-f]+$/i.test(hex))
+      throw new Error(`Invalid ${label}`);
+    value = hex;
+  }
   if (
     !BigNumber.isBigNumber(value) &&
     !(

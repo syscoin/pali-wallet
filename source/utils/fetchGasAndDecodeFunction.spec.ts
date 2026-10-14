@@ -322,6 +322,50 @@ describe('dapp transaction fee preparation', () => {
     );
   });
 
+  it('accepts SDK fee quantities after the actual Chrome JSON messaging boundary', async () => {
+    networkFees = JSON.parse(JSON.stringify(networkFees));
+    expect(networkFees.gasPrice).toEqual({
+      type: 'BigNumber',
+      hex: '0x77359400',
+    });
+    const result = await prepare({
+      gas: 70000,
+      maxFeePerGas: '2000000000',
+      maxPriorityFeePerGas: '0',
+    });
+    expect(result.formTx.maxFeePerGas.toString()).toBe('2000000000');
+    expect(result.formTx.maxPriorityFeePerGas.toString()).toBe('0');
+    expect(result.formTx.gasLimit.toString()).toBe('70000');
+    expect(result.recommendationOnly).toBe(true);
+  });
+
+  it('accepts serialized SDK gasPrice and zero-cap legacy fee data', async () => {
+    delete pendingBlock.baseFeePerGas;
+    networkFees.maxFeePerGas = BigNumber.from(0);
+    networkFees.maxPriorityFeePerGas = BigNumber.from(0);
+    networkFees = JSON.parse(JSON.stringify(networkFees));
+    const result = await prepare({ gas: 70000, gasPrice: '1500000000' });
+    expect(result.formTx.gasPrice).toBe('1500000000');
+    expect(result.recommendationOnly).toBe(true);
+  });
+
+  it.each([
+    { type: 'BigNumber' },
+    { type: 'BigNumber', hex: '' },
+    { type: 'BigNumber', hex: 'malformed' },
+    { type: 'BigNumber', hex: '2000000000' },
+    { type: 'BigNumber', hex: '-0x1' },
+    { type: 'BigNumber', hex: `0x1${'00'.repeat(32)}` },
+    { hex: '0x77359400' },
+  ])(
+    'rejects malformed serialized SDK fee data %j without estimating',
+    async (value) => {
+      networkFees.gasPrice = value;
+      await expect(prepare()).rejects.toThrow('Invalid network gas price');
+      expect(rpcCalls('eth_estimateGas')).toHaveLength(0);
+    }
+  );
+
   it.each(['null', 'absent'])(
     'accepts gasPrice-only legacy fee data with %s EIP-1559 fields',
     async (shape) => {

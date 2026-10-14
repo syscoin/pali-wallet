@@ -7,6 +7,28 @@ import {
 const mockGet = jest.fn();
 const mockSet = jest.fn();
 const mockRemove = jest.fn();
+const originalLocks =
+  typeof navigator === 'undefined'
+    ? undefined
+    : Object.getOwnPropertyDescriptor(navigator, 'locks');
+
+beforeAll(() => {
+  // These cases exercise the local generation guard on older runtimes.
+  // Node 26 supplies real Web Locks; shared-lock behavior is covered separately
+  // in navigationState.spec.ts and would serialize these delayed-read fixtures.
+  if (typeof navigator !== 'undefined')
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: undefined,
+    });
+});
+
+afterAll(() => {
+  if (typeof navigator === 'undefined') return;
+  if (originalLocks) Object.defineProperty(navigator, 'locks', originalLocks);
+  else Reflect.deleteProperty(navigator, 'locks');
+});
+
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
