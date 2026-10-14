@@ -3,6 +3,7 @@ jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: createPopupMock }),
 }));
 
+import { beginApprovalSubmission } from '../../handlers/approvalSubmission';
 import { createExternalWalletView } from '../externalWalletCreation';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
@@ -136,8 +137,7 @@ describe('approval popup boundary', () => {
     senderOverrides: any = {},
     methods = ['wallet', 'sendAndSaveEthTransaction']
   ) =>
-    registrationListener(
-      { type: 'CONTROLLER_ACTION', data: { methods, params: [{}] } },
+    beginApprovalSubmission(
       {
         id: 'pali',
         frameId: 0,
@@ -146,7 +146,7 @@ describe('approval popup boundary', () => {
         url: source(`external/${MethodRoute.SendEthTx}`).url,
         ...senderOverrides,
       },
-      jest.fn()
+      methods
     );
 
   it.each(['sendAndSaveEthTransaction', 'submitSmartAccountExecution'])(
@@ -162,7 +162,7 @@ describe('approval popup boundary', () => {
         code: -32603,
         message: expect.stringContaining('outcome is unknown'),
       });
-      expect(startSubmission({}, ['wallet', method])).toBe(false);
+      expect(typeof startSubmission({}, ['wallet', method])).toBe('function');
       windowRemovalListener(9);
       await rejected;
     }
@@ -182,11 +182,31 @@ describe('approval popup boundary', () => {
     await rejected;
   });
 
+  it.each(['sendAndSaveEthTransaction', 'submitSmartAccountExecution'])(
+    'recognizes native extension-page %s submission without tab/frame metadata',
+    async (method) => {
+      const { pending } = await begin(
+        undefined,
+        undefined,
+        true,
+        MethodRoute.SendEthTx
+      );
+      const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+      startSubmission({ tab: undefined, frameId: undefined }, [
+        'wallet',
+        method,
+      ]);
+      windowRemovalListener(9);
+      await rejected;
+    }
+  );
+
   it.each([
     { documentId: 'another-document' },
+    { documentId: undefined, tab: undefined, frameId: undefined },
     { id: 'another-extension' },
-    { frameId: 1 },
-    { tab: { id: 19, windowId: 10 } },
+    { documentId: 'another-frame', frameId: 1 },
+    { documentId: 'another-window', tab: { id: 20, windowId: 10 } },
     { url: 'https://site.test/' },
   ])('ignores a submission claim from another sender: %p', async (sender) => {
     const { pending } = await begin(
@@ -197,6 +217,43 @@ describe('approval popup boundary', () => {
     );
     const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
     startSubmission(sender);
+    windowRemovalListener(9);
+    await rejected;
+  });
+
+  it('restores pre-submission cancellation only after a definite controller failure', async () => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const finish = startSubmission({ tab: undefined, frameId: undefined });
+    finish(
+      Object.assign(Error('before broadcast'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    windowRemovalListener(9);
+    await rejected;
+  });
+
+  it('does not clear another unresolved attempt on a definite failure', async () => {
+    const { pending } = await begin(
+      undefined,
+      undefined,
+      true,
+      MethodRoute.SendEthTx
+    );
+    const first = startSubmission();
+    startSubmission();
+    first(
+      Object.assign(Error('before broadcast'), {
+        transactionNotBroadcast: true,
+      })
+    );
+    const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
     windowRemovalListener(9);
     await rejected;
   });

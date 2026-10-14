@@ -169,6 +169,7 @@ export const SendTransaction = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [closing, setClosing] = useState(false);
+  const [submissionUnknown, setSubmissionUnknown] = useState(false);
   const approvalActionRef = React.useRef<
     'ready' | 'submitting' | 'outcome-unknown' | 'dismissed' | 'completed'
   >('ready');
@@ -925,8 +926,10 @@ export const SendTransaction = () => {
         // A local controller timeout does not cancel the background send.
         // Keep the attempt consumed unless the background explicitly proved
         // that it failed before any broadcast attempt.
-        if (submissionRequested && error?.transactionNotBroadcast !== true)
+        if (submissionRequested && error?.transactionNotBroadcast !== true) {
           approvalActionRef.current = 'outcome-unknown';
+          setSubmissionUnknown(true);
+        }
         // Handle specific errors (blacklist, cancellation, device issues, etc.)
         const wasHandledSpecifically = handleTransactionError(
           error,
@@ -1005,7 +1008,11 @@ export const SendTransaction = () => {
   };
 
   const handleCancel = async () => {
-    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    if (
+      !mountedRef.current ||
+      !['ready', 'outcome-unknown'].includes(approvalActionRef.current)
+    )
+      return;
     invalidatePendingClose();
     const generation = closeGenerationRef.current;
     approvalActionRef.current = 'dismissed';
@@ -1682,7 +1689,9 @@ export const SendTransaction = () => {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={loading || closing || confirmed}
+                disabled={
+                  closing || confirmed || (loading && !submissionUnknown)
+                }
                 onClick={handleCancel}
               >
                 {t('buttons.cancel')}
@@ -1695,6 +1704,7 @@ export const SendTransaction = () => {
                 disabled={
                   closing ||
                   confirmed ||
+                  submissionUnknown ||
                   hasTxDataError ||
                   hasInvalidApprovalDetails
                 }

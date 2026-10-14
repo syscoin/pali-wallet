@@ -1,7 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
-import { isTrustedExtensionPageSender } from '../../handlers/internalMessageAuthorization';
+import { watchApprovalSubmission } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -122,6 +122,7 @@ export const popupPromise = async ({
   let approvalClientId: string | null = null;
   let approvalDocumentId: string | null = null;
   let submissionStarted = false;
+  let stopWatchingSubmission: (() => void) | undefined;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -149,29 +150,6 @@ export const popupPromise = async ({
     registrationSender: chrome.runtime.MessageSender,
     reply: (response: any) => void
   ) => {
-    // Observe the existing internal controller dispatch before its asynchronous
-    // execution. A closed or timed-out approval cannot prove that this send
-    // was cancelled. Browser-supplied document/window identity binds the claim
-    // to this approval, not another wallet tab or a content script.
-    if (
-      route === MethodRoute.SendEthTx &&
-      approvalClientId &&
-      approvalDocumentId &&
-      message?.type === 'CONTROLLER_ACTION' &&
-      isTrustedExtensionPageSender(registrationSender) &&
-      registrationSender.frameId === 0 &&
-      registrationSender.documentId === approvalDocumentId &&
-      registrationSender.tab?.windowId === popup?.id &&
-      Array.isArray(message.data?.methods) &&
-      message.data.methods.length === 2 &&
-      message.data.methods[0] === 'wallet' &&
-      ['sendAndSaveEthTransaction', 'submitSmartAccountExecution'].includes(
-        message.data.methods[1]
-      )
-    ) {
-      submissionStarted = true;
-      return false;
-    }
     if (
       message?.type !== APPROVAL_REGISTER ||
       message.approvalId !== approvalId
@@ -212,6 +190,17 @@ export const popupPromise = async ({
       const available = !approvalClientId || approvalClientId === source.id;
       if (available) {
         approvalClientId = source.id;
+        if (
+          route === MethodRoute.SendEthTx &&
+          approvalDocumentId &&
+          !stopWatchingSubmission
+        )
+          stopWatchingSubmission = watchApprovalSubmission(
+            approvalDocumentId,
+            (possible) => {
+              submissionStarted = possible;
+            }
+          );
         onClientBound?.();
       }
       port.postMessage({
@@ -264,6 +253,8 @@ export const popupPromise = async ({
 
     // Clean up function to remove listeners
     const cleanup = () => {
+      stopWatchingSubmission?.();
+      stopWatchingSubmission = undefined;
       if (livenessInterval) clearInterval(livenessInterval);
       if (bindingDeadline) clearTimeout(bindingDeadline);
       if (onAbort) signal?.removeEventListener('abort', onAbort);

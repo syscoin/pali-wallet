@@ -22,6 +22,7 @@ const mockSet = jest.fn();
 const mockRemove = jest.fn();
 const mockFee = jest.fn();
 const mockSmartSubmit = jest.fn();
+const mockHandleTransactionError = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn(), info: jest.fn() };
 let mockStorage: Record<string, any>;
 let mockButtonHandlers: Record<string, () => any>;
@@ -67,7 +68,8 @@ jest.mock('utils/smartAccount', () => ({
     mockSmartSubmit(...args),
 }));
 jest.mock('utils/errorHandling', () => ({
-  handleTransactionError: () => false,
+  handleTransactionError: (...args: any[]) =>
+    mockHandleTransactionError(...args),
 }));
 jest.mock('utils/logger', () => ({ logError: jest.fn() }));
 jest.mock('components/index', () => ({
@@ -188,6 +190,7 @@ beforeEach(() => {
   }));
   jest.spyOn(window, 'close').mockImplementation(mockClose);
   mockSmartSubmit.mockResolvedValue({ hash: 'public-sa-test-hash' });
+  mockHandleTransactionError.mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -619,10 +622,42 @@ describe('SendTransaction error close lifetimes', () => {
     await act(async () => mockButtonHandlers['buttons.confirm']());
     await act(async () => mockButtonHandlers['buttons.cancel']());
     expect(mockEmitter).not.toHaveBeenCalled();
-    expect(mockClose).not.toHaveBeenCalled();
+    expect(mockClose).toHaveBeenCalledTimes(1);
     await act(async () => timer.callback());
     expect(mockClose).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['hardware cancellation', 'device locked', 'blind signing disabled'])(
+    'keeps an ambiguous %s non-retryable but allows dismissal',
+    async (message) => {
+      const view = await prepare();
+      mockHandleTransactionError.mockReturnValueOnce(true);
+      mockEmitter
+        .mockResolvedValueOnce({ nativeBalance: '1' })
+        .mockRejectedValueOnce(Error(message));
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.cancel',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false);
+      mockEmitter.mockClear();
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+      expect(mockEmitter).not.toHaveBeenCalled();
+      await act(async () => mockButtonHandlers['buttons.cancel']());
+      expect(mockClose).toHaveBeenCalledTimes(1);
+      view.unmount();
+    }
+  );
 
   it('keeps a smart-account attempt consumed after its actual submit call times out', async () => {
     mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
