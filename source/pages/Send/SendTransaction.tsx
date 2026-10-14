@@ -737,7 +737,20 @@ export const SendTransaction = () => {
               accounts,
               controllerEmitter,
             }),
-            controllerEmitter,
+            controllerEmitter: (methods, params, timeout, retryConnection) => {
+              if (
+                methods.length === 2 &&
+                methods[0] === 'wallet' &&
+                methods[1] === 'submitSmartAccountExecution'
+              )
+                submissionRequested = true;
+              return controllerEmitter(
+                methods as Parameters<typeof controllerEmitter>[0],
+                params,
+                timeout,
+                retryConnection
+              );
+            },
             executions: [
               {
                 target: candidateTo,

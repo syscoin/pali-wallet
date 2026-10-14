@@ -624,6 +624,45 @@ describe('SendTransaction error close lifetimes', () => {
     expect(mockClose).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a smart-account attempt consumed after its actual submit call times out', async () => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+    mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    await prepare();
+    mockSmartSubmit.mockImplementationOnce(({ controllerEmitter }) =>
+      controllerEmitter(['wallet', 'submitSmartAccountExecution'], [{}])
+    );
+    mockEmitter
+      .mockResolvedValueOnce({ nativeBalance: '1' })
+      .mockRejectedValueOnce(Error('Network request timed out'));
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const timer = closeTimer(4000);
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+    mockEmitter.mockClear();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+    await act(async () => timer.callback());
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a fresh smart-account attempt after cancellation before submission', async () => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+    mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    const view = await prepare();
+    mockSmartSubmit.mockRejectedValueOnce(Error('Authenticator cancelled'));
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+    mockEmitter.mockClear();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(2);
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+    expect(mockEmitter.mock.calls[0][0]).toEqual([
+      'wallet',
+      'refreshActiveAccountBalances',
+    ]);
+    view.unmount();
+  });
+
   it('a first error cannot close the lifetime of a failed retry', async () => {
     await prepare();
     const first = await refuseForInsufficientFunds();
