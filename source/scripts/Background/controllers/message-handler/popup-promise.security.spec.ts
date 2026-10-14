@@ -202,11 +202,11 @@ describe('approval popup boundary', () => {
   });
 
   it.each([
-    ['wallet', 'refreshActiveAccountBalances'],
-    ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+    { methods: ['wallet', 'refreshActiveAccountBalances'] },
+    { methods: ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'] },
   ])(
     'does not mark a read or a different controller path as submission: %p',
-    async (methods) => {
+    async ({ methods }) => {
       const { pending } = await begin(
         undefined,
         undefined,
