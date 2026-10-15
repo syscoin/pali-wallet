@@ -44,13 +44,14 @@ import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import {
   formatEther,
+  formatUnits,
   parseUnits,
   toEthersBigNumberish,
 } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
-import { formatGweiValue } from 'utils/formatSyscoinValue';
+import { formatGweiValue, formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
   logError,
@@ -242,6 +243,63 @@ export const SendConfirm = () => {
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
+  const displayedAmount = useMemo(() => {
+    if (!isBitcoinBased || basicTxValues?.token || !basicTxValues?.isMax) {
+      return basicTxValues?.amount;
+    }
+    try {
+      // UTXO MAX keeps the gross balance in navigation state; the prepared
+      // transaction deducts its quoted fee from the recipient output.
+      const gross = parseUnits(
+        String(removeScientificNotation(basicTxValues.amount)),
+        8
+      );
+      const quotedFee = parseUnits(
+        String(removeScientificNotation(basicTxValues.fee)),
+        8
+      );
+      if (gross.lt(0) || quotedFee.lt(0) || quotedFee.gt(gross)) {
+        return t('send.calculating');
+      }
+      return formatSyscoinValue(gross.sub(quotedFee));
+    } catch {
+      return t('send.calculating');
+    }
+  }, [basicTxValues, isBitcoinBased, t]);
+  const nativeTotal = useMemo(() => {
+    if (!isBitcoinBased || basicTxValues?.token) {
+      return undefined;
+    }
+    try {
+      let total = parseUnits(
+        String(removeScientificNotation(basicTxValues.amount)),
+        8
+      );
+      if (
+        !basicTxValues.isMax &&
+        !feeCalculationError &&
+        basicTxValues.fee !== undefined
+      ) {
+        total = total.add(
+          parseUnits(String(removeScientificNotation(basicTxValues.fee)), 8)
+        );
+      }
+      const amount = formatUnits(total, 8);
+      const [whole, fraction = ''] = amount.split('.');
+      return {
+        amount,
+        formatted: `${whole.replace(
+          /\B(?=(\d{3})+(?!\d))/g,
+          ','
+        )}.${fraction.padEnd(8, '0')}`,
+      };
+    } catch {
+      return {
+        amount: basicTxValues?.amount,
+        formatted: t('send.calculating'),
+      };
+    }
+  }, [basicTxValues, isBitcoinBased, feeCalculationError, t]);
   const cachedGasData = basicTxValues?.cachedGasData;
   // Initialize fee state after basicTxValues is available
   const [fee, setFee] = useState<IFeeState>({
@@ -1851,7 +1909,7 @@ export const SendConfirm = () => {
                     {t('buttons.send')}
                   </p>
                   <p className="text-white text-2xl font-semibold mb-2">
-                    {basicTxValues.amount}{' '}
+                    {displayedAmount}{' '}
                     {basicTxValues.token
                       ? basicTxValues.token.symbol
                       : activeNetwork.currency.toUpperCase()}
@@ -2162,7 +2220,10 @@ export const SendConfirm = () => {
                       let totalCrypto;
 
                       // If there's a fee calculation error, just show the amount without fee
-                      if (feeCalculationError) {
+                      if (nativeTotal !== undefined) {
+                        totalAmount = nativeTotal.amount;
+                        totalCrypto = nativeTotal.formatted;
+                      } else if (feeCalculationError) {
                         totalAmount = basicTxValues.amount;
                         totalCrypto = currency(basicTxValues.amount, {
                           precision: 8,

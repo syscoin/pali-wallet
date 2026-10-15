@@ -1,6 +1,5 @@
 import { Switch, Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
-import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -20,6 +19,7 @@ import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { INetworkType } from 'types/network';
 import { ITokenSysProps } from 'types/tokens';
 import { handleTransactionError } from 'utils/errorHandling';
+import { parseUnits } from 'utils/ethersV6Compat';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   isNFT,
@@ -30,6 +30,7 @@ import {
   createNavigationContext,
   navigateWithContext,
   getWalletNavigationScope,
+  removeScientificNotation,
 } from 'utils/index';
 import {
   assertValidAssetAmount,
@@ -45,6 +46,9 @@ import {
   useSendDraftWriter,
   useSendPreparationGuard,
 } from './useSendDraftWriter';
+
+const nativeAtomicAmount = (value: unknown) =>
+  parseUnits(String(removeScientificNotation(String(value))), 8);
 
 export const SendSys = () => {
   const scopeKey = useSelector(() =>
@@ -94,7 +98,13 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   const [form] = Form.useForm();
 
   // Fee rate will be managed by the Fee component
-  const [feeRate, setFeeRate] = useState<number | null>(null);
+  const [feeRate, setFeeRate] = useState<number | null>(() => {
+    const restored = Number(initialDraft.formValues?.fee);
+    return Number.isFinite(restored) && restored > 0 ? restored : null;
+  });
+  const feeWasChosen = useRef(
+    Object.prototype.hasOwnProperty.call(initialDraft.formValues || {}, 'fee')
+  );
 
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>(initialDraft.formValues || {});
@@ -131,6 +141,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     () => ({ selectedAsset, RBF, isMaxSend }),
     [selectedAsset, RBF, isMaxSend]
   );
+  const preparationOptions = useRef({ selectedAsset, RBF, feeRate });
+  preparationOptions.current = { selectedAsset, RBF, feeRate };
   const saveCurrentState = useSendDraftWriter({
     form,
     location,
@@ -143,6 +155,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   // Save typed values immediately, including before blur or a quick popup close.
   const handleFormValuesChange = useCallback(
     (changedValues: any, allValues: any) => {
+      if (Object.prototype.hasOwnProperty.call(changedValues, 'fee')) {
+        feeWasChosen.current = true;
+      }
       formValuesRef.current = allValues;
       void saveCurrentState(allValues);
     },
@@ -172,6 +187,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
+    feeWasChosen.current = true;
     setFeeRate(newFee);
 
     // If in MAX send mode, recalculate the amount
@@ -182,17 +198,21 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ✅ OPTIMIZED: Fee fetching with proper dependencies
   useEffect(() => {
+    const canApplyRecommendation = () =>
+      isCurrentForm() &&
+      !feeWasChosen.current &&
+      form.getFieldValue('fee') === undefined;
     const fetchInitialFee = async () => {
       try {
         const fee = (await controllerEmitter(
           ['wallet', 'getRecommendedFee'],
           []
         )) as number;
-        if (!isCurrentForm()) return;
+        if (!canApplyRecommendation()) return;
         setFeeRate(fee);
         form.setFieldsValue({ fee });
       } catch (error) {
-        if (!isCurrentForm()) return;
+        if (!canApplyRecommendation()) return;
         console.error('Failed to fetch initial fee:', error);
         const fallbackFee = 0.0000001;
         setFeeRate(fallbackFee);
@@ -277,24 +297,32 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       const inputAmount = String(watchedAmount).trim();
 
       if (inputAmount && balanceStr) {
-        // Normalize both values to handle "1.0" == "1" cases
-        // parseFloat and back to string removes trailing zeros
-        const normalizeAmount = (val: string) => {
-          const parsed = parseFloat(val);
-          return isNaN(parsed) ? val : parsed.toString();
-        };
-
-        const normalizedInput = normalizeAmount(inputAmount);
-        const normalizedBalance = normalizeAmount(String(balanceStr));
-
-        setIsMaxSend(normalizedInput === normalizedBalance);
+        try {
+          if (selectedAsset) {
+            // Preserve the existing asset MAX-button state behavior.
+            const normalizeAmount = (val: string) => {
+              const parsed = parseFloat(val);
+              return isNaN(parsed) ? val : parsed.toString();
+            };
+            setIsMaxSend(
+              normalizeAmount(inputAmount) ===
+                normalizeAmount(String(balanceStr))
+            );
+          } else {
+            setIsMaxSend(
+              nativeAtomicAmount(inputAmount).eq(nativeAtomicAmount(balanceStr))
+            );
+          }
+        } catch {
+          setIsMaxSend(false);
+        }
       } else {
         setIsMaxSend(false);
       }
     } else {
       setIsMaxSend(false);
     }
-  }, [watchedAmount, balanceStr]);
+  }, [watchedAmount, balanceStr, selectedAsset]);
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
@@ -369,6 +397,18 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       return;
     }
 
+    // An unsigned result belongs to the inputs that requested it, not later edits.
+    const preparationInputs = () =>
+      JSON.stringify({
+        values: form.getFieldsValue(),
+        asset: preparationOptions.current.selectedAsset,
+        rbf: preparationOptions.current.RBF,
+        feeRate: preparationOptions.current.feeRate,
+      });
+    const submittedInputs = preparationInputs();
+    const isCurrentPreparation = () =>
+      isCurrentForm() && preparationInputs() === submittedInputs;
+
     try {
       setIsLoading(true);
 
@@ -377,16 +417,13 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
       // For native SYS transactions
       if (!selectedAsset) {
-        const amountCurrency = currency(amount, { precision: 8 });
-        const balanceCurrency = currency(
-          activeAccount.balances[INetworkType.Syscoin],
-          {
-            precision: 8,
-          }
+        const amountAtomic = nativeAtomicAmount(amount);
+        const balanceAtomic = nativeAtomicAmount(
+          activeAccount.balances[INetworkType.Syscoin]
         );
 
         // Determine if this is a MAX send by comparing amount to balance
-        const isMaxTransaction = amountCurrency.value === balanceCurrency.value;
+        const isMaxTransaction = amountAtomic.eq(balanceAtomic);
 
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
@@ -406,7 +443,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 },
               ]
             )) as { fee: number; psbt: any };
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
@@ -416,7 +453,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             throw new Error('Failed to create transaction PSBT');
           }
         } catch (error: any) {
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -451,9 +488,11 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
         // For non-max sends, validate amount + fee doesn't exceed balance
         if (!isMaxTransaction) {
-          const totalNeeded = amountCurrency.add(estimatedTotalFee);
+          const totalNeeded = amountAtomic.add(
+            nativeAtomicAmount(estimatedTotalFee)
+          );
 
-          if (totalNeeded.value > balanceCurrency.value) {
+          if (totalNeeded.gt(balanceAtomic)) {
             setIsLoading(false);
 
             alert.error(t('send.insufficientFunds'));
@@ -484,7 +523,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         const txData = {
           sender: activeAccount?.address,
           receivingAddress: receiver,
-          amount: Number(amount),
+          amount: String(amount),
           fee: estimatedTotalFee, // Actual fee amount (compliant with SysProvider API)
           feeRate: feeRate, // Add fee rate for transaction details display
           rbf: RBF, // RBF state for transaction details display
@@ -494,7 +533,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
-        if (!isCurrentForm()) return;
+        if (!isCurrentPreparation()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -531,7 +570,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               },
             ]
           )) as { fee: number; psbt: any };
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
@@ -541,7 +580,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             throw new Error('Failed to create token transaction PSBT');
           }
         } catch (error: any) {
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -592,7 +631,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
-        if (!isCurrentForm()) return;
+        if (!isCurrentPreparation()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -618,7 +657,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         );
       }
     } catch (error) {
-      if (!isCurrentForm()) return;
+      if (!isCurrentPreparation()) return;
       setIsLoading(false);
 
       alert.error(t('send.internalError'));
@@ -896,14 +935,6 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                         );
                       }
 
-                      // Check if it's a valid positive number
-                      const numValue = parseFloat(inputAmount);
-                      if (isNaN(numValue) || numValue <= 0) {
-                        return Promise.reject(
-                          new Error(t('send.invalidAmount'))
-                        );
-                      }
-
                       if (selectedAsset) {
                         try {
                           assertValidAssetAmount(
@@ -940,22 +971,19 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                         ? String(activeAccount.balances[INetworkType.Syscoin])
                         : '0';
 
-                      // Use currency.js with 8 decimal precision for safe comparison
+                      // Compare integer satoshis without rounding a large balance.
                       try {
-                        const inputCurrency = currency(inputAmount, {
-                          precision: 8,
-                        });
-                        const balanceCurrency = currency(validationBalanceStr, {
-                          precision: 8,
-                        });
+                        const inputAtomic = nativeAtomicAmount(inputAmount);
+                        const balanceAtomic =
+                          nativeAtomicAmount(validationBalanceStr);
 
-                        if (inputCurrency.value <= 0) {
+                        if (inputAtomic.lte(0)) {
                           return Promise.reject(
                             new Error(t('send.invalidAmount'))
                           );
                         }
 
-                        if (inputCurrency.value > balanceCurrency.value) {
+                        if (inputAtomic.gt(balanceAtomic)) {
                           return Promise.reject(
                             new Error(t('send.insufficientFunds'))
                           );
@@ -963,7 +991,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
                         return Promise.resolve();
                       } catch (error) {
-                        // If currency.js can't parse, it's an invalid amount
+                        // Non-decimal or sub-satoshi input is invalid.
                         return Promise.reject(
                           new Error(t('send.invalidAmount'))
                         );
