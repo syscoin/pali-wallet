@@ -8,6 +8,7 @@ import type { BrowserContext } from '@playwright/test';
 export const UTXO_FIXTURE_SEED =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 export const UTXO_FIXTURE_PATH = "m/84'/1'/0'/0/0";
+export const UTXO_SPONSOR_PATH = "m/84'/1'/1'/0/0";
 const network = sys.syscoinNetworks.testnet;
 const bitcoin = sys.bitcoinjs;
 const BACKENDS = new Set([
@@ -19,7 +20,7 @@ export function createUtxoFixture() {
   bitcoin.initEccLib(ecc);
   const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
   const user = hd.deriveKeypair(UTXO_FIXTURE_PATH);
-  const sponsor = hd.deriveKeypair("m/84'/1'/1'/0/0");
+  const sponsor = hd.deriveKeypair(UTXO_SPONSOR_PATH);
   const recipient = hd.deriveKeypair("m/84'/1'/2'/0/0");
   const payment = (key: any) =>
     bitcoin.payments.p2wpkh({ pubkey: key.publicKey, network });
@@ -57,6 +58,15 @@ export function createUtxoFixture() {
         index: 0,
         nonWitnessUtxo: parents[1].toBuffer(),
         witnessUtxo: parents[1].outs[0],
+        // The same seed really can sign this account-1 input. Account-0 scope,
+        // not missing derivation metadata, must keep the wallet from doing so.
+        bip32Derivation: [
+          {
+            masterFingerprint: hd.getMasterFingerprint(),
+            path: UTXO_SPONSOR_PATH,
+            pubkey: sponsor.publicKey,
+          },
+        ],
       });
     psbt.addOutput({ address: destination.address!, value: BigInt(90000) });
     psbt.addOutput({
@@ -80,7 +90,8 @@ export function createUtxoFixture() {
     parentTxs: parents,
     single: sys.exportPsbtToJson(single),
     mixed: sys.exportPsbtToJson(mixed),
-    // Pure synthetic signer, used only by offline fixture checks, never by the browser journey.
+    // Deliberately unscoped synthetic signer: offline counterfactual only.
+    // Never used by the browser journey, which must go through normal Pali.
     signUserOffline: (psbt: any) => hd.sign(psbt),
     finishSponsor: (psbt: any) => {
       psbt.signInput(1, sponsor);

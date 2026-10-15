@@ -16,6 +16,11 @@ checks cancellation, unchanged transaction outputs/change, a real user witness,
 and a mixed-owner PSBT whose sponsor input must stay unsigned. Only afterward
 does the test's synthetic sponsor complete the other input; both witnesses are
 independently verified. No signature response is replaced or injected.
+The sponsor input belongs to account 1 of the same synthetic seed and carries
+its valid fingerprint, public key and derivation path. An offline counterfactual
+proves that the unscoped HD signer signs both accounts. The current keyring must
+remove the out-of-account signing hints before signing, leave that input
+unsigned, and preserve its public metadata for the later cosigner.
 
 The existing `main.yml` conformance job selects this journey explicitly after
 building the extension. Its `PALI_TEST_DAPP_EXTENSION_PATH` and revision inputs

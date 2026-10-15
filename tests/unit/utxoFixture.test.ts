@@ -1,8 +1,10 @@
 jest.unmock('syscoinjs-lib');
 jest.unmock('tiny-secp256k1');
 
+import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
 import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';
 import http from 'http';
+import { utils as sys } from 'syscoinjs-lib';
 
 import {
   createUtxoFixture,
@@ -10,11 +12,61 @@ import {
   fixtureRead,
   importFixturePsbt,
   startUtxoFixtureServer,
+  UTXO_FIXTURE_SEED,
   verifyCompletedSponsor,
   verifyFixtureSignature,
 } from '../../e2e/harness/utxoFixture';
 
+const mockBlockbookLookup = jest.fn(() => {
+  throw new Error('Offline fixture must not request Blockbook');
+});
+jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
+  fetchBackendAccountCached: (...args: unknown[]) =>
+    mockBlockbookLookup(...args),
+}));
+
+async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
+  const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
+  const state = {
+    activeAccountId: 0,
+    activeAccountType: 'HDAccount',
+    accounts: {
+      HDAccount: { 0: { address: f.userAddress, xpub: f.userXpub } },
+    },
+    activeNetwork: {
+      kind: 'syscoin',
+      slip44: 1,
+      currency: 'sys',
+      chainId: 5700,
+      url: 'https://offline.invalid',
+    },
+  };
+  const transactions = new SyscoinTransactions(
+    () => ({ hd }),
+    () => ({ hd }),
+    () => state,
+    async () => f.userAddress,
+    {},
+    {},
+    () => () => undefined
+  );
+  mockBlockbookLookup.mockClear();
+  const result = await transactions.signPSBT({ psbt: f.mixed });
+  expect(mockBlockbookLookup).not.toHaveBeenCalled();
+  return result;
+}
+
 describe('offline UTXO browser fixture', () => {
+  it('counterfactual: the unscoped same-seed HD signer can sign both accounts', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.mixed));
+    expect(signed.data.inputs[1].finalScriptWitness).toBeDefined();
+    expect(verifyCompletedSponsor(f, signed)).toMatch(/^[0-9a-f]{64}$/);
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(signed), true)
+    ).toThrow('sponsor input');
+  });
+
   it('contains real deterministic parents and a valid user-only signature', async () => {
     const f = createUtxoFixture();
     const psbt = await f.signUserOffline(importFixturePsbt(f.single));
@@ -25,8 +77,11 @@ describe('offline UTXO browser fixture', () => {
 
   it('preserves unsigned sponsor input and verifies both real signatures after completion', async () => {
     const f = createUtxoFixture();
-    const psbt = await f.signUserOffline(importFixturePsbt(f.mixed));
-    verifyFixtureSignature(f, exportFixturePsbt(psbt), true);
+    const response = await signWithCurrentKeyring(f);
+    const psbt = verifyFixtureSignature(f, response, true);
+    expect(psbt.data.inputs[1].bip32Derivation).toEqual(
+      importFixturePsbt(f.mixed).data.inputs[1].bip32Derivation
+    );
     const witness = Buffer.from(psbt.data.inputs[0].finalScriptWitness);
     f.finishSponsor(psbt);
     expect(
@@ -55,7 +110,6 @@ describe('offline UTXO browser fixture', () => {
   it('rejects changed outputs and an already signed sponsor input', async () => {
     const f = createUtxoFixture();
     const psbt = await f.signUserOffline(importFixturePsbt(f.mixed));
-    f.finishSponsor(psbt);
     expect(() =>
       verifyFixtureSignature(f, exportFixturePsbt(psbt), true)
     ).toThrow('sponsor input');
