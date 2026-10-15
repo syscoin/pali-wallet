@@ -130,7 +130,12 @@ signature boundaries without broadcasting. `native-send-preview.journey.spec.ts`
 uses the same fixture to check edited fees through Confirm, Cancel and Back,
 without clicking Confirm. `spt-send-preview.journey.spec.ts` checks an imported
 synthetic SPT's exact amount, MAX, Cancel/Back, persisted draft reopening and
-insufficient native fee. See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
+insufficient native fee. `offline-wallet-lifecycle.journey.spec.ts` uses the
+same fenced disposable wallet for Lock, wrong-password refusal, document
+reload, backup reauthentication, recovery cancellation and same-seed recovery
+with a new password. The separate password-setup visual cases also use the
+launch-time deny proxy and never create a wallet.
+See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
 `SPT_SEND_PREVIEW.md` for the launch-time network fence and simulated/live limits. The job needs no wallet
 secrets and uploads browser evidence. Live testnet journeys stay in the
 scheduled/manual workflow below.

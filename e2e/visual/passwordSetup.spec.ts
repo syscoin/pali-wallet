@@ -4,6 +4,34 @@ import path from 'path';
 
 import { E2E_CONFIG } from '../harness/config';
 import { launchExtension } from '../harness/launch';
+import { startUtxoFixtureServer } from '../harness/utxoFixture';
+
+const launchOfflinePasswordSetup = async (
+  name: string,
+  viewport: { height: number; width: number }
+) => {
+  // Reuse the launch-time deny proxy; these empty profiles need no chain reads.
+  const server = await startUtxoFixtureServer();
+  try {
+    const launched = await launchExtension(name, {
+      offlineHttpProxy: server.url,
+      viewport,
+    });
+    return {
+      ...launched,
+      close: async () => {
+        try {
+          await launched.context.close();
+        } finally {
+          await server.close();
+        }
+      },
+    };
+  } catch (error) {
+    await server.close();
+    throw error;
+  }
+};
 
 const passwordRoute = (extensionId: string) =>
   `chrome-extension://${extensionId}/app.html#/create-password`;
@@ -46,9 +74,9 @@ test.describe('password setup scrolling', () => {
   test.setTimeout(60_000);
 
   test('compact popup reveals Next with the mouse wheel', async ({}, info) => {
-    const { context, extensionId } = await launchExtension(
+    const { context, extensionId, close } = await launchOfflinePasswordSetup(
       'password-setup-compact',
-      { viewport: { width: 400, height: 480 } }
+      { width: 400, height: 480 }
     );
     try {
       const page = context.pages()[0] || (await context.newPage());
@@ -65,14 +93,14 @@ test.describe('password setup scrolling', () => {
         contentType: 'image/png',
       });
     } finally {
-      await context.close();
+      await close();
     }
   });
 
   test('generation error keeps Next reachable with the mouse wheel', async ({}, info) => {
-    const { context, extensionId } = await launchExtension(
+    const { context, extensionId, close } = await launchOfflinePasswordSetup(
       'password-setup-generation-error',
-      { viewport: { width: 400, height: 480 } }
+      { width: 400, height: 480 }
     );
     try {
       const page = context.pages()[0] || (await context.newPage());
@@ -99,14 +127,14 @@ test.describe('password setup scrolling', () => {
         contentType: 'image/png',
       });
     } finally {
-      await context.close();
+      await close();
     }
   });
 
   test('normal popup contains translated labels and reachable Next', async () => {
-    const { context, extensionId } = await launchExtension(
+    const { context, extensionId, close } = await launchOfflinePasswordSetup(
       'password-setup-locales',
-      { viewport: { width: 400, height: 620 } }
+      { width: 400, height: 620 }
     );
     try {
       const page = context.pages()[0] || (await context.newPage());
@@ -171,7 +199,7 @@ test.describe('password setup scrolling', () => {
         });
       }
     } finally {
-      await context.close();
+      await close();
     }
   });
 });
