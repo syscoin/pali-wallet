@@ -21,6 +21,87 @@ const decodedTransfer = (assetGuid: string, value: string) => ({
 });
 
 describe('Syscoin PSBT review', () => {
+  it.each([0, 2, 8])(
+    'reviews a matching ordinary fungible allocation with %i decimals without inventing a bridge origin',
+    (decimals) => {
+      expect(
+        getSyscoinPsbtReviewError(decodedTransfer('123457', '123'), {
+          '123457': { assetGuid: '123457', decimals, symbol: 'SPT' },
+        })
+      ).toBeNull();
+    }
+  );
+
+  it.each(['assetallocationsend', 'SPTAssetAllocationSend'])(
+    'recognizes the existing normalized transfer alias %s',
+    (txtype) => {
+      const decoded = decodedTransfer('123457', '123');
+      decoded.syscoin.txtype = txtype;
+      expect(
+        getSyscoinPsbtReviewError(decoded, {
+          '123457': { assetGuid: '123457', decimals: 8 },
+        })
+      ).toBeNull();
+    }
+  );
+
+  it.each([
+    'assetallocation_burn_to_ethereum',
+    'assetallocation_burn_to_syscoin',
+    'syscoinburntoallocation',
+    'assetallocation_mint',
+    'nevmdata',
+  ])('still requires origin metadata for %s', (txtype) => {
+    const decoded = decodedTransfer('123457', '123');
+    decoded.syscoin.txtype = txtype;
+    expect(
+      getSyscoinPsbtReviewError(decoded, {
+        '123457': { assetGuid: '123457', decimals: 8 },
+      })
+    ).toBe('Unable to verify the origin type for asset 123457');
+  });
+
+  it.each([
+    { assetGuid: undefined },
+    { assetGuid: '123458' },
+    { contract: '0x1111111111111111111111111111111111111111' },
+    { originDecimals: 8 },
+    { tokenId: '1' },
+    { assetType: '' },
+  ])(
+    'does not treat ambiguous metadata as an ordinary transfer: %o',
+    (extra) => {
+      expect(
+        getSyscoinPsbtReviewError(decodedTransfer('123457', '123'), {
+          '123457': { assetGuid: '123457', decimals: 8, ...extra } as any,
+        })
+      ).not.toBeNull();
+    }
+  );
+
+  it.each(['0', '123456', '0123456', '4294967296'])(
+    'does not relax reserved, zero or NFT identity %s',
+    (assetGuid) => {
+      expect(
+        getSyscoinPsbtReviewError(decodedTransfer(assetGuid, '123'), {
+          [assetGuid]: { assetGuid, decimals: 8 },
+        })
+      ).not.toBeNull();
+    }
+  );
+
+  it('keeps exact amount and output checks for an origin-independent transfer', () => {
+    const metadata = { '123457': { assetGuid: '123457', decimals: 8 } };
+    expect(
+      getSyscoinPsbtReviewError(decodedTransfer('123457', '-1'), metadata)
+    ).toBe('Asset 123457 has an invalid output amount');
+    const missingOutput = decodedTransfer('123457', '123');
+    missingOutput.vout = [];
+    expect(getSyscoinPsbtReviewError(missingOutput, metadata)).toBe(
+      'Asset 123457 references a missing output'
+    );
+  });
+
   it('shows zero-decimal NFT and ERC-1155 quantities exactly', () => {
     const decoded = decodedTransfer('4294967297', '2');
     const metadata = {

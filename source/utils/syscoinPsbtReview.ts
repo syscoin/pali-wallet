@@ -59,7 +59,8 @@ const getCanonicalOutputRecipient = (
 
 const getAssetMetadataError = (
   assetGuid: string,
-  metadata: IAssetMetadata | undefined
+  metadata: IAssetMetadata | undefined,
+  originIndependentTransfer: boolean
 ): string | null => {
   if (!/^\d+$/.test(assetGuid)) {
     return `Unable to verify asset GUID ${assetGuid}`;
@@ -73,6 +74,21 @@ const getAssetMetadataError = (
   const isNftGuid = BigInt(assetGuid) >> BigInt(32) > BigInt(0);
   const assetType = metadata?.assetType;
   if (!assetType) {
+    // A plain allocation send needs verified units, not an EVM origin. This
+    // does not classify an untyped asset as native or authorize bridge burns.
+    if (
+      originIndependentTransfer &&
+      assetType === undefined &&
+      metadata?.assetGuid === assetGuid &&
+      BigInt(assetGuid) > BigInt(0) &&
+      !isNftGuid &&
+      BigInt(assetGuid) !== BigInt(123456) &&
+      (metadata.contract === undefined || metadata.contract === '') &&
+      metadata.originDecimals === undefined &&
+      metadata.tokenId === undefined
+    ) {
+      return null;
+    }
     return `Unable to verify the origin type for asset ${assetGuid}`;
   }
   if (assetGuid === '123456') {
@@ -158,7 +174,8 @@ export const getSyscoinPsbtReviewError = (
   for (const asset of assets) {
     const metadataError = getAssetMetadataError(
       asset.assetGuid,
-      assetInfoMap[asset.assetGuid]
+      assetInfoMap[asset.assetGuid],
+      normalizedType === 'assetallocationsend'
     );
     if (metadataError) return metadataError;
 
