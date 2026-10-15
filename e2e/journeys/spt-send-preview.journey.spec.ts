@@ -54,15 +54,21 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
       page = wallet.page;
     const amount = page.getByPlaceholder('Amount', { exact: true }),
       recipient = page.getByPlaceholder('Receiver', { exact: true }),
-      fee = page.locator('#fee-input');
+      fee = page.locator('#fee-input'),
+      selectedToken = page
+        .getByRole('button', { name: SPT_SYMBOL, exact: true })
+        .and(page.locator('[aria-haspopup="menu"]'));
     const restored = async (expected: string) => {
       await expect(page).toHaveURL(/#\/send\/sys$/);
+      await expect(selectedToken).toHaveCount(1);
+      await expect(selectedToken).toBeVisible();
       await expect(amount).toHaveValue(expected);
       await expect(recipient).toHaveValue(fixture.recipientAddress);
       await expect
         .poll(async () => Number(await fee.inputValue()))
         .toBe(0.00000002);
       await page.waitForTimeout(350);
+      await expect(selectedToken).toBeVisible();
       await expect(amount).toHaveValue(expected);
     };
     const confirm = async (expectedAmount: string) => {
@@ -130,6 +136,7 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
           .getByRole('menuitem')
           .filter({ hasText: SPT_SYMBOL })
           .click();
+        await expect(selectedToken).toBeVisible();
         await recipient.fill(fixture.recipientAddress);
         await amount.fill(SPT_BELOW_MAX);
         await fee.fill('0.00000002');
