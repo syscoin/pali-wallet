@@ -17,7 +17,8 @@ import {
   verifyFixtureSignature,
 } from '../../e2e/harness/utxoFixture';
 
-const mockBlockbookLookup = jest.fn(() => {
+const mockBlockbookLookup = jest.fn((..._args: unknown[]) => {
+  void _args;
   throw new Error('Offline fixture must not request Blockbook');
 });
 jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
