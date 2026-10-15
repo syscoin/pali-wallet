@@ -151,4 +151,93 @@ describe('hardware setup navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it('clears a failed Ledger import and permits one fresh WebHID-backed retry', async () => {
+    const originalHid = Object.getOwnPropertyDescriptor(navigator, 'hid');
+    const requestDevice = jest.fn().mockResolvedValue([{ vendorId: 0x2c97 }]);
+    Object.defineProperty(navigator, 'hid', {
+      configurable: true,
+      value: { requestDevice },
+    });
+    let rejectImport!: (error: Error) => void;
+    mockEmitter
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectImport = reject;
+          })
+      )
+      .mockResolvedValueOnce(undefined);
+    const addListener = jest.spyOn(window, 'addEventListener');
+    const removeListener = jest.spyOn(window, 'removeEventListener');
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest
+      .spyOn(jest.requireMock('utils/errorHandling'), 'handleTransactionError')
+      .mockReturnValueOnce(false);
+
+    try {
+      render(<ConnectHardwareWallet />);
+      fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'buttons.connect' })
+        );
+      });
+      expect(requestDevice).toHaveBeenCalledTimes(1);
+      expect(requestDevice).toHaveBeenCalledWith({
+        filters: [{ vendorId: 0x2c97 }],
+      });
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+      expect(mockEmitter).toHaveBeenNthCalledWith(
+        1,
+        ['wallet', 'importLedgerAccountFromController'],
+        [],
+        300000
+      );
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.cancel' })
+          .hasAttribute('disabled')
+      ).toBe(true);
+      const beforeUnload = addListener.mock.calls.find(
+        ([event]) => event === 'beforeunload'
+      )?.[1];
+      expect(beforeUnload).toBeDefined();
+
+      await act(async () => {
+        rejectImport(new Error('Ledger import failed'));
+      });
+      expect(screen.queryByRole('button', { name: 'Finish setup' })).toBeNull();
+      expect(removeListener).toHaveBeenCalledWith('beforeunload', beforeUnload);
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.cancel' })
+          .hasAttribute('disabled')
+      ).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Ledger' }));
+      const connect = screen.getByRole('button', {
+        name: 'buttons.connect',
+      });
+      expect(connect.hasAttribute('disabled')).toBe(false);
+      expect(connect.hasAttribute('aria-busy')).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(connect);
+      });
+      expect(requestDevice).toHaveBeenCalledTimes(2);
+      expect(mockEmitter).toHaveBeenCalledTimes(2);
+      expect(mockEmitter).toHaveBeenNthCalledWith(
+        2,
+        ['wallet', 'importLedgerAccountFromController'],
+        [],
+        300000
+      );
+      expect(
+        screen.getByRole('button', { name: 'Finish setup' })
+      ).toBeDefined();
+    } finally {
+      if (originalHid) Object.defineProperty(navigator, 'hid', originalHid);
+      else delete (navigator as any).hid;
+    }
+  });
 });

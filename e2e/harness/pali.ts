@@ -13,6 +13,7 @@ export class PaliWallet {
   readonly context: BrowserContext;
   readonly extensionId: string;
   readonly page: Page;
+  readonly profileDir: string;
   readonly summary: JourneySummary;
 
   private screenshotIndex = 0;
@@ -21,12 +22,14 @@ export class PaliWallet {
     context: BrowserContext,
     extensionId: string,
     page: Page,
-    summary: JourneySummary
+    summary: JourneySummary,
+    profileDir: string
   ) {
     this.context = context;
     this.extensionId = extensionId;
     this.page = page;
     this.summary = summary;
+    this.profileDir = profileDir;
   }
 
   static async launch(
@@ -44,7 +47,8 @@ export class PaliWallet {
         context,
         launched.extensionId,
         page,
-        summary
+        summary,
+        launched.profileDir
       );
       await wallet.gotoRoute('#/');
       return wallet;
@@ -264,7 +268,13 @@ export class PaliWallet {
     const groupButton = this.page
       .getByRole('button', { name: new RegExp(`${group} Networks`, 'i') })
       .first();
-    await groupButton.click();
+    await expect(groupButton).toHaveAttribute(
+      'aria-expanded',
+      /^(true|false)$/
+    );
+    if ((await groupButton.getAttribute('aria-expanded')) !== 'true')
+      await groupButton.click();
+    await expect(groupButton).toHaveAttribute('aria-expanded', 'true');
     await this.page
       .locator('li', { hasText: new RegExp(`^\\s*${label}\\s*$`) })
       .first()

@@ -7,6 +7,7 @@ import { E2E_CONFIG } from './config';
 export type LaunchedExtension = {
   context: BrowserContext;
   extensionId: string;
+  profileDir: string;
 };
 
 export type LaunchOptions = {
@@ -15,6 +16,8 @@ export type LaunchOptions = {
   // Fixture-only HTTP(S) egress fence, installed before the MV3 worker starts.
   // The loopback proxy must reject CONNECT rather than forward public traffic.
   offlineHttpProxy?: string;
+  // Cold-restart fixtures may reopen only a direct child of this run's profiles.
+  resumeProfileDir?: string;
   videoSize?: { height: number; width: number };
   viewport?: { height: number; width: number };
 };
@@ -36,12 +39,37 @@ export const launchExtension = async (
   // Unique suffix so a relaunch (e.g. Playwright restarting the worker after
   // a failed test re-runs beforeAll) never inherits vault state from the
   // previous launch's profile.
-  const profileDir = path.join(
+  let profileDir = path.join(
     E2E_CONFIG.artifactsDir,
     'profiles',
     `${profileName}-${Date.now()}`
   );
-  fs.mkdirSync(profileDir, { recursive: true });
+  if (options.resumeProfileDir !== undefined) {
+    if (!options.offlineHttpProxy)
+      throw new Error(
+        'A resumed fixture profile requires the launch-time deny proxy'
+      );
+    const profilesDir = path.resolve(E2E_CONFIG.artifactsDir, 'profiles');
+    const candidate = path.resolve(options.resumeProfileDir);
+    const relative = path.relative(profilesDir, candidate);
+    if (
+      !relative ||
+      relative === '..' ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative) ||
+      relative.includes(path.sep) ||
+      fs.realpathSync(profilesDir) !== profilesDir ||
+      !fs.lstatSync(candidate).isDirectory() ||
+      fs.lstatSync(candidate).isSymbolicLink() ||
+      fs.realpathSync(candidate) !== candidate
+    )
+      throw new Error(
+        'Resumed fixture profile must stay inside this run profiles directory'
+      );
+    profileDir = candidate;
+  } else {
+    fs.mkdirSync(profileDir, { recursive: true });
+  }
 
   const args = [
     `--disable-extensions-except=${E2E_CONFIG.extensionPath}`,
@@ -95,7 +123,7 @@ export const launchExtension = async (
       });
     }
     const extensionId = background.url().split('/')[2];
-    return { context, extensionId };
+    return { context, extensionId, profileDir };
   } catch (error) {
     await context.close().catch(() => undefined);
     throw error;
