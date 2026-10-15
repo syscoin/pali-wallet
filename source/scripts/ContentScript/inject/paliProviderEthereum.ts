@@ -36,6 +36,27 @@ function isHexString(value: any): boolean {
   return hexRegex.test(hexPart);
 }
 
+function sameEvmAccountIdentities(
+  previous: readonly unknown[] | null,
+  next: readonly unknown[]
+): boolean {
+  return (
+    previous !== null &&
+    previous.length === next.length &&
+    previous.every((account, index) => {
+      const other = next[index];
+      return (
+        account === other ||
+        (typeof account === 'string' &&
+          typeof other === 'string' &&
+          /^0x[0-9a-f]{40}$/i.test(account) &&
+          /^0x[0-9a-f]{40}$/i.test(other) &&
+          account.toLowerCase() === other.toLowerCase())
+      );
+    })
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SendSyncJsonRpcRequest {
   id: any;
@@ -599,10 +620,16 @@ export class PaliInpageProviderEth extends BaseProvider {
     // chain metadata or account disclosure from the provider.
     this._state.isBitcoinBased = snapshot.isBitcoinBased;
     this._state.isUnlocked = snapshot.isUnlocked;
-    this._state.accounts =
+    const nextAccounts =
       snapshot.isUnlocked && !snapshot.isBitcoinBased
         ? [...snapshot.accounts]
         : [];
+    const accountsChanged = !sameEvmAccountIdentities(
+      previousAccounts,
+      nextAccounts
+    );
+    this._state.accounts =
+      !accountsChanged && previousAccounts ? previousAccounts : nextAccounts;
     this.selectedAddress = this._state.accounts[0] || null;
     this.chainId = snapshot.chainId;
     this.networkVersion = isValidNetworkVersion(snapshot.networkVersion)
@@ -621,7 +648,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
     if (
       this._state.initialized &&
-      JSON.stringify(previousAccounts) !== JSON.stringify(this._state.accounts)
+      !sameEvmAccountIdentities(previousAccounts, this._state.accounts)
     ) {
       this.emit('accountsChanged', this._state.accounts);
     }
@@ -764,15 +791,20 @@ export class PaliInpageProviderEth extends BaseProvider {
 
     // Check if accounts actually changed before updating state
     const previousAccounts = this._state.accounts;
-    const accountsChanged =
-      JSON.stringify(previousAccounts) !== JSON.stringify(accounts);
+    const accountsChanged = !sameEvmAccountIdentities(
+      previousAccounts,
+      accounts
+    );
+    // Preserve the already-exposed spelling and array for case-only replies.
+    if (!accountsChanged && previousAccounts) accounts = previousAccounts;
 
     // Update state before emitting events
     if (accounts.length > 0 && isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
     } else {
       // Clear accounts when empty
-      this._state.accounts = [];
+      this._state.accounts =
+        !accountsChanged && previousAccounts ? previousAccounts : [];
     }
 
     // handle selectedAddress

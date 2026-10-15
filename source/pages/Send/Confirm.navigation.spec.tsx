@@ -153,7 +153,10 @@ jest.mock('utils/index', () => ({
   ellipsis: (value: string) => value,
   truncate: (value: string) => value,
   logError: jest.fn(),
-  removeScientificNotation: (value: string) => value,
+  removeScientificNotation: (value: string | number) =>
+    jest
+      .requireActual('utils/removeScientificNotation')
+      .removeScientificNotation(value),
   omitTransactionObjectData: (value: any) => value,
   INITIAL_FEE: {},
   SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS: 30000,
@@ -1224,3 +1227,137 @@ it('keeps authoritative external confirmation context compatible with an unstamp
   expect(screen.getByRole('button', { name: 'buttons.confirm' })).toBeTruthy();
   expect(mockControllerEmitter).not.toHaveBeenCalled();
 });
+
+it.each([
+  { gross: 0.001, fee: 0.00000113, net: '0.00099887' },
+  { gross: 1e-7, fee: 1e-8, net: '0.00000009' },
+  { gross: 2e-8, fee: 1e-8, net: '0.00000001' },
+  { gross: 1, fee: 0, net: '1' },
+  { gross: '21000000.00000001', fee: 1e-8, net: '21000000' },
+  { gross: 0.3, fee: 0.1, net: '0.2' },
+])(
+  'native MAX display shows exact net $net while retaining its gross transaction',
+  ({ gross, fee, net }) => {
+    const tx = { ...mockLocation.state.tx, amount: gross, fee, isMax: true };
+    mockLocation.state.tx = tx;
+    render(<SendConfirm />);
+
+    const headline = screen.getByText('buttons.send').parentElement!;
+    expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+      `${net} SYS`
+    );
+    expect(mockLocation.state.tx).toBe(tx);
+    expect(tx.amount).toBe(gross);
+    expect(tx.fee).toBe(fee);
+    expect(tx.psbt).toBe('synthetic-psbt');
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('native MAX display leaves the total as gross debit and displays the quoted fee separately', () => {
+  mockLocation.state.tx = {
+    ...mockLocation.state.tx,
+    amount: 0.001,
+    fee: 0.00000113,
+    isMax: true,
+  };
+  render(<SendConfirm />);
+  expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
+    '0.00100000 SYS'
+  );
+  expect(screen.getByText('send.estimatedGasFee').textContent).toContain(
+    '0.00000113 SYS'
+  );
+});
+
+it.each([
+  { amount: '90071992.54740993', fee: 1e-8, total: '90,071,992.54740994' },
+  { amount: '90071992.99999999', fee: 1e-8, total: '90,071,993.00000000' },
+  { amount: '0.1', fee: 0.2, total: '0.30000000' },
+  { amount: '1', fee: 0, total: '1.00000000' },
+])(
+  'native non-MAX total adds fee exactly: $total',
+  ({ amount, fee, total }) => {
+    const tx = { ...mockLocation.state.tx, amount, fee, isMax: false };
+    mockLocation.state.tx = tx;
+    render(<SendConfirm />);
+    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
+      `${total} SYS`
+    );
+    expect(
+      screen.getByText('buttons.send').parentElement?.textContent
+    ).toContain(`${amount} SYS`);
+    expect(mockLocation.state.tx).toBe(tx);
+    expect(tx.amount).toBe(amount);
+    expect(tx.fee).toBe(fee);
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it.each([false, true])(
+  'native total formatting leaves the %s token/EVM total path unchanged',
+  async (token) => {
+    mockState.vault.isBitcoinBased = token;
+    mockLocation.state.tx = {
+      ...mockLocation.state.tx,
+      amount: '0.001',
+      fee: 0.00000113,
+      token: token ? { symbol: 'SPT', guid: '123', decimals: 8 } : null,
+      isMax: false,
+    };
+    await act(async () => {
+      render(<SendConfirm />);
+    });
+    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
+      token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS'
+    );
+  }
+);
+
+it.each([
+  { isBitcoinBased: true, isMax: false, token: null, symbol: 'SYS' },
+  {
+    isBitcoinBased: true,
+    isMax: true,
+    token: { symbol: 'SPT', guid: '123', decimals: 8 },
+    symbol: 'SPT',
+  },
+  { isBitcoinBased: false, isMax: true, token: null, symbol: 'SYS' },
+])(
+  'native MAX display leaves other headlines unchanged: %j',
+  async ({ isBitcoinBased, isMax, token, symbol }) => {
+    mockState.vault.isBitcoinBased = isBitcoinBased;
+    mockLocation.state.tx = {
+      ...mockLocation.state.tx,
+      amount: 0.001,
+      fee: 0.00000113,
+      isMax,
+      token,
+    };
+    await act(async () => {
+      render(<SendConfirm />);
+    });
+    const headline = screen.getByText('buttons.send').parentElement!;
+    expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+      `0.001 ${symbol}`
+    );
+  }
+);
+
+it.each([undefined, 'invalid-fee', -0.1, 2, 1e-9])(
+  'native MAX display does not invent a net amount from invalid quote %p',
+  (fee) => {
+    mockLocation.state.tx = {
+      ...mockLocation.state.tx,
+      amount: 1,
+      fee,
+      isMax: true,
+    };
+    render(<SendConfirm />);
+    const headline = screen.getByText('buttons.send').parentElement!;
+    expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+      'send.calculating SYS'
+    );
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+  }
+);

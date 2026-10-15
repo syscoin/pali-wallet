@@ -4,9 +4,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { navigateWithContext } from 'utils/index';
+import { createNavigationContext, navigateWithContext } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
+import { SendConfirm } from './Confirm';
 import { SendEth } from './SendEth';
 import { SendSys } from './SendSys';
 
@@ -14,6 +15,9 @@ let mockState: any;
 let mockLocation: any;
 let mockSubmitForm: () => Promise<void>;
 let mockReceiverValidator: (_: unknown, value: string) => Promise<void>;
+let mockAmountValidator: (_: unknown, value: string) => Promise<void>;
+let mockFeeValidator: (_: unknown, value: string) => Promise<void>;
+let mockUseRealFee = false;
 const mockSave = jest.fn();
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
@@ -46,6 +50,19 @@ jest.mock('hooks/index', () => ({
     alert: mockAlert,
     useCopyClipboard: () => [false, jest.fn()],
   }),
+  usePrice: () => ({ getFiatAmount: () => null }),
+}));
+jest.mock('hooks/useEIP1559', () => ({
+  useEIP1559: () => ({ isEIP1559Compatible: false, forceRecheck: jest.fn() }),
+}));
+jest.mock('components/Loading', () => ({ PqSigningOverlay: () => null }));
+jest.mock('components/TransactionDetails', () => ({
+  SyscoinTransactionDetailsFromPSBT: () => null,
+}));
+jest.mock('./EditPriority', () => ({ EditPriorityModal: () => null }));
+jest.mock('utils/smartAccount', () => ({
+  getSmartAccountLocalOwnerContexts: () => [],
+  signAndSubmitSmartAccountExecutions: jest.fn(),
 }));
 jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: () => 'https://explorer.example',
@@ -69,6 +86,16 @@ jest.mock('utils/index', () => ({
   truncateToDecimals: (value: string) => value,
   MINIMUM_FEE: 0.0000001,
   isNFT: () => false,
+  clearNavigationState: jest.fn(),
+  truncate: (value: string) => value,
+  logError: jest.fn(),
+  removeScientificNotation: (value: string | number) =>
+    jest
+      .requireActual('utils/removeScientificNotation')
+      .removeScientificNotation(value),
+  omitTransactionObjectData: (value: any) => value,
+  INITIAL_FEE: {},
+  SYSCOIN_PSBT_VERIFICATION_TIMEOUT_MS: 30000,
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccountWithAssets: (state: any) => ({
@@ -76,7 +103,7 @@ jest.mock('state/vault/selectors', () => ({
       state.vault.accounts[state.vault.activeAccount.type][
         state.vault.activeAccount.id
       ],
-    assets: { ethereum: [], syscoin: [] },
+    assets: state.testAssets || { ethereum: [], syscoin: [] },
   }),
   selectValidEnsCache: () => ({}),
   selectEnsNameToAddress: () => ({}),
@@ -99,14 +126,45 @@ jest.mock('components/index', () => ({
   ),
   Tooltip: ({ children }: any) => <>{children}</>,
   Icon: () => null,
-  Fee: () => null,
+  IconButton: ({ children, onClick }: any) => (
+    <button onClick={onClick}>{children}</button>
+  ),
+  DeviceWaitingBanner: () => null,
+  Fee: ({ form, onFeeChange, ...props }: any) =>
+    mockUseRealFee ? (
+      React.createElement(jest.requireActual('components/Fee/Fee').Fee, {
+        form,
+        onFeeChange,
+        ...props,
+      })
+    ) : (
+      <input
+        aria-label="fee-rate"
+        value={form.getFieldValue('fee') ?? ''}
+        onChange={(event) => {
+          form.setFieldValue('fee', event.target.value);
+          onFeeChange(Number(event.target.value));
+        }}
+      />
+    ),
 }));
 jest.mock('@headlessui/react', () => {
   const Pass = ({ children }: any) => (
     <>{typeof children === 'function' ? children({ open: false }) : children}</>
   );
   const Menu = Object.assign(Pass, { Button: Pass, Items: Pass, Item: Pass });
-  return { Menu, Switch: ({ children }: any) => <>{children}</> };
+  return {
+    Menu,
+    Switch: ({ children, onChange, checked }: any) => (
+      <button
+        type="button"
+        aria-label="rbf-switch"
+        onClick={() => onChange(!checked)}
+      >
+        {children}
+      </button>
+    ),
+  };
 });
 jest.mock('antd', () => {
   const FormContext = React.createContext<any>(null);
@@ -134,6 +192,14 @@ jest.mock('antd', () => {
     if (name === 'receiver') {
       const factory = rules?.find((rule: any) => typeof rule === 'function');
       if (factory) mockReceiverValidator = factory().validator;
+    }
+    if (name === 'amount') {
+      const factory = rules?.find((rule: any) => typeof rule === 'function');
+      if (factory) mockAmountValidator = factory().validator;
+    }
+    if (name === 'fee') {
+      const factory = rules?.find((rule: any) => typeof rule === 'function');
+      if (factory) mockFeeValidator = factory().validator;
     }
     return <NameContext.Provider value={name}>{children}</NameContext.Provider>;
   };
@@ -172,10 +238,11 @@ jest.mock('antd', () => {
           onChange={(event) => {
             form.setFieldValue(name, event.target.value);
             onChange?.(event);
-            onValuesChange?.(
-              { [name]: event.target.value },
-              form.getFieldsValue()
-            );
+            if (name !== 'fee')
+              onValuesChange?.(
+                { [name]: event.target.value },
+                form.getFieldsValue()
+              );
           }}
         />
       </span>
@@ -186,6 +253,7 @@ jest.mock('antd', () => {
 
 describe('send forms across wallet navigation', () => {
   beforeEach(() => {
+    mockUseRealFee = false;
     jest.clearAllMocks();
     Object.assign(mockStatus, {
       isUnlocked: true,
@@ -225,6 +293,7 @@ describe('send forms across wallet navigation', () => {
         isBitcoinBased: false,
       },
       vaultGlobal: {},
+      price: { fiat: { asset: 'USD' } },
     };
     mockLocation = { pathname: '/send/eth', search: '', hash: '', state: null };
     mockSave.mockReset().mockResolvedValue(undefined);
@@ -476,11 +545,14 @@ describe('send forms across wallet navigation', () => {
         formValues: { receiver: 'recipient-a', amount: '1' },
       },
     };
-    mockEmitter.mockResolvedValue({
-      fee: 0.001,
-      psbt: 'synthetic-unsigned-psbt',
-    });
+    mockEmitter.mockImplementation(([, , method]: string[]) =>
+      method === 'getEstimateSysTransactionFee'
+        ? Promise.resolve({ fee: 0.001, psbt: 'synthetic-unsigned-psbt' })
+        : Promise.resolve(0.0000001)
+    );
     render(<SendSys />);
+    // Let the initial recommended fee populate before the user submits.
+    await act(async () => undefined);
     await act(async () => {
       await mockSubmitForm();
     });
@@ -493,6 +565,94 @@ describe('send forms across wallet navigation', () => {
       expect.any(Object)
     );
   });
+
+  it.each(
+    ['native', 'token'].flatMap((kind) =>
+      ['receiver', 'amount', 'fee', 'rbf', 'asset'].map((field) => ({
+        kind,
+        field,
+      }))
+    )
+  )(
+    'discards a pending $kind UTXO preparation after the user edits $field',
+    async ({ kind, field }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.testAssets = {
+        ethereum: [],
+        syscoin: [
+          {
+            assetGuid: '456',
+            symbol: 'ALT',
+            decimals: 8,
+            balance: '10',
+            assetType: 'SYSX',
+          },
+        ],
+      };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+          ...(kind === 'token'
+            ? {
+                selectedAsset: {
+                  assetGuid: '123',
+                  decimals: 8,
+                  balance: '10',
+                  symbol: 'SYSX',
+                  assetType: 'SYSX',
+                },
+              }
+            : {}),
+        },
+      };
+      let finishEstimate!: (value: any) => void;
+      const estimate = new Promise((resolve) => {
+        finishEstimate = resolve;
+      });
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? estimate
+          : Promise.resolve(0.0000001)
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      let pending!: Promise<void>;
+      act(() => {
+        pending = mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        expect.any(Array)
+      );
+      if (field === 'asset') {
+        fireEvent.click(screen.getByText('ALT').closest('button'));
+      } else if (field === 'rbf') {
+        fireEvent.click(screen.getByRole('button', { name: 'rbf-switch' }));
+      } else if (field === 'fee') {
+        fireEvent.change(screen.getByRole('textbox', { name: 'fee-rate' }), {
+          target: { value: '0.0000002' },
+        });
+      } else {
+        fireEvent.change(screen.getByPlaceholderText(`send.${field}`), {
+          target: { value: field === 'amount' ? '2' : 'recipient-b' },
+        });
+      }
+      await act(async () => {
+        finishEstimate({ fee: 0.001, psbt: 'stale-unsigned-psbt' });
+        await pending;
+      });
+      expect(navigateWithContext).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.next' })
+          .getAttribute('aria-busy')
+      ).toBe('false');
+    }
+  );
 
   it.each(['account', 'route', 'unmount'])(
     'ignores an EVM onFinish callback returned by validation after %s departure',
@@ -633,6 +793,431 @@ describe('send forms across wallet navigation', () => {
       (screen.getByPlaceholderText('send.receiver') as HTMLInputElement).value
     ).toBe('');
   });
+
+  it.each([
+    {
+      amount: '90071992.54740993',
+      balance: '90071992.54740993',
+      isMax: true,
+      expected: '90071992.54740992',
+    },
+    {
+      amount: '90071992.54740993',
+      balance: '90072000',
+      isMax: false,
+      expected: '90071992.54740993',
+    },
+  ])(
+    'preserves exact large native amount through SendSys and Confirm (MAX=$isMax)',
+    async ({ amount, balance, isMax, expected }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.activeNetwork.currency = 'SYS';
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = balance;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount },
+        },
+      };
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({ fee: 1e-8, psbt: 'exact-unsigned-psbt' })
+          : Promise.resolve(0.0000001)
+      );
+      const navigate = navigateWithContext as jest.Mock;
+      navigate.mockImplementation((...args: any[]) =>
+        jest.requireActual('utils/navigationState').navigateWithContext(...args)
+      );
+      try {
+        const form = render(<SendSys />);
+        await act(async () => undefined);
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+          [expect.objectContaining({ amount, isMax })]
+        );
+        const [path, options] = mockNavigate.mock.calls.find(
+          ([target]) => target === '/send/confirm'
+        )!;
+        expect(options.state.tx.amount).toBe(amount);
+        expect(options.state.tx.psbt).toBe('exact-unsigned-psbt');
+        form.unmount();
+        mockEmitter.mockClear();
+        window.history.replaceState(null, '', '/app.html#/send/confirm');
+        mockLocation = {
+          key: `exact-native-${isMax}`,
+          pathname: path,
+          state: options.state,
+        };
+        render(<SendConfirm />);
+        const headline = screen.getByText('buttons.send').parentElement!;
+        expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+          `${expected} SYS`
+        );
+        expect(
+          screen.getByText('Total (send.amountAndFee)').textContent
+        ).toContain(
+          isMax ? '90,071,992.54740993 SYS' : '90,071,992.54740994 SYS'
+        );
+        expect(options.state.tx.amount).toBe(amount);
+        expect(mockEmitter).not.toHaveBeenCalled();
+      } finally {
+        navigate.mockReset();
+      }
+    }
+  );
+
+  it.each(['SPT', 'EVM'])(
+    'keeps the existing %s amount handoff and Confirm headline unchanged',
+    async (kind) => {
+      const isToken = kind === 'SPT';
+      const amount = isToken ? '90071992.54740993' : '0.123456789012345678';
+      const receiver = '0x3333333333333333333333333333333333333333';
+      mockState.vault.isBitcoinBased = isToken;
+      mockState.vault.activeNetwork.kind = isToken
+        ? INetworkType.Syscoin
+        : INetworkType.Ethereum;
+      const asset = {
+        assetGuid: '123',
+        symbol: 'SPT',
+        decimals: 8,
+        balance: '100000000',
+      };
+      mockState.testAssets = {
+        ethereum: [],
+        syscoin: isToken ? [asset] : [],
+      };
+      mockLocation = {
+        ...mockLocation,
+        pathname: isToken ? '/send/sys' : '/send/eth',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver, amount },
+          ...(isToken ? { selectedAsset: asset } : {}),
+        },
+      };
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({ fee: 1e-8, psbt: 'token-unsigned-psbt' })
+          : isToken
+          ? Promise.resolve(0.0000001)
+          : new Promise(() => undefined)
+      );
+      const navigate = navigateWithContext as jest.Mock;
+      navigate.mockImplementation((...args: any[]) =>
+        jest.requireActual('utils/navigationState').navigateWithContext(...args)
+      );
+      try {
+        const form = render(isToken ? <SendSys /> : <SendEth />);
+        await act(async () => undefined);
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        const [path, options] = mockNavigate.mock.calls.find(
+          ([target]) => target === '/send/confirm'
+        )!;
+        expect(options.state.tx.amount).toBe(amount);
+        form.unmount();
+        mockEmitter
+          .mockReset()
+          .mockImplementation(() => new Promise(() => undefined));
+        window.history.replaceState(null, '', '/app.html#/send/confirm');
+        mockLocation = {
+          key: `control-${kind}`,
+          pathname: path,
+          state: options.state,
+        };
+        render(<SendConfirm />);
+        const headline = screen.getByText('buttons.send').parentElement!;
+        expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+          `${amount} ${isToken ? 'SPT' : 'ETH'}`
+        );
+        expect(options.state.tx.amount).toBe(amount);
+        expect(
+          mockEmitter.mock.calls.every(
+            ([method]) => method[2] === 'getRecommendedGasPrice'
+          )
+        ).toBe(true);
+      } finally {
+        navigate.mockReset();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    'preserves an edited fee through actual Confirm Back (recommendation rejects=%s)',
+    async (reject) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+        },
+      };
+      let recommendations = 0;
+      mockEmitter.mockImplementation((path: string[]) => {
+        const method = path[path.length - 1];
+        if (method === 'getEstimateSysTransactionFee')
+          return Promise.resolve({
+            fee: 0.001,
+            psbt: 'unchanged-unsigned-psbt',
+          });
+        if (method === 'getRecommendedFee') {
+          recommendations++;
+          if (recommendations > 1 && reject)
+            return Promise.reject(new Error('recommendation unavailable'));
+          return Promise.resolve(recommendations === 1 ? 1e-7 : 3e-7);
+        }
+        return Promise.resolve(undefined);
+      });
+      const nav = navigateWithContext as jest.Mock;
+      const context = createNavigationContext as jest.Mock;
+      nav.mockImplementation((...args: any[]) =>
+        jest.requireActual('utils/navigationState').navigateWithContext(...args)
+      );
+      context.mockImplementation((...args: any[]) =>
+        jest
+          .requireActual('utils/navigationState')
+          .createNavigationContext(...args)
+      );
+      try {
+        const form = render(<SendSys />);
+        await act(async () => undefined);
+        fireEvent.change(screen.getByRole('textbox', { name: 'fee-rate' }), {
+          target: { value: '0.0000002' },
+        });
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        const [, forward] = mockNavigate.mock.calls.find(
+          ([path]) => path === '/send/confirm'
+        )!;
+        expect(forward.state.tx.feeRate).toBe(2e-7);
+        form.unmount();
+        window.history.replaceState(null, '', '/app.html#/send/confirm');
+        mockLocation = {
+          key: `fee-confirm-${reject}`,
+          pathname: '/send/confirm',
+          state: forward.state,
+        };
+        const confirm = render(<SendConfirm />);
+        fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+        const [path, back] = mockNavigate.mock.calls
+          .filter(([target]) => target === '/send/sys')
+          .pop()!;
+        expect(back.state.formValues.fee).toBe('0.0000002');
+        confirm.unmount();
+        window.history.replaceState(null, '', '/app.html#/send/sys');
+        mockLocation = { pathname: path, state: back.state };
+        render(<SendSys />);
+        await act(async () => undefined);
+        expect(
+          (
+            screen.getByRole('textbox', {
+              name: 'fee-rate',
+            }) as HTMLInputElement
+          ).value
+        ).toBe('0.0000002');
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        const estimates = mockEmitter.mock.calls.filter(
+          ([path]) => path[path.length - 1] === 'getEstimateSysTransactionFee'
+        );
+        expect(estimates[estimates.length - 1][1][0].feeRate).toBe(2e-7);
+      } finally {
+        nav.mockReset();
+        context.mockReset();
+      }
+    }
+  );
+
+  it.each([false, true])(
+    'does not overwrite a fee edit with a late recommendation (rejects=%s)',
+    async (reject) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+        },
+      };
+      let finish!: (value: number) => void;
+      let fail!: (reason: Error) => void;
+      const recommendation = new Promise<number>((resolve, rejection) => {
+        finish = resolve;
+        fail = rejection;
+      });
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getRecommendedFee'
+          ? recommendation
+          : Promise.resolve({ fee: 0.001, psbt: 'unchanged-unsigned-psbt' })
+      );
+      render(<SendSys />);
+      fireEvent.change(screen.getByRole('textbox', { name: 'fee-rate' }), {
+        target: { value: '0.0000002' },
+      });
+      await act(async () => {
+        if (reject) fail(new Error('late recommendation failure'));
+        else finish(3e-7);
+      });
+      expect(
+        (screen.getByRole('textbox', { name: 'fee-rate' }) as HTMLInputElement)
+          .value
+      ).toBe('0.0000002');
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(navigateWithContext).toHaveBeenCalledWith(
+        mockNavigate,
+        '/send/confirm',
+        expect.objectContaining({
+          tx: expect.objectContaining({ feeRate: 2e-7 }),
+        }),
+        expect.any(Object)
+      );
+    }
+  );
+
+  it.each([false, true])(
+    'retains a default recommendation for a fresh blank fee (rejects=%s)',
+    async (reject) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+        },
+      };
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getRecommendedFee'
+          ? reject
+            ? Promise.reject(new Error('no recommendation'))
+            : Promise.resolve(3e-7)
+          : Promise.resolve({ fee: 0.001, psbt: 'unchanged-unsigned-psbt' })
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      expect(
+        Number(
+          (
+            screen.getByRole('textbox', {
+              name: 'fee-rate',
+            }) as HTMLInputElement
+          ).value
+        )
+      ).toBe(reject ? 1e-7 : 3e-7);
+    }
+  );
+
+  it.each([1e-8, 2e-8])(
+    'uses exact native atomic MAX and affordability comparisons (fee=%s)',
+    async (fee) => {
+      const amount = '90071992.54740993';
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin =
+        '90071992.54740994';
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount },
+        },
+      };
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({ fee, psbt: 'exact-unsigned-psbt' })
+          : Promise.resolve(1e-7)
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      await expect(
+        mockAmountValidator(undefined, '90071992.54740995')
+      ).rejects.toThrow('send.insufficientFunds');
+      await expect(
+        mockAmountValidator(undefined, '90071992.547409931')
+      ).rejects.toThrow('send.invalidAmount');
+      await expect(
+        mockAmountValidator(undefined, amount)
+      ).resolves.toBeUndefined();
+      await act(async () => {
+        await mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        [expect.objectContaining({ amount, isMax: false })]
+      );
+      if (fee === 1e-8) expect(navigateWithContext).toHaveBeenCalled();
+      else {
+        expect(navigateWithContext).not.toHaveBeenCalled();
+        expect(mockAlert.error).toHaveBeenCalledWith('send.insufficientFunds');
+      }
+    }
+  );
+
+  it.each(
+    ['', '0', '-0.1'].flatMap((value) =>
+      [false, true].map((reject) => ({ value, reject }))
+    )
+  )(
+    'real Fee keeps explicit invalid/empty edit "$value" across late recommendation (reject=$reject)',
+    async ({ value, reject }) => {
+      mockUseRealFee = true;
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+        },
+      };
+      let finish!: (value: number) => void;
+      let fail!: (reason: Error) => void;
+      const recommendation = new Promise<number>((resolve, rejection) => {
+        finish = resolve;
+        fail = rejection;
+      });
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getRecommendedFee'
+          ? recommendation
+          : Promise.resolve(undefined)
+      );
+      const view = render(<SendSys />);
+      const input = view.container.querySelector(
+        '#fee-input'
+      ) as HTMLInputElement;
+      // Fee uses programmatic form writes; the fixture intentionally does not
+      // emit onValuesChange for this field, nor a positive-only parent callback.
+      if (value === '') fireEvent.change(input, { target: { value: '0' } });
+      fireEvent.change(input, { target: { value } });
+      await act(async () => {
+        if (reject) fail(new Error('late recommendation failure'));
+        else finish(3e-7);
+      });
+      expect(input.value).toBe(value);
+      await expect(mockFeeValidator(undefined, value)).rejects.toThrow(
+        'send.invalidFeeRate'
+      );
+    }
+  );
 
   it('rechecks restored NFT ownership and drops the NFT selection on network change', () => {
     mockLocation.state = {

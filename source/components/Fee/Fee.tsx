@@ -32,7 +32,7 @@ export const Fee = ({
   const handleFeeChange = useCallback(
     (value: number | undefined) => {
       // Only call onFeeChange if value is a valid positive number
-      if (onFeeChange && value !== undefined && value > 0 && !isNaN(value)) {
+      if (onFeeChange && Number.isFinite(value) && value > 0) {
         onFeeChange(value);
       }
     },
@@ -54,7 +54,7 @@ export const Fee = ({
       // Notify parent component of existing fee
       const numValue = Number(currentFormValue);
       // Only call if it's a valid positive number
-      if (numValue > 0 && !isNaN(numValue)) {
+      if (numValue > 0 && Number.isFinite(numValue)) {
         handleFeeChange(numValue);
       }
     } else {
@@ -171,10 +171,8 @@ export const Fee = ({
               },
               () => ({
                 validator(_, value) {
-                  if (!value) return Promise.resolve();
-
-                  const numValue = parseFloat(value);
-                  if (isNaN(numValue)) {
+                  const numValue = Number(value);
+                  if (!Number.isFinite(numValue) || numValue <= 0) {
                     return Promise.reject(new Error(t('send.invalidFeeRate')));
                   }
 
@@ -223,12 +221,12 @@ export const Fee = ({
                     // Manually set form value to ensure it's in sync
                     form.setFieldsValue({ fee: newValue });
                     // Trigger form validation to update the visual feedback
-                    form.validateFields(['fee']);
+                    void form.validateFields(['fee']).catch(() => undefined);
                     // Notify parent component of fee change
                     // Only call if newValue is not empty and converts to a valid positive number
                     if (newValue && newValue.trim() !== '') {
                       const numValue = Number(newValue);
-                      if (numValue > 0 && !isNaN(numValue)) {
+                      if (numValue > 0 && Number.isFinite(numValue)) {
                         handleFeeChange(numValue);
                       }
                     }

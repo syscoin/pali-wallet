@@ -378,6 +378,13 @@ export const sanitizeBrowsingState = (
       'amount',
       'nftTokenId',
     ]);
+    const fee = input?.formValues?.fee;
+    if (
+      pathname === '/send/sys' &&
+      (typeof fee === 'string' || typeof fee === 'number')
+    ) {
+      Object.assign(state.formValues, boundedPick(input.formValues, ['fee']));
+    }
     if (record(input?.selectedAsset))
       state.selectedAsset = pick(input.selectedAsset, PUBLIC_ASSET_FIELDS);
     Object.assign(

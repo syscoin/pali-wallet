@@ -10,6 +10,7 @@ import {
   safeWalletPath,
   saveNavigationState,
   saveConfirmationReturnState,
+  sanitizeBrowsingState,
 } from './navigationState';
 
 let mockStored: any;
@@ -178,6 +179,37 @@ it('restores exact amount and token ID strings without storing secrets, endpoint
     /private|secret-key|apikey|verifiedTokenBalance|signed/
   );
 });
+it.each(['0.0000002', 2e-7, '', 'invalid-fee'])(
+  'retains a bounded string or numeric fee only in the UTXO draft (%p)',
+  (fee) => {
+    const state = { formValues: { amount: '1', fee } };
+    expect(sanitizeBrowsingState('/send/sys', state).formValues).toEqual({
+      amount: '1',
+      fee,
+    });
+    expect(sanitizeBrowsingState('/send/eth', state).formValues).toEqual({
+      amount: '1',
+    });
+  }
+);
+
+it.each([
+  {},
+  [],
+  { secret: 'not-retained' },
+  NaN,
+  Infinity,
+  true,
+  false,
+  null,
+  '1'.repeat(2049),
+  () => undefined,
+])('does not retain nonscalar or nonfinite UTXO fee %p', (fee) => {
+  expect(
+    sanitizeBrowsingState('/send/sys', { formValues: { fee } }).formValues
+  ).not.toHaveProperty('fee');
+});
+
 it.each(['account', 'address', 'RPC', 'API', 'chain', 'kind'])(
   'drops operational drafts after %s changes',
   async (field) => {
