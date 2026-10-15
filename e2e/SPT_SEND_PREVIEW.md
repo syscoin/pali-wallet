@@ -13,6 +13,8 @@ that insufficient native funds for the selected fee prevent preparation. It
 then leaves the document and opens the normal neutral app entry to check the
 persisted draft, using ordinary Unlock controls if needed. No controller state
 is injected, no estimate is replaced, and Confirm is observed but never clicked.
+Both the confirmation amount card and the existing Advanced Details view of
+the prepared PSBT allocation must show the exact expected token amount.
 
 Only exact fixture GET responses are fulfilled. Unknown HTTP(S), public
 connections and broadcasts are denied; the write-attempt counter must stay

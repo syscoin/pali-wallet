@@ -62,12 +62,30 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
       await page.waitForTimeout(350);
       await expect(amount).toHaveValue(expected);
     };
-    const confirm = async () => {
+    const confirm = async (expectedAmount: string) => {
       await page.getByRole('button', { name: 'Next', exact: true }).click();
       await expect(page).toHaveURL(/#\/send\/confirm$/);
       await expect(
         page.getByRole('button', { name: 'Confirm', exact: true })
       ).toBeEnabled();
+      const expected = `${expectedAmount} ${SPT_SYMBOL}`;
+      await expect(page.locator('p.text-2xl')).toHaveText(expected);
+      // This existing UI decodes the actual prepared PSBT, independently of
+      // the typed amount retained in navigation/return context.
+      await page
+        .getByRole('button', { name: 'Advanced Details', exact: true })
+        .click();
+      await expect(
+        page.getByText('Transaction outputs', { exact: true })
+      ).toBeVisible();
+      const allocation = page
+        .getByText('Amount:', { exact: true })
+        .locator('..')
+        .filter({ has: page.getByText(expected, { exact: true }) });
+      await expect(allocation).toHaveCount(1);
+      await expect(
+        allocation.getByText(expected, { exact: true })
+      ).toBeVisible();
       expect(routes.deniedWrites).toEqual([]);
     };
     await wallet.step(
@@ -106,7 +124,7 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
     await wallet.step(
       'one atomic unit below MAX survives normal Confirm and Cancel',
       async () => {
-        await confirm();
+        await confirm(SPT_BELOW_MAX);
         await page.getByRole('button', { name: 'Cancel', exact: true }).click();
         await restored(SPT_BELOW_MAX);
       }
@@ -114,7 +132,7 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
     await wallet.step(
       'adjacent non-MAX survives normal Confirm and header Back',
       async () => {
-        await confirm();
+        await confirm(SPT_BELOW_MAX);
         await page.getByRole('button', { name: 'Back', exact: true }).click();
         await restored(SPT_BELOW_MAX);
       }
@@ -124,7 +142,7 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
       async () => {
         await page.getByText('MAX', { exact: true }).click();
         await expect(amount).toHaveValue(SPT_BALANCE);
-        await confirm();
+        await confirm(SPT_BALANCE);
         await page.getByRole('button', { name: 'Back', exact: true }).click();
         await restored(SPT_BALANCE);
       }

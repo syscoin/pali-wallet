@@ -48,4 +48,26 @@ describe('offline SPT fixture', () => {
     ])
       expect(sptFixtureRead(f, url, method)).toBeUndefined();
   });
+
+  it('passes the wrapped asset response through the installed SDK sanitizer', () => {
+    const f = createSptFixture();
+    const response = sptFixtureRead(
+      f,
+      `https://blockbook-dev.syscoin.org/api/v2/utxo/${f.userXpub}`,
+      'GET'
+    );
+    const sanitized = sys.sanitizeBlockbookUTXOs(
+      f.userXpub,
+      response,
+      sys.syscoinNetworks.testnet,
+      { rbf: true },
+      new Map([[SPT_GUID, {}]])
+    );
+    expect(sanitized.utxos).toHaveLength(1);
+    expect(sanitized.utxos[0].txId).toBe(f.parentTxs[0].getId());
+    expect(sanitized.utxos[0].assetInfo.value.toString()).toBe(
+      SPT_BALANCE_UNITS
+    );
+    expect(sanitized.assets.get(SPT_GUID).precision).toBe(8);
+  });
 });
