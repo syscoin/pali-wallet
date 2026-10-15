@@ -1,6 +1,7 @@
 import {
   assertValidAssetAmount,
   hasNonZeroAssetDelta,
+  isAssetAmountEqualToBalance,
   isAssetAmountWithinBalance,
   toEightDecimalBuilderAmount,
 } from './syscoinAssetAmount';
@@ -33,6 +34,28 @@ describe('Syscoin asset amount conversion', () => {
       isAssetAmountWithinBalance('9007199254740994', '9007199254740993', 0)
     ).toBe(false);
   });
+
+  it.each([
+    ['9007199254740992', '9007199254740993', 0, false],
+    ['90071992.54740993', '90071992.54740994', 8, false],
+    ['9007199254740993', '9007199254740993', 0, true],
+    ['1.23000000', '1.23', 8, true],
+    ['0', '0', 8, false],
+    ['1.201', '1.20', 2, false],
+    ['1e3', '1000', 0, false],
+    ['1', '1', 9, false],
+  ])(
+    'compares exact MAX amount %s with balance %s at %s decimals',
+    (amount, balance, decimals, equal) => {
+      expect(
+        isAssetAmountEqualToBalance(
+          String(amount),
+          String(balance),
+          Number(decimals)
+        )
+      ).toBe(equal);
+    }
+  );
 
   it('rejects fractional NFT quantities and excess precision', () => {
     expect(() => assertValidAssetAmount('1.5', 0)).toThrow(
