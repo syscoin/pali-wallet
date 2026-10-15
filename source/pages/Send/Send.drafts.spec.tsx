@@ -588,6 +588,156 @@ describe('send forms across wallet navigation', () => {
     );
   });
 
+  it.each([
+    { field: 'totalReceived', value: '0.002' },
+    { field: 'totalSent', value: '0.001' },
+    { field: 'transfers', value: 8 },
+  ])(
+    'keeps a pending SPT preparation after a background $field metadata refresh',
+    async ({ field, value }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = {
+        assetGuid: '123456',
+        assetType: 'SYSX',
+        symbol: 'SYSX',
+        decimals: 8,
+        balance: '0.001',
+        totalReceived: '0.001',
+        totalSent: '0',
+        transfers: 5,
+      };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '0.0001' },
+          selectedAsset: asset,
+        },
+      };
+      let finishEstimate!: (result: any) => void;
+      const estimate = new Promise((resolve) => {
+        finishEstimate = resolve;
+      });
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? estimate
+          : Promise.resolve(0.0000001)
+      );
+      const view = render(<SendSys />);
+      await act(async () => undefined);
+      let pending!: Promise<void>;
+      act(() => {
+        pending = mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        [
+          expect.objectContaining({
+            amount: '0.00010000',
+            token: { symbol: 'SYSX', guid: '123456' },
+          }),
+        ]
+      );
+      // Exercise the actual selected-asset refresh effect while the unsigned
+      // estimator is pending, not an object mutated behind a React ref.
+      mockState.testAssets = {
+        ethereum: [],
+        syscoin: [{ ...asset, [field]: value }],
+      };
+      view.rerender(<SendSys />);
+      await act(async () => undefined);
+      await act(async () => {
+        finishEstimate({ fee: 0.00001, psbt: 'current-spt-unsigned-psbt' });
+        await pending;
+      });
+      expect(navigateWithContext).toHaveBeenCalledWith(
+        mockNavigate,
+        '/send/confirm',
+        expect.objectContaining({
+          tx: expect.objectContaining({
+            amount: '0.0001',
+            psbt: 'current-spt-unsigned-psbt',
+            token: { symbol: 'SYSX', guid: '123456' },
+          }),
+        }),
+        expect.any(Object)
+      );
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.next' })
+          .getAttribute('aria-busy')
+      ).toBe('false');
+    }
+  );
+
+  it.each([
+    { field: 'balance', value: '0.0005' },
+    { field: 'decimals', value: 6 },
+    { field: 'assetType', value: 'ERC20' },
+    { field: 'symbol', value: 'CHANGED' },
+  ])(
+    'discards a pending SPT preparation after a material $field refresh',
+    async ({ field, value }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = {
+        assetGuid: '123456',
+        assetType: 'SYSX',
+        symbol: 'SYSX',
+        decimals: 8,
+        balance: '0.001',
+      };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '0.0001' },
+          selectedAsset: asset,
+        },
+      };
+      let finishEstimate!: (result: any) => void;
+      const estimate = new Promise((resolve) => {
+        finishEstimate = resolve;
+      });
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? estimate
+          : Promise.resolve(0.0000001)
+      );
+      const view = render(<SendSys />);
+      await act(async () => undefined);
+      let pending!: Promise<void>;
+      act(() => {
+        pending = mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        expect.any(Array)
+      );
+      mockState.testAssets = {
+        ethereum: [],
+        syscoin: [{ ...asset, [field]: value }],
+      };
+      view.rerender(<SendSys />);
+      await act(async () => undefined);
+      await act(async () => {
+        finishEstimate({ fee: 0.00001, psbt: 'stale-spt-unsigned-psbt' });
+        await pending;
+      });
+      expect(navigateWithContext).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.next' })
+          .getAttribute('aria-busy')
+      ).toBe('false');
+    }
+  );
+
   it.each(
     ['native', 'token'].flatMap((kind) =>
       ['receiver', 'amount', 'fee', 'rbf', 'asset'].map((field) => ({
