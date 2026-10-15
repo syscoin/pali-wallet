@@ -15,6 +15,8 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { summaryReportIcon } from './summary-status.cjs';
+
 const repoRoot = path.resolve(import.meta.dirname, '../..');
 const artifactsRoot = path.join(repoRoot, 'e2e', 'artifacts');
 const outPath = process.argv[2];
@@ -144,7 +146,7 @@ for (const runId of runIds) {
     const summary = JSON.parse(
       fs.readFileSync(path.join(runDir, summaryFile), 'utf8')
     );
-    const icon = summary.status === 'passed' ? '✅' : '❌';
+    const icon = summaryReportIcon(summary);
     lines.push(`## ${icon} Journey \`${summary.journey}\` (${runId})`, '');
     lines.push('| Step | Status | Duration |');
     lines.push('| --- | --- | --- |');

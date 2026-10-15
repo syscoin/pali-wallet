@@ -15,8 +15,9 @@ PALI_TEST_DAPP_ANVIL="$(command -v anvil)" \
 yarn e2e:harness test-dapp-conformance.journey.spec.ts
 ```
 
-The `test dapp conformance` job in `main.yml` runs this focused journey on
-every PR, alongside the unit and visual checks. It uses only disposable local
+The `test dapp conformance` job in `main.yml` runs this focused journey, the
+provider-property toggle journey and the [offline UTXO signing journey](UTXO_FIXTURE.md)
+on every PR, alongside the unit and visual checks. It uses only disposable local
 accounts and chains, requires no wallet secrets, cancels superseded runs for
 the same PR, and uploads the report, screenshots, videos and failure traces.
 The broader wallet journeys remain in the existing nightly/manual

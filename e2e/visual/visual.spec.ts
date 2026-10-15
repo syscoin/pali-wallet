@@ -10,6 +10,7 @@ import { E2E_CONFIG } from '../harness/config';
 import { PaliWallet } from '../harness/pali';
 
 import { resetVisualScroll } from './scrollReset';
+import { registerVisualSummaryHooks, visualJourneyName } from './summaryHooks';
 
 // Pixel-baseline walk of the core screens. One onboarding, then every test
 // navigates and asserts a masked screenshot against the committed baseline.
@@ -102,7 +103,7 @@ const refreshFixtureInfrastructure = async (page: Page) => {
 };
 
 test.describe('visual baselines', () => {
-  test.beforeAll(async () => {
+  test.beforeAll(async ({}, workerInfo) => {
     // SYSCOIN: These goldens describe the funded public QA fixture, not an
     // empty replacement chain. Fail with the actual missing prerequisite
     // before comparing different account/history states or skipping coverage.
@@ -119,7 +120,7 @@ test.describe('visual baselines', () => {
       'Deploy the normal Pali smart-account infrastructure before visual QA'
     ).toEqual([]);
 
-    wallet = await PaliWallet.launch('visual');
+    wallet = await PaliWallet.launch(visualJourneyName(workerInfo.workerIndex));
     await wallet.importSeedAndCreatePassword();
     await wallet.switchNetwork(E2E_CONFIG.networkLabel);
 
@@ -210,9 +211,7 @@ test.describe('visual baselines', () => {
     ).toBeVisible({ timeout: 60_000 });
   });
 
-  test.afterAll(async () => {
-    await wallet?.dispose();
-  });
+  registerVisualSummaryHooks(test, () => wallet);
 
   test('home', async () => {
     await wallet.ensureOnHome();
