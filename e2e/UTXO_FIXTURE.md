@@ -49,3 +49,39 @@ dependency. Its offline fixture checks can run without a browser:
 ```sh
 yarn jest --runInBand --coverage=false --runTestsByPath tests/unit/utxoFixture.test.ts
 ```
+
+## Offline wallet lifecycle
+
+`offline-wallet-lifecycle.journey.spec.ts` reuses the same public synthetic
+seed, fabricated balance and launch-time deny proxy. It uses ordinary UI
+controls to import the seed, Lock, reject a wrong password, reload the app
+document while locked, and unlock the same account. The backup page must
+reauthenticate before its phrase matches the fixture and clear it when the
+password input changes. Only an in-page digest comparison is returned; the
+phrase is not written to the result report, and textarea video/screenshots
+remain masked.
+
+The journey checks Cancel on the recovery warning, then performs real local
+seed recovery with a new password **only in that fresh disposable profile**.
+The restored UTXO receiving address must match the fixture; the old password
+must fail and the new password must unlock it. No controller state is
+injected, no signing is requested, and no transaction is broadcast. The PR
+conformance job selects this journey explicitly.
+
+```sh
+PALI_E2E_RUN_ID=offline-wallet-lifecycle-unique \
+PALI_TEST_DAPP_REVISION=<exact-built-commit> \
+PALI_TEST_DAPP_EXTENSION_PATH=/absolute/path/to/qualified/build/chrome \
+yarn e2e:harness offline-wallet-lifecycle.journey.spec.ts
+```
+
+This establishes simulated normal-UI lifecycle behavior, not public-chain
+balances, a cold browser-process restart, imported/watch-only account recovery,
+hardware recovery, or cross-network vault isolation. The current fixture
+serves only its primary UTXO account. Do not run the older shared-seed/public
+network journeys as a substitute for these offline checks.
+
+`yarn e2e:visual passwordSetup.spec.ts` separately checks compact mouse-wheel
+scrolling, a renderer-only password-generation failure and nine translated
+locales. Each uses an empty fresh profile behind the same deny proxy; none
+submits Next or creates a wallet.
