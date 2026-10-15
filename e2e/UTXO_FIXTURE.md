@@ -1,9 +1,9 @@
 # Offline UTXO signing journey
 
-This extends the existing Pali Playwright harness. It does not contact or test
-the deployed bridge at bridge.tanenbaum.io and does not submit transactions.
-The test uses a public synthetic seed, fabricated parent transactions, and
-controlled Blockbook responses. Those parent outputs do not exist on-chain.
+This Playwright journey tests Pali's UTXO signing UI without connecting to
+public chains or submitting transactions. It uses a public synthetic seed,
+fabricated parent transactions, and controlled Blockbook responses. Those
+parent outputs do not exist on-chain.
 
 The optional loopback deny proxy is configured before Chromium starts its
 extension worker. It never forwards HTTP or CONNECT requests. Once the context
@@ -36,8 +36,8 @@ Run only after the owner of any other browser QA has closed that session, with
 an exact qualified extension directory and existing cached dependencies:
 
 ```sh
-PALI_E2E_RUN_ID=offline-utxo-8153-new \
-PALI_TEST_DAPP_REVISION=8153bbeeb68a8588ed0bdc81d17e73ef8ff4f02b \
+PALI_E2E_RUN_ID=offline-utxo-unique \
+PALI_TEST_DAPP_REVISION=<exact-built-commit> \
 PALI_TEST_DAPP_EXTENSION_PATH=/absolute/path/to/qualified/build/chrome \
 yarn e2e:harness utxo-psbt.journey.spec.ts
 ```
@@ -49,7 +49,3 @@ dependency. Its offline fixture checks can run without a browser:
 ```sh
 yarn jest --runInBand --coverage=false --runTestsByPath tests/unit/utxoFixture.test.ts
 ```
-
-Remaining separate coverage: the actual bridge frontend/backend sponsorship
-workflow, SPT transfers and native Send UI, mempool/confirmation/finality, and
-physical hardware. Passing this journey must not be reported as those tests.
