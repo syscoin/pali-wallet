@@ -44,6 +44,7 @@ import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import {
   formatEther,
+  formatUnits,
   parseUnits,
   toEthersBigNumberish,
 } from 'utils/ethersV6Compat';
@@ -261,6 +262,24 @@ export const SendConfirm = () => {
         return t('send.calculating');
       }
       return formatSyscoinValue(gross.sub(quotedFee));
+    } catch {
+      return t('send.calculating');
+    }
+  }, [basicTxValues, isBitcoinBased, t]);
+  const nativeMaxTotal = useMemo(() => {
+    if (!isBitcoinBased || basicTxValues?.token || !basicTxValues?.isMax) {
+      return undefined;
+    }
+    try {
+      const gross = parseUnits(
+        String(removeScientificNotation(basicTxValues.amount)),
+        8
+      );
+      const [whole, fraction = ''] = formatUnits(gross, 8).split('.');
+      return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction.padEnd(
+        8,
+        '0'
+      )}`;
     } catch {
       return t('send.calculating');
     }
@@ -2185,7 +2204,10 @@ export const SendConfirm = () => {
                       let totalCrypto;
 
                       // If there's a fee calculation error, just show the amount without fee
-                      if (feeCalculationError) {
+                      if (nativeMaxTotal !== undefined) {
+                        totalAmount = basicTxValues.amount;
+                        totalCrypto = nativeMaxTotal;
+                      } else if (feeCalculationError) {
                         totalAmount = basicTxValues.amount;
                         totalCrypto = currency(basicTxValues.amount, {
                           precision: 8,
