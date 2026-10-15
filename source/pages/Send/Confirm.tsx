@@ -266,24 +266,40 @@ export const SendConfirm = () => {
       return t('send.calculating');
     }
   }, [basicTxValues, isBitcoinBased, t]);
-  const nativeMaxTotal = useMemo(() => {
-    if (!isBitcoinBased || basicTxValues?.token || !basicTxValues?.isMax) {
+  const nativeTotal = useMemo(() => {
+    if (!isBitcoinBased || basicTxValues?.token) {
       return undefined;
     }
     try {
-      const gross = parseUnits(
+      let total = parseUnits(
         String(removeScientificNotation(basicTxValues.amount)),
         8
       );
-      const [whole, fraction = ''] = formatUnits(gross, 8).split('.');
-      return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction.padEnd(
-        8,
-        '0'
-      )}`;
+      if (
+        !basicTxValues.isMax &&
+        !feeCalculationError &&
+        basicTxValues.fee !== undefined
+      ) {
+        total = total.add(
+          parseUnits(String(removeScientificNotation(basicTxValues.fee)), 8)
+        );
+      }
+      const amount = formatUnits(total, 8);
+      const [whole, fraction = ''] = amount.split('.');
+      return {
+        amount,
+        formatted: `${whole.replace(
+          /\B(?=(\d{3})+(?!\d))/g,
+          ','
+        )}.${fraction.padEnd(8, '0')}`,
+      };
     } catch {
-      return t('send.calculating');
+      return {
+        amount: basicTxValues?.amount,
+        formatted: t('send.calculating'),
+      };
     }
-  }, [basicTxValues, isBitcoinBased, t]);
+  }, [basicTxValues, isBitcoinBased, feeCalculationError, t]);
   const cachedGasData = basicTxValues?.cachedGasData;
   // Initialize fee state after basicTxValues is available
   const [fee, setFee] = useState<IFeeState>({
@@ -2204,9 +2220,9 @@ export const SendConfirm = () => {
                       let totalCrypto;
 
                       // If there's a fee calculation error, just show the amount without fee
-                      if (nativeMaxTotal !== undefined) {
-                        totalAmount = basicTxValues.amount;
-                        totalCrypto = nativeMaxTotal;
+                      if (nativeTotal !== undefined) {
+                        totalAmount = nativeTotal.amount;
+                        totalCrypto = nativeTotal.formatted;
                       } else if (feeCalculationError) {
                         totalAmount = basicTxValues.amount;
                         totalCrypto = currency(basicTxValues.amount, {

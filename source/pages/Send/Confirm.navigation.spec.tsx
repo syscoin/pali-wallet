@@ -1271,6 +1271,50 @@ it('native MAX display leaves the total as gross debit and displays the quoted f
 });
 
 it.each([
+  { amount: '90071992.54740993', fee: 1e-8, total: '90,071,992.54740994' },
+  { amount: '90071992.99999999', fee: 1e-8, total: '90,071,993.00000000' },
+  { amount: '0.1', fee: 0.2, total: '0.30000000' },
+  { amount: '1', fee: 0, total: '1.00000000' },
+])(
+  'native non-MAX total adds fee exactly: $total',
+  ({ amount, fee, total }) => {
+    const tx = { ...mockLocation.state.tx, amount, fee, isMax: false };
+    mockLocation.state.tx = tx;
+    render(<SendConfirm />);
+    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
+      `${total} SYS`
+    );
+    expect(
+      screen.getByText('buttons.send').parentElement?.textContent
+    ).toContain(`${amount} SYS`);
+    expect(mockLocation.state.tx).toBe(tx);
+    expect(tx.amount).toBe(amount);
+    expect(tx.fee).toBe(fee);
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it.each([false, true])(
+  'native total formatting leaves the %s token/EVM total path unchanged',
+  async (token) => {
+    mockState.vault.isBitcoinBased = token;
+    mockLocation.state.tx = {
+      ...mockLocation.state.tx,
+      amount: '0.001',
+      fee: 0.00000113,
+      token: token ? { symbol: 'SPT', guid: '123', decimals: 8 } : null,
+      isMax: false,
+    };
+    await act(async () => {
+      render(<SendConfirm />);
+    });
+    expect(screen.getByText('Total (send.amountAndFee)').textContent).toContain(
+      token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS'
+    );
+  }
+);
+
+it.each([
   { isBitcoinBased: true, isMax: false, token: null, symbol: 'SYS' },
   {
     isBitcoinBased: true,

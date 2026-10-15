@@ -859,11 +859,11 @@ describe('send forms across wallet navigation', () => {
         expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
           `${expected} SYS`
         );
-        if (isMax) {
-          expect(
-            screen.getByText('Total (send.amountAndFee)').textContent
-          ).toContain('90,071,992.54740993 SYS');
-        }
+        expect(
+          screen.getByText('Total (send.amountAndFee)').textContent
+        ).toContain(
+          isMax ? '90,071,992.54740993 SYS' : '90,071,992.54740994 SYS'
+        );
         expect(options.state.tx.amount).toBe(amount);
         expect(mockEmitter).not.toHaveBeenCalled();
       } finally {
