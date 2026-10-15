@@ -5,6 +5,10 @@ import { launchExtension } from '../../e2e/harness/launch';
 import { PaliWallet } from '../../e2e/harness/pali';
 import { JourneySummary } from '../../e2e/harness/summary';
 import { summaryReportIcon } from '../../e2e/scripts/summary-status.cjs';
+import {
+  registerVisualSummaryHooks,
+  visualJourneyName,
+} from '../../e2e/visual/summaryHooks';
 
 jest.mock('@playwright/test', () => ({
   chromium: { launchPersistentContext: jest.fn() },
@@ -16,12 +20,15 @@ jest.mock('../../e2e/harness/launch', () => ({
 
 describe('journey summary completion', () => {
   let written: any;
+  let files: Map<string, any>;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    files = new Map();
     jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
-    jest.spyOn(fs, 'writeFileSync').mockImplementation((_, data) => {
+    jest.spyOn(fs, 'writeFileSync').mockImplementation((file, data) => {
       written = JSON.parse(String(data));
+      files.set(String(file), written);
     });
   });
 
@@ -116,5 +123,64 @@ describe('journey summary completion', () => {
       summaryReportIcon({ ...passed, steps: [{ status: 'failed' }] })
     ).toBe('❌');
     expect(summaryReportIcon({ status: 'running', steps: [] })).toBe('⏳');
+  });
+
+  async function finishVisual(outcomes: string[]) {
+    const summary = new JourneySummary('visual');
+    const context = { close: jest.fn().mockResolvedValue(undefined) };
+    const wallet = {
+      summary,
+      dispose: (status: 'passed' | 'failed') =>
+        PaliWallet.prototype.dispose.call({ summary, context }, status),
+    };
+    const hooks: Record<string, (...args: any[]) => any> = {};
+    const suite = {
+      afterEach: (hook: (...args: any[]) => any) => {
+        hooks.afterEach = hook;
+      },
+      afterAll: (hook: (...args: any[]) => any) => {
+        hooks.afterAll = hook;
+      },
+    } as Parameters<typeof registerVisualSummaryHooks>[0];
+    registerVisualSummaryHooks(suite, () => wallet);
+    for (const status of outcomes) {
+      await hooks.afterEach({}, { title: 'screen', duration: 1, status });
+    }
+    await hooks.afterAll();
+    expect(context.close).toHaveBeenCalledTimes(1);
+  }
+
+  it('finishes successful visual test outcomes with an explicit pass', async () => {
+    await finishVisual(['passed', 'passed']);
+    expect(written.status).toBe('passed');
+    expect(written.steps).toHaveLength(2);
+    expect(summaryReportIcon(written)).toBe('✅');
+  });
+
+  it.each(['failed', 'timedOut', 'interrupted', 'skipped'])(
+    'does not hide a visual %s outcome behind successful cleanup',
+    async (status) => {
+      await finishVisual([status, 'passed']);
+      expect(written.status).toBe('failed');
+      expect(summaryReportIcon(written)).toBe('❌');
+    }
+  );
+
+  it('does not report a visual setup with no completed tests as passed', async () => {
+    await finishVisual([]);
+    expect(written.status).toBe('failed');
+  });
+
+  it('preserves a failed visual summary when a later worker succeeds', () => {
+    const failed = new JourneySummary(visualJourneyName(0));
+    failed.addStep({ name: 'screen', durationMs: 1, status: 'failed' });
+    failed.finish('failed');
+    const restarted = new JourneySummary(visualJourneyName(1));
+    restarted.addStep({ name: 'next screen', durationMs: 1, status: 'passed' });
+    restarted.finish('passed');
+    expect(failed.filePath).not.toBe(restarted.filePath);
+    expect(files.get(failed.filePath).status).toBe('failed');
+    expect(files.get(restarted.filePath).status).toBe('passed');
+    expect(summaryReportIcon(files.get(failed.filePath))).toBe('❌');
   });
 });
