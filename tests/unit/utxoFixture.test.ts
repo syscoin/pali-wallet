@@ -83,16 +83,36 @@ describe('offline UTXO browser fixture', () => {
     expect(psbt.data.inputs[1].bip32Derivation).toEqual(
       importFixturePsbt(f.mixed).data.inputs[1].bip32Derivation
     );
+    // Corrupt only the user's scalar, keeping valid DER and the sponsor unsigned.
+    const corrupted = importFixturePsbt(response);
+    const originalWitness = Buffer.from(
+      corrupted.data.inputs[0].finalScriptWitness
+    );
+    expect(originalWitness[0]).toBe(2);
+    const encodedLength = originalWitness[1];
+    const decoded = sys.bitcoinjs.script.signature.decode(
+      originalWitness.subarray(2, 2 + encodedLength)
+    );
+    decoded.signature[31] ^= 1;
+    const encoded = sys.bitcoinjs.script.signature.encode(
+      decoded.signature,
+      decoded.hashType
+    );
+    corrupted.data.inputs[0].finalScriptWitness = Buffer.concat([
+      Buffer.from([2, encoded.length]),
+      encoded,
+      originalWitness.subarray(2 + encodedLength),
+    ]);
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(corrupted), true)
+    ).toThrow('Invalid user witness');
+
     const witness = Buffer.from(psbt.data.inputs[0].finalScriptWitness);
     f.finishSponsor(psbt);
     expect(
       Buffer.from(psbt.data.inputs[0].finalScriptWitness).equals(witness)
     ).toBe(true);
     expect(verifyCompletedSponsor(f, psbt)).toMatch(/^[0-9a-f]{64}$/);
-    psbt.data.inputs[0].finalScriptWitness[5] ^= 1;
-    expect(() =>
-      verifyFixtureSignature(f, exportFixturePsbt(psbt), true)
-    ).toThrow();
   });
 
   it.each(['missing', 'fingerprint', 'path', 'public key'])(
