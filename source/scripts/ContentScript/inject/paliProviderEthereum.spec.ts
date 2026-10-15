@@ -229,6 +229,134 @@ const initialize = async () => {
   return { provider, connect };
 };
 
+describe('Ethereum account identity casing', () => {
+  const mixed = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+  const lower = mixed.toLowerCase();
+  const other = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
+
+  async function accountReply(
+    provider: PaliInpageProviderEth,
+    method: string,
+    accounts: string[]
+  ) {
+    holdAccountReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onAccountRequest = resolve;
+    });
+    const pending = provider.request({ method });
+    await started;
+    reply(pendingAccountReplies[pendingAccountReplies.length - 1].id, accounts);
+    return pending;
+  }
+
+  async function snapshotReply(
+    provider: PaliInpageProviderEth,
+    accounts: string[]
+  ) {
+    connectedChainId = provider.chainId === '0x1' ? '0x2' : '0x1';
+    holdProviderStateReplies = true;
+    const started = new Promise<void>((resolve) => {
+      onProviderStateRequest = resolve;
+    });
+    const pending = provider.request({ method: 'eth_chainId' });
+    await started;
+    reply(pendingProviderStateReplies[pendingProviderStateReplies.length - 1], {
+      ...providerState(),
+      accounts,
+    });
+    await pending;
+  }
+
+  it.each([
+    [mixed, lower],
+    [lower, mixed],
+  ])(
+    'keeps the first grant presentation stable across RPC and snapshot casing',
+    async (first, alternate) => {
+      approved = false;
+      const { provider } = await initialize();
+      const changed = jest.fn();
+      provider.on('accountsChanged', changed);
+      holdAccountReplies = true;
+      const started = new Promise<void>((resolve) => {
+        onAccountRequest = resolve;
+      });
+      const grant = provider.request({ method: 'eth_requestAccounts' });
+      await started;
+      notify('pali_accountsChanged', [first]);
+      const original = provider.accounts;
+      reply(pendingAccountReplies[0].id, [alternate]);
+      await expect(grant).resolves.toEqual([first]);
+      await expect(
+        accountReply(provider, 'eth_accounts', [alternate])
+      ).resolves.toEqual([first]);
+      await snapshotReply(provider, [alternate]);
+      notify('pali_accountsChanged', [alternate]);
+      expect(provider.accounts).toBe(original);
+      expect(provider.accounts).toEqual([first]);
+      expect(provider.selectedAddress).toBe(first);
+      expect(changed.mock.calls).toEqual([[[first]]]);
+    }
+  );
+
+  it.each(['notification', 'snapshot'])(
+    'still emits real identity, order and empty transitions through %s',
+    async (source) => {
+      approved = false;
+      const { provider } = await initialize();
+      const changed = jest.fn();
+      provider.on('accountsChanged', changed);
+      const update = async (accounts: string[]) => {
+        if (source === 'notification') notify('pali_accountsChanged', accounts);
+        else await snapshotReply(provider, accounts);
+      };
+      await update([mixed]);
+      const original = provider.accounts;
+      await update([lower]);
+      expect(provider.accounts).toBe(original);
+      await update([other]);
+      await update([other, mixed]);
+      await update([lower, other.toLowerCase()]);
+      await update([]);
+      const empty = provider.accounts;
+      await update([]);
+      expect(provider.accounts).toBe(empty);
+      await update([lower]);
+      expect(changed.mock.calls).toEqual([
+        [[mixed]],
+        [[other]],
+        [[other, mixed]],
+        [[lower, other.toLowerCase()]],
+        [[]],
+        [[lower]],
+      ]);
+      expect(provider.selectedAddress).toBe(lower);
+    }
+  );
+
+  it('does not make non-address hex strings case-insensitively equal', async () => {
+    approved = false;
+    const { provider } = await initialize();
+    const changed = jest.fn();
+    provider.on('accountsChanged', changed);
+    notify('pali_accountsChanged', ['0xabc']);
+    notify('pali_accountsChanged', ['0xABC']);
+    expect(changed.mock.calls).toEqual([[['0xabc']], [['0xABC']]]);
+  });
+
+  it('keeps the snapshot event comparison after synchronous chain listeners', async () => {
+    approved = false;
+    const { provider } = await initialize();
+    const changed = jest.fn();
+    provider.on('accountsChanged', changed);
+    provider.on('chainChanged', () => notify('pali_accountsChanged', []));
+    await snapshotReply(provider, [mixed]);
+    expect(provider.accounts).toEqual([]);
+    expect(provider.selectedAddress).toBeNull();
+    expect(changed.mock.calls).toEqual([[[]]]);
+  });
+});
+
 describe('Ethereum provider account exposure and RPC connectivity', () => {
   it('connects to public RPC without exposing unapproved accounts', async () => {
     approved = false;
