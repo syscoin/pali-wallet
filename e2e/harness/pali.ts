@@ -83,11 +83,20 @@ export class PaliWallet {
   }
 
   // Wraps an action with timing, auto-screenshot and summary recording.
-  async step<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  async step<T>(
+    name: string,
+    fn: (capture: (page: Page) => Promise<void>) => Promise<T>
+  ): Promise<T> {
     const startedAt = Date.now();
+    let screenshot: string | undefined;
+    // Approval windows close on submission. Capture their UI while it is live,
+    // then retain that evidence instead of replacing it with the driver tab.
+    const capture = async (page: Page) => {
+      screenshot = await this.shot(name, page);
+    };
     try {
-      const result = await fn();
-      const screenshot = await this.shot(name);
+      const result = await fn(capture);
+      screenshot ??= await this.shot(name);
       this.summary.addStep({
         durationMs: Date.now() - startedAt,
         name,
@@ -96,9 +105,7 @@ export class PaliWallet {
       });
       return result;
     } catch (error) {
-      const screenshot = await this.shot(`FAILED ${name}`).catch(
-        () => undefined
-      );
+      screenshot ??= await this.shot(`FAILED ${name}`).catch(() => undefined);
       this.summary.addStep({
         durationMs: Date.now() - startedAt,
         name,
@@ -110,7 +117,7 @@ export class PaliWallet {
     }
   }
 
-  async shot(label: string): Promise<string> {
+  async shot(label: string, page: Page = this.page): Promise<string> {
     this.screenshotIndex += 1;
     const file = path.join(
       E2E_CONFIG.artifactsDir,
@@ -121,7 +128,7 @@ export class PaliWallet {
         .slice(0, 80)}.png`
     );
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    await this.page.screenshot({
+    await page.screenshot({
       fullPage: true,
       // Screenshots get published to GitHub comments via the e2e-media
       // branch, and failure shots can land mid-onboarding with the seed or
@@ -129,9 +136,7 @@ export class PaliWallet {
       // (#import-wallet-input is the seed textarea; SeedPhraseDisplay pages
       // are hidden by default behind the eye toggle).
       mask: [
-        this.page.locator(
-          '#import-wallet-input, input[type="password"], textarea'
-        ),
+        page.locator('#import-wallet-input, input[type="password"], textarea'),
       ],
       path: file,
     });

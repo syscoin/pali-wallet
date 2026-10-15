@@ -54,19 +54,21 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await wallet!.ensureOnHome();
-        await wallet!.page.goto('about:blank');
       }
     );
-    const dapp = await wallet.context.newPage();
+    // An app.html tab blocks approval popups. Reuse the driver as the fixture
+    // dapp so ordinary step screenshots never target an empty about:blank tab.
+    const dapp = wallet.page;
     await dapp.goto(server.url);
     await dapp.waitForFunction(() => Boolean((window as any).pali));
     await wallet.step(
       'ordinary sys_requestAccounts connects only the synthetic account',
-      async () => {
+      async (capture) => {
         const account = await approve(
           wallet!.context,
           dapp,
-          await startRequest(dapp, 'sys_requestAccounts')
+          await startRequest(dapp, 'sys_requestAccounts'),
+          capture
         );
         expect(account.result).toEqual([fixture.userAddress]);
         const detail = await providerRequest(dapp, 'wallet_getAccount');
@@ -112,9 +114,10 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
     );
     await wallet.step(
       'cancel normal sys_sign without a signature or send',
-      async () => {
+      async (capture) => {
         const id = await startRequest(dapp, 'sys_sign', [fixture.single]);
         const popup = await popupFor(wallet!.context, dapp, id);
+        await capture(popup);
         await popup
           .getByRole('button', { name: 'Cancel', exact: true })
           .click();
@@ -126,11 +129,12 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
     );
     await wallet.step(
       'normal sys_sign preserves amount/change and returns a valid user witness',
-      async () => {
+      async (capture) => {
         const signed = await approve(
           wallet!.context,
           dapp,
-          await startRequest(dapp, 'sys_sign', [fixture.single])
+          await startRequest(dapp, 'sys_sign', [fixture.single]),
+          capture
         );
         verifyFixtureSignature(fixture, signed.result, false);
         expect(routes.deniedWrites).toEqual([]);
@@ -138,11 +142,12 @@ test('offline UTXO: normal sign, cancel, and mixed-owner sponsor boundary', asyn
     );
     await wallet.step(
       'sponsorship signs only the user input and retains unsigned sponsor input',
-      async () => {
+      async (capture) => {
         const signed = await approve(
           wallet!.context,
           dapp,
-          await startRequest(dapp, 'sys_sign', [fixture.mixed])
+          await startRequest(dapp, 'sys_sign', [fixture.mixed]),
+          capture
         );
         const partial = verifyFixtureSignature(fixture, signed.result, true);
         const userWitness = Buffer.from(
