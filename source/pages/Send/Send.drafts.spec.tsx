@@ -76,7 +76,7 @@ jest.mock('state/vault/selectors', () => ({
       state.vault.accounts[state.vault.activeAccount.type][
         state.vault.activeAccount.id
       ],
-    assets: { ethereum: [], syscoin: [] },
+    assets: state.testAssets || { ethereum: [], syscoin: [] },
   }),
   selectValidEnsCache: () => ({}),
   selectEnsNameToAddress: () => ({}),
@@ -99,14 +99,34 @@ jest.mock('components/index', () => ({
   ),
   Tooltip: ({ children }: any) => <>{children}</>,
   Icon: () => null,
-  Fee: () => null,
+  Fee: ({ form, onFeeChange }: any) => (
+    <input
+      aria-label="fee-rate"
+      value={form.getFieldValue('fee') ?? ''}
+      onChange={(event) => {
+        form.setFieldValue('fee', event.target.value);
+        onFeeChange(Number(event.target.value));
+      }}
+    />
+  ),
 }));
 jest.mock('@headlessui/react', () => {
   const Pass = ({ children }: any) => (
     <>{typeof children === 'function' ? children({ open: false }) : children}</>
   );
   const Menu = Object.assign(Pass, { Button: Pass, Items: Pass, Item: Pass });
-  return { Menu, Switch: ({ children }: any) => <>{children}</> };
+  return {
+    Menu,
+    Switch: ({ children, onChange, checked }: any) => (
+      <button
+        type="button"
+        aria-label="rbf-switch"
+        onClick={() => onChange(!checked)}
+      >
+        {children}
+      </button>
+    ),
+  };
 });
 jest.mock('antd', () => {
   const FormContext = React.createContext<any>(null);
@@ -476,11 +496,14 @@ describe('send forms across wallet navigation', () => {
         formValues: { receiver: 'recipient-a', amount: '1' },
       },
     };
-    mockEmitter.mockResolvedValue({
-      fee: 0.001,
-      psbt: 'synthetic-unsigned-psbt',
-    });
+    mockEmitter.mockImplementation(([, , method]: string[]) =>
+      method === 'getEstimateSysTransactionFee'
+        ? Promise.resolve({ fee: 0.001, psbt: 'synthetic-unsigned-psbt' })
+        : Promise.resolve(0.0000001)
+    );
     render(<SendSys />);
+    // Let the initial recommended fee populate before the user submits.
+    await act(async () => undefined);
     await act(async () => {
       await mockSubmitForm();
     });
@@ -493,6 +516,94 @@ describe('send forms across wallet navigation', () => {
       expect.any(Object)
     );
   });
+
+  it.each(
+    ['native', 'token'].flatMap((kind) =>
+      ['receiver', 'amount', 'fee', 'rbf', 'asset'].map((field) => ({
+        kind,
+        field,
+      }))
+    )
+  )(
+    'discards a pending $kind UTXO preparation after the user edits $field',
+    async ({ kind, field }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.testAssets = {
+        ethereum: [],
+        syscoin: [
+          {
+            assetGuid: '456',
+            symbol: 'ALT',
+            decimals: 8,
+            balance: '10',
+            assetType: 'SYSX',
+          },
+        ],
+      };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '1' },
+          ...(kind === 'token'
+            ? {
+                selectedAsset: {
+                  assetGuid: '123',
+                  decimals: 8,
+                  balance: '10',
+                  symbol: 'SYSX',
+                  assetType: 'SYSX',
+                },
+              }
+            : {}),
+        },
+      };
+      let finishEstimate!: (value: any) => void;
+      const estimate = new Promise((resolve) => {
+        finishEstimate = resolve;
+      });
+      mockEmitter.mockImplementation(([, , method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? estimate
+          : Promise.resolve(0.0000001)
+      );
+      render(<SendSys />);
+      await act(async () => undefined);
+      let pending!: Promise<void>;
+      act(() => {
+        pending = mockSubmitForm();
+      });
+      expect(mockEmitter).toHaveBeenCalledWith(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        expect.any(Array)
+      );
+      if (field === 'asset') {
+        fireEvent.click(screen.getByText('ALT').closest('button'));
+      } else if (field === 'rbf') {
+        fireEvent.click(screen.getByRole('button', { name: 'rbf-switch' }));
+      } else if (field === 'fee') {
+        fireEvent.change(screen.getByRole('textbox', { name: 'fee-rate' }), {
+          target: { value: '0.0000002' },
+        });
+      } else {
+        fireEvent.change(screen.getByPlaceholderText(`send.${field}`), {
+          target: { value: field === 'amount' ? '2' : 'recipient-b' },
+        });
+      }
+      await act(async () => {
+        finishEstimate({ fee: 0.001, psbt: 'stale-unsigned-psbt' });
+        await pending;
+      });
+      expect(navigateWithContext).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getByRole('button', { name: 'buttons.next' })
+          .getAttribute('aria-busy')
+      ).toBe('false');
+    }
+  );
 
   it.each(['account', 'route', 'unmount'])(
     'ignores an EVM onFinish callback returned by validation after %s departure',

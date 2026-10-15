@@ -131,6 +131,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     () => ({ selectedAsset, RBF, isMaxSend }),
     [selectedAsset, RBF, isMaxSend]
   );
+  const preparationOptions = useRef({ selectedAsset, RBF, feeRate });
+  preparationOptions.current = { selectedAsset, RBF, feeRate };
   const saveCurrentState = useSendDraftWriter({
     form,
     location,
@@ -369,6 +371,18 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       return;
     }
 
+    // An unsigned result belongs to the inputs that requested it, not later edits.
+    const preparationInputs = () =>
+      JSON.stringify({
+        values: form.getFieldsValue(),
+        asset: preparationOptions.current.selectedAsset,
+        rbf: preparationOptions.current.RBF,
+        feeRate: preparationOptions.current.feeRate,
+      });
+    const submittedInputs = preparationInputs();
+    const isCurrentPreparation = () =>
+      isCurrentForm() && preparationInputs() === submittedInputs;
+
     try {
       setIsLoading(true);
 
@@ -406,7 +420,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 },
               ]
             )) as { fee: number; psbt: any };
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
@@ -416,7 +430,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             throw new Error('Failed to create transaction PSBT');
           }
         } catch (error: any) {
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -494,7 +508,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
-        if (!isCurrentForm()) return;
+        if (!isCurrentPreparation()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -531,7 +545,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               },
             ]
           )) as { fee: number; psbt: any };
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
@@ -541,7 +555,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             throw new Error('Failed to create token transaction PSBT');
           }
         } catch (error: any) {
-          if (!isCurrentForm()) return;
+          if (!isCurrentPreparation()) return;
           setIsLoading(false);
 
           // Create transaction values object for centralized error handling
@@ -592,7 +606,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         };
 
         // Use navigateWithContext to automatically handle state preservation
-        if (!isCurrentForm()) return;
+        if (!isCurrentPreparation()) return;
         navigateWithContext(
           navigate,
           '/send/confirm',
@@ -618,7 +632,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         );
       }
     } catch (error) {
-      if (!isCurrentForm()) return;
+      if (!isCurrentPreparation()) return;
       setIsLoading(false);
 
       alert.error(t('send.internalError'));
