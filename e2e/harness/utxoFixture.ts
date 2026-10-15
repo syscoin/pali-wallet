@@ -150,7 +150,9 @@ export function verifyFixtureSignature(
   const input = psbt.data.inputs[0];
   if (!input.finalScriptWitness)
     throw new Error('Pali did not finalize its input');
-  const [encoded, pubkey] = witnessItems(input.finalScriptWitness);
+  const items = witnessItems(input.finalScriptWitness);
+  if (items.length !== 2) throw new Error('Unexpected user witness item count');
+  const [encoded, pubkey] = items;
   if (!encoded || !pubkey) throw new Error('Missing user signature');
   const decoded = bitcoin.script.signature.decode(encoded);
   if (decoded.hashType !== bitcoin.Transaction.SIGHASH_ALL)

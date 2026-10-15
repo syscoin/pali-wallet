@@ -76,6 +76,32 @@ describe('offline UTXO browser fixture', () => {
     ).toBeTruthy();
   });
 
+  it('rejects an extra stack item after an otherwise valid user witness', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.single));
+    const response = exportFixturePsbt(signed);
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+    const mutated = importFixturePsbt(response);
+    const original = Buffer.from(mutated.data.inputs[0].finalScriptWitness);
+    expect(original[0]).toBe(2);
+    mutated.data.inputs[0].finalScriptWitness = Buffer.concat([
+      Buffer.from([3]),
+      original.subarray(1),
+      Buffer.from([1, 0x42]),
+    ]);
+    // The two original items are byte-for-byte intact; only an item was added.
+    expect(
+      Buffer.from(mutated.data.inputs[0].finalScriptWitness).subarray(
+        1,
+        original.length
+      )
+    ).toEqual(original.subarray(1));
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(mutated), false)
+    ).toThrow('Unexpected user witness item count');
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+  });
+
   it('preserves unsigned sponsor input and verifies both real signatures after completion', async () => {
     const f = createUtxoFixture();
     const response = await signWithCurrentKeyring(f);
