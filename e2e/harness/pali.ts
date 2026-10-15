@@ -4,6 +4,7 @@ import path from 'path';
 
 import { E2E_CONFIG } from './config';
 import { type LaunchOptions, launchExtension } from './launch';
+import { verifyExecutingWorker } from './runtimeIdentity';
 import { type Finding, JourneySummary } from './summary';
 
 // High-level driver for the Pali extension UI. Journeys compose these
@@ -42,6 +43,12 @@ export class PaliWallet {
     try {
       const launched = await launchExtension(journeyName, options);
       context = launched.context;
+      await verifyExecutingWorker(
+        context,
+        launched.extensionId,
+        E2E_CONFIG.extensionPath,
+        (value) => summary.setWorkerIdentity(value)
+      );
       const page = context.pages()[0] || (await context.newPage());
       const wallet = new PaliWallet(
         context,
@@ -53,14 +60,17 @@ export class PaliWallet {
       await wallet.gotoRoute('#/');
       return wallet;
     } catch (error) {
-      summary.addStep({
-        durationMs: Date.now() - startedAt,
-        name: 'launch extension',
-        note: error instanceof Error ? error.message : String(error),
-        status: 'failed',
-      });
-      summary.finish('failed');
-      await context?.close().catch(() => undefined);
+      try {
+        summary.addStep({
+          durationMs: Date.now() - startedAt,
+          name: 'launch extension',
+          note: error instanceof Error ? error.message : String(error),
+          status: 'failed',
+        });
+        summary.finish('failed');
+      } finally {
+        await context?.close().catch(() => undefined);
+      }
       throw error;
     }
   }

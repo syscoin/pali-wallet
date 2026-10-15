@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { E2E_CONFIG } from './config';
+import type { WorkerIdentityObservation } from './runtimeIdentity';
 
 export type StepStatus = 'passed' | 'failed' | 'skipped';
 
@@ -37,6 +38,7 @@ export type RunSummary = {
   startedAt: string;
   status: 'running' | 'passed' | 'failed';
   steps: StepRecord[];
+  workerIdentity?: WorkerIdentityObservation;
 };
 
 // Per-journey JSON summary written under the run's artifacts directory.
@@ -92,6 +94,11 @@ export class JourneySummary {
 
   addAddress(name: string, address: string) {
     this.summary.chainEvidence.addresses[name] = address;
+    this.flush();
+  }
+
+  setWorkerIdentity(value: WorkerIdentityObservation) {
+    this.summary.workerIdentity = value;
     this.flush();
   }
 

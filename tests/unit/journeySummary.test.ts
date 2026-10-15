@@ -3,6 +3,7 @@ import fs from 'fs';
 
 import { launchExtension } from '../../e2e/harness/launch';
 import { PaliWallet } from '../../e2e/harness/pali';
+import { verifyExecutingWorker } from '../../e2e/harness/runtimeIdentity';
 import { JourneySummary } from '../../e2e/harness/summary';
 import { summaryReportIcon } from '../../e2e/scripts/summary-status.cjs';
 import {
@@ -17,6 +18,9 @@ jest.mock('@playwright/test', () => ({
 jest.mock('../../e2e/harness/launch', () => ({
   launchExtension: jest.fn(),
 }));
+jest.mock('../../e2e/harness/runtimeIdentity', () => ({
+  verifyExecutingWorker: jest.fn(),
+}));
 
 describe('journey summary completion', () => {
   let written: any;
@@ -24,6 +28,7 @@ describe('journey summary completion', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (verifyExecutingWorker as jest.Mock).mockResolvedValue(undefined);
     files = new Map();
     jest.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
     jest.spyOn(fs, 'writeFileSync').mockImplementation((file, data) => {
@@ -89,6 +94,68 @@ describe('journey summary completion', () => {
     expect(context.close).toHaveBeenCalledTimes(1);
     expect(written.status).toBe('failed');
     expect(written.endedAt).toEqual(expect.any(String));
+  });
+
+  it('records a stale executing worker and closes before creating or navigating the wallet page', async () => {
+    const identity = {
+      actual: { sha256: 'a'.repeat(64), bytes: 10 },
+      disk: { sha256: 'b'.repeat(64), bytes: 11 },
+      matched: false,
+    };
+    const error = new Error(
+      'Executing worker identity: executing source does not match disk'
+    );
+    const context = {
+      pages: jest.fn(),
+      newPage: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    (launchExtension as jest.Mock).mockResolvedValueOnce({
+      context,
+      extensionId: 'synthetic',
+    });
+    (verifyExecutingWorker as jest.Mock).mockImplementationOnce(
+      async (_context, _id, _path, record) => {
+        record(identity);
+        throw error;
+      }
+    );
+    await expect(PaliWallet.launch('synthetic')).rejects.toBe(error);
+    expect(context.pages).not.toHaveBeenCalled();
+    expect(context.newPage).not.toHaveBeenCalled();
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(written.workerIdentity).toEqual(identity);
+    expect(written.status).toBe('failed');
+  });
+
+  it('closes the owned context even if recording worker identity and failure both fail', async () => {
+    const error = new Error('Synthetic summary storage failure');
+    const normalWrite = jest.mocked(fs.writeFileSync).getMockImplementation()!;
+    let writes = 0;
+    jest.mocked(fs.writeFileSync).mockImplementation((...args) => {
+      if (++writes > 1) throw error;
+      return normalWrite(...args);
+    });
+    const context = {
+      pages: jest.fn(),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    (launchExtension as jest.Mock).mockResolvedValueOnce({
+      context,
+      extensionId: 'synthetic',
+    });
+    (verifyExecutingWorker as jest.Mock).mockImplementationOnce(
+      async (_context, _id, _path, record) => {
+        record({
+          actual: { sha256: 'a'.repeat(64), bytes: 1 },
+          disk: { sha256: 'a'.repeat(64), bytes: 1 },
+          matched: true,
+        });
+      }
+    );
+    await expect(PaliWallet.launch('synthetic')).rejects.toBe(error);
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(context.pages).not.toHaveBeenCalled();
   });
 
   it('bounds service-worker startup and closes the context if that wait fails', async () => {
