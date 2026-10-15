@@ -3,6 +3,8 @@ jest.unmock('tiny-secp256k1');
 
 import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
 import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';
+import { spawnSync } from 'child_process';
+import { EventEmitter } from 'events';
 import http from 'http';
 import { utils as sys } from 'syscoinjs-lib';
 
@@ -280,6 +282,111 @@ describe('offline UTXO browser fixture', () => {
       expect(server.blocked).toEqual(['POST', 'CONNECT']);
     } finally {
       await server.close();
+    }
+  });
+
+  it.each(['after-403', 'before-403'])(
+    'keeps the loopback deny proxy alive when a client resets %s',
+    (timing) => {
+      // Run the real helper in an isolated child: a missing socket error handler
+      // must fail this assertion, not terminate the Jest worker itself.
+      const script = String.raw`
+        const fs = require('node:fs'), http = require('node:http'), net = require('node:net');
+        const Module = require('node:module'), ts = require('typescript');
+        const errors = [], create = http.createServer;
+        http.createServer = function (...args) {
+          const server = create.apply(this, args);
+          server.prependListener('connect', (_req, socket) => {
+            const emit = socket.emit;
+            socket.emit = function (event, ...values) {
+              if (event === 'error') errors.push(values[0].code);
+              return emit.call(this, event, ...values);
+            };
+          });
+          return server;
+        };
+        const file = process.argv[1], mod = new Module(file, module);
+        mod.filename = file; mod.paths = Module._nodeModulePaths(require('node:path').dirname(file));
+        mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
+        }).outputText, file);
+        (async () => {
+          const proxy = await mod.exports.startUtxoFixtureServer(), url = new URL(proxy.url);
+          try {
+            for (let i = 0; i < 8; i++) await new Promise(resolve => {
+              const socket = net.connect(Number(url.port), '127.0.0.1');
+              socket.on('error', () => {});
+              socket.on('close', () => setTimeout(resolve, 10));
+              socket.on('connect', () => {
+                socket.write('CONNECT fixture.invalid:443 HTTP/1.1\r\nHost: fixture.invalid:443\r\n\r\n');
+                if (process.argv[2] === 'before-403') setImmediate(() => socket.resetAndDestroy());
+              });
+              if (process.argv[2] === 'after-403') socket.on('data', () => socket.resetAndDestroy());
+            });
+            const status = await new Promise((resolve, reject) => {
+              http.get(proxy.url, response => { response.resume(); resolve(response.statusCode); }).on('error', reject);
+            });
+            console.log(JSON.stringify({ errors, blocked: proxy.blocked.length, status }));
+          } finally { await proxy.close(); }
+        })().catch(error => { console.error(error); process.exitCode = 1; });
+      `;
+      const run = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          script,
+          require.resolve('../../e2e/harness/utxoFixture'),
+          timing,
+        ],
+        { encoding: 'utf8', timeout: 5000, maxBuffer: 16384 }
+      );
+      expect(run.error).toBeUndefined();
+      expect(run.status).toBe(0);
+      expect(run.stderr).toBe('');
+      const result = JSON.parse(run.stdout.trim());
+      expect(result.status).toBe(200);
+      expect(result.blocked).toBeGreaterThan(0);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(
+        result.errors.every((code: string) =>
+          ['ECONNRESET', 'EPIPE'].includes(code)
+        )
+      ).toBe(true);
+    }
+  );
+
+  it('handles only expected denied-socket disconnect errors', async () => {
+    const server = Object.assign(new EventEmitter(), {
+      listen: (_port: number, _host: string, ready: () => void) => ready(),
+      address: () => ({ port: 12345 }),
+    });
+    const create = jest
+      .spyOn(http, 'createServer')
+      .mockReturnValue(server as any);
+    try {
+      await startUtxoFixtureServer();
+      const socket = Object.assign(new EventEmitter(), {
+        end: jest.fn(),
+        destroy: jest.fn(),
+      });
+      server.emit('connect', {}, socket);
+      expect(socket.end).toHaveBeenCalledWith(
+        'HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'
+      );
+      for (const code of ['ECONNRESET', 'EPIPE']) {
+        expect(() =>
+          socket.emit('error', Object.assign(new Error(code), { code }))
+        ).not.toThrow();
+      }
+      expect(socket.destroy).toHaveBeenCalledTimes(2);
+      const unexpected = Object.assign(new Error('unexpected socket failure'), {
+        code: 'EIO',
+      });
+      expect(() => socket.emit('error', unexpected)).toThrow(
+        /unexpected socket failure/
+      );
+    } finally {
+      create.mockRestore();
     }
   });
 });

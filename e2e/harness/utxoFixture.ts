@@ -331,6 +331,12 @@ export async function startUtxoFixtureServer() {
   });
   server.on('connect', (_req, socket) => {
     blocked.push('CONNECT');
+    socket.on('error', (error: NodeJS.ErrnoException) => {
+      // A denied client may reset before or after receiving the 403 response.
+      if (error.code !== 'ECONNRESET' && error.code !== 'EPIPE')
+        server.emit('error', error);
+      socket.destroy();
+    });
     socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
