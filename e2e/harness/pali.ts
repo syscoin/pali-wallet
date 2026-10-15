@@ -54,10 +54,8 @@ export class PaliWallet {
   }
 
   async waitAppReady() {
-    await this.page
-      .locator('#app-root, #external-root')
-      .first()
-      .waitFor({ state: 'attached', timeout: 30_000 });
+    const root = this.page.locator('#app-root, #external-root').first();
+    await root.waitFor({ state: 'attached', timeout: 30_000 });
     // The loader stays attached; app-loaded fades it out without display:none.
     await this.page
       .locator('body.app-loaded')
@@ -69,6 +67,7 @@ export class PaliWallet {
         timeout: 30_000,
       }
     );
+    await expect(root).toHaveCSS('opacity', '1', { timeout: 30_000 });
   }
 
   // Wraps an action with timing, auto-screenshot and summary recording.

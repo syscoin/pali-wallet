@@ -18,6 +18,7 @@ describe('Pali harness app readiness', () => {
       waitFor: jest.fn().mockRejectedValue(new Error('still has a box')),
     };
     const toHaveCSS = jest.fn().mockResolvedValue(undefined);
+    const rootToHaveCSS = jest.fn().mockResolvedValue(undefined);
     const page = {
       locator: jest.fn((selector: string) => {
         if (selector === '#app-root, #external-root') return root;
@@ -26,12 +27,17 @@ describe('Pali harness app readiness', () => {
         throw new Error('unexpected readiness selector');
       }),
     };
-    (playwrightExpect as unknown as jest.Mock).mockReturnValue({ toHaveCSS });
+    (playwrightExpect as unknown as jest.Mock).mockImplementation((locator) => {
+      if (locator === loader) return { toHaveCSS };
+      if (locator === root) return { toHaveCSS: rootToHaveCSS };
+      throw new Error('unexpected readiness CSS target');
+    });
     return {
       root,
       body,
       loader,
       toHaveCSS,
+      rootToHaveCSS,
       ready: () => PaliWallet.prototype.waitAppReady.call({ page }),
     };
   };
@@ -39,7 +45,7 @@ describe('Pali harness app readiness', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('accepts the completed opacity fade without waiting for layout invisibility', async () => {
-    const { root, body, loader, toHaveCSS, ready } = setup();
+    const { root, body, loader, toHaveCSS, rootToHaveCSS, ready } = setup();
     await ready();
     expect(root.waitFor).toHaveBeenCalledWith({
       state: 'attached',
@@ -51,6 +57,10 @@ describe('Pali harness app readiness', () => {
     });
     expect(playwrightExpect).toHaveBeenCalledWith(loader);
     expect(toHaveCSS).toHaveBeenCalledWith('opacity', '0', { timeout: 30000 });
+    expect(playwrightExpect).toHaveBeenCalledWith(root);
+    expect(rootToHaveCSS).toHaveBeenCalledWith('opacity', '1', {
+      timeout: 30000,
+    });
     expect(loader.waitFor).not.toHaveBeenCalled();
   });
 
@@ -79,6 +89,35 @@ describe('Pali harness app readiness', () => {
     const error = new Error('loader opacity timeout');
     toHaveCSS.mockRejectedValue(error);
     await expect(ready()).rejects.toBe(error);
+  });
+
+  it('does not continue while the selected root is still fading in', async () => {
+    const { toHaveCSS, rootToHaveCSS, ready } = setup();
+    let visible!: () => void;
+    rootToHaveCSS.mockReturnValue(
+      new Promise<void>((resolve) => {
+        visible = resolve;
+      })
+    );
+    let complete = false;
+    const result = ready().then(() => {
+      complete = true;
+    });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(toHaveCSS).toHaveBeenCalledTimes(1);
+    expect(rootToHaveCSS).toHaveBeenCalledTimes(1);
+    expect(complete).toBe(false);
+    visible();
+    await result;
+    expect(complete).toBe(true);
+  });
+
+  it('propagates a selected-root opacity timeout after the loader has faded', async () => {
+    const { toHaveCSS, rootToHaveCSS, ready } = setup();
+    const error = new Error('root opacity timeout');
+    rootToHaveCSS.mockRejectedValue(error);
+    await expect(ready()).rejects.toBe(error);
+    expect(toHaveCSS).toHaveBeenCalledWith('opacity', '0', { timeout: 30000 });
   });
 
   it('requires app-loaded before checking the fade', async () => {
