@@ -11,10 +11,11 @@ uses Back. It checks the displayed confirmation fees and requires both exact
 selected fees, recipient and amount to survive navigation rather than being
 overwritten by the recommended fee. Confirm is observed but never clicked.
 HTTP(S) traffic remains fixture-only, and every broadcast-attempt counter must
-remain empty. This is simulated unsigned UI coverage, not signing, submission,
-SPT, bridge, relay-policy, confirmation or finality evidence.
+remain empty. This is a simulated unsigned UI test; it never signs or submits
+a transaction.
 
-Run against an exact 4.0.91 build, with no other wallet browser test running:
+Run against a matching qualified build of this checkout, with no other wallet
+browser test running. Its manifest version must match `package.json`:
 
 ```sh
 PALI_E2E_RUN_ID=offline-native-preview-unique \
