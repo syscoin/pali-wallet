@@ -1,0 +1,409 @@
+jest.unmock('syscoinjs-lib');
+jest.unmock('tiny-secp256k1');
+
+import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
+import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';
+import { spawnSync } from 'child_process';
+import { EventEmitter } from 'events';
+import http from 'http';
+import { utils as sys } from 'syscoinjs-lib';
+
+import {
+  createUtxoFixture,
+  exportFixturePsbt,
+  fixtureRead,
+  importFixturePsbt,
+  startUtxoFixtureServer,
+  UTXO_FIXTURE_SEED,
+  verifyCompletedSponsor,
+  verifyFixtureSignature,
+} from '../../e2e/harness/utxoFixture';
+
+const mockBlockbookLookup = jest.fn((..._args: unknown[]) => {
+  void _args;
+  throw new Error('Offline fixture must not request Blockbook');
+});
+jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
+  fetchBackendAccountCached: (...args: unknown[]) =>
+    mockBlockbookLookup(...args),
+}));
+
+async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
+  const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
+  const state = {
+    activeAccountId: 0,
+    activeAccountType: 'HDAccount',
+    accounts: {
+      HDAccount: { 0: { address: f.userAddress, xpub: f.userXpub } },
+    },
+    activeNetwork: {
+      kind: 'syscoin',
+      slip44: 1,
+      currency: 'sys',
+      chainId: 5700,
+      url: 'https://offline.invalid',
+    },
+  };
+  const transactions = new SyscoinTransactions(
+    () => ({ hd }),
+    () => ({ hd }),
+    () => state,
+    async () => f.userAddress,
+    {},
+    {},
+    () => () => undefined
+  );
+  mockBlockbookLookup.mockClear();
+  const result = await transactions.signPSBT({ psbt: f.mixed });
+  expect(mockBlockbookLookup).not.toHaveBeenCalled();
+  return result;
+}
+
+describe('offline UTXO browser fixture', () => {
+  it('counterfactual: the unscoped same-seed HD signer can sign both accounts', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.mixed));
+    expect(signed.data.inputs[1].finalScriptWitness).toBeDefined();
+    expect(verifyCompletedSponsor(f, signed)).toMatch(/^[0-9a-f]{64}$/);
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(signed), true)
+    ).toThrow('sponsor input');
+  });
+
+  it('contains real deterministic parents and a valid user-only signature', async () => {
+    const f = createUtxoFixture();
+    const psbt = await f.signUserOffline(importFixturePsbt(f.single));
+    expect(
+      verifyFixtureSignature(f, exportFixturePsbt(psbt), false)
+    ).toBeTruthy();
+  });
+
+  it('rejects an extra stack item after an otherwise valid user witness', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.single));
+    const response = exportFixturePsbt(signed);
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+    const mutated = importFixturePsbt(response);
+    const original = Buffer.from(mutated.data.inputs[0].finalScriptWitness);
+    expect(original[0]).toBe(2);
+    mutated.data.inputs[0].finalScriptWitness = Buffer.concat([
+      Buffer.from([3]),
+      original.subarray(1),
+      Buffer.from([1, 0x42]),
+    ]);
+    // The two original items are byte-for-byte intact; only an item was added.
+    expect(
+      Buffer.from(mutated.data.inputs[0].finalScriptWitness).subarray(
+        1,
+        original.length
+      )
+    ).toEqual(original.subarray(1));
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(mutated), false)
+    ).toThrow('Unexpected user witness item count');
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+  });
+
+  it('rejects a nonempty native user scriptSig without changing its valid witness', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.single));
+    const response = exportFixturePsbt(signed);
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+    expect(verifyCompletedSponsor(f, signed)).toMatch(/^[0-9a-f]{64}$/);
+    const mutated = importFixturePsbt(response);
+    const originalWitness = Buffer.from(
+      mutated.data.inputs[0].finalScriptWitness
+    );
+    mutated.data.inputs[0].finalScriptSig = Buffer.from([0x51]);
+    expect(Buffer.from(mutated.data.inputs[0].finalScriptWitness)).toEqual(
+      originalWitness
+    );
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(mutated), false)
+    ).toThrow('Unexpected native user scriptSig');
+    expect(() => verifyCompletedSponsor(f, mutated)).toThrow(
+      'Unexpected completed native scriptSig'
+    );
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+  });
+
+  it('rejects a completed sponsor scriptSig without changing its valid witness', async () => {
+    const f = createUtxoFixture();
+    const completed = f.finishSponsor(
+      importFixturePsbt(await signWithCurrentKeyring(f))
+    );
+    expect(verifyCompletedSponsor(f, completed)).toMatch(/^[0-9a-f]{64}$/);
+    // Reimport the response so bitcoinjs does not reuse its extracted-tx cache.
+    const mutated = importFixturePsbt(exportFixturePsbt(completed));
+    const originalWitness = Buffer.from(
+      mutated.data.inputs[1].finalScriptWitness
+    );
+    mutated.data.inputs[1].finalScriptSig = Buffer.from([0x51]);
+    expect(Buffer.from(mutated.data.inputs[1].finalScriptWitness)).toEqual(
+      originalWitness
+    );
+    expect(() => verifyCompletedSponsor(f, mutated)).toThrow(
+      'Unexpected completed native scriptSig'
+    );
+  });
+
+  it('preserves unsigned sponsor input and verifies both real signatures after completion', async () => {
+    const f = createUtxoFixture();
+    const response = await signWithCurrentKeyring(f);
+    const psbt = verifyFixtureSignature(f, response, true);
+    expect(psbt.data.inputs[1].bip32Derivation).toEqual(
+      importFixturePsbt(f.mixed).data.inputs[1].bip32Derivation
+    );
+    // Corrupt only the user's scalar, keeping valid DER and the sponsor unsigned.
+    const corrupted = importFixturePsbt(response);
+    const originalWitness = Buffer.from(
+      corrupted.data.inputs[0].finalScriptWitness
+    );
+    expect(originalWitness[0]).toBe(2);
+    const encodedLength = originalWitness[1];
+    const decoded = sys.bitcoinjs.script.signature.decode(
+      originalWitness.subarray(2, 2 + encodedLength)
+    );
+    decoded.signature[31] ^= 1;
+    const encoded = sys.bitcoinjs.script.signature.encode(
+      decoded.signature,
+      decoded.hashType
+    );
+    corrupted.data.inputs[0].finalScriptWitness = Buffer.concat([
+      Buffer.from([2, encoded.length]),
+      encoded,
+      originalWitness.subarray(2 + encodedLength),
+    ]);
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(corrupted), true)
+    ).toThrow('Invalid user witness');
+
+    const witness = Buffer.from(psbt.data.inputs[0].finalScriptWitness);
+    f.finishSponsor(psbt);
+    expect(
+      Buffer.from(psbt.data.inputs[0].finalScriptWitness).equals(witness)
+    ).toBe(true);
+    expect(verifyCompletedSponsor(f, psbt)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it.each(['missing', 'fingerprint', 'path', 'public key'])(
+    'rejects a response with %s sponsor derivation metadata',
+    async (mutation) => {
+      const f = createUtxoFixture();
+      const psbt = importFixturePsbt(await signWithCurrentKeyring(f));
+      const external = psbt.data.inputs[1];
+      if (mutation === 'missing') {
+        delete external.bip32Derivation;
+      } else if (mutation === 'fingerprint') {
+        external.bip32Derivation[0].masterFingerprint[0] ^= 1;
+      } else if (mutation === 'path') {
+        external.bip32Derivation[0].path = "m/84'/1'/1'/0/1";
+      } else {
+        external.bip32Derivation[0].pubkey = importFixturePsbt(
+          f.mixed
+        ).data.inputs[0].bip32Derivation[0].pubkey;
+      }
+      expect(() =>
+        verifyFixtureSignature(f, exportFixturePsbt(psbt), true)
+      ).toThrow('sponsor derivation metadata');
+    }
+  );
+
+  it('passes the real keyring account-scope guard without authorizing the sponsor input', async () => {
+    const f = createUtxoFixture(),
+      psbt = importFixturePsbt(f.mixed);
+    assertPsbtAccountScope(psbt, {
+      account: { address: f.userAddress, xpub: f.userXpub },
+      accountId: 0,
+      accountType: 'HDAccount',
+      network: { slip44: 1, currency: 'sys', chainId: 5700 },
+    } as any);
+    const signed = await f.signUserOffline(psbt);
+    // This internal guard intentionally strips metadata. The public signPSBT
+    // response restores it and is checked by the shared browser verifier above.
+    expect(signed.data.inputs[1].bip32Derivation).toBeUndefined();
+    expect(signed.data.inputs[1].finalScriptWitness).toBeUndefined();
+    expect(signed.data.inputs[1].partialSig).toBeUndefined();
+    expect(verifyCompletedSponsor(f, f.finishSponsor(signed))).toMatch(
+      /^[0-9a-f]{64}$/
+    );
+  });
+
+  it('rejects changed outputs and an already signed sponsor input', async () => {
+    const f = createUtxoFixture();
+    const psbt = await f.signUserOffline(importFixturePsbt(f.mixed));
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(psbt), true)
+    ).toThrow('sponsor input');
+    expect(() => verifyFixtureSignature(f, f.mixed, false)).toThrow(
+      'unsigned transaction'
+    );
+  });
+
+  it('never serves a send endpoint, write method, unknown parent or unrelated origin', () => {
+    const f = createUtxoFixture(),
+      host = 'https://blockbook-dev.syscoin.org';
+    expect(
+      fixtureRead(f, host + '/api/v2/tx/' + f.parentTxs[0].getId(), 'GET')
+    ).toMatchObject({ hex: f.parentTxs[0].toHex() });
+    for (const [url, method] of [
+      [host + '/api/v2/sendtx/', 'POST'],
+      [host + '/api/v2/sendtx/00', 'GET'],
+      [host + '/api/v2/tx/' + '00'.repeat(32), 'GET'],
+      [host + '/api/v2/xpub/unrelated-wallet', 'GET'],
+      ['https://example.com/api/v2/', 'GET'],
+      [host + '/api/v2/', 'POST'],
+    ])
+      expect(fixtureRead(f, url, method)).toBeUndefined();
+  });
+
+  it('launch-time proxy denies HTTP forwarding and HTTPS CONNECT on loopback only', async () => {
+    const server = await startUtxoFixtureServer();
+    const request = (method: string, target: string) =>
+      new Promise<number>((resolve, reject) => {
+        const req = http.request(server.url, { method, path: target });
+        req.on('response', (response) => {
+          response.resume();
+          resolve(response.statusCode!);
+        });
+        req.on('connect', (response, socket) => {
+          socket.destroy();
+          resolve(response.statusCode!);
+        });
+        req.on('error', reject);
+        req.end();
+      });
+    try {
+      expect(await request('GET', server.url + '/')).toBe(200);
+      expect(
+        await request('POST', 'http://unreachable.invalid/api/v2/sendtx/')
+      ).toBe(403);
+      expect(await request('CONNECT', 'unreachable.invalid:443')).toBe(403);
+      expect(server.blocked).toEqual(['POST', 'CONNECT']);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it.each(['after-403', 'before-403', 'forced-errors'])(
+    'keeps the loopback deny proxy alive through disconnects (%s)',
+    (timing) => {
+      // Real TCP resets may close cleanly on some platforms. The forced case
+      // deterministically exercises both errors without killing the Jest worker.
+      const script = String.raw`
+        const fs = require('node:fs'), http = require('node:http'), net = require('node:net');
+        const Module = require('node:module'), ts = require('typescript');
+        const errors = [], create = http.createServer;
+        let fixtureServer;
+        http.createServer = function (...args) {
+          const server = create.apply(this, args);
+          fixtureServer = server;
+          server.prependListener('connect', (_req, socket) => {
+            const emit = socket.emit;
+            socket.emit = function (event, ...values) {
+              if (event === 'error') errors.push(values[0].code);
+              return emit.call(this, event, ...values);
+            };
+          });
+          return server;
+        };
+        const file = process.argv[1], mod = new Module(file, module);
+        mod.filename = file; mod.paths = Module._nodeModulePaths(require('node:path').dirname(file));
+        mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
+        }).outputText, file);
+        (async () => {
+          const proxy = await mod.exports.startUtxoFixtureServer(), url = new URL(proxy.url);
+          try {
+            if (process.argv[2] === 'forced-errors') fixtureServer.on('connect', (_req, socket) => {
+              for (const code of ['ECONNRESET', 'EPIPE']) socket.emit('error', Object.assign(new Error(code), { code }));
+            });
+            const attempts = process.argv[2] === 'forced-errors' ? 1 : 8;
+            for (let i = 0; i < attempts; i++) await new Promise(resolve => {
+              const socket = net.connect(Number(url.port), '127.0.0.1');
+              socket.on('error', () => {});
+              socket.on('close', () => setTimeout(resolve, 10));
+              socket.on('connect', () => {
+                socket.write('CONNECT fixture.invalid:443 HTTP/1.1\r\nHost: fixture.invalid:443\r\n\r\n');
+                if (process.argv[2] === 'before-403') setImmediate(() => socket.resetAndDestroy());
+              });
+              if (process.argv[2] === 'after-403') socket.on('data', () => socket.resetAndDestroy());
+              if (process.argv[2] === 'forced-errors') socket.resume();
+            });
+            const status = await new Promise((resolve, reject) => {
+              http.get(proxy.url, response => { response.resume(); resolve(response.statusCode); }).on('error', reject);
+            });
+            const deniedStatus = await new Promise((resolve, reject) => {
+              const request = http.request(proxy.url, { method: 'POST', path: '/forbidden' }, response => {
+                response.resume(); resolve(response.statusCode);
+              });
+              request.on('error', reject); request.end();
+            });
+            console.log(JSON.stringify({ errors, blocked: proxy.blocked.length, status, deniedStatus }));
+          } finally { await proxy.close(); }
+        })().catch(error => { console.error(error); process.exitCode = 1; });
+      `;
+      const run = spawnSync(
+        process.execPath,
+        [
+          '-e',
+          script,
+          require.resolve('../../e2e/harness/utxoFixture'),
+          timing,
+        ],
+        { encoding: 'utf8', timeout: 5000, maxBuffer: 16384 }
+      );
+      expect(run.error).toBeUndefined();
+      expect(run.status).toBe(0);
+      expect(run.stderr).toBe('');
+      const result = JSON.parse(run.stdout.trim());
+      expect(result.status).toBe(200);
+      expect(result.deniedStatus).toBe(403);
+      expect(result.blocked).toBeGreaterThan(0);
+      if (timing === 'forced-errors')
+        expect(result.errors).toEqual(
+          expect.arrayContaining(['ECONNRESET', 'EPIPE'])
+        );
+      expect(
+        result.errors.every((code: string) =>
+          ['ECONNRESET', 'EPIPE'].includes(code)
+        )
+      ).toBe(true);
+    }
+  );
+
+  it('handles only expected denied-socket disconnect errors', async () => {
+    const server = Object.assign(new EventEmitter(), {
+      listen: (_port: number, _host: string, ready: () => void) => ready(),
+      address: () => ({ port: 12345 }),
+    });
+    const create = jest
+      .spyOn(http, 'createServer')
+      .mockReturnValue(server as any);
+    try {
+      await startUtxoFixtureServer();
+      const socket = Object.assign(new EventEmitter(), {
+        end: jest.fn(),
+        destroy: jest.fn(),
+      });
+      server.emit('connect', {}, socket);
+      expect(socket.end).toHaveBeenCalledWith(
+        'HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'
+      );
+      for (const code of ['ECONNRESET', 'EPIPE']) {
+        expect(() =>
+          socket.emit('error', Object.assign(new Error(code), { code }))
+        ).not.toThrow();
+      }
+      expect(socket.destroy).toHaveBeenCalledTimes(2);
+      const unexpected = Object.assign(new Error('unexpected socket failure'), {
+        code: 'EIO',
+      });
+      expect(() => socket.emit('error', unexpected)).toThrow(
+        /unexpected socket failure/
+      );
+    } finally {
+      create.mockRestore();
+    }
+  });
+});

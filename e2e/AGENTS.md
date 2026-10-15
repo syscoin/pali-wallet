@@ -122,9 +122,16 @@ Three workflows:
 ### `main.yml` — PR conformance check
 
 The `test dapp conformance` job runs
-`test-dapp-conformance.journey.spec.ts` and `provider-property-toggle.journey.spec.ts` against disposable local Anvil chains
-on every PR. It needs no wallet secrets and uploads browser evidence. Live
-testnet journeys stay in the scheduled/manual workflow below.
+`test-dapp-conformance.journey.spec.ts` and `provider-property-toggle.journey.spec.ts`
+against disposable local Anvil chains on every PR. It also runs
+`utxo-psbt.journey.spec.ts` with synthetic parent transactions and a controlled
+Blockbook fixture, covering ordinary Pali signing, cancellation and mixed-owner
+signature boundaries without broadcasting. `native-send-preview.journey.spec.ts`
+uses the same fixture to check edited fees through Confirm, Cancel and Back,
+without clicking Confirm. See `UTXO_FIXTURE.md` and `NATIVE_SEND_PREVIEW.md` for
+the launch-time network fence and simulated/live limits. The job needs no wallet
+secrets and uploads browser evidence. Live testnet journeys stay in the
+scheduled/manual workflow below.
 
 ### `e2e-harness.yml` — scheduled / manual journey runs
 

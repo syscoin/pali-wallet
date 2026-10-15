@@ -565,7 +565,12 @@ export async function popupFor(
   return popup!;
 }
 
-export async function approve(context: BrowserContext, page: Page, id: number) {
+export async function approve(
+  context: BrowserContext,
+  page: Page,
+  id: number,
+  capture?: (popup: Page) => Promise<void>
+) {
   const popup = await popupFor(context, page, id);
   for (let attempt = 0; attempt < 3; attempt++) {
     if ((await rpcObservation(page, id))?.settled || popup.isClosed()) break;
@@ -576,6 +581,7 @@ export async function approve(context: BrowserContext, page: Page, id: number) {
       .last();
     await expect(button).toBeVisible({ timeout: 10_000 });
     await expect(button).toBeEnabled({ timeout: 10_000 });
+    await capture?.(popup);
     await button.click();
     // Second untrusted-site confirmation may replace the first button.
     await expect
