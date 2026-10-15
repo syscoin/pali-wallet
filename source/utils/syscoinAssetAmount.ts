@@ -73,6 +73,21 @@ export const isAssetAmountWithinBalance = (
   }
 };
 
+export const isAssetAmountEqualToBalance = (
+  amount: string,
+  balance: string,
+  decimals: number
+): boolean => {
+  try {
+    return (
+      parseAssetAmount(amount, decimals) ===
+      parseAssetAmount(balance, decimals, true)
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const hasNonZeroAssetDelta = (
   amount: number | string | undefined
 ): boolean => {

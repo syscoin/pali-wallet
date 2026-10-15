@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
+import { AppLayout } from 'components/Layout/AppLayout';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { createNavigationContext, navigateWithContext } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -34,7 +35,11 @@ jest.mock('state/store', () => ({
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
-jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
+jest.mock('react-router-dom', () => ({
+  useLocation: () => mockLocation,
+  useNavigate: () => mockNavigate,
+  Outlet: () => null,
+}));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -56,6 +61,21 @@ jest.mock('hooks/useEIP1559', () => ({
   useEIP1559: () => ({ isEIP1559Compatible: false, forceRecheck: jest.fn() }),
 }));
 jest.mock('components/Loading', () => ({ PqSigningOverlay: () => null }));
+jest.mock('components/Header/Header', () => ({ Header: () => null }));
+jest.mock('components/Loading/PageLoadingOverlay', () => ({
+  PageLoadingOverlay: () => null,
+}));
+jest.mock('hooks/useAppReady', () => ({ useAppReady: jest.fn() }));
+jest.mock('hooks/useBrowsingNavigationScroll', () => ({
+  useBrowsingNavigationScroll: jest.fn(),
+}));
+jest.mock('hooks/usePageLoadingState', () => ({
+  ...jest.requireActual('hooks/usePageLoadingState'),
+  usePageLoadingState: () => ({
+    isLoading: false,
+    isContextChanging: false,
+  }),
+}));
 jest.mock('components/TransactionDetails', () => ({
   SyscoinTransactionDetailsFromPSBT: () => null,
 }));
@@ -126,8 +146,10 @@ jest.mock('components/index', () => ({
   ),
   Tooltip: ({ children }: any) => <>{children}</>,
   Icon: () => null,
-  IconButton: ({ children, onClick }: any) => (
-    <button onClick={onClick}>{children}</button>
+  IconButton: ({ children, onClick, ...props }: any) => (
+    <button {...props} onClick={onClick}>
+      {children}
+    </button>
   ),
   DeviceWaitingBanner: () => null,
   Fee: ({ form, onFeeChange, ...props }: any) =>
@@ -868,6 +890,194 @@ describe('send forms across wallet navigation', () => {
         expect(mockEmitter).not.toHaveBeenCalled();
       } finally {
         navigate.mockReset();
+      }
+    }
+  );
+
+  it.each(
+    [
+      {
+        decimals: 0,
+        amount: '9007199254740992',
+        balance: '9007199254740993',
+        builderAmount: '90071992.54740992',
+        isMax: false,
+      },
+      {
+        decimals: 8,
+        amount: '90071992.54740993',
+        balance: '90071992.54740994',
+        builderAmount: '90071992.54740993',
+        isMax: false,
+      },
+      {
+        decimals: 0,
+        amount: '9007199254740993',
+        balance: '9007199254740993',
+        builderAmount: '90071992.54740993',
+        isMax: true,
+      },
+      {
+        decimals: 8,
+        amount: '1.23000000',
+        balance: '1.23',
+        builderAmount: '1.23000000',
+        isMax: true,
+      },
+    ].flatMap((testCase) =>
+      ['cancel', 'back'].map((action) => ({ ...testCase, action }))
+    )
+  )(
+    'preserves SPT amount through Confirm $action and draft reopen (decimals=$decimals, MAX=$isMax)',
+    async ({ decimals, amount, balance, builderAmount, isMax, action }) => {
+      jest.useFakeTimers();
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = { assetGuid: '123', symbol: 'SPT', decimals, balance };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount },
+          selectedAsset: asset,
+        },
+      };
+      mockEmitter.mockImplementation((path: string[]) =>
+        path[path.length - 1] === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({ fee: 1e-8, psbt: 'spt-unsigned-psbt' })
+          : Promise.resolve(1e-7)
+      );
+      const nav = navigateWithContext as jest.Mock;
+      const context = createNavigationContext as jest.Mock;
+      nav.mockImplementation((...args: any[]) =>
+        jest.requireActual('utils/navigationState').navigateWithContext(...args)
+      );
+      context.mockImplementation((...args: any[]) =>
+        jest
+          .requireActual('utils/navigationState')
+          .createNavigationContext(...args)
+      );
+      try {
+        const form = render(<SendSys />);
+        await act(async () => undefined);
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        const [, forward] = mockNavigate.mock.calls.find(
+          ([path]) => path === '/send/confirm'
+        )!;
+        expect(forward.state.tx.amount).toBe(amount);
+        expect(forward.state.tx.isMax).toBe(false);
+        form.unmount();
+
+        window.history.replaceState(null, '', '/app.html#/send/confirm');
+        mockLocation = { pathname: '/send/confirm', state: forward.state };
+        const confirm = render(
+          <AppLayout>
+            <SendConfirm />
+          </AppLayout>
+        );
+        fireEvent.click(
+          screen.getByRole('button', { name: `buttons.${action}` })
+        );
+        const [path, back] = mockNavigate.mock.calls
+          .filter(([target]) => target === '/send/sys')
+          .pop()!;
+        confirm.unmount();
+
+        window.history.replaceState(null, '', '/app.html#/send/sys');
+        mockLocation = { pathname: path, state: back.state };
+        const restored = render(<SendSys />);
+        await act(async () => {
+          jest.advanceTimersByTime(100);
+        });
+        const expectedAmount = isMax ? balance : amount;
+        expect(
+          (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+        ).toBe(expectedAmount);
+        const saved = mockSave.mock.calls
+          .filter(([savedPath]) => savedPath === '/send/sys')
+          .pop()![2];
+        expect(saved.isMaxSend).toBe(isMax);
+        restored.unmount();
+
+        // Reopen the persisted draft, not the unsigned confirmation payload.
+        mockLocation = {
+          pathname: '/send/sys',
+          state: { ...saved, walletScope: getWalletNavigationScope() },
+        };
+        render(<SendSys />);
+        await act(async () => {
+          jest.advanceTimersByTime(100);
+        });
+        expect(
+          (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+        ).toBe(expectedAmount);
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        const estimates = mockEmitter.mock.calls.filter(
+          ([method]) =>
+            method[method.length - 1] === 'getEstimateSysTransactionFee'
+        );
+        expect(estimates).toHaveLength(2);
+        for (const [, [request]] of estimates) {
+          expect(request.amount).toBe(builderAmount);
+          expect(request.token).toEqual({ symbol: 'SPT', guid: '123' });
+          expect(request.isMax).toBeUndefined();
+        }
+        const lastConfirmation = mockNavigate.mock.calls
+          .filter(([target]) => target === '/send/confirm')
+          .pop()![1];
+        expect(lastConfirmation.state.tx.isMax).toBe(false);
+      } finally {
+        nav.mockReset();
+        context.mockReset();
+        jest.useRealTimers();
+      }
+    }
+  );
+
+  it.each([
+    { decimals: 0, amount: '9007199254740992', balance: '9007199254740993' },
+    { decimals: 8, amount: '90071992.54740993', balance: '90071992.54740994' },
+  ])(
+    'repairs a persisted false SPT MAX flag at $decimals decimals',
+    async ({ decimals, amount, balance }) => {
+      jest.useFakeTimers();
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = { assetGuid: '123', symbol: 'SPT', decimals, balance };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount },
+          selectedAsset: asset,
+          isMaxSend: true,
+        },
+      };
+      try {
+        render(<SendSys />);
+        await act(async () => {
+          jest.advanceTimersByTime(100);
+        });
+        expect(
+          (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+        ).toBe(amount);
+        const savedDrafts = mockSave.mock.calls.filter(
+          ([savedPath]) => savedPath === '/send/sys'
+        );
+        expect(savedDrafts.length).toBeGreaterThan(0);
+        expect(
+          savedDrafts.every(([, , draft]) => draft.isMaxSend === false)
+        ).toBe(true);
+      } finally {
+        jest.useRealTimers();
       }
     }
   );

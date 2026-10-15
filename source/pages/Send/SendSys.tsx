@@ -34,6 +34,7 @@ import {
 } from 'utils/index';
 import {
   assertValidAssetAmount,
+  isAssetAmountEqualToBalance,
   isAssetAmountWithinBalance,
   toEightDecimalBuilderAmount,
 } from 'utils/syscoinAssetAmount';
@@ -87,7 +88,16 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     typeof initialDraft.RBF === 'boolean' ? initialDraft.RBF : true;
   const [RBF, setRBF] = useState<boolean>(initialRBF);
   const initialSelectedAsset = initialDraft.selectedAsset || null;
-  const initialIsMaxSend = initialDraft.isMaxSend === true;
+  // Older drafts may contain a rounded, false asset MAX flag. Check the saved
+  // amount before restoring that intent or replacing it with a fresh balance.
+  const initialIsMaxSend =
+    initialDraft.isMaxSend === true &&
+    (!initialSelectedAsset ||
+      isAssetAmountEqualToBalance(
+        String(initialDraft.formValues?.amount ?? ''),
+        String(initialSelectedAsset.balance ?? '0'),
+        initialSelectedAsset.decimals ?? 8
+      ));
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     initialSelectedAsset
@@ -258,7 +268,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   useEffect(() => {
     if (!hasRestoredRef.current) {
       hasRestoredRef.current = true;
-      const { formValues, isMaxSend: restoredIsMaxSend } = initialDraft;
+      const { formValues } = initialDraft;
 
       if (formValues) {
         isRestoringRef.current = true;
@@ -267,8 +277,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // Also update the ref to keep it in sync
         formValuesRef.current = formValues;
 
-        // If this was a max send, recalculate the max amount
-        if (restoredIsMaxSend) {
+        // If this was a verified MAX send, recalculate the max amount.
+        if (initialIsMaxSend) {
           // Add a small delay to ensure form is fully initialized
           setTimeout(() => {
             if (!isCurrentForm()) {
@@ -286,7 +296,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       // Do NOT clear the navigation state here - we need it to persist
       // for when the popup is closed and reopened
     }
-  }, [initialDraft, form, handleMaxButton, isCurrentForm]);
+  }, [initialDraft, initialIsMaxSend, form, handleMaxButton, isCurrentForm]);
 
   // Watch the amount field for changes
   const watchedAmount = Form.useWatch('amount', form);
@@ -299,14 +309,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       if (inputAmount && balanceStr) {
         try {
           if (selectedAsset) {
-            // Preserve the existing asset MAX-button state behavior.
-            const normalizeAmount = (val: string) => {
-              const parsed = parseFloat(val);
-              return isNaN(parsed) ? val : parsed.toString();
-            };
             setIsMaxSend(
-              normalizeAmount(inputAmount) ===
-                normalizeAmount(String(balanceStr))
+              isAssetAmountEqualToBalance(
+                inputAmount,
+                String(balanceStr),
+                assetDecimals
+              )
             );
           } else {
             setIsMaxSend(
@@ -322,7 +330,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     } else {
       setIsMaxSend(false);
     }
-  }, [watchedAmount, balanceStr, selectedAsset]);
+  }, [watchedAmount, balanceStr, selectedAsset, assetDecimals]);
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
