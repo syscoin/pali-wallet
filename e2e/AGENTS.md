@@ -128,8 +128,10 @@ against disposable local Anvil chains on every PR. It also runs
 Blockbook fixture, covering ordinary Pali signing, cancellation and mixed-owner
 signature boundaries without broadcasting. `native-send-preview.journey.spec.ts`
 uses the same fixture to check edited fees through Confirm, Cancel and Back,
-without clicking Confirm. See `UTXO_FIXTURE.md` and `NATIVE_SEND_PREVIEW.md` for
-the launch-time network fence and simulated/live limits. The job needs no wallet
+without clicking Confirm. `spt-send-preview.journey.spec.ts` checks an imported
+synthetic SPT's exact amount, MAX, Cancel/Back, persisted draft reopening and
+insufficient native fee. See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
+`SPT_SEND_PREVIEW.md` for the launch-time network fence and simulated/live limits. The job needs no wallet
 secrets and uploads browser evidence. Live testnet journeys stay in the
 scheduled/manual workflow below.
 
