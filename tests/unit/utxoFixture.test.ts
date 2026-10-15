@@ -285,17 +285,19 @@ describe('offline UTXO browser fixture', () => {
     }
   });
 
-  it.each(['after-403', 'before-403'])(
-    'keeps the loopback deny proxy alive when a client resets %s',
+  it.each(['after-403', 'before-403', 'forced-errors'])(
+    'keeps the loopback deny proxy alive through disconnects (%s)',
     (timing) => {
-      // Run the real helper in an isolated child: a missing socket error handler
-      // must fail this assertion, not terminate the Jest worker itself.
+      // Real TCP resets may close cleanly on some platforms. The forced case
+      // deterministically exercises both errors without killing the Jest worker.
       const script = String.raw`
         const fs = require('node:fs'), http = require('node:http'), net = require('node:net');
         const Module = require('node:module'), ts = require('typescript');
         const errors = [], create = http.createServer;
+        let fixtureServer;
         http.createServer = function (...args) {
           const server = create.apply(this, args);
+          fixtureServer = server;
           server.prependListener('connect', (_req, socket) => {
             const emit = socket.emit;
             socket.emit = function (event, ...values) {
@@ -313,7 +315,11 @@ describe('offline UTXO browser fixture', () => {
         (async () => {
           const proxy = await mod.exports.startUtxoFixtureServer(), url = new URL(proxy.url);
           try {
-            for (let i = 0; i < 8; i++) await new Promise(resolve => {
+            if (process.argv[2] === 'forced-errors') fixtureServer.on('connect', (_req, socket) => {
+              for (const code of ['ECONNRESET', 'EPIPE']) socket.emit('error', Object.assign(new Error(code), { code }));
+            });
+            const attempts = process.argv[2] === 'forced-errors' ? 1 : 8;
+            for (let i = 0; i < attempts; i++) await new Promise(resolve => {
               const socket = net.connect(Number(url.port), '127.0.0.1');
               socket.on('error', () => {});
               socket.on('close', () => setTimeout(resolve, 10));
@@ -322,11 +328,18 @@ describe('offline UTXO browser fixture', () => {
                 if (process.argv[2] === 'before-403') setImmediate(() => socket.resetAndDestroy());
               });
               if (process.argv[2] === 'after-403') socket.on('data', () => socket.resetAndDestroy());
+              if (process.argv[2] === 'forced-errors') socket.resume();
             });
             const status = await new Promise((resolve, reject) => {
               http.get(proxy.url, response => { response.resume(); resolve(response.statusCode); }).on('error', reject);
             });
-            console.log(JSON.stringify({ errors, blocked: proxy.blocked.length, status }));
+            const deniedStatus = await new Promise((resolve, reject) => {
+              const request = http.request(proxy.url, { method: 'POST', path: '/forbidden' }, response => {
+                response.resume(); resolve(response.statusCode);
+              });
+              request.on('error', reject); request.end();
+            });
+            console.log(JSON.stringify({ errors, blocked: proxy.blocked.length, status, deniedStatus }));
           } finally { await proxy.close(); }
         })().catch(error => { console.error(error); process.exitCode = 1; });
       `;
@@ -345,8 +358,12 @@ describe('offline UTXO browser fixture', () => {
       expect(run.stderr).toBe('');
       const result = JSON.parse(run.stdout.trim());
       expect(result.status).toBe(200);
+      expect(result.deniedStatus).toBe(403);
       expect(result.blocked).toBeGreaterThan(0);
-      expect(result.errors.length).toBeGreaterThan(0);
+      if (timing === 'forced-errors')
+        expect(result.errors).toEqual(
+          expect.arrayContaining(['ECONNRESET', 'EPIPE'])
+        );
       expect(
         result.errors.every((code: string) =>
           ['ECONNRESET', 'EPIPE'].includes(code)
