@@ -75,11 +75,26 @@ PALI_TEST_DAPP_EXTENSION_PATH=/absolute/path/to/qualified/build/chrome \
 yarn e2e:harness offline-wallet-lifecycle.journey.spec.ts
 ```
 
-This establishes simulated normal-UI lifecycle behavior, not public-chain
-balances, a cold browser-process restart, imported/watch-only account recovery,
-hardware recovery, or cross-network vault isolation. The current fixture
-serves only its primary UTXO account. Do not run the older shared-seed/public
-network journeys as a substitute for these offline checks.
+This lifecycle journey establishes simulated normal-UI behavior, not
+public-chain balances or hardware-device operation. Do not run the older
+shared-seed/public-network journeys as a substitute for these offline checks.
+
+`offline-cold-restart.journey.spec.ts` closes Chromium while the disposable
+wallet is unlocked, then reopens that same run-owned profile behind the deny
+proxy. It requires a locked screen, wrong-password rejection and correct
+unlock restoring the exact account/network/balance. A bounded harmless worker
+GET probe establishes fixture interception before unlock; it never retries a
+wallet operation. Profile resumption cannot select a human profile or another
+run's profile.
+
+`offline-vault-isolation.journey.spec.ts` uses normal network/account/token
+import UI to alternate UTXO and EVM vaults sharing numeric chain ID 5700. It
+checks separate address families, selected accounts and account-scoped SPT
+metadata, then imports a public watch-only address and checks its persistence
+and lack of private signing material after reload/network switches. Only a
+narrow public projection is returned, not whole vault state or keys. Both new
+journeys are explicitly selected by PR conformance CI. Physical device
+recovery and public-chain sends are separate from these synthetic fixtures.
 
 `yarn e2e:visual passwordSetup.spec.ts` separately checks compact mouse-wheel
 scrolling, a renderer-only password-generation failure and nine translated

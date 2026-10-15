@@ -269,6 +269,45 @@ async function establishInlineOnlyOriginal() {
   return clone(records);
 }
 
+async function establishExternalAccounts(activeSlip44: number) {
+  await establishOriginal(activeSlip44);
+  const original = records['state-vault-57'];
+  const publicRecord = {
+    ...clone(original.accounts.Imported[7]),
+    xprv: '',
+    isImported: false,
+    slip44: 57,
+  };
+  original.accounts.Imported[8] = {
+    ...publicRecord,
+    id: 8,
+    label: 'Synthetic watch-only',
+    address: 'synthetic-watch-address',
+    xpub: 'synthetic-watch-address',
+    isImported: true,
+  };
+  original.accounts.Ledger[2] = {
+    ...publicRecord,
+    id: 2,
+    label: 'Synthetic Ledger',
+    address: 'synthetic-ledger-address',
+    xpub: 'synthetic-ledger-public-key',
+    isLedgerWallet: true,
+  };
+  original.accounts.Trezor[3] = {
+    ...publicRecord,
+    id: 3,
+    label: 'Synthetic Trezor',
+    address: 'synthetic-trezor-address',
+    xpub: 'synthetic-trezor-public-key',
+    isTrezorWallet: true,
+  };
+  if (activeSlip44 === 57)
+    store.dispatch(restoreVaultSnapshot(clone(original)));
+  vaultCache.clearCache();
+  return clone(records);
+}
+
 function makeHost() {
   let unlocked = false;
   const host: any = {
@@ -433,6 +472,50 @@ describe('wallet recovery persistence boundaries', () => {
     }
     jest.restoreAllMocks();
   });
+
+  it.each([
+    [57, false],
+    [60, false],
+    [57, true],
+    [60, true],
+  ])(
+    'retains watch-only and simulated hardware identities across failed recovery, close and reload (active %s, interrupted rollback %s)',
+    async (activeSlip44, interruptedRollback) => {
+      const before = await establishExternalAccounts(Number(activeSlip44));
+      const external = clone(before['state-vault-57'].accounts);
+      const host = makeHost();
+      const ticket = await beginWalletRecovery(host, context);
+      if (interruptedRollback)
+        readFault = { key: `state-vault-${activeSlip44}` };
+      await expect(submit(host, ticket)).rejects.toThrow(
+        interruptedRollback
+          ? 'Failed to rehydrate'
+          : 'Your previous wallet was restored'
+      );
+      expectOriginalSnapshot(before);
+      await popupClose(host);
+      expect(await reloadAndReadImported()).toBe(interruptedRollback);
+      const restored = store.getState().vault.accounts;
+      for (const [type, id] of [
+        ['Imported', 8],
+        ['Ledger', 2],
+        ['Trezor', 3],
+      ] as const) {
+        expect(restored[type][id]).toEqual(external[type][id]);
+        expect(restored[type][id].xprv).toBe('');
+        expect(restored[type][id].slip44).toBe(57);
+      }
+      // The actual SDK represents a single-address watch-only account by its
+      // public identifier plus an empty private key, not a separate flag.
+      expect(restored.Imported[8].xpub).toBe(restored.Imported[8].address);
+      expect(restored.Ledger[2].isLedgerWallet).toBe(true);
+      expect(restored.Trezor[3].isTrezorWallet).toBe(true);
+      expect(Object.keys(restored.HDAccount)).toEqual(
+        Object.keys(external.HDAccount)
+      );
+      expectOriginalSnapshot(before);
+    }
+  );
 
   it.each([
     [57, 'active vault'],
