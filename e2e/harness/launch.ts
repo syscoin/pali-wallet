@@ -12,6 +12,9 @@ export type LaunchedExtension = {
 export type LaunchOptions = {
   // Render at a higher device pixel ratio for crisp docs screenshots.
   deviceScaleFactor?: number;
+  // Fixture-only HTTP(S) egress fence, installed before the MV3 worker starts.
+  // The loopback proxy must reject CONNECT rather than forward public traffic.
+  offlineHttpProxy?: string;
   videoSize?: { height: number; width: number };
   viewport?: { height: number; width: number };
 };
@@ -44,6 +47,21 @@ export const launchExtension = async (
     `--disable-extensions-except=${E2E_CONFIG.extensionPath}`,
     `--load-extension=${E2E_CONFIG.extensionPath}`,
   ];
+  if (options.offlineHttpProxy) {
+    const proxy = new URL(options.offlineHttpProxy);
+    if (
+      proxy.protocol !== 'http:' ||
+      proxy.hostname !== '127.0.0.1' ||
+      !proxy.port ||
+      proxy.username ||
+      proxy.password ||
+      proxy.pathname !== '/' ||
+      proxy.search ||
+      proxy.hash
+    )
+      throw new Error('Offline fixture proxy must be a loopback HTTP origin');
+    args.push('--disable-quic');
+  }
   if (E2E_CONFIG.headless) {
     // MV3 extensions require the new headless mode.
     args.unshift('--headless=new');
@@ -52,6 +70,14 @@ export const launchExtension = async (
   const viewport = options.viewport ?? { height: 800, width: 600 };
   const context = await chromium.launchPersistentContext(profileDir, {
     args,
+    ...(options.offlineHttpProxy
+      ? {
+          ignoreDefaultArgs: ['--disable-extensions'],
+          // Disable Chromium's implicit loopback bypass too: only the proxy's own
+          // exact dapp URL is served, and no local/public service is forwarded.
+          proxy: { server: options.offlineHttpProxy, bypass: '<-loopback>' },
+        }
+      : {}),
     deviceScaleFactor: options.deviceScaleFactor,
     headless: false,
     recordVideo: {
