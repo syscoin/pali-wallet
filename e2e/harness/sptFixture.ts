@@ -10,7 +10,7 @@ import type { BrowserContext } from '@playwright/test';
 // The package exposes CommonJS and has no TypeScript declarations.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const txlib = require('syscointx-js');
-export const SPT_GUID = '123456';
+export const SPT_GUID = '123457';
 export const SPT_SYMBOL = 'TSPT';
 export const SPT_BALANCE_UNITS = '9007199254740993';
 export const SPT_BALANCE = '90071992.54740993';

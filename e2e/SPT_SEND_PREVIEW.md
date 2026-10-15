@@ -3,8 +3,8 @@
 `spt-send-preview.journey.spec.ts` reuses the public synthetic seed and
 launch-time deny proxy from `UTXO_FIXTURE.md`. Its controlled Blockbook fixture
 provides one fabricated parent transaction carrying 100,000 native satoshis and
-9,007,199,254,740,993 units of an eight-decimal SPT. No real chain or wallet
-balance is used.
+9,007,199,254,740,993 units of an eight-decimal SPT. The synthetic GUID is not
+the reserved SYSX identity. No real chain or wallet balance is used.
 
 The journey imports that token through the ordinary Assets UI. It verifies
 that an amount one atomic unit below the balance remains exact through

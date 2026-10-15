@@ -8,8 +8,13 @@ import {
   SPT_GUID,
   sptFixtureRead,
 } from '../../e2e/harness/sptFixture';
+import { SYSX_ASSET_GUID } from '../../source/utils/tokens';
 
 describe('offline SPT fixture', () => {
+  it('uses an ordinary asset identity, not the reserved SYSX GUID', () => {
+    expect(SPT_GUID).not.toBe(SYSX_ASSET_GUID);
+  });
+
   it('binds the displayed asset balance and spendable prevout to the same bytes', () => {
     const f = createSptFixture();
     const account: any = sptFixtureRead(
@@ -43,7 +48,7 @@ describe('offline SPT fixture', () => {
     for (const [url, method] of [
       ['https://blockbook-dev.syscoin.org/api/v2/sendtx/', 'POST'],
       ['https://blockbook-dev.syscoin.org/api/v2/sendtx/test', 'GET'],
-      ['https://foreign.invalid/api/v2/asset/123456', 'GET'],
+      [`https://foreign.invalid/api/v2/asset/${SPT_GUID}`, 'GET'],
       ['https://blockbook-dev.syscoin.org/api/v2/xpub/unrelated', 'GET'],
     ])
       expect(sptFixtureRead(f, url, method)).toBeUndefined();

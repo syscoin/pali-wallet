@@ -86,6 +86,17 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
       await expect(
         allocation.getByText(expected, { exact: true })
       ).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Confirm', exact: true })
+      ).toBeEnabled();
+      const reviewErrors = await page
+        .getByText(/^Unable to verify the origin type for asset /)
+        .allTextContents();
+      await test.info().attach('spt-review-state', {
+        body: JSON.stringify({ expected, confirmEnabled: true, reviewErrors }),
+        contentType: 'application/json',
+      });
+      expect(reviewErrors).toEqual([]);
       expect(routes.deniedWrites).toEqual([]);
     };
     await wallet.step(
