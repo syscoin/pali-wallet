@@ -12,6 +12,9 @@ import type { BrowserContext } from '@playwright/test';
 const txlib = require('syscointx-js');
 export const SPT_GUID = '123457';
 export const SPT_SYMBOL = 'TSPT';
+// Synthetic NEVM registry metadata, not provenance for any live contract.
+export const SPT_ORIGIN_CONTRACT = '0x1111111111111111111111111111111111111111';
+export const SPT_ORIGIN_DECIMALS = 18;
 export const SPT_BALANCE_UNITS = '9007199254740993';
 export const SPT_BALANCE = '90071992.54740993';
 export const SPT_BELOW_MAX = '90071992.54740992';
@@ -60,8 +63,11 @@ export function sptFixtureRead(
   const asset = {
     assetGuid: SPT_GUID,
     symbol: SPT_SYMBOL,
-    name: 'Offline fixture SPT',
+    name: 'Offline synthetic NEVM ERC20',
     type: 'SPTAllocated',
+    assetType: 'ERC20',
+    contract: SPT_ORIGIN_CONTRACT,
+    originDecimals: SPT_ORIGIN_DECIMALS,
     decimals: 8,
     maxSupply: '18446744073709551615',
     balance: SPT_BALANCE_UNITS,

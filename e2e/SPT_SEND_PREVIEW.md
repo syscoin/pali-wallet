@@ -3,8 +3,14 @@
 `spt-send-preview.journey.spec.ts` reuses the public synthetic seed and
 launch-time deny proxy from `UTXO_FIXTURE.md`. Its controlled Blockbook fixture
 provides one fabricated parent transaction carrying 100,000 native satoshis and
-9,007,199,254,740,993 units of an eight-decimal SPT. The synthetic GUID is not
-the reserved SYSX identity. No real chain or wallet balance is used.
+9,007,199,254,740,993 units of an eight-decimal UTXO representation of a
+synthetic NEVM-issued ERC20. GUID123457 is not the reserved SYSX identity.
+The fixture declares `assetType: ERC20`, origin decimals18 and synthetic
+contract `0x1111111111111111111111111111111111111111`, with UTXO decimals8,
+matching the current Blockbook API metadata contract. This is not independent
+UTXO token issuance or an assertion that this contract/GUID is registered on
+a live network. No real chain or wallet balance is used. Missing origin
+metadata must still fail the unchanged strict PSBT review.
 
 The journey imports that token through the ordinary Assets UI. It verifies
 that an amount one atomic unit below the balance remains exact through

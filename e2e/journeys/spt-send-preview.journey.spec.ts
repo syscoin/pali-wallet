@@ -10,6 +10,9 @@ import {
   installSptFixtureRoutes,
   SPT_BALANCE,
   SPT_BELOW_MAX,
+  SPT_GUID,
+  SPT_ORIGIN_CONTRACT,
+  SPT_ORIGIN_DECIMALS,
   SPT_SYMBOL,
 } from '../harness/sptFixture';
 import { extensionEvidence } from '../harness/testDappConformance';
@@ -195,6 +198,15 @@ test('offline SPT: exact adjacent amount, MAX, Cancel/Back and draft reopen with
           ...evidence,
           simulated: true,
           liveSPTSendTested: false,
+          fixtureAsset: {
+            assetGuid: SPT_GUID,
+            assetType: 'ERC20',
+            contract: SPT_ORIGIN_CONTRACT,
+            originDecimals: SPT_ORIGIN_DECIMALS,
+            utxoDecimals: 8,
+            syntheticNEVMRegistryMetadata: true,
+            liveContractProvenanceClaimed: false,
+          },
           confirmationClicked: false,
           belowMax: SPT_BELOW_MAX,
           max: SPT_BALANCE,
