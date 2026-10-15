@@ -87,11 +87,17 @@ export const launchExtension = async (
     viewport,
   });
 
-  let [background] = context.serviceWorkers();
-  if (!background) {
-    background = await context.waitForEvent('serviceworker');
+  try {
+    let [background] = context.serviceWorkers();
+    if (!background) {
+      background = await context.waitForEvent('serviceworker', {
+        timeout: 30_000,
+      });
+    }
+    const extensionId = background.url().split('/')[2];
+    return { context, extensionId };
+  } catch (error) {
+    await context.close().catch(() => undefined);
+    throw error;
   }
-  const extensionId = background.url().split('/')[2];
-
-  return { context, extensionId };
 };

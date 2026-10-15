@@ -34,14 +34,31 @@ export class PaliWallet {
     options: LaunchOptions = {}
   ): Promise<PaliWallet> {
     const summary = new JourneySummary(journeyName);
-    const { context, extensionId } = await launchExtension(
-      journeyName,
-      options
-    );
-    const page = context.pages()[0] || (await context.newPage());
-    const wallet = new PaliWallet(context, extensionId, page, summary);
-    await wallet.gotoRoute('#/');
-    return wallet;
+    const startedAt = Date.now();
+    let context: BrowserContext | undefined;
+    try {
+      const launched = await launchExtension(journeyName, options);
+      context = launched.context;
+      const page = context.pages()[0] || (await context.newPage());
+      const wallet = new PaliWallet(
+        context,
+        launched.extensionId,
+        page,
+        summary
+      );
+      await wallet.gotoRoute('#/');
+      return wallet;
+    } catch (error) {
+      summary.addStep({
+        durationMs: Date.now() - startedAt,
+        name: 'launch extension',
+        note: error instanceof Error ? error.message : String(error),
+        status: 'failed',
+      });
+      summary.finish('failed');
+      await context?.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   appUrl(route: string): string {

@@ -35,7 +35,7 @@ export type RunSummary = {
   findings: Finding[];
   journey: string;
   startedAt: string;
-  status: 'passed' | 'failed';
+  status: 'running' | 'passed' | 'failed';
   steps: StepRecord[];
 };
 
@@ -64,7 +64,7 @@ export class JourneySummary {
       findings: [],
       journey,
       startedAt: new Date().toISOString(),
-      status: 'passed',
+      status: 'running',
       steps: [],
     };
     this.flush();
@@ -95,10 +95,12 @@ export class JourneySummary {
     this.flush();
   }
 
-  finish(status?: 'passed' | 'failed') {
-    if (status) {
-      this.summary.status = status;
-    }
+  finish(status: 'passed' | 'failed' = 'failed') {
+    // Passing requires explicit completion and must never erase a failed step.
+    this.summary.status =
+      status === 'passed' && this.summary.status !== 'failed'
+        ? 'passed'
+        : 'failed';
     this.summary.endedAt = new Date().toISOString();
     this.flush();
   }
