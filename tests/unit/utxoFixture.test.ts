@@ -102,6 +102,49 @@ describe('offline UTXO browser fixture', () => {
     expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
   });
 
+  it('rejects a nonempty native user scriptSig without changing its valid witness', async () => {
+    const f = createUtxoFixture();
+    const signed = await f.signUserOffline(importFixturePsbt(f.single));
+    const response = exportFixturePsbt(signed);
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+    expect(verifyCompletedSponsor(f, signed)).toMatch(/^[0-9a-f]{64}$/);
+    const mutated = importFixturePsbt(response);
+    const originalWitness = Buffer.from(
+      mutated.data.inputs[0].finalScriptWitness
+    );
+    mutated.data.inputs[0].finalScriptSig = Buffer.from([0x51]);
+    expect(Buffer.from(mutated.data.inputs[0].finalScriptWitness)).toEqual(
+      originalWitness
+    );
+    expect(() =>
+      verifyFixtureSignature(f, exportFixturePsbt(mutated), false)
+    ).toThrow('Unexpected native user scriptSig');
+    expect(() => verifyCompletedSponsor(f, mutated)).toThrow(
+      'Unexpected completed native scriptSig'
+    );
+    expect(verifyFixtureSignature(f, response, false)).toBeTruthy();
+  });
+
+  it('rejects a completed sponsor scriptSig without changing its valid witness', async () => {
+    const f = createUtxoFixture();
+    const completed = f.finishSponsor(
+      importFixturePsbt(await signWithCurrentKeyring(f))
+    );
+    expect(verifyCompletedSponsor(f, completed)).toMatch(/^[0-9a-f]{64}$/);
+    // Reimport the response so bitcoinjs does not reuse its extracted-tx cache.
+    const mutated = importFixturePsbt(exportFixturePsbt(completed));
+    const originalWitness = Buffer.from(
+      mutated.data.inputs[1].finalScriptWitness
+    );
+    mutated.data.inputs[1].finalScriptSig = Buffer.from([0x51]);
+    expect(Buffer.from(mutated.data.inputs[1].finalScriptWitness)).toEqual(
+      originalWitness
+    );
+    expect(() => verifyCompletedSponsor(f, mutated)).toThrow(
+      'Unexpected completed native scriptSig'
+    );
+  });
+
   it('preserves unsigned sponsor input and verifies both real signatures after completion', async () => {
     const f = createUtxoFixture();
     const response = await signWithCurrentKeyring(f);

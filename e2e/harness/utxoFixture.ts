@@ -148,6 +148,8 @@ export function verifyFixtureSignature(
   if (unsignedHex(psbt) !== unsignedHex(expected))
     throw new Error('Pali changed the unsigned transaction');
   const input = psbt.data.inputs[0];
+  if (input.finalScriptSig?.length)
+    throw new Error('Unexpected native user scriptSig');
   if (!input.finalScriptWitness)
     throw new Error('Pali did not finalize its input');
   const items = witnessItems(input.finalScriptWitness);
@@ -208,6 +210,8 @@ export function verifyFixtureSignature(
 export function verifyCompletedSponsor(fixture: UtxoFixture, psbt: any) {
   const tx = psbt.extractTransaction();
   tx.ins.forEach((input: any, index: number) => {
+    if (input.script.length !== 0)
+      throw new Error('Unexpected completed native scriptSig');
     if (input.witness.length !== 2)
       throw new Error('Missing completed witness');
     const [encoded, pubkey] = input.witness,
