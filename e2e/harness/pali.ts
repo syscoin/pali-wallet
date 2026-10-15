@@ -58,11 +58,17 @@ export class PaliWallet {
       .locator('#app-root, #external-root')
       .first()
       .waitFor({ state: 'attached', timeout: 30_000 });
-    // The splash loader is removed once the store is rehydrated.
+    // The loader stays attached; app-loaded fades it out without display:none.
     await this.page
-      .locator('#initial-loader')
-      .waitFor({ state: 'hidden', timeout: 30_000 })
-      .catch(() => undefined);
+      .locator('body.app-loaded')
+      .waitFor({ state: 'attached', timeout: 30_000 });
+    await expect(this.page.locator('#initial-loader')).toHaveCSS(
+      'opacity',
+      '0',
+      {
+        timeout: 30_000,
+      }
+    );
   }
 
   // Wraps an action with timing, auto-screenshot and summary recording.
