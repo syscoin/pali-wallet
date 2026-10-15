@@ -95,6 +95,29 @@ describe('offline UTXO browser fixture', () => {
     ).toThrow();
   });
 
+  it.each(['missing', 'fingerprint', 'path', 'public key'])(
+    'rejects a response with %s sponsor derivation metadata',
+    async (mutation) => {
+      const f = createUtxoFixture();
+      const psbt = importFixturePsbt(await signWithCurrentKeyring(f));
+      const external = psbt.data.inputs[1];
+      if (mutation === 'missing') {
+        delete external.bip32Derivation;
+      } else if (mutation === 'fingerprint') {
+        external.bip32Derivation[0].masterFingerprint[0] ^= 1;
+      } else if (mutation === 'path') {
+        external.bip32Derivation[0].path = "m/84'/1'/1'/0/1";
+      } else {
+        external.bip32Derivation[0].pubkey = importFixturePsbt(
+          f.mixed
+        ).data.inputs[0].bip32Derivation[0].pubkey;
+      }
+      expect(() =>
+        verifyFixtureSignature(f, exportFixturePsbt(psbt), true)
+      ).toThrow('sponsor derivation metadata');
+    }
+  );
+
   it('passes the real keyring account-scope guard without authorizing the sponsor input', async () => {
     const f = createUtxoFixture(),
       psbt = importFixturePsbt(f.mixed);
@@ -105,7 +128,14 @@ describe('offline UTXO browser fixture', () => {
       network: { slip44: 1, currency: 'sys', chainId: 5700 },
     } as any);
     const signed = await f.signUserOffline(psbt);
-    verifyFixtureSignature(f, exportFixturePsbt(signed), true);
+    // This internal guard intentionally strips metadata. The public signPSBT
+    // response restores it and is checked by the shared browser verifier above.
+    expect(signed.data.inputs[1].bip32Derivation).toBeUndefined();
+    expect(signed.data.inputs[1].finalScriptWitness).toBeUndefined();
+    expect(signed.data.inputs[1].partialSig).toBeUndefined();
+    expect(verifyCompletedSponsor(f, f.finishSponsor(signed))).toMatch(
+      /^[0-9a-f]{64}$/
+    );
   });
 
   it('rejects changed outputs and an already signed sponsor input', async () => {

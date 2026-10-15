@@ -180,6 +180,25 @@ export function verifyFixtureSignature(
     ) {
       throw new Error('Pali signed the sponsor input');
     }
+    const derivations = external.bip32Derivation;
+    const expectedDerivations = expected.data.inputs[1].bip32Derivation;
+    if (
+      !expectedDerivations?.length ||
+      !derivations ||
+      derivations.length !== expectedDerivations.length ||
+      derivations.some((entry: any, index: number) => {
+        const original = expectedDerivations[index];
+        return (
+          entry.path !== original.path ||
+          !Buffer.from(entry.masterFingerprint).equals(
+            Buffer.from(original.masterFingerprint)
+          ) ||
+          !Buffer.from(entry.pubkey).equals(Buffer.from(original.pubkey))
+        );
+      })
+    ) {
+      throw new Error('Pali changed the sponsor derivation metadata');
+    }
   }
   return psbt;
 }

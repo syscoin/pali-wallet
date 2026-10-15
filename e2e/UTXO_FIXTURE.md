@@ -21,6 +21,10 @@ its valid fingerprint, public key and derivation path. An offline counterfactual
 proves that the unscoped HD signer signs both accounts. The current keyring must
 remove the out-of-account signing hints before signing, leave that input
 unsigned, and preserve its public metadata for the later cosigner.
+The shared browser response verifier compares the sponsor fingerprint, path and
+public key byte-for-byte with the original PSBT before the synthetic cosigner
+runs; missing or altered derivation metadata fails even when signatures remain
+valid.
 
 The existing `main.yml` conformance job selects this journey explicitly after
 building the extension. Its `PALI_TEST_DAPP_EXTENSION_PATH` and revision inputs
