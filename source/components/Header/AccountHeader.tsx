@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useSyncExternalStore,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -23,6 +24,21 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+
+// A dialog/route may disappear while the device RPC is still pending. Keep
+// this latch at renderer-module scope so a new AccountHeader cannot start a
+// second device prompt; UI cancellation only invalidates the result below.
+let hardwareVerificationRequest: object | undefined;
+const hardwareVerificationListeners = new Set<() => void>();
+const subscribeHardwareVerification = (listener: () => void) => {
+  hardwareVerificationListeners.add(listener);
+  return () => hardwareVerificationListeners.delete(listener);
+};
+const isHardwareVerificationPending = () =>
+  Boolean(hardwareVerificationRequest);
+const notifyHardwareVerification = () => {
+  hardwareVerificationListeners.forEach((listener) => listener());
+};
 
 export const AccountHeader: React.FC = () => {
   const currentAccount = useSelector(selectActiveAccount);
@@ -46,7 +62,10 @@ export const AccountHeader: React.FC = () => {
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const [copied, copy] = useCopyClipboard();
-  const [isLoading, setIsLoading] = useState(false);
+  const isLoading = useSyncExternalStore(
+    subscribeHardwareVerification,
+    isHardwareVerificationPending
+  );
   const [isOpenModal, setIsOpenModal] = useState(false);
   const verificationScope = JSON.stringify([
     activeAccount?.id,
@@ -70,19 +89,15 @@ export const AccountHeader: React.FC = () => {
     generation: 0,
     scope: verificationScope,
     mounted: true,
-    running: false,
   });
   // Invalidate synchronously on render, before an old device response can
   // settle between a selection change and its passive effect.
   if (verification.current.scope !== verificationScope) {
     verification.current.scope = verificationScope;
     verification.current.generation += 1;
-    verification.current.running = false;
   }
   const closeVerification = useCallback(() => {
     verification.current.generation += 1;
-    verification.current.running = false;
-    setIsLoading(false);
     setIsOpenModal(false);
   }, []);
   useEffect(() => {
@@ -98,7 +113,6 @@ export const AccountHeader: React.FC = () => {
     return () => {
       verification.current.mounted = false;
       verification.current.generation += 1;
-      verification.current.running = false;
       window.removeEventListener('hashchange', closeVerification);
       window.removeEventListener('popstate', closeVerification);
       window.removeEventListener('pagehide', closeVerification);
@@ -178,18 +192,18 @@ export const AccountHeader: React.FC = () => {
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
-    if (!isOpenModal || verification.current.running) return;
+    if (!isOpenModal || hardwareVerificationRequest) return;
+    const request = {};
+    hardwareVerificationRequest = request;
+    notifyHardwareVerification();
     const generation = ++verification.current.generation;
     const nativeUrl = window.location.href;
-    verification.current.running = true;
     const isCurrent = () =>
       verification.current.mounted &&
       verification.current.generation === generation &&
       verification.current.scope === verificationScope &&
       window.location.href === nativeUrl;
     try {
-      setIsLoading(true);
-
       // Route through ethereumTransaction.verifyUtxoAddress, which dispatches to the correct HW
       await (controllerEmitter as any)(
         ['wallet', 'ethereumTransaction', 'verifyUtxoAddress'],
@@ -212,9 +226,11 @@ export const AccountHeader: React.FC = () => {
 
       setIsOpenModal(false);
     } finally {
-      if (isCurrent()) {
-        verification.current.running = false;
-        setIsLoading(false);
+      // Only settlement of this exact RPC releases the device, even if its
+      // dialog was closed, the account changed, or the component unmounted.
+      if (hardwareVerificationRequest === request) {
+        hardwareVerificationRequest = undefined;
+        notifyHardwareVerification();
       }
     }
   }, [
@@ -230,8 +246,6 @@ export const AccountHeader: React.FC = () => {
   const handleHardwareAddressClick = useCallback(() => {
     if ((isLedger || isTrezor) && isBitcoinBased) {
       verification.current.generation += 1;
-      verification.current.running = false;
-      setIsLoading(false);
       setIsOpenModal(true);
     }
   }, [isLedger, isTrezor, isBitcoinBased]);

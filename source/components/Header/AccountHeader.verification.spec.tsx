@@ -18,6 +18,7 @@ const mockEmitter = jest.fn();
 const mockAlert = { success: jest.fn(), error: jest.fn(), info: jest.fn() };
 const mockCopy = jest.fn();
 const mockNavigate = jest.fn();
+let outstandingRequests: Array<() => void> = [];
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
@@ -81,6 +82,7 @@ afterAll(() => {
   globalThis.ResizeObserver = originalObserver;
 });
 beforeEach(() => {
+  outstandingRequests = [];
   window.history.replaceState(null, '', '#/home');
   mockLocation = { pathname: '/home', search: '', hash: '', key: 'home' };
   mockState = {
@@ -107,6 +109,9 @@ beforeEach(() => {
   mockEmitter.mockReset();
   Object.values(mockAlert).forEach((fn) => fn.mockReset());
 });
+afterEach(async () => {
+  await act(async () => outstandingRequests.forEach((resolve) => resolve()));
+});
 
 const deferred = () => {
   let resolve!: (value?: unknown) => void;
@@ -115,6 +120,7 @@ const deferred = () => {
     resolve = yes;
     reject = no;
   });
+  outstandingRequests.push(() => resolve());
   return { promise, resolve, reject };
 };
 const open = async () => {
@@ -152,7 +158,7 @@ it.each(['success', 'failure'])(
 );
 
 it.each(['success', 'failure'])(
-  'does not let an old %s close a reopened pending verification',
+  'does not start a reopened verification until the old %s settles',
   async (outcome) => {
     const user = userEvent.setup();
     const first = deferred();
@@ -165,7 +171,13 @@ it.each(['success', 'failure'])(
     await user.click(
       within(firstDialog).getByRole('button', { name: 'buttons.cancel' })
     );
-    const nextDialog = await start(user);
+    const nextDialog = await open();
+    const verify = within(nextDialog).getByRole('button', {
+      name: 'buttons.verify',
+    }) as HTMLButtonElement;
+    expect(verify.disabled).toBe(true);
+    await user.click(verify);
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
     await act(async () => {
       if (outcome === 'success') first.resolve();
       else first.reject(new Error('old device error'));
@@ -180,6 +192,9 @@ it.each(['success', 'failure'])(
     ).toBe(false);
     expect(mockAlert.success).not.toHaveBeenCalled();
     expect(mockAlert.error).not.toHaveBeenCalled();
+    expect(verify.disabled).toBe(false);
+    await user.click(verify);
+    expect(mockEmitter).toHaveBeenCalledTimes(2);
     await act(async () => second.resolve());
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(mockAlert.success).toHaveBeenCalledWith('home.addressVerified');
@@ -240,6 +255,15 @@ it.each(['account', 'network', 'route', 'switching'])(
     }
     view.rerender(<AccountHeader />);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    if (change !== 'switching') {
+      const nextDialog = await open();
+      const verify = within(nextDialog).getByRole('button', {
+        name: 'buttons.verify',
+      }) as HTMLButtonElement;
+      expect(verify.disabled).toBe(true);
+      await user.click(verify);
+      expect(mockEmitter).toHaveBeenCalledTimes(1);
+    }
     await act(async () => request.resolve());
     expect(mockAlert.success).not.toHaveBeenCalled();
     expect(mockAlert.error).not.toHaveBeenCalled();
@@ -271,6 +295,36 @@ it('ignores a result after unmount without cancelling or retrying the device req
   await act(async () => request.resolve());
   expect(mockAlert.success).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('retains the device latch across unmount/remount and permits a fresh retry only after settlement', async () => {
+  const user = userEvent.setup();
+  const first = deferred();
+  const second = deferred();
+  mockEmitter
+    .mockReturnValueOnce(first.promise)
+    .mockReturnValueOnce(second.promise);
+  const oldView = render(<AccountHeader />);
+  await start(user);
+  oldView.unmount();
+  render(<AccountHeader />);
+  const dialog = await open();
+  const verify = within(dialog).getByRole('button', {
+    name: 'buttons.verify',
+  }) as HTMLButtonElement;
+  expect(verify.disabled).toBe(true);
+  await user.click(verify);
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  await act(async () => first.resolve());
+  expect(mockAlert.success).not.toHaveBeenCalled();
+  expect(mockAlert.error).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog')).toBe(dialog);
+  expect(verify.disabled).toBe(false);
+  await user.click(verify);
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  await act(async () => second.resolve());
+  expect(mockAlert.success).toHaveBeenCalledWith('home.addressVerified');
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it.each([
