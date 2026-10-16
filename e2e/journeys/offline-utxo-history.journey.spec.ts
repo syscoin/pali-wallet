@@ -294,7 +294,9 @@ test('offline UTXO history: bridge value, native account change and pending deta
             /^[+−]0\.100000 SYSX$/
           )
         ).toHaveCount(0);
-        await expectBlankAmount(pending.txid);
+        await expect(
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
+        ).toBeVisible();
         for (const txid of [
           compactBridgeNativeOffset.txid,
           compactBridgeWithAccountAsset.txid,
@@ -342,7 +344,9 @@ test('offline UTXO history: bridge value, native account change and pending deta
             exact: true,
           })
         ).toBeVisible();
-        await expectBlankAmount(pending.txid);
+        await expect(
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
+        ).toBeVisible();
         expect(fullTransactionReads()).toEqual([
           '/api/v2/tx/' + compactBridgeNativeOffset.txid,
         ]);
@@ -407,7 +411,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         );
         await back();
         await expect(
-          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
         ).toBeVisible();
         expect(
           fullTransactionReads().filter(
@@ -422,7 +426,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         ).toBeVisible();
         await back();
         await expect(
-          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
         ).toBeVisible();
         expect(fullTransactionReads()).toHaveLength(3);
         expect(routes.deniedWrites).toEqual([]);
@@ -442,6 +446,9 @@ test('offline UTXO history: bridge value, native account change and pending deta
           compactAccountAssetSatoshis: '10000000',
           fullBridgeOperationSatoshis: '200000000',
           fullBridgeOperationOverridesAccountQuantity: true,
+          nativeListAmountIsSignedWalletMovement: true,
+          pendingSelfWalletMovementSatoshis: '-226',
+          pendingDetailsOutputIntentSatoshis: '9999774',
           missingAmountsRemainBlank: true,
           detailsCacheReusedAfterBack: true,
           fullTransactionReads: fullTransactionReads(),

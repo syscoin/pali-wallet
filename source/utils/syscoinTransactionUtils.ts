@@ -40,9 +40,17 @@ export const getSyscoinAccountChange = (transaction: {
   addressValueIn?: string;
   addressValueOut?: string;
 }): string | null => {
-  if (getSyscoinAccountDelta(transaction) === null) return null;
-  return BigNumber.from(String(transaction?.addressValueOut ?? '0'))
-    .sub(String(transaction?.addressValueIn ?? '0'))
+  const atomic = (value: unknown) =>
+    (typeof value === 'string' ||
+      (typeof value === 'number' && Number.isSafeInteger(value))) &&
+    /^\d+$/.test(String(value));
+  if (
+    !atomic(transaction?.addressValueIn) ||
+    !atomic(transaction?.addressValueOut)
+  )
+    return null;
+  return BigNumber.from(String(transaction.addressValueOut))
+    .sub(String(transaction.addressValueIn))
     .toString();
 };
 
@@ -444,8 +452,8 @@ export const isSyscoinTokenOperation = (transaction: any): boolean => {
 
 /**
  * A native transfer/output value, not the account's fee-inclusive balance delta.
- * Compact value/valueIn are account aliases. Wholly owned funding must be
- * established by the account summary or the full input/output amounts.
+ * Compact value/valueIn are account aliases; only full input/output arrays can
+ * prove that a spend is wholly funded by this account.
  */
 export const getSyscoinNativeTransferAmount = (
   account: any,
@@ -485,20 +493,6 @@ export const getSyscoinNativeTransferAmount = (
             kind: 'received',
           }
         : null;
-    }
-    const compact =
-      (full.vin === undefined ||
-        (Array.isArray(full.vin) && full.vin.length === 0)) &&
-      (full.vout === undefined ||
-        (Array.isArray(full.vout) && full.vout.length === 0));
-    if (compact) {
-      if (account.accountOwnsAllInputs !== true) return null;
-      const fee = atomic(account.fees);
-      if (accountIn.lte(fee) || accountOut.gt(accountIn.sub(fee))) return null;
-      const external = accountIn.sub(accountOut).sub(fee);
-      return external.gt(0)
-        ? { amount: external.toString(), direction: 'sent', kind: 'external' }
-        : { amount: accountOut.toString(), kind: 'self', outputTotal: true };
     }
     if (
       !Array.isArray(full.vin) ||

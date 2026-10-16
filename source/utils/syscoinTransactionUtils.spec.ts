@@ -174,81 +174,6 @@ describe('getSyscoinNativeTransferAmount', () => {
       getSyscoinNativeTransferAmount({ ...account, addressValueIn: undefined })
     ).toBeNull();
   });
-  it('uses explicit account input ownership for a compact external spend', () => {
-    expect(
-      getSyscoinNativeTransferAmount({
-        ...account,
-        accountOwnsAllInputs: true,
-        addressValueOut: '30000000',
-        direction: 'received',
-      })
-    ).toEqual({ amount: '70000000', direction: 'sent', kind: 'external' });
-  });
-  it('uses compact ownership for a self output total without guessing output count', () => {
-    expect(
-      getSyscoinNativeTransferAmount({ ...account, accountOwnsAllInputs: true })
-    ).toEqual({ amount: '100000000', kind: 'self', outputTotal: true });
-  });
-  it.each([undefined, false, 'true', 1, null])(
-    'does not replace ownership evidence with a truthy flag %j or direction',
-    (accountOwnsAllInputs) => {
-      expect(
-        getSyscoinNativeTransferAmount({
-          ...account,
-          accountOwnsAllInputs,
-          direction: 'sent',
-        })
-      ).toBeNull();
-    }
-  );
-  it.each([
-    { fees: undefined },
-    { fees: '-1' },
-    { fees: '0.5' },
-    { addressValueOut: '100000001' },
-    { addressValueIn: '226', addressValueOut: '0' },
-    { addressValueIn: Number.MAX_SAFE_INTEGER + 1 },
-    { addressValueOut: '1e8' },
-  ])('rejects inconsistent compact amounts %j', (changes) => {
-    expect(
-      getSyscoinNativeTransferAmount({
-        ...account,
-        accountOwnsAllInputs: true,
-        ...changes,
-      })
-    ).toBeNull();
-  });
-  it('does not borrow ownership from cached chain details', () => {
-    expect(
-      getSyscoinNativeTransferAmount(account, {
-        ...account,
-        accountOwnsAllInputs: true,
-      })
-    ).toBeNull();
-  });
-  it('does not let a compact flag override contradictory or partial full details', () => {
-    const owned = { ...account, accountOwnsAllInputs: true };
-    expect(
-      getSyscoinNativeTransferAmount(owned, { ...full, fees: '227' })
-    ).toBeNull();
-    expect(
-      getSyscoinNativeTransferAmount(owned, { ...full, vout: [] })
-    ).toBeNull();
-    expect(
-      getSyscoinNativeTransferAmount(owned, { ...full, vin: null, vout: null })
-    ).toBeNull();
-  });
-  it('keeps compact atomic amounts exact beyond safe JavaScript integers', () => {
-    expect(
-      getSyscoinNativeTransferAmount({
-        ...account,
-        accountOwnsAllInputs: true,
-        fees: '1',
-        addressValueIn: '9007199254740993',
-        addressValueOut: '9007199254740992',
-      })
-    ).toEqual({ amount: '9007199254740992', kind: 'self', outputTotal: true });
-  });
   it.each([
     [{ addressValueIn: '50000000' }, {}],
     [{ addressValueOut: '100000001' }, {}],
@@ -324,6 +249,36 @@ describe('getSyscoinAccountDelta', () => {
       );
     }
   );
+});
+
+describe('getSyscoinAccountChange compact native Activity values', () => {
+  it.each([
+    ['100000226', '30000000', '-70000226'],
+    ['100000226', '100000000', '-226'],
+    ['0', '100000000', '100000000'],
+    ['680', '10000000', '9999320'],
+    ['0', '0', '0'],
+    ['9007199254740993', '9007199254740992', '-1'],
+  ])(
+    'uses out minus in directly, including fees: %s %s',
+    (addressValueIn, addressValueOut, expected) => {
+      expect(getSyscoinAccountChange({ addressValueIn, addressValueOut })).toBe(
+        expected
+      );
+    }
+  );
+  it.each([
+    {},
+    { addressValueIn: '0' },
+    { addressValueOut: '100000000' },
+    { addressValueIn: '-1', addressValueOut: '100' },
+    { addressValueIn: '1e8', addressValueOut: '100' },
+    { addressValueIn: '0.5', addressValueOut: '100' },
+    { addressValueIn: '0x01', addressValueOut: '100' },
+    { addressValueIn: Number.MAX_SAFE_INTEGER + 1, addressValueOut: '100' },
+  ])('leaves incomplete or malformed account totals unresolved %j', (tx) => {
+    expect(getSyscoinAccountChange(tx as any)).toBeNull();
+  });
 });
 
 describe('getSyscoinOperationAmount', () => {
