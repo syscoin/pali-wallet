@@ -749,10 +749,13 @@ const VaultState = createSlice({
               networkType === TransactionsType.Syscoin &&
               localAcknowledgedInputs
             ) {
-              currentUserTransactions[existingTxIndex] = mergeKnownMinedReceipt(
-                existingTxAny,
-                transactionAny
-              ) as any;
+              // The local ACK row is only a compact placeholder. History may
+              // have indexed this tx first, so attach the local fence without
+              // replacing its values, inputs/outputs, asset data or receipt.
+              currentUserTransactions[existingTxIndex] = {
+                ...existingTxAny,
+                localAcknowledgedInputs,
+              } as any;
             } else if (isSmartAccountExecution) {
               currentUserTransactions[existingTxIndex] = {
                 ...mergeKnownMinedReceipt(existingTxAny, transactionAny),

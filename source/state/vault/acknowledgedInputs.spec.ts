@@ -107,6 +107,106 @@ describe('compact local UTXO acknowledgement history', () => {
     expect(rows(local)[0].localAcknowledgedInputs).toEqual(acknowledged);
   });
 
+  it.each([
+    ['native', {}],
+    [
+      'SPT',
+      {
+        version: 128,
+        tokenType: 'SPTAssetAllocationSend',
+        tokenTransfers: [
+          {
+            type: 'SPT',
+            standard: 'SPT',
+            contract: '123456',
+            assetGuid: '123456',
+            symbol: 'SYSX',
+            decimals: 8,
+            value: '100000000',
+          },
+        ],
+        accountAssetTransfers: [
+          {
+            assetGuid: '123456',
+            symbol: 'SYSX',
+            decimals: 8,
+            value: '100000000',
+          },
+        ],
+      },
+    ],
+  ])(
+    'attaches an ACK without overwriting an already indexed rich %s row',
+    (_kind, assetFields) => {
+      const indexed = transaction({
+        blockTime: 123,
+        fees: '226',
+        hex: '0200000001',
+        value: '6547335',
+        valueIn: '6547561',
+        vin: [
+          {
+            txid: '22'.repeat(32),
+            vout: 0,
+            addresses: ['owned-input'],
+            value: '6547561',
+            isOwn: true,
+          },
+        ],
+        vout: [
+          {
+            n: 0,
+            addresses: ['recipient'],
+            value: '6547335',
+            isOwn: false,
+          },
+        ],
+        direction: 'sent',
+        addressValueIn: '6547561',
+        addressValueOut: '0',
+        ...assetFields,
+      });
+      const observed = insert(initial(), indexed);
+      const local = insert(
+        observed,
+        transaction({ fees: '0', value: '0', valueIn: '0' }),
+        acknowledged
+      );
+
+      expect(rows(local)).toHaveLength(1);
+      expect(rows(local)[0]).toEqual({
+        ...indexed,
+        localAcknowledgedInputs: acknowledged,
+      });
+      expect(rows(observed)[0]).toEqual(indexed);
+    }
+  );
+
+  it('attaches an ACK without downgrading an already mined row', () => {
+    const mined = transaction({
+      confirmations: 3,
+      blockHeight: 42,
+      blockHash: '33'.repeat(32),
+      blockTime: 123,
+      fees: '226',
+      value: '6547335',
+      valueIn: '6547561',
+      vin: [{ txid: '22'.repeat(32), vout: 0, value: '6547561' }],
+      vout: [{ n: 0, value: '6547335' }],
+    });
+    const observed = insert(initial(), mined);
+    const local = insert(
+      observed,
+      transaction({ fees: '0', value: '0', valueIn: '0' }),
+      acknowledged
+    );
+
+    expect(rows(local)[0]).toEqual({
+      ...mined,
+      localAcknowledgedInputs: acknowledged,
+    });
+  });
+
   it('retains only compact public metadata through ordinary JSON persistence', () => {
     const local = insert(initial(), transaction(), acknowledged);
     const restored = JSON.parse(JSON.stringify(local));
