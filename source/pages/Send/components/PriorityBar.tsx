@@ -44,11 +44,25 @@ export const PriorityBar = ({
   };
 
   return (
-    <div className="flex items-center justify-between w-60 max-w-xs border-b-2 border-brand-blue400">
+    <div
+      role="group"
+      aria-label={t('send.editFee')}
+      className="grid w-full grid-cols-3 gap-1 rounded-xl bg-surface-base p-1"
+    >
       {Object.entries(values).map(([key, value]) => (
-        <div key={key} onClick={() => onClick(Number(key))}>
-          <Ball selected={Number(key) === priority} label={value} />
-        </div>
+        <button
+          type="button"
+          key={key}
+          aria-pressed={Number(key) === priority}
+          onClick={() => onClick(Number(key))}
+          className={`min-h-[44px] min-w-0 rounded-lg px-2 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-primary ${
+            Number(key) === priority
+              ? 'bg-accent-primary text-surface-base'
+              : 'text-content-primary hover:bg-surface-overlay'
+          }`}
+        >
+          {value}
+        </button>
       ))}
     </div>
   );

@@ -91,7 +91,7 @@ module.exports = {
         pill: '9999px',
       },
       fontFamily: {
-        poppins: 'Poppins',
+        poppins: ['Poppins', 'system-ui', 'sans-serif'],
         rubik: 'Rubik',
       },
       fontSize: {

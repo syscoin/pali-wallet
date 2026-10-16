@@ -1,9 +1,19 @@
 import { Dialog } from '@headlessui/react';
+import { GlobeAltIcon } from '@heroicons/react/outline';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import {
+  CenterPanel,
+  DialogActionButton,
+  DialogActions,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogPrimitive,
+} from 'components/Dialog/Dialog';
 import { EditIconSvg } from 'components/Icon/Icon';
 import { Button, Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -93,6 +103,8 @@ const ConnectedSites = () => {
               </div>
 
               <IconButton
+                aria-label={t('settings.editConnection')}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 disabled={disconnectingHost === _dapp.host}
                 onClick={() => setSelected(_dapp)}
               >
@@ -103,93 +115,75 @@ const ConnectedSites = () => {
         </ul>
 
         {selected && (
-          <Dialog
-            as="div"
-            className="fixed z-10 inset-0 text-center overflow-y-auto"
-            open={Boolean(selected)}
-            onClose={() => setSelected(undefined)}
-          >
-            <div
-              className={`fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-opacity duration-200 ${
-                selected ? 'opacity-100' : 'opacity-0'
-              }`}
-            />
+          <DialogPrimitive show onClose={() => setSelected(undefined)}>
+            <CenterPanel
+              padded={false}
+              scroll={false}
+              className="flex flex-col"
+            >
+              <DialogHeader
+                title={t('settings.editConnection')}
+                icon={<GlobeAltIcon />}
+                onClose={() => setSelected(undefined)}
+              />
+              <DialogBody>
+                <Dialog.Description className="mb-3 text-content-secondary text-sm">
+                  {t('settings.deleteConnected')}:
+                </Dialog.Description>
 
-            <div className="px-4 min-h-screen">
-              <Dialog.Overlay className="fixed inset-0" />
+                <div className="flex min-w-0 items-center justify-between gap-3 text-content-primary">
+                  <p className="min-w-0 break-all">{selected.host}</p>
 
-              <span
-                className="inline-block align-middle h-screen"
-                aria-hidden="true"
-              >
-                &#8203;
-              </span>
-              <div
-                className={`inline-block align-middle my-8 py-6 w-full max-w-2xl text-left font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-transform duration-200 ${
-                  selected ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-                }`}
-              >
-                <Dialog.Title
-                  as="h3"
-                  className="pb-3 text-center text-brand-white text-lg font-medium leading-6 border-b border-dashed border-brand-white"
-                >
-                  {t('settings.editConnection')}
-                </Dialog.Title>
-                <div className="my-4">
-                  <p className="m-3 text-brand-white text-sm">
-                    {t('settings.deleteConnected')}:
-                  </p>
-
-                  <div className="flex items-center justify-between m-3 text-brand-white">
-                    <p>{truncate(selected.host, 35)}</p>
-
-                    <IconButton
-                      disabled={disconnectingHost === selected.host}
-                      onClick={disconnectSelected}
-                    >
-                      {disconnectingHost === selected.host ? (
-                        <span className="text-xs text-brand-graylight">
-                          Removing...
-                        </span>
-                      ) : (
-                        <Icon name="delete" />
-                      )}
-                    </IconButton>
-                  </div>
-
-                  <div className="p-4 bg-bkg-3">
-                    <p className="mb-3 text-brand-white">
-                      {t('settings.permissions')}
-                    </p>
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-brand-white text-xs">
-                        {accounts[selected.accountType]?.[selected.accountId]
-                          ?.label || `Account ${selected.accountId + 1}`}
-                      </p>
-
-                      <p className="text-brand-white text-xs">
-                        {ellipsis(
-                          accounts[selected.accountType]?.[selected.accountId]
-                            ?.address
-                        )}
-                      </p>
-                    </div>
-                  </div>
+                  <IconButton
+                    aria-label={t('settings.deleteConnected')}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-alpha-whiteAlpha200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    disabled={disconnectingHost === selected.host}
+                    onClick={disconnectSelected}
+                  >
+                    {disconnectingHost === selected.host ? (
+                      <span className="text-xs text-brand-graylight">
+                        Removing...
+                      </span>
+                    ) : (
+                      <Icon name="delete" />
+                    )}
+                  </IconButton>
                 </div>
 
-                <div className="mt-4 text-center">
-                  <button
+                <div className="mt-4 rounded-card p-4 bg-surface-elevated">
+                  <p className="mb-3 text-brand-white">
+                    {t('settings.permissions')}
+                  </p>
+
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <p className="break-words text-brand-white text-xs">
+                      {accounts[selected.accountType]?.[selected.accountId]
+                        ?.label || `Account ${selected.accountId + 1}`}
+                    </p>
+
+                    <p className="break-all text-brand-white text-xs">
+                      {ellipsis(
+                        accounts[selected.accountType]?.[selected.accountId]
+                          ?.address
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </DialogBody>
+
+              <DialogFooter>
+                <DialogActions>
+                  <DialogActionButton
                     type="button"
-                    className="transparent inline-flex justify-center px-12 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-white bg-repeat border border-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+                    tone="secondary"
                     onClick={() => setSelected(undefined)}
                   >
                     {t('buttons.close')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </Dialog>
+                  </DialogActionButton>
+                </DialogActions>
+              </DialogFooter>
+            </CenterPanel>
+          </DialogPrimitive>
         )}
 
         <div className="w-full px-4 absolute bottom-12 md:static">

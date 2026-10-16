@@ -1,5 +1,16 @@
 import { Dialog as HeadlessDialog } from '@headlessui/react';
-import React, { ReactNode } from 'react';
+import { InformationCircleIcon, XIcon } from '@heroicons/react/outline';
+import React, {
+  forwardRef,
+  ReactNode,
+  RefObject,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { Button, IButtonProps } from 'components/Button';
 
 // ---------------------------------------------------------------------------
 // Dialog primitive
@@ -27,6 +38,7 @@ export interface IDialogPrimitiveProps {
   children: ReactNode;
   /** Extra classes on the root (e.g. legacy callers passing positioning). */
   className?: string;
+  initialFocus?: RefObject<HTMLElement>;
   onClose?: (value?: any) => any;
   /** 'transparent' keeps the page visible (status toasts). */
   overlay?: 'dark' | 'transparent';
@@ -39,6 +51,7 @@ export interface IDialogPrimitiveProps {
 export const DialogPrimitive = ({
   children,
   className = '',
+  initialFocus,
   onClose,
   overlay = 'dark',
   presentation = 'center',
@@ -57,9 +70,10 @@ export const DialogPrimitive = ({
   return (
     <HeadlessDialog
       as="div"
-      className={`fixed ${zIndexClassName} inset-0 overflow-y-auto ${className}`}
+      className={`fixed ${zIndexClassName} inset-0 overflow-y-auto font-poppins text-content-primary ${className}`}
       open={Boolean(show)}
       onClose={handleClose}
+      initialFocus={initialFocus}
     >
       <div
         className={`fixed z-0 -inset-0 w-full ${overlayClass} ${
@@ -68,18 +82,11 @@ export const DialogPrimitive = ({
       />
 
       {presentation === 'center' ? (
-        <div className="px-4 min-h-screen text-center">
+        <div className="flex min-h-screen items-center justify-center px-4 py-4 text-center">
           <HeadlessDialog.Overlay className="fixed inset-0" />
 
-          <span
-            className="inline-block align-middle h-screen"
-            aria-hidden="true"
-          >
-            &#8203;
-          </span>
-
           <div
-            className={`transition-transform duration-200 ${
+            className={`relative flex w-full justify-center transition-transform duration-200 motion-reduce:transition-none ${
               show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
             }`}
           >
@@ -87,11 +94,11 @@ export const DialogPrimitive = ({
           </div>
         </div>
       ) : (
-        <div className="min-h-screen text-center flex flex-col align-bottom justify-end items-center">
+        <div className="flex min-h-screen flex-col items-center justify-end px-4 py-4 text-center">
           <HeadlessDialog.Overlay className="fixed inset-0" />
 
           <div
-            className={`animate-slideIn transition-transform duration-200 ${
+            className={`relative flex w-full justify-center animate-slideIn transition-transform duration-200 motion-reduce:transition-none ${
               show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
             }`}
           >
@@ -107,8 +114,13 @@ export const DialogPrimitive = ({
 
 /** Header band for 'sheet' dialogs (the colored top strip). */
 export const SheetHeader = ({ title }: { title: string }) => (
-  <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
-    <h1 className="text-white font-medium text-base">{title}</h1>
+  <div className="w-full border-b border-alpha-whiteAlpha300 px-5 py-4">
+    <HeadlessDialog.Title
+      as="h2"
+      className="text-lg font-medium leading-6 text-content-primary"
+    >
+      {title}
+    </HeadlessDialog.Title>
   </div>
 );
 
@@ -120,27 +132,57 @@ export const SheetPanel = ({
   children: ReactNode;
   fullWidth?: boolean;
 }) => (
-  <div
-    className={`rounded-t-[50px] ${
-      fullWidth ? 'w-screen' : ''
-    } flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md`}
+  <HeadlessDialog.Panel
+    className={`relative max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-alpha-whiteAlpha300 bg-surface-raised text-content-primary shadow-xl ${
+      fullWidth ? 'w-full' : 'w-[min(28rem,100%)]'
+    } flex flex-col items-center`}
   >
     {children}
-  </div>
+  </HeadlessDialog.Panel>
 );
 
 /** Title for 'center' dialogs (keeps headlessui aria wiring). */
 export const CenterTitle = ({ children }: { children: ReactNode }) => (
   <HeadlessDialog.Title
-    as="h3"
-    className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
+    as="h2"
+    className="mb-4 border-b border-alpha-whiteAlpha300 pb-4 text-lg font-medium leading-6 text-content-primary"
   >
     {children}
   </HeadlessDialog.Title>
 );
 
 /** Standard centered card panel. */
-export const CenterPanel = ({
+interface ICenterPanelProps {
+  'aria-busy'?: boolean;
+  children: ReactNode;
+  className?: string;
+  'data-testid'?: string;
+  padded?: boolean;
+  scroll?: boolean;
+  tabIndex?: number;
+}
+
+export const CenterPanel = forwardRef<HTMLDivElement, ICenterPanelProps>(
+  (
+    { children, className = '', padded = true, scroll = true, ...props },
+    ref
+  ) => (
+    <HeadlessDialog.Panel
+      {...props}
+      ref={ref}
+      className={`relative w-full max-w-md max-h-[calc(100dvh-2rem)] rounded-3xl border border-alpha-whiteAlpha300 bg-surface-raised font-poppins text-center text-content-primary shadow-xl ${
+        padded ? 'p-5' : ''
+      } ${
+        scroll ? 'overflow-y-auto overscroll-contain' : 'overflow-hidden'
+      } ${className}`}
+    >
+      {children}
+    </HeadlessDialog.Panel>
+  )
+);
+CenterPanel.displayName = 'CenterPanel';
+
+export const DialogActions = ({
   children,
   className = '',
 }: {
@@ -148,8 +190,133 @@ export const CenterPanel = ({
   className?: string;
 }) => (
   <div
-    className={`inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all ${className}`}
+    className={`flex w-full flex-wrap items-stretch justify-center gap-3 [&>button]:min-w-0 [&>button]:flex-1 ${className}`}
   >
     {children}
   </div>
+);
+
+interface IDialogActionButtonProps extends Omit<IButtonProps, 'variant'> {
+  tone?: 'primary' | 'secondary' | 'danger';
+}
+
+export const DialogActionButton = forwardRef<
+  HTMLButtonElement,
+  IDialogActionButtonProps
+>(({ tone = 'primary', className = '', ...props }, ref) => (
+  <Button
+    {...props}
+    ref={ref}
+    variant={
+      tone === 'secondary' ? 'ghost' : tone === 'danger' ? 'danger' : 'primary'
+    }
+    className={`!h-auto min-h-[44px] px-4 py-3 !text-sm hover:!scale-100 active:!scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-primary motion-reduce:transition-none ${
+      tone === 'primary'
+        ? '!text-surface-base hover:!bg-accent-primary [&_svg]:!text-surface-base'
+        : tone === 'danger'
+        ? '!border-[#a62218] !bg-[#a62218] !text-white hover:!bg-[#8c1d14]'
+        : '!border-accent-primary !text-content-primary hover:!bg-surface-overlay'
+    } ${className}`}
+  />
+));
+DialogActionButton.displayName = 'DialogActionButton';
+
+export const DialogCloseButton = ({
+  onClick,
+  disabled = false,
+  className = '',
+}: {
+  className?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) => {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      aria-label={t('buttons.close')}
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-content-muted transition-colors hover:bg-surface-overlay hover:text-content-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-content-primary disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none ${className}`}
+    >
+      <XIcon aria-hidden="true" className="h-5 w-5" />
+    </button>
+  );
+};
+
+export const DialogHeader = ({
+  title,
+  icon,
+  onClose,
+  disabled = false,
+  className = '',
+}: {
+  className?: string;
+  disabled?: boolean;
+  icon?: ReactNode;
+  onClose?: () => void;
+  title: ReactNode;
+}) => (
+  <header
+    className={`flex shrink-0 items-center gap-3 border-b border-alpha-whiteAlpha300 px-5 py-4 text-left ${className}`}
+  >
+    <span
+      aria-hidden="true"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-surface-overlay text-content-primary [&>svg]:h-6 [&>svg]:w-6"
+    >
+      {icon || <InformationCircleIcon />}
+    </span>
+    <HeadlessDialog.Title
+      as="h2"
+      className="min-w-0 flex-1 break-words text-lg font-medium leading-6 text-content-primary"
+    >
+      {title}
+    </HeadlessDialog.Title>
+    {onClose && <DialogCloseButton onClick={onClose} disabled={disabled} />}
+  </header>
+);
+
+export const DialogBody = ({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) => {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+  useLayoutEffect(() => {
+    const element = bodyRef.current;
+    if (!element) return;
+    const measure = () =>
+      setScrollable(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [children]);
+  return (
+    <div
+      ref={bodyRef}
+      tabIndex={scrollable ? 0 : undefined}
+      className={`min-h-0 overflow-y-auto overscroll-contain px-5 py-5 text-left text-sm leading-relaxed text-content-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-content-primary ${className}`}
+    >
+      {children}
+    </div>
+  );
+};
+
+export const DialogFooter = ({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) => (
+  <footer
+    className={`shrink-0 space-y-4 border-t border-alpha-whiteAlpha300 px-5 py-4 ${className}`}
+  >
+    {children}
+  </footer>
 );

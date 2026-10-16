@@ -1,5 +1,11 @@
 import { toSvg } from 'jdenticon';
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -42,6 +48,62 @@ export const AccountHeader: React.FC = () => {
   const [copied, copy] = useCopyClipboard();
   const [isLoading, setIsLoading] = useState(false);
   const [isOpenModal, setIsOpenModal] = useState(false);
+  const verificationScope = JSON.stringify([
+    activeAccount?.id,
+    activeAccount?.type,
+    currentAccount?.address,
+    currentAccount?.xpub,
+    isBitcoinBased,
+    activeNetwork.kind,
+    activeNetwork.chainId,
+    activeNetwork.url,
+    activeNetwork.currency,
+    activeNetwork.slip44,
+    networkStatus,
+    isSwitchingAccount,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.key,
+  ]);
+  const verification = useRef({
+    generation: 0,
+    scope: verificationScope,
+    mounted: true,
+    running: false,
+  });
+  // Invalidate synchronously on render, before an old device response can
+  // settle between a selection change and its passive effect.
+  if (verification.current.scope !== verificationScope) {
+    verification.current.scope = verificationScope;
+    verification.current.generation += 1;
+    verification.current.running = false;
+  }
+  const closeVerification = useCallback(() => {
+    verification.current.generation += 1;
+    verification.current.running = false;
+    setIsLoading(false);
+    setIsOpenModal(false);
+  }, []);
+  useEffect(() => {
+    closeVerification();
+  }, [verificationScope, closeVerification]);
+  useEffect(() => {
+    verification.current.mounted = true;
+    // A native hash change can precede React Router's next render. Closing
+    // only discards this UI request; it does not cancel device activity.
+    window.addEventListener('hashchange', closeVerification);
+    window.addEventListener('popstate', closeVerification);
+    window.addEventListener('pagehide', closeVerification);
+    return () => {
+      verification.current.mounted = false;
+      verification.current.generation += 1;
+      verification.current.running = false;
+      window.removeEventListener('hashchange', closeVerification);
+      window.removeEventListener('popstate', closeVerification);
+      window.removeEventListener('pagehide', closeVerification);
+    };
+  }, [closeVerification]);
 
   const isLedger = useMemo(
     () => activeAccount?.type === KeyringAccountType.Ledger,
@@ -116,6 +178,15 @@ export const AccountHeader: React.FC = () => {
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
+    if (!isOpenModal || verification.current.running) return;
+    const generation = ++verification.current.generation;
+    const nativeUrl = window.location.href;
+    verification.current.running = true;
+    const isCurrent = () =>
+      verification.current.mounted &&
+      verification.current.generation === generation &&
+      verification.current.scope === verificationScope &&
+      window.location.href === nativeUrl;
     try {
       setIsLoading(true);
 
@@ -126,10 +197,11 @@ export const AccountHeader: React.FC = () => {
         300000 // 5 minutes timeout for hardware wallet operations
       );
 
-      setIsLoading(false);
+      if (!isCurrent()) return;
       setIsOpenModal(false);
       alert.success(t('home.addressVerified'));
     } catch (error: any) {
+      if (!isCurrent()) return;
       // Handle user cancellation - show specific message
       if (isUserCancellationError(error)) {
         alert.error(t('home.verificationDeniedByUser'));
@@ -139,7 +211,11 @@ export const AccountHeader: React.FC = () => {
       }
 
       setIsOpenModal(false);
-      setIsLoading(false);
+    } finally {
+      if (isCurrent()) {
+        verification.current.running = false;
+        setIsLoading(false);
+      }
     }
   }, [
     activeAccount?.id,
@@ -147,11 +223,15 @@ export const AccountHeader: React.FC = () => {
     activeNetwork.slip44,
     alert,
     t,
-    isLedger,
+    isOpenModal,
+    verificationScope,
   ]);
 
   const handleHardwareAddressClick = useCallback(() => {
     if ((isLedger || isTrezor) && isBitcoinBased) {
+      verification.current.generation += 1;
+      verification.current.running = false;
+      setIsLoading(false);
       setIsOpenModal(true);
     }
   }, [isLedger, isTrezor, isBitcoinBased]);
@@ -187,9 +267,10 @@ export const AccountHeader: React.FC = () => {
         })}
         buttonText={t('buttons.verify')}
         onClick={handleVerifyAddress}
-        onClose={() => setIsOpenModal(false)}
+        onClose={closeVerification}
         show={isOpenModal}
         isButtonLoading={isLoading}
+        allowCloseWhileLoading
       />
       <div className="flex ml-[15px] items-center w-full text-brand-white">
         <Tooltip content={t('home.viewOnExplorer')}>

@@ -1,8 +1,16 @@
+import { AdjustmentsIcon } from '@heroicons/react/outline';
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from 'components/index';
+import {
+  CenterPanel,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  DialogActions,
+  DialogActionButton,
+} from 'components/Dialog';
 import { EditFeeModalBase } from 'components/Modal/EditFeeModalBase';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import removeScientificNotation from 'utils/removeScientificNotation';
@@ -49,6 +57,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     return 1; // Default to medium
   });
   const { t } = useTranslation();
+  const fieldId = useId();
   const [form] = Form.useForm();
 
   // Validation states for visual feedback
@@ -567,208 +576,103 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
   return (
     <EditFeeModalBase show={showModal} onClose={handleClose}>
-      <div className="inline-block align-middle w-screen max-w-md mx-auto text-brand-white font-poppins bg-brand-blue500 rounded-t-[50px] shadow-xl transform transition-all">
-        <div className="flex flex-col items-center justify-center w-full h-full">
-          <div className="flex py-4 justify-center w-full rounded-t-[50px] bg-[#1c3255]">
-            <p className="text-center font-poppins text-base font-medium uppercase">
-              {t('send.editFee')}
-            </p>
+      <CenterPanel padded={false} scroll={false} className="flex flex-col">
+        <DialogHeader
+          title={t('send.editFee')}
+          icon={<AdjustmentsIcon />}
+          onClose={handleClose}
+        />
+        <DialogBody>
+          <div className="flex justify-center w-full my-4">
+            <PriorityBar priority={priority} onClick={handlePriorityChange} />
           </div>
-          <div className="flex flex-col items-center px-6">
-            <div className="flex justify-center w-full my-4">
-              <PriorityBar priority={priority} onClick={handlePriorityChange} />
-            </div>
-            <Form
-              form={form}
-              validateMessages={{ default: '' }}
-              className="flex flex-col gap-3 items-center justify-center my-3 py-2 w-full"
-              name="priority-form"
-              id="priority-form"
-              autoComplete="off"
-            >
-              <div className="flex flex-col items-start justify-center w-full">
-                <p className="mb-1 text-sm">{t('send.gasLimit')}</p>
-                <Form.Item
-                  name="gasLimit"
-                  className="w-full mb-0"
-                  hasFeedback
-                  validateStatus={
-                    gasLimitValid === false
-                      ? 'error'
-                      : gasLimitValid
-                      ? 'success'
-                      : undefined
-                  }
-                  rules={[
-                    {
-                      validator: (_, value) => {
-                        if (!isValidGasLimit(value)) {
-                          return Promise.reject(
-                            new Error(
-                              t('send.gasLimitTooLow', {
-                                minimum: minimumGasLimit,
-                              })
-                            )
-                          );
-                        }
-                        return Promise.resolve();
-                      },
+          <Form
+            form={form}
+            validateMessages={{ default: '' }}
+            className="flex flex-col gap-3 items-center justify-center my-3 py-2 w-full"
+            name="priority-form"
+            id="priority-form"
+            autoComplete="off"
+          >
+            <div className="flex flex-col items-start justify-center w-full">
+              <label htmlFor={`${fieldId}-gasLimit`} className="mb-1 text-sm">
+                {t('send.gasLimit')}
+              </label>
+              <Form.Item
+                name="gasLimit"
+                className="w-full mb-0"
+                hasFeedback
+                validateStatus={
+                  gasLimitValid === false
+                    ? 'error'
+                    : gasLimitValid
+                    ? 'success'
+                    : undefined
+                }
+                rules={[
+                  {
+                    validator: (_, value) => {
+                      if (!isValidGasLimit(value)) {
+                        return Promise.reject(
+                          new Error(
+                            t('send.gasLimitTooLow', {
+                              minimum: minimumGasLimit,
+                            })
+                          )
+                        );
+                      }
+                      return Promise.resolve();
                     },
-                  ]}
-                >
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      placeholder={t('send.gasLimit')}
-                      className="w-full"
-                      value={form.getFieldValue('gasLimit') || ''}
-                      onChange={(e) =>
-                        handleFieldChange('gasLimit', e.target.value)
-                      }
-                    />
-                  </div>
-                </Form.Item>
-              </div>
+                  },
+                ]}
+              >
+                <div className="relative">
+                  <Input
+                    id={`${fieldId}-gasLimit`}
+                    type="number"
+                    placeholder={t('send.gasLimit')}
+                    className="w-full"
+                    value={form.getFieldValue('gasLimit') || ''}
+                    onChange={(e) =>
+                      handleFieldChange('gasLimit', e.target.value)
+                    }
+                  />
+                </div>
+              </Form.Item>
+            </div>
 
-              {!isSendLegacyTransaction ? (
-                <>
-                  <div className="flex flex-col items-start justify-center w-full">
-                    <p className="text-sm text-white mb-1 font-normal">
-                      {t('send.maxPriority')} (GWEI)
-                    </p>
-                    <Form.Item
-                      name="maxPriorityFeePerGas"
-                      className="w-full mb-0"
-                      hasFeedback
-                      validateStatus={
-                        priorityFeeValid === false
-                          ? 'error'
-                          : priorityFeeValid
-                          ? 'success'
-                          : undefined
-                      }
-                      rules={[
-                        {
-                          validator: (_, value) => {
-                            const maxFee = form.getFieldValue('maxFeePerGas');
-                            if (value < 0) {
-                              return Promise.reject(
-                                new Error(t('send.priorityFeeMustBePositive'))
-                              );
-                            }
-                            if (value > 0 && maxFee > 0 && value > maxFee) {
-                              return Promise.reject(
-                                new Error(t('send.priorityFeeTooHigh'))
-                              );
-                            }
-                            return Promise.resolve();
-                          },
-                        },
-                      ]}
-                    >
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
-                          className="w-full"
-                          value={
-                            form.getFieldValue('maxPriorityFeePerGas') !==
-                            undefined
-                              ? removeScientificNotation(
-                                  form.getFieldValue('maxPriorityFeePerGas')
-                                )
-                              : ''
-                          }
-                          onChange={(e) =>
-                            handleFieldChange(
-                              'maxPriorityFeePerGas',
-                              e.target.value
-                            )
-                          }
-                        />
-                      </div>
-                    </Form.Item>
-                  </div>
-
-                  <div className="flex flex-col items-start justify-center w-full">
-                    <p className="text-sm text-white mb-1 font-normal">
-                      {t('send.maxFee')} (GWEI)
-                    </p>
-                    <Form.Item
-                      name="maxFeePerGas"
-                      className="w-full mb-0"
-                      hasFeedback
-                      validateStatus={
-                        maxFeeValid === false
-                          ? 'error'
-                          : maxFeeValid
-                          ? 'success'
-                          : undefined
-                      }
-                      dependencies={['maxPriorityFeePerGas']}
-                      rules={[
-                        {
-                          validator: (_, value) => {
-                            const priorityFee = form.getFieldValue(
-                              'maxPriorityFeePerGas'
-                            );
-                            if (!value || value <= 0) {
-                              return Promise.reject(
-                                new Error(t('send.maxFeeMustBePositive'))
-                              );
-                            }
-                            if (priorityFee > 0 && value < priorityFee) {
-                              return Promise.reject(
-                                new Error(t('send.maxFeeTooLow'))
-                              );
-                            }
-                            return Promise.resolve();
-                          },
-                        },
-                      ]}
-                    >
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          placeholder={`${t('send.maxFee')} (GWEI)`}
-                          className="w-full"
-                          value={
-                            form.getFieldValue('maxFeePerGas')
-                              ? removeScientificNotation(
-                                  form.getFieldValue('maxFeePerGas')
-                                )
-                              : ''
-                          }
-                          onChange={(e) =>
-                            handleFieldChange('maxFeePerGas', e.target.value)
-                          }
-                        />
-                      </div>
-                    </Form.Item>
-                  </div>
-                </>
-              ) : (
+            {!isSendLegacyTransaction ? (
+              <>
                 <div className="flex flex-col items-start justify-center w-full">
-                  <p className="text-sm text-white mb-1 font-normal">
-                    {t('send.gasPrice')} (GWEI)
-                  </p>
+                  <label
+                    htmlFor={`${fieldId}-priority`}
+                    className="text-sm text-white mb-1 font-normal"
+                  >
+                    {t('send.maxPriority')} (GWEI)
+                  </label>
                   <Form.Item
-                    name="gasPrice"
+                    name="maxPriorityFeePerGas"
                     className="w-full mb-0"
                     hasFeedback
                     validateStatus={
-                      gasPriceValid === false
+                      priorityFeeValid === false
                         ? 'error'
-                        : gasPriceValid
+                        : priorityFeeValid
                         ? 'success'
                         : undefined
                     }
                     rules={[
                       {
                         validator: (_, value) => {
-                          if (!value || value <= 0) {
+                          const maxFee = form.getFieldValue('maxFeePerGas');
+                          if (value < 0) {
                             return Promise.reject(
-                              new Error(t('send.gasPriceTooLow'))
+                              new Error(t('send.priorityFeeMustBePositive'))
+                            );
+                          }
+                          if (value > 0 && maxFee > 0 && value > maxFee) {
+                            return Promise.reject(
+                              new Error(t('send.priorityFeeTooHigh'))
                             );
                           }
                           return Promise.resolve();
@@ -778,65 +682,180 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   >
                     <div className="relative">
                       <Input
+                        id={`${fieldId}-priority`}
                         type="number"
-                        placeholder={`${t('send.gasPrice')} (GWEI)`}
+                        placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                         className="w-full"
                         value={
-                          form.getFieldValue('gasPrice')
+                          form.getFieldValue('maxPriorityFeePerGas') !==
+                          undefined
                             ? removeScientificNotation(
-                                form.getFieldValue('gasPrice')
+                                form.getFieldValue('maxPriorityFeePerGas')
                               )
                             : ''
                         }
                         onChange={(e) =>
-                          handleFieldChange('gasPrice', e.target.value)
+                          handleFieldChange(
+                            'maxPriorityFeePerGas',
+                            e.target.value
+                          )
                         }
                       />
                     </div>
                   </Form.Item>
                 </div>
-              )}
-            </Form>
-            {belowEstimateWarnings.length > 0 && (
-              <div className="w-full mt-2 rounded-lg border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
-                <p className="text-warning-info text-xs font-medium mb-1">
-                  {t('send.feeBelowEstimateTitle')}
-                </p>
-                {belowEstimateWarnings.map((warning) => (
-                  <p
-                    key={warning}
-                    className="text-warning-info text-xs leading-5"
+
+                <div className="flex flex-col items-start justify-center w-full">
+                  <label
+                    htmlFor={`${fieldId}-maxFee`}
+                    className="text-sm text-white mb-1 font-normal"
                   >
-                    {warning}
-                  </p>
-                ))}
+                    {t('send.maxFee')} (GWEI)
+                  </label>
+                  <Form.Item
+                    name="maxFeePerGas"
+                    className="w-full mb-0"
+                    hasFeedback
+                    validateStatus={
+                      maxFeeValid === false
+                        ? 'error'
+                        : maxFeeValid
+                        ? 'success'
+                        : undefined
+                    }
+                    dependencies={['maxPriorityFeePerGas']}
+                    rules={[
+                      {
+                        validator: (_, value) => {
+                          const priorityFee = form.getFieldValue(
+                            'maxPriorityFeePerGas'
+                          );
+                          if (!value || value <= 0) {
+                            return Promise.reject(
+                              new Error(t('send.maxFeeMustBePositive'))
+                            );
+                          }
+                          if (priorityFee > 0 && value < priorityFee) {
+                            return Promise.reject(
+                              new Error(t('send.maxFeeTooLow'))
+                            );
+                          }
+                          return Promise.resolve();
+                        },
+                      },
+                    ]}
+                  >
+                    <div className="relative">
+                      <Input
+                        id={`${fieldId}-maxFee`}
+                        type="number"
+                        placeholder={`${t('send.maxFee')} (GWEI)`}
+                        className="w-full"
+                        value={
+                          form.getFieldValue('maxFeePerGas')
+                            ? removeScientificNotation(
+                                form.getFieldValue('maxFeePerGas')
+                              )
+                            : ''
+                        }
+                        onChange={(e) =>
+                          handleFieldChange('maxFeePerGas', e.target.value)
+                        }
+                      />
+                    </div>
+                  </Form.Item>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-start justify-center w-full">
+                <label
+                  htmlFor={`${fieldId}-gasPrice`}
+                  className="text-sm text-white mb-1 font-normal"
+                >
+                  {t('send.gasPrice')} (GWEI)
+                </label>
+                <Form.Item
+                  name="gasPrice"
+                  className="w-full mb-0"
+                  hasFeedback
+                  validateStatus={
+                    gasPriceValid === false
+                      ? 'error'
+                      : gasPriceValid
+                      ? 'success'
+                      : undefined
+                  }
+                  rules={[
+                    {
+                      validator: (_, value) => {
+                        if (!value || value <= 0) {
+                          return Promise.reject(
+                            new Error(t('send.gasPriceTooLow'))
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <div className="relative">
+                    <Input
+                      id={`${fieldId}-gasPrice`}
+                      type="number"
+                      placeholder={`${t('send.gasPrice')} (GWEI)`}
+                      className="w-full"
+                      value={
+                        form.getFieldValue('gasPrice')
+                          ? removeScientificNotation(
+                              form.getFieldValue('gasPrice')
+                            )
+                          : ''
+                      }
+                      onChange={(e) =>
+                        handleFieldChange('gasPrice', e.target.value)
+                      }
+                    />
+                  </div>
+                </Form.Item>
               </div>
             )}
-          </div>
+          </Form>
+          {belowEstimateWarnings.length > 0 && (
+            <div className="w-full mt-2 rounded-lg border border-warning-info bg-warning-info bg-opacity-10 p-3 text-left">
+              <p className="text-warning-info text-xs font-medium mb-1">
+                {t('send.feeBelowEstimateTitle')}
+              </p>
+              {belowEstimateWarnings.map((warning) => (
+                <p
+                  key={warning}
+                  className="text-warning-info text-xs leading-5"
+                >
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )}
+        </DialogBody>
 
-          <div className="flex items-center justify-center mt-4 mb-4 gap-6">
-            <Button
-              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
+        <DialogFooter>
+          <DialogActions>
+            <DialogActionButton
+              tone="secondary"
               type="button"
               onClick={handleClose}
             >
               {t('buttons.cancel')}
-            </Button>
-            <Button
-              className={`xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-base rounded-[100px] transition-all duration-300 xl:flex-none ${
-                isFormValid()
-                  ? 'text-brand-blue400 bg-white hover:opacity-60'
-                  : 'text-gray-400 bg-gray-300 cursor-not-allowed opacity-50'
-              }`}
-              type="submit"
+            </DialogActionButton>
+            <DialogActionButton
+              type="button"
               onClick={handleSubmit}
               disabled={!isFormValid()}
             >
               {t('buttons.save')}
-            </Button>
-          </div>
-        </div>
-      </div>
+            </DialogActionButton>
+          </DialogActions>
+        </DialogFooter>
+      </CenterPanel>
     </EditFeeModalBase>
   );
 };

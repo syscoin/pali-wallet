@@ -84,6 +84,16 @@ jest.mock('components/index', () => ({
   ),
 }));
 jest.mock('components/Dialog/Dialog', () => ({
+  CenterPanel: ({ children }: any) => <div>{children}</div>,
+  DialogHeader: ({ title }: any) => <h2>{title}</h2>,
+  DialogBody: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children }: any) => <footer>{children}</footer>,
+  DialogActions: ({ children }: any) => <div>{children}</div>,
+  DialogActionButton: ({ children, tone, ...props }: any) => (
+    <button data-tone={tone} {...props}>
+      {children}
+    </button>
+  ),
   DialogPrimitive: ({ children, show = true }: any) =>
     show ? <div role="dialog">{children}</div> : null,
   SheetPanel: ({ children }: any) => <div>{children}</div>,

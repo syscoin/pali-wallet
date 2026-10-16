@@ -2975,6 +2975,7 @@ class MainController {
 
   public async addSmartAccountCustomModule(params: {
     accountId: number;
+    expectedContext?: IEvmTransactionContext;
     record: {
       address: string;
       initData?: string;
@@ -2988,6 +2989,7 @@ class MainController {
   public async removeSmartAccountCustomModule(params: {
     accountId: number;
     address: string;
+    expectedContext?: IEvmTransactionContext;
   }): Promise<ISmartAccountMetadata> {
     return this.smartAccount.removeSmartAccountCustomModule(params);
   }

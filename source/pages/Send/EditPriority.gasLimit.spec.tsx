@@ -15,9 +15,7 @@ jest.mock('components/index', () => ({
     <button {...props}>{children}</button>
   ),
 }));
-jest.mock('components/Modal/EditFeeModalBase', () => ({
-  EditFeeModalBase: ({ children }: any) => <div>{children}</div>,
-}));
+jest.mock('components/Icon/Icon', () => ({ LoadingSvg: () => <svg /> }));
 jest.mock('./components', () => ({
   PriorityBar: ({ onClick }: any) => (
     <button onClick={() => onClick(2)}>higher-price</button>
@@ -25,6 +23,17 @@ jest.mock('./components', () => ({
 }));
 
 beforeAll(() => {
+  globalThis.ResizeObserver = class {
+    observe() {
+      /* JSDOM has no layout. */
+    }
+    unobserve() {
+      /* JSDOM has no layout. */
+    }
+    disconnect() {
+      /* JSDOM has no layout. */
+    }
+  } as typeof ResizeObserver;
   // Antd's actual Form batches watchers through MessageChannel; jsdom does
   // not implement that browser primitive.
   (globalThis as any).MessageChannel = class {

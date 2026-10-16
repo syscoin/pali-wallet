@@ -114,6 +114,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
       title: t('header.speedTx'),
       description: t('transactions.speedUpFeePreview'),
       isButtonLoading: true,
+      // This stage only reads a quote; cancelling it cannot cancel a send.
+      allowCloseWhileLoading: true,
       onClose: close,
       onClick: confirm,
     };

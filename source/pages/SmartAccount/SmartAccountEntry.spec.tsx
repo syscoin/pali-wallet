@@ -15,6 +15,11 @@ import { navigateWithContext } from 'utils/navigationState';
 import SmartAccountHub from './Hub';
 import SmartAccountEntry from './SmartAccountEntry';
 
+jest.mock('./CompositeApprovalDialog', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 let mockLocation: any;
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 const mockStoreListeners = new Set<() => void>();
@@ -94,6 +99,22 @@ jest.mock('components/index', () => ({
   ),
   CenterPanel: ({ children }: any) => <div>{children}</div>,
   CenterTitle: ({ children }: any) => <h2>{children}</h2>,
+  DialogHeader: ({ title, onClose, disabled }: any) => (
+    <header>
+      <h2>{title}</h2>
+      <button aria-label="Close" onClick={onClose} disabled={disabled}>
+        Close
+      </button>
+    </header>
+  ),
+  DialogBody: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children }: any) => <footer>{children}</footer>,
+  DialogActions: ({ children }: any) => <div>{children}</div>,
+  DialogActionButton: ({ children, tone, ...props }: any) => (
+    <button data-tone={tone} {...props}>
+      {children}
+    </button>
+  ),
   DialogPrimitive: ({ children, show = true, onClose }: any) =>
     show ? (
       <div role="dialog">

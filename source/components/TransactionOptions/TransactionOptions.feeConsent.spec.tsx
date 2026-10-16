@@ -80,6 +80,19 @@ jest.mock('components/Dialog/Dialog', () => ({
     show ? <div role="dialog">{children}</div> : null,
   CenterPanel: ({ children }: any) => <div>{children}</div>,
   CenterTitle: ({ children }: any) => <h2>{children}</h2>,
+  DialogHeader: ({ title }: any) => <h2>{title}</h2>,
+  DialogBody: ({ children }: any) => <>{children}</>,
+  DialogFooter: ({ children }: any) => <>{children}</>,
+  DialogActions: ({ children }: any) => <>{children}</>,
+  DialogActionButton: ({ children, loading, tone, ...props }: any) => (
+    <button
+      {...props}
+      data-tone={tone}
+      disabled={Boolean(props.disabled || loading)}
+    >
+      {loading ? 'Loading' : children}
+    </button>
+  ),
 }));
 jest.mock('@headlessui/react', () => {
   const Menu = ({ children }: any) => children({ open: true });

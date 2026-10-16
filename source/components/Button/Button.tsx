@@ -50,6 +50,7 @@ export type ButtonVariant =
 export type ButtonSize = 'icon' | 'md' | 'sm';
 
 export interface IButtonProps {
+  'aria-label'?: string;
   children?: React.ReactNode;
   /** Extra classes appended after the variant classes. */
   className?: string;
@@ -115,68 +116,88 @@ const variantClasses: Record<
   },
 };
 
-export const Button: React.FC<IButtonProps> = ({
-  children,
-  className = '',
-  disabled = false,
-  fullWidth = false,
-  icon,
-  id = '',
-  loading = false,
-  onClick,
-  size = 'md',
-  type,
-  useDefaultWidth = true,
-  variant = 'unstyled',
-  width = '36',
-}) => {
-  const isBlocked = disabled || loading;
+export const Button = React.forwardRef<HTMLButtonElement, IButtonProps>(
+  (
+    {
+      'aria-label': ariaLabel,
+      children,
+      className = '',
+      disabled = false,
+      fullWidth = false,
+      icon,
+      id = '',
+      loading = false,
+      onClick,
+      size = 'md',
+      type,
+      useDefaultWidth = true,
+      variant = 'unstyled',
+      width = '36',
+    },
+    ref
+  ) => {
+    const isBlocked = disabled || loading;
+    const accessibleLabel =
+      ariaLabel ??
+      (loading && typeof children === 'string' ? children : undefined);
 
-  if (variant === 'unstyled') {
-    // Legacy generic button: caller supplies all visual classes.
+    if (variant === 'unstyled') {
+      // Legacy generic button: caller supplies all visual classes.
+      return (
+        <button
+          ref={ref}
+          aria-label={accessibleLabel}
+          aria-busy={loading || undefined}
+          className={`${className} ${
+            useDefaultWidth ? widthClasses[width] || 'w-36' : ''
+          } ${
+            isBlocked ? disabledMotion : 'hover:scale-105 active:scale-95'
+          } flex justify-center items-center transition-all duration-200`}
+          disabled={isBlocked}
+          onClick={onClick}
+          type={type}
+          id={id}
+        >
+          {loading ? <LoadingIconPrimary /> : children}
+        </button>
+      );
+    }
+
+    const palette = variantClasses[variant];
+    const widthClass =
+      size === 'icon'
+        ? ''
+        : fullWidth
+        ? 'w-full'
+        : widthClasses[width] || 'w-36';
+
     return (
       <button
-        className={`${className} ${
-          useDefaultWidth ? widthClasses[width] || 'w-36' : ''
-        } ${
-          isBlocked ? disabledMotion : 'hover:scale-105 active:scale-95'
-        } flex justify-center items-center transition-all duration-200`}
+        ref={ref}
+        aria-label={accessibleLabel}
+        aria-busy={loading || undefined}
+        className={`${baseStyled} ${sizeClasses[size]} ${widthClass} ${
+          palette.statics
+        } ${isBlocked ? palette.disabled : palette.enabled} ${className}`}
         disabled={isBlocked}
         onClick={onClick}
         type={type}
         id={id}
       >
-        {loading ? <LoadingIconPrimary /> : children}
+        {loading ? (
+          variant === 'neutral' ? (
+            <LoadingIconPrimary />
+          ) : (
+            <LoadingIconWhite />
+          )
+        ) : (
+          <>
+            {icon}
+            {children}
+          </>
+        )}
       </button>
     );
   }
-
-  const palette = variantClasses[variant];
-  const widthClass =
-    size === 'icon' ? '' : fullWidth ? 'w-full' : widthClasses[width] || 'w-36';
-
-  return (
-    <button
-      className={`${baseStyled} ${sizeClasses[size]} ${widthClass} ${
-        palette.statics
-      } ${isBlocked ? palette.disabled : palette.enabled} ${className}`}
-      disabled={isBlocked}
-      onClick={onClick}
-      type={type}
-      id={id}
-    >
-      {loading ? (
-        variant === 'neutral' ? (
-          <LoadingIconPrimary />
-        ) : (
-          <LoadingIconWhite />
-        )
-      ) : (
-        <>
-          {icon}
-          {children}
-        </>
-      )}
-    </button>
-  );
-};
+);
+Button.displayName = 'Button';
