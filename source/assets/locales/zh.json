@@ -283,7 +283,6 @@
     "transactionCreationFailed": "创建交易失败：{{error}}。请重试。",
     "submissionStatusUnknown": "提交状态未知。为防止重复发送，无法在此重试此调用。您可以关闭此窗口。",
     "backToEdit": "返回编辑",
-    "accountBalanceChange": "账户余额变动",
     "transactionValue": "交易金额",
     "selfTransferOutputTotal": "自转账输出总额",
     "nativeBalanceChange": "原生币余额变动",

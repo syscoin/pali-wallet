@@ -283,7 +283,6 @@
     "transactionCreationFailed": "Error al crear la transacción: {{error}}. Por favor, inténtalo de nuevo.",
     "submissionStatusUnknown": "Se desconoce el estado del envío. Para evitar enviarlo dos veces, no se puede reintentar esta llamada aquí. Puedes cerrar esta ventana.",
     "backToEdit": "Volver a editar",
-    "accountBalanceChange": "Cambio del saldo de la cuenta",
     "transactionValue": "Valor de la transacción",
     "selfTransferOutputTotal": "Total de salidas de la autotransferencia",
     "nativeBalanceChange": "Cambio del saldo nativo",

@@ -283,7 +283,6 @@
     "transactionCreationFailed": "Не удалось создать транзакцию: {{error}}. Попробуйте еще раз.",
     "submissionStatusUnknown": "Статус отправки неизвестен. Чтобы избежать двойной отправки, этот вызов нельзя повторить здесь. Вы можете закрыть это окно.",
     "backToEdit": "Вернуться к редактированию",
-    "accountBalanceChange": "Изменение баланса счёта",
     "transactionValue": "Сумма транзакции",
     "selfTransferOutputTotal": "Сумма выходов перевода себе",
     "nativeBalanceChange": "Изменение нативного баланса",

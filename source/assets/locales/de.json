@@ -283,7 +283,6 @@
     "transactionCreationFailed": "Transaktion konnte nicht erstellt werden: {{error}}. Bitte versuchen Sie es erneut.",
     "submissionStatusUnknown": "Der Übermittlungsstatus ist unbekannt. Um ein doppeltes Senden zu verhindern, kann dieser Aufruf hier nicht erneut versucht werden. Sie können dieses Fenster schließen.",
     "backToEdit": "Zurück zum Bearbeiten",
-    "accountBalanceChange": "Änderung des Kontoguthabens",
     "transactionValue": "Transaktionswert",
     "selfTransferOutputTotal": "Gesamtausgabe der Eigenübertragung",
     "nativeBalanceChange": "Änderung des nativen Guthabens",
