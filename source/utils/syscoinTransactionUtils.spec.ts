@@ -11,8 +11,58 @@ import {
   getSyscoinOperationAmount,
   getSyscoinTransactionTypeLabel,
 } from './syscoinTransactionUtils';
+import { getKnownTokenLogo, SYSX_ASSET_GUID } from './tokens';
 
 describe('getSyscoinIntentAmount', () => {
+  it.each(['syscoinburntoallocation', 'SPTSyscoinBurnToAssetAllocation'])(
+    'binds the native burn operation %s to canonical SYSX without token metadata',
+    (tokenType) => {
+      const transaction = {
+        tokenType,
+        fees: '226',
+        vin: [{ value: '300000226' }],
+        vout: [
+          { addresses: ['owned-change'], value: '100000000' },
+          { addresses: ['OP_RETURN'], value: '200000000' },
+        ],
+      };
+      const expected = {
+        amount: 2,
+        assetGuid: SYSX_ASSET_GUID,
+        decimals: 8,
+        symbol: 'SYSX',
+      };
+
+      expect(getSyscoinIntentAmount(transaction as any)).toEqual(expected);
+      expect(getSyscoinOperationAmount(transaction)).toEqual({
+        ...expected,
+        scope: 'transaction',
+      });
+    }
+  );
+
+  it.each([undefined, ''])(
+    'does not infer the canonical GUID from an ordinary SYSX symbol with GUID %s',
+    (assetGuid) => {
+      const transaction = {
+        tokenType: 'SPTAssetAllocationSend',
+        accountAssetTransfers: [
+          { assetGuid, value: '200000000', decimals: 8, symbol: 'SYSX' },
+        ],
+      };
+      const intent = getSyscoinIntentAmount(transaction);
+      const operation = getSyscoinOperationAmount(transaction);
+
+      expect(intent).toMatchObject({ amount: 2, decimals: 8, symbol: 'SYSX' });
+      expect(operation).toMatchObject({ amount: 2, scope: 'account' });
+      expect(intent?.assetGuid).not.toBe(SYSX_ASSET_GUID);
+      expect(operation?.assetGuid).not.toBe(SYSX_ASSET_GUID);
+      expect(
+        getKnownTokenLogo(intent?.symbol, undefined, intent?.assetGuid)
+      ).toBeNull();
+    }
+  );
+
   it('selects compact SPT transfers by decimal-normalized amount', () => {
     const intent = getSyscoinIntentAmount({
       accountAssetTransfers: [

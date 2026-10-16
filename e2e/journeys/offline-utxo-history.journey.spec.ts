@@ -17,6 +17,19 @@ import {
   UTXO_FIXTURE_SEED,
 } from '../harness/utxoFixture';
 
+const SYSX_LOGO_URL =
+  'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/syscoin/info/logo.png';
+// Synthetic local pixels distinguish the canonical identity lookup from an
+// initial/Pali fallback. No public logo bytes or network request are needed.
+const SYSX_FIXTURE_LOGO =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+  '<circle cx="12" cy="12" r="12" fill="#0082c6"/>' +
+  '<path d="M17 6H9a4 4 0 0 0 0 8h6a1 1 0 0 1 0 2H7v3h8a4 4 0 0 0 0-8H9a1 1 0 0 1 0-2h8z" fill="#fff"/>' +
+  '</svg>';
+const SYSX_FIXTURE_DATA_URL =
+  'data:image/svg+xml;base64,' +
+  Buffer.from(SYSX_FIXTURE_LOGO).toString('base64');
+
 test('offline UTXO history: bridge value, native account change and pending detail units', async () => {
   test.setTimeout(180000);
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
@@ -74,6 +87,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
     ],
     tokenTransfers: [{ token: '123456', symbol: 'SYSX', decimals: 8 }],
   });
+  const fixtureLogoReads: string[] = [];
   let wallet: PaliWallet | undefined;
   try {
     wallet = await PaliWallet.launch('offline-utxo-history', {
@@ -112,6 +126,21 @@ test('offline UTXO history: bridge value, native account change and pending deta
         }),
       }
     );
+    // The later, exact-match handler wins only for this read. Everything else
+    // remains behind the fixture's deny route and the launch-time HTTP proxy.
+    await wallet.context.route(
+      (url) => url.href === SYSX_LOGO_URL,
+      async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        fixtureLogoReads.push(route.request().url());
+        return route.fulfill({
+          status: 200,
+          contentType: 'image/svg+xml',
+          headers: { 'access-control-allow-origin': '*' },
+          body: SYSX_FIXTURE_LOGO,
+        });
+      }
+    );
     const page = wallet.page;
     const row = (id: string) =>
       page
@@ -139,6 +168,50 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(page).toHaveURL(/#\/home/);
       await page.locator('#activity-btn').click();
+    };
+    const expectSysxDetailsIcon = async (amountText: string) => {
+      const amount = page.getByText(amountText, { exact: true });
+      // The decorative icon is aria-hidden; the adjacent amount already names
+      // SYSX for assistive technology. Inspect its pixels, not its ARIA role.
+      const icon = page.locator('img[alt="SYSX"]');
+      expect(page.viewportSize()).toEqual({ width: 400, height: 620 });
+      await expect(amount).toBeVisible();
+      await expect(icon).toHaveCount(1);
+      await expect(icon).toBeVisible();
+      await expect(icon).toHaveAttribute('src', SYSX_FIXTURE_DATA_URL);
+      await expect
+        .poll(() =>
+          icon.evaluate((element) => {
+            const image = element as HTMLImageElement;
+            return {
+              complete: image.complete,
+              width: image.naturalWidth,
+              height: image.naturalHeight,
+            };
+          })
+        )
+        .toEqual({ complete: true, width: 24, height: 24 });
+      const iconBounds = await icon.boundingBox();
+      const amountBounds = await amount.boundingBox();
+      expect(iconBounds).not.toBeNull();
+      expect(amountBounds).not.toBeNull();
+      expect(iconBounds!.width).toBe(24);
+      expect(iconBounds!.height).toBe(24);
+      for (const bounds of [iconBounds!, amountBounds!]) {
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.y).toBeGreaterThanOrEqual(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(400);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(620);
+      }
+      expect(iconBounds!.x + iconBounds!.width).toBeLessThanOrEqual(
+        amountBounds!.x
+      );
+      expect(Math.max(iconBounds!.y, amountBounds!.y)).toBeLessThan(
+        Math.min(
+          iconBounds!.y + iconBounds!.height,
+          amountBounds!.y + amountBounds!.height
+        )
+      );
     };
     await wallet.step(
       'compact Activity keeps operation tags and transfer values without the Details breakdown',
@@ -190,6 +263,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           page.getByText('1.0000 SYSX', { exact: true })
         ).toBeVisible();
+        await expectSysxDetailsIcon('1.0000 SYSX');
         await expect(
           page.getByText('Native account balance change: -29.5985194 TSYS', {
             exact: true,
@@ -198,11 +272,20 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           page.getByText('Transaction value', { exact: true })
         ).toBeVisible();
+        await page.screenshot({
+          animations: 'disabled',
+          path: path.join(
+            E2E_CONFIG.artifactsDir,
+            'screenshots',
+            'sysx-transaction-details.png'
+          ),
+        });
         await back();
         await openDetails(compactBridgeWithAccountAsset.txid);
         await expect(
           page.getByText('0.100000 SYSX', { exact: true })
         ).toBeVisible();
+        await expectSysxDetailsIcon('0.100000 SYSX');
         await back();
         for (const bridge of [
           compactBridgeNativeOffset,
@@ -211,6 +294,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
           expect(
             routes.reads.filter((read) => read === '/api/v2/tx/' + bridge.txid)
           ).toHaveLength(1);
+        expect(fixtureLogoReads.length).toBeGreaterThan(0);
         expect(routes.deniedWrites).toEqual([]);
       }
     );
@@ -224,6 +308,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           page.getByText('0.09999774 TSYS', { exact: true })
         ).toBeVisible();
+        await expect(page.locator('img[alt="SYSX"]')).toHaveCount(0);
         await expect(
           page.getByText('Native account balance change: -0.00000226 TSYS', {
             exact: true,
@@ -259,6 +344,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
           confirmationClicked: false,
           capturedAccountFieldsWithSyntheticAddresses: true,
           fixtureReads: routes.reads,
+          fixtureLogoReads,
           deniedWrites: routes.deniedWrites,
           deniedUnknown: routes.deniedUnknown,
           proxyDeniedConnections: server.blocked.length,
