@@ -160,7 +160,23 @@ it('shows the canonical SYSX icon beside its amount without importing the token'
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  await expectAmountIcon('1.0000 SYSX', officialLogo);
+  const icon = await expectAmountIcon('1.0000 SYSX', officialLogo);
+  const decoration = icon.parentElement!;
+  expect(decoration.getAttribute('aria-hidden')).toBe('true');
+  expect(decoration.classList.contains('group')).toBe(true);
+  expect(decoration.classList.contains('cursor-default')).toBe(true);
+  expect(decoration.hasAttribute('tabindex')).toBe(false);
+  expect(decoration.hasAttribute('role')).toBe(false);
+  expect(decoration.querySelector('button, a, [tabindex]')).toBeNull();
+  expect(icon.classList.contains('group-hover:shadow-xl')).toBe(true);
+  expect(icon.classList.contains('motion-safe:group-hover:scale-110')).toBe(
+    true
+  );
+  expect(icon.classList.contains('motion-reduce:transition-none')).toBe(true);
+  const shine = decoration.querySelector('span')!;
+  expect(shine.classList.contains('pointer-events-none')).toBe(true);
+  expect(shine.classList.contains('group-hover:opacity-100')).toBe(true);
+  expect(shine.classList.contains('motion-reduce:transition-none')).toBe(true);
   expect(mockIconFetch).toHaveBeenCalledWith(officialLogo);
 });
 
