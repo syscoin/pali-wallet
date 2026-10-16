@@ -283,10 +283,7 @@ export class PaliWallet {
   // --- Network --------------------------------------------------------------
 
   async getActiveNetworkLabel(): Promise<string> {
-    const headerButton = this.networkMenuButton();
-    return (await headerButton.innerText())
-      .replace(/\s*(UTXO|EVM)\s*$/, '')
-      .trim();
+    return (await this.networkMenuLabel().innerText()).trim();
   }
 
   async switchNetwork(label: string, group: 'EVM' | 'UTXO' = 'EVM') {
@@ -345,10 +342,10 @@ export class PaliWallet {
           if (!(await header.isVisible())) return '';
           // A late prompt may hide it between the visibility read and text
           // read. Retry within the same bounded readiness check in that case.
-          const text = await header
+          const text = await this.networkMenuLabel()
             .innerText({ timeout: 1000 })
             .catch(() => '');
-          return text.replace(/\s*(UTXO|EVM)\s*$/, '').trim();
+          return text.trim();
         },
         { timeout: 120_000 }
       )
@@ -365,6 +362,12 @@ export class PaliWallet {
       .getByRole('button')
       .filter({ hasText: /UTXO|EVM/ })
       .first();
+  }
+
+  private networkMenuLabel() {
+    // NetworkMenu's first direct span is the name; the next span is its
+    // UTXO/EVM badge. Custom ChainIcon children may also contain a chain id.
+    return this.networkMenuButton().locator(':scope > span').first();
   }
 
   // --- Accounts -------------------------------------------------------------

@@ -17,7 +17,9 @@ describe('Pali network switch informational dialog readiness', () => {
   const target = 'Syscoin NEVM Testnet';
   const setup = (
     prompt: 'none' | 'faucet' | 'late' | 'approval' | 'incomplete',
-    targetLabel = target
+    targetLabel = target,
+    iconText = '',
+    selectedLabel = targetLabel
   ) => {
     const title = en.faucet.firstAccessTitle
       .replace('{{token}}', 'TSYS')
@@ -50,12 +52,25 @@ describe('Pali network switch informational dialog readiness', () => {
         throw new Error('Unexpected dialog action');
       }),
     };
+    const label: any = {
+      innerText: jest.fn(async () =>
+        selected ? selectedLabel : 'Syscoin Testnet'
+      ),
+    };
+    label.first = () => label;
     const header = {
       click: jest.fn(),
       isVisible: jest.fn(async () => !visiblePrompt()),
-      innerText: jest.fn(async () =>
-        selected ? `${targetLabel} EVM` : 'Syscoin Testnet UTXO'
+      innerText: jest.fn(
+        async () =>
+          `${iconText}${iconText ? '\n' : ''}${
+            selected ? selectedLabel + ' EVM' : 'Syscoin Testnet UTXO'
+          }`
       ),
+      locator: jest.fn((selector) => {
+        expect(selector).toBe(':scope > span');
+        return label;
+      }),
     };
     const group: any = { getAttribute: jest.fn(async () => 'true') };
     group.first = () => group;
@@ -104,7 +119,7 @@ describe('Pali network switch informational dialog readiness', () => {
         },
       };
     });
-    return { wallet, close, goToFaucet, balance, dialog };
+    return { wallet, close, goToFaucet, balance, dialog, header };
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -153,5 +168,29 @@ describe('Pali network switch informational dialog readiness', () => {
     const { wallet, close } = setup('faucet', label);
     await wallet.switchNetwork(label);
     expect(close.click).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores the custom chain icon number when reading the active label', async () => {
+    const { wallet } = setup('none', 'Pali provider edge fixture', '31337');
+    expect(await wallet.getActiveNetworkLabel()).toBe('Syscoin Testnet');
+  });
+
+  it('switches to a custom network whose icon contains its chain id', async () => {
+    const { wallet, header, balance } = setup(
+      'none',
+      'Pali provider edge fixture',
+      '31337'
+    );
+    await wallet.switchNetwork('Pali provider edge fixture');
+    expect(header.innerText).not.toHaveBeenCalled();
+    expect(balance.waitFor).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not mistake decorative text for the selected network label', async () => {
+    const { wallet, balance } = setup('none', target, target, 'Wrong network');
+    await expect(wallet.switchNetwork(target)).rejects.toThrow(
+      'Network not visibly ready'
+    );
+    expect(balance.waitFor).not.toHaveBeenCalled();
   });
 });
