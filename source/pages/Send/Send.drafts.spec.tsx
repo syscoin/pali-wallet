@@ -660,7 +660,7 @@ describe('send forms across wallet navigation', () => {
           tx: expect.objectContaining({
             amount: '0.0001',
             psbt: 'current-spt-unsigned-psbt',
-            token: { symbol: 'SYSX', guid: '123456' },
+            token: { symbol: 'SYSX', guid: '123456', decimals: 8 },
           }),
         }),
         expect.any(Object)
@@ -1228,6 +1228,87 @@ describe('send forms across wallet navigation', () => {
         ).toBe(true);
       } finally {
         jest.useRealTimers();
+      }
+    }
+  );
+
+  it.each([
+    { decimals: 8, amount: '0.1', builderAmount: '0.10000000' },
+    { decimals: 0, amount: '1', builderAmount: '0.00000001' },
+    { decimals: 2, amount: '1.23', builderAmount: '0.00000123' },
+  ])(
+    'preserves $decimals SPT decimals through ordinary Send and Confirm',
+    async ({ decimals, amount, builderAmount }) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = {
+        assetGuid: '12',
+        symbol: 'PQAS',
+        decimals,
+        assetType: 'ERC20',
+        balance: '10',
+      };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount },
+          selectedAsset: asset,
+        },
+      };
+      mockEmitter.mockImplementation(([, method]: string[]) =>
+        method === 'getEstimateSysTransactionFee'
+          ? Promise.resolve({ fee: 0.00000332, psbt: 'unsigned-spt-decimals' })
+          : Promise.resolve(0.0000001)
+      );
+      const navigate = navigateWithContext as jest.Mock;
+      navigate.mockImplementation((...args: any[]) =>
+        jest.requireActual('utils/navigationState').navigateWithContext(...args)
+      );
+      try {
+        const form = render(<SendSys />);
+        await act(async () => undefined);
+        await act(async () => {
+          await mockSubmitForm();
+        });
+        // Presentation metadata must not change the installed builder API.
+        expect(mockEmitter).toHaveBeenCalledWith(
+          ['wallet', 'getEstimateSysTransactionFee'],
+          [
+            expect.objectContaining({
+              amount: builderAmount,
+              token: { symbol: 'PQAS', guid: '12' },
+            }),
+          ]
+        );
+        const [path, options] = mockNavigate.mock.calls.find(
+          ([target]) => target === '/send/confirm'
+        )!;
+        form.unmount();
+        mockEmitter
+          .mockReset()
+          .mockImplementation(() => new Promise(() => undefined));
+        window.history.replaceState(null, '', '/app.html#/send/confirm');
+        mockLocation = {
+          key: `spt-decimals-${decimals}`,
+          pathname: path,
+          state: options.state,
+        };
+        render(<SendConfirm />);
+        const headline = screen.getByText('buttons.send').parentElement!;
+        expect(headline.querySelectorAll('p')[1].textContent?.trim()).toBe(
+          `${amount} PQAS`
+        );
+        expect(
+          screen.getByText('settings.decimals').nextElementSibling?.textContent
+        ).toBe(String(decimals));
+        expect(options.state.tx.token.decimals).toBe(decimals);
+        expect(options.state.tx.amount).toBe(amount);
+        expect(options.state.tx.psbt).toBe('unsigned-spt-decimals');
+      } finally {
+        navigate.mockReset();
       }
     }
   );
