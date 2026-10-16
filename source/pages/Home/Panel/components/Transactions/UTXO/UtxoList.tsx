@@ -41,8 +41,9 @@ import {
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
+  getCachedUtxoTransactionDetails,
   mergeAccountOwnershipFlags,
-  watchUtxoTransactionDetails,
+  subscribeUtxoTransactionDetails,
 } from './utxoTransactionDetails';
 
 const SERVER_PAGE_SIZE = 30;
@@ -65,62 +66,25 @@ const UtxoTransactionsListComponentBase = ({
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${tx.txid.toLowerCase()}`;
-  const scopeRef = useRef(scope);
-  scopeRef.current = scope;
-  const compactTokenOperation = isSyscoinTokenOperation(tx);
   const normalizedTokenType = normalizeSyscoinTransactionType(tx?.tokenType);
-  const compactIntent = getSyscoinOperationAmount(tx);
-  const compactNativeIntent = compactTokenOperation
-    ? null
-    : getSyscoinNativeTransferAmount(tx);
-  const [hydrated, setHydrated] = React.useState<{
-    data?: ITransactionInfoUtxo;
-    scope: string;
-    status: 'loading' | 'complete' | 'unavailable';
-  }>();
-  const needsHydration = compactTokenOperation
-    ? !compactIntent
-    : !compactNativeIntent;
-  useEffect(() => {
-    if (!needsHydration || !activeNetwork.url) return;
-    let cancelled = false;
-    const isCurrent = () => !cancelled && scopeRef.current === scope;
-    setHydrated({ scope, status: 'loading' });
-    const stop = watchUtxoTransactionDetails(
-      scope,
-      tx.txid,
-      () =>
-        controllerEmitter(
-          ['wallet', 'getSysTransactionFromBlockbook'],
-          [tx.txid, activeNetwork.url],
-          10000,
-          false
-        ),
-      isCurrent,
-      (data) => {
-        if (isCurrent()) setHydrated({ scope, status: 'complete', data });
-      },
-      () => {
-        if (isCurrent()) setHydrated({ scope, status: 'unavailable' });
+  const cachedDetails = React.useSyncExternalStore(
+    useCallback(
+      (onChange) => subscribeUtxoTransactionDetails(scope, onChange),
+      [scope]
+    ),
+    useCallback(() => getCachedUtxoTransactionDetails(scope), [scope])
+  );
+  const displayTransaction = cachedDetails
+    ? {
+        ...tx,
+        ...cachedDetails,
+        tokenType: cachedDetails.tokenType || tx.tokenType,
+        tokenTransfers: cachedDetails.tokenTransfers ?? tx.tokenTransfers,
+        accountAssetTransfers: tx.accountAssetTransfers,
+        vin: mergeAccountOwnershipFlags(tx.vin, cachedDetails.vin),
+        vout: mergeAccountOwnershipFlags(tx.vout, cachedDetails.vout),
       }
-    );
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [scope, needsHydration, activeNetwork.url, tx.txid]);
-  const displayTransaction =
-    hydrated?.scope === scope && hydrated.data
-      ? {
-          ...tx,
-          ...hydrated.data,
-          tokenType: hydrated.data.tokenType || tx.tokenType,
-          tokenTransfers: hydrated.data.tokenTransfers ?? tx.tokenTransfers,
-          accountAssetTransfers: tx.accountAssetTransfers,
-          vin: mergeAccountOwnershipFlags(tx.vin, hydrated.data.vin),
-          vout: mergeAccountOwnershipFlags(tx.vout, hydrated.data.vout),
-        }
-      : tx;
+    : tx;
   const tokenOperation = isSyscoinTokenOperation(displayTransaction);
   const intent = getSyscoinOperationAmount(displayTransaction);
   const nativeIntent = !tokenOperation
@@ -359,15 +323,6 @@ const UtxoTransactionsListComponentBase = ({
               {sptAmountDisplay}
             </span>
           </div>
-        )}
-        {!sptAmountDisplay && !sysAmountDisplay && (
-          <p className="text-[10px] text-brand-gray300">
-            {t(
-              hydrated?.scope === scope && hydrated.status === 'loading'
-                ? 'buttons.loading'
-                : 'settings.unavailable'
-            )}
-          </p>
         )}
         {!sptAmountDisplay && sysAmountDisplay && (
           <div

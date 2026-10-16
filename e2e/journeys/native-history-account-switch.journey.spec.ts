@@ -39,7 +39,8 @@ test('offline native history survives A → B transient failure → A through no
   });
   const selfId = '51'.repeat(32),
     externalId = '52'.repeat(32),
-    secondId = '53'.repeat(32);
+    secondId = '53'.repeat(32),
+    receivedId = '55'.repeat(32);
   const fullSelf = {
     txid: selfId,
     confirmations: 0,
@@ -65,6 +66,15 @@ test('offline native history survives A → B transient failure → A through no
       { addresses: [fixture.userAddress], value: '30000000' },
     ],
   };
+  const fullReceived = {
+    ...fullExternal,
+    txid: receivedId,
+    vin: [{ addresses: [fixture.recipientAddress], value: '100000226' }],
+    vout: [
+      { addresses: [fixture.userAddress], value: '70000000' },
+      { addresses: [fixture.recipientAddress], value: '30000000' },
+    ],
+  };
   const summaries = [
     {
       ...fullSelf,
@@ -83,6 +93,16 @@ test('offline native history survives A → B transient failure → A through no
       value: '30000000',
       addressValueIn: '100000226',
       addressValueOut: '30000000',
+    },
+    {
+      ...fullReceived,
+      vin: [],
+      vout: [],
+      direction: 'received',
+      valueIn: '0',
+      value: '70000000',
+      addressValueIn: '0',
+      addressValueOut: '70000000',
     },
   ];
   const legacySecond = {
@@ -108,6 +128,7 @@ test('offline native history survives A → B transient failure → A through no
   const rawTransactions = {
     [selfId]: fullSelf,
     [externalId]: fullExternal,
+    [receivedId]: fullReceived,
     [secondId]: {
       ...legacySecond,
       vin: legacySecond.vin.map(({ addresses, value }) => ({
@@ -131,6 +152,7 @@ test('offline native history survives A → B transient failure → A through no
   }> = [];
   const deniedWrites: string[] = [],
     deniedUnknown: string[] = [];
+  const fullTransactionReads: Array<{ phase: Phase; txid: string }> = [];
   let wallet: PaliWallet | undefined;
   try {
     wallet = await PaliWallet.launch('native-history-account-switch', {
@@ -192,6 +214,11 @@ test('offline native history survives A → B transient failure → A through no
       }
       if (account && details.startsWith('txs'))
         historyReads.push({ account, details, phase, result: 'ok' });
+      const transactionId = url.pathname.match(
+        /^\/api\/v2\/tx\/([a-f0-9]{64})$/i
+      )?.[1];
+      if (transactionId)
+        fullTransactionReads.push({ phase, txid: transactionId });
       const mapped = new URL(url);
       if (account === 'B')
         mapped.pathname = `/api/v2/${accountPath![1]}/${encodeURIComponent(
@@ -211,7 +238,7 @@ test('offline native history survives A → B transient failure → A through no
                 : [legacySecond]
               : details === 'txsummary'
               ? summaries
-              : [fullSelf, fullExternal],
+              : [fullSelf, fullExternal, fullReceived],
           rawTransactions,
         }
       );
@@ -247,6 +274,14 @@ test('offline native history survives A → B transient failure → A through no
       page
         .getByText(`${id.slice(0, 4)}...${id.slice(-14)}`, { exact: true })
         .locator('xpath=ancestor::div[contains(@class,"border-b")][1]');
+    const assertBlankAmount = async (id: string) => {
+      await expect(row(id)).toBeVisible();
+      await expect(row(id).getByText(/\bTSYS\b/)).toHaveCount(0);
+      for (const placeholder of [en.buttons.loading, en.settings.unavailable])
+        await expect(
+          row(id).getByText(placeholder, { exact: true })
+        ).toHaveCount(0);
+    };
     const assertAccount = async (id: number, address: string) => {
       await wallet!.ensureOnHome();
       await expect
@@ -278,30 +313,67 @@ test('offline native history survives A → B transient failure → A through no
         .toEqual({ id, type: 'HDAccount', address });
       await page.locator('#activity-btn').click();
     };
-    const assertAValues = async () => {
-      await expect(
-        row(selfId).getByText('0.065473 TSYS', { exact: true })
-      ).toBeVisible();
-      await expect(
-        row(externalId).getByText('−0.700000 TSYS', { exact: true })
-      ).toBeVisible();
-      for (const id of [selfId, externalId])
+    const assertAValues = async (hasDetails: boolean) => {
+      if (hasDetails) {
         await expect(
-          row(id).getByText(en.settings.unavailable, { exact: true })
-        ).toHaveCount(0);
+          row(selfId).getByText('0.065473 TSYS', { exact: true })
+        ).toBeVisible();
+        await expect(
+          row(externalId).getByText('−0.700000 TSYS', { exact: true })
+        ).toBeVisible();
+      } else {
+        await assertBlankAmount(selfId);
+        await assertBlankAmount(externalId);
+      }
+      // An incoming account total is already exact in txsummary and does not
+      // require the global input/output arrays to determine its transfer value.
+      await expect(
+        row(receivedId).getByText('+0.700000 TSYS', { exact: true })
+      ).toBeVisible();
+      for (const id of [selfId, externalId, receivedId])
+        for (const placeholder of [en.buttons.loading, en.settings.unavailable])
+          await expect(
+            row(id).getByText(placeholder, { exact: true })
+          ).toHaveCount(0);
+    };
+    const openDetailsAndBack = async (id: string, amount: string) => {
+      await row(id).locator('svg.cursor-pointer').last().click();
+      await expect(page).toHaveURL(/#\/home\/details/);
+      await expect(page.getByText(amount, { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(page).toHaveURL(/#\/home/);
+      await page.locator('#activity-btn').click();
     };
     await wallet.step(
-      'account A shows hydrated native MAX and external transfer amounts',
+      'account A shows exact incoming summary and blank ambiguous spends without per-row reads',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await assertAccount(0, fixture.userAddress);
-        await assertAValues();
+        await assertAValues(false);
+        expect(fullTransactionReads).toEqual([]);
         expect(
           historyReads.some(
             (read) => read.account === 'A' && read.details === 'txsummary'
           )
         ).toBe(true);
+      }
+    );
+    await wallet.step(
+      'Details fetches each requested transaction once and Back shows its verified native amount',
+      async () => {
+        await openDetailsAndBack(selfId, '0.06547335 TSYS');
+        await expect(
+          row(selfId).getByText('0.065473 TSYS', { exact: true })
+        ).toBeVisible();
+        await assertBlankAmount(externalId);
+        expect(fullTransactionReads.map((read) => read.txid)).toEqual([selfId]);
+        await openDetailsAndBack(externalId, '0.7 TSYS');
+        await assertAValues(true);
+        expect(fullTransactionReads.map((read) => read.txid)).toEqual([
+          selfId,
+          externalId,
+        ]);
       }
     );
     await wallet.step(
@@ -339,6 +411,9 @@ test('offline native history survives A → B transient failure → A through no
           row(secondId).getByText(en.settings.unavailable, { exact: true })
         ).toHaveCount(0);
         await expect(row(selfId)).toHaveCount(0);
+        await expect(row(externalId)).toHaveCount(0);
+        await expect(row(receivedId)).toHaveCount(0);
+        expect(fullTransactionReads).toHaveLength(2);
       }
     );
     await wallet.step(
@@ -370,8 +445,21 @@ test('offline native history survives A → B transient failure → A through no
               read.details === 'txslight'
           )
         ).toEqual([]);
-        await assertAValues();
+        await assertAValues(true);
         await expect(row(secondId)).toHaveCount(0);
+        expect(fullTransactionReads).toHaveLength(2);
+        expect(deniedWrites).toEqual([]);
+      }
+    );
+    await wallet.step(
+      'document reload clears the Details memory cache without starting list transaction reads',
+      async () => {
+        await page.reload();
+        await wallet!.waitAppReady();
+        await assertAccount(0, fixture.userAddress);
+        await assertAValues(false);
+        await expect(row(secondId)).toHaveCount(0);
+        expect(fullTransactionReads).toHaveLength(2);
         expect(deniedWrites).toEqual([]);
       }
     );
@@ -388,10 +476,16 @@ test('offline native history survives A → B transient failure → A through no
             'one exact account-B GET /api/v2/xpub/<synthetic-account>?details=txsummary aborted timedout',
           transientFailures,
           accountBUsesExplicitOwnedLegacyRows: true,
+          listFullTransactionReadsBeforeDetails: 0,
+          missingAmountsRemainBlank: true,
+          detailsCacheSurvivesAccountRoundTrip: true,
+          documentReloadClearsDetailsCache: true,
           accountASelfSatoshis: '6547335',
           accountAExternalSatoshis: '70000000',
+          accountAReceivedSatoshis: '70000000',
           accountBExternalSatoshis: '150000000',
           historyReads,
+          fullTransactionReads,
           deniedWrites,
           deniedUnknown,
           proxyDeniedConnections: server.blocked.length,
