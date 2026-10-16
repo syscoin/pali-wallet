@@ -135,26 +135,52 @@ it('leaves an incomplete bridge amount absent and navigates to Details without a
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('updates a mounted bridge row from the Details cache and reuses it after remount', async () => {
+it('shows a compact account asset quantity until Details supplies the full bridge amount', async () => {
   const view = render(
     <UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />
   );
-  expect(screen.queryByText('0.100000 SYSX')).toBeNull();
+  const compactAmount = screen.getByText('0.100000 SYSX');
+  expect(within(compactAmount.parentElement!).queryByText('+')).toBeNull();
+  expect(within(compactAmount.parentElement!).queryByText('−')).toBeNull();
   expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
   await visitDetails({
-    ...fullBridge('10000000'),
+    ...fullBridge('200000000'),
     txid: compactBridgeWithAccountAsset.txid,
   });
 
   expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
-  const amount = screen.getByText('0.100000 SYSX');
+  const amount = screen.getByText('2.0000 SYSX');
+  expect(screen.queryByText('0.100000 SYSX')).toBeNull();
   expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(
     screen.queryByText('send.nativeBalanceChange: -0.0000187 TSYS')
   ).toBeNull();
   view.unmount();
   render(<UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />);
-  expect(screen.getByText('0.100000 SYSX')).toBeTruthy();
+  expect(screen.getByText('2.0000 SYSX')).toBeTruthy();
+  expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('uses only the explicit asset direction for a compact bridge quantity sign', () => {
+  render(
+    <UtxoTransactionsListComponent
+      tx={{
+        ...compactBridgeWithAccountAsset,
+        direction: 'received',
+        accountAssetTransfers: [
+          {
+            ...compactBridgeWithAccountAsset.accountAssetTransfers[0],
+            direction: 'sent',
+          },
+        ],
+      }}
+    />
+  );
+  const amount = screen.getByText('0.100000 SYSX');
+  expect(amount.textContent).toBe('−0.100000 SYSX');
+  expect(screen.getByText('send.sent')).toBeTruthy();
   expectNoUnknownAmountLabel();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -354,30 +380,102 @@ it('does not invent a value from an unrelated output when the account delta is z
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('shows a native output only after Details fills the cache, never its fee-sized delta', async () => {
-  const tx = {
-    ...compactBridgeNativeOffset,
-    tokenType: undefined,
-    addressValueIn: '6547561',
-    addressValueOut: '6547335',
-    fees: '226',
-  };
-  render(<UtxoTransactionsListComponent tx={tx} />);
-  expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
-  expect(screen.queryByText('0.065473 TSYS')).toBeNull();
-  expectNoUnknownAmountLabel();
-  await visitDetails({
-    ...tx,
-    vin: [{ value: '6547561' }],
-    vout: [{ value: '6547335' }],
-  });
+it.each([undefined, false])(
+  'keeps a native spend blank without a true ownership proof (%s), then uses Details',
+  async (accountOwnsAllInputs) => {
+    const tx = {
+      ...compactBridgeNativeOffset,
+      tokenType: undefined,
+      addressValueIn: '6547561',
+      addressValueOut: '6547335',
+      accountOwnsAllInputs,
+      fees: '226',
+    };
+    render(<UtxoTransactionsListComponent tx={tx} />);
+    expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
+    expect(screen.queryByText('0.065473 TSYS')).toBeNull();
+    expect(screen.getByText('send.sent')).toBeTruthy();
+    expectNoUnknownAmountLabel();
+    await visitDetails({
+      ...tx,
+      vin: [{ value: '6547561' }],
+      vout: [{ value: '6547335' }],
+    });
+    expect(screen.getByText('0.065473 TSYS')).toBeTruthy();
+    expect(
+      screen.queryByText('send.nativeBalanceChange: -0.00000226 TSYS')
+    ).toBeNull();
+    expect(screen.queryByText('send.fee: 0.00000226 TSYS')).toBeNull();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('shows a compact native self output from strict account ownership proof, never its fee-sized delta', () => {
+  render(
+    <UtxoTransactionsListComponent
+      tx={{
+        ...compactBridgeNativeOffset,
+        tokenType: undefined,
+        addressValueIn: '6547561',
+        addressValueOut: '6547335',
+        accountOwnsAllInputs: true,
+        fees: '226',
+      }}
+    />
+  );
   expect(screen.getByText('0.065473 TSYS')).toBeTruthy();
+  expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
   expect(
-    screen.queryByText('send.nativeBalanceChange: -0.00000226 TSYS')
-  ).toBeNull();
-  expect(screen.queryByText('send.fee: 0.00000226 TSYS')).toBeNull();
+    screen.getByTitle('send.selfTransferOutputTotal: 0.065473 TSYS')
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('img', { name: 'send.selfTransferOutputTotal' })
+  ).toBeTruthy();
+  expectNoUnknownAmountLabel();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it('shows a compact external native amount from account totals, fee and strict ownership proof', () => {
+  render(
+    <UtxoTransactionsListComponent
+      tx={{
+        ...compactBridgeNativeOffset,
+        tokenType: undefined,
+        addressValueIn: '100000226',
+        addressValueOut: '30000000',
+        accountOwnsAllInputs: true,
+        fees: '226',
+      }}
+    />
+  );
+  const amount = screen.getByText('0.700000 TSYS');
+  expect(amount.textContent).toBe('−0.700000 TSYS');
+  expect(screen.queryByText('0.700002 TSYS')).toBeNull();
+  expect(screen.getByText('send.sent')).toBeTruthy();
+  expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it.each(['sent', 'received'] as const)(
+  'keeps a compact native %s status when its amount is unknown',
+  (direction) => {
+    render(
+      <UtxoTransactionsListComponent
+        tx={{
+          ...compactBridgeNativeOffset,
+          tokenType: undefined,
+          direction,
+          addressValueIn: undefined,
+          addressValueOut: undefined,
+        }}
+      />
+    );
+    expect(screen.getByText(`send.${direction}`)).toBeTruthy();
+    expect(screen.queryByText(/TSYS/)).toBeNull();
+    expectNoUnknownAmountLabel();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
 
 it('shows external native recipient total, not fee-inclusive change or the first output', () => {
   render(

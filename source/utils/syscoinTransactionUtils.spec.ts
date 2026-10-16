@@ -9,6 +9,7 @@ import {
   getSyscoinNativeTransferAmount,
   getSyscoinIntentAmount,
   getSyscoinOperationAmount,
+  getSyscoinActivityOperationAmount,
   getSyscoinTransactionTypeLabel,
 } from './syscoinTransactionUtils';
 import { getKnownTokenLogo, SYSX_ASSET_GUID } from './tokens';
@@ -172,6 +173,81 @@ describe('getSyscoinNativeTransferAmount', () => {
     expect(
       getSyscoinNativeTransferAmount({ ...account, addressValueIn: undefined })
     ).toBeNull();
+  });
+  it('uses explicit account input ownership for a compact external spend', () => {
+    expect(
+      getSyscoinNativeTransferAmount({
+        ...account,
+        accountOwnsAllInputs: true,
+        addressValueOut: '30000000',
+        direction: 'received',
+      })
+    ).toEqual({ amount: '70000000', direction: 'sent', kind: 'external' });
+  });
+  it('uses compact ownership for a self output total without guessing output count', () => {
+    expect(
+      getSyscoinNativeTransferAmount({ ...account, accountOwnsAllInputs: true })
+    ).toEqual({ amount: '100000000', kind: 'self', outputTotal: true });
+  });
+  it.each([undefined, false, 'true', 1, null])(
+    'does not replace ownership evidence with a truthy flag %j or direction',
+    (accountOwnsAllInputs) => {
+      expect(
+        getSyscoinNativeTransferAmount({
+          ...account,
+          accountOwnsAllInputs,
+          direction: 'sent',
+        })
+      ).toBeNull();
+    }
+  );
+  it.each([
+    { fees: undefined },
+    { fees: '-1' },
+    { fees: '0.5' },
+    { addressValueOut: '100000001' },
+    { addressValueIn: '226', addressValueOut: '0' },
+    { addressValueIn: Number.MAX_SAFE_INTEGER + 1 },
+    { addressValueOut: '1e8' },
+  ])('rejects inconsistent compact amounts %j', (changes) => {
+    expect(
+      getSyscoinNativeTransferAmount({
+        ...account,
+        accountOwnsAllInputs: true,
+        ...changes,
+      })
+    ).toBeNull();
+  });
+  it('does not borrow ownership from cached chain details', () => {
+    expect(
+      getSyscoinNativeTransferAmount(account, {
+        ...account,
+        accountOwnsAllInputs: true,
+      })
+    ).toBeNull();
+  });
+  it('does not let a compact flag override contradictory or partial full details', () => {
+    const owned = { ...account, accountOwnsAllInputs: true };
+    expect(
+      getSyscoinNativeTransferAmount(owned, { ...full, fees: '227' })
+    ).toBeNull();
+    expect(
+      getSyscoinNativeTransferAmount(owned, { ...full, vout: [] })
+    ).toBeNull();
+    expect(
+      getSyscoinNativeTransferAmount(owned, { ...full, vin: null, vout: null })
+    ).toBeNull();
+  });
+  it('keeps compact atomic amounts exact beyond safe JavaScript integers', () => {
+    expect(
+      getSyscoinNativeTransferAmount({
+        ...account,
+        accountOwnsAllInputs: true,
+        fees: '1',
+        addressValueIn: '9007199254740993',
+        addressValueOut: '9007199254740992',
+      })
+    ).toEqual({ amount: '9007199254740992', kind: 'self', outputTotal: true });
   });
   it.each([
     [{ addressValueIn: '50000000' }, {}],
@@ -390,4 +466,87 @@ describe('getSyscoinOperationAmount', () => {
       ).toMatchObject({ amount: 0.1, direction: undefined, scope: 'account' });
     }
   );
+});
+
+describe('getSyscoinActivityOperationAmount', () => {
+  it.each(['SPTAssetAllocationBurnToSyscoin', 'SPTAssetAllocationMint'])(
+    'shows the supplied compact account asset quantity for %s without a detail read',
+    (tokenType) => {
+      const transaction = {
+        ...compactBridgeWithAccountAsset,
+        tokenType,
+        direction: 'received',
+        // These are duplicate account summaries, not two operation amounts.
+        tokenTransfers: compactBridgeWithAccountAsset.accountAssetTransfers,
+      };
+      expect(getSyscoinActivityOperationAmount(transaction)).toEqual({
+        amount: 0.1,
+        assetGuid: '123456',
+        decimals: 8,
+        symbol: 'SYSX',
+        direction: undefined,
+        scope: 'account',
+      });
+    }
+  );
+  it('keeps the operation decoder strict while Activity uses an available account quantity', () => {
+    expect(getSyscoinOperationAmount(compactBridgeWithAccountAsset)).toBeNull();
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeWithAccountAsset)
+    ).toMatchObject({ amount: 0.1, scope: 'account' });
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeNativeOffset)
+    ).toBeNull();
+  });
+  it('prefers full burned amount over a smaller account contribution', () => {
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeWithAccountAsset, {
+        ...compactBridgeWithAccountAsset,
+        vout: [
+          {
+            addresses: ['OP_RETURN'],
+            assetInfo: { assetGuid: '123456', value: '200000000' },
+          },
+        ],
+      })
+    ).toMatchObject({ amount: 2, scope: 'transaction' });
+  });
+  it.each([
+    { value: '0' },
+    { value: 'NaN' },
+    { value: '1e8' },
+    { value: '0.1' },
+    { value: Number.MAX_SAFE_INTEGER + 1 },
+    { decimals: -1 },
+    { decimals: 9 },
+    { decimals: 1.1 },
+    { decimals: undefined },
+    { assetGuid: '', token: undefined, contract: undefined },
+  ])(
+    'leaves genuinely unavailable or malformed asset quantities unresolved %j',
+    (changes) => {
+      expect(
+        getSyscoinActivityOperationAmount({
+          ...compactBridgeWithAccountAsset,
+          accountAssetTransfers: [
+            {
+              ...compactBridgeWithAccountAsset.accountAssetTransfers![0],
+              ...changes,
+            },
+          ],
+        })
+      ).toBeNull();
+    }
+  );
+  it('does not pick one of several account assets as a bridge operation', () => {
+    expect(
+      getSyscoinActivityOperationAmount({
+        ...compactBridgeWithAccountAsset,
+        accountAssetTransfers: [
+          ...compactBridgeWithAccountAsset.accountAssetTransfers!,
+          { assetGuid: 'other', value: '900000000', decimals: 8 },
+        ],
+      })
+    ).toBeNull();
+  });
 });

@@ -159,6 +159,7 @@ export interface IEvmTransactionsController {
 
 export interface ISysTransaction {
   accountAssetTransfers?: any[];
+  accountOwnsAllInputs?: boolean;
   addressValueIn?: string;
   addressValueOut?: string;
   blockHash: string;

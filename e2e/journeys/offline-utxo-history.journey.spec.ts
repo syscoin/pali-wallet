@@ -121,7 +121,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
             ),
             [compactBridgeWithAccountAsset.txid]: fullBridge(
               compactBridgeWithAccountAsset,
-              '10000000'
+              '200000000'
             ),
           },
         }),
@@ -266,7 +266,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await expect(icon).toHaveCSS('transform', 'none');
     };
     await wallet.step(
-      'compact Activity keeps operation tags and missing values blank without per-row reads',
+      'compact Activity shows its known account asset quantity and keeps unknown amounts blank without per-row reads',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -284,7 +284,16 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('Bridge to NEVM')
         ).toBeVisible();
-        await expectBlankAmount(compactBridgeWithAccountAsset.txid);
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText(
+            /^[+−]0\.100000 SYSX$/
+          )
+        ).toHaveCount(0);
         await expectBlankAmount(pending.txid);
         for (const txid of [
           compactBridgeNativeOffset.txid,
@@ -339,10 +348,20 @@ test('offline UTXO history: bridge value, native account change and pending deta
         ]);
         await openDetails(compactBridgeWithAccountAsset.txid);
         await expect(
-          page.getByText('0.100000 SYSX', { exact: true })
+          page.getByText('2.0000 SYSX', { exact: true })
         ).toBeVisible();
-        await expectSysxDetailsIcon('0.100000 SYSX');
+        await expectSysxDetailsIcon('2.0000 SYSX');
         await back();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('2.0000 SYSX', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX', {
+            exact: true,
+          })
+        ).toHaveCount(0);
         for (const bridge of [
           compactBridgeNativeOffset,
           compactBridgeWithAccountAsset,
@@ -420,6 +439,9 @@ test('offline UTXO history: bridge value, native account change and pending deta
           confirmationClicked: false,
           capturedAccountFieldsWithSyntheticAddresses: true,
           listFullTransactionReadsBeforeDetails: 0,
+          compactAccountAssetSatoshis: '10000000',
+          fullBridgeOperationSatoshis: '200000000',
+          fullBridgeOperationOverridesAccountQuantity: true,
           missingAmountsRemainBlank: true,
           detailsCacheReusedAfterBack: true,
           fullTransactionReads: fullTransactionReads(),

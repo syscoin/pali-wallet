@@ -32,7 +32,7 @@ import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeStyle,
-  getSyscoinOperationAmount,
+  getSyscoinActivityOperationAmount,
   isSyscoinTokenOperation,
   getSyscoinNativeTransferAmount,
   formatSyscoinConfirmationETA,
@@ -86,7 +86,7 @@ const UtxoTransactionsListComponentBase = ({
       }
     : tx;
   const tokenOperation = isSyscoinTokenOperation(displayTransaction);
-  const intent = getSyscoinOperationAmount(displayTransaction);
+  const intent = getSyscoinActivityOperationAmount(tx, displayTransaction);
   const nativeIntent = !tokenOperation
     ? getSyscoinNativeTransferAmount(tx, displayTransaction)
     : null;
@@ -164,6 +164,11 @@ const UtxoTransactionsListComponentBase = ({
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
   const isSentByUs = nativeIntent?.direction === 'sent';
+  const nativeDirection = nativeIntent
+    ? nativeIntent.direction
+    : tx.direction === 'sent' || tx.direction === 'received'
+    ? tx.direction
+    : undefined;
   const signChar = isSentByUs ? '−' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
   const isSptSentByUs = intent?.direction === 'sent';
@@ -247,8 +252,8 @@ const UtxoTransactionsListComponentBase = ({
                         : 'send.received'
                     )
                   : t('send.confirmed')
-                : nativeIntent?.direction
-                ? t(isSentByUs ? 'send.sent' : 'send.received')
+                : nativeDirection
+                ? t(nativeDirection === 'sent' ? 'send.sent' : 'send.received')
                 : t('send.confirmed')}
             </p>
           ) : (
