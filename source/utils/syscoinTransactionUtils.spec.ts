@@ -9,6 +9,7 @@ import {
   getSyscoinNativeTransferAmount,
   getSyscoinIntentAmount,
   getSyscoinOperationAmount,
+  getSyscoinActivityOperationAmount,
   getSyscoinTransactionTypeLabel,
 } from './syscoinTransactionUtils';
 import { getKnownTokenLogo, SYSX_ASSET_GUID } from './tokens';
@@ -250,6 +251,36 @@ describe('getSyscoinAccountDelta', () => {
   );
 });
 
+describe('getSyscoinAccountChange compact native Activity values', () => {
+  it.each([
+    ['100000226', '30000000', '-70000226'],
+    ['100000226', '100000000', '-226'],
+    ['0', '100000000', '100000000'],
+    ['680', '10000000', '9999320'],
+    ['0', '0', '0'],
+    ['9007199254740993', '9007199254740992', '-1'],
+  ])(
+    'uses out minus in directly, including fees: %s %s',
+    (addressValueIn, addressValueOut, expected) => {
+      expect(getSyscoinAccountChange({ addressValueIn, addressValueOut })).toBe(
+        expected
+      );
+    }
+  );
+  it.each([
+    {},
+    { addressValueIn: '0' },
+    { addressValueOut: '100000000' },
+    { addressValueIn: '-1', addressValueOut: '100' },
+    { addressValueIn: '1e8', addressValueOut: '100' },
+    { addressValueIn: '0.5', addressValueOut: '100' },
+    { addressValueIn: '0x01', addressValueOut: '100' },
+    { addressValueIn: Number.MAX_SAFE_INTEGER + 1, addressValueOut: '100' },
+  ])('leaves incomplete or malformed account totals unresolved %j', (tx) => {
+    expect(getSyscoinAccountChange(tx as any)).toBeNull();
+  });
+});
+
 describe('getSyscoinOperationAmount', () => {
   it('uses full bridge burn semantics ahead of native funding or account asset deltas', () => {
     const full = {
@@ -390,4 +421,87 @@ describe('getSyscoinOperationAmount', () => {
       ).toMatchObject({ amount: 0.1, direction: undefined, scope: 'account' });
     }
   );
+});
+
+describe('getSyscoinActivityOperationAmount', () => {
+  it.each(['SPTAssetAllocationBurnToSyscoin', 'SPTAssetAllocationMint'])(
+    'shows the supplied compact account asset quantity for %s without a detail read',
+    (tokenType) => {
+      const transaction = {
+        ...compactBridgeWithAccountAsset,
+        tokenType,
+        direction: 'received',
+        // These are duplicate account summaries, not two operation amounts.
+        tokenTransfers: compactBridgeWithAccountAsset.accountAssetTransfers,
+      };
+      expect(getSyscoinActivityOperationAmount(transaction)).toEqual({
+        amount: 0.1,
+        assetGuid: '123456',
+        decimals: 8,
+        symbol: 'SYSX',
+        direction: undefined,
+        scope: 'account',
+      });
+    }
+  );
+  it('keeps the operation decoder strict while Activity uses an available account quantity', () => {
+    expect(getSyscoinOperationAmount(compactBridgeWithAccountAsset)).toBeNull();
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeWithAccountAsset)
+    ).toMatchObject({ amount: 0.1, scope: 'account' });
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeNativeOffset)
+    ).toBeNull();
+  });
+  it('prefers full burned amount over a smaller account contribution', () => {
+    expect(
+      getSyscoinActivityOperationAmount(compactBridgeWithAccountAsset, {
+        ...compactBridgeWithAccountAsset,
+        vout: [
+          {
+            addresses: ['OP_RETURN'],
+            assetInfo: { assetGuid: '123456', value: '200000000' },
+          },
+        ],
+      })
+    ).toMatchObject({ amount: 2, scope: 'transaction' });
+  });
+  it.each([
+    { value: '0' },
+    { value: 'NaN' },
+    { value: '1e8' },
+    { value: '0.1' },
+    { value: Number.MAX_SAFE_INTEGER + 1 },
+    { decimals: -1 },
+    { decimals: 9 },
+    { decimals: 1.1 },
+    { decimals: undefined },
+    { assetGuid: '', token: undefined, contract: undefined },
+  ])(
+    'leaves genuinely unavailable or malformed asset quantities unresolved %j',
+    (changes) => {
+      expect(
+        getSyscoinActivityOperationAmount({
+          ...compactBridgeWithAccountAsset,
+          accountAssetTransfers: [
+            {
+              ...compactBridgeWithAccountAsset.accountAssetTransfers![0],
+              ...changes,
+            },
+          ],
+        })
+      ).toBeNull();
+    }
+  );
+  it('does not pick one of several account assets as a bridge operation', () => {
+    expect(
+      getSyscoinActivityOperationAmount({
+        ...compactBridgeWithAccountAsset,
+        accountAssetTransfers: [
+          ...compactBridgeWithAccountAsset.accountAssetTransfers!,
+          { assetGuid: 'other', value: '900000000', decimals: 8 },
+        ],
+      })
+    ).toBeNull();
+  });
 });

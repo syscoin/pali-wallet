@@ -135,26 +135,52 @@ it('leaves an incomplete bridge amount absent and navigates to Details without a
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('updates a mounted bridge row from the Details cache and reuses it after remount', async () => {
+it('shows a compact account asset quantity until Details supplies the full bridge amount', async () => {
   const view = render(
     <UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />
   );
-  expect(screen.queryByText('0.100000 SYSX')).toBeNull();
+  const compactAmount = screen.getByText('0.100000 SYSX');
+  expect(within(compactAmount.parentElement!).queryByText('+')).toBeNull();
+  expect(within(compactAmount.parentElement!).queryByText('−')).toBeNull();
   expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
   await visitDetails({
-    ...fullBridge('10000000'),
+    ...fullBridge('200000000'),
     txid: compactBridgeWithAccountAsset.txid,
   });
 
   expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
-  const amount = screen.getByText('0.100000 SYSX');
+  const amount = screen.getByText('2.0000 SYSX');
+  expect(screen.queryByText('0.100000 SYSX')).toBeNull();
   expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(
     screen.queryByText('send.nativeBalanceChange: -0.0000187 TSYS')
   ).toBeNull();
   view.unmount();
   render(<UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />);
-  expect(screen.getByText('0.100000 SYSX')).toBeTruthy();
+  expect(screen.getByText('2.0000 SYSX')).toBeTruthy();
+  expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('uses only the explicit asset direction for a compact bridge quantity sign', () => {
+  render(
+    <UtxoTransactionsListComponent
+      tx={{
+        ...compactBridgeWithAccountAsset,
+        direction: 'received',
+        accountAssetTransfers: [
+          {
+            ...compactBridgeWithAccountAsset.accountAssetTransfers[0],
+            direction: 'sent',
+          },
+        ],
+      }}
+    />
+  );
+  const amount = screen.getByText('0.100000 SYSX');
+  expect(amount.textContent).toBe('−0.100000 SYSX');
+  expect(screen.getByText('send.sent')).toBeTruthy();
   expectNoUnknownAmountLabel();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
@@ -333,7 +359,7 @@ it('uses Details-cached SPT metadata while preserving account ownership, not the
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('does not invent a value from an unrelated output when the account delta is zero', async () => {
+it('shows zero account movement instead of an unrelated transaction output', async () => {
   render(
     <UtxoTransactionsListComponent
       tx={{
@@ -348,13 +374,13 @@ it('does not invent a value from an unrelated output when the account delta is z
   expect(screen.queryByText('send.nativeBalanceChange: 0 TSYS')).toBeNull();
   await act(async () => Promise.resolve());
   expectNoUnknownAmountLabel();
-  expect(screen.queryByText('0.0000 TSYS')).toBeNull();
+  expect(screen.getByText('0.0000 TSYS').textContent).toBe('0.0000 TSYS');
   expect(screen.queryByText('9.0000 TSYS')).toBeNull();
   expect(screen.queryByText('Bridge to NEVM')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('shows a native output only after Details fills the cache, never its fee-sized delta', async () => {
+it('shows a native self-send fee loss from account totals and keeps it after contradictory Details data', async () => {
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: undefined,
@@ -363,23 +389,51 @@ it('shows a native output only after Details fills the cache, never its fee-size
     fees: '226',
   };
   render(<UtxoTransactionsListComponent tx={tx} />);
-  expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
+  expect(screen.getByText('0.00000226 TSYS').textContent).toBe(
+    '−0.00000226 TSYS'
+  );
   expect(screen.queryByText('0.065473 TSYS')).toBeNull();
   expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
   await visitDetails({
-    ...tx,
-    vin: [{ value: '6547561' }],
-    vout: [{ value: '6547335' }],
+    txid: tx.txid,
+    fees: '226',
+    vin: [{ value: '1000000226' }],
+    vout: [{ value: '1000000000' }],
   });
-  expect(screen.getByText('0.065473 TSYS')).toBeTruthy();
+  expect(screen.getByText('0.00000226 TSYS').textContent).toBe(
+    '−0.00000226 TSYS'
+  );
+  expect(screen.queryByText('10.0000 TSYS')).toBeNull();
+  expect(screen.queryByText('0.065473 TSYS')).toBeNull();
   expect(
-    screen.queryByText('send.nativeBalanceChange: -0.00000226 TSYS')
+    screen.queryByRole('img', { name: 'send.selfTransferOutputTotal' })
   ).toBeNull();
-  expect(screen.queryByText('send.fee: 0.00000226 TSYS')).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('shows external native recipient total, not fee-inclusive change or the first output', () => {
+it.each(['sent', 'received'] as const)(
+  'keeps a compact native %s status when its amount is unknown',
+  (direction) => {
+    render(
+      <UtxoTransactionsListComponent
+        tx={{
+          ...compactBridgeNativeOffset,
+          tokenType: undefined,
+          direction,
+          addressValueIn: undefined,
+          addressValueOut: undefined,
+        }}
+      />
+    );
+    expect(screen.getByText(`send.${direction}`)).toBeTruthy();
+    expect(screen.queryByText(/TSYS/)).toBeNull();
+    expectNoUnknownAmountLabel();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('shows the signed native wallet loss including fees, independent of transaction outputs', () => {
   render(
     <UtxoTransactionsListComponent
       tx={
@@ -399,14 +453,15 @@ it('shows external native recipient total, not fee-inclusive change or the first
       }
     />
   );
-  expect(screen.getByText('0.700000 TSYS')).toBeTruthy();
+  expect(screen.getByText('0.700002 TSYS').textContent).toBe('−0.700002 TSYS');
+  expect(screen.queryByText('0.700000 TSYS')).toBeNull();
   expect(
     screen.queryByText('send.nativeBalanceChange: -0.70000226 TSYS')
   ).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('qualifies a multi-output self total inline without another text row', () => {
+it('shows only the fee loss for a multi-output native self-send', () => {
   render(
     <UtxoTransactionsListComponent
       tx={
@@ -422,14 +477,14 @@ it('qualifies a multi-output self total inline without another text row', () => 
       }
     />
   );
-  expect(screen.getByText('1.0000 TSYS')).toBeTruthy();
+  expect(screen.getByText('0.00000226 TSYS').textContent).toBe(
+    '−0.00000226 TSYS'
+  );
+  expect(screen.queryByText('1.0000 TSYS')).toBeNull();
   expect(screen.queryByText('send.selfTransferOutputTotal')).toBeNull();
   expect(
-    screen.getByTitle('send.selfTransferOutputTotal: 1.0000 TSYS')
-  ).toBeTruthy();
-  expect(
-    screen.getByRole('img', { name: 'send.selfTransferOutputTotal' })
-  ).toBeTruthy();
+    screen.queryByRole('img', { name: 'send.selfTransferOutputTotal' })
+  ).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -445,55 +500,33 @@ it('shows a known compact native receipt without a full read', () => {
       }}
     />
   );
-  expect(screen.getByText('1.0000 TSYS')).toBeTruthy();
+  expect(screen.getByText('1.0000 TSYS').textContent).toBe('+1.0000 TSYS');
   expect(screen.queryByText('send.nativeBalanceChange: +1 TSYS')).toBeNull();
   expect(screen.getByText('send.received')).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('does not reuse native output metadata from a departed account/network', async () => {
-  let finishOld!: (value: any) => void;
+it('keeps the native amount blank after raw Details when queried account totals are missing', async () => {
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: undefined,
-    addressValueIn: '100000226',
-    addressValueOut: '100000000',
+    addressValueIn: undefined,
+    addressValueOut: undefined,
     fees: '226',
   };
-  const view = render(<UtxoTransactionsListComponent tx={tx} />);
-  const oldRead = readUtxoTransactionDetails(
-    cacheScope(tx),
-    tx.txid,
-    () => new Promise((resolve) => (finishOld = resolve)),
-    () => true
-  );
-  await waitFor(() => expect(finishOld).toBeDefined());
-  mockScope = { account: 'another-account', network: 'another-network' };
-  mockUrl = 'https://another-blockbook.example';
-  const current = {
-    ...tx,
-    addressValueIn: '200000226',
-    addressValueOut: '200000000',
-  };
-  view.rerender(<UtxoTransactionsListComponent tx={current} />);
-  expect(screen.queryByText('1.0000 TSYS')).toBeNull();
+  render(<UtxoTransactionsListComponent tx={tx} />);
+  expect(screen.queryByText(/TSYS/)).toBeNull();
   expectNoUnknownAmountLabel();
   await visitDetails({
-    ...current,
+    txid: tx.txid,
+    fees: '226',
+    addressValueIn: '200000226',
+    addressValueOut: '200000000',
     vin: [{ value: '200000226' }],
     vout: [{ value: '200000000' }],
   });
-  expect(screen.getByText('2.0000 TSYS')).toBeTruthy();
-  await act(async () => {
-    finishOld({
-      ...tx,
-      vin: [{ value: '100000226' }],
-      vout: [{ value: '100000000' }],
-    });
-    await oldRead;
-  });
-  expect(screen.queryByText('1.0000 TSYS')).toBeNull();
-  expect(screen.getByText('2.0000 TSYS')).toBeTruthy();
+  expect(screen.queryByText(/TSYS/)).toBeNull();
+  expectNoUnknownAmountLabel();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 

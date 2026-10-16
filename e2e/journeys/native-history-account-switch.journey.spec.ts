@@ -274,14 +274,6 @@ test('offline native history survives A → B transient failure → A through no
       page
         .getByText(`${id.slice(0, 4)}...${id.slice(-14)}`, { exact: true })
         .locator('xpath=ancestor::div[contains(@class,"border-b")][1]');
-    const assertBlankAmount = async (id: string) => {
-      await expect(row(id)).toBeVisible();
-      await expect(row(id).getByText(/\bTSYS\b/)).toHaveCount(0);
-      for (const placeholder of [en.buttons.loading, en.settings.unavailable])
-        await expect(
-          row(id).getByText(placeholder, { exact: true })
-        ).toHaveCount(0);
-    };
     const assertAccount = async (id: number, address: string) => {
       await wallet!.ensureOnHome();
       await expect
@@ -313,20 +305,15 @@ test('offline native history survives A → B transient failure → A through no
         .toEqual({ id, type: 'HDAccount', address });
       await page.locator('#activity-btn').click();
     };
-    const assertAValues = async (hasDetails: boolean) => {
-      if (hasDetails) {
-        await expect(
-          row(selfId).getByText('0.065473 TSYS', { exact: true })
-        ).toBeVisible();
-        await expect(
-          row(externalId).getByText('−0.700000 TSYS', { exact: true })
-        ).toBeVisible();
-      } else {
-        await assertBlankAmount(selfId);
-        await assertBlankAmount(externalId);
-      }
+    const assertAValues = async () => {
+      await expect(
+        row(selfId).getByText('−0.00000226 TSYS', { exact: true })
+      ).toBeVisible();
+      await expect(
+        row(externalId).getByText('−0.700002 TSYS', { exact: true })
+      ).toBeVisible();
       // An incoming account total is already exact in txsummary and does not
-      // require the global input/output arrays to determine its transfer value.
+      // require global input/output arrays to show its wallet movement.
       await expect(
         row(receivedId).getByText('+0.700000 TSYS', { exact: true })
       ).toBeVisible();
@@ -336,44 +323,19 @@ test('offline native history survives A → B transient failure → A through no
             row(id).getByText(placeholder, { exact: true })
           ).toHaveCount(0);
     };
-    const openDetailsAndBack = async (id: string, amount: string) => {
-      await row(id).locator('svg.cursor-pointer').last().click();
-      await expect(page).toHaveURL(/#\/home\/details/);
-      await expect(page.getByText(amount, { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Back', exact: true }).click();
-      await expect(page).toHaveURL(/#\/home/);
-      await page.locator('#activity-btn').click();
-    };
     await wallet.step(
-      'account A shows exact incoming summary and blank ambiguous spends without per-row reads',
+      'account A shows signed wallet movements including fees directly from compact summaries',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await assertAccount(0, fixture.userAddress);
-        await assertAValues(false);
+        await assertAValues();
         expect(fullTransactionReads).toEqual([]);
         expect(
           historyReads.some(
             (read) => read.account === 'A' && read.details === 'txsummary'
           )
         ).toBe(true);
-      }
-    );
-    await wallet.step(
-      'Details fetches each requested transaction once and Back shows its verified native amount',
-      async () => {
-        await openDetailsAndBack(selfId, '0.06547335 TSYS');
-        await expect(
-          row(selfId).getByText('0.065473 TSYS', { exact: true })
-        ).toBeVisible();
-        await assertBlankAmount(externalId);
-        expect(fullTransactionReads.map((read) => read.txid)).toEqual([selfId]);
-        await openDetailsAndBack(externalId, '0.7 TSYS');
-        await assertAValues(true);
-        expect(fullTransactionReads.map((read) => read.txid)).toEqual([
-          selfId,
-          externalId,
-        ]);
       }
     );
     await wallet.step(
@@ -413,7 +375,7 @@ test('offline native history survives A → B transient failure → A through no
         await expect(row(selfId)).toHaveCount(0);
         await expect(row(externalId)).toHaveCount(0);
         await expect(row(receivedId)).toHaveCount(0);
-        expect(fullTransactionReads).toHaveLength(2);
+        expect(fullTransactionReads).toEqual([]);
       }
     );
     await wallet.step(
@@ -445,21 +407,21 @@ test('offline native history survives A → B transient failure → A through no
               read.details === 'txslight'
           )
         ).toEqual([]);
-        await assertAValues(true);
+        await assertAValues();
         await expect(row(secondId)).toHaveCount(0);
-        expect(fullTransactionReads).toHaveLength(2);
+        expect(fullTransactionReads).toEqual([]);
         expect(deniedWrites).toEqual([]);
       }
     );
     await wallet.step(
-      'document reload clears the Details memory cache without starting list transaction reads',
+      'document reload restores compact wallet movements without per-row transaction reads',
       async () => {
         await page.reload();
         await wallet!.waitAppReady();
         await assertAccount(0, fixture.userAddress);
-        await assertAValues(false);
+        await assertAValues();
         await expect(row(secondId)).toHaveCount(0);
-        expect(fullTransactionReads).toHaveLength(2);
+        expect(fullTransactionReads).toEqual([]);
         expect(deniedWrites).toEqual([]);
       }
     );
@@ -477,13 +439,12 @@ test('offline native history survives A → B transient failure → A through no
           transientFailures,
           accountBUsesExplicitOwnedLegacyRows: true,
           listFullTransactionReadsBeforeDetails: 0,
-          missingAmountsRemainBlank: true,
-          detailsCacheSurvivesAccountRoundTrip: true,
-          documentReloadClearsDetailsCache: true,
-          accountASelfSatoshis: '6547335',
-          accountAExternalSatoshis: '70000000',
-          accountAReceivedSatoshis: '70000000',
-          accountBExternalSatoshis: '150000000',
+          summaryAmountsSurviveAccountRoundTrip: true,
+          summaryAmountsSurviveDocumentReload: true,
+          accountASelfWalletMovementSatoshis: '-226',
+          accountAExternalWalletMovementSatoshis: '-70000226',
+          accountAReceivedWalletMovementSatoshis: '70000000',
+          accountBWalletMovementSatoshis: '-150000226',
           historyReads,
           fullTransactionReads,
           deniedWrites,

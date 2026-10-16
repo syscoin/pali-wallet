@@ -121,7 +121,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
             ),
             [compactBridgeWithAccountAsset.txid]: fullBridge(
               compactBridgeWithAccountAsset,
-              '10000000'
+              '200000000'
             ),
           },
         }),
@@ -266,7 +266,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await expect(icon).toHaveCSS('transform', 'none');
     };
     await wallet.step(
-      'compact Activity keeps operation tags and missing values blank without per-row reads',
+      'compact Activity shows its known account asset quantity and keeps unknown amounts blank without per-row reads',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -284,8 +284,19 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('Bridge to NEVM')
         ).toBeVisible();
-        await expectBlankAmount(compactBridgeWithAccountAsset.txid);
-        await expectBlankAmount(pending.txid);
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText(
+            /^[+−]0\.100000 SYSX$/
+          )
+        ).toHaveCount(0);
+        await expect(
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
+        ).toBeVisible();
         for (const txid of [
           compactBridgeNativeOffset.txid,
           compactBridgeWithAccountAsset.txid,
@@ -333,16 +344,28 @@ test('offline UTXO history: bridge value, native account change and pending deta
             exact: true,
           })
         ).toBeVisible();
-        await expectBlankAmount(pending.txid);
+        await expect(
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
+        ).toBeVisible();
         expect(fullTransactionReads()).toEqual([
           '/api/v2/tx/' + compactBridgeNativeOffset.txid,
         ]);
         await openDetails(compactBridgeWithAccountAsset.txid);
         await expect(
-          page.getByText('0.100000 SYSX', { exact: true })
+          page.getByText('2.0000 SYSX', { exact: true })
         ).toBeVisible();
-        await expectSysxDetailsIcon('0.100000 SYSX');
+        await expectSysxDetailsIcon('2.0000 SYSX');
         await back();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('2.0000 SYSX', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expect(
+          row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX', {
+            exact: true,
+          })
+        ).toHaveCount(0);
         for (const bridge of [
           compactBridgeNativeOffset,
           compactBridgeWithAccountAsset,
@@ -388,7 +411,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         );
         await back();
         await expect(
-          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
         ).toBeVisible();
         expect(
           fullTransactionReads().filter(
@@ -403,7 +426,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         ).toBeVisible();
         await back();
         await expect(
-          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+          row(pending.txid).getByText('−0.00000226 TSYS', { exact: true })
         ).toBeVisible();
         expect(fullTransactionReads()).toHaveLength(3);
         expect(routes.deniedWrites).toEqual([]);
@@ -420,6 +443,12 @@ test('offline UTXO history: bridge value, native account change and pending deta
           confirmationClicked: false,
           capturedAccountFieldsWithSyntheticAddresses: true,
           listFullTransactionReadsBeforeDetails: 0,
+          compactAccountAssetSatoshis: '10000000',
+          fullBridgeOperationSatoshis: '200000000',
+          fullBridgeOperationOverridesAccountQuantity: true,
+          nativeListAmountIsSignedWalletMovement: true,
+          pendingSelfWalletMovementSatoshis: '-226',
+          pendingDetailsOutputIntentSatoshis: '9999774',
           missingAmountsRemainBlank: true,
           detailsCacheReusedAfterBack: true,
           fullTransactionReads: fullTransactionReads(),

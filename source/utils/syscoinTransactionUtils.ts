@@ -40,9 +40,17 @@ export const getSyscoinAccountChange = (transaction: {
   addressValueIn?: string;
   addressValueOut?: string;
 }): string | null => {
-  if (getSyscoinAccountDelta(transaction) === null) return null;
-  return BigNumber.from(String(transaction?.addressValueOut ?? '0'))
-    .sub(String(transaction?.addressValueIn ?? '0'))
+  const atomic = (value: unknown) =>
+    (typeof value === 'string' ||
+      (typeof value === 'number' && Number.isSafeInteger(value))) &&
+    /^\d+$/.test(String(value));
+  if (
+    !atomic(transaction?.addressValueIn) ||
+    !atomic(transaction?.addressValueOut)
+  )
+    return null;
+  return BigNumber.from(String(transaction.addressValueOut))
+    .sub(String(transaction.addressValueIn))
     .toString();
 };
 
@@ -620,6 +628,48 @@ export const getSyscoinOperationAmount = (
     return { ...account, direction, scope: 'account' };
   }
   return null;
+};
+
+/** Activity can show a known account asset quantity before operation details. */
+export const getSyscoinActivityOperationAmount = (
+  account: any,
+  full: any = account
+): ReturnType<typeof getSyscoinOperationAmount> => {
+  const operation = getSyscoinOperationAmount(full);
+  if (operation) return operation;
+  if (!isSyscoinTokenOperation(account)) return null;
+  const transfers = account?.accountAssetTransfers;
+  if (!Array.isArray(transfers) || transfers.length !== 1) return null;
+  const transfer = transfers[0];
+  const guid = transfer?.token || transfer?.assetGuid || transfer?.contract;
+  const decimals = transfer?.decimals;
+  const raw = transfer?.value;
+  if (
+    typeof guid !== 'string' ||
+    !guid ||
+    !Number.isInteger(decimals) ||
+    decimals < 0 ||
+    decimals > 8 ||
+    (typeof raw !== 'string' && typeof raw !== 'number') ||
+    (typeof raw === 'number' && !Number.isSafeInteger(raw)) ||
+    !/^-?\d+$/.test(String(raw))
+  )
+    return null;
+  const amount = Number(
+    formatSyscoinValue(String(raw).replace(/^-/, ''), decimals)
+  );
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    amount,
+    assetGuid: guid,
+    decimals,
+    symbol: typeof transfer.symbol === 'string' ? transfer.symbol : undefined,
+    direction:
+      transfer.direction === 'sent' || transfer.direction === 'received'
+        ? transfer.direction
+        : undefined,
+    scope: 'account',
+  };
 };
 
 /**

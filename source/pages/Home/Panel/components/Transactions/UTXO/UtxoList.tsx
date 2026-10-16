@@ -32,9 +32,9 @@ import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeStyle,
-  getSyscoinOperationAmount,
+  getSyscoinActivityOperationAmount,
   isSyscoinTokenOperation,
-  getSyscoinNativeTransferAmount,
+  getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
@@ -86,10 +86,10 @@ const UtxoTransactionsListComponentBase = ({
       }
     : tx;
   const tokenOperation = isSyscoinTokenOperation(displayTransaction);
-  const intent = getSyscoinOperationAmount(displayTransaction);
-  const nativeIntent = !tokenOperation
-    ? getSyscoinNativeTransferAmount(tx, displayTransaction)
-    : null;
+  const intent = getSyscoinActivityOperationAmount(tx, displayTransaction);
+  // Native Activity is the account's signed movement, including fees. Token
+  // operation quantities stay separate from their native funding movement.
+  const nativeChange = !tokenOperation ? getSyscoinAccountChange(tx) : null;
 
   const isConfirmed = isTransactionInBlock(tx);
 
@@ -151,7 +151,7 @@ const UtxoTransactionsListComponentBase = ({
     );
   }, [txAssetGuid, activeAssets?.syscoin, activeNetwork.chainId]);
 
-  // Primary values describe the operation/transfer, never its account delta.
+  // Native values describe wallet movement; SPT values describe the asset.
   let sptAmountDisplay: string | null = null;
   let sysAmountDisplay: string | null = null;
   if (intent) {
@@ -163,7 +163,17 @@ const UtxoTransactionsListComponentBase = ({
     const amountText = formatDisplayValue(intent.amount, decimals);
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
-  const isSentByUs = nativeIntent?.direction === 'sent';
+  const isSentByUs = nativeChange?.startsWith('-') === true;
+  const nativeDirection =
+    nativeChange !== null
+      ? nativeChange === '0'
+        ? undefined
+        : isSentByUs
+        ? 'sent'
+        : 'received'
+      : tx.direction === 'sent' || tx.direction === 'received'
+      ? tx.direction
+      : undefined;
   const signChar = isSentByUs ? '−' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
   const isSptSentByUs = intent?.direction === 'sent';
@@ -171,11 +181,13 @@ const UtxoTransactionsListComponentBase = ({
   const sptSignClass = isSptSentByUs
     ? 'text-warning-error'
     : 'text-brand-green';
-  if (nativeIntent) {
+  if (nativeChange !== null) {
     const baseSymbol = activeNetwork?.currency
       ? String(activeNetwork.currency).toUpperCase()
       : '';
-    const decimalValue = parseFloat(formatSyscoinValue(nativeIntent.amount));
+    const decimalValue = parseFloat(
+      formatSyscoinValue(nativeChange.replace(/^-/, ''))
+    );
     sysAmountDisplay = `${formatDisplayValue(decimalValue, 8)} ${baseSymbol}`;
   }
 
@@ -247,8 +259,8 @@ const UtxoTransactionsListComponentBase = ({
                         : 'send.received'
                     )
                   : t('send.confirmed')
-                : nativeIntent?.direction
-                ? t(isSentByUs ? 'send.sent' : 'send.received')
+                : nativeDirection
+                ? t(nativeDirection === 'sent' ? 'send.sent' : 'send.received')
                 : t('send.confirmed')}
             </p>
           ) : (
@@ -327,29 +339,14 @@ const UtxoTransactionsListComponentBase = ({
         {!sptAmountDisplay && sysAmountDisplay && (
           <div
             className="flex items-center gap-1 text-xs font-medium text-white mt-0.5 truncate max-w-[160px]"
-            title={
-              nativeIntent?.outputTotal
-                ? `${t('send.selfTransferOutputTotal')}: ${sysAmountDisplay}`
-                : sysAmountDisplay
-            }
+            title={sysAmountDisplay}
           >
             <span className="truncate">
-              {nativeIntent?.direction && (
+              {nativeChange !== '0' && (
                 <span className={signClass}>{signChar}</span>
               )}
               {sysAmountDisplay}
             </span>
-            {nativeIntent?.outputTotal && (
-              <Tooltip content={t('send.selfTransferOutputTotal')}>
-                <span
-                  role="img"
-                  aria-label={t('send.selfTransferOutputTotal')}
-                  className="shrink-0"
-                >
-                  <Icon name="info" className="w-3 h-3" />
-                </span>
-              </Tooltip>
-            )}
           </div>
         )}
       </div>
