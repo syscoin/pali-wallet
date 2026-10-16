@@ -178,6 +178,11 @@ import {
   getTransactionBlockInfo,
 } from 'utils/transactionUtils';
 import {
+  assertNoRecentAcknowledgedInputOverlap,
+  createUtxoAcknowledgedInputs,
+  type UtxoAcknowledgedInputs,
+} from 'utils/utxoAcknowledgedInputs';
+import {
   IUtxoSigningContext,
   UTXO_SIGNING_CONTEXT_CHANGED,
 } from 'utils/utxoSigningContext';
@@ -1471,6 +1476,28 @@ class MainController {
   public get syscoinTransaction() {
     this.assertWalletReadyForSigning();
     return this.getActiveKeyring().syscoinTransaction;
+  }
+
+  // Ordinary wallet Send uses the existing SDK builder unchanged, then rejects
+  // a stale indexer snapshot before presenting another confirmation.
+  public async getEstimateSysTransactionFee(
+    params: Parameters<
+      KeyringManager['syscoinTransaction']['getEstimateSysTransactionFee']
+    >[0]
+  ) {
+    const signing = this.captureUtxoSigningContext();
+    const activeNetwork = store.getState().vault.activeNetwork;
+    const result = await signing.transactions.getEstimateSysTransactionFee(
+      params
+    );
+    signing.assertCurrent();
+    if (result?.psbt) {
+      this.assertOrdinaryUtxoInputsCurrent(
+        PsbtUtils.fromPali(result.psbt, activeNetwork),
+        signing.context
+      );
+    }
+    return result;
   }
 
   public get ethereumTransaction() {
@@ -4899,6 +4926,7 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     options: {
       clearNavigation?: boolean;
+      localAcknowledgedInputs?: UtxoAcknowledgedInputs;
       persist?: boolean;
       skipRapidPolling?: boolean;
       transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
@@ -4950,6 +4978,7 @@ class MainController {
           chainId: activeNetwork.chainId,
           networkType: TransactionsType.Syscoin,
           transaction: minimalTx as ISysTransaction,
+          localAcknowledgedInputs: options.localAcknowledgedInputs,
         })
       );
 
@@ -5127,6 +5156,7 @@ class MainController {
     expectedContext?: IUtxoSigningContext;
     isLedger?: boolean; // For UTXO transactions
     isTrezor?: boolean;
+    ordinaryWalletSend?: boolean;
     psbt?: any;
   }): Promise<any> {
     let senderInvoked = false;
@@ -5136,6 +5166,13 @@ class MainController {
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
         const signing = this.captureUtxoSigningContext(params.expectedContext);
+
+        if (params.ordinaryWalletSend === true) {
+          this.assertOrdinaryUtxoInputsCurrent(
+            PsbtUtils.fromPali(params.psbt, activeNetwork),
+            signing.context
+          );
+        }
 
         // Step 1: Sign the PSBT
         const signedPsbt = await this.signSyscoinPsbt({
@@ -5148,8 +5185,12 @@ class MainController {
 
         // Reject incomplete or excessive-fee signatures before the sender can
         // publish anything. Keep the normal PSBT fee safety check enabled.
+        const verifiedSignedPsbt = PsbtUtils.fromPali(
+          signedPsbt,
+          activeNetwork
+        );
         try {
-          PsbtUtils.fromPali(signedPsbt, activeNetwork).extractTransaction();
+          verifiedSignedPsbt.extractTransaction();
         } catch (error) {
           if (
             error instanceof Error &&
@@ -5167,6 +5208,13 @@ class MainController {
         }
         signing.assertCurrent();
 
+        if (params.ordinaryWalletSend === true) {
+          this.assertOrdinaryUtxoInputsCurrent(
+            verifiedSignedPsbt,
+            signing.context
+          );
+        }
+
         // Step 2: Send the transaction
         senderInvoked = true;
         const txResult = await signing.transactions.sendTransaction(signedPsbt);
@@ -5174,7 +5222,15 @@ class MainController {
         // context or local history persistence fails afterward.
         try {
           signing.assertCurrent();
-          await this.sendAndSaveTransaction(txResult, signing.context.account);
+          await this.sendAndSaveTransaction(txResult, signing.context.account, {
+            localAcknowledgedInputs: createUtxoAcknowledgedInputs(
+              verifiedSignedPsbt.txInputs,
+              {
+                accountXpub: signing.context.account.xpub,
+                networkUrl: signing.context.rpcUrl,
+              }
+            ),
+          });
         } catch (error) {
           console.warn(
             '[MainController] Transaction broadcast succeeded; local history update was skipped or failed:',
@@ -7742,6 +7798,23 @@ class MainController {
 
     return { psbt, summary };
   };
+
+  private assertOrdinaryUtxoInputsCurrent(
+    psbt: { txInputs: Parameters<typeof createUtxoAcknowledgedInputs>[0] },
+    context: IUtxoSigningContext
+  ) {
+    const { vault, vaultGlobal } = store.getState();
+    if (vaultGlobal.activeSlip44 !== context.slip44)
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const history =
+      vault.accountTransactions?.[context.account.type]?.[context.account.id]
+        ?.syscoin;
+    assertNoRecentAcknowledgedInputOverlap(psbt.txInputs, history, {
+      accountXpub: context.account.xpub,
+      chainId: context.chainId,
+      networkUrl: context.rpcUrl,
+    });
+  }
 
   private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
     this.assertWalletReadyForSigning();

@@ -69,12 +69,38 @@ jobs:
         run: yarn build:chrome
       - name: Check isolated approval layout hit targets
         run: yarn jest --runInBand --coverage=false --runTestsByPath e2e/layout/switchChainLayout.spec.tsx --testPathIgnorePatterns /node_modules/
+      - name: Prepare immutable legacy upgrade artifacts
+        id: upgrade_artifacts
+        run: |
+          STORE_CRX="${RUNNER_TEMP}/pali-store-4.0.0.crx"
+          LEGACY_ZIP="${RUNNER_TEMP}/pali-store-4.0.0.zip"
+          EVIDENCE_DIR="${GITHUB_WORKSPACE}/e2e/artifacts/pr-conformance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "${EVIDENCE_DIR}"
+          curl --fail --location --retry 2 --output "${STORE_CRX}" \
+            'https://github.com/syscoin/pali-wallet/releases/download/v4.0.102/pali-wallet-store-upgrade-baseline-4.0.0.crx'
+          node e2e/scripts/prepare-store-upgrade-artifact.cjs \
+            "${STORE_CRX}" "${LEGACY_ZIP}" \
+            4f051937f8efec9a1f5bc4fa046a3c8f5c1cb1958021838ed967876328fee734 \
+            mgffkfbidihjpoaomajlbgchddlicgpn \
+            > "${EVIDENCE_DIR}/store-crx-provenance.json"
+          CURRENT_VERSION="$(node -p 'require("./package.json").version')"
+          CURRENT_ZIP="${GITHUB_WORKSPACE}/build/pali-wallet-production-chrome-${CURRENT_VERSION}.zip"
+          test -f "${CURRENT_ZIP}"
+          CURRENT_SHA256="$(sha256sum "${CURRENT_ZIP}" | cut -d ' ' -f 1)"
+          echo "current_zip=${CURRENT_ZIP}" >> "$GITHUB_OUTPUT"
+          echo "current_sha256=${CURRENT_SHA256}" >> "$GITHUB_OUTPUT"
       - name: Run isolated test dapp conformance
         env:
           PALI_E2E_RUN_ID: pr-conformance-${{ github.run_id }}-${{ github.run_attempt }}
           PALI_TEST_DAPP_REVISION: ${{ github.sha }}
           PALI_TEST_DAPP_EXTENSION_PATH: ${{ github.workspace }}/build/chrome
-        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts pending-native-max.journey.spec.ts offline-utxo-history.journey.spec.ts native-history-account-switch.journey.spec.ts spt-send-preview.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts
+          PALI_QA_STRESS_MODE: quick
+          PALI_LEGACY_EXTENSION_VERSION: 4.0.0
+          PALI_LEGACY_EXTENSION_ZIP: ${{ runner.temp }}/pali-store-4.0.0.zip
+          PALI_LEGACY_EXTENSION_SHA256: d2330273ec05a73f655e870c442b3be587e74fd5600d0028ed32df879e925253
+          PALI_CURRENT_EXTENSION_ZIP: ${{ steps.upgrade_artifacts.outputs.current_zip }}
+          PALI_CURRENT_EXTENSION_SHA256: ${{ steps.upgrade_artifacts.outputs.current_sha256 }}
+        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts pending-native-max.journey.spec.ts delayed-indexer-native-max.journey.spec.ts offline-utxo-history.journey.spec.ts native-history-account-switch.journey.spec.ts spt-send-preview.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts offline-sustained-wallet-stress.journey.spec.ts offline-legacy-upgrade.journey.spec.ts
       - name: Upload conformance evidence
         if: always()
         uses: actions/upload-artifact@v7

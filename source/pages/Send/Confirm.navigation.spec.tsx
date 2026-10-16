@@ -999,10 +999,19 @@ it('an ambiguous attempt returns only to its public caller after trust recovers'
   expect(mockAlert.success).not.toHaveBeenCalled();
 });
 
-it.each(['/send/confirm', '/external/tx/send/confirm'])(
-  'discards persisted navigation before the first submission RPC on %s',
-  async (pathname) => {
+it.each([
+  { pathname: '/send/confirm', external: false, ordinaryWalletSend: true },
+  {
+    pathname: '/external/tx/send/confirm',
+    external: true,
+    ordinaryWalletSend: false,
+  },
+  { pathname: '/send/confirm', external: true, ordinaryWalletSend: false },
+])(
+  'discards persisted navigation before submission on $pathname (external=$external)',
+  async ({ pathname, external, ordinaryWalletSend }) => {
     mockLocation.pathname = pathname;
+    mockLocation.state.external = external;
     let finishDiscard!: () => void;
     mockClearNavigationState.mockImplementation(
       () =>
@@ -1023,7 +1032,14 @@ it.each(['/send/confirm', '/external/tx/send/confirm'])(
     await waitFor(() =>
       expect(mockControllerEmitter).toHaveBeenCalledWith(
         ['wallet', 'signSendAndSaveTransaction'],
-        [{ psbt: 'synthetic-psbt', isTrezor: undefined, isLedger: undefined }],
+        [
+          {
+            psbt: 'synthetic-psbt',
+            isTrezor: undefined,
+            isLedger: undefined,
+            ordinaryWalletSend,
+          },
+        ],
         30000
       )
     );

@@ -157,6 +157,13 @@ export interface IEvmTransactionsController {
 
 //------------------------- SYS TYPES / INTERFACES -------------------------//
 
+export interface ILocalAcknowledgedInputs {
+  accountXpub: string;
+  acknowledgedAt: number;
+  networkUrl: string;
+  outpoints: string[];
+}
+
 export interface ISysTransaction {
   accountAssetTransfers?: any[];
   addressValueIn?: string;
@@ -171,6 +178,7 @@ export interface ISysTransaction {
   direction?: 'sent' | 'received';
   fees: string;
   hex: string;
+  localAcknowledgedInputs?: ILocalAcknowledgedInputs;
   // SPT transaction type (e.g., 'assetallocation_send', 'syscoin_burn_to_allocation')
   tokenTransfers?: any[];
   tokenType?: string;

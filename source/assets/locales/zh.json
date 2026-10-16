@@ -292,6 +292,7 @@
     "insufficientFunds": "余额不足",
     "insufficientFundsForGas": "余额不足以支付燃料费用",
     "maxUnavailablePendingTx": "在有待确认的交易时无法使用MAX。请等待交易确认。",
+    "networkCatchingUp": "网络仍在更新您的上一笔交易。请稍后重试。",
     "balance": "余额",
     "receiver": "接收者",
     "native": "原生",

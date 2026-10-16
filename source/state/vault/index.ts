@@ -39,6 +39,21 @@ import {
   IAccountTransactions,
 } from './types';
 
+// Backend history may replace compact local rows, but cannot manufacture the
+// wallet's short read-after-write fence. Only the local ACK action supplies it.
+const preserveLocalAcknowledgedInputs = (
+  incoming: any,
+  previous?: any,
+  acknowledged?: ISysTransaction['localAcknowledgedInputs']
+) => {
+  const { localAcknowledgedInputs: _untrusted, ...transaction } = incoming;
+  void _untrusted;
+  const local = acknowledged ?? previous?.localAcknowledgedInputs;
+  return local
+    ? { ...transaction, localAcknowledgedInputs: local }
+    : transaction;
+};
+
 // Targeted RPC/metadata updates can finish after a receipt was recorded. A
 // weaker pending response must not erase that receipt; full history refreshes
 // remain the reconciliation path for canonical chain changes.
@@ -601,15 +616,38 @@ const VaultState = createSlice({
         accountId?: number;
         accountType?: KeyringAccountType;
         chainId: number;
+        localAcknowledgedInputs?: ISysTransaction['localAcknowledgedInputs'];
         networkType: TransactionsType;
         transaction: IEvmTransaction | ISysTransaction;
       }>
     ) => {
       const { activeAccount } = state;
-      const { accountId, accountType, networkType, chainId, transaction } =
-        action.payload;
+      const {
+        accountId,
+        accountType,
+        networkType,
+        chainId,
+        transaction: incomingTransaction,
+        localAcknowledgedInputs,
+      } = action.payload;
       const targetAccountId = accountId ?? activeAccount.id;
       const targetAccountType = accountType ?? activeAccount.type;
+      const previous = state.accountTransactions[targetAccountType]?.[
+        targetAccountId
+      ]?.[networkType]?.[chainId]?.find(
+        (candidate: any) =>
+          candidate.txid &&
+          candidate.txid.toLowerCase() ===
+            (incomingTransaction as ISysTransaction).txid?.toLowerCase()
+      );
+      const transaction =
+        networkType === TransactionsType.Syscoin
+          ? preserveLocalAcknowledgedInputs(
+              incomingTransaction,
+              previous,
+              localAcknowledgedInputs
+            )
+          : incomingTransaction;
 
       // Ensure accountTransactions exists for this account
       if (!state.accountTransactions[targetAccountType]) {
@@ -707,7 +745,18 @@ const VaultState = createSlice({
               Boolean(transactionAny.replacementIndexed) ||
               Boolean(existingTxAny.replacementIndexed);
 
-            if (isSmartAccountExecution) {
+            if (
+              networkType === TransactionsType.Syscoin &&
+              localAcknowledgedInputs
+            ) {
+              // The local ACK row is only a compact placeholder. History may
+              // have indexed this tx first, so attach the local fence without
+              // replacing its values, inputs/outputs, asset data or receipt.
+              currentUserTransactions[existingTxIndex] = {
+                ...existingTxAny,
+                localAcknowledgedInputs,
+              } as any;
+            } else if (isSmartAccountExecution) {
               currentUserTransactions[existingTxIndex] = {
                 ...mergeKnownMinedReceipt(existingTxAny, transactionAny),
                 smartAccountExecutionFrom:
@@ -1044,6 +1093,13 @@ const VaultState = createSlice({
           const existingTransaction = transactionIdLower
             ? (existingTransactionsById.get(transactionIdLower) as any)
             : undefined;
+
+          if (networkType === TransactionsType.Syscoin) {
+            return preserveLocalAcknowledgedInputs(
+              transaction,
+              existingTransaction
+            );
+          }
 
           if (
             networkType !== TransactionsType.Ethereum ||

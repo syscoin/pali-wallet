@@ -292,6 +292,7 @@
     "insufficientFunds": "Fondos insuficientes",
     "insufficientFundsForGas": "Fondos insuficientes para cubrir las tarifas de gas",
     "maxUnavailablePendingTx": "MAX no está disponible mientras tengas una transacción pendiente. Espera a que se confirme.",
+    "networkCatchingUp": "La red aún está actualizando tu transacción anterior. Vuelve a intentarlo en unos instantes.",
     "balance": "Saldo",
     "receiver": "Destinatario",
     "native": "Nativo",

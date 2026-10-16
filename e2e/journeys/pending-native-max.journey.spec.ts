@@ -83,7 +83,7 @@ test('offline native MAX signs four linked pending self-spends with local fixtur
         if (
           message?.type === 'CONTROLLER_ACTION' &&
           message.data?.methods?.join('.') ===
-            'wallet.syscoinTransaction.getEstimateSysTransactionFee' &&
+            'wallet.getEstimateSysTransactionFee' &&
           typeof args[args.length - 1] === 'function'
         ) {
           const callback = args[args.length - 1];

@@ -140,6 +140,16 @@ See `UTXO_FIXTURE.md`, `NATIVE_SEND_PREVIEW.md` and
 secrets and uploads browser evidence. Live testnet journeys stay in the
 scheduled/manual workflow below.
 
+PR conformance also runs `offline-sustained-wallet-stress.journey.spec.ts` in
+bounded `quick` mode and `offline-legacy-upgrade.journey.spec.ts`. The latter
+uses the SHA256-pinned Chrome Web Store 4.0.0 package and the freshly built
+candidate ZIP, preserving one disposable Chrome profile and extension ID.
+The store package was obtained from Google's update service and archived as a
+labelled upgrade-test release asset. CI checks its pinned CRX hash and publisher
+ID, then unpacks it without editing its members.
+See `SUSTAINED_WALLET_STRESS.md` and `LEGACY_UPGRADE.md` for the longer soak
+mode, artifact inputs, assertions and explicit simulated-network limits.
+
 ### `e2e-harness.yml` — scheduled / manual journey runs
 
 Runs the journeys on demand (`workflow_dispatch`, with optional journey

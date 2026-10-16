@@ -20,6 +20,93 @@ describe('native Syscoin available balance', () => {
   });
 
   it.each([
+    null,
+    undefined,
+    {},
+    [],
+    { error: 'backend unavailable' },
+    { error: 'backend unavailable', balance: '100000' },
+  ])('rejects an unavailable or error account summary %p', async (summary) => {
+    fetchBackendAccountCachedMock.mockResolvedValue(summary);
+    await expect(readBalance()).rejects.toThrow(
+      /native balance|balance summary/i
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    undefined,
+    null,
+    '',
+    'invalid',
+    'NaN',
+    'Infinity',
+    '1.5',
+    '-1',
+    true,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])('rejects an invalid confirmed atomic balance %p', async (balance) => {
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      balance,
+      unconfirmedBalance: '0',
+      unconfirmedTxs: 0,
+    });
+    await expect(readBalance()).rejects.toThrow(
+      'Confirmed native balance is unavailable or invalid'
+    );
+    expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['0', 0])(
+    'accepts an explicit confirmed zero %p',
+    async (balance) => {
+      fetchBackendAccountCachedMock.mockResolvedValue({
+        balance,
+        unconfirmedTxs: 0,
+      });
+      await expect(readBalance()).resolves.toBe('0');
+      expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('rejects an array-shaped confirmed value instead of coercing it to an integer', async () => {
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      balance: ['100000'],
+      unconfirmedTxs: 0,
+    });
+    await expect(readBalance()).rejects.toThrow(
+      'Confirmed native balance is unavailable or invalid'
+    );
+  });
+
+  it.each([-1, 'invalid', 1.5, true, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects a malformed pending transaction count %p',
+    async (unconfirmedTxs) => {
+      fetchBackendAccountCachedMock.mockResolvedValue({
+        balance: '100000',
+        unconfirmedTxs,
+      });
+      await expect(readBalance()).rejects.toThrow(
+        'Pending native transaction count is unavailable or invalid'
+      );
+      expect(fetchBackendAccountCachedMock).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each([2, '2'])(
+    'requires a pending delta when transaction count is %p',
+    async (unconfirmedTxs) => {
+      fetchBackendAccountCachedMock.mockResolvedValue({
+        balance: '100000',
+        unconfirmedTxs,
+      });
+      await expect(readBalance()).rejects.toThrow(
+        'Pending native balance delta is unavailable or invalid'
+      );
+    }
+  );
+
+  it.each([
     ['9889168', '-113407', '0.09775761'],
     ['9889168', '113407', '0.10002575'],
     ['9889168', '0', '0.09889168'],
