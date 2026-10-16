@@ -409,7 +409,17 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
     const preparationInputs = () =>
       JSON.stringify({
         values: form.getFieldsValue(),
-        asset: preparationOptions.current.selectedAsset,
+        // History counters and display metadata can refresh while the unsigned
+        // estimator runs. Only changes that affect this transaction invalidate it.
+        asset: preparationOptions.current.selectedAsset
+          ? {
+              assetGuid: preparationOptions.current.selectedAsset.assetGuid,
+              assetType: preparationOptions.current.selectedAsset.assetType,
+              decimals: preparationOptions.current.selectedAsset.decimals,
+              symbol: preparationOptions.current.selectedAsset.symbol,
+              balance: preparationOptions.current.selectedAsset.balance,
+            }
+          : null,
         rbf: preparationOptions.current.RBF,
         feeRate: preparationOptions.current.feeRate,
       });
