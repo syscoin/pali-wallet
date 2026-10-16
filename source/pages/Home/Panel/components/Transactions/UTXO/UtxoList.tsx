@@ -43,7 +43,7 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
   mergeAccountOwnershipFlags,
-  readUtxoTransactionDetails,
+  watchUtxoTransactionDetails,
 } from './utxoTransactionDetails';
 
 const SERVER_PAGE_SIZE = 30;
@@ -87,7 +87,7 @@ const UtxoTransactionsListComponentBase = ({
     let cancelled = false;
     const isCurrent = () => !cancelled && scopeRef.current === scope;
     setHydrated({ scope, status: 'loading' });
-    readUtxoTransactionDetails(
+    const stop = watchUtxoTransactionDetails(
       scope,
       tx.txid,
       () =>
@@ -97,8 +97,7 @@ const UtxoTransactionsListComponentBase = ({
           10000,
           false
         ),
-      isCurrent
-    ).then(
+      isCurrent,
       (data) => {
         if (isCurrent()) setHydrated({ scope, status: 'complete', data });
       },
@@ -108,6 +107,7 @@ const UtxoTransactionsListComponentBase = ({
     );
     return () => {
       cancelled = true;
+      stop();
     };
   }, [scope, needsHydration, activeNetwork.url, tx.txid]);
   const displayTransaction =

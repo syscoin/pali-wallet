@@ -389,3 +389,59 @@ it('does not reuse native output metadata from a departed account/network', asyn
   expect(screen.queryByText('1.0000 TSYS')).toBeNull();
   expect(screen.getByText('2.0000 TSYS')).toBeTruthy();
 });
+
+it('eventually hydrates more than 32 restored rows without exceeding two active RPCs or dropping overflow values', async () => {
+  const outstanding = new Map<string, () => void>();
+  let active = 0,
+    maximumActive = 0;
+  const rows = Array.from({ length: 40 }, (_, index) => ({
+    ...compactBridgeNativeOffset,
+    txid: (index + 1).toString(16).padStart(64, '0'),
+  }));
+  mockEmitter.mockImplementation((_path: unknown, [txid]: [string]) => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    return new Promise((resolve) =>
+      outstanding.set(txid, () => {
+        active -= 1;
+        resolve({ ...fullBridge(), txid });
+      })
+    );
+  });
+  const view = render(
+    <>
+      {rows.map((tx) => (
+        <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
+      ))}
+    </>
+  );
+  try {
+    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(2));
+    expect(screen.getAllByText('buttons.loading')).toHaveLength(40);
+    expect(screen.queryByText('settings.unavailable')).toBeNull();
+    for (let completed = 0; completed < rows.length; completed += 1) {
+      await waitFor(() => expect(outstanding.size).toBeGreaterThan(0));
+      await act(async () => {
+        const [txid, finish] = outstanding.entries().next().value!;
+        outstanding.delete(txid);
+        finish();
+        for (let step = 0; step < 12; step += 1) await Promise.resolve();
+      });
+    }
+    await waitFor(() =>
+      expect(screen.getAllByText('1.0000 SYSX')).toHaveLength(40)
+    );
+    expect(screen.queryByText('buttons.loading')).toBeNull();
+    expect(screen.queryByText('settings.unavailable')).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledTimes(40);
+    expect(new Set(mockEmitter.mock.calls.map(([, [txid]]) => txid)).size).toBe(
+      40
+    );
+    expect(maximumActive).toBe(2);
+  } finally {
+    view.unmount();
+    outstanding.forEach((finish) => finish());
+    outstanding.clear();
+    for (let step = 0; step < 100; step += 1) await Promise.resolve();
+  }
+});

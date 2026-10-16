@@ -29,7 +29,7 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
   mergeAccountOwnershipFlags,
-  readUtxoTransactionDetails,
+  watchUtxoTransactionDetails,
 } from './utxoTransactionDetails';
 
 // Memoize copy icon to prevent unnecessary re-renders
@@ -121,7 +121,6 @@ export const SyscoinTransactionDetails = ({
     data: ISysTransaction;
     scope: string;
   } | null>(null);
-  const fetchingRef = useRef(false);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const [, copy] = useCopyClipboard();
@@ -139,45 +138,34 @@ export const SyscoinTransactionDetails = ({
     let cancelled = false;
     const isCurrent = () => !cancelled && scopeRef.current === scope;
 
-    const fetchTransactionDetails = async () => {
-      if (!hash || !networkUrl) return;
-
-      setEnhancedTransaction(null);
-
-      if (fetchingRef.current) return;
-
-      fetchingRef.current = true;
-      try {
-        const fullTransaction = (await readUtxoTransactionDetails(
-          scope,
-          hash,
-          () =>
-            controllerEmitter(
-              ['wallet', 'getSysTransactionFromBlockbook'],
-              [hash, networkUrl]
-            ),
-          isCurrent
-        )) as ISysTransaction | null;
-
+    if (!hash || !networkUrl) return;
+    setEnhancedTransaction(null);
+    const stop = watchUtxoTransactionDetails(
+      scope,
+      hash,
+      () =>
+        controllerEmitter(
+          ['wallet', 'getSysTransactionFromBlockbook'],
+          [hash, networkUrl]
+        ),
+      isCurrent,
+      (fullTransaction: ISysTransaction | null) => {
         if (
           isCurrent() &&
           fullTransaction?.txid?.toLowerCase() === normalizedHash
         ) {
           setEnhancedTransaction({ scope, data: fullTransaction });
         }
-      } catch (error) {
+      },
+      (error) => {
         if (isCurrent())
           console.error('Failed to fetch Syscoin transaction details:', error);
-      } finally {
-        fetchingRef.current = false;
       }
-    };
-
-    fetchTransactionDetails();
+    );
 
     return () => {
       cancelled = true;
-      fetchingRef.current = false;
+      stop();
     };
   }, [hash, networkUrl, scope]);
 

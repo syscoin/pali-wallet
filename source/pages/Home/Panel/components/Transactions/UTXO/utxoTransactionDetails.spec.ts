@@ -1,4 +1,7 @@
-import { readUtxoTransactionDetails } from './utxoTransactionDetails';
+import {
+  readUtxoTransactionDetails,
+  watchUtxoTransactionDetails,
+} from './utxoTransactionDetails';
 
 const deferred = () => {
   let resolve!: (value: any) => void;
@@ -134,3 +137,98 @@ it('does not share cached metadata across account or network scopes', async () =
   );
   expect(read).toHaveBeenCalledTimes(3);
 });
+
+it('wakes live overflow consumers on capacity but never reads for unmounted or stale consumers', async () => {
+  const blockers = [deferred(), deferred()];
+  const blocking = blockers.map((blocker) =>
+    readUtxoTransactionDetails(
+      scope(),
+      hash,
+      () => blocker.promise,
+      () => true
+    )
+  );
+  const queued = Array.from({ length: 30 }, () =>
+    readUtxoTransactionDetails(scope(), hash, jest.fn(), () => false).catch(
+      () => undefined
+    )
+  );
+  const unmountedRead = jest.fn().mockResolvedValue({ txid: hash });
+  const staleRead = jest.fn().mockResolvedValue({ txid: hash });
+  const currentRead = jest.fn().mockResolvedValue({ txid: hash });
+  const staleData = jest.fn(),
+    staleError = jest.fn(),
+    currentData = jest.fn();
+  let staleCurrent = true;
+  const stopUnmounted = watchUtxoTransactionDetails(
+    scope(),
+    hash,
+    unmountedRead,
+    () => true,
+    staleData,
+    staleError
+  );
+  const stopStale = watchUtxoTransactionDetails(
+    scope(),
+    hash,
+    staleRead,
+    () => staleCurrent,
+    staleData,
+    staleError
+  );
+  const stopCurrent = watchUtxoTransactionDetails(
+    scope(),
+    hash,
+    currentRead,
+    () => true,
+    currentData,
+    staleError
+  );
+  await flush();
+  expect(currentRead).not.toHaveBeenCalled();
+  stopUnmounted();
+  staleCurrent = false;
+  blockers.forEach((blocker) => blocker.resolve({ txid: hash }));
+  await Promise.all([...blocking, ...queued]);
+  await flush();
+  expect(currentRead).toHaveBeenCalledTimes(1);
+  expect(currentData).toHaveBeenCalledWith({ txid: hash });
+  expect(unmountedRead).not.toHaveBeenCalled();
+  expect(staleRead).not.toHaveBeenCalled();
+  expect(staleData).not.toHaveBeenCalled();
+  expect(staleError).not.toHaveBeenCalled();
+  stopStale();
+  stopCurrent();
+});
+
+it.each([
+  new Error('Network request timed out'),
+  Object.assign(new Error('Remote error with a similar code'), {
+    code: 'HISTORY_READ_QUEUE_FULL',
+  }),
+])(
+  'does not retry actual read failures when later capacity notifications arrive: %s',
+  async (error) => {
+    const read = jest.fn().mockRejectedValue(error);
+    const onError = jest.fn();
+    const stop = watchUtxoTransactionDetails(
+      scope(),
+      hash,
+      read,
+      () => true,
+      jest.fn(),
+      onError
+    );
+    await flush();
+    await readUtxoTransactionDetails(
+      scope(),
+      hash,
+      async () => ({ txid: hash }),
+      () => true
+    );
+    await flush();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    stop();
+  }
+);
