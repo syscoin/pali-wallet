@@ -72,7 +72,7 @@ const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
     if (assetInfo?.value !== undefined) return positiveAtomic(assetInfo.value);
     const formatted =
       typeof assetInfo?.valueStr === 'string' &&
-      assetInfo.valueStr.trim().match(/^(\d+(?:\.\d*)?|\.\d+)(?:\s+\S+)?$/);
+      assetInfo.valueStr.trim().match(/^(\d+(?:\.\d*)?|\.\d+)(?:\s+[\s\S]+)?$/);
     return Boolean(formatted && /[1-9]/.test(formatted[1]));
   };
   const assetCredit = isToken && kind !== 'assetallocationburntosyscoin';

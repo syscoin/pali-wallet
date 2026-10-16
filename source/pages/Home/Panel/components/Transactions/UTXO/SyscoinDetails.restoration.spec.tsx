@@ -346,10 +346,12 @@ it.each([
 it.each([
   ['mint', '1', undefined, true],
   ['send', '0.1 PQAS', undefined, true],
+  ['send', '0.1 Multi Word Token', undefined, true],
   ['send', '.1 PQAS', undefined, true],
   ['send', `0.${'0'.repeat(400)}1 PQAS`, undefined, true],
   ['send', '0.0000 PQAS', undefined, false],
   ['send', '0 PQAS1', undefined, false],
+  ['send', '0 Multi Word Token 1', undefined, false],
   ['send', '-0.1 PQAS', undefined, false],
   ['send', '1junk PQAS', undefined, false],
   ['send', 'Infinity PQAS', undefined, false],
