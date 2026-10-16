@@ -15,6 +15,8 @@ jest.mock('state/store', () => ({
   },
 }));
 
+import { getSyscoinNativeTransferAmount } from 'utils/syscoinTransactionUtils';
+
 import SysTransactionController from './syscoin';
 
 const CHAIN_ID = 57;
@@ -49,6 +51,16 @@ const txsResponse = (overrides: any = {}) => ({
   ],
   ...overrides,
 });
+const fullNativeTransaction = (changes: any = {}) => ({
+  txid: 'ab'.repeat(32),
+  confirmations: 1,
+  fees: '226',
+  valueIn: '6547561',
+  value: '6547335',
+  vin: [{ value: '6547561', isOwn: true }],
+  vout: [{ value: '6547335', isOwn: true }],
+  ...changes,
+});
 
 describe('SysTransactionController rapid polling', () => {
   beforeEach(() => {
@@ -74,11 +86,214 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
-  it('falls back to txslight when txsummary is unavailable', async () => {
+  it.each(['timeout', 'rate-limit', 'null', 'AbortError'])(
+    'restores the native MAX amount after A → B (%s) → A without poisoning backend capability',
+    async (failure) => {
+      const networkUrl = `${URL}transient-${failure}/`;
+      const full = fullNativeTransaction();
+      const summary = {
+        ...full,
+        vin: [],
+        vout: [],
+        addressValueIn: '6547561',
+        addressValueOut: '6547335',
+      };
+      const warn = jest
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+      let failAccountB = true;
+      fetchBackendAccountCachedMock.mockImplementation(
+        async (_url: string, account: string, options: string) => {
+          if (
+            account === 'zpub-account-b' &&
+            options.includes('details=txsummary') &&
+            failAccountB
+          ) {
+            failAccountB = false;
+            if (failure === 'null') return null;
+            throw Object.assign(
+              new Error(failure),
+              failure === 'rate-limit'
+                ? { status: 429 }
+                : failure === 'AbortError'
+                ? { name: 'AbortError' }
+                : {}
+            );
+          }
+          return txsResponse({
+            transactions: [
+              options.includes('details=txsummary') ? summary : full,
+            ],
+          });
+        }
+      );
+      try {
+        const controller = SysTransactionController();
+        const first = await controller.pollingSysTransactions(
+          'zpub-account-a',
+          networkUrl
+        );
+        expect(getSyscoinNativeTransferAmount(first[0], full)?.amount).toBe(
+          '6547335'
+        );
+        vaultState = {
+          ...buildVaultState([]),
+          activeAccount: { type: 'HDAccount', id: 1 },
+          accountTransactions: {
+            HDAccount: { 1: { syscoin: { [CHAIN_ID]: [] } } },
+          },
+        };
+        await controller.pollingSysTransactions('zpub-account-b', networkUrl);
+        vaultState = buildVaultState(first);
+        const restored = await controller.pollingSysTransactions(
+          'zpub-account-a',
+          networkUrl
+        );
+
+        expect(
+          fetchBackendAccountCachedMock.mock.calls.map(
+            ([, account, options]) => [account, options]
+          )
+        ).toEqual([
+          ['zpub-account-a', 'details=txsummary&pageSize=30'],
+          ['zpub-account-b', 'details=txsummary&pageSize=30'],
+          ['zpub-account-b', 'details=txslight&pageSize=30'],
+          ['zpub-account-a', 'details=txsummary&pageSize=30'],
+        ]);
+        expect(getSyscoinNativeTransferAmount(restored[0], full)).toEqual({
+          amount: '6547335',
+          kind: 'self',
+          outputTotal: false,
+        });
+      } finally {
+        warn.mockRestore();
+        fetchBackendAccountCachedMock.mockReset();
+      }
+    }
+  );
+
+  it('normalizes explicit account ownership in legitimate txslight fallback without using global value aliases', async () => {
+    const full = fullNativeTransaction({
+      value: '6547335',
+      vout: [{ value: '1000000' }, { value: '5547335', isOwn: true }],
+    });
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce({ txs: 1 })
+      .mockResolvedValueOnce(txsResponse({ transactions: [full] }));
+
+    const [row] =
+      await SysTransactionController().getInitialUserTransactionsByXpub(
+        'zpub-light-external',
+        `${URL}owned-light/`
+      );
+
+    expect(row.addressValueIn).toBe('6547561');
+    expect(row.addressValueOut).toBe('5547335');
+    expect(row.value).toBe('6547335');
+    expect(getSyscoinNativeTransferAmount(row)).toEqual({
+      amount: '1000000',
+      direction: 'sent',
+      kind: 'external',
+    });
+  });
+
+  it.each([
+    {
+      name: 'receipt',
+      transaction: {
+        vin: [{ value: '6547561' }],
+        vout: [{ value: '1000000', isOwn: true }, { value: '5547335' }],
+      },
+      accountIn: '0',
+      accountOut: '1000000',
+      expected: { amount: '1000000', direction: 'received', kind: 'received' },
+    },
+    {
+      name: 'exact large atomic strings',
+      transaction: {
+        vin: [{ value: '9007199254740993', isOwn: true }],
+        vout: [{ value: '9007199254740767', isOwn: true }],
+      },
+      accountIn: '9007199254740993',
+      accountOut: '9007199254740767',
+      expected: {
+        amount: '9007199254740767',
+        kind: 'self',
+        outputTotal: false,
+      },
+    },
+    {
+      name: 'collaborative inputs remain ambiguous',
+      transaction: {
+        vin: [{ value: '1000000', isOwn: true }, { value: '5547561' }],
+        vout: [{ value: '1000000', isOwn: true }, { value: '5547335' }],
+      },
+      accountIn: '1000000',
+      accountOut: '1000000',
+      expected: null,
+    },
+  ])(
+    'preserves truthful native amounts for paged fallback: $name',
+    async ({ name, transaction, accountIn, accountOut, expected }) => {
+      const full = fullNativeTransaction(transaction);
+      const networkUrl = `${URL}paged-light-${name}/`;
+      fetchBackendAccountCachedMock
+        .mockResolvedValueOnce({ txs: 1 })
+        .mockResolvedValueOnce(txsResponse({ transactions: [full] }));
+
+      const [row] =
+        await SysTransactionController().fetchTransactionsPageFromBlockbook(
+          'zpub-paged-light',
+          networkUrl,
+          2,
+          20
+        );
+
+      expect(fetchBackendAccountCachedMock).toHaveBeenLastCalledWith(
+        networkUrl,
+        'zpub-paged-light',
+        'details=txslight&page=2&pageSize=20',
+        true
+      );
+      expect(row.addressValueIn).toBe(accountIn);
+      expect(row.addressValueOut).toBe(accountOut);
+      expect(getSyscoinNativeTransferAmount(row)).toEqual(expected);
+    }
+  );
+
+  it.each([
+    { vin: [{ value: '6547561' }], vout: [{ value: '6547335' }] },
+    { vin: [{ value: 'bad', isOwn: true }] },
+    { vout: [{ value: '-1', isOwn: true }] },
+    { fees: '225' },
+    { vin: [{ value: Number.MAX_SAFE_INTEGER + 1, isOwn: true }] },
+    { vin: [] },
+    { addressValueIn: 'existing-authoritative-value' },
+    { vin: [{ value: '6547561', isOwn: 'true' }] },
+  ])(
+    'leaves incomplete, malformed, or unattributed fallback rows unresolved: %p',
+    async (changes) => {
+      const full = fullNativeTransaction(changes);
+      fetchBackendAccountCachedMock
+        .mockResolvedValueOnce({ txs: 1 })
+        .mockResolvedValueOnce(txsResponse({ transactions: [full] }));
+
+      const [row] =
+        await SysTransactionController().getInitialUserTransactionsByXpub(
+          'zpub-light-ambiguous',
+          `${URL}ambiguous-light-${JSON.stringify(changes)}/`
+        );
+
+      expect(row).toEqual(full);
+      expect(getSyscoinNativeTransferAmount(row)).toBeNull();
+    }
+  );
+
+  it('remembers txslight compatibility after a successful basic-only response with history', async () => {
     const fallbackUrl = `${URL}txsummary-unsupported/`;
     const xpub = 'zpub-txsummary-fallback';
     fetchBackendAccountCachedMock
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ txs: 1 })
       .mockResolvedValueOnce(txsResponse());
 
     const controller = SysTransactionController();
@@ -203,7 +418,7 @@ describe('SysTransactionController rapid polling', () => {
     const fallbackUrl = `${URL}txsummary-unsupported-reject/`;
     const xpub = 'zpub-txsummary-fallback-reject';
     fetchBackendAccountCachedMock
-      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ txs: 1 })
       .mockResolvedValueOnce(txsResponse());
 
     const controller = SysTransactionController();

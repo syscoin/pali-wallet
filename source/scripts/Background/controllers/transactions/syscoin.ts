@@ -85,6 +85,60 @@ const isUnsupportedTxSummaryResponse = (
   (Number(accountData.txs ?? 0) > 0 ||
     Number(accountData.unconfirmedTxs ?? 0) > 0);
 
+// Only account-history responses carry queried-account ownership flags. A raw
+// /tx read or txslight's transaction-wide value/valueIn aliases cannot supply
+// these totals. Older responses without explicit ownership stay unresolved.
+const normalizeAccountHistory = (accountData: any) => {
+  if (!Array.isArray(accountData?.transactions)) return accountData;
+  return {
+    ...accountData,
+    transactions: accountData.transactions.map((tx: any) => {
+      if (
+        tx?.addressValueIn !== undefined ||
+        tx?.addressValueOut !== undefined ||
+        !Array.isArray(tx?.vin) ||
+        !tx.vin.length ||
+        !Array.isArray(tx?.vout) ||
+        !tx.vout.length ||
+        [...tx.vin, ...tx.vout].some(
+          (entry) =>
+            entry?.isOwn !== undefined && typeof entry.isOwn !== 'boolean'
+        ) ||
+        ![...tx.vin, ...tx.vout].some((entry) => entry?.isOwn === true)
+      )
+        return tx;
+      const atomic = (value: unknown) => {
+        if (
+          (typeof value !== 'string' && typeof value !== 'number') ||
+          (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+          !/^\d+$/.test(String(value))
+        )
+          throw new Error('Invalid account-history amount');
+        return BigInt(String(value));
+      };
+      try {
+        const sum = (entries: any[], ownedOnly = false) =>
+          entries.reduce(
+            (total, entry) =>
+              total +
+              (ownedOnly && entry?.isOwn !== true
+                ? BigInt(0)
+                : atomic(entry?.value)),
+            BigInt(0)
+          );
+        if (sum(tx.vin) !== sum(tx.vout) + atomic(tx.fees)) return tx;
+        return {
+          ...tx,
+          addressValueIn: sum(tx.vin, true).toString(),
+          addressValueOut: sum(tx.vout, true).toString(),
+        };
+      } catch {
+        return tx;
+      }
+    }),
+  };
+};
+
 const fetchAccountHistory = async (
   networkUrl: string,
   xpubOrAddress: string,
@@ -114,22 +168,28 @@ const fetchAccountHistory = async (
     accountData &&
     !isUnsupportedTxSummaryResponse(accountData, requestOptions)
   ) {
-    return accountData;
+    return normalizeAccountHistory(accountData);
   }
   if (!requestOptions.includes('details=txsummary')) return accountData;
 
-  txSummaryUnsupportedBackends.add(networkUrl);
+  // A transient/account-specific failure or null body says nothing about
+  // backend capabilities. Only a successful basic-only response proves that
+  // this reader ignored txsummary despite reporting account history.
+  if (isUnsupportedTxSummaryResponse(accountData, requestOptions))
+    txSummaryUnsupportedBackends.add(networkUrl);
   const fallbackOptions = requestOptions.replace(
     'details=txsummary',
     'details=txslight'
   );
   if (fallbackOptions === requestOptions) return accountData;
 
-  return fetchBackendAccountCached(
-    networkUrl,
-    xpubOrAddress,
-    fallbackOptions,
-    true
+  return normalizeAccountHistory(
+    await fetchBackendAccountCached(
+      networkUrl,
+      xpubOrAddress,
+      fallbackOptions,
+      true
+    )
   );
 };
 
