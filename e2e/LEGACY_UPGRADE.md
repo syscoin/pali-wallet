@@ -13,13 +13,17 @@ Its CRX SHA256 is
 `4f051937f8efec9a1f5bc4fa046a3c8f5c1cb1958021838ed967876328fee734`.
 The byte-exact ZIP payload SHA256 is
 `d2330273ec05a73f655e870c442b3be587e74fd5600d0028ed32df879e925253`.
-If the store package changes, update the reviewed artifact pin and observed
-version deliberately; a different package is not silently accepted.
+The exact CRX is archived as the clearly labelled
+`pali-wallet-store-upgrade-baseline-4.0.0.crx` asset on GitHub release `v4.0.102`.
+CI downloads that immutable-content baseline, not Google's moving latest-version
+endpoint. A changed or replaced asset fails the same pinned hash/signature checks.
+To adopt a newer store baseline, obtain it from Google's official update service,
+verify and archive it, then update the reviewed pin and version deliberately.
 
 ## Artifact preparation
 
-The public CRX is available from Google's extension update service. The CI
-configuration pins its exact SHA256. The preparation helper verifies the CRX3
+The public CRX was obtained from Google's extension update service. The CI
+configuration downloads the archived copy and pins its exact SHA256. The preparation helper verifies the CRX3
 envelope's RSA/ECDSA signatures and binds a valid publisher public-key hash to
 the expected extension ID before extracting its untouched ZIP payload:
 

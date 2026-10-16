@@ -213,13 +213,26 @@ export class PaliWallet {
     if (!this.page.url().includes('#/home')) {
       await this.gotoRoute('#/home');
     }
-    if (this.page.url().endsWith('#/') || this.page.url().includes('#/?')) {
+    const balance = this.page
+      .locator('#home-balance, #home-balance-pending')
+      .first();
+    const unlock = this.page.locator('#unlock-btn');
+    // A rehydrating router can still show #/home before redirecting to Lock.
+    // Wait for an actual normal UI state rather than guessing from that URL.
+    // Pending is valid readiness when the fenced fixture denies the default
+    // network; each journey still asserts its own exact balance afterward.
+    await expect
+      .poll(
+        async () => (await balance.isVisible()) || (await unlock.isVisible()),
+        {
+          timeout: 60_000,
+        }
+      )
+      .toBe(true);
+    if (await unlock.isVisible()) {
       await this.unlock();
     }
-    await this.page
-      .locator('#home-balance, #home-balance-pending')
-      .first()
-      .waitFor({ state: 'visible', timeout: 60_000 });
+    await balance.waitFor({ state: 'visible', timeout: 60_000 });
     await this.dismissBlockingModals();
   }
 

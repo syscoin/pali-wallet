@@ -77,7 +77,7 @@ jobs:
           EVIDENCE_DIR="${GITHUB_WORKSPACE}/e2e/artifacts/pr-conformance-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           mkdir -p "${EVIDENCE_DIR}"
           curl --fail --location --retry 2 --output "${STORE_CRX}" \
-            'https://clients2.google.com/service/update2/crx?response=redirect&prodversion=141.0.7390.122&acceptformat=crx3&x=id%3Dmgffkfbidihjpoaomajlbgchddlicgpn%26uc'
+            'https://github.com/syscoin/pali-wallet/releases/download/v4.0.102/pali-wallet-store-upgrade-baseline-4.0.0.crx'
           node e2e/scripts/prepare-store-upgrade-artifact.cjs \
             "${STORE_CRX}" "${LEGACY_ZIP}" \
             4f051937f8efec9a1f5bc4fa046a3c8f5c1cb1958021838ed967876328fee734 \
