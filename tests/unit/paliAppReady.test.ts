@@ -1,4 +1,5 @@
 import { expect as playwrightExpect } from '@playwright/test';
+import fs from 'fs';
 
 import { PaliWallet } from '../../e2e/harness/pali';
 
@@ -126,5 +127,32 @@ describe('Pali harness app readiness', () => {
     body.waitFor.mockRejectedValue(error);
     await expect(ready()).rejects.toBe(error);
     expect(toHaveCSS).not.toHaveBeenCalled();
+  });
+
+  it('captures completed route fades while retaining secret-field masks', async () => {
+    const mkdir = jest.spyOn(fs, 'mkdirSync').mockReturnValue(undefined);
+    try {
+      const mask = {};
+      const page = {
+        locator: jest.fn().mockReturnValue(mask),
+        screenshot: jest.fn().mockResolvedValue(undefined),
+      };
+      await PaliWallet.prototype.shot.call(
+        { page, screenshotIndex: 0 },
+        'Normal screen'
+      );
+      expect(page.screenshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          animations: 'disabled',
+          fullPage: true,
+          mask: [mask],
+        })
+      );
+      expect(page.locator).toHaveBeenCalledWith(
+        '#import-wallet-input, input[type="password"], textarea'
+      );
+    } finally {
+      mkdir.mockRestore();
+    }
   });
 });
