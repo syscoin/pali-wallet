@@ -343,6 +343,50 @@ it.each([
   }
 );
 
+it.each([
+  ['mint', '1', undefined, true],
+  ['send', '0.1 PQAS', undefined, true],
+  ['send', '.1 PQAS', undefined, true],
+  ['send', `0.${'0'.repeat(400)}1 PQAS`, undefined, true],
+  ['send', '0.0000 PQAS', undefined, false],
+  ['send', '0 PQAS1', undefined, false],
+  ['send', '-0.1 PQAS', undefined, false],
+  ['send', '1junk PQAS', undefined, false],
+  ['send', 'Infinity PQAS', undefined, false],
+  ['send', 'NaN PQAS', undefined, false],
+  ['send', '1e3 PQAS', undefined, false],
+  ['send', '1 PQAS', '0', false],
+  ['send', '1 PQAS', 'malformed', false],
+  ['send', '1 PQAS', null, false],
+  ['send', '0 PQAS', '1', true],
+])(
+  'supports valueStr-only %s credit %s with raw %s without overriding raw precedence',
+  async (kind, valueStr, value, positive) => {
+    const transaction = rawTransaction({
+      version: kind === 'mint' ? 140 : 142,
+      tokenType:
+        kind === 'mint' ? 'SPTAssetAllocationMint' : 'SPTAssetAllocationSend',
+      vout: [
+        { addresses: ['OP_RETURN proof'], value: '0' },
+        {
+          addresses: ['asset-recipient'],
+          value: '294',
+          assetInfo: { assetGuid: '12', value, valueStr },
+        },
+      ] as any,
+    });
+    mockEmitter.mockResolvedValue(transaction);
+    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+    const expected = positive ? 'asset-recipient' : 'settings.unavailable';
+    await waitFor(() =>
+      expect(screen.getByText('To').parentElement!.textContent).toBe(
+        `To${expected}`
+      )
+    );
+  }
+);
+
 it('shows the canonical SYSX icon beside its amount without importing the token', async () => {
   const transaction = tokenTransaction();
   const officialLogo = getKnownTokenLogo(undefined, undefined, '123456')!;

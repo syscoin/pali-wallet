@@ -66,6 +66,15 @@ const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
       (typeof value === 'number' && Number.isSafeInteger(value))) &&
     /^\d+$/.test(String(value)) &&
     /[1-9]/.test(String(value));
+  const positiveAsset = (
+    assetInfo: ISysTransaction['vout'][number]['assetInfo']
+  ) => {
+    if (assetInfo?.value !== undefined) return positiveAtomic(assetInfo.value);
+    const formatted =
+      typeof assetInfo?.valueStr === 'string' &&
+      assetInfo.valueStr.trim().match(/^(\d+(?:\.\d*)?|\.\d+)(?:\s+\S+)?$/);
+    return Boolean(formatted && /[1-9]/.test(formatted[1]));
+  };
   const assetCredit = isToken && kind !== 'assetallocationburntosyscoin';
   const addresses = new Set<string>();
   for (const output of Array.isArray(transaction.vout)
@@ -75,7 +84,9 @@ const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
       output?.isAddress === false ||
       /^(?:0x)?6a/i.test(output?.hex ?? '') ||
       (assetCredit && !positiveAtomic(output?.assetInfo?.assetGuid)) ||
-      !positiveAtomic(assetCredit ? output?.assetInfo?.value : output?.value) ||
+      !(assetCredit
+        ? positiveAsset(output?.assetInfo)
+        : positiveAtomic(output?.value)) ||
       !Array.isArray(output?.addresses)
     )
       continue;
