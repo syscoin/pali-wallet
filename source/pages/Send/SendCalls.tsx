@@ -22,7 +22,12 @@ import { ellipsis } from 'utils/format';
 import { clearTransactionNavigationState } from 'utils/navigationState';
 import {
   getSmartAccountLocalOwnerContexts,
+  isSmartAccountFeeQuoteChanged,
+  prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
+  SMART_ACCOUNT_FEE_QUOTE_CHANGED,
+  type SmartAccountExecutionIntent,
+  type SmartAccountFeeQuote,
 } from 'utils/smartAccount';
 
 interface ISendCallsData {
@@ -181,6 +186,12 @@ export const SendCalls = () => {
   );
 
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeAccountIdentity = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal?.activeSlip44
+  );
 
   // Get data from query parameters or location state
   const { host, eventName, ...externalData } = useQueryData();
@@ -280,6 +291,94 @@ export const SendCalls = () => {
       ),
     [effectiveSelectedCalls, hasUnknownSubmission, transactionStatuses]
   );
+
+  const [feeQuoteRevision, setFeeQuoteRevision] = useState(0);
+  const [feeQuoteNeedsRefresh, setFeeQuoteNeedsRefresh] = useState(false);
+  const [feeQuoteError, setFeeQuoteError] = useState<string>();
+  const [feeQuote, setFeeQuote] = useState<
+    SmartAccountFeeQuote & {
+      executions: SmartAccountExecutionIntent[];
+      key: string;
+    }
+  >();
+  const quoteCalls = (callsData.calls || []).filter(
+    (_, index) =>
+      effectiveSelectedCalls[index] &&
+      transactionStatuses?.[index]?.status !== 'success'
+  );
+  const feeQuoteKey = requestSmartAccount.supportsAtomicBatch
+    ? JSON.stringify([
+        approvedContext,
+        approvedAccount?.address,
+        approvedAccount?.smartAccount?.auth,
+        approvedAccount?.smartAccount?.installedModules,
+        activeNetwork.chainId,
+        activeNetwork.url,
+        activeAccountIdentity,
+        activeSlip44,
+        quoteCalls,
+        quoteCalls.map(
+          (call) => ensNameToAddress[String(call.to).toLowerCase()]
+        ),
+      ])
+    : '';
+  const hasCurrentFeeQuote =
+    !requestSmartAccount.supportsAtomicBatch ||
+    Boolean(feeQuote?.key === feeQuoteKey && !feeQuoteNeedsRefresh);
+  const currentFeeQuoteKeyRef = React.useRef(feeQuoteKey);
+  currentFeeQuoteKeyRef.current = feeQuoteKey;
+
+  useEffect(() => {
+    if (!requestSmartAccount.supportsAtomicBatch || !quoteCalls.length) return;
+    let cancelled = false;
+    setFeeQuoteError(undefined);
+    const quoteBatch = async () => {
+      if (
+        activeNetwork.chainId !== approvedContext.chainId ||
+        activeNetwork.url !== approvedContext.rpcUrl
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const executions: SmartAccountExecutionIntent[] = [];
+      for (const call of quoteCalls) {
+        const raw = String(call.to || '');
+        let target = raw;
+        if (raw.toLowerCase().endsWith('.eth')) {
+          const resolved =
+            ensNameToAddress[raw.toLowerCase()] ||
+            (await controllerEmitter(['wallet', 'resolveEns'], [raw]));
+          if (typeof resolved !== 'string' || !resolved)
+            throw new Error(t('send.unableToResolveEns'));
+          target = resolved;
+        }
+        if (!/^0x[\da-f]{40}$/i.test(target))
+          throw new Error(t('send.smartAccountContractDeploymentUnsupported'));
+        executions.push({
+          target,
+          data: call.data || '0x',
+          value: call.value || '0x0',
+        });
+      }
+      if (cancelled) return;
+      const preparedQuote = await prepareSmartAccountFeeQuote({
+        accountAddress: approvedContext.account.address,
+        accountId: approvedContext.account.id,
+        controllerEmitter,
+        executions,
+        expectedContext: approvedContext,
+      });
+      if (!cancelled) {
+        setFeeQuote({ ...preparedQuote, executions, key: feeQuoteKey });
+        setFeeQuoteNeedsRefresh(false);
+      }
+    };
+    quoteBatch().catch(() => {
+      if (!cancelled) setFeeQuoteError(t('send.unableToCalculateFees'));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // The serialized key includes the exact ordered selection and context.
+  }, [feeQuoteKey, feeQuoteRevision]);
 
   // Persist broadcast tx hashes (and any pre-broadcast failure) incrementally
   // so a partially broadcast non-atomic batch still resolves in
@@ -520,7 +619,9 @@ export const SendCalls = () => {
     if (
       rejectionStartedRef.current ||
       submissionInFlightRef.current ||
-      hasUnknownSubmission
+      hasUnknownSubmission ||
+      !hasCurrentFeeQuote ||
+      Boolean(feeQuoteError)
     )
       return;
     submissionInFlightRef.current = true;
@@ -572,7 +673,10 @@ export const SendCalls = () => {
               .filter((toLower) => !(toLower in ensNameToAddress))
           )
         );
-        if (ensNamesToResolve.length >= 2) {
+        if (
+          !requestSmartAccount.supportsAtomicBatch &&
+          ensNamesToResolve.length >= 2
+        ) {
           batchEnsMap = (await controllerEmitter(
             ['wallet', 'batchResolveEns'],
             [ensNamesToResolve, { fallbackToProvider: false }]
@@ -584,10 +688,12 @@ export const SendCalls = () => {
       }
 
       // Get the starting nonce once via MainController (avoids web3Provider issues)
-      const startingNonce = (await controllerEmitter(
-        ['wallet', 'getRecommendedNonceForBatch'],
-        [from]
-      )) as number;
+      const startingNonce = requestSmartAccount.supportsAtomicBatch
+        ? 0
+        : ((await controllerEmitter(
+            ['wallet', 'getRecommendedNonceForBatch'],
+            [from]
+          )) as number);
       // Track the nonce we actually use to avoid gaps when skipping transactions
       let currentNonce = startingNonce;
 
@@ -605,59 +711,20 @@ export const SendCalls = () => {
       if (requestSmartAccount.supportsAtomicBatch) {
         let smartSubmissionInvoked = false;
         try {
-          const smartAccountCalls = [];
-          for (let i = 0; i < selectedCallsData.length; i++) {
-            const call = selectedCallsData[i];
-            const originalIndex = selectedIndices[i];
+          const approvedQuote = feeQuote;
+          if (
+            !approvedQuote ||
+            approvedQuote.key !== currentFeeQuoteKeyRef.current
+          )
+            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+              transactionNotBroadcast: true,
+            });
+          for (const originalIndex of selectedIndices) {
             setProcessingIndex(originalIndex);
             setTransactionStatuses((prev) => {
               const newStatuses = [...prev];
               newStatuses[originalIndex] = { status: 'signing' };
               return newStatuses;
-            });
-
-            let toResolved: string | undefined = call.to;
-            const toRaw = String(call.to || '');
-            if (toRaw) {
-              const lower = toRaw.toLowerCase();
-              const isHex = lower.startsWith('0x');
-              const isEns = lower.endsWith('.eth');
-              if (!isHex) {
-                if (isEns) {
-                  const cached = ensNameToAddress[lower];
-                  let resolved: string | null =
-                    (batchEnsMap && lower in batchEnsMap
-                      ? batchEnsMap[lower]
-                      : undefined) ??
-                    cached ??
-                    null;
-                  if (!resolved) {
-                    resolved = (await controllerEmitter(
-                      ['wallet', 'resolveEns'],
-                      [toRaw]
-                    )) as string | null;
-                  }
-                  if (!resolved) {
-                    throw new Error(t('send.unableToResolveEns'));
-                  }
-                  toResolved = resolved;
-                } else {
-                  throw new Error(t('send.invalidDestination'));
-                }
-              }
-            }
-
-            const target =
-              toResolved && toResolved.startsWith('0x') ? toResolved : '';
-            if (!target) {
-              throw new Error(
-                t('send.smartAccountContractDeploymentUnsupported')
-              );
-            }
-            smartAccountCalls.push({
-              target,
-              value: call.value || '0x0',
-              data: call.data || '0x',
             });
           }
 
@@ -669,8 +736,18 @@ export const SendCalls = () => {
               controllerEmitter,
             }),
             controllerEmitter,
-            executions: smartAccountCalls,
+            executions: approvedQuote.executions,
             expectedContext: approvedContext,
+            maximumUserOpFeeWei: approvedQuote.maximumFeeWei,
+            onPrepared: () => {
+              if (approvedQuote.key !== currentFeeQuoteKeyRef.current)
+                throw Object.assign(
+                  new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
+                  {
+                    transactionNotBroadcast: true,
+                  }
+                );
+            },
             onAssertionResolved: () => {
               selectedIndices.forEach((index) => {
                 setTransactionStatuses((prev) => {
@@ -691,6 +768,13 @@ export const SendCalls = () => {
               }
             },
             onBeforeSubmit: async () => {
+              if (approvedQuote.key !== currentFeeQuoteKeyRef.current)
+                throw Object.assign(
+                  new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
+                  {
+                    transactionNotBroadcast: true,
+                  }
+                );
               await markSubmissionStarted();
               smartSubmissionInvoked = true;
             },
@@ -718,6 +802,20 @@ export const SendCalls = () => {
           alert.success(t('send.txSuccessfull'));
           return;
         } catch (error) {
+          if (
+            error?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
+            smartSubmissionInvoked
+          )
+            error = Object.assign(new Error(error.message), error, {
+              transactionNotBroadcast: false,
+            });
+          if (isSmartAccountFeeQuoteChanged(error) && !smartSubmissionInvoked) {
+            setFeeQuoteNeedsRefresh(true);
+            setFeeQuoteError(t('send.smartAccountFeeQuoteChanged'));
+            setLoading(false);
+            setProcessingIndex(-1);
+            return;
+          }
           console.error('Failed to process smart account batch calls', error);
           const txHash = /^0x[0-9a-fA-F]{64}$/.test(
             error?.transactionHash || ''
@@ -1373,6 +1471,38 @@ export const SendCalls = () => {
         </div>
 
         {/* Total value */}
+        {requestSmartAccount.supportsAtomicBatch && (
+          <div className="mt-4 p-4 bg-bkg-2 rounded-lg">
+            <p className="text-sm text-brand-gray200">
+              {t('send.smartAccountMaxFee')}
+            </p>
+            <p className="text-lg font-bold text-brand-white">
+              {hasCurrentFeeQuote && feeQuote
+                ? `${formatEther(feeQuote.maximumFeeWei)} ${
+                    activeNetwork.currency
+                  }`
+                : t('send.calculating')}
+            </p>
+            <p className="text-xs text-brand-gray200 mt-1">
+              {t('send.smartAccountFeeDetails')}
+            </p>
+            {feeQuoteError && (
+              <div role="alert" className="mt-2 text-sm text-brand-red">
+                <p>{feeQuoteError}</p>
+                <Button
+                  type="button"
+                  disabled={loading || rejecting}
+                  onClick={() => {
+                    setFeeQuoteNeedsRefresh(true);
+                    setFeeQuoteRevision((revision) => revision + 1);
+                  }}
+                >
+                  {t('send.refreshFeeQuote')}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         {totalValue !== '0' && (
           <div className="mt-4 p-4 bg-bkg-2 rounded-lg">
             <div className="flex justify-between items-center">
@@ -1441,7 +1571,12 @@ export const SendCalls = () => {
             type="button"
             onClick={handleApprove}
             disabled={
-              loading || rejecting || confirmed || !hasUnsuccessfulSelected
+              loading ||
+              rejecting ||
+              confirmed ||
+              !hasUnsuccessfulSelected ||
+              !hasCurrentFeeQuote ||
+              Boolean(feeQuoteError)
             }
             loading={loading}
           >

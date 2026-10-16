@@ -5,6 +5,12 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { KeyringAccountType } from 'types/network';
 import { hexConcat } from 'utils/ethersV6Compat';
+import {
+  SLH_DSA_PARAMETER_SET,
+  SLH_DSA_SIGNATURE_LENGTH,
+  SLH_DSA_SIGNATURE_LIMIT,
+  getSLHDSAKeyId,
+} from 'utils/slhDsa';
 import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
@@ -355,6 +361,110 @@ describe('SmartAccountPolicy guardian approval', () => {
     });
     expect(alert.error).not.toHaveBeenCalled();
   });
+
+  it.each(['cached', 'freshly hydrated'])(
+    'binds a %s non-active SLH guardian to its own account and recovery domain',
+    async (cacheStatus) => {
+      const publicKey = {
+        pkRoot: `0x${'12'.repeat(16)}${'00'.repeat(16)}`,
+        pkSeed: `0x${'34'.repeat(16)}${'00'.repeat(16)}`,
+      };
+      const keyId = getSLHDSAKeyId(publicKey);
+      const pqGuardian = {
+        ...smartGuardian,
+        auth: { data: '0x', module: 'slh-dsa', validator: VALIDATOR },
+        installedModules: [
+          {
+            address: VALIDATOR,
+            config: {
+              ...publicKey,
+              keyId,
+              parameterSet: SLH_DSA_PARAMETER_SET,
+              signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
+            },
+            id: 'slh-dsa',
+            type: 'validator',
+          },
+        ],
+      };
+      const vault = (useSelector as jest.Mock).getMockImplementation()!();
+      // The recovery Settings entry belongs to account 1, but account 3 is
+      // selected and guardian 2 must sign. A cold entry can have stale cached
+      // guardian metadata while the controller returns its hydrated policy.
+      mockLocation.state = {
+        ...mockLocation.state,
+        accountType: KeyringAccountType.SmartAccount,
+        id: 1,
+      };
+      vault.activeAccount = {
+        id: 3,
+        type: KeyringAccountType.SmartAccount,
+      };
+      vault.accounts[KeyringAccountType.SmartAccount][3] = {
+        address: OWNER,
+        id: 3,
+        isSmartAccount: true,
+        smartAccount: smartGuardian,
+      };
+      vault.accounts[KeyringAccountType.SmartAccount][2].smartAccount =
+        cacheStatus === 'cached' ? pqGuardian : smartGuardian;
+      const pqSignature = `0x${'89'.repeat(SLH_DSA_SIGNATURE_LENGTH)}`;
+      const original = controllerEmitter.getMockImplementation()!;
+      controllerEmitter.mockImplementation(
+        async (path: string[], payload: any[]) => {
+          if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
+            return { operation: OPERATION, smartGuardian: pqGuardian };
+          }
+          if (path[1] === 'signSLHDSAActionHash') return pqSignature;
+          return original(path, payload);
+        }
+      );
+
+      await startRecovery();
+
+      const wrappedHash = getPaliErc7739PersonalSignHash({
+        accountAddress: GUARDIAN,
+        chainId: CHAIN_ID,
+        hash: OPERATION.hash,
+      });
+      expect(controllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'signSLHDSAActionHash'],
+        [
+          {
+            ...publicKey,
+            accountId: 2,
+            actionHash: wrappedHash,
+            allowReservedSignature: undefined,
+            keyId,
+            parameterSet: SLH_DSA_PARAMETER_SET,
+          },
+        ],
+        600000
+      );
+      expect(
+        controllerEmitter.mock.calls.some(
+          ([[, method]]) => method === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
+      expect(controllerEmitter).toHaveBeenCalledWith(
+        ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
+        [
+          {
+            account: ACCOUNT,
+            approval: {
+              guardian: GUARDIAN,
+              signature: hexConcat([VALIDATOR, pqSignature]),
+            },
+            gasPayer: undefined,
+            guardian: GUARDIAN,
+            operation: OPERATION,
+          },
+        ],
+        300000
+      );
+      expect(alert.error).not.toHaveBeenCalled();
+    }
+  );
 
   it('does not sign or submit a smart guardian approval when policy revalidation fails', async () => {
     controllerEmitter

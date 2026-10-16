@@ -210,7 +210,10 @@ export class PaliWallet {
   }
 
   async ensureOnHome() {
-    if (!this.page.url().includes('#/home')) {
+    // A HashRouter query belongs to the same screen, but a child route such
+    // as /home/smart-account is the Hub, not Home with a visible balance.
+    const hashPath = new URL(this.page.url()).hash.split('?')[0];
+    if (hashPath !== '#/home') {
       await this.gotoRoute('#/home');
     }
     const balance = this.page

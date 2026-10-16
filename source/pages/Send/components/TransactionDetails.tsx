@@ -21,7 +21,6 @@ import {
 import { formatEther, parseUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { ellipsis } from 'utils/format';
-import removeScientificNotation from 'utils/removeScientificNotation';
 
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
@@ -116,13 +115,16 @@ export const TransactionDetailsComponent = (
       ? displayGasPrice.toFixed(9)
       : parseFloat(displayGasPrice).toFixed(9);
   const gasPriceWeiBN = parseUnits(gasPriceStr, 'gwei');
-  const totalFeeWeiBN = gasLimitBN.mul(gasPriceWeiBN);
+  const totalFeeWeiBN = fee.smartAccountFeeQuote
+    ? BigNumber.from(fee.smartAccountFeeQuote.maximumFeeWei)
+    : gasLimitBN.mul(gasPriceWeiBN);
 
-  // Convert to ETH for display (safe as we're only using for display)
-  const finalFee = Number(formatEther(totalFeeWeiBN));
-
-  const formattedFinalFee = removeScientificNotation(finalFee);
-  const feeLabelKey = isLegacyTx ? 'send.estimatedGasFee' : 'send.maxFee';
+  const formattedFinalFee = formatEther(totalFeeWeiBN).replace(/\.0$/, '');
+  const feeLabelKey = fee.smartAccountFeeQuote
+    ? 'send.smartAccountMaxFee'
+    : isLegacyTx
+    ? 'send.estimatedGasFee'
+    : 'send.maxFee';
 
   useEffect(() => {
     if (tx && tx.value) {
@@ -230,6 +232,12 @@ export const TransactionDetailsComponent = (
         )}
       </div>
 
+      {fee.smartAccountFeeQuote && (
+        <p className="pt-2 text-brand-gray200 text-xs">
+          {t('send.smartAccountFeeDetails')}
+        </p>
+      )}
+
       <div className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t(feeLabelKey)}
         <div className="flex text-white text-xs">
@@ -272,9 +280,9 @@ export const TransactionDetailsComponent = (
       <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         Total ({t('send.amountAndFee')})
         <span className="text-white text-xs">
-          {removeScientificNotation(
-            parseFloat(formatEther(currentTxValue)) + finalFee
-          )}{' '}
+          {formatEther(
+            BigNumber.from(currentTxValue).add(totalFeeWeiBN)
+          ).replace(/\.0$/, '')}{' '}
           {activeNetwork.currency?.toUpperCase()}
         </span>
       </p>

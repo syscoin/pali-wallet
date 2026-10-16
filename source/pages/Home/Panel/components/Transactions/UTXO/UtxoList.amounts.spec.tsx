@@ -7,6 +7,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import {
@@ -35,7 +36,9 @@ jest.mock('utils/navigationState', () => ({
   getWalletNavigationScope: () => mockScope,
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string) => (key === 'notifications.clickToView' ? 'Details' : key),
+  }),
 }));
 jest.mock('state/vault/selectors', () => ({
   selectActiveAccountAssets: () => mockActiveAssets,
@@ -60,11 +63,7 @@ jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
   controllerEmitter: (...args: any[]) => mockEmitter(...args),
 }));
 jest.mock('components/Icon', () => ({ Icon: () => null }));
-jest.mock('components/Icon/Icon', () => ({
-  DetailArrowSvg: ({ onClick }: any) => (
-    <button onClick={onClick}>Details</button>
-  ),
-}));
+jest.mock('@ant-design/icons', () => ({}));
 jest.mock('components/Tooltip', () => ({
   Tooltip: ({ children }: any) => children,
 }));
@@ -134,6 +133,26 @@ it('leaves an incomplete bridge amount absent and navigates to Details without a
   await act(async () => Promise.resolve());
   expect(mockEmitter).not.toHaveBeenCalled();
 });
+
+it.each(['{Enter}', ' '])(
+  'opens UTXO details with the real keyboard action %s without fetching a list row',
+  async (key) => {
+    const user = userEvent.setup();
+    render(<UtxoTransactionsListComponent tx={compactBridgeNativeOffset} />);
+    const action = screen.getByRole('button', { name: 'Details' });
+    // The row's existing copy action precedes Details in normal tab order.
+    await user.tab();
+    await user.tab();
+    expect(document.activeElement).toBe(action);
+    await user.keyboard(key);
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/home/details',
+      expect.anything()
+    );
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
 
 it('shows a compact account asset quantity until Details supplies the full bridge amount', async () => {
   const view = render(

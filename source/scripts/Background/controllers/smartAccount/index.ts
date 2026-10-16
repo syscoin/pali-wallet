@@ -1700,6 +1700,7 @@ class SmartAccountController {
       entryPointAddress,
       isDeployed: code !== '0x',
       sender: active.account.address,
+      slhDsaChildCount: validatorProfile.slhDsaChildCount,
       validatorKind: validatorProfile.validatorKind,
     });
     assertContext();
@@ -3187,12 +3188,20 @@ class SmartAccountController {
     // probes (e.g. module self-destructed) simply drop the module from the
     // installed list; the durable record remains for later re-probing.
     const customBaseIndex = activeValidatorResultIndex + 1;
+    const installedValidatorAddresses = new Set(
+      installedModules.map((module) => module.address.toLowerCase())
+    );
     customRecords.forEach((record, index) => {
       const probe = results[customBaseIndex + index];
       const installed = probe?.success && Boolean(probe.result[0]);
       if (installed) {
+        const address = getAddress(record.address);
+        if (installedValidatorAddresses.has(address.toLowerCase())) return;
+        // A builtin already read from its canonical contract is authoritative;
+        // a durable custom-install record must not shadow or duplicate it.
+        installedValidatorAddresses.add(address.toLowerCase());
         installedModules.push({
-          address: getAddress(record.address),
+          address,
           config: {
             compositeCompatible: record.compositeCompatible,
             initData: record.initData,
@@ -3535,12 +3544,14 @@ class SmartAccountController {
           const gasPayer = toGasPayer(gasPayers[index]);
           const balance = balances[index];
           try {
-            const gasLimit = await provider.estimateGas({
-              data: transaction.data || '0x',
-              from: gasPayer.address,
-              to: transaction.to,
-              value: transaction.value || '0x0',
-            });
+            const gasLimit = toCompatBigNumber(
+              await provider.estimateGas({
+                data: transaction.data || '0x',
+                from: gasPayer.address,
+                to: transaction.to,
+                value: transaction.value || '0x0',
+              })
+            );
             const requiredBalance = gasLimit
               .mul(maxFeePerGas)
               .add(BigNumber.from(transaction.value || '0x0'));
@@ -3670,8 +3681,12 @@ class SmartAccountController {
         // Fall back to individual calls below.
       }
     }
+    // Individual ethers-v6 reads return bigint, unlike the batch hex path.
+    // Keep this helper's numeric type stable for all gas-payer checks.
     return Promise.all(
-      addresses.map((address) => provider.getBalance(address))
+      addresses.map(async (address) =>
+        toCompatBigNumber(await provider.getBalance(address))
+      )
     );
   }
 

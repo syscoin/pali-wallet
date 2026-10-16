@@ -99,13 +99,21 @@ export type SmartAccountUserOpGasEstimate = {
   verificationGasLimit: number;
 };
 
+const compositeChildCount = (count: number): number =>
+  Number.isSafeInteger(count) && count > 0 ? count : 2;
+
+const compositeSlhCount = (count: number, children: number): number =>
+  Number.isSafeInteger(count) && count > 0 ? Math.min(children, count) : 0;
+
 export const getSmartAccountVerificationGasLimit = ({
   childValidatorCount = 0,
   includesDeployment = false,
+  slhDsaChildCount = 0,
   validatorKind,
 }: {
   childValidatorCount?: number;
   includesDeployment?: boolean;
+  slhDsaChildCount?: number;
   validatorKind?: SmartAccountValidatorKind | string;
 }): number => {
   let verification: number;
@@ -117,10 +125,13 @@ export const getSmartAccountVerificationGasLimit = ({
       break;
     case 'composite': {
       // Unknown composition degenerates to the fallback.
-      const children = Math.max(1, childValidatorCount || 2);
+      const children = compositeChildCount(childValidatorCount);
       verification =
         SMART_ACCOUNT_COMPOSITE_VERIFICATION_BASE_GAS +
-        children * SMART_ACCOUNT_COMPOSITE_VERIFICATION_CHILD_GAS;
+        children * SMART_ACCOUNT_COMPOSITE_VERIFICATION_CHILD_GAS +
+        compositeSlhCount(slhDsaChildCount, children) *
+          (SMART_ACCOUNT_VERIFICATION_GAS_LIMITS['slh-dsa'] -
+            SMART_ACCOUNT_COMPOSITE_VERIFICATION_CHILD_GAS);
       break;
     }
     default:
@@ -133,30 +144,67 @@ export const getSmartAccountVerificationGasLimit = ({
 };
 
 export const getSmartAccountPreVerificationGas = ({
+  childValidatorCount = 0,
+  slhDsaChildCount = 0,
   validatorKind,
 }: {
+  childValidatorCount?: number;
+  slhDsaChildCount?: number;
   validatorKind?: SmartAccountValidatorKind | string;
-}): number =>
-  validatorKind === 'slh-dsa'
-    ? SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
-    : SMART_ACCOUNT_PRE_VERIFICATION_GAS;
+}): number => {
+  if (validatorKind === 'slh-dsa')
+    return SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS;
+  if (validatorKind !== 'composite') return SMART_ACCOUNT_PRE_VERIFICATION_GAS;
+  const children = compositeChildCount(childValidatorCount);
+  // Each aligned bytes[] child adds ABI framing and a compact signature.
+  // PQ children additionally retain the standalone SLH calldata budget.
+  return (
+    SMART_ACCOUNT_PRE_VERIFICATION_GAS +
+    children * 4096 +
+    compositeSlhCount(slhDsaChildCount, children) *
+      (SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS -
+        SMART_ACCOUNT_PRE_VERIFICATION_GAS)
+  );
+};
 
 /** Reads the active validator kind + composite arity out of the metadata. */
 export const getSmartAccountValidatorProfile = (
   metadata: Pick<ISmartAccountMetadata, 'auth' | 'installedModules'>
-): { childValidatorCount: number; validatorKind?: string } => {
+): {
+  childValidatorCount: number;
+  slhDsaChildCount?: number;
+  validatorKind?: string;
+} => {
   const validatorKind = metadata.auth?.module || metadata.auth?.scheme;
   if (validatorKind !== 'composite') {
     return { childValidatorCount: 0, validatorKind };
   }
   const compositeModule = metadata.installedModules?.find(
-    (module) => module.type === 'validator' && module.id === 'composite'
+    (module) =>
+      module.type === 'validator' &&
+      module.id === 'composite' &&
+      module.address.toLowerCase() === metadata.auth?.validator?.toLowerCase()
   );
   const childValidatorCount =
     compositeModule && compositeModule.id === 'composite'
       ? compositeModule.config.childValidators?.length || 0
       : 0;
-  return { childValidatorCount, validatorKind };
+  const slhDsaChildCount =
+    compositeModule?.id === 'composite'
+      ? compositeModule.config.childValidators?.filter((child) =>
+          metadata.installedModules?.some(
+            (module) =>
+              module.type === 'validator' &&
+              module.id === 'slh-dsa' &&
+              module.address.toLowerCase() === child.toLowerCase()
+          )
+        ).length || 0
+      : 0;
+  return {
+    childValidatorCount,
+    ...(slhDsaChildCount ? { slhDsaChildCount } : {}),
+    validatorKind,
+  };
 };
 
 /**
@@ -207,6 +255,7 @@ export const estimateSmartAccountUserOpGas = async (
     entryPointAddress,
     isDeployed,
     sender,
+    slhDsaChildCount = 0,
     validatorKind,
   }: {
     callData: string;
@@ -214,6 +263,7 @@ export const estimateSmartAccountUserOpGas = async (
     entryPointAddress?: string;
     isDeployed: boolean;
     sender: string;
+    slhDsaChildCount?: number;
     validatorKind?: SmartAccountValidatorKind | string;
   }
 ): Promise<SmartAccountUserOpGasEstimate> => {
@@ -226,9 +276,12 @@ export const estimateSmartAccountUserOpGas = async (
   const verificationGasLimit = getSmartAccountVerificationGasLimit({
     childValidatorCount,
     includesDeployment: !isDeployed,
+    slhDsaChildCount,
     validatorKind,
   });
   const preVerificationGas = getSmartAccountPreVerificationGas({
+    childValidatorCount,
+    slhDsaChildCount,
     validatorKind,
   });
   return {
@@ -252,14 +305,17 @@ export const getSmartAccountGasUnitsReserve = (
     'auth' | 'installedModules' | 'isDeployed'
   >
 ): BigNumber => {
-  const { childValidatorCount, validatorKind } =
+  const { childValidatorCount, slhDsaChildCount, validatorKind } =
     getSmartAccountValidatorProfile(metadata);
   const verification = getSmartAccountVerificationGasLimit({
     childValidatorCount,
     includesDeployment: !metadata.isDeployed,
+    slhDsaChildCount,
     validatorKind,
   });
   const preVerificationGas = getSmartAccountPreVerificationGas({
+    childValidatorCount,
+    slhDsaChildCount,
     validatorKind,
   });
   return BigNumber.from(

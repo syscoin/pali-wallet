@@ -120,20 +120,54 @@ export const isPaliSignableValidator = (
     case 'slh-dsa':
       return true;
     case 'composite': {
-      // A composite is signable when at least `threshold` children resolve
-      // to installed Pali-signable validators.
-      const signableChildren = module.config.childValidators.filter((child) => {
-        const childModule = getInstalledValidatorModuleByAddress(
-          metadata as ISmartAccountMetadata,
-          child
-        );
-        return (
-          childModule &&
-          childModule.id !== 'custom' &&
-          childModule.id !== 'composite'
-        );
-      });
-      return signableChildren.length >= (module.config.threshold || 1);
+      // Match the contract's distinct, installed, non-nested children. An
+      // optional external child cannot make an otherwise unavailable local
+      // threshold look signable before activation.
+      const { childValidators, threshold } = module.config;
+      if (
+        !Array.isArray(childValidators) ||
+        !Number.isSafeInteger(threshold) ||
+        threshold < 1 ||
+        threshold > childValidators.length
+      ) {
+        return false;
+      }
+      try {
+        const children = childValidators.map((child) => getAddress(child));
+        if (
+          new Set(children).size !== children.length ||
+          children.includes('0x0000000000000000000000000000000000000000')
+        )
+          return false;
+        let signableChildren = 0;
+        for (const child of children) {
+          const childModule = getInstalledValidatorModuleByAddress(
+            metadata as ISmartAccountMetadata,
+            child
+          );
+          if (
+            !childModule ||
+            !['ecdsa', 'p256-webauthn', 'slh-dsa', 'custom'].includes(
+              childModule.id
+            ) ||
+            childModule.id === 'composite' ||
+            (childModule.id === 'custom' &&
+              childModule.config.compositeCompatible !== true)
+          ) {
+            return false;
+          }
+          if (
+            childModule.id === 'ecdsa' ||
+            childModule.id === 'p256-webauthn' ||
+            childModule.id === 'slh-dsa'
+          ) {
+            signableChildren++;
+          }
+        }
+        return signableChildren >= threshold;
+      } catch {
+        return false;
+      }
     }
     case 'custom':
       return false;
@@ -183,9 +217,20 @@ export const assertValidatorActivationAllowed = (
 /** Installed validators that may be picked as composite children. */
 export const listCompositeChildCandidates = (
   metadata: Pick<ISmartAccountMetadata, 'installedModules'>
-): SmartAccountValidatorModule[] =>
-  listInstalledValidatorModules(metadata as ISmartAccountMetadata).filter(
-    (module) =>
-      module.id !== 'composite' &&
-      (module.id !== 'custom' || module.config.compositeCompatible === true)
-  );
+): SmartAccountValidatorModule[] => {
+  const candidates = new Map<string, SmartAccountValidatorModule>();
+  for (const module of listInstalledValidatorModules(
+    metadata as ISmartAccountMetadata
+  )) {
+    if (
+      module.id === 'composite' ||
+      (module.id === 'custom' && module.config.compositeCompatible !== true)
+    )
+      continue;
+    const address = module.address.toLowerCase();
+    const existing = candidates.get(address);
+    if (!existing || (existing.id === 'custom' && module.id !== 'custom'))
+      candidates.set(address, module);
+  }
+  return Array.from(candidates.values());
+};

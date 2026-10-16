@@ -5,7 +5,7 @@ jest.mock('state/store', () => ({
 }));
 jest.mock(
   'scripts/Background/controllers/message-handler/method-registry',
-  () => ({ getUnrestrictedMethods: () => [] })
+  () => ({ getUnrestrictedMethods: jest.fn(() => []) })
 );
 jest.mock(
   'scripts/Background/controllers/message-handler/popup-promise',
@@ -20,6 +20,7 @@ jest.mock(
 jest.mock('utils/ethUtil', () => ({ decodeTransactionData: jest.fn() }));
 
 import { getController } from 'scripts/Background';
+import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { requestCoordinator } from 'scripts/Background/controllers/message-handler/request-pipeline';
 import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
@@ -50,6 +51,7 @@ let vaultGlobal: any;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (getUnrestrictedMethods as jest.Mock).mockReturnValue([]);
   rpc.getBlock.mockResolvedValue({ baseFeePerGas: '0x3b9aca00' });
   popupMock.mockResolvedValue(HASH);
   decodeMock.mockResolvedValue({
@@ -76,6 +78,71 @@ beforeEach(() => {
   };
   vaultGlobal = { activeSlip44: 60 };
   stateMock.mockImplementation(() => ({ vault, vaultGlobal }));
+});
+
+describe('EthProvider public RPC admission and errors', () => {
+  beforeEach(() => {
+    (getUnrestrictedMethods as jest.Mock).mockReturnValue([
+      'eth_getTransactionReceipt',
+    ]);
+  });
+
+  it.each([
+    [],
+    [null],
+    [undefined],
+    [{}],
+    ['0x1234'],
+    [`0x${'z'.repeat(64)}`],
+    [HASH, 'unexpected'],
+  ])(
+    'rejects malformed receipt params %p before RPC work',
+    async (...params) => {
+      await expect(
+        EthProvider(HOST).unrestrictedRPCMethods(
+          'eth_getTransactionReceipt',
+          params
+        )
+      ).rejects.toMatchObject({ code: -32602 });
+      expect(rpc.send).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([[HASH], [{ hash: HASH }]])(
+    'preserves a pending receipt result and does not mutate params %p',
+    async (param) => {
+      const params = [param];
+      const original = JSON.parse(JSON.stringify(params));
+      rpc.send.mockResolvedValueOnce(null);
+      await expect(
+        EthProvider(HOST).unrestrictedRPCMethods(
+          'eth_getTransactionReceipt',
+          params
+        )
+      ).resolves.toBeNull();
+      expect(rpc.send).toHaveBeenCalledTimes(1);
+      expect(rpc.send).toHaveBeenCalledWith('eth_getTransactionReceipt', [
+        HASH,
+      ]);
+      expect(params).toEqual(original);
+    }
+  );
+
+  it.each([
+    new Error('Network unavailable'),
+    {
+      code: -32005,
+      message: 'Request limit exceeded',
+      data: { retryAfter: 1 },
+    },
+    { code: 4900, message: 'Disconnected' },
+  ])('does not mask a raw-transaction RPC failure %p', async (error) => {
+    rpc.send.mockRejectedValueOnce(error);
+    await expect(
+      EthProvider(HOST).restrictedRPCMethods('eth_sendRawTransaction', ['0x00'])
+    ).rejects.toBe(error);
+    expect(rpc.send).toHaveBeenCalledTimes(1);
+  });
 });
 
 const expectNoRpcOrPopup = () => {

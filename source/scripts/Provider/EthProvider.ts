@@ -281,33 +281,22 @@ export const EthProvider = (
 
     // Validate eth_getTransactionReceipt params
     if (method === 'eth_getTransactionReceipt') {
-      // Handle case where an object with hash property is passed instead of string
+      // Retain the legacy hash-object input without changing the caller's params.
+      const input = params?.[0];
+      const hash = input && typeof input === 'object' ? input.hash : input;
       if (
-        params &&
-        params.length > 0 &&
-        typeof params[0] === 'object' &&
-        params[0].hash
+        !Array.isArray(params) ||
+        params.length !== 1 ||
+        typeof hash !== 'string' ||
+        !/^0x[\da-f]{64}$/i.test(hash)
       ) {
-        params[0] = params[0].hash;
+        throw cleanErrorStack(
+          ethErrors.rpc.invalidParams(
+            'Invalid transaction hash. Expected one 0x-prefixed 32-byte hash.'
+          )
+        );
       }
-
-      // Validate the transaction hash format
-      if (params && params.length > 0) {
-        const hash = params[0];
-        if (
-          typeof hash !== 'string' ||
-          !hash.startsWith('0x') ||
-          hash.length !== 66
-        ) {
-          throw cleanErrorStack(
-            ethErrors.rpc.invalidParams(
-              `Invalid transaction hash format. Expected 0x-prefixed 66-character string, got: ${
-                typeof hash === 'object' ? JSON.stringify(hash) : hash
-              }`
-            )
-          );
-        }
-      }
+      params = [hash];
     }
 
     // Defaults
@@ -345,9 +334,8 @@ export const EthProvider = (
           return requestResult;
         } catch (error) {
           console.error({ requestError: error, method, params });
-          throw cleanErrorStack(
-            ethErrors.rpc.internal(error.error.data || error.error.message)
-          );
+          // Preserve RPC codes/data and ordinary transport errors alike.
+          throw error;
         }
     }
   };

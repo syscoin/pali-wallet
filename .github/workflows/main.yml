@@ -100,7 +100,7 @@ jobs:
           PALI_LEGACY_EXTENSION_SHA256: d2330273ec05a73f655e870c442b3be587e74fd5600d0028ed32df879e925253
           PALI_CURRENT_EXTENSION_ZIP: ${{ steps.upgrade_artifacts.outputs.current_zip }}
           PALI_CURRENT_EXTENSION_SHA256: ${{ steps.upgrade_artifacts.outputs.current_sha256 }}
-        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts pending-native-max.journey.spec.ts delayed-indexer-native-max.journey.spec.ts offline-utxo-history.journey.spec.ts native-history-account-switch.journey.spec.ts spt-send-preview.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts offline-sustained-wallet-stress.journey.spec.ts offline-legacy-upgrade.journey.spec.ts
+        run: yarn e2e:harness test-dapp-conformance.journey.spec.ts provider-edge-cases.journey.spec.ts provider-property-toggle.journey.spec.ts utxo-psbt.journey.spec.ts native-send-preview.journey.spec.ts pending-native-max.journey.spec.ts delayed-indexer-native-max.journey.spec.ts offline-utxo-history.journey.spec.ts native-history-account-switch.journey.spec.ts spt-send-preview.journey.spec.ts spt-asset-matrix.journey.spec.ts offline-wallet-lifecycle.journey.spec.ts offline-cold-restart.journey.spec.ts offline-vault-isolation.journey.spec.ts offline-sustained-wallet-stress.journey.spec.ts offline-legacy-upgrade.journey.spec.ts
       - name: Upload conformance evidence
         if: always()
         uses: actions/upload-artifact@v7

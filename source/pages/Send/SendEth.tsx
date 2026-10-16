@@ -1465,7 +1465,18 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             selectedAsset?.tokenStandard === 'ERC-1155') && (
             <div className="flex flex-1 min-w-0 relative">
               <div className="value-custom-input w-full relative">
-                <span
+                <button
+                  type="button"
+                  disabled={
+                    (selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155' &&
+                      verifiedTokenBalance === null) ||
+                    (!selectedAsset?.isNft &&
+                      selectedAsset &&
+                      verifiedERC20Balance === null) ||
+                    isVerifyingERC20 ||
+                    isVerifyingTokenId
+                  }
                   onClick={
                     // Disable MAX button until verification complete
                     (selectedAsset?.isNft &&
@@ -1479,7 +1490,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                       ? undefined
                       : handleMaxButton
                   }
-                  className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 ${
+                  className={`absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1 ${
                     (selectedAsset?.isNft &&
                       selectedAsset?.tokenStandard === 'ERC-1155' &&
                       verifiedTokenBalance === null) ||
@@ -1493,7 +1504,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   }`}
                 >
                   MAX
-                </span>
+                </button>
                 <Form.Item
                   name="amount"
                   className="relative w-full"

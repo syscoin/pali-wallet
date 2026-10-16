@@ -93,6 +93,7 @@ export interface IDecodedTransaction {
 interface ISyscoinTransactionDetailsProps {
   onReviewStateChange?: (reviewError: string | null) => void;
   psbt?: string;
+  reviewOnly?: boolean;
   showTechnicalDetails?: boolean;
   showTransactionOptions?: boolean;
   transaction?: any;
@@ -210,6 +211,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
 > = ({
   psbt,
   transaction,
+  reviewOnly = false,
   showTechnicalDetails = true,
   showTransactionOptions = false,
   onReviewStateChange,
@@ -308,7 +310,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
     fetchTransactionDetails();
     // Only refetch when PSBT or network URL changes to avoid resets during polling
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [psbt, transaction?.psbt, activeNetwork?.url, initialLoadDone]);
+  }, [psbt, transaction?.psbt, activeNetwork?.url]);
 
   useEffect(() => {
     if (copiedJson) {
@@ -345,6 +347,8 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
   useEffect(() => {
     onReviewStateChange?.(reviewError);
   }, [onReviewStateChange, reviewError]);
+
+  if (reviewOnly) return null;
 
   if (loading && !initialLoadDone) {
     return (
@@ -1186,6 +1190,7 @@ export const SyscoinTransactionDetailsFromPSBT = React.memo(
     // Custom comparison function - only re-render if the PSBT data changes
     prevProps.psbt === nextProps.psbt &&
     prevProps.transaction?.psbt === nextProps.transaction?.psbt &&
+    prevProps.reviewOnly === nextProps.reviewOnly &&
     prevProps.showTechnicalDetails === nextProps.showTechnicalDetails &&
     prevProps.showTransactionOptions === nextProps.showTransactionOptions &&
     prevProps.onReviewStateChange === nextProps.onReviewStateChange

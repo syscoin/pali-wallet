@@ -33,6 +33,11 @@ let estimatedGas: number | string;
 let pendingBlock: any;
 let networkFees: any;
 let state: any;
+let smartQuote: any;
+const pack = (high: number | string, low: number | string) =>
+  '0x' +
+  BigNumber.from(high).toHexString().slice(2).padStart(32, '0') +
+  BigNumber.from(low).toHexString().slice(2).padStart(32, '0');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -53,12 +58,32 @@ beforeEach(() => {
     maxFeePerGas: BigNumber.from('3000000000'),
     maxPriorityFeePerGas: BigNumber.from('1000000000'),
   };
+  smartQuote = undefined;
   emitterMock.mockImplementation(async (path, args) => {
     switch (path.join('.')) {
       case 'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas':
         return networkFees;
       case 'wallet.getRecommendedEvmNonce':
         return 9;
+      case 'wallet.prepareSmartAccountExecutions': {
+        if (smartQuote instanceof Error) throw smartQuote;
+        const overrides = args[2].feeOverrides;
+        return (
+          smartQuote || {
+            executionContextId: 'read-only-fee-context',
+            executions: args[0],
+            userOperation: {
+              sender: FROM,
+              accountGasLimits: pack(700000, 33456),
+              preVerificationGas: '130000',
+              gasFees: pack(
+                overrides.gasPrice ? 0 : overrides.maxPriorityFeePerGas,
+                overrides.gasPrice || overrides.maxFeePerGas
+              ),
+            },
+          }
+        );
+      }
       case 'wallet.ethereumTransaction.web3Provider.send':
         if (args[0] === 'eth_getBlockByNumber') return pendingBlock;
         if (args[0] === 'eth_estimateGas') return BigNumber.from(estimatedGas);
@@ -94,6 +119,122 @@ const rpcCalls = (method: string) =>
   );
 
 describe('dapp transaction fee preparation', () => {
+  it('quotes edited wallet fee caps without rewriting the standard dapp caps', async () => {
+    state.vault.accounts.HDAccount[0].isSmartAccount = true;
+    const result = await fetchGasAndDecodeFunction(
+      {
+        from: FROM,
+        to: TO,
+        data: '0x',
+        value: '0x0',
+        maxFeePerGas: '5000000000',
+        maxPriorityFeePerGas: '1000000000',
+      },
+      network,
+      undefined,
+      { maxFeePerGas: '7000000000', maxPriorityFeePerGas: '1000000000' }
+    );
+    expect(result.formTx.maxFeePerGas.toString()).toBe('5000000000');
+    expect(result.feeDetails.smartAccountFeeQuote?.maximumFeeWei).toBe(
+      BigNumber.from(863456).mul('7000000000').toString()
+    );
+  });
+  it.each([false, true])(
+    'quotes the full smart-account EntryPoint bound while preserving standard fields (legacy=%s)',
+    async (legacy) => {
+      state.vault.accounts.HDAccount[0].isSmartAccount = true;
+      const fields = legacy
+        ? { gas: 70000, gasPrice: '4000000000' }
+        : {
+            gas: 70000,
+            maxFeePerGas: '5000000000',
+            maxPriorityFeePerGas: '1000000000',
+          };
+      const result = await prepare(fields);
+      expect(result.formTx.gasLimit.toString()).toBe('70000');
+      expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+        gasUnits: '863456',
+        maximumFeeWei: BigNumber.from(863456)
+          .mul(legacy ? '4000000000' : '5000000000')
+          .toString(),
+      });
+      expect(callsFor('wallet.prepareSmartAccountExecutions')).toHaveLength(1);
+      expect(callsFor('wallet.prepareSmartAccountExecutions')[0][1]).toEqual([
+        [{ target: TO, data: '0x', value: '0x0' }],
+        0,
+        {
+          expectedContext: expect.objectContaining({
+            account: expect.objectContaining({ address: FROM }),
+            chainId: 1,
+          }),
+          feeOverrides: legacy
+            ? { gasPrice: '4000000000' }
+            : {
+                maxFeePerGas: '5000000000',
+                maxPriorityFeePerGas: '1000000000',
+              },
+        },
+      ]);
+    }
+  );
+
+  it('uses a zero EntryPoint account charge only from the trusted prepared tank-mode UserOp', async () => {
+    state.vault.accounts.HDAccount[0].isSmartAccount = true;
+    smartQuote = {
+      executionContextId: 'tank',
+      executions: [{ target: TO, data: '0x', value: '0x0' }],
+      userOperation: {
+        sender: FROM,
+        accountGasLimits: pack(700000, 33456),
+        preVerificationGas: '130000',
+        gasFees: pack(0, 0),
+      },
+    };
+    const result = await prepare({
+      smartAccountFeeQuote: { maximumFeeWei: '1' },
+    });
+    expect(result.feeDetails.smartAccountFeeQuote).toEqual({
+      gasUnits: '863456',
+      maximumFeeWei: '0',
+    });
+  });
+
+  it.each([
+    'error',
+    'wrong sender',
+    'malformed limits',
+    'different execution',
+    'changed account',
+  ])('never invents an AA fee after %s', async (reason) => {
+    state.vault.accounts.HDAccount[0].isSmartAccount = true;
+    smartQuote = {
+      executionContextId: 'quote',
+      executions: [{ target: TO, data: '0x', value: '0x0' }],
+      userOperation: {
+        sender: FROM,
+        accountGasLimits: pack(700000, 33456),
+        preVerificationGas: '130000',
+        gasFees: pack(1000000000, 3000000000),
+      },
+    };
+    if (reason === 'error') smartQuote = new Error('AA quote unavailable');
+    if (reason === 'wrong sender') smartQuote.userOperation.sender = TO;
+    if (reason === 'malformed limits')
+      smartQuote.userOperation.accountGasLimits = '0x1234';
+    if (reason === 'different execution')
+      smartQuote.executions[0].target = FROM;
+    if (reason === 'changed account') {
+      const invoke = emitterMock.getMockImplementation()!;
+      emitterMock.mockImplementation(async (path, args) => {
+        const result = await invoke(path, args);
+        if (path.join('.') === 'wallet.prepareSmartAccountExecutions')
+          state.vault.accounts.HDAccount[0].address = TO;
+        return result;
+      });
+    }
+    await expect(prepare()).rejects.toThrow();
+  });
+
   it.each([
     'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas',
     'wallet.ethereumTransaction.web3Provider.send',

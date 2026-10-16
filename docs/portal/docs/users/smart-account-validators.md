@@ -24,19 +24,24 @@ Behind the scenes, WebAuthn passkeys use P-256 signatures. Pali's passkey valida
   <figcaption>Users can create modular smart accounts from Settings or from dapp requests, then choose the validator that controls approvals.</figcaption>
 </figure>
 
-Pali supports three validator styles:
+Pali supports these validator styles:
 
 - **Passkey:** the browser or operating system asks for WebAuthn approval.
 - **ECDSA:** configured EVM owner addresses approve account actions.
+- **SLH-DSA:** Pali's local post-quantum signer approves actions using its encrypted signer state. See [Post-quantum signer](./post-quantum-signer) for backup and signature-counter limitations.
 - **Composite:** child validators are combined under a threshold, such as passkey or ECDSA.
 
 Think of validators as the answer to "who can approve actions for this account?" — and the useful part is that the answer can change without changing your account:
 
-- **Any one of my sign-ins** (1-of-N): approve with whichever passkey or key is handy.
-- **A few of us together** (t-of-N): a quorum of people or devices must agree, ideal for shared funds.
-- **All of us together** (N-of-N): every configured sign-in must approve, for the most sensitive accounts.
+- **One approval** (1-of-N): one configured child validator must approve.
+- **A threshold of approvals** (t-of-N): at least the configured number of child validators must approve.
+- **Every approval** (N-of-N): all configured child validators must approve.
 
-Policies can even contain other policies, so a team can express things like "the lead's key plus any two desk passkeys." Your address, balances, and history stay exactly the same when the policy changes — and because signing is modular, future signature types (including post-quantum ones) can be adopted on the same account later.
+Pali collects locally available builtin child approvals in the policy's configured order until its threshold is met. Declining an approval stops that request; Pali does not silently switch to another signer after a rejection. A policy must retain enough locally signable builtin children to meet its threshold. Compatible custom validators may be optional children, but Pali does not collect external/custom signatures or cross-device approvals for them. Nested composite policies are not supported by this version.
+
+The composite builder requires at least two installed validators. The guided approval-method switch replaces the previous validator. The current advanced **Custom validator** (bring your own module) flow can retain additional compatible validators, but requires correct module initialization data; it is not a simple cross-device approval setup.
+
+Changing the validator does not change the smart-account address, balances, or history. Access to a local signer still depends on its key or passkey being available; changing the policy does not restore missing signer state or coordinate SLH-DSA usage across restored devices.
 
 Guardians are intentionally **not** part of this list. A guardian can never approve a transaction; their only power is to start a slow, visible recovery if you lose access. That separation protects you from lost access without giving anyone day-to-day control.
 
@@ -77,7 +82,7 @@ Pali uses self-custodial recovery guardians for smart-account recovery. A guardi
 
 The recovery module verifies guardian approvals with standard signature checking: a plain ECDSA signature for normal addresses, or an ERC-1271 contract-signature check when the guardian address is itself a contract. That means a guardian can be another smart account — including one whose own signing policy is a composite, a custom validator, or a future post-quantum validator. The recovery path then inherits whatever signature scheme the guardian account enforces, so recovery security is not limited to classic ECDSA keys.
 
-One current caveat: Pali's guardian screens today collect approvals from key-based guardians (wallet, imported, or hardware accounts). Contract-account guardians are fully supported by the deployed recovery module, but producing their ERC-1271 approval is not yet a guided Pali flow — and a contract guardian must already be deployed on-chain to answer signature checks. The flexibility is built into the account model now, so these guardian types can light up in the wallet without redeploying or changing the account.
+Pali's guardian screens can collect approvals from local key-based guardians (wallet, imported, or hardware accounts) and local smart-account guardians that Pali can sign for, including SLH-DSA smart accounts. A smart-account guardian must already be deployed on-chain to answer ERC-1271 signature checks. An arbitrary external guardian that is not available as a local Pali signing account still needs an external recovery flow to produce its approval.
 
 Guardian recovery is not instant. Starting recovery creates a replacement recovery target, asks the configured guardian to sign the recovery intent, and submits a timelocked recovery request. After the wait period has passed, anyone can finalize the recovery transaction. The user can then operate the account with the replacement validator.
 

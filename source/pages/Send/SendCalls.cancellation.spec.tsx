@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
 import { SendCalls } from './SendCalls';
@@ -54,6 +60,14 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
+  prepareSmartAccountFeeQuote: async () => ({
+    gasUnits: '860000',
+    maximumFeeWei: '4300000',
+  }),
+  SMART_ACCOUNT_FEE_QUOTE_CHANGED: 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED',
+  isSmartAccountFeeQuoteChanged: (error: any) =>
+    error?.message === 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED' &&
+    error?.transactionNotBroadcast === true,
   signAndSubmitSmartAccountExecutions: (params: any) => mockSmartSubmit(params),
 }));
 
@@ -66,7 +80,7 @@ const deferred = () => {
   });
   return { promise, resolve, reject };
 };
-const mount = (smart = false) => {
+const mount = async (smart = false) => {
   if (smart) {
     Object.assign(mockState.vault.accounts.HDAccount[0], {
       isSmartAccount: true,
@@ -74,10 +88,12 @@ const mount = (smart = false) => {
     });
   }
   render(<SendCalls />);
-  expect(
-    (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-      .disabled
-  ).toBe(false);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false)
+  );
 };
 const expectDisabled = () => {
   expect(
@@ -100,7 +116,7 @@ beforeEach(() => {
   const address = `0x${'1'.repeat(40)}`;
   mockState = {
     vault: {
-      activeNetwork: { chainId: 1, currency: 'ETH' },
+      activeNetwork: { chainId: 1, currency: 'ETH', url: 'rpc-a' },
       activeAccount: { type: 'HDAccount', id: 0 },
       accounts: { HDAccount: { 0: { id: 0, address } } },
     },
@@ -137,7 +153,7 @@ it.each([false, true])(
   async (smart) => {
     const cleanup = deferred();
     mockCleanup.mockReturnValue(cleanup.promise);
-    mount(smart);
+    await mount(smart);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
     expectDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'send.sign' }));
@@ -158,7 +174,7 @@ it.each([false, true])(
   async (smart) => {
     const cleanup = deferred();
     mockCleanup.mockReturnValue(cleanup.promise);
-    mount(smart);
+    await mount(smart);
     const approve = mockApprove;
     const reject = mockReject;
     let rejecting!: Promise<void>;
@@ -183,7 +199,7 @@ it.each([false, true])(
 it('cleanup failure keeps rejection terminal and closes without starting approval', async () => {
   const cleanup = deferred();
   mockCleanup.mockReturnValue(cleanup.promise);
-  mount();
+  await mount();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
   await act(async () => cleanup.reject(new Error('Storage unavailable')));
   await act(async () => mockApprove());
@@ -195,7 +211,7 @@ it('cleanup failure keeps rejection terminal and closes without starting approva
 it('Sign claims ownership before React commits, so a stale Reject cannot close it', async () => {
   const preparation = deferred();
   mockEmitter.mockReturnValue(preparation.promise);
-  mount();
+  await mount();
   const approve = mockApprove;
   const reject = mockReject;
   let approving!: Promise<void>;

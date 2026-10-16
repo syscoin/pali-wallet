@@ -389,6 +389,7 @@ const EvmTransactionItem = React.memo(
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
+                  ariaLabel={t('notifications.clickToView')}
                   className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
                   onClick={handleGoTxDetails}
                 />
@@ -420,6 +421,7 @@ const EvmTransactionItem = React.memo(
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
+                  ariaLabel={t('notifications.clickToView')}
                   className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
                   onClick={handleGoTxDetails}
                 />
@@ -514,6 +516,7 @@ const EvmTransactionItem = React.memo(
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg
+                    ariaLabel={t('notifications.clickToView')}
                     className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
                     onClick={handleGoTxDetails}
                   />

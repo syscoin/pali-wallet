@@ -24,19 +24,24 @@ En interne, les passkeys WebAuthn utilisent des signatures P-256. Le validateur 
   <figcaption>Les utilisateurs peuvent créer des comptes intelligents modulaires depuis les Réglages ou les demandes de dapps, puis choisir le validateur qui contrôle les approbations.</figcaption>
 </figure>
 
-Pali prend en charge trois types de validateurs :
+Pali prend en charge les types de validateurs suivants :
 
 - **Passkey :** le navigateur ou le système d’exploitation demande une approbation WebAuthn.
 - **ECDSA :** les adresses EVM des propriétaires configurés approuvent les actions du compte.
+- **SLH-DSA :** le signataire post-quantique local de Pali approuve les actions à l’aide de son état de signature chiffré. Consultez [Signataire post-quantique](./post-quantum-signer) pour connaître les limites des sauvegardes et du compteur de signatures.
 - **Composite :** les validateurs enfants sont combinés selon un seuil, par exemple passkey ou ECDSA.
 
 Considérez les validateurs comme la réponse à la question « qui peut approuver des actions pour ce compte ? ». L’intérêt est que la réponse peut changer sans changer votre compte :
 
-- **N’importe lequel de mes moyens de connexion** (1-of-N) : approuvez avec la passkey ou la clé disponible.
-- **Quelques-uns d’entre nous ensemble** (t-of-N) : un quorum de personnes ou d’appareils doit être d’accord, idéal pour les fonds partagés.
-- **Nous tous ensemble** (N-of-N) : tous les moyens de connexion configurés doivent approuver, pour les comptes les plus sensibles.
+- **Une approbation** (1-of-N) : un validateur enfant configuré doit approuver.
+- **Un seuil d’approbations** (t-of-N) : au moins le nombre configuré de validateurs enfants doit approuver.
+- **Toutes les approbations** (N-of-N) : tous les validateurs enfants configurés doivent approuver.
 
-Les politiques peuvent même contenir d’autres politiques. Une équipe peut ainsi exprimer des règles comme « la clé du responsable plus deux passkeys quelconques de la salle des marchés ». Votre adresse, vos soldes et votre historique restent exactement les mêmes lorsque la politique change. La signature étant modulaire, de futurs types de signature, y compris post-quantiques, pourront être adoptés sur le même compte.
+Pali recueille les approbations des validateurs enfants intégrés disponibles localement, dans l’ordre configuré par la politique, jusqu’à atteindre son seuil. Refuser une approbation arrête la demande ; Pali ne passe pas silencieusement à un autre signataire après un refus. Une politique doit conserver assez de validateurs enfants intégrés capables de signer localement pour atteindre son seuil. Les validateurs personnalisés compatibles peuvent être des enfants facultatifs, mais Pali ne recueille pas pour eux de signatures externes ou personnalisées ni d’approbations entre appareils. Cette version ne prend pas en charge les politiques composites imbriquées.
+
+Le constructeur de politiques composites nécessite au moins deux validateurs installés. Le parcours guidé de changement de méthode d’approbation remplace le validateur précédent. Le parcours avancé actuel **Validateur personnalisé** permet de conserver des validateurs compatibles supplémentaires, mais exige les bonnes données d’initialisation du module ; ce n’est pas une configuration simplifiée d’approbations entre appareils.
+
+Changer de validateur ne modifie ni l’adresse, ni les soldes, ni l’historique du compte intelligent. L’accès à un signataire local dépend toujours de la disponibilité de sa clé ou de sa passkey ; changer de politique ne restaure pas l’état de signature manquant et ne coordonne pas l’utilisation de SLH-DSA entre des appareils restaurés.
 
 Les gardiens ne font volontairement **pas** partie de cette liste. Un gardien ne peut jamais approuver une transaction ; son seul pouvoir est de lancer une récupération lente et visible si vous perdez l’accès. Cette séparation vous protège contre la perte d’accès sans donner à quiconque le contrôle au quotidien.
 
@@ -77,7 +82,7 @@ Pali utilise des gardiens de récupération en auto-garde pour les comptes intel
 
 Le module de récupération vérifie les approbations des gardiens au moyen de contrôles de signature standards : une signature ECDSA ordinaire pour les adresses normales, ou une vérification de signature de contrat ERC-1271 lorsque l’adresse du gardien est un contrat. Un gardien peut donc être un autre compte intelligent, y compris un compte dont la politique de signature repose sur un validateur composite, personnalisé ou futur post-quantique. Le parcours de récupération hérite du schéma de signature imposé par le compte du gardien ; sa sécurité n’est donc pas limitée aux clés ECDSA classiques.
 
-Une limite actuelle : les écrans de gardiens de Pali recueillent aujourd’hui les approbations de gardiens fondés sur des clés, qu’il s’agisse de comptes du portefeuille, importés ou matériels. Le module de récupération déployé prend pleinement en charge les gardiens constitués de comptes de contrat, mais la production de leur approbation ERC-1271 n’est pas encore un parcours guidé dans Pali. Un gardien de contrat doit également être déjà déployé sur la chaîne pour répondre aux vérifications de signature. Cette flexibilité fait déjà partie du modèle de compte ; ces types de gardiens peuvent donc être proposés dans le portefeuille sans redéployer ni modifier le compte.
+Les écrans de gardiens de Pali peuvent recueillir les approbations de gardiens locaux fondés sur des clés (comptes du portefeuille, importés ou matériels) et de comptes intelligents locaux pour lesquels Pali peut signer, y compris les comptes SLH-DSA. Un gardien constitué d’un compte intelligent doit déjà être déployé sur la chaîne pour répondre aux vérifications de signature ERC-1271. Un gardien externe qui n’est pas disponible comme compte signataire local dans Pali nécessite toujours un parcours de récupération externe pour produire son approbation.
 
 La récupération par gardiens n’est pas instantanée. Son lancement crée une cible de récupération de remplacement, demande au gardien configuré de signer l’intention de récupération et soumet une demande soumise à un délai de verrouillage. Une fois le délai écoulé, n’importe qui peut finaliser la transaction de récupération. L’utilisateur peut alors utiliser le compte avec le validateur de remplacement.
 

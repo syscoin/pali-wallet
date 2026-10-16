@@ -226,6 +226,64 @@ describe('estimateSmartAccountUserOpGas', () => {
 });
 
 describe('getSmartAccountGasUnitsReserve', () => {
+  it('budgets SLH children of the active composite in both reserve and builder', async () => {
+    const pq = '0x2222222222222222222222222222222222222222';
+    const otherComposite = '0x3333333333333333333333333333333333333333';
+    const metadata = {
+      auth: { data: '0x', module: 'composite' as const, validator: SENDER },
+      installedModules: [
+        {
+          address: otherComposite,
+          config: { childValidators: [SENDER], threshold: 1 },
+          id: 'composite',
+          type: 'validator',
+        },
+        {
+          address: SENDER,
+          config: { childValidators: [otherComposite, pq], threshold: 2 },
+          id: 'composite',
+          type: 'validator',
+        },
+        { address: pq, config: {}, id: 'slh-dsa', type: 'validator' },
+      ] as any,
+      isDeployed: true,
+    };
+    const profile = getSmartAccountValidatorProfile(metadata);
+    expect(profile).toEqual({
+      childValidatorCount: 2,
+      slhDsaChildCount: 1,
+      validatorKind: 'composite',
+    });
+    const estimate = await estimateSmartAccountUserOpGas(
+      providerWithEstimate(new Error('offline')),
+      {
+        ...profile,
+        callData: CALL_DATA,
+        isDeployed: true,
+        sender: SENDER,
+      }
+    );
+    expect(estimate.verificationGasLimit).toBe(
+      SMART_ACCOUNT_COMPOSITE_VERIFICATION_BASE_GAS +
+        SMART_ACCOUNT_COMPOSITE_VERIFICATION_CHILD_GAS +
+        SMART_ACCOUNT_VERIFICATION_GAS_LIMITS['slh-dsa']
+    );
+    expect(estimate.preVerificationGas).toBeGreaterThan(
+      SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS
+    );
+    expect(getSmartAccountGasUnitsReserve(metadata).toString()).toBe(
+      String(estimate.totalGasUnits)
+    );
+    const compact = getSmartAccountPreVerificationGas({
+      childValidatorCount: 2,
+      validatorKind: 'composite',
+    });
+    expect(estimate.preVerificationGas - compact).toBe(
+      SMART_ACCOUNT_SLH_DSA_PRE_VERIFICATION_GAS -
+        SMART_ACCOUNT_PRE_VERIFICATION_GAS
+    );
+  });
+
   it('covers what the builder signs for a native transfer (Max-send)', async () => {
     const metadata = {
       auth: { data: '0x', module: 'ecdsa' as const, validator: SENDER },

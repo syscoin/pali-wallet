@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
@@ -39,6 +40,7 @@ const mockT = (key: string) =>
       'transactions.cancellation': 'Cancellation',
       'header.speedUp': 'Speed Up',
       'send.sent': 'Sent',
+      'notifications.clickToView': 'Details',
     } as Record<string, string>
   )[key] || key);
 
@@ -123,12 +125,11 @@ jest.mock('components/TransactionDetails', () => ({
   DecodedTransactionParams: () => null,
 }));
 jest.mock('components/Icon/Icon', () => ({
-  DetailArrowSvg: ({ onClick }: any) => (
-    <button onClick={onClick}>Details</button>
-  ),
+  DetailArrowSvg: jest.requireActual('components/Icon/Icon').DetailArrowSvg,
   ArrowUpSvg: () => <span>outgoing icon</span>,
   ReceivedArrowSvg: () => <span>incoming icon</span>,
 }));
+jest.mock('@ant-design/icons', () => ({}));
 jest.mock('components/Modal', () => ({ ConfirmationModal: () => null }));
 jest.mock('components/Tooltip', () => ({
   Tooltip: ({ children }: any) => children,
@@ -163,6 +164,27 @@ beforeEach(() => {
   mockApiUrl = undefined;
   mockEmitter.mockReset();
 });
+
+it.each(['{Enter}', ' '])(
+  'opens confirmed EVM details with the real keyboard action %s',
+  async (key) => {
+    const user = userEvent.setup();
+    const confirmed = transaction('c', { blockNumber: 42, confirmations: 3 });
+    mockRows = [confirmed];
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    const action = await screen.findByRole('button', { name: 'Details' });
+    action.focus();
+    expect(document.activeElement).toBe(action);
+    await user.keyboard(key);
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/home/details',
+      expect.objectContaining({
+        state: expect.objectContaining({ hash: confirmed.hash }),
+      })
+    );
+  }
+);
 
 it('keeps a confirmed accelerated cancellation separate from the replaced original', async () => {
   const original = transaction('a', { isReplaced: true });

@@ -1,7 +1,7 @@
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
 import { INetwork, KeyringAccountType } from 'types/network';
-import { ITransactionParams } from 'types/transactions';
+import { IFeeState, ITransactionParams } from 'types/transactions';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -9,6 +9,10 @@ import {
 } from 'utils/evmTransactionContext';
 
 import { safeBigNumber } from './safeBigNumber';
+import {
+  prepareSmartAccountFeeQuote,
+  type SmartAccountFeeOverrides,
+} from './smartAccount/execution';
 
 const maxBigNumber = (left: BigNumber, right: BigNumber) =>
   left.gte(right) ? left : right;
@@ -60,7 +64,8 @@ const isRpcIntegrityError = (error: any) =>
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetwork,
-  approvedContext?: IEvmTransactionContext
+  approvedContext?: IEvmTransactionContext,
+  smartAccountFeeOverrides?: SmartAccountFeeOverrides
 ) => {
   // Safety check: this function is only for EVM networks
   const { vault, vaultGlobal } = store.getState();
@@ -398,14 +403,7 @@ export const fetchGasAndDecodeFunction = async (
     throw new Error('Invalid transaction gas limit');
   }
 
-  const feeDetails: {
-    baseFee: number;
-    gasLimit: number;
-    gasPrice?: number;
-    maxFeePerGas: number;
-    maxPriorityFeePerGas: number;
-    minimumGasLimit: number;
-  } = {
+  const feeDetails: IFeeState = {
     gasLimit: finalGasLimitNumber,
     minimumGasLimit: Number(estimatedGasLimit.toString()),
     baseFee: 0, // Will be set below
@@ -430,6 +428,38 @@ export const fetchGasAndDecodeFunction = async (
     feeDetails.maxPriorityFeePerGas = toGweiNumber(maxPriorityFeePerGas);
 
     feeDetails.baseFee = toGweiNumber(baseFee!);
+  }
+
+  if (
+    account.isSmartAccount ||
+    vault.activeAccount.type === KeyringAccountType.SmartAccount
+  ) {
+    // The direct call's gas remains a standard dapp field. It is not the
+    // EntryPoint account-charge bound: verification/signature calldata and
+    // deployment gas must come from the same AA preparer used by submission.
+    const feeOverrides: SmartAccountFeeOverrides =
+      smartAccountFeeOverrides ||
+      (isLegacyTransaction
+        ? { gasPrice: formTx.gasPrice! }
+        : {
+            maxFeePerGas: formTx.maxFeePerGas.toString(),
+            maxPriorityFeePerGas: formTx.maxPriorityFeePerGas.toString(),
+          });
+    const execution = {
+      target: formTx.to,
+      data: formTx.data || '0x',
+      value: rpcHex(formTx.value),
+    };
+    feeDetails.smartAccountFeeQuote = await prepareSmartAccountFeeQuote({
+      accountAddress: expectedContext.account.address,
+      accountId: vault.activeAccount.id,
+      controllerEmitter,
+      executions: [execution],
+      expectedContext,
+      feeOverrides,
+      maximumGasUnits: blockGasLimit.toString(),
+    });
+    assertCurrentContext();
   }
 
   return {

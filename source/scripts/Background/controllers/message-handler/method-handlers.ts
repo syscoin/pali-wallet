@@ -10,6 +10,7 @@ import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
 import { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
+import { getUnrestrictedMethods } from './method-registry';
 import { popupPromise } from './popup-promise';
 import { executeMethodWithCache } from './provider-cache';
 import { requestCoordinator } from './request-pipeline';
@@ -149,6 +150,48 @@ export class WalletMethodHandler implements IMethodHandler {
               'The requested account or network is no longer selected'
             )
           );
+
+        // Atomicity is handled through atomicRequired below. No additional
+        // top-level or per-call capability is currently implemented.
+        const capabilitySets = [
+          sendCallsRequest.capabilities,
+          ...(Array.isArray(sendCallsRequest.calls)
+            ? sendCallsRequest.calls.map((call) => call?.capabilities)
+            : []),
+        ];
+        for (const capabilitySet of capabilitySets) {
+          if (capabilitySet === undefined) continue;
+          if (
+            !capabilitySet ||
+            typeof capabilitySet !== 'object' ||
+            Array.isArray(capabilitySet)
+          ) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams('Invalid capabilities')
+            );
+          }
+          for (const capability of Object.values(capabilitySet) as any[]) {
+            if (
+              !capability ||
+              typeof capability !== 'object' ||
+              Array.isArray(capability) ||
+              (capability.optional !== undefined &&
+                typeof capability.optional !== 'boolean')
+            ) {
+              throw cleanErrorStack(
+                ethErrors.rpc.invalidParams('Invalid capability')
+              );
+            }
+            if (capability.optional !== true) {
+              throw cleanErrorStack(
+                ethErrors.rpc.custom({
+                  code: 5700,
+                  message: 'Unsupported non-optional capability',
+                })
+              );
+            }
+          }
+        }
         const approvedContext = {
           account: {
             address: account.address,
@@ -552,10 +595,43 @@ export class WalletMethodHandler implements IMethodHandler {
             params[0]
           );
 
-        case 'getCapabilities':
+        case 'getCapabilities': {
+          // Older callers omit params; an explicit address must still belong
+          // to this origin, and explicit chain filters must be respected.
+          const requestedAddress = params?.[0];
+          const requestedChains = params?.[1];
+          if (
+            (params !== undefined && !Array.isArray(params)) ||
+            (params?.length ?? 0) > 2 ||
+            (requestedAddress !== undefined &&
+              (typeof requestedAddress !== 'string' ||
+                !/^0x[\da-f]{40}$/i.test(requestedAddress))) ||
+            (requestedChains !== undefined &&
+              (!Array.isArray(requestedChains) ||
+                requestedChains.some(
+                  (id) => typeof id !== 'string' || !/^0x[\da-f]+$/i.test(id)
+                )))
+          ) {
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams('Invalid capability query params')
+            );
+          }
+          if (
+            !account?.address ||
+            (requestedAddress !== undefined &&
+              requestedAddress.toLowerCase() !== account.address.toLowerCase())
+          ) {
+            throw cleanErrorStack(ethErrors.provider.unauthorized());
+          }
           // Smart accounts execute wallet_sendCalls as a single ERC-7579 batch,
           // while regular EOAs are still submitted sequentially.
           const chainId = `0x${activeNetwork.chainId.toString(16)}`;
+          if (
+            requestedChains !== undefined &&
+            !requestedChains.some((id) => BigInt(id) === BigInt(chainId))
+          ) {
+            return {};
+          }
           const smartAccountAtomicSupported =
             account?.isSmartAccount &&
             account.smartAccount?.chainId === activeNetwork.chainId;
@@ -570,6 +646,7 @@ export class WalletMethodHandler implements IMethodHandler {
           };
 
           return capabilities;
+        }
 
         default:
           throw cleanErrorStack(ethErrors.rpc.methodNotFound());
@@ -751,25 +828,15 @@ export class EthMethodHandler implements IMethodHandler {
     // Get the provider for non-popup methods
     const provider = EthProvider(host, context);
 
-    // Try unrestricted methods first
-    const unrestrictedResult = await provider.unrestrictedRPCMethods(
-      method,
-      params
-    );
-    if (unrestrictedResult !== false && unrestrictedResult !== undefined) {
-      return unrestrictedResult;
-    }
-
-    // Then try restricted methods (only non-popup ones)
-    const restrictedResult = await provider.restrictedRPCMethods(
-      method,
-      params
-    );
-    if (restrictedResult === false || restrictedResult === undefined) {
+    // Select by registry, not result: false is a valid Ethereum RPC response.
+    const result = getUnrestrictedMethods().includes(method)
+      ? await provider.unrestrictedRPCMethods(method, params)
+      : await provider.restrictedRPCMethods(method, params);
+    if (result === undefined) {
       throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
 
-    return restrictedResult;
+    return result;
   }
 }
 

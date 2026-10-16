@@ -37,7 +37,7 @@ const checkForPaliRegisterEvent = (id: any) => {
         window.dispatchEvent(new CustomEvent(id, { detail: result }));
       }
     }
-    if (result) {
+    if (result !== null && result !== undefined) {
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })
       );
