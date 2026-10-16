@@ -1,6 +1,13 @@
 /** @jest-environment jsdom */
 
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import React from 'react';
 
 import { clearTokenIconCache } from 'components/TokenIcon';
@@ -19,6 +26,7 @@ let mockHash: string;
 let mockSequence = 0;
 const mockEmitter = jest.fn();
 const mockIconFetch = jest.fn();
+const mockCopy = jest.fn();
 const originalFetch = global.fetch;
 
 jest.mock('react-redux', () => ({
@@ -42,7 +50,7 @@ jest.mock('hooks/index', () => ({
     'pages/Home/Panel/components/Transactions/utils/useTransactionsInfos'
   ).useTransactionsListConfig,
   useUtils: () => ({
-    useCopyClipboard: () => [false, jest.fn()],
+    useCopyClipboard: () => [false, mockCopy],
     alert: { info: jest.fn() },
   }),
 }));
@@ -151,6 +159,235 @@ afterEach(() => {
   clearTokenIconCache();
   global.fetch = originalFetch;
 });
+
+it.each([
+  {
+    name: 'mint140 proof before the positive asset credit',
+    version: 140,
+    tokenType: 'SPTAssetAllocationMint',
+    vout: [
+      {
+        addresses: ['OP_RETURN proof-ff8d'],
+        isAddress: false,
+        hex: '6a4d8107',
+        value: '0',
+      },
+      {
+        addresses: ['tsys1q0dlpmyhrwzljprrvhv4dut9da42fcvz9c38dt7'],
+        isAddress: true,
+        value: '885578',
+        assetInfo: { assetGuid: '12', value: '100000000' },
+      },
+    ],
+    expected: 'tsys1q0dlpmyhrwzljprrvhv4dut9da42fcvz9c38dt7',
+  },
+  {
+    name: 'ordinary SPT recipient plus asset change without guessing intent',
+    version: 142,
+    tokenType: 'SPTAssetAllocationSend',
+    vout: [
+      { addresses: ['native-funding-change'], value: '1000' },
+      {
+        addresses: ['spt-recipient'],
+        value: '294',
+        assetInfo: { assetGuid: '12', value: '10000000' },
+      },
+      { addresses: ['OP_RETURN allocation'], hex: '6a07', value: '0' },
+      {
+        addresses: ['spt-change'],
+        value: '294',
+        assetInfo: { assetGuid: '12', value: '90000000' },
+      },
+      {
+        addresses: ['spt-recipient'],
+        value: '294',
+        assetInfo: { assetGuid: '14', value: '1' },
+      },
+    ],
+    expected: 'spt-recipient, spt-change',
+  },
+  {
+    name: 'native output destinations with a leading protocol output',
+    version: 2,
+    vout: [
+      { addresses: ['OP_RETURN data'], value: '0' },
+      { addresses: ['native-recipient'], value: '1000' },
+      { addresses: ['native-change'], value: '2000' },
+    ],
+    expected: 'native-recipient, native-change',
+  },
+  {
+    name: 'native to SPT conversion uses the asset credit not burned SYS',
+    version: 139,
+    tokenType: 'SPTSyscoinBurnToAssetAllocation',
+    vout: [
+      { addresses: ['native-change'], value: '1000' },
+      { addresses: ['OP_RETURN burn'], value: '100000000' },
+      {
+        addresses: ['converted-asset-recipient'],
+        value: '294',
+        assetInfo: { assetGuid: '123456', value: '100000000' },
+      },
+    ],
+    expected: 'converted-asset-recipient',
+  },
+  {
+    name: 'SPT burn to native uses the native receiving outputs',
+    version: 138,
+    tokenType: 'SPTAssetAllocationBurnToSyscoin',
+    vout: [
+      {
+        addresses: ['OP_RETURN burn'],
+        value: '0',
+        assetInfo: { assetGuid: '123456', value: '100000000' },
+      },
+      { addresses: ['native-redemption-recipient'], value: '100000000' },
+    ],
+    expected: 'native-redemption-recipient',
+  },
+  {
+    name: 'NEVM burn never substitutes remaining native or asset change',
+    version: 141,
+    tokenType: 'SPTAssetAllocationBurnToNEVM',
+    vout: [
+      {
+        addresses: ['OP_RETURN burn-destination'],
+        value: '0',
+        assetInfo: { assetGuid: '12', value: '10000000' },
+      },
+      { addresses: ['native-change'], value: '1000' },
+      {
+        addresses: ['asset-change'],
+        value: '294',
+        assetInfo: { assetGuid: '12', value: '90000000' },
+      },
+    ],
+    expected: 'settings.unavailable',
+  },
+  {
+    name: 'missing positive allocation leaves the asset recipient unknown',
+    version: 140,
+    tokenType: 'SPTAssetAllocationMint',
+    vout: [
+      { addresses: ['native-change'], value: '1000' },
+      {
+        addresses: ['zero-asset'],
+        value: '294',
+        assetInfo: { assetGuid: '12', value: '0' },
+      },
+      {
+        addresses: ['missing-asset-guid'],
+        value: '294',
+        assetInfo: { value: '1' },
+      },
+      {
+        addresses: ['malformed-asset-guid'],
+        value: '294',
+        assetInfo: { assetGuid: 'not-an-asset', value: '1' },
+      },
+      {
+        addresses: ['zero-asset-guid'],
+        value: '294',
+        assetInfo: { assetGuid: '0', value: '1' },
+      },
+    ],
+    expected: 'settings.unavailable',
+  },
+  {
+    name: 'unknown asset operation cannot turn asset change into a recipient',
+    version: 141,
+    vout: [
+      { addresses: ['OP_RETURN burn-destination'], value: '0' },
+      {
+        addresses: ['asset-change'],
+        value: '294',
+        assetInfo: { assetGuid: '12', value: '90000000' },
+      },
+    ],
+    expected: 'settings.unavailable',
+  },
+  {
+    name: 'script markers cannot be copied as a recipient',
+    version: 2,
+    vout: [
+      { addresses: ['script-mislabeled-as-address'], hex: '6a00', value: '0' },
+      { addresses: ['OP_RETURN hidden'], value: '0' },
+      { addresses: ['non-address-script'], isAddress: false, value: '0' },
+    ],
+    expected: 'settings.unavailable',
+  },
+])(
+  'shows proven receiving outputs for $name',
+  async ({ version, tokenType, vout, expected }) => {
+    const transaction = rawTransaction({
+      version,
+      tokenType,
+      vin: [],
+      vout: vout as any,
+    });
+    mockEmitter.mockResolvedValue(transaction);
+    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+    const canCopy =
+      expected !== 'settings.unavailable' && expected.length >= 20;
+    const displayed = canCopy
+      ? jest.requireActual('utils/format').ellipsis(expected, 2, 4)
+      : expected;
+    const row = () => screen.getByText('To').parentElement!;
+    await waitFor(() => expect(row().textContent).toBe(`To${displayed}`));
+    expect(row().querySelector('button') !== null).toBe(canCopy);
+    if (canCopy) {
+      fireEvent.click(row().querySelector('button')!);
+      expect(mockCopy).toHaveBeenCalledWith(expected);
+    }
+  }
+);
+
+it.each([
+  ['mint', '1', undefined, true],
+  ['send', '0.1 PQAS', undefined, true],
+  ['send', '0.1 Multi Word Token', undefined, true],
+  ['send', '.1 PQAS', undefined, true],
+  ['send', `0.${'0'.repeat(400)}1 PQAS`, undefined, true],
+  ['send', '0.0000 PQAS', undefined, false],
+  ['send', '0 PQAS1', undefined, false],
+  ['send', '0 Multi Word Token 1', undefined, false],
+  ['send', '-0.1 PQAS', undefined, false],
+  ['send', '1junk PQAS', undefined, false],
+  ['send', 'Infinity PQAS', undefined, false],
+  ['send', 'NaN PQAS', undefined, false],
+  ['send', '1e3 PQAS', undefined, false],
+  ['send', '1 PQAS', '0', false],
+  ['send', '1 PQAS', 'malformed', false],
+  ['send', '1 PQAS', null, false],
+  ['send', '0 PQAS', '1', true],
+])(
+  'supports valueStr-only %s credit %s with raw %s without overriding raw precedence',
+  async (kind, valueStr, value, positive) => {
+    const transaction = rawTransaction({
+      version: kind === 'mint' ? 140 : 142,
+      tokenType:
+        kind === 'mint' ? 'SPTAssetAllocationMint' : 'SPTAssetAllocationSend',
+      vout: [
+        { addresses: ['OP_RETURN proof'], value: '0' },
+        {
+          addresses: ['asset-recipient'],
+          value: '294',
+          assetInfo: { assetGuid: '12', value, valueStr },
+        },
+      ] as any,
+    });
+    mockEmitter.mockResolvedValue(transaction);
+    render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
+
+    const expected = positive ? 'asset-recipient' : 'settings.unavailable';
+    await waitFor(() =>
+      expect(screen.getByText('To').parentElement!.textContent).toBe(
+        `To${expected}`
+      )
+    );
+  }
+);
 
 it('shows the canonical SYSX icon beside its amount without importing the token', async () => {
   const transaction = tokenTransaction();
@@ -759,9 +996,17 @@ it('waits for account totals instead of inferring an amount from a full output',
   const view = render(
     <SyscoinTransactionDetails hash={mockHash} tx={minimal} />
   );
-  expect(screen.getByText('settings.unavailable')).toBeTruthy();
+  expect(
+    within(screen.getByText('send.transactionValue').parentElement!).getByText(
+      'settings.unavailable'
+    )
+  ).toBeTruthy();
   await screen.findByText('raw-from');
-  expect(screen.getByText('settings.unavailable')).toBeTruthy();
+  expect(
+    within(screen.getByText('send.transactionValue').parentElement!).getByText(
+      'settings.unavailable'
+    )
+  ).toBeTruthy();
   expect(screen.queryByText('9 SYS')).toBeNull();
 
   view.rerender(
