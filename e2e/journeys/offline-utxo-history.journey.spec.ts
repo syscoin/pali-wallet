@@ -273,6 +273,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
           page.getByText('Transaction value', { exact: true })
         ).toBeVisible();
         await page.screenshot({
+          animations: 'disabled',
           path: path.join(
             E2E_CONFIG.artifactsDir,
             'screenshots',
