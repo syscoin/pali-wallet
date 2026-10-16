@@ -29,7 +29,10 @@ import officialDeploymentContracts from '../../tests/fixtures/officialDeployment
 import typedOrderFixtures from '../../tests/fixtures/typedOrderRequests.json';
 import { E2E_CONFIG } from '../harness/config';
 import { startDappServer } from '../harness/dappServer';
-import { dismissRejectedApproval } from '../harness/dismissRejectedApproval';
+import {
+  clickClosingPopup,
+  dismissRejectedApproval,
+} from '../harness/dismissRejectedApproval';
 import {
   LOCAL_CHAINS,
   TEST_DAPP_MNEMONIC,
@@ -1273,12 +1276,16 @@ test('official test dapp: isolated standard provider conformance', async () => {
           const warningClosed = warning.waitForEvent('close', {
             timeout: 5000,
           });
-          await warning
-            .getByRole('button', {
-              name: enTranslations.buttons.continue,
-              exact: true,
-            })
-            .click();
+          await clickClosingPopup({
+            click: () =>
+              warning
+                .getByRole('button', {
+                  name: enTranslations.buttons.continue,
+                  exact: true,
+                })
+                .click(),
+            isClosed: () => warning.isClosed(),
+          });
           await warningClosed;
           const approval = await popupFor(wallet.context, page, id);
           await expect(
