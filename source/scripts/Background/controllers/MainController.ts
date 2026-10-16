@@ -4926,6 +4926,7 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     options: {
       clearNavigation?: boolean;
+      isCurrentContext?: () => boolean;
       localAcknowledgedInputs?: UtxoAcknowledgedInputs;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -5109,6 +5110,8 @@ class MainController {
       }
     }
 
+    if (options.isCurrentContext && !options.isCurrentContext()) return;
+
     // Discard transaction drafts while retaining a public caller such as Settings.
     if (clearNavigation) {
       try {
@@ -5120,6 +5123,8 @@ class MainController {
         console.error('[MainController] Failed to clear navigation state:', e);
       }
     }
+
+    if (options.isCurrentContext && !options.isCurrentContext()) return;
 
     // Schedule rapid polling only after the pending tx is persisted and the UI
     // can receive the send response. The first actual poll is still delayed.
@@ -5705,17 +5710,31 @@ class MainController {
       targetAccountId
     ] as any;
     const activeAuth = smartAccount?.smartAccount?.auth;
+    const activeValidator = smartAccount?.smartAccount?.installedModules?.find(
+      (module: any) =>
+        module?.type === 'validator' &&
+        module?.address?.toLowerCase() === activeAuth?.validator?.toLowerCase()
+    );
     const activeSLHDSAValidator =
       smartAccount?.smartAccount?.installedModules?.find(
         (module: any) =>
           module?.type === 'validator' &&
           module?.id === 'slh-dsa' &&
-          module?.address?.toLowerCase() ===
-            activeAuth?.validator?.toLowerCase()
+          module?.config?.keyId === params.keyId &&
+          (module?.address?.toLowerCase() ===
+            activeAuth?.validator?.toLowerCase() ||
+            ((activeAuth?.module || activeAuth?.scheme) === 'composite' &&
+              activeValidator?.id === 'composite' &&
+              activeValidator?.config?.childValidators?.some(
+                (child: string) =>
+                  child?.toLowerCase() === module?.address?.toLowerCase()
+              )))
       );
     if (
       !smartAccount?.isSmartAccount ||
-      (activeAuth?.module || activeAuth?.scheme) !== 'slh-dsa' ||
+      !['slh-dsa', 'composite'].includes(
+        activeAuth?.module || activeAuth?.scheme
+      ) ||
       activeSLHDSAValidator?.config?.keyId !== params.keyId
     ) {
       throw new Error(
@@ -6011,6 +6030,32 @@ class MainController {
     params: any
   ): Promise<IEvmTransactionResponse> {
     this.assertWalletReadyForSigning();
+    const sessionGeneration = this.walletSessionGeneration;
+    const { vault, vaultGlobal } = store.getState();
+    const targetAccount = { ...vault.activeAccount };
+    const sourceAddress =
+      vault.accounts[targetAccount.type]?.[targetAccount.id]?.address;
+    const sourceNetwork = { ...vault.activeNetwork };
+    const sourceSlip44 = vaultGlobal.activeSlip44;
+    const isCurrentSubmission = () => {
+      const current = store.getState();
+      return (
+        !this.getWalletSetupStatus() &&
+        this.walletSessionGeneration === sessionGeneration &&
+        !current.vault.isBitcoinBased &&
+        Boolean(sourceAddress) &&
+        current.vault.activeAccount.id === targetAccount.id &&
+        current.vault.activeAccount.type === targetAccount.type &&
+        current.vault.accounts[targetAccount.type]?.[
+          targetAccount.id
+        ]?.address?.toLowerCase() === sourceAddress?.toLowerCase() &&
+        current.vault.activeNetwork.kind === sourceNetwork.kind &&
+        current.vault.activeNetwork.chainId === sourceNetwork.chainId &&
+        current.vault.activeNetwork.url === sourceNetwork.url &&
+        current.vaultGlobal.activeSlip44 === sourceSlip44
+      );
+    };
+    let txResponse: IEvmTransactionResponse | undefined;
     try {
       const controller = getController();
 
@@ -6034,44 +6079,61 @@ class MainController {
         }
       }
 
-      let txResponse;
+      // Blacklist I/O may outlive the approval's account or wallet session.
+      // The SDK must capture the same context, not the newly selected account.
+      if (!isCurrentSubmission())
+        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+          transactionNotBroadcast: true,
+        });
 
       // Call the appropriate method based on token type
       switch (tokenType) {
         case 'ERC20':
           txResponse =
-            await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
+            (await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
               params
-            );
+            )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC721':
           txResponse =
-            await controller.wallet.ethereumTransaction.sendSignedErc721Transaction(
+            (await controller.wallet.ethereumTransaction.sendSignedErc721Transaction(
               params
-            );
+            )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC1155':
           txResponse =
-            await controller.wallet.ethereumTransaction.sendSignedErc1155Transaction(
+            (await controller.wallet.ethereumTransaction.sendSignedErc1155Transaction(
               params
-            );
+            )) as unknown as IEvmTransactionResponse;
           break;
         default:
           throw new Error(`Unsupported token type: ${tokenType}`);
       }
 
-      // Save the transaction and discard its draft while retaining public browsing.
-      await this.sendAndSaveTransaction({
+      // A published hash remains authoritative after a context switch. Do not
+      // file it into a newly selected chain/account or a replacement seed.
+      if (!isCurrentSubmission()) return txResponse;
+      const txToSave = {
         ...txResponse,
-        // SYSCOIN: Retain the affected contract even before receipt logs exist.
+        // SYSCOIN: Retain the affected contract before receipt logs exist.
         balanceRefreshTokenAddresses: [params.tokenAddress],
+      };
+      await this.sendAndSaveTransaction(txToSave, targetAccount, {
+        isCurrentContext: isCurrentSubmission,
       });
 
       return txResponse;
     } catch (error) {
+      if (txResponse?.hash) {
+        console.error(
+          '[MainController] Failed to save acknowledged token transaction:',
+          error
+        );
+        return txResponse;
+      }
       // A failed attempt must not erase the public screen that requested it.
       try {
-        await clearTransactionNavigationState();
+        if (isCurrentSubmission()) await clearTransactionNavigationState();
         console.error(
           '[MainController] Transaction navigation cleaned on error'
         );

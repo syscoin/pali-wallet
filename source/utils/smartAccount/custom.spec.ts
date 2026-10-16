@@ -146,6 +146,24 @@ describe('preflightCustomValidatorInstall', () => {
 });
 
 describe('isPaliSignableValidator', () => {
+  it.each(['0x0000000000000000000000000000000000000000', CUSTOM_ADDR])(
+    'does not admit a zero or unknown child even alongside an available builtin (%s)',
+    (address) => {
+      const child = {
+        ...ecdsaModule,
+        address,
+        id: address === CUSTOM_ADDR ? 'future-unknown' : 'ecdsa',
+      } as any;
+      const composite = compositeOf([address, ECDSA_ADDR], 1);
+      expect(
+        isPaliSignableValidator(
+          composite,
+          metadataWith([child, ecdsaModule, composite])
+        )
+      ).toBe(false);
+    }
+  );
+
   it('treats builtin single validators as signable', () => {
     expect(
       isPaliSignableValidator(ecdsaModule, metadataWith([ecdsaModule]))
@@ -179,6 +197,32 @@ describe('isPaliSignableValidator', () => {
       )
     ).toBe(false);
   });
+
+  it.each([
+    { children: [ECDSA_ADDR, ECDSA_ADDR], threshold: 2 },
+    { children: [ECDSA_ADDR], threshold: 0 },
+    { children: [ECDSA_ADDR], threshold: 0.5 },
+    { children: [ECDSA_ADDR], threshold: Number.NaN },
+    { children: [COMPOSITE_ADDR, ECDSA_ADDR], threshold: 1 },
+    { children: ['malformed', ECDSA_ADDR], threshold: 1 },
+  ])(
+    'does not advertise an invalid composite as locally signable (%p)',
+    ({ children, threshold }) => {
+      const composite = compositeOf(children, threshold);
+      expect(
+        isPaliSignableValidator(
+          composite,
+          metadataWith([ecdsaModule, composite])
+        )
+      ).toBe(false);
+      expect(() =>
+        assertValidatorActivationAllowed(
+          metadataWith([ecdsaModule, composite]),
+          COMPOSITE_ADDR
+        )
+      ).toThrow(SmartAccountLockoutError);
+    }
+  );
 });
 
 describe('assertValidatorActivationAllowed (lockout guard)', () => {
@@ -225,6 +269,51 @@ describe('assertValidatorActivationAllowed (lockout guard)', () => {
 });
 
 describe('listCompositeChildCandidates', () => {
+  it.each(['custom first', 'builtin first'])(
+    'lists one verified builtin for a case-variant custom alias (%s)',
+    (order) => {
+      const address = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
+      const builtin: SmartAccountValidatorModule = {
+        ...ecdsaModule,
+        address,
+      };
+      const alias: SmartAccountValidatorModule = {
+        ...customModule,
+        address: '0x' + address.slice(2).toUpperCase(),
+      };
+      const modules =
+        order === 'custom first' ? [alias, builtin] : [builtin, alias];
+      const metadata = metadataWith([...modules, customModule]);
+      const original = JSON.stringify(metadata);
+      const candidates = listCompositeChildCandidates(metadata);
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0]).toBe(builtin);
+      expect(candidates[1]).toBe(customModule);
+      expect(isPaliSignableValidator(candidates[0], metadata)).toBe(true);
+      expect(JSON.stringify(metadata)).toBe(original);
+    }
+  );
+
+  it('deduplicates repeated builtin addresses without dropping a distinct custom child', () => {
+    const candidates = listCompositeChildCandidates(
+      metadataWith([ecdsaModule, { ...ecdsaModule }, customModule])
+    );
+    expect(candidates).toEqual([ecdsaModule, customModule]);
+  });
+
+  it('does not promote a custom record to a native signer without a verified builtin entry', () => {
+    const unverifiedAlias: SmartAccountValidatorModule = {
+      ...customModule,
+      address: ECDSA_ADDR,
+    };
+    const metadata = metadataWith([unverifiedAlias]);
+    expect(listCompositeChildCandidates(metadata)).toEqual([unverifiedAlias]);
+    expect(isPaliSignableValidator(unverifiedAlias, metadata)).toBe(false);
+    expect(() =>
+      assertValidatorActivationAllowed(metadata, ECDSA_ADDR)
+    ).toThrow(SmartAccountLockoutError);
+  });
+
   it('lists builtins and explicitly compatible custom validators', () => {
     const composite = compositeOf([ECDSA_ADDR], 1);
     const metadata = metadataWith([ecdsaModule, customModule, composite]);

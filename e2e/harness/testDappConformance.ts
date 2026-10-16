@@ -228,7 +228,9 @@ export async function startLocalChains() {
   };
 }
 
-export async function launchConformanceWallet() {
+export async function launchConformanceWallet(
+  journeyName = 'test-dapp-conformance'
+) {
   const extensionPath = process.env.PALI_TEST_DAPP_EXTENSION_PATH;
   if (!extensionPath || !path.isAbsolute(extensionPath)) {
     throw new Error(
@@ -265,7 +267,7 @@ export async function launchConformanceWallet() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const wallet = await Promise.race([
-      PaliWallet.launch('test-dapp-conformance'),
+      PaliWallet.launch(journeyName),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error('Extension startup exceeded 60 seconds')),

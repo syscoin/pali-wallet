@@ -41,6 +41,14 @@ jest.mock('utils/navigationState', () => ({
 }));
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
+  prepareSmartAccountFeeQuote: async () => ({
+    gasUnits: '860000',
+    maximumFeeWei: '4300000',
+  }),
+  SMART_ACCOUNT_FEE_QUOTE_CHANGED: 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED',
+  isSmartAccountFeeQuoteChanged: (error: any) =>
+    error?.message === 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED' &&
+    error?.transactionNotBroadcast === true,
   signAndSubmitSmartAccountExecutions: (params: any) => mockSmartSubmit(params),
 }));
 
@@ -79,9 +87,12 @@ describe('sendCalls submission lifecycle', () => {
     effects = [];
     return SendCalls();
   };
-  const initialize = () => {
+  const initialize = async () => {
     render();
     effects[0]();
+    render();
+    effects[1]();
+    await settle();
     return render();
   };
   const signButton = (view = render()) =>
@@ -136,7 +147,7 @@ describe('sendCalls submission lifecycle', () => {
     mockAlert.success.mockClear();
     mockState = {
       vault: {
-        activeNetwork: { chainId: 1, currency: 'ETH' },
+        activeNetwork: { chainId: 1, currency: 'ETH', url: 'rpc-a' },
         activeAccount: { type: 'HDAccount', id: 0 },
         accounts: {
           HDAccount: { 0: { id: 0, address: `0x${'1'.repeat(40)}` } },
@@ -182,7 +193,7 @@ describe('sendCalls submission lifecycle', () => {
           });
         return undefined;
       });
-      const firstSign = signButton(initialize());
+      const firstSign = signButton(await initialize());
       await firstSign.props.onClick();
       const view = render();
       expect(sends()).toHaveLength(1);
@@ -209,7 +220,7 @@ describe('sendCalls submission lifecycle', () => {
       if (method === 'sendAndSaveEthTransaction') return { hash: HASH };
       return undefined;
     });
-    const attempt = signButton(initialize()).props.onClick();
+    const attempt = signButton(await initialize()).props.onClick();
     await settle();
     expect(sends()).toHaveLength(0);
     begun.resolve();
@@ -225,7 +236,7 @@ describe('sendCalls submission lifecycle', () => {
         throw new Error('Storage failed');
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(sends()).toHaveLength(0);
     expect(mockAlert.error).toHaveBeenCalledWith('send.allTransactionsFailed');
   });
@@ -239,7 +250,7 @@ describe('sendCalls submission lifecycle', () => {
       if (method === 'sendAndSaveEthTransaction') return { hash: HASH };
       return undefined;
     });
-    const attempt = signButton(initialize()).props.onClick();
+    const attempt = signButton(await initialize()).props.onClick();
     await settle();
     expect(sends()).toHaveLength(1);
     expect(records().filter((record) => record.submissionStarted)).toHaveLength(
@@ -254,7 +265,7 @@ describe('sendCalls submission lifecycle', () => {
   });
 
   it('passes the originally approved account and chain after the visible wallet changes', async () => {
-    initialize();
+    await initialize();
     mockState.vault.activeNetwork = { chainId: 2, currency: 'OTHER' };
     mockState.vault.activeAccount = { type: 'HDAccount', id: 1 };
     mockState.vault.accounts.HDAccount[1] = {
@@ -283,7 +294,7 @@ describe('sendCalls submission lifecycle', () => {
         });
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(records()).toContainEqual(
       expect.objectContaining({
         failed: false,
@@ -311,7 +322,7 @@ describe('sendCalls submission lifecycle', () => {
         }
         return undefined;
       });
-      await signButton(initialize()).props.onClick();
+      await signButton(await initialize()).props.onClick();
       expect(sends()).toHaveLength(2);
       expect(records()).toContainEqual(
         expect.objectContaining({
@@ -331,7 +342,7 @@ describe('sendCalls submission lifecycle', () => {
       if (method === 'sendAndSaveEthTransaction') return { hash: HASH };
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(sends()).toHaveLength(1);
     expect(signButton().props.disabled).toBe(true);
     expect(mockAlert.error).toHaveBeenCalledWith(
@@ -356,7 +367,7 @@ describe('sendCalls submission lifecycle', () => {
       }
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(sends()).toHaveLength(2);
     expect(signButton().props.disabled).toBe(false);
     expect(records()).toEqual(
@@ -386,7 +397,7 @@ describe('sendCalls submission lifecycle', () => {
         });
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(signButton().props.disabled).toBe(true);
     expect(records()).toContainEqual(
       expect.objectContaining({
@@ -411,7 +422,7 @@ describe('sendCalls submission lifecycle', () => {
       if (hardwareFlag)
         mockState.vault.accounts.HDAccount[0][hardwareFlag] = true;
       mockQuery.calls = [mockQuery.calls[0]];
-      await signButton(initialize()).props.onClick();
+      await signButton(await initialize()).props.onClick();
       expect(sends()[0][2]).toBe(timeout);
       expect(sends()[0][3]).toBe(false);
     }
@@ -421,7 +432,7 @@ describe('sendCalls submission lifecycle', () => {
     'records definitive validation failure for %s without entering submission',
     async (to) => {
       mockQuery.calls = [{ to }];
-      await signButton(initialize()).props.onClick();
+      await signButton(await initialize()).props.onClick();
       expect(sends()).toHaveLength(0);
       expect(records()).toContainEqual(
         expect.objectContaining({
@@ -439,7 +450,7 @@ describe('sendCalls submission lifecycle', () => {
       await params.onBeforeSubmit();
       throw new Error('RPC response lost after broadcast');
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(signButton().props.disabled).toBe(true);
     await signButton().props.onClick();
     expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
@@ -467,7 +478,7 @@ describe('sendCalls submission lifecycle', () => {
       type: 'SmartAccount',
     };
     mockQuery.from = captured.address;
-    const view = initialize();
+    const view = await initialize();
     expect(
       findElement(view, (element) =>
         Array.isArray(element.props.children)
@@ -496,7 +507,7 @@ describe('sendCalls submission lifecycle', () => {
       },
     };
     mockState.vault.activeAccount = { type: 'SmartAccount', id: 1 };
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(mockSmartSubmit).not.toHaveBeenCalled();
     expect(sends()).toHaveLength(2);
     expect(sends()[0][1][0].from).toBe(
@@ -511,7 +522,7 @@ describe('sendCalls submission lifecycle', () => {
         transactionNotBroadcast: true,
       })
     );
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(mockAlert.error).toHaveBeenCalledWith(
       'transactions.psbtSigningContextChanged'
     );
@@ -521,7 +532,7 @@ describe('sendCalls submission lifecycle', () => {
   it('allows smart-account preparation failures to retry before the sender boundary', async () => {
     makeSmart();
     mockSmartSubmit.mockRejectedValue(new Error('Authenticator unavailable'));
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(signButton().props.disabled).toBe(false);
     expect(records().some((record) => record.submissionStarted)).toBe(false);
     await signButton().props.onClick();
@@ -543,7 +554,7 @@ describe('sendCalls submission lifecycle', () => {
         throw new Error('Storage failed');
       return undefined;
     });
-    await signButton(initialize()).props.onClick();
+    await signButton(await initialize()).props.onClick();
     expect(signButton().props.disabled).toBe(true);
     expect(records().some((record) => record.submissionNotBroadcast)).toBe(
       false

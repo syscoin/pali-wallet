@@ -8,7 +8,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
-import { BigNumber } from 'utils/ethersV6Compat';
+import { BigNumber, Interface } from 'utils/ethersV6Compat';
 import { saveNavigationState } from 'utils/navigationState';
 
 import { SendTransaction } from './SendTransaction';
@@ -29,6 +29,7 @@ let mockButtonHandlers: Record<string, () => any>;
 let mockQuery: any;
 let mockState: any;
 let mockLocation: any;
+let mockShowSmartFeeEditor = false;
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -60,7 +61,23 @@ jest.mock('utils/storageAPI', () => ({
 }));
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/fetchGasAndDecodeFunction', () => ({
-  fetchGasAndDecodeFunction: (...args: any[]) => mockFee(...args),
+  fetchGasAndDecodeFunction: async (...args: any[]) => {
+    const result = await mockFee(...args);
+    // Synthetic successful background quote for lifecycle tests; the real
+    // quote builder and required-prefund arithmetic have separate tests.
+    if (
+      mockState.vault.accounts[mockState.vault.activeAccount.type][
+        mockState.vault.activeAccount.id
+      ].isSmartAccount &&
+      result.feeDetails.smartAccountFeeQuote === undefined
+    ) {
+      result.feeDetails.smartAccountFeeQuote = {
+        gasUnits: '863456',
+        maximumFeeWei: '43172800000000000',
+      };
+    }
+    return result;
+  },
 }));
 jest.mock('utils/smartAccount', () => ({
   ...jest.requireActual('utils/smartAccount'),
@@ -95,9 +112,43 @@ jest.mock('./components', () => ({
   TransactionHexComponent: () => null,
 }));
 jest.mock('./EditApprovedAllowanceValueModal', () => ({
-  EditApprovedAllowanceValueModal: () => null,
+  EditApprovedAllowanceValueModal: ({
+    setCustomApprovedAllowanceAmount,
+  }: any) => (
+    <button
+      onClick={() =>
+        setCustomApprovedAllowanceAmount({
+          isCustom: true,
+          defaultAllowanceValue: '1',
+          customAllowanceValue: '2',
+        })
+      }
+    >
+      edit-synthetic-allowance
+    </button>
+  ),
 }));
-jest.mock('./EditPriority', () => ({ EditPriorityModal: () => null }));
+jest.mock('./EditPriority', () => ({
+  EditPriorityModal: ({ setCustomFee }: any) =>
+    mockShowSmartFeeEditor ? (
+      <button
+        onClick={() =>
+          setCustomFee({
+            isCustom: true,
+            gasLimit: 21000,
+            gasPrice: 0,
+            maxFeePerGas: 7,
+            maxPriorityFeePerGas: 1,
+          })
+        }
+      >
+        edit-synthetic-fee
+      </button>
+    ) : null,
+}));
+jest.mock('utils/validations', () => ({
+  getErc20Abi: async () => ['function approve(address,uint256)'],
+}));
 
 const prepare = async (external = true) => {
   mockQuery.external = external;
@@ -127,6 +178,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockStorage = {};
   mockButtonHandlers = {};
+  mockShowSmartFeeEditor = false;
   mockState = {
     vault: {
       activeAccount: { type: 'HDAccount', id: 0 },
@@ -252,6 +304,199 @@ it('rejects a malformed requested value without signing or latching the spinner'
   ).toBe(false);
   await act(async () => mockButtonHandlers['buttons.cancel']());
   expect(mockClose).toHaveBeenCalledTimes(1);
+});
+
+it('requires an explicit refreshed quote after a fresh AA preparation exceeds the approved maximum', async () => {
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  mockSmartSubmit.mockRejectedValueOnce(
+    Object.assign(new Error('PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED'), {
+      transactionNotBroadcast: true,
+    })
+  );
+  await prepare();
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockSmartSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({ maximumUserOpFeeWei: '43172800000000000' })
+  );
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.confirm',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(mockClose).not.toHaveBeenCalled();
+  const count = mockFee.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'send.refreshFeeQuote' }));
+  await waitFor(() => expect(mockFee.mock.calls.length).toBe(count + 1));
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+});
+
+it.each([undefined, false, true])(
+  'keeps a same-message error unknown after SA submission begins (%s)',
+  async (transactionNotBroadcast) => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+    mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    mockSmartSubmit.mockImplementation(async (params) => {
+      await params.controllerEmitter(
+        ['wallet', 'submitSmartAccountExecution'],
+        []
+      );
+      throw Object.assign(new Error('PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED'), {
+        transactionNotBroadcast,
+      });
+    });
+    mockEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'refreshActiveAccountBalances')
+        return { nativeBalance: '1' };
+      if (method === 'submitSmartAccountExecution') return;
+      throw Error(method);
+    });
+    await prepare();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    expect(
+      screen.queryByRole('button', { name: 'send.refreshFeeQuote' })
+    ).toBeNull();
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('rejects a changed fee quote after preparation and before any authenticator signing', async () => {
+  mockShowSmartFeeEditor = true;
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  let finishPreparation!: () => void;
+  const authenticator = jest.fn();
+  mockSmartSubmit.mockImplementation(async (options) => {
+    await new Promise<void>((resolve) => {
+      finishPreparation = resolve;
+    });
+    options.onPrepared?.();
+    authenticator();
+    return { hash: 'synthetic-sa-hash' };
+  });
+  await prepare();
+  let pending!: Promise<any>;
+  await act(async () => {
+    pending = mockButtonHandlers['buttons.confirm']();
+  });
+  await waitFor(() => expect(finishPreparation).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: 'edit-synthetic-fee' }));
+  await act(async () => {
+    finishPreparation();
+    await pending;
+  });
+  expect(authenticator).not.toHaveBeenCalled();
+  expect(mockClose).not.toHaveBeenCalled();
+});
+
+it('refreshes the AA quote for edited fee caps while retaining the original dapp fields', async () => {
+  mockShowSmartFeeEditor = true;
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  mockQuery.tx.maxFeePerGas = '5000000000';
+  mockQuery.tx.maxPriorityFeePerGas = '1000000000';
+  await prepare();
+  fireEvent.click(screen.getByRole('button', { name: 'edit-synthetic-fee' }));
+  await waitFor(() =>
+    expect(mockFee.mock.calls.at(-1)![3]).toEqual({
+      maxFeePerGas: '7000000000',
+      maxPriorityFeePerGas: '1000000000',
+    })
+  );
+  expect(mockQuery.tx.maxFeePerGas).toBe('5000000000');
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockSmartSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      feeOverrides: {
+        maxFeePerGas: '7000000000',
+        maxPriorityFeePerGas: '1000000000',
+      },
+    })
+  );
+});
+
+it('quotes the same edited approval calldata that the smart-account signer will execute', async () => {
+  mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+  mockState.vault.accounts.HDAccount[0].smartAccount = {};
+  const spender = `0x${'22'.repeat(20)}`;
+  const abi = new Interface(['function approve(address,uint256)']);
+  mockQuery.tx.data = abi.encodeFunctionData('approve', [
+    spender,
+    '1000000000000000000',
+  ]);
+  mockQuery.decodedTx = {
+    method: 'approve',
+    inputs: [spender, '1000000000000000000'],
+    names: ['spender', 'value'],
+    types: ['address', 'uint256'],
+  };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc20-amount',
+    tokenStandard: 'ERC-20',
+  };
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args) =>
+    path[1] === 'getERC20TokenInfo'
+      ? { name: 'Synthetic', symbol: 'UNIT', decimals: 18, balance: '10' }
+      : path[1] === 'isContractAddress'
+      ? true
+      : invoke(path, args)
+  );
+  await prepare();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'edit-synthetic-allowance' })
+  );
+  const expectedData = abi.encodeFunctionData('approve', [
+    spender,
+    '2000000000000000000',
+  ]);
+  await waitFor(() =>
+    expect(mockFee.mock.calls.at(-1)![0].data).toBe(expectedData)
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockSmartSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      executions: [expect.objectContaining({ data: expectedData })],
+    })
+  );
 });
 
 it.each([

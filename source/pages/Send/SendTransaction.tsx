@@ -39,6 +39,8 @@ import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
+  isSmartAccountFeeQuoteChanged,
+  SMART_ACCOUNT_FEE_QUOTE_CHANGED,
   type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
 import { omitTransactionObjectData } from 'utils/transactions';
@@ -202,6 +204,9 @@ export const SendTransaction = () => {
   const [acceptedDappFeeRequest, setAcceptedDappFeeRequest] =
     useState<boolean>(false);
   const [feeRecommendationOnly, setFeeRecommendationOnly] = useState(false);
+  const [feeQuoteRevision, setFeeQuoteRevision] = useState(0);
+  const [feeQuoteNeedsRefresh, setFeeQuoteNeedsRefresh] = useState(false);
+  const feeQuoteKeyRef = React.useRef('');
 
   // Approval-specific state
   const [approvedTokenInfos, setApprovedTokenInfos] =
@@ -393,6 +398,70 @@ export const SendTransaction = () => {
       } as ITransactionParams),
     [validatedDataTxWithoutType, toAddressForProvider]
   );
+  const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
+  const smartAccountFeeOverrides = useMemo<
+    SmartAccountFeeOverrides | undefined
+  >(() => {
+    if (!isSmartAccountApproval || !customFee.isCustom) return undefined;
+    try {
+      return isLegacyTransaction
+        ? {
+            gasPrice: parseUnits(safeToFixed(customFee.gasPrice), 9).toString(),
+          }
+        : {
+            maxFeePerGas: parseUnits(
+              safeToFixed(customFee.maxFeePerGas),
+              9
+            ).toString(),
+            maxPriorityFeePerGas: parseUnits(
+              safeToFixed(customFee.maxPriorityFeePerGas),
+              9
+            ).toString(),
+          };
+    } catch {
+      return undefined;
+    }
+  }, [
+    isSmartAccountApproval,
+    customFee.isCustom,
+    customFee.gasPrice,
+    customFee.maxFeePerGas,
+    customFee.maxPriorityFeePerGas,
+    isLegacyTransaction,
+  ]);
+  const smartAccountQuoteKey = useMemo(
+    () =>
+      !isSmartAccountApproval
+        ? ''
+        : JSON.stringify([
+            activeAccountMeta.type,
+            activeAccountMeta.id,
+            activeAccount.address,
+            activeNetwork.chainId,
+            activeNetwork.url,
+            txForEstimation,
+            smartAccountFeeOverrides,
+            customApprovedAllowanceAmount,
+          ]),
+    [
+      isSmartAccountApproval,
+      activeAccountMeta.type,
+      activeAccountMeta.id,
+      activeAccount.address,
+      activeNetwork.chainId,
+      activeNetwork.url,
+      txForEstimation,
+      smartAccountFeeOverrides,
+      customApprovedAllowanceAmount,
+    ]
+  );
+  const currentSmartAccountQuoteKeyRef = React.useRef(smartAccountQuoteKey);
+  currentSmartAccountQuoteKeyRef.current = smartAccountQuoteKey;
+  const hasCurrentSmartAccountFeeQuote =
+    !isSmartAccountApproval ||
+    (Boolean(fee?.smartAccountFeeQuote) &&
+      feeQuoteKeyRef.current === smartAccountQuoteKey &&
+      !feeQuoteNeedsRefresh);
   // Reverse cache name->address
 
   // Lazy resolve if ENS name
@@ -537,6 +606,10 @@ export const SendTransaction = () => {
   }, []);
 
   const submitTransaction = async (generation: number) => {
+    if (!hasCurrentSmartAccountFeeQuote) {
+      alert.error(t('send.smartAccountFeeQuoteChanged'));
+      return;
+    }
     const current = store.getState();
     const account =
       current.vault.accounts[current.vault.activeAccount.type]?.[
@@ -716,6 +789,17 @@ export const SendTransaction = () => {
         };
 
         if (isPasskeyAccount) {
+          const approvedQuoteKey = smartAccountQuoteKey;
+          const assertApprovedQuoteCurrent = () => {
+            if (
+              !mountedRef.current ||
+              generation !== closeGenerationRef.current ||
+              currentSmartAccountQuoteKeyRef.current !== approvedQuoteKey
+            )
+              throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+                transactionNotBroadcast: true,
+              });
+          };
           const candidateTo =
             resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
           if (!candidateTo) {
@@ -760,7 +844,10 @@ export const SendTransaction = () => {
               },
             ],
             feeOverrides: getSmartAccountFeeOverrides(),
+            maximumUserOpFeeWei: fee!.smartAccountFeeQuote!.maximumFeeWei,
             expectedContext: approvedContext,
+            onPrepared: assertApprovedQuoteCurrent,
+            onBeforeSubmit: async () => assertApprovedQuoteCurrent(),
             onAuthenticatorSigningResolved: (authenticator) => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(false);
@@ -923,6 +1010,21 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
+        if (
+          error?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
+          submissionRequested
+        )
+          error = Object.assign(new Error(error.message), error, {
+            transactionNotBroadcast: false,
+          });
+        if (isSmartAccountFeeQuoteChanged(error) && !submissionRequested) {
+          if (mountedRef.current && generation === closeGenerationRef.current) {
+            setFeeQuoteNeedsRefresh(true);
+            setLoading(false);
+            alert.error(t('send.smartAccountFeeQuoteChanged'));
+          }
+          return error;
+        }
         // A local controller timeout does not cancel the background send.
         // Keep the attempt consumed unless the background explicitly proved
         // that it failed before any broadcast attempt.
@@ -1040,6 +1142,7 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
+        if (isSmartAccountApproval) setInitialLoading(true);
         // If ENS input and not resolved yet, don't call provider
         if (!toAddressForProvider && toRaw.toLowerCase().endsWith('.eth')) {
           return; // wait until resolvedTo is ready
@@ -1053,6 +1156,37 @@ export const SendTransaction = () => {
             },
           ]
         );
+        let quoteTransaction = txForEstimation;
+        if (
+          isSmartAccountApproval &&
+          isApproval &&
+          customApprovedAllowanceAmount.isCustom
+        ) {
+          if (
+            !canEditCurrentApproval ||
+            approvedTokenInfos?.tokenDecimals === undefined
+          )
+            throw new Error('Invalid approval details for fee quote');
+          const encodedData = encodeCustomApprovalData({
+            abi: await getErc20Abi(),
+            approvalType,
+            decimals: approvedTokenInfos.tokenDecimals,
+            humanAmount: String(
+              customApprovedAllowanceAmount.customAllowanceValue
+            ),
+            method: decodedTxData?.method,
+            spender: String(decodedTxData?.inputs?.[0] || ''),
+          });
+          if (!encodedData)
+            throw new Error('Invalid approval details for fee quote');
+          quoteTransaction = { ...txForEstimation, data: encodedData };
+        }
+        if (
+          isSmartAccountApproval &&
+          customFee.isCustom &&
+          !smartAccountFeeOverrides
+        )
+          throw new Error('Invalid smart account fee override');
         const {
           feeDetails,
           feeSafety,
@@ -1062,9 +1196,10 @@ export const SendTransaction = () => {
           gasLimitError,
           recommendationOnly,
         } = await fetchGasAndDecodeFunction(
-          txForEstimation,
+          quoteTransaction,
           activeNetwork,
-          approvedContext
+          approvedContext,
+          smartAccountFeeOverrides
         );
 
         // Only update state if component is still mounted
@@ -1072,6 +1207,8 @@ export const SendTransaction = () => {
           setHasGasError(gasLimitError);
           setHasTxDataError(isInvalidTxData);
           setFee(feeDetails);
+          feeQuoteKeyRef.current = smartAccountQuoteKey;
+          setFeeQuoteNeedsRefresh(false);
           setFeeSafetyAdjustment(feeSafety || {});
           setAcceptedDappFeeRequest(false);
           setFeeRecommendationOnly(Boolean(recommendationOnly));
@@ -1129,6 +1266,10 @@ export const SendTransaction = () => {
     activeNetwork.chainId,
     ensResolutionFailed,
     targetedErc20ContractAddress,
+    isSmartAccountApproval,
+    smartAccountFeeOverrides,
+    smartAccountQuoteKey,
+    feeQuoteRevision,
   ]); // ensure we wait for resolved address
 
   // Check for contract interaction with non-contract address
@@ -1685,6 +1826,19 @@ export const SendTransaction = () => {
                 {t('send.invalidApprovalDetails')}
               </p>
             )}
+            {feeQuoteNeedsRefresh && (
+              <div className="text-center text-warning-info text-xs mb-2">
+                <p>{t('send.smartAccountFeeQuoteChanged')}</p>
+                <Button
+                  type="button"
+                  onClick={() =>
+                    setFeeQuoteRevision((revision) => revision + 1)
+                  }
+                >
+                  {t('send.refreshFeeQuote')}
+                </Button>
+              </div>
+            )}
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"
@@ -1705,6 +1859,7 @@ export const SendTransaction = () => {
                   closing ||
                   confirmed ||
                   submissionUnknown ||
+                  !hasCurrentSmartAccountFeeQuote ||
                   hasTxDataError ||
                   hasInvalidApprovalDetails
                 }

@@ -24,19 +24,24 @@ Las passkeys WebAuthn usan firmas P-256 internamente. El validador de passkeys d
   <figcaption>Los usuarios pueden crear cuentas inteligentes modulares desde Ajustes o solicitudes de dapps y elegir el validador que controla las aprobaciones.</figcaption>
 </figure>
 
-Pali admite tres estilos de validadores:
+Pali admite estos estilos de validadores:
 
 - **Passkey:** el navegador o el sistema operativo solicita una aprobación WebAuthn.
 - **ECDSA:** las direcciones EVM de propietarios configuradas aprueban las acciones de la cuenta.
+- **SLH-DSA:** el firmante poscuántico local de Pali aprueba las acciones mediante su estado de firma cifrado. Consulta [Firmante poscuántico](./post-quantum-signer) para conocer las limitaciones de las copias de seguridad y del contador de firmas.
 - **Compuesto:** se combinan validadores secundarios bajo un umbral, por ejemplo, passkey o ECDSA.
 
 Piensa en los validadores como la respuesta a «¿quién puede aprobar acciones de esta cuenta?». Lo útil es que la respuesta puede cambiar sin cambiar tu cuenta:
 
-- **Cualquiera de mis accesos** (1-of-N): aprueba con la passkey o la clave que tengas a mano.
-- **Algunos de nosotros juntos** (t-of-N): un quórum de personas o dispositivos debe estar de acuerdo, ideal para fondos compartidos.
-- **Todos nosotros juntos** (N-of-N): todos los accesos configurados deben aprobar, para las cuentas más sensibles.
+- **Una aprobación** (1-of-N): debe aprobar un validador secundario configurado.
+- **Un umbral de aprobaciones** (t-of-N): debe aprobar al menos el número configurado de validadores secundarios.
+- **Todas las aprobaciones** (N-of-N): deben aprobar todos los validadores secundarios configurados.
 
-Las políticas incluso pueden contener otras políticas, de modo que un equipo puede expresar reglas como «la clave del responsable más dos passkeys cualesquiera de la mesa de operaciones». Tu dirección, tus saldos y tu historial permanecen exactamente iguales cuando la política cambia. Como la firma es modular, más adelante se pueden adoptar nuevos tipos de firma, incluidos los poscuánticos, en la misma cuenta.
+Pali recopila las aprobaciones de los validadores secundarios integrados disponibles localmente, en el orden configurado en la política, hasta alcanzar el umbral. Rechazar una aprobación detiene la solicitud; Pali no cambia silenciosamente a otro firmante tras un rechazo. La política debe conservar suficientes validadores secundarios integrados que puedan firmar localmente para alcanzar su umbral. Los validadores personalizados compatibles pueden ser secundarios opcionales, pero Pali no recopila para ellos firmas externas o personalizadas ni aprobaciones entre dispositivos. Esta versión no admite políticas compuestas anidadas.
+
+El constructor de políticas compuestas requiere al menos dos validadores instalados. El flujo guiado para cambiar el método de aprobación sustituye al validador anterior. El flujo avanzado actual **Validador personalizado** permite conservar validadores compatibles adicionales, pero requiere los datos de inicialización correctos del módulo; no es una configuración sencilla de aprobaciones entre dispositivos.
+
+Cambiar el validador no cambia la dirección, los saldos ni el historial de la cuenta inteligente. El acceso a un firmante local sigue dependiendo de que su clave o passkey esté disponible; cambiar la política no restaura el estado de firma perdido ni coordina el uso de SLH-DSA entre dispositivos restaurados.
 
 Los guardianes intencionalmente **no** forman parte de esta lista. Un guardián nunca puede aprobar una transacción; su único poder es iniciar una recuperación lenta y visible si pierdes el acceso. Esa separación te protege ante la pérdida de acceso sin darle a nadie el control cotidiano.
 
@@ -77,7 +82,7 @@ Pali usa guardianes de recuperación bajo autocustodia para recuperar cuentas in
 
 El módulo de recuperación verifica las aprobaciones de los guardianes mediante comprobaciones estándar de firmas: una firma ECDSA normal para direcciones ordinarias, o una comprobación de firma de contrato ERC-1271 cuando la dirección del guardián es un contrato. Por tanto, un guardián puede ser otra cuenta inteligente, incluso una cuya política de firma sea un validador compuesto, personalizado o futuro poscuántico. La ruta de recuperación hereda el esquema de firma que impone la cuenta del guardián, por lo que su seguridad no se limita a claves ECDSA clásicas.
 
-Una limitación actual: las pantallas de guardianes de Pali recopilan aprobaciones de guardianes basados en claves, ya sean cuentas de la billetera, importadas o hardware. El módulo de recuperación desplegado admite plenamente guardianes de cuenta de contrato, pero producir su aprobación ERC-1271 aún no es un flujo guiado en Pali. Además, un guardián de contrato debe estar desplegado on-chain para responder a las comprobaciones de firma. Esta flexibilidad ya forma parte del modelo de cuenta, de modo que estos tipos de guardián pueden incorporarse a la billetera sin volver a desplegar ni cambiar la cuenta.
+Las pantallas de guardianes de Pali pueden recopilar aprobaciones de guardianes locales basados en claves (cuentas de la billetera, importadas o hardware) y de cuentas inteligentes locales para las que Pali pueda firmar, incluidas las cuentas SLH-DSA. Un guardián de cuenta inteligente debe estar ya desplegado on-chain para responder a las comprobaciones de firma ERC-1271. Un guardián externo que no esté disponible como cuenta de firma local en Pali sigue necesitando un flujo externo de recuperación para generar su aprobación.
 
 La recuperación mediante guardianes no es instantánea. Iniciarla crea un objetivo de recuperación de reemplazo, solicita al guardián configurado que firme la intención de recuperación y envía una solicitud con bloqueo temporal. Una vez transcurrido el período de espera, cualquiera puede finalizar la transacción de recuperación. El usuario puede entonces operar la cuenta con el validador de reemplazo.
 

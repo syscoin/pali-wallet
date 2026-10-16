@@ -107,6 +107,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   // Only explicit native MAX intent follows balance refreshes. A manually
   // entered amount remains fixed, even when it happened to equal the balance.
   const nativeMaxIntent = useRef(initialIsMaxSend && !initialSelectedAsset);
+  // A delayed asset-MAX restoration cannot override a later explicit choice.
+  const maxIntentRevision = useRef(0);
 
   const [form] = Form.useForm();
 
@@ -179,6 +181,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
       }
       if (Object.prototype.hasOwnProperty.call(changedValues, 'amount')) {
         nativeMaxIntent.current = false;
+        maxIntentRevision.current += 1;
       }
       formValuesRef.current = allValues;
       void saveCurrentState(allValues);
@@ -273,12 +276,15 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const handleMaxButton = useCallback(() => {
     if (!isCurrentForm()) return;
+    maxIntentRevision.current += 1;
     const current = maxSelection.current;
     nativeMaxIntent.current = !current.selectedAsset;
     // Simply fill in the full balance
     form.setFieldValue('amount', current.balanceStr);
     setIsMaxSend(true);
-    form.validateFields(['amount']); // Trigger validation after setting value
+    // Validation still updates the field error; an invalid zero/unknown balance
+    // is not an unhandled asynchronous failure of this click handler.
+    void form.validateFields(['amount']).catch(() => undefined);
   }, [form, isCurrentForm]);
 
   // Restore form values if coming back from navigation
@@ -297,15 +303,23 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // Native MAX rebases in the balance effect below. Asset MAX retains its
         // existing deferred restoration once the form is initialized.
         if (initialIsMaxSend && initialSelectedAsset) {
+          const restoredRevision = maxIntentRevision.current;
           // Add a small delay to ensure form is fully initialized
-          setTimeout(() => {
-            if (!isCurrentForm()) {
+          const timer = setTimeout(() => {
+            if (
+              !isCurrentForm() ||
+              maxIntentRevision.current !== restoredRevision
+            ) {
               isRestoringRef.current = false;
               return;
             }
             handleMaxButton();
             isRestoringRef.current = false;
           }, 100);
+          return () => {
+            clearTimeout(timer);
+            isRestoringRef.current = false;
+          };
         } else {
           isRestoringRef.current = false;
         }
@@ -384,6 +398,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
+      maxIntentRevision.current += 1;
       if (assets) {
         const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 
@@ -953,7 +968,9 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                             className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                           >
                             <div className="flex flex-col items-start flex-1 overflow-hidden">
-                              <p className="truncate max-w-[100px]">SYS</p>
+                              <p className="truncate max-w-[100px]">
+                                {activeNetwork.currency?.toUpperCase() || 'SYS'}
+                              </p>
                             </div>
                             <div className="flex flex-col items-end">
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-500 bg-opacity-80 text-white">
@@ -1015,12 +1032,13 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
           <div className="flex flex-1 min-w-0 relative">
             <div className="value-custom-input w-full relative">
-              <span
+              <button
+                type="button"
                 onClick={handleMaxButton}
-                className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
+                className="absolute left-[15px] top-5 transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-pill cursor-pointer hover:bg-alpha-whiteAlpha200 z-10 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-bkg-1"
               >
                 MAX
-              </span>
+              </button>
               <Form.Item
                 name="amount"
                 className="relative w-full"

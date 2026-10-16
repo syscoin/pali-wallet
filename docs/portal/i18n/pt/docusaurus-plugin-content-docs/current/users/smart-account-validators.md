@@ -24,19 +24,24 @@ Internamente, as passkeys WebAuthn usam assinaturas P-256. O validador de passke
   <figcaption>Os usuários podem criar contas inteligentes modulares pelas Configurações ou por solicitações de dapps e escolher o validador que controla as aprovações.</figcaption>
 </figure>
 
-A Pali oferece três tipos de validadores:
+A Pali oferece estes tipos de validadores:
 
 - **Passkey:** o navegador ou o sistema operacional solicita uma aprovação WebAuthn.
 - **ECDSA:** os endereços EVM dos proprietários configurados aprovam as ações da conta.
+- **SLH-DSA:** o assinador pós-quântico local da Pali aprova ações usando seu estado de assinatura criptografado. Consulte [Assinador pós-quântico](./post-quantum-signer) para conhecer as limitações de backup e do contador de assinaturas.
 - **Composto:** validadores filhos são combinados sob um limiar, como passkey ou ECDSA.
 
 Pense nos validadores como a resposta à pergunta “quem pode aprovar ações desta conta?”. A parte útil é que a resposta pode mudar sem mudar a sua conta:
 
-- **Qualquer um dos meus acessos** (1-of-N): aprove com a passkey ou a chave que estiver à mão.
-- **Alguns de nós juntos** (t-of-N): um quórum de pessoas ou dispositivos precisa concordar, ideal para fundos compartilhados.
-- **Todos nós juntos** (N-of-N): todos os acessos configurados precisam aprovar, para as contas mais sensíveis.
+- **Uma aprovação** (1-of-N): um validador filho configurado deve aprovar.
+- **Um limiar de aprovações** (t-of-N): pelo menos o número configurado de validadores filhos deve aprovar.
+- **Todas as aprovações** (N-of-N): todos os validadores filhos configurados devem aprovar.
 
-As políticas podem até conter outras políticas, permitindo que uma equipe expresse regras como “a chave do responsável mais quaisquer duas passkeys da mesa de operações”. Seu endereço, seus saldos e seu histórico permanecem exatamente iguais quando a política muda. Como a assinatura é modular, tipos de assinatura futuros, incluindo pós-quânticos, podem ser adotados na mesma conta mais tarde.
+A Pali coleta as aprovações dos validadores filhos integrados disponíveis localmente, na ordem configurada na política, até atingir o limiar. Recusar uma aprovação interrompe a solicitação; a Pali não troca silenciosamente de assinador após uma recusa. Uma política precisa manter validadores filhos integrados suficientes para assinar localmente e atingir seu limiar. Validadores personalizados compatíveis podem ser filhos opcionais, mas a Pali não coleta assinaturas externas ou personalizadas nem aprovações entre dispositivos para eles. Esta versão não oferece suporte a políticas compostas aninhadas.
+
+O construtor de políticas compostas exige pelo menos dois validadores instalados. O fluxo guiado de troca do método de aprovação substitui o validador anterior. O fluxo avançado atual **Validador personalizado** permite manter validadores compatíveis adicionais, mas exige os dados corretos de inicialização do módulo; não é uma configuração simples de aprovações entre dispositivos.
+
+Mudar o validador não altera o endereço, os saldos nem o histórico da conta inteligente. O acesso a um assinador local ainda depende da disponibilidade da chave ou passkey; mudar a política não restaura o estado de assinatura perdido nem coordena o uso de SLH-DSA entre dispositivos restaurados.
 
 Os guardiões intencionalmente **não** fazem parte desta lista. Um guardião nunca pode aprovar uma transação; seu único poder é iniciar uma recuperação lenta e visível se você perder o acesso. Essa separação protege você contra a perda de acesso sem dar a ninguém o controle do dia a dia.
 
@@ -77,7 +82,7 @@ A Pali usa guardiões de recuperação sob autocustódia para recuperar contas i
 
 O módulo de recuperação verifica as aprovações dos guardiões com verificações padrão de assinatura: uma assinatura ECDSA comum para endereços normais, ou uma verificação de assinatura de contrato ERC-1271 quando o endereço do guardião é um contrato. Assim, um guardião pode ser outra conta inteligente, inclusive uma cuja política de assinatura seja um validador composto, personalizado ou futuro pós-quântico. O caminho de recuperação herda o esquema de assinatura imposto pela conta do guardião, de modo que sua segurança não se limita a chaves ECDSA clássicas.
 
-Uma limitação atual: as telas de guardiões da Pali coletam aprovações de guardiões baseados em chaves, sejam contas da carteira, importadas ou de hardware. O módulo de recuperação implantado oferece suporte completo a guardiões de conta de contrato, mas produzir sua aprovação ERC-1271 ainda não é um fluxo guiado na Pali. Além disso, um guardião de contrato precisa estar implantado on-chain para responder às verificações de assinatura. Essa flexibilidade já faz parte do modelo da conta, permitindo disponibilizar esses tipos de guardião na carteira sem reimplantar ou alterar a conta.
+As telas de guardiões da Pali podem coletar aprovações de guardiões locais baseados em chaves (contas da carteira, importadas ou de hardware) e de contas inteligentes locais para as quais a Pali pode assinar, incluindo contas SLH-DSA. Um guardião de conta inteligente já deve estar implantado on-chain para responder às verificações de assinatura ERC-1271. Um guardião externo que não esteja disponível como conta de assinatura local na Pali ainda precisa de um fluxo externo de recuperação para produzir sua aprovação.
 
 A recuperação por guardiões não é instantânea. Iniciá-la cria um destino de recuperação substituto, solicita ao guardião configurado que assine a intenção de recuperação e envia uma solicitação com bloqueio temporal. Após o período de espera, qualquer pessoa pode finalizar a transação de recuperação. O usuário pode então operar a conta com o validador substituto.
 

@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { AppLayout } from 'components/Layout/AppLayout';
@@ -19,6 +20,8 @@ let mockReceiverValidator: (_: unknown, value: string) => Promise<void>;
 let mockAmountValidator: (_: unknown, value: string) => Promise<void>;
 let mockFeeValidator: (_: unknown, value: string) => Promise<void>;
 let mockUseRealFee = false;
+let mockValidateRealAmount = false;
+const mockAmountValidationErrors: unknown[] = [];
 const mockSave = jest.fn();
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
@@ -242,7 +245,16 @@ jest.mock('antd', () => {
           values[name] = value;
           update((v) => v + 1);
         },
-        validateFields: () => Promise.resolve(values),
+        validateFields: (names?: string[]) =>
+          mockValidateRealAmount && names?.includes('amount')
+            ? mockAmountValidator(undefined, values.amount).then(
+                () => values,
+                (error) => {
+                  mockAmountValidationErrors.push(error);
+                  throw error;
+                }
+              )
+            : Promise.resolve(values),
       };
     }
     return [ref.current];
@@ -276,6 +288,8 @@ jest.mock('antd', () => {
 describe('send forms across wallet navigation', () => {
   beforeEach(() => {
     mockUseRealFee = false;
+    mockValidateRealAmount = false;
+    mockAmountValidationErrors.length = 0;
     jest.clearAllMocks();
     Object.assign(mockStatus, {
       isUnlocked: true,
@@ -327,6 +341,83 @@ describe('send forms across wallet navigation', () => {
   });
 
   const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
+
+  it.each(
+    ['evm', 'utxo'].flatMap((kind) =>
+      ['{Enter}', ' '].map((key) => ({ kind, key }))
+    )
+  )(
+    'activates the real $kind MAX control with $key without submitting its form',
+    async ({ kind, key }) => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn((event) => event.preventDefault());
+      if (kind === 'utxo') {
+        mockState.vault.isBitcoinBased = true;
+        mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+        mockLocation.pathname = '/send/sys';
+      }
+      render(
+        <form onSubmit={onSubmit}>
+          {kind === 'evm' ? <SendEth /> : <SendSys />}
+        </form>
+      );
+      const max = screen.getByRole('button', {
+        name: 'MAX',
+      }) as HTMLButtonElement;
+      expect(max.type).toBe('button');
+      expect(max.className).toContain('w-[41px]');
+      expect(max.className).toContain('h-[18px]');
+      expect(max.className).toContain('focus-visible:ring-2');
+      expect(max.className).toContain('focus-visible:ring-white');
+      for (
+        let attempt = 0;
+        attempt < 15 && document.activeElement !== max;
+        attempt += 1
+      )
+        await user.tab();
+      expect(document.activeElement).toBe(max);
+      await user.keyboard(key);
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('10');
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(navigateWithContext).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['ERC-20', 'ERC-1155'])(
+    'keeps MAX unavailable to pointer and keyboard while %s balance verification is pending',
+    async (tokenStandard) => {
+      const user = userEvent.setup();
+      mockLocation.state = {
+        walletScope: getWalletNavigationScope(),
+        formValues: { receiver: 'recipient', amount: '1', nftTokenId: '7' },
+        selectedAsset: {
+          contractAddress: '0x3333333333333333333333333333333333333333',
+          chainId: 1,
+          tokenSymbol: 'QA',
+          tokenStandard,
+          isNft: tokenStandard === 'ERC-1155',
+          balance: 10,
+          decimals: 0,
+        },
+      };
+      render(<SendEth />);
+      const max = screen.getByRole('button', {
+        name: 'MAX',
+      }) as HTMLButtonElement;
+      expect(max.disabled).toBe(true);
+      const amount = screen.getByPlaceholderText(
+        'send.amount'
+      ) as HTMLInputElement;
+      await user.click(max);
+      max.focus();
+      expect(document.activeElement).not.toBe(max);
+      await user.keyboard(' ');
+      expect(amount.value).toBe('1');
+      expect(navigateWithContext).not.toHaveBeenCalled();
+    }
+  );
   const currentNetworkSmartAddress =
     '0x4444444444444444444444444444444444444444';
   const addSmartRecipients = () => {
@@ -1187,6 +1278,129 @@ describe('send forms across wallet navigation', () => {
         context.mockReset();
         jest.useRealTimers();
       }
+    }
+  );
+
+  it('keeps a manual SPT amount edit made before restored MAX settles', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      const asset = {
+        assetGuid: '123',
+        symbol: 'SPT',
+        decimals: 8,
+        balance: '10',
+      };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '10' },
+          selectedAsset: asset,
+          isMaxSend: true,
+        },
+      };
+      render(<SendSys />);
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '0.1' },
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('0.1');
+      const saved = mockSave.mock.calls
+        .filter(([savedPath]) => savedPath === '/send/sys')
+        .pop()![2];
+      expect(saved.formValues.amount).toBe('0.1');
+      expect(saved.isMaxSend).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not convert a native selection into MAX when an SPT restore timer settles', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.activeNetwork.currency = 'SYS';
+      const asset = {
+        assetGuid: '123',
+        symbol: 'SPT',
+        decimals: 8,
+        balance: '10',
+      };
+      mockState.testAssets = { ethereum: [], syscoin: [asset] };
+      mockLocation = {
+        ...mockLocation,
+        pathname: '/send/sys',
+        state: {
+          walletScope: getWalletNavigationScope(),
+          formValues: { receiver: 'recipient-a', amount: '10' },
+          selectedAsset: asset,
+          isMaxSend: true,
+        },
+      };
+      render(<SendSys />);
+      fireEvent.click(screen.getByRole('button', { name: 'SYS send.native' }));
+      fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+        target: { value: '0.1' },
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe('0.1');
+      const saved = mockSave.mock.calls
+        .filter(([savedPath]) => savedPath === '/send/sys')
+        .pop()![2];
+      // Browsing-state sanitization omits a null native-token selection.
+      expect(saved).not.toHaveProperty('selectedAsset');
+      expect(saved.isMaxSend).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each(['0', '-1'])(
+    'contains the real amount validation rejection when MAX balance is %s',
+    async (balance) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.accounts.HDAccount[0].balances.syscoin = balance;
+      mockLocation = { ...mockLocation, pathname: '/send/sys' };
+      mockValidateRealAmount = true;
+      render(<SendSys />);
+      await act(async () => {
+        fireEvent.click(screen.getByText('MAX'));
+      });
+      expect(mockAmountValidationErrors).toHaveLength(1);
+      expect(
+        mockNavigate.mock.calls.some(([target]) => target === '/send/confirm')
+      ).toBe(false);
+      expect(
+        (screen.getByPlaceholderText('send.amount') as HTMLInputElement).value
+      ).toBe(balance);
+    }
+  );
+
+  it.each(['TSYS', 'BTC'])(
+    'labels the native asset option with the selected %s network currency',
+    (currency) => {
+      mockState.vault.isBitcoinBased = true;
+      mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
+      mockState.vault.activeNetwork.currency = currency;
+      mockLocation = { ...mockLocation, pathname: '/send/sys' };
+      render(<SendSys />);
+      expect(
+        screen.getByRole('button', { name: `${currency} send.native` })
+      ).toBeTruthy();
     }
   );
 

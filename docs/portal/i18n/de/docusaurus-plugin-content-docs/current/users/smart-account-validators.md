@@ -24,19 +24,24 @@ Im Hintergrund verwenden WebAuthn-Passkeys P-256-Signaturen. Der Passkey-Validat
   <figcaption>Nutzer können modulare Smart Accounts über die Einstellungen oder per Dapp-Anfrage erstellen und anschließend den Validator auswählen, der Freigaben kontrolliert.</figcaption>
 </figure>
 
-Pali unterstützt drei Validator-Arten:
+Pali unterstützt diese Validator-Arten:
 
 - **Passkey:** Der Browser oder das Betriebssystem fordert eine WebAuthn-Freigabe an.
 - **ECDSA:** Konfigurierte EVM-Inhaberadressen geben Kontoaktionen frei.
+- **SLH-DSA:** Der lokale Post-Quanten-Signer von Pali gibt Aktionen mithilfe seines verschlüsselten Signierzustands frei. Hinweise zu Backups und den Grenzen des Signaturzählers finden Sie unter [Post-Quanten-Signer](./post-quantum-signer).
 - **Composite:** Untergeordnete Validatoren, etwa Passkey oder ECDSA, werden mit einem Schwellenwert kombiniert.
 
 Validatoren beantworten die Frage „Wer darf Aktionen für dieses Konto freigeben?“ Das Nützliche daran ist, dass sich die Antwort ändern kann, ohne dass sich Ihr Konto ändert:
 
-- **Eine beliebige meiner Anmeldungen** (1-of-N): Freigabe mit dem Passkey oder Schlüssel, der gerade zur Hand ist.
-- **Einige von uns gemeinsam** (t-of-N): Ein Quorum von Personen oder Geräten muss zustimmen; ideal für gemeinsame Gelder.
-- **Alle von uns gemeinsam** (N-of-N): Jede konfigurierte Anmeldung muss freigeben, für die sensibelsten Konten.
+- **Eine Freigabe** (1-of-N): Ein konfigurierter untergeordneter Validator muss zustimmen.
+- **Ein Schwellenwert an Freigaben** (t-of-N): Mindestens die konfigurierte Anzahl untergeordneter Validatoren muss zustimmen.
+- **Alle Freigaben** (N-of-N): Alle konfigurierten untergeordneten Validatoren müssen zustimmen.
 
-Richtlinien können sogar andere Richtlinien enthalten. So kann ein Team beispielsweise „den Schlüssel der Teamleitung plus zwei beliebige Desk-Passkeys“ festlegen. Ihre Adresse, Guthaben und Ihr Verlauf bleiben bei einer Richtlinienänderung unverändert. Da das Signieren modular ist, lassen sich künftig neue Signaturtypen, einschließlich Post-Quanten-Verfahren, auf demselben Konto verwenden.
+Pali sammelt Freigaben lokal verfügbarer integrierter untergeordneter Validatoren in der konfigurierten Reihenfolge, bis der Schwellenwert erreicht ist. Eine abgelehnte Freigabe beendet die Anfrage; Pali wechselt nach einer Ablehnung nicht stillschweigend zu einem anderen Signer. Eine Richtlinie muss genügend lokal signierfähige integrierte untergeordnete Validatoren behalten, um ihren Schwellenwert zu erreichen. Kompatible benutzerdefinierte Validatoren können optionale untergeordnete Validatoren sein, aber Pali sammelt für sie weder externe oder benutzerdefinierte Signaturen noch geräteübergreifende Freigaben. Verschachtelte Composite-Richtlinien werden in dieser Version nicht unterstützt.
+
+Der Composite-Richtlinieneditor benötigt mindestens zwei installierte Validatoren. Der geführte Wechsel der Freigabemethode ersetzt den bisherigen Validator. Der aktuelle erweiterte Ablauf **Benutzerdefinierter Validator** kann zusätzliche kompatible Validatoren beibehalten, erfordert jedoch die korrekten Initialisierungsdaten des Moduls; er ist keine einfache Einrichtung geräteübergreifender Freigaben.
+
+Ein Validatorwechsel ändert weder die Smart-Account-Adresse noch Guthaben oder Verlauf. Der Zugriff auf einen lokalen Signer setzt weiterhin voraus, dass sein Schlüssel oder Passkey verfügbar ist. Ein Richtlinienwechsel stellt keinen fehlenden Signierzustand wieder her und koordiniert die SLH-DSA-Nutzung nicht zwischen wiederhergestellten Geräten.
 
 Guardians sind bewusst **nicht** Teil dieser Liste. Ein Guardian kann niemals eine Transaktion freigeben; seine einzige Befugnis besteht darin, eine langsame, sichtbare Wiederherstellung zu starten, wenn Sie den Zugriff verlieren. Diese Trennung schützt vor Zugriffsverlust, ohne jemandem die alltägliche Kontrolle zu geben.
 
@@ -77,7 +82,7 @@ Pali verwendet für die Smart-Account-Wiederherstellung Guardians unter eigener 
 
 Das Recovery-Modul prüft Guardian-Freigaben mit standardmäßiger Signaturprüfung: eine gewöhnliche ECDSA-Signatur für normale Adressen oder eine ERC-1271-Vertragssignaturprüfung, wenn die Guardian-Adresse selbst ein Vertrag ist. Ein Guardian kann daher ein weiterer Smart Account sein, auch einer, dessen eigene Signierrichtlinie ein Composite-, benutzerdefinierter oder künftiger Post-Quanten-Validator ist. Der Wiederherstellungsweg übernimmt dann das Signaturverfahren, das dieses Guardian-Konto durchsetzt. Die Sicherheit der Wiederherstellung ist damit nicht auf klassische ECDSA-Schlüssel beschränkt.
 
-Eine aktuelle Einschränkung: Die Guardian-Bildschirme von Pali sammeln derzeit Freigaben von Guardians mit Schlüsseln, also Wallet-, importierten oder Hardware-Konten. Guardians in Form von Vertragskonten werden vom bereitgestellten Recovery-Modul vollständig unterstützt. Die Erstellung ihrer ERC-1271-Freigabe ist jedoch noch kein geführter Pali-Ablauf. Außerdem muss ein solcher Guardian bereits on-chain bereitgestellt sein, um Signaturprüfungen zu beantworten. Diese Flexibilität ist bereits im Kontomodell angelegt, sodass die Wallet solche Guardian-Typen künftig unterstützen kann, ohne das Konto erneut bereitzustellen oder zu ändern.
+Die Guardian-Bildschirme von Pali können Freigaben von lokalen schlüsselbasierten Guardians (Wallet-, importierten oder Hardware-Konten) und lokalen Smart-Account-Guardians sammeln, für die Pali signieren kann, einschließlich SLH-DSA-Smart-Accounts. Ein Smart-Account-Guardian muss bereits on-chain bereitgestellt sein, um ERC-1271-Signaturprüfungen zu beantworten. Ein externer Guardian, der nicht als lokales Signierkonto in Pali verfügbar ist, benötigt weiterhin einen externen Wiederherstellungsablauf, um seine Freigabe zu erzeugen.
 
 Guardian-Recovery erfolgt nicht sofort. Beim Start wird ein Ersatzziel für die Wiederherstellung erstellt, der konfigurierte Guardian wird zur Signatur der Wiederherstellungsabsicht aufgefordert und ein zeitgesperrter Wiederherstellungsantrag wird gesendet. Nach Ablauf der Wartezeit kann jeder die Wiederherstellungstransaktion abschließen. Danach kann der Nutzer das Konto mit dem Ersatzvalidator verwenden.
 

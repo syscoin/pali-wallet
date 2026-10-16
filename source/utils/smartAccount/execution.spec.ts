@@ -58,6 +58,62 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     slip44: 57,
   };
 
+  it.each([
+    ['5000', false],
+    ['5001', true],
+  ])(
+    'enforces the approved EntryPoint account-charge ceiling before signing (%s)',
+    async (approved, allowed) => {
+      const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
+      const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
+        if (method === 'prepareSmartAccountExecutions')
+          return {
+            actionHash: `0x${'12'.repeat(32)}`,
+            executionContextId: 'fee-context',
+            executions: [],
+            smartAccount,
+            userOperation: {
+              sender: ACCOUNT_ADDRESS,
+              accountGasLimits:
+                '0x' +
+                BigInt(1000).toString(16).padStart(32, '0') +
+                BigInt(500).toString(16).padStart(32, '0'),
+              preVerificationGas: '167',
+              gasFees:
+                '0x' +
+                '0'.repeat(32) +
+                BigInt(3).toString(16).padStart(32, '0'),
+            },
+          };
+        if (method === 'assertSmartAccountExecutionContext') return;
+        if (method === 'submitSmartAccountExecution') return payload[0];
+        throw Error(method);
+      });
+      const request = signAndSubmitSmartAccountExecutions({
+        accountId: 0,
+        accountAddress: ACCOUNT_ADDRESS,
+        smartAccount,
+        authenticatorContexts: { 'slh-dsa': { signActionHash } },
+        controllerEmitter: emitter,
+        executions: [],
+        expectedContext,
+        maximumUserOpFeeWei: approved,
+      });
+      if (allowed) await expect(request).resolves.toBeTruthy();
+      else
+        await expect(request).rejects.toMatchObject({
+          message: 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED',
+          transactionNotBroadcast: true,
+        });
+      expect(signActionHash).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(
+        emitter.mock.calls.filter(
+          ([[, method]]) => method === 'submitSmartAccountExecution'
+        )
+      ).toHaveLength(allowed ? 1 : 0);
+    }
+  );
+
   it.each(['before signing', 'after signing', 'after durable marker'])(
     'rejects a stale approval %s before submission',
     async (stage) => {

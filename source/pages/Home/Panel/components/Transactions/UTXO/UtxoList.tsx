@@ -354,6 +354,7 @@ const UtxoTransactionsListComponentBase = ({
       <div>
         <Tooltip content={t('notifications.clickToView')}>
           <DetailArrowSvg
+            ariaLabel={t('notifications.clickToView')}
             className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
             onClick={handleGoTxDetails}
           />

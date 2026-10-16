@@ -1,6 +1,6 @@
 import React, { FC, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { HashRouter, useNavigate } from 'react-router-dom';
+import { HashRouter, useLocation, useNavigate } from 'react-router-dom';
 
 import { Container } from 'components/index';
 import { AppLoadingSkeleton } from 'components/Loader/AppLoadingSkeleton';
@@ -18,9 +18,10 @@ import {
 // Wrapper component to provide navigate function to error boundary
 const AppWithErrorBoundary: FC = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   return (
-    <WalletErrorBoundary navigate={navigate}>
+    <WalletErrorBoundary navigate={navigate} pathname={pathname}>
       <div className="w-full min-w-popup h-full min-h-popup">
         <Router />
       </div>

@@ -7,7 +7,7 @@ import type {
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { BigNumber, defaultAbiCoder } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { hexConcat, hexDataSlice, isHexString } from 'utils/ethersV6Compat';
 import {
@@ -16,11 +16,17 @@ import {
 } from 'utils/evmTransactionContext';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
+import { getSmartAccountUserOpRequiredPrefund } from './account';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
+  getPaliModuleAddress,
   paliSmartAccountInterface,
 } from './contracts';
-import { getInstalledValidatorModule } from './modules';
+import { isPaliSignableValidator } from './custom';
+import {
+  getInstalledValidatorModule,
+  getInstalledValidatorModuleByAddress,
+} from './modules';
 
 type ControllerEmitter = (
   methods: string[],
@@ -43,6 +49,11 @@ export type SmartAccountExecutionIntent = {
 };
 
 const smartAccountSubmitJobs = new Map<string, Promise<any>>();
+export const SMART_ACCOUNT_FEE_QUOTE_CHANGED =
+  'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED';
+export const isSmartAccountFeeQuoteChanged = (error: unknown): boolean =>
+  (error as any)?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
+  (error as any)?.transactionNotBroadcast === true;
 
 export type SmartAccountAuthenticatorSigningCallback = (
   authenticator: SmartAccountValidatorModule['id']
@@ -79,12 +90,14 @@ const getSmartAccountSubmitJobKey = async ({
   accountId,
   executions,
   feeOverrides,
+  maximumUserOpFeeWei,
   smartAccount,
 }: {
   accountAddress?: string;
   accountId?: number;
   executions: SmartAccountExecutionIntent[];
   feeOverrides?: SmartAccountFeeOverrides;
+  maximumUserOpFeeWei?: string;
   smartAccount: ISmartAccountMetadata;
 }) =>
   sha256Hex(
@@ -106,6 +119,7 @@ const getSmartAccountSubmitJobKey = async ({
         maxFeePerGas: feeOverrides?.maxFeePerGas ?? null,
         maxPriorityFeePerGas: feeOverrides?.maxPriorityFeePerGas ?? null,
       },
+      maximumUserOpFeeWei: maximumUserOpFeeWei ?? null,
     })
   );
 
@@ -265,20 +279,75 @@ const canUseReservedSLHDSASignature = ({
   accountAddress?: string;
   executions: SmartAccountExecutionIntent[];
   smartAccount: ISmartAccountMetadata;
-}) =>
-  (smartAccount.auth?.module || smartAccount.auth?.scheme) === 'slh-dsa' &&
-  (executions.some((execution) =>
-    isSmartAccountRotateValidatorExecution({
-      accountAddress,
-      execution,
-      smartAccount,
-    })
-  ) ||
+}) => {
+  const kind = smartAccount.auth?.module || smartAccount.auth?.scheme;
+  const isSwitch =
+    executions.some((execution) =>
+      isSmartAccountRotateValidatorExecution({
+        accountAddress,
+        execution,
+        smartAccount,
+      })
+    ) ||
     isSmartAccountInstallUninstallValidatorSwitch({
       accountAddress,
       executions,
       smartAccount,
-    }));
+    });
+  if (kind === 'slh-dsa') return isSwitch;
+  if (kind !== 'composite' || !isSwitch) return false;
+
+  // A composite may contain a nearly exhausted PQ key. Its reserve is only
+  // available for a concrete escape to a canonical non-PQ builtin, not for
+  // ordinary activity or editing a composite that may retain the same key.
+  try {
+    const escapeValidators = ['ecdsa', 'p256-webauthn'].map((id) =>
+      getAddress(
+        getPaliModuleAddress(
+          smartAccount.chainId,
+          id as 'ecdsa' | 'p256-webauthn'
+        )
+      )
+    );
+    if (executions.length === 1) {
+      const [execution] = executions;
+      if (
+        isSmartAccountRotateValidatorExecution({
+          accountAddress,
+          execution,
+          smartAccount,
+        })
+      ) {
+        const [nextValidator] = paliSmartAccountInterface.decodeFunctionData(
+          'rotateValidator',
+          execution.data || '0x'
+        );
+        return escapeValidators.includes(getAddress(nextValidator));
+      }
+      return false;
+    }
+    // The normal alternative switch installs the replacement, then removes
+    // the old active composite. Do not grant reserve use to arbitrary batches
+    // that can reactivate it later in the same operation.
+    if (executions.length !== 2) return false;
+    const install = getValidatorInstallFromExecution({
+      accountAddress,
+      execution: executions[0],
+      smartAccount,
+    });
+    return Boolean(
+      install &&
+        escapeValidators.includes(install.moduleAddress) &&
+        isActiveValidatorUninstallExecution({
+          accountAddress,
+          execution: executions[1],
+          smartAccount,
+        })
+    );
+  } catch {
+    return false;
+  }
+};
 
 export type SubmitSmartAccountExecutionsParams = {
   accountAddress?: string;
@@ -288,6 +357,7 @@ export type SubmitSmartAccountExecutionsParams = {
   executions: SmartAccountExecutionIntent[];
   expectedContext?: IEvmTransactionContext;
   feeOverrides?: SmartAccountFeeOverrides;
+  maximumUserOpFeeWei?: string;
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
@@ -303,6 +373,109 @@ export type SmartAccountFeeOverrides = {
   gasPrice?: string;
   maxFeePerGas?: string;
   maxPriorityFeePerGas?: string;
+};
+
+export type SmartAccountFeeQuote = {
+  gasUnits: string;
+  maximumFeeWei: string;
+};
+
+// This is a wallet-internal read-only preparation, not a provider method or
+// an app-supplied estimate. Approval must bind the exact ordered executions.
+export const prepareSmartAccountFeeQuote = async ({
+  accountAddress,
+  accountId,
+  controllerEmitter,
+  executions,
+  expectedContext,
+  feeOverrides,
+  maximumGasUnits,
+}: {
+  accountAddress: string;
+  accountId?: number;
+  controllerEmitter: ControllerEmitter;
+  executions: SmartAccountExecutionIntent[];
+  expectedContext?: IEvmTransactionContext;
+  feeOverrides?: SmartAccountFeeOverrides;
+  maximumGasUnits?: string;
+}): Promise<SmartAccountFeeQuote> => {
+  const quantity = (value: unknown) => {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      (value as any).type === 'BigNumber'
+    )
+      value = (value as any).hex;
+    if (
+      !BigNumber.isBigNumber(value) &&
+      !(
+        (typeof value === 'number' && Number.isSafeInteger(value)) ||
+        (typeof value === 'string' &&
+          /^(?:0x[\da-f]+|\d+)$/i.test(value) &&
+          value.length <= 80)
+      )
+    )
+      throw new Error('Invalid smart account fee quote');
+    const parsed = BigNumber.from(value);
+    if (parsed.lt(0) || parsed.gt(BigNumber.from(2).pow(256).sub(1)))
+      throw new Error('Invalid smart account fee quote');
+    return parsed;
+  };
+  if (
+    !executions.length ||
+    (expectedContext &&
+      expectedContext.account.address.toLowerCase() !==
+        accountAddress.toLowerCase())
+  )
+    throw new Error('Invalid smart account fee quote');
+  const prepared = await controllerEmitter(
+    ['wallet', 'prepareSmartAccountExecutions'],
+    [
+      executions,
+      accountId,
+      { ...(expectedContext ? { expectedContext } : {}), feeOverrides },
+    ],
+    300000
+  );
+  const userOp = prepared?.userOperation;
+  if (
+    !prepared?.executionContextId ||
+    !Array.isArray(prepared.executions) ||
+    prepared.executions.length !== executions.length ||
+    prepared.executions.some((quoted: any, index: number) => {
+      const execution = executions[index];
+      return (
+        quoted?.target?.toLowerCase() !== execution.target.toLowerCase() ||
+        String(quoted?.data || '0x').toLowerCase() !==
+          (execution.data || '0x').toLowerCase() ||
+        !quantity(quoted?.value).eq(quantity(execution.value))
+      );
+    }) ||
+    userOp?.sender?.toLowerCase() !== accountAddress.toLowerCase() ||
+    !/^0x[\da-f]{64}$/i.test(userOp?.accountGasLimits || '') ||
+    !/^0x[\da-f]{64}$/i.test(userOp?.gasFees || '')
+  )
+    throw new Error('Invalid smart account fee quote');
+  const gasUnits = quantity(hexDataSlice(userOp.accountGasLimits, 0, 16))
+    .add(quantity(hexDataSlice(userOp.accountGasLimits, 16, 32)))
+    .add(quantity(userOp.preVerificationGas));
+  const selectedMaxFee = feeOverrides
+    ? quantity(feeOverrides.gasPrice ?? feeOverrides.maxFeePerGas)
+    : null;
+  const userOpMaxFee = quantity(hexDataSlice(userOp.gasFees, 16, 32));
+  if (
+    gasUnits.isZero() ||
+    gasUnits.gt(Number.MAX_SAFE_INTEGER) ||
+    (maximumGasUnits !== undefined && gasUnits.gt(quantity(maximumGasUnits))) ||
+    (selectedMaxFee &&
+      !userOpMaxFee.eq(selectedMaxFee) &&
+      userOp.gasFees !== '0x' + '0'.repeat(64))
+  )
+    throw new Error('Invalid smart account fee quote');
+  return {
+    gasUnits: gasUnits.toString(),
+    maximumFeeWei: getSmartAccountUserOpRequiredPrefund(userOp).toString(),
+  };
 };
 
 export type SmartAccountAuthenticatorSignature = {
@@ -500,7 +673,10 @@ export type SmartAccountAuthenticatorContext<
   accountId?: number;
   actionHash: string;
   allowReservedSLHDSASignature?: boolean;
+  authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   executionContextId?: string;
+  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
+  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   runtimeContext?: unknown;
   smartAccount: ISmartAccountMetadata;
   validator: T;
@@ -716,6 +892,47 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
     ),
   id: 'composite',
   signActionHash: async (context) => {
+    if (!isPaliSignableValidator(context.validator, context.smartAccount)) {
+      throw new SmartAccountExternalSignatureRequired(
+        compositeDriver.createExternalSignatureRequest(context)
+      );
+    }
+    // Composite v1 forwards one action hash to each child. Its bytes[] must
+    // retain configured contract order, including empty external/unused slots;
+    // child signatures do not carry the outer validator-address prefix.
+    const signatures = context.validator.config.childValidators.map(() => '0x');
+    let approvals = 0;
+    for (const [
+      index,
+      childAddress,
+    ] of context.validator.config.childValidators.entries()) {
+      const child = getInstalledValidatorModuleByAddress(
+        context.smartAccount,
+        childAddress
+      )!;
+      if (child.id === 'custom') continue;
+      const driver = getAuthenticatorDriver(child);
+      context.onAuthenticatorSigningStarted?.(child.id);
+      try {
+        const signature = await driver.signActionHash({
+          ...context,
+          runtimeContext: context.authenticatorContexts?.[child.id],
+          validator: child,
+        });
+        signatures[index] = signature.signature;
+        if (++approvals >= context.validator.config.threshold) {
+          const aggregate = defaultAbiCoder.encode(['bytes[]'], [signatures]);
+          return { proof: aggregate, signature: aggregate };
+        }
+      } catch (error) {
+        // Only explicit absence of a local signer is skippable. Rejection,
+        // stale context, storage and cryptographic errors must reach the user.
+        if (!(error instanceof SmartAccountExternalSignatureRequired))
+          throw error;
+      } finally {
+        context.onAuthenticatorSigningResolved?.(child.id);
+      }
+    }
     throw new SmartAccountExternalSignatureRequired(
       compositeDriver.createExternalSignatureRequest(context)
     );
@@ -814,7 +1031,10 @@ export const signSmartAccountActionHash = async (params: {
     .signActionHash({
       accountId: params.accountId,
       actionHash: params.actionHash,
+      authenticatorContexts: params.authenticatorContexts,
       executionContextId: params.executionContextId,
+      onAuthenticatorSigningResolved: params.onAuthenticatorSigningResolved,
+      onAuthenticatorSigningStarted: params.onAuthenticatorSigningStarted,
       allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
       runtimeContext: params.authenticatorContexts?.[validator.id],
       smartAccount: params.smartAccount,
@@ -852,6 +1072,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     executions,
     expectedContext,
     feeOverrides,
+    maximumUserOpFeeWei,
     onAssertionResolved,
     onAuthenticatorSigningResolved,
     onAuthenticatorSigningStarted,
@@ -865,13 +1086,16 @@ export const signAndSubmitSmartAccountExecutions = async (
   const validatorIdForJob =
     smartAccount.auth?.module || smartAccount.auth?.scheme;
   // An external approval owns its own context checks and durable submit marker.
-  const shouldTrackJob = validatorIdForJob === 'slh-dsa' && !expectedContext;
+  const shouldTrackJob =
+    (validatorIdForJob === 'slh-dsa' || validatorIdForJob === 'composite') &&
+    !expectedContext;
   const submitJobKey = shouldTrackJob
     ? await getSmartAccountSubmitJobKey({
         accountAddress,
         accountId,
         executions,
         feeOverrides,
+        maximumUserOpFeeWei,
         smartAccount,
       })
     : '';
@@ -892,6 +1116,18 @@ export const signAndSubmitSmartAccountExecutions = async (
       ],
       300000
     )) as any;
+    if (maximumUserOpFeeWei !== undefined) {
+      if (
+        !/^\d+$/.test(maximumUserOpFeeWei) ||
+        getSmartAccountUserOpRequiredPrefund(prepared.userOperation).gt(
+          maximumUserOpFeeWei
+        )
+      ) {
+        throw Object.assign(new Error(SMART_ACCOUNT_FEE_QUOTE_CHANGED), {
+          transactionNotBroadcast: true,
+        });
+      }
+    }
     onPrepared?.();
     if (expectedContext && !prepared.executionContextId)
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {

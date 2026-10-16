@@ -3025,10 +3025,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@1.0.619":
-  version "1.0.619"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.619.tgz#312bb42fdf447a460e3ff940b1758503b1b358c2"
-  integrity sha512-zAjdOm0ZTbMlYBiDvciHXYtrYg+wwd2I1zJgso2m6VQPs9lzyEAae8D/yBZkmtvr8xXUdMXIPBrj1CsDIPeu1g==
+"@sidhujag/sysweb3-keyring@1.0.620":
+  version "1.0.620"
+  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-1.0.620.tgz#276140805797302f1dc3fe354ad1ca705c81bd05"
+  integrity sha512-wyE7FE0e9P32zS0KIOemRfy4InXCsd69y9geNCnLU/atHU1US6Y1oxu1ZrWt1dzHjbj5H91ZKfVbZUFR2Fdw5g==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/hw-app-eth" "^6.47.1"
@@ -7180,9 +7180,9 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
 

@@ -16,6 +16,7 @@ jest.mock('routers/index', () => ({ Router: 'router' }));
 jest.mock('react-router-dom', () => ({
   HashRouter: 'hash-router',
   useNavigate: () => jest.fn(),
+  useLocation: () => ({ pathname: '/' }),
 }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),

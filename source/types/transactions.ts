@@ -65,6 +65,9 @@ export interface IFeeState {
   // Internal successful raw estimate for this exact transaction/context.
   // This is not a wallet/RPC API field or a miner-fee admission guarantee.
   minimumGasLimit?: number;
+  // Internal read-only AA preparation, never accepted from a dapp/RPC tx field.
+  // This is the EntryPoint account charge, not the outer gas payer's fee.
+  smartAccountFeeQuote?: { gasUnits: string; maximumFeeWei: string };
 }
 
 export interface ITransactionParams {

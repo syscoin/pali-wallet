@@ -65,6 +65,7 @@ import { navigateBack } from 'utils/navigationState';
 import { safeToFixed } from 'utils/safeToFixed';
 import {
   getSmartAccountLocalOwnerContexts,
+  prepareSmartAccountFeeQuote,
   signAndSubmitSmartAccountExecutions,
   type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
@@ -77,9 +78,6 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
-// Safety fallback if the controller reserve lookup fails; matches the
-// estimator's worst case for a deployed single-validator account.
-const SMART_ACCOUNT_FALLBACK_GAS_RESERVE = BigNumber.from(650_000);
 
 export const SendConfirm = () => {
   const { controllerEmitter, isUnlocked, isLoading, connectionUnavailable } =
@@ -99,6 +97,9 @@ export const SendConfirm = () => {
     accountTransactions,
   } = useSelector((state: RootState) => state.vault);
   const { fiat } = useSelector((state: RootState) => state.price);
+  const activeSlip44 = useSelector(
+    (state: RootState) => state.vaultGlobal?.activeSlip44
+  );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const currentEvmTransactions = useMemo(
     () =>
@@ -243,7 +244,46 @@ export const SendConfirm = () => {
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
+  const isSmartAccountSend =
+    !isBitcoinBased &&
+    Boolean(activeAccount?.isSmartAccount && activeAccount.smartAccount);
+  const [smartAccountQuote, setSmartAccountQuote] = useState<{
+    executions: { data: string; target: string; value: string }[];
+    feeOverrides: SmartAccountFeeOverrides;
+    gasUnits: string;
+    key: string;
+    maximumFeeWei: string;
+  }>();
+  const [smartAccountQuoteError, setSmartAccountQuoteError] =
+    useState<string>();
+  const [smartAccountQuoteNeedsRefresh, setSmartAccountQuoteNeedsRefresh] =
+    useState(false);
+  const requiresSptReview = isBitcoinBased && Boolean(basicTxValues?.token);
+  const sptReviewKey = requiresSptReview
+    ? JSON.stringify([
+        activeNetwork?.chainId,
+        activeNetwork?.url,
+        basicTxValues?.psbt,
+      ])
+    : '';
+  const [sptReview, setSptReview] = useState<{
+    error: string | null;
+    key: string;
+  }>({ error: 'Transaction details are loading', key: '' });
+  const handleSptReviewStateChange = useCallback(
+    (error: string | null) => setSptReview({ error, key: sptReviewKey }),
+    [sptReviewKey]
+  );
+  const sptReviewError = !requiresSptReview
+    ? null
+    : sptReview.key === sptReviewKey
+    ? sptReview.error
+    : 'Transaction details are loading';
   const displayedAmount = useMemo(() => {
+    if (isSmartAccountSend && !basicTxValues?.token && basicTxValues?.isMax)
+      return smartAccountQuote
+        ? formatEther(smartAccountQuote.executions[0].value)
+        : t('send.calculating');
     if (!isBitcoinBased || basicTxValues?.token || !basicTxValues?.isMax) {
       return basicTxValues?.amount;
     }
@@ -265,7 +305,7 @@ export const SendConfirm = () => {
     } catch {
       return t('send.calculating');
     }
-  }, [basicTxValues, isBitcoinBased, t]);
+  }, [basicTxValues, isBitcoinBased, isSmartAccountSend, smartAccountQuote, t]);
   const nativeTotal = useMemo(() => {
     if (!isBitcoinBased || basicTxValues?.token) {
       return undefined;
@@ -353,6 +393,202 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
 
+  const smartAccountFeeOverrides = useMemo(() => {
+    try {
+      if (isEIP1559Compatible === undefined) return undefined;
+      if (isEIP1559Compatible === false) {
+        const price = customFee.isCustom
+          ? parseUnits(safeToFixed(customFee.gasPrice), 9)
+          : BigNumber.from(gasPrice);
+        if (price.lte(0)) return undefined;
+        return { gasPrice: price.toString() };
+      }
+      const cap = customFee.isCustom
+        ? customFee.maxFeePerGas
+        : fee.maxFeePerGas;
+      const tip = customFee.isCustom
+        ? customFee.maxPriorityFeePerGas
+        : fee.maxPriorityFeePerGas;
+      if (!(cap > 0) || tip === undefined || tip < 0) return undefined;
+      const overrides = {
+        maxFeePerGas: parseUnits(safeToFixed(cap), 9).toString(),
+        maxPriorityFeePerGas: parseUnits(safeToFixed(tip), 9).toString(),
+      };
+      assertSupportedEvmFees(overrides);
+      return overrides;
+    } catch {
+      return undefined;
+    }
+  }, [
+    customFee,
+    fee.maxFeePerGas,
+    fee.maxPriorityFeePerGas,
+    gasPrice,
+    isEIP1559Compatible,
+  ]);
+  const smartAccountQuoteKey = isSmartAccountSend
+    ? JSON.stringify([
+        isSmartAccountSend,
+        activeAccountMeta.type,
+        activeAccountMeta.id,
+        activeAccount?.address,
+        activeNetwork.chainId,
+        activeNetwork.url,
+        activeSlip44,
+        basicTxValues,
+        resolvedToAddress,
+        customFee,
+        smartAccountFeeOverrides,
+      ])
+    : '';
+  const smartAccountQuoteReady = Boolean(
+    smartAccountQuote?.key === smartAccountQuoteKey &&
+      smartAccountFeeOverrides &&
+      !smartAccountQuoteError &&
+      !smartAccountQuoteNeedsRefresh
+  );
+
+  useEffect(() => {
+    if (
+      !isSmartAccountSend ||
+      !basicTxValues ||
+      recipientWrongNetwork ||
+      !smartAccountFeeOverrides ||
+      smartAccountQuoteNeedsRefresh
+    )
+      return;
+    let cancelled = false;
+    const overrides = smartAccountFeeOverrides;
+    setSmartAccountQuoteError(undefined);
+    const prepare = async () => {
+      const target =
+        resolvedToAddress || String(basicTxValues.receivingAddress || '');
+      if (!target || target.toLowerCase().endsWith('.eth'))
+        throw new Error('Unresolved recipient');
+      const transactionType =
+        basicTxValues.transactionType || TransactionType.NATIVE_ETH;
+      let execution = { target, data: '0x', value: '0x0' };
+      if (transactionType === TransactionType.NATIVE_ETH) {
+        execution.value = parseUnits(
+          String(removeScientificNotation(basicTxValues.amount || '0')),
+          18
+        ).toHexString();
+      } else {
+        if (
+          ![
+            TransactionType.ERC20,
+            TransactionType.ERC721,
+            TransactionType.ERC1155,
+          ].includes(transactionType)
+        )
+          throw new Error('Unsupported smart account transfer');
+        execution.target = basicTxValues.token.contractAddress;
+        if (transactionType === TransactionType.ERC20) {
+          const abi = new Interface(await getErc20Abi());
+          execution.data = abi.encodeFunctionData('transfer', [
+            target,
+            toEthersBigNumberish(
+              parseUnits(
+                String(removeScientificNotation(basicTxValues.amount || '0')),
+                basicTxValues.token.decimals ?? 18
+              )
+            ),
+          ]);
+        } else {
+          const tokenId = basicTxValues.token.tokenId;
+          if (
+            tokenId === undefined ||
+            tokenId === null ||
+            tokenId === '' ||
+            BigNumber.from(tokenId).lt(0)
+          )
+            throw new Error('Invalid token id');
+          const abi = new Interface(
+            transactionType === TransactionType.ERC721
+              ? await getErc721Abi()
+              : await getErc1155Abi()
+          );
+          execution.data =
+            transactionType === TransactionType.ERC721
+              ? abi.encodeFunctionData(
+                  'safeTransferFrom(address,address,uint256)',
+                  [
+                    activeAccount.address,
+                    target,
+                    toEthersBigNumberish(BigNumber.from(tokenId)),
+                  ]
+                )
+              : abi.encodeFunctionData(
+                  'safeTransferFrom(address,address,uint256,uint256,bytes)',
+                  [
+                    activeAccount.address,
+                    target,
+                    toEthersBigNumberish(BigNumber.from(tokenId)),
+                    toEthersBigNumberish(
+                      BigNumber.from(String(basicTxValues.amount))
+                    ),
+                    '0x',
+                  ]
+                );
+        }
+      }
+      const quoteExecution = (candidate: typeof execution) => {
+        if (cancelled || !submission.isActive())
+          throw new Error('Smart account confirmation is no longer active');
+        return prepareSmartAccountFeeQuote({
+          accountAddress: activeAccount.address,
+          accountId: activeAccountMeta.id,
+          controllerEmitter,
+          executions: [candidate],
+          feeOverrides: overrides,
+        });
+      };
+      let quote;
+      if (
+        transactionType === TransactionType.NATIVE_ETH &&
+        basicTxValues.isMax
+      ) {
+        const balance = (await controllerEmitter(
+          ['wallet', 'refreshActiveAccountBalances'],
+          [{ includeAssets: false }]
+        )) as { nativeBalance: string };
+        const balanceWei = parseUnits(
+          String(removeScientificNotation(balance.nativeBalance)),
+          18
+        );
+        // Discovery is read-only. Only an exact final net execution is approved.
+        execution = { ...execution, value: '0x1' };
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          quote = await quoteExecution(execution);
+          const net = balanceWei
+            .sub(quote.maximumFeeWei)
+            .sub(SMART_ACCOUNT_MAX_SEND_BUFFER_WEI);
+          if (net.lte(0))
+            throw new Error('Insufficient funds for smart account fee');
+          if (net.eq(execution.value)) break;
+          execution = { ...execution, value: net.toHexString() };
+          quote = undefined;
+        }
+        if (!quote)
+          throw new Error('Smart account maximum amount did not stabilize');
+      } else quote = await quoteExecution(execution);
+      if (!cancelled && submission.isActive())
+        setSmartAccountQuote({
+          ...quote,
+          executions: [execution],
+          feeOverrides: overrides,
+          key: smartAccountQuoteKey,
+        });
+    };
+    prepare().catch(() => {
+      if (!cancelled && submission.isActive())
+        setSmartAccountQuoteError(t('send.unableToCalculateFees'));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [smartAccountQuoteKey, retryTrigger, smartAccountQuoteNeedsRefresh]);
+
   const getNativeEvmGasLimit = useCallback(
     async (maxSendFeeRateWei?: BigNumber): Promise<BigNumber> => {
       const fallbackGasLimit = BigNumber.from(
@@ -361,6 +597,7 @@ export const SendConfirm = () => {
 
       if (
         !basicTxValues ||
+        isSmartAccountSend ||
         basicTxValues.token ||
         basicTxValues.transactionType !== TransactionType.NATIVE_ETH
       ) {
@@ -441,7 +678,7 @@ export const SendConfirm = () => {
         return fallbackGasLimit;
       }
     },
-    [basicTxValues, controllerEmitter, resolvedToAddress]
+    [basicTxValues, controllerEmitter, resolvedToAddress, isSmartAccountSend]
   );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {
@@ -533,6 +770,11 @@ export const SendConfirm = () => {
   }, [navigate, alert, t, getLegacyGasPrice]);
 
   const performConfirm = async () => {
+    if (isSmartAccountSend && !smartAccountQuoteReady) return;
+    if (sptReviewError) {
+      alert.error(sptReviewError);
+      return;
+    }
     const submitEmitter = submission.controllerEmitter;
     const approvedFeeSelection = feeSelectionRef.current;
     const assertSmartAccountConfirmationCurrent = () => {
@@ -590,54 +832,30 @@ export const SendConfirm = () => {
         basicTxValues.transactionType ||
         (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
 
-      const getSmartAccountFeeOverrides = ():
-        | SmartAccountFeeOverrides
-        | undefined => {
-        if (isEIP1559Compatible === false) {
-          const selectedGasPrice = customFee.isCustom
-            ? parseUnits(safeToFixed(customFee.gasPrice), 9)
-            : BigNumber.from(gasPrice);
-          if (selectedGasPrice.lte(0))
-            throw new Error('Invalid smart account legacy gas price');
-          return { gasPrice: selectedGasPrice.toString() };
-        }
-
-        const maxPriorityFeePerGas = customFee.isCustom
-          ? customFee.maxPriorityFeePerGas
-          : fee.maxPriorityFeePerGas;
-        const maxFeePerGas = customFee.isCustom
-          ? customFee.maxFeePerGas
-          : fee.maxFeePerGas;
-
-        if (
-          maxPriorityFeePerGas === null ||
-          maxPriorityFeePerGas === undefined ||
-          maxPriorityFeePerGas < 0 ||
-          !maxFeePerGas ||
-          maxFeePerGas <= 0
-        ) {
-          throw new Error('Invalid smart account fee override');
-        }
-
-        const overrides = {
-          maxFeePerGas: parseUnits(safeToFixed(maxFeePerGas), 9).toString(),
-          maxPriorityFeePerGas: parseUnits(
-            safeToFixed(maxPriorityFeePerGas),
-            9
-          ).toString(),
-        };
-        assertSupportedEvmFees(overrides);
-        return overrides;
-      };
-
       const submitSmartAccountExecution = async (
         target: string,
         value: string,
         data: string,
-        feeOverrides = getSmartAccountFeeOverrides()
+        feeOverrides: SmartAccountFeeOverrides = smartAccountFeeOverrides
       ) => {
+        let publicationRequested = false;
         try {
           assertSmartAccountConfirmationCurrent();
+          if (
+            !smartAccountQuoteReady ||
+            !smartAccountQuote ||
+            smartAccountQuote.executions.length !== 1 ||
+            target.toLowerCase() !==
+              smartAccountQuote.executions[0].target.toLowerCase() ||
+            data.toLowerCase() !==
+              smartAccountQuote.executions[0].data.toLowerCase() ||
+            !BigNumber.from(value).eq(smartAccountQuote.executions[0].value) ||
+            JSON.stringify(feeOverrides) !==
+              JSON.stringify(smartAccountQuote.feeOverrides)
+          )
+            throw Object.assign(new Error('Smart account fee quote changed.'), {
+              transactionNotBroadcast: true,
+            });
           await signAndSubmitSmartAccountExecutions({
             accountAddress: activeAccount.address,
             accountId: activeAccount.id,
@@ -648,8 +866,11 @@ export const SendConfirm = () => {
             controllerEmitter: submitEmitter,
             executions: [{ target, value, data }],
             feeOverrides,
+            maximumUserOpFeeWei: smartAccountQuote.maximumFeeWei,
+            onPrepared: assertSmartAccountConfirmationCurrent,
             onBeforeSubmit: async () => {
               assertSmartAccountConfirmationCurrent();
+              publicationRequested = true;
               await submission.beforeBroadcast();
             },
             onAuthenticatorSigningResolved: (authenticator) => {
@@ -665,7 +886,24 @@ export const SendConfirm = () => {
             smartAccount: activeAccount.smartAccount,
           });
         } catch (error) {
+          // A same-text error after the publication boundary is not evidence
+          // that refreshing/re-signing is safe, regardless of its marker.
+          if (
+            publicationRequested &&
+            error?.message === 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED'
+          )
+            error = Object.assign(new Error(error.message), error, {
+              transactionNotBroadcast: false,
+            });
           submission.recordError(error);
+          if (
+            error?.message === 'PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED' &&
+            error?.transactionNotBroadcast === true &&
+            !publicationRequested
+          ) {
+            setSmartAccountQuoteNeedsRefresh(true);
+            alert.error(t('send.smartAccountFeeQuoteChanged'));
+          }
           throw error;
         } finally {
           setIsPqSigning(false);
@@ -694,72 +932,6 @@ export const SendConfirm = () => {
               blacklistResult.severity
             }. Please verify the token recipient address before proceeding.`
           );
-        }
-      };
-
-      const getValidatedTokenId = () => {
-        const tokenId = basicTxValues.token.tokenId;
-        if (tokenId === undefined || tokenId === null || tokenId === '') {
-          throw new Error(t('send.invalidTokenId'));
-        }
-
-        let tokenIdValue: BigNumber;
-        try {
-          tokenIdValue = BigNumber.from(tokenId);
-        } catch {
-          throw new Error(t('send.invalidTokenId'));
-        }
-
-        if (tokenIdValue.lt(0)) {
-          throw new Error(t('send.invalidTokenId'));
-        }
-
-        return tokenIdValue;
-      };
-
-      const buildPasskeyTokenTransferData = async () => {
-        switch (transactionType) {
-          case TransactionType.ERC20: {
-            const erc20Interface = new Interface(await getErc20Abi());
-            const amount = parseUnits(
-              String(
-                removeScientificNotation(String(basicTxValues.amount || '0'))
-              ),
-              basicTxValues?.token?.decimals ?? 18
-            );
-            return erc20Interface.encodeFunctionData('transfer', [
-              destinationTo,
-              toEthersBigNumberish(amount),
-            ]);
-          }
-          case TransactionType.ERC721: {
-            const erc721Interface = new Interface(await getErc721Abi());
-            return erc721Interface.encodeFunctionData(
-              'safeTransferFrom(address,address,uint256)',
-              [
-                activeAccount.address,
-                destinationTo,
-                toEthersBigNumberish(getValidatedTokenId()),
-              ]
-            );
-          }
-          case TransactionType.ERC1155: {
-            const erc1155Interface = new Interface(await getErc1155Abi());
-            return erc1155Interface.encodeFunctionData(
-              'safeTransferFrom(address,address,uint256,uint256,bytes)',
-              [
-                activeAccount.address,
-                destinationTo,
-                toEthersBigNumberish(getValidatedTokenId()),
-                toEthersBigNumberish(
-                  BigNumber.from(String(basicTxValues.amount))
-                ),
-                '0x',
-              ]
-            );
-          }
-          default:
-            throw new Error(t('send.cantCompleteTxs'));
         }
       };
 
@@ -819,106 +991,12 @@ export const SendConfirm = () => {
         case TransactionType.NATIVE_ETH:
           if (activeAccount.isSmartAccount && activeAccount.smartAccount) {
             try {
-              let amountWei = parseUnits(
-                String(
-                  removeScientificNotation(String(basicTxValues.amount || '0'))
-                ),
-                18
-              );
-              let maxSendFeeOverrides: SmartAccountFeeOverrides | undefined;
-
-              if (basicTxValues.isMax) {
-                const balanceWei = parseUnits(
-                  String(removeScientificNotation(String(balance || '0'))),
-                  18
-                );
-                let gasPriceWei: BigNumber;
-                if (customFee.isCustom) {
-                  gasPriceWei =
-                    isEIP1559Compatible === false
-                      ? parseUnits(safeToFixed(customFee.gasPrice || 0), 9)
-                      : parseUnits(safeToFixed(customFee.maxFeePerGas), 9);
-                } else if (isEIP1559Compatible === false) {
-                  gasPriceWei = BigNumber.from(
-                    await submitEmitter([
-                      'wallet',
-                      'ethereumTransaction',
-                      'getRecommendedGasPrice',
-                    ])
-                  );
-                } else {
-                  const feeData = (await submitEmitter([
-                    'wallet',
-                    'ethereumTransaction',
-                    'getFeeDataWithDynamicMaxPriorityFeePerGas',
-                  ])) as {
-                    maxFeePerGas?: BigNumber | string;
-                    maxPriorityFeePerGas?: BigNumber | string;
-                  };
-                  if (
-                    feeData.maxFeePerGas === undefined ||
-                    feeData.maxPriorityFeePerGas === undefined
-                  )
-                    throw new Error('Incomplete smart account Max fee data');
-                  assertSupportedEvmFees(feeData);
-                  gasPriceWei = BigNumber.from(feeData.maxFeePerGas);
-                  maxSendFeeOverrides = {
-                    maxFeePerGas: gasPriceWei.toString(),
-                    maxPriorityFeePerGas: BigNumber.from(
-                      feeData.maxPriorityFeePerGas
-                    ).toString(),
-                  };
-                }
-                assertSmartAccountConfirmationCurrent();
-                if (isEIP1559Compatible === false)
-                  // Use the same exact positive price for the Max reserve,
-                  // UserOperation and legacy outer transaction.
-                  maxSendFeeOverrides = { gasPrice: gasPriceWei.toString() };
-
-                if (gasPriceWei.lte(0)) {
-                  alert.error(t('send.unableToCalculateFees'));
-                  setLoading(false);
-                  return;
-                }
-
-                // Reserve the estimator's worst-case gas units for this
-                // account's validator profile (replaces the old flat 2.05M
-                // which over-reserved Max-sends by 10-20x).
-                let gasUnitsReserve = SMART_ACCOUNT_FALLBACK_GAS_RESERVE;
-                try {
-                  const gasStatus = (await submitEmitter(
-                    ['wallet', 'getSmartAccountNativeGasStatus'],
-                    [{ accountId: activeAccountMeta.id }]
-                  )) as { gasUnitsReserve?: string };
-                  if (gasStatus?.gasUnitsReserve) {
-                    gasUnitsReserve = BigNumber.from(gasStatus.gasUnitsReserve);
-                  }
-                } catch (reserveError) {
-                  logError(
-                    'error getting smart account gas reserve',
-                    'Transaction',
-                    reserveError
-                  );
-                }
-                assertSmartAccountConfirmationCurrent();
-
-                amountWei = balanceWei
-                  .sub(gasUnitsReserve.mul(gasPriceWei))
-                  .sub(SMART_ACCOUNT_MAX_SEND_BUFFER_WEI);
-
-                if (amountWei.lte(0)) {
-                  alert.error(t('send.insufficientFundsForGas'));
-                  setLoading(false);
-                  return;
-                }
-              }
-
-              const amount = amountWei.toHexString();
+              const amount = smartAccountQuote.executions[0].value;
               await submitSmartAccountExecution(
                 destinationTo,
                 amount,
                 '0x',
-                maxSendFeeOverrides
+                smartAccountQuote.feeOverrides
               );
 
               setConfirmed(true);
@@ -1134,7 +1212,7 @@ export const SendConfirm = () => {
           if (activeAccount.isSmartAccount && activeAccount.smartAccount) {
             try {
               await assertPasskeyTokenRecipientAllowed();
-              const data = await buildPasskeyTokenTransferData();
+              const data = smartAccountQuote.executions[0].data;
               await submitSmartAccountExecution(
                 basicTxValues.token.contractAddress,
                 '0x0',
@@ -1422,6 +1500,10 @@ export const SendConfirm = () => {
   };
 
   const handleConfirm = () => {
+    if (sptReviewError) {
+      alert.error(sptReviewError);
+      return;
+    }
     if (recipientWrongNetwork) {
       alert.error(t('send.smartAccountWrongNetwork'));
       return;
@@ -1699,6 +1781,10 @@ export const SendConfirm = () => {
 
   const getCalculatedFee = useMemo(() => {
     if (isBitcoinBased) return 0;
+    if (isSmartAccountSend)
+      return smartAccountQuoteReady
+        ? formatEther(smartAccountQuote.maximumFeeWei)
+        : undefined;
 
     // Use custom gas limit, or fee.gasLimit, or default from transaction type
     const gasLimit = Number(
@@ -1756,6 +1842,9 @@ export const SendConfirm = () => {
     isEIP1559Compatible,
     gasPrice,
     validateCustomGasLimit,
+    isSmartAccountSend,
+    smartAccountQuote,
+    smartAccountQuoteReady,
   ]);
 
   useEffect(() => {
@@ -2090,7 +2179,11 @@ export const SendConfirm = () => {
               <div className="flex flex-row items-end w-full">
                 <div className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
                   {t(
-                    isBitcoinBased ? 'send.networkFee' : 'send.estimatedGasFee'
+                    isSmartAccountSend
+                      ? 'send.smartAccountMaxFee'
+                      : isBitcoinBased
+                      ? 'send.networkFee'
+                      : 'send.estimatedGasFee'
                   )}
                   <span className="text-white text-xs">
                     {(() => {
@@ -2123,6 +2216,7 @@ export const SendConfirm = () => {
 
                       let feeAmount;
                       if (
+                        !isSmartAccountSend &&
                         basicTxValues.fee !== undefined &&
                         basicTxValues.fee > 0
                       ) {
@@ -2168,6 +2262,33 @@ export const SendConfirm = () => {
                       />
                     </span>
                   ) : null)}
+              </div>
+            )}
+            {isSmartAccountSend && (
+              <div className="text-xs text-brand-gray200 mt-2">
+                <p>{t('send.smartAccountFeeDetails')}</p>
+                {(smartAccountQuoteError || smartAccountQuoteNeedsRefresh) && (
+                  <>
+                    <p role="status">
+                      {smartAccountQuoteNeedsRefresh
+                        ? t('send.smartAccountFeeQuoteChanged')
+                        : smartAccountQuoteError}
+                    </p>
+                    <button
+                      type="button"
+                      className="underline"
+                      disabled={loading || submission.pending}
+                      onClick={() => {
+                        setSmartAccountQuoteNeedsRefresh(false);
+                        setSmartAccountQuoteError(undefined);
+                        setSmartAccountQuote(undefined);
+                        setRetryTrigger((previous) => previous + 1);
+                      }}
+                    >
+                      {t('send.refreshFeeQuote')}
+                    </button>
+                  </>
+                )}
               </div>
             )}
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
@@ -2225,7 +2346,13 @@ export const SendConfirm = () => {
                       let totalCrypto;
 
                       // If there's a fee calculation error, just show the amount without fee
-                      if (nativeTotal !== undefined) {
+                      if (isSmartAccountSend && smartAccountQuoteReady) {
+                        const totalWei = BigNumber.from(
+                          smartAccountQuote.executions[0].value
+                        ).add(smartAccountQuote.maximumFeeWei);
+                        totalAmount = formatEther(totalWei);
+                        totalCrypto = totalAmount;
+                      } else if (nativeTotal !== undefined) {
                         totalAmount = nativeTotal.amount;
                         totalCrypto = nativeTotal.formatted;
                       } else if (feeCalculationError) {
@@ -2408,16 +2535,35 @@ export const SendConfirm = () => {
                 />
               </button>
 
-              {showAdvancedDetails && (
-                <div className="mt-2 -mx-6 border-y border-alpha-whiteAlpha300 bg-brand-blue700 overflow-hidden">
+              {requiresSptReview && !showAdvancedDetails && sptReviewError && (
+                <p role="status" className="mt-2 text-warning-error text-sm">
+                  {sptReviewError}
+                </p>
+              )}
+
+              {(showAdvancedDetails || requiresSptReview) && (
+                <div
+                  className={
+                    showAdvancedDetails
+                      ? 'mt-2 -mx-6 border-y border-alpha-whiteAlpha300 bg-brand-blue700 overflow-hidden'
+                      : ''
+                  }
+                >
                   <div
                     className="max-h-[500px] overflow-y-auto"
                     style={{ overflowX: 'hidden' }}
                   >
-                    {/* Component only mounts when expanded - prevents remote asset fetching until needed.
-                        The component has its own internal loading state while fetching asset data. */}
+                    {/* SPT review is mandatory before approval. Native previews
+                        retain lazy decoding until Advanced is expanded. */}
                     <SyscoinTransactionDetailsFromPSBT
+                      key={sptReviewKey || 'native-preview'}
+                      onReviewStateChange={
+                        requiresSptReview
+                          ? handleSptReviewStateChange
+                          : undefined
+                      }
                       psbt={basicTxValues.psbt}
+                      reviewOnly={!showAdvancedDetails}
                       transaction={basicTxValues}
                       showTechnicalDetails={true}
                       showTransactionOptions={true}
@@ -2454,7 +2600,9 @@ export const SendConfirm = () => {
                 submission.blocked ||
                 Boolean(recipientPoisoningCollision) ||
                 recipientWrongNetwork ||
+                Boolean(sptReviewError) ||
                 isCalculatingFees ||
+                (isSmartAccountSend && !smartAccountQuoteReady) ||
                 (!isBitcoinBased && !!feeCalculationError)
               }
               loading={loading}
