@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import packageJson from '../../package.json';
+import en from '../../source/assets/locales/en.json';
 import {
   compactBridgeNativeOffset,
   compactBridgeWithAccountAsset,
@@ -146,6 +147,16 @@ test('offline UTXO history: bridge value, native account change and pending deta
       page
         .getByText(`${id.slice(0, 4)}...${id.slice(-14)}`, { exact: true })
         .locator('xpath=ancestor::div[contains(@class,"border-b")][1]');
+    const fullTransactionReads = () =>
+      routes.reads.filter((read) => /^\/api\/v2\/tx\//.test(read));
+    const expectBlankAmount = async (id: string) => {
+      await expect(row(id)).toBeVisible();
+      await expect(row(id).getByText(/\b(?:TSYS|SYSX)\b/)).toHaveCount(0);
+      for (const placeholder of [en.buttons.loading, en.settings.unavailable])
+        await expect(
+          row(id).getByText(placeholder, { exact: true })
+        ).toHaveCount(0);
+    };
     const openDetails = async (id: string) => {
       await row(id).locator('svg.cursor-pointer').last().click();
       await expect(page).toHaveURL(/#\/home\/details/);
@@ -255,7 +266,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await expect(icon).toHaveCSS('transform', 'none');
     };
     await wallet.step(
-      'compact Activity keeps operation tags and transfer values without the Details breakdown',
+      'compact Activity keeps operation tags and missing values blank without per-row reads',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -264,9 +275,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           row(compactBridgeNativeOffset.txid).getByText('Bridge to NEVM')
         ).toBeVisible();
-        await expect(
-          row(compactBridgeNativeOffset.txid).getByText('1.0000 SYSX')
-        ).toBeVisible();
+        await expectBlankAmount(compactBridgeNativeOffset.txid);
         await expect(
           row(compactBridgeNativeOffset.txid).getByText('29.5985 TSYS', {
             exact: true,
@@ -275,12 +284,8 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           row(compactBridgeWithAccountAsset.txid).getByText('Bridge to NEVM')
         ).toBeVisible();
-        await expect(
-          row(compactBridgeWithAccountAsset.txid).getByText('0.100000 SYSX')
-        ).toBeVisible();
-        await expect(
-          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
-        ).toBeVisible();
+        await expectBlankAmount(compactBridgeWithAccountAsset.txid);
+        await expectBlankAmount(pending.txid);
         for (const txid of [
           compactBridgeNativeOffset.txid,
           compactBridgeWithAccountAsset.txid,
@@ -294,6 +299,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
           expect(bounds).not.toBeNull();
           expect(bounds!.height).toBeLessThanOrEqual(90);
         }
+        expect(fullTransactionReads()).toEqual([]);
         expect(routes.deniedWrites).toEqual([]);
       }
     );
@@ -322,6 +328,15 @@ test('offline UTXO history: bridge value, native account change and pending deta
           ),
         });
         await back();
+        await expect(
+          row(compactBridgeNativeOffset.txid).getByText('1.0000 SYSX', {
+            exact: true,
+          })
+        ).toBeVisible();
+        await expectBlankAmount(pending.txid);
+        expect(fullTransactionReads()).toEqual([
+          '/api/v2/tx/' + compactBridgeNativeOffset.txid,
+        ]);
         await openDetails(compactBridgeWithAccountAsset.txid);
         await expect(
           page.getByText('0.100000 SYSX', { exact: true })
@@ -371,6 +386,26 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(page.getByText('undefined', { exact: true })).toHaveCount(
           0
         );
+        await back();
+        await expect(
+          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+        ).toBeVisible();
+        expect(
+          fullTransactionReads().filter(
+            (read) => read === '/api/v2/tx/' + pending.txid
+          )
+        ).toHaveLength(1);
+        // A second Details visit uses the same bounded in-memory read, including
+        // after the list has unmounted and remounted through normal navigation.
+        await openDetails(pending.txid);
+        await expect(
+          page.getByText('0.09999774 TSYS', { exact: true })
+        ).toBeVisible();
+        await back();
+        await expect(
+          row(pending.txid).getByText('0.099998 TSYS', { exact: true })
+        ).toBeVisible();
+        expect(fullTransactionReads()).toHaveLength(3);
         expect(routes.deniedWrites).toEqual([]);
       }
     );
@@ -384,6 +419,10 @@ test('offline UTXO history: bridge value, native account change and pending deta
           signingRequested: false,
           confirmationClicked: false,
           capturedAccountFieldsWithSyntheticAddresses: true,
+          listFullTransactionReadsBeforeDetails: 0,
+          missingAmountsRemainBlank: true,
+          detailsCacheReusedAfterBack: true,
+          fullTransactionReads: fullTransactionReads(),
           fixtureReads: routes.reads,
           fixtureLogoReads,
           deniedWrites: routes.deniedWrites,

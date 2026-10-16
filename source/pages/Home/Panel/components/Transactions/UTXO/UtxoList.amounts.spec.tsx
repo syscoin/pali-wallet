@@ -14,6 +14,7 @@ import {
   compactBridgeWithAccountAsset,
 } from './history.fixtures';
 import { UtxoTransactionsListComponent } from './UtxoList';
+import { readUtxoTransactionDetails } from './utxoTransactionDetails';
 
 const mockNavigate = jest.fn();
 const mockEmitter = jest.fn();
@@ -97,20 +98,31 @@ const fullBridge = (amount = '100000000') => ({
   tokenTransfers: [{ token: '123456', symbol: 'SYSX', decimals: 8 }],
 });
 
-it('hydrates compact bridge operation value without treating native funding as asset ownership', async () => {
-  mockEmitter.mockResolvedValueOnce(fullBridge());
+const cacheScope = (tx: { txid: string }) =>
+  `${mockScope.account}:${mockScope.network}:${tx.txid.toLowerCase()}`;
+const visitDetails = async (full: any, key = cacheScope(full)) => {
+  const read = jest.fn().mockResolvedValue(full);
+  await act(async () => {
+    await readUtxoTransactionDetails(key, full.txid, read, () => true);
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+};
+const expectNoUnknownAmountLabel = () => {
+  expect(screen.queryByText('buttons.loading')).toBeNull();
+  expect(screen.queryByText('settings.unavailable')).toBeNull();
+};
+
+it('leaves an incomplete bridge amount absent and navigates to Details without a list RPC', async () => {
   render(<UtxoTransactionsListComponent tx={compactBridgeNativeOffset} />);
 
   expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
   expect(screen.queryByText('29.5985 TSYS')).toBeNull();
-  expect(screen.getByText('buttons.loading')).toBeTruthy();
-  const amount = await screen.findByText('1.0000 SYSX');
-  expect(within(amount.parentElement!).queryByText('−')).toBeNull();
+  expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+  expectNoUnknownAmountLabel();
   expect(
     screen.queryByText('send.nativeBalanceChange: -29.5985194 TSYS')
   ).toBeNull();
   expect(screen.queryByText(/^send\.fee:/)).toBeNull();
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
     state: {
@@ -119,62 +131,75 @@ it('hydrates compact bridge operation value without treating native funding as a
       tx: compactBridgeNativeOffset,
     },
   });
+  await act(async () => Promise.resolve());
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('hydrates the compact bridge burn amount and preserves its precision', async () => {
-  mockEmitter.mockResolvedValueOnce({
+it('updates a mounted bridge row from the Details cache and reuses it after remount', async () => {
+  const view = render(
+    <UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />
+  );
+  expect(screen.queryByText('0.100000 SYSX')).toBeNull();
+  expectNoUnknownAmountLabel();
+  await visitDetails({
     ...fullBridge('10000000'),
     txid: compactBridgeWithAccountAsset.txid,
   });
-  render(<UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />);
 
   expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
-  expect(screen.getByText('buttons.loading')).toBeTruthy();
-  const amount = await screen.findByText('0.100000 SYSX');
+  const amount = screen.getByText('0.100000 SYSX');
   expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(
     screen.queryByText('send.nativeBalanceChange: -0.0000187 TSYS')
   ).toBeNull();
-  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
-  await act(async () => Promise.resolve());
+  view.unmount();
+  render(<UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />);
   expect(screen.getByText('0.100000 SYSX')).toBeTruthy();
+  expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('does not apply an old network hydration response to the new account scope', async () => {
-  let finishOld!: (value: any) => void;
-  mockEmitter.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finishOld = resolve;
-      })
-  );
-  const view = render(
-    <UtxoTransactionsListComponent tx={compactBridgeNativeOffset} />
-  );
-  await waitFor(() => expect(finishOld).toBeDefined());
-  mockScope = { account: 'account-b', network: 'network-b' };
-  mockUrl = 'https://other-blockbook.example';
-  mockEmitter.mockResolvedValueOnce(fullBridge('200000000'));
-  view.rerender(
-    <UtxoTransactionsListComponent tx={{ ...compactBridgeNativeOffset }} />
-  );
-  expect(await screen.findByText('2.0000 SYSX')).toBeTruthy();
-  await act(async () => finishOld(fullBridge()));
-  expect(screen.queryByText('1.0000 SYSX')).toBeNull();
-  expect(screen.getByText('2.0000 SYSX')).toBeTruthy();
-});
+it.each(['account', 'network'] as const)(
+  'ignores an old Details response after the list changes %s scope',
+  async (changedScope) => {
+    let finishOld!: (value: any) => void;
+    const oldRead = readUtxoTransactionDetails(
+      cacheScope(compactBridgeNativeOffset),
+      compactBridgeNativeOffset.txid,
+      () => new Promise((resolve) => (finishOld = resolve)),
+      () => true
+    );
+    const view = render(
+      <UtxoTransactionsListComponent tx={compactBridgeNativeOffset} />
+    );
+    await waitFor(() => expect(finishOld).toBeDefined());
+    mockScope = { ...mockScope, [changedScope]: `${changedScope}-b` };
+    view.rerender(
+      <UtxoTransactionsListComponent tx={{ ...compactBridgeNativeOffset }} />
+    );
+    await act(async () => {
+      finishOld(fullBridge());
+      await oldRead;
+    });
+    expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+    expectNoUnknownAmountLabel();
+    await visitDetails(fullBridge('200000000'));
+    expect(screen.getByText('2.0000 SYSX')).toBeTruthy();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
 
 it('prefers actual full burn amount over a smaller account asset contribution', async () => {
-  mockEmitter.mockResolvedValueOnce({
+  await visitDetails({
     ...fullBridge('200000000'),
     txid: compactBridgeWithAccountAsset.txid,
   });
   render(<UtxoTransactionsListComponent tx={compactBridgeWithAccountAsset} />);
   expect(screen.queryByText('0.100000 SYSX')).toBeNull();
-  expect(screen.getByText('buttons.loading')).toBeTruthy();
-  const amount = await screen.findByText('2.0000 SYSX');
+  const amount = screen.getByText('2.0000 SYSX');
   expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(screen.queryByText('0.100000 SYSX')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it('keeps ordinary compact SPT transfer value without hydration', () => {
@@ -283,14 +308,16 @@ it('keeps an SPT receipt compact without the native funding breakdown', () => {
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('hydrates ordinary SPT metadata while preserving explicit account ownership, not the first asset output', async () => {
+it('uses Details-cached SPT metadata while preserving account ownership, not the first asset output', async () => {
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: 'SPTAssetAllocationSend',
     vin: [{ isOwn: true }],
     vout: [{ isOwn: false }, { isOwn: true }],
   } as any;
-  mockEmitter.mockResolvedValueOnce({
+  render(<UtxoTransactionsListComponent tx={tx} />);
+  expectNoUnknownAmountLabel();
+  await visitDetails({
     ...tx,
     vin: [{ assetInfo: { assetGuid: 'owned', value: '100000000' } }],
     vout: [
@@ -299,15 +326,14 @@ it('hydrates ordinary SPT metadata while preserving explicit account ownership, 
     ],
     tokenTransfers: [{ token: 'owned', decimals: 8, symbol: 'OWNED' }],
   });
-  render(<UtxoTransactionsListComponent tx={tx} />);
-  const amount = await screen.findByText('0.400000 OWNED');
+  const amount = screen.getByText('0.400000 OWNED');
   expect(within(amount.parentElement!).getByText('−')).toBeTruthy();
   expect(amount.textContent).toBe('−0.400000 OWNED');
   expect(screen.queryByText(/999/)).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it('does not invent a value from an unrelated output when the account delta is zero', async () => {
-  mockEmitter.mockResolvedValueOnce(null);
   render(
     <UtxoTransactionsListComponent
       tx={{
@@ -320,13 +346,15 @@ it('does not invent a value from an unrelated output when the account delta is z
     />
   );
   expect(screen.queryByText('send.nativeBalanceChange: 0 TSYS')).toBeNull();
-  await screen.findByText('settings.unavailable');
+  await act(async () => Promise.resolve());
+  expectNoUnknownAmountLabel();
   expect(screen.queryByText('0.0000 TSYS')).toBeNull();
   expect(screen.queryByText('9.0000 TSYS')).toBeNull();
   expect(screen.queryByText('Bridge to NEVM')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('hydrates compact native self MAX to its actual output, not its fee', async () => {
+it('shows a native output only after Details fills the cache, never its fee-sized delta', async () => {
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: undefined,
@@ -334,19 +362,21 @@ it('hydrates compact native self MAX to its actual output, not its fee', async (
     addressValueOut: '6547335',
     fees: '226',
   };
-  mockEmitter.mockResolvedValueOnce({
+  render(<UtxoTransactionsListComponent tx={tx} />);
+  expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
+  expect(screen.queryByText('0.065473 TSYS')).toBeNull();
+  expectNoUnknownAmountLabel();
+  await visitDetails({
     ...tx,
     vin: [{ value: '6547561' }],
     vout: [{ value: '6547335' }],
   });
-  render(<UtxoTransactionsListComponent tx={tx} />);
-  expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
-  expect(await screen.findByText('0.065473 TSYS')).toBeTruthy();
+  expect(screen.getByText('0.065473 TSYS')).toBeTruthy();
   expect(
     screen.queryByText('send.nativeBalanceChange: -0.00000226 TSYS')
   ).toBeNull();
   expect(screen.queryByText('send.fee: 0.00000226 TSYS')).toBeNull();
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it('shows external native recipient total, not fee-inclusive change or the first output', () => {
@@ -423,12 +453,6 @@ it('shows a known compact native receipt without a full read', () => {
 
 it('does not reuse native output metadata from a departed account/network', async () => {
   let finishOld!: (value: any) => void;
-  mockEmitter.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finishOld = resolve;
-      })
-  );
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: undefined,
@@ -437,6 +461,12 @@ it('does not reuse native output metadata from a departed account/network', asyn
     fees: '226',
   };
   const view = render(<UtxoTransactionsListComponent tx={tx} />);
+  const oldRead = readUtxoTransactionDetails(
+    cacheScope(tx),
+    tx.txid,
+    () => new Promise((resolve) => (finishOld = resolve)),
+    () => true
+  );
   await waitFor(() => expect(finishOld).toBeDefined());
   mockScope = { account: 'another-account', network: 'another-network' };
   mockUrl = 'https://another-blockbook.example';
@@ -445,76 +475,60 @@ it('does not reuse native output metadata from a departed account/network', asyn
     addressValueIn: '200000226',
     addressValueOut: '200000000',
   };
-  mockEmitter.mockResolvedValueOnce({
+  view.rerender(<UtxoTransactionsListComponent tx={current} />);
+  expect(screen.queryByText('1.0000 TSYS')).toBeNull();
+  expectNoUnknownAmountLabel();
+  await visitDetails({
     ...current,
     vin: [{ value: '200000226' }],
     vout: [{ value: '200000000' }],
   });
-  view.rerender(<UtxoTransactionsListComponent tx={current} />);
-  expect(await screen.findByText('2.0000 TSYS')).toBeTruthy();
-  await act(async () =>
+  expect(screen.getByText('2.0000 TSYS')).toBeTruthy();
+  await act(async () => {
     finishOld({
       ...tx,
       vin: [{ value: '100000226' }],
       vout: [{ value: '100000000' }],
-    })
-  );
+    });
+    await oldRead;
+  });
   expect(screen.queryByText('1.0000 TSYS')).toBeNull();
   expect(screen.getByText('2.0000 TSYS')).toBeTruthy();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('eventually hydrates more than 32 restored rows without exceeding two active RPCs or dropping overflow values', async () => {
-  const outstanding = new Map<string, () => void>();
-  let active = 0,
-    maximumActive = 0;
+it('renders 40 incomplete restored rows without any list RPCs or placeholder amounts', async () => {
   const rows = Array.from({ length: 40 }, (_, index) => ({
     ...compactBridgeNativeOffset,
     txid: (index + 1).toString(16).padStart(64, '0'),
   }));
-  mockEmitter.mockImplementation((_path: unknown, [txid]: [string]) => {
-    active += 1;
-    maximumActive = Math.max(maximumActive, active);
-    return new Promise((resolve) =>
-      outstanding.set(txid, () => {
-        active -= 1;
-        resolve({ ...fullBridge(), txid });
-      })
-    );
-  });
-  const view = render(
+  render(
     <>
       {rows.map((tx) => (
         <UtxoTransactionsListComponent key={tx.txid} tx={tx} />
       ))}
     </>
   );
-  try {
-    await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(2));
-    expect(screen.getAllByText('buttons.loading')).toHaveLength(40);
-    expect(screen.queryByText('settings.unavailable')).toBeNull();
-    for (let completed = 0; completed < rows.length; completed += 1) {
-      await waitFor(() => expect(outstanding.size).toBeGreaterThan(0));
-      await act(async () => {
-        const [txid, finish] = outstanding.entries().next().value!;
-        outstanding.delete(txid);
-        finish();
-        for (let step = 0; step < 12; step += 1) await Promise.resolve();
-      });
-    }
-    await waitFor(() =>
-      expect(screen.getAllByText('1.0000 SYSX')).toHaveLength(40)
-    );
-    expect(screen.queryByText('buttons.loading')).toBeNull();
-    expect(screen.queryByText('settings.unavailable')).toBeNull();
-    expect(mockEmitter).toHaveBeenCalledTimes(40);
-    expect(new Set(mockEmitter.mock.calls.map(([, [txid]]) => txid)).size).toBe(
-      40
-    );
-    expect(maximumActive).toBe(2);
-  } finally {
-    view.unmount();
-    outstanding.forEach((finish) => finish());
-    outstanding.clear();
-    for (let step = 0; step < 100; step += 1) await Promise.resolve();
-  }
+  await act(async () => {
+    for (let step = 0; step < 8; step += 1) await Promise.resolve();
+  });
+  expect(screen.getAllByText('Bridge to NEVM')).toHaveLength(40);
+  expect(screen.getAllByRole('button', { name: 'Details' })).toHaveLength(40);
+  expectNoUnknownAmountLabel();
+  expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+  expect(screen.queryByText('29.5985 TSYS')).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('does not reuse cached details for a different transaction hash', async () => {
+  await visitDetails(fullBridge());
+  render(
+    <UtxoTransactionsListComponent
+      tx={{ ...compactBridgeNativeOffset, txid: 'ef'.repeat(32) }}
+    />
+  );
+  await act(async () => Promise.resolve());
+  expect(screen.queryByText('1.0000 SYSX')).toBeNull();
+  expectNoUnknownAmountLabel();
+  expect(mockEmitter).not.toHaveBeenCalled();
 });

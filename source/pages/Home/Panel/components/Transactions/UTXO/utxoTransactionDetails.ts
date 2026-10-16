@@ -1,6 +1,7 @@
-// Shared, memory-only full-transaction reads for compact token rows and Details.
-// Known values avoid hydration. Bound both concurrency and admitted backlog.
+// Details fetches full transactions; list rows only reuse this bounded memory
+// cache. Never fetch a full body just to fill a compact history row.
 const cache = new Map<string, { data: any; timestamp: number }>();
+const cacheListeners = new Map<string, Set<() => void>>();
 const pending = new Map<
   string,
   { guards: Set<() => boolean>; promise: Promise<any> }
@@ -11,6 +12,33 @@ let active = 0;
 const capacityListeners = new Set<() => void>();
 let notifyingCapacity = false;
 class HistoryReadQueueFullError extends Error {}
+
+export const getCachedUtxoTransactionDetails = (scope: string) => {
+  const cached = cache.get(scope);
+  return cached && Date.now() - cached.timestamp < TTL
+    ? cached.data
+    : undefined;
+};
+
+export const subscribeUtxoTransactionDetails = (
+  scope: string,
+  onChange: () => void
+) => {
+  let listeners = cacheListeners.get(scope);
+  if (!listeners) {
+    listeners = new Set();
+    cacheListeners.set(scope, listeners);
+  }
+  listeners.add(onChange);
+  return () => {
+    listeners.delete(onChange);
+    if (!listeners.size) cacheListeners.delete(scope);
+  };
+};
+
+const notifyCacheChange = (scope: string) => {
+  cacheListeners.get(scope)?.forEach((listener) => listener());
+};
 
 // Listeners belong to mounted consumers, not queued RPC jobs. Notify one-shot
 // listeners only while synchronous admission can consume a real free slot.
@@ -51,9 +79,8 @@ export const readUtxoTransactionDetails = (
   read: () => Promise<any>,
   isCurrent: () => boolean
 ): Promise<any> => {
-  const cached = cache.get(scope);
-  if (cached && Date.now() - cached.timestamp < TTL)
-    return Promise.resolve(cached.data);
+  const cached = getCachedUtxoTransactionDetails(scope);
+  if (cached) return Promise.resolve(cached);
   const inflight = pending.get(scope);
   if (inflight) {
     inflight.guards.add(isCurrent);
@@ -70,8 +97,8 @@ export const readUtxoTransactionDetails = (
       active += 1;
       Promise.resolve()
         .then(() => {
-          // A list row may unmount while Details joins this same read. Only
-          // cancel queued work once every subscriber has left the scope.
+          // Only cancel queued work once every Details subscriber has left
+          // the scope; concurrent views can share the same pending read.
           if (![...guards].some((guard) => guard()))
             throw new Error('History scope changed');
           return read();
@@ -85,7 +112,12 @@ export const readUtxoTransactionDetails = (
             return;
           }
           cache.set(scope, { data, timestamp: Date.now() });
-          if (cache.size > 100) cache.delete(cache.keys().next().value);
+          if (cache.size > 100) {
+            const oldestScope = cache.keys().next().value;
+            cache.delete(oldestScope);
+            notifyCacheChange(oldestScope);
+          }
+          notifyCacheChange(scope);
           resolve(data);
         })
         .catch(reject)
