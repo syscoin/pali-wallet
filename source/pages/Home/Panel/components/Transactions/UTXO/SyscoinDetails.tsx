@@ -5,11 +5,13 @@ import { shallowEqual, useSelector } from 'react-redux';
 import { UtxoTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
+import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import {
   formatSyscoinValue,
   formatDisplayValue,
@@ -25,6 +27,7 @@ import {
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
 } from 'utils/syscoinTransactionUtils';
+import { getTokenLogo } from 'utils/tokens';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
@@ -105,6 +108,7 @@ export const SyscoinTransactionDetails = ({
   tx,
 }: ISyscoinTransactionDetailsProps) => {
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const activeAssets = useSelector(selectActiveAccountAssets);
   const { currency, url: networkUrl } = activeNetwork;
   const normalizedHash = hash.toLowerCase();
   const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
@@ -133,6 +137,17 @@ export const SyscoinTransactionDetails = ({
         matchingEnhancedTransaction
       )
     : accountTransaction;
+  const tokenIntent = getSyscoinOperationAmount(rawTransaction);
+  // Resolve presentation metadata from this account and chain by immutable GUID,
+  // never by an issuer-controlled symbol or an unrelated transaction asset.
+  const tokenAsset = tokenIntent?.assetGuid
+    ? activeAssets.syscoin.find(
+        (asset) =>
+          String(asset.assetGuid) === String(tokenIntent.assetGuid) &&
+          (asset.chainId === undefined ||
+            asset.chainId === activeNetwork.chainId)
+      )
+    : undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -413,17 +428,31 @@ export const SyscoinTransactionDetails = ({
         {/* Token operation value is distinct from native account funding. */}
         {(accountTransaction || isSyscoinTokenOperation(rawTransaction)) &&
           (() => {
-            const intent = getSyscoinOperationAmount(rawTransaction);
+            const intent = tokenIntent;
 
             if (intent) {
               const decimals = intent.decimals ?? 8;
               const symbol =
                 intent.symbol ?? `SPT (${intent.assetGuid || '?'})`;
+              const logo =
+                tokenAsset?.image ||
+                getTokenLogo(symbol, true, intent.assetGuid);
 
               return (
-                <p className="text-white text-base">
-                  {formatDisplayValue(intent.amount, decimals)} {symbol}
-                </p>
+                <div className="flex items-center justify-center gap-2 max-w-full">
+                  <span className="inline-flex shrink-0" aria-hidden="true">
+                    <TokenIcon
+                      key={`${activeNetwork.chainId}:${intent.assetGuid}:${logo}`}
+                      assetGuid={intent.assetGuid}
+                      logo={logo || undefined}
+                      symbol={symbol}
+                      size={24}
+                    />
+                  </span>
+                  <p className="text-white text-base min-w-0 break-words">
+                    {formatDisplayValue(intent.amount, decimals)} {symbol}
+                  </p>
+                </div>
               );
             }
 
