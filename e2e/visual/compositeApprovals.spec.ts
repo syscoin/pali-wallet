@@ -552,3 +552,88 @@ test('Combined approvals: isolated real-extension interaction and layout', async
     Object.assign(E2E_CONFIG, originalConfig);
   }
 });
+
+// The existing public QA account is used only to open the normal fee preview.
+// This test never saves the fee editor or presses transaction Confirm.
+test('real extension fee editor uses the shared dialog layout', async ({}, info) => {
+  test.setTimeout(120_000);
+  const originalConfig = { ...E2E_CONFIG };
+  Object.assign(E2E_CONFIG, {
+    password: 'ReadOnlyFeePreview!2026',
+    seedPhrase:
+      'abuse expect crisp unaware skirt adjust height coin seven attitude usual kick',
+    networkLabel: 'zkTanenbaum',
+    chainId: 57057,
+  });
+  let wallet: PaliWallet | undefined;
+  const errors: string[] = [];
+  try {
+    wallet = await PaliWallet.launch('shared-fee-dialog-preview');
+    const page = wallet.page;
+    page.on('pageerror', (error) => errors.push(error.message));
+    await wallet.importSeedAndCreatePassword();
+    await wallet.switchNetwork('zkTanenbaum');
+    await wallet.ensureOnHome();
+    await page.locator('#send-btn').click();
+    await expect(page).toHaveURL(/send\/eth/);
+    await page
+      .getByPlaceholder(/receiver/i)
+      .first()
+      .fill('0xfFC854565ff83a49d3302821c0AD23822ca1A50C');
+    await page
+      .getByPlaceholder(/amount/i)
+      .first()
+      .fill('0.0001');
+    const next = page.locator('#send-eth-next-btn');
+    await expect(next).toBeEnabled({ timeout: 60_000 });
+    await next.click();
+    await expect(page).toHaveURL(/send\/confirm/);
+    const edit = page.getByAltText('EditTx', { exact: true });
+    await expect(edit).toBeVisible({ timeout: 60_000 });
+    await edit.click();
+    const dialog = page.getByRole('dialog', {
+      name: en.send.editFee,
+      exact: true,
+    });
+    await expect(dialog).toBeVisible();
+    for (const viewport of [
+      { width: 600, height: 800 },
+      { width: 400, height: 480 },
+    ]) {
+      await page.setViewportSize(viewport);
+      const panel = dialog.locator('[id^="headlessui-dialog-panel-"]');
+      await expectCenteredPanel(panel, page);
+      for (const label of [
+        en.buttons.close,
+        en.buttons.cancel,
+        en.buttons.save,
+      ]) {
+        const action = dialog.getByRole('button', { name: label, exact: true });
+        expect(await visibleHitTarget(action)).toBe(true);
+        const bounds = (await action.boundingBox())!;
+        expect(bounds.height).toBeGreaterThanOrEqual(44);
+      }
+      await capture(
+        page,
+        `fee-editor-${viewport.width}x${viewport.height}`,
+        info
+      );
+    }
+    await dialog
+      .getByRole('button', { name: en.buttons.cancel, exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/send\/confirm/);
+    await wallet.gotoRoute('#/home');
+    expect(errors).toEqual([]);
+  } catch (error) {
+    if (wallet)
+      await capture(wallet.page, 'fee-editor-failure', info).catch(
+        () => undefined
+      );
+    throw error;
+  } finally {
+    await wallet?.context.close().catch(() => undefined);
+    Object.assign(E2E_CONFIG, originalConfig);
+  }
+});

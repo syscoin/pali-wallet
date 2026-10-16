@@ -1,3 +1,4 @@
+import { UserGroupIcon } from '@heroicons/react/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -381,4 +382,3 @@ const SmartAccountEntry = ({
 };
 
 export default SmartAccountEntry;
-import { UserGroupIcon } from '@heroicons/react/outline';
