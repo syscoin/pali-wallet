@@ -212,6 +212,47 @@ test('offline UTXO history: bridge value, native account change and pending deta
           amountBounds!.y + amountBounds!.height
         )
       );
+      const decoration = icon.locator('..');
+      const shine = decoration.locator('span');
+      await expect(decoration).toHaveAttribute('aria-hidden', 'true');
+      expect(await decoration.getAttribute('tabindex')).toBeNull();
+      await expect(decoration.locator('button, a, [tabindex]')).toHaveCount(0);
+      const originalShadow = await icon.evaluate(
+        (element) => getComputedStyle(element).boxShadow
+      );
+      await icon.hover();
+      await expect
+        .poll(async () => (await icon.boundingBox())!.width)
+        .toBeGreaterThan(26);
+      await expect
+        .poll(() =>
+          icon.evaluate((element) => getComputedStyle(element).boxShadow)
+        )
+        .not.toBe(originalShadow);
+      await expect(shine).toHaveCSS('opacity', '1');
+      // Scaling is a paint-only effect: the amount never changes position.
+      const hoveredAmountBounds = await amount.boundingBox();
+      expect(hoveredAmountBounds!.x).toBe(amountBounds!.x);
+      expect(hoveredAmountBounds!.y).toBe(amountBounds!.y);
+      if (amountText === '1.0000 SYSX') {
+        await page.screenshot({
+          animations: 'disabled',
+          path: path.join(
+            E2E_CONFIG.artifactsDir,
+            'screenshots',
+            'sysx-transaction-details-hover.png'
+          ),
+        });
+      }
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expect(icon).toHaveCSS('transform', 'none');
+      await expect(icon).toHaveCSS('transition-property', 'none');
+      await expect(shine).toHaveCSS('transition-property', 'none');
+      expect((await icon.boundingBox())!.width).toBe(24);
+      await page.mouse.move(0, 0);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await expect(shine).toHaveCSS('opacity', '0');
+      await expect(icon).toHaveCSS('transform', 'none');
     };
     await wallet.step(
       'compact Activity keeps operation tags and transfer values without the Details breakdown',

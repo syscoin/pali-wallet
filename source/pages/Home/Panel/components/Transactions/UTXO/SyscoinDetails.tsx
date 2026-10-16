@@ -439,14 +439,19 @@ export const SyscoinTransactionDetails = ({
 
               return (
                 <div className="flex items-center justify-center gap-2 max-w-full">
-                  <span className="inline-flex shrink-0" aria-hidden="true">
+                  <span
+                    className="group relative inline-flex shrink-0 cursor-default"
+                    aria-hidden="true"
+                  >
                     <TokenIcon
                       key={`${activeNetwork.chainId}:${intent.assetGuid}:${logo}`}
                       assetGuid={intent.assetGuid}
                       logo={logo || undefined}
                       symbol={symbol}
                       size={24}
+                      className="shadow-md group-hover:shadow-xl motion-safe:group-hover:scale-110 transition-all duration-200 ease-out motion-reduce:transition-none"
                     />
+                    <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none pointer-events-none" />
                   </span>
                   <p className="text-white text-base min-w-0 break-words">
                     {formatDisplayValue(intent.amount, decimals)} {symbol}
