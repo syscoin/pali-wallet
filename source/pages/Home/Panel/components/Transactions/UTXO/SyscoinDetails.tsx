@@ -26,6 +26,7 @@ import {
   getSyscoinNativeTransferAmount,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
+  normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import { getTokenLogo } from 'utils/tokens';
 import { isTransactionInBlock } from 'utils/transactionUtils';
@@ -44,6 +45,51 @@ const CopyIcon = memo(() => (
   />
 ));
 CopyIcon.displayName = 'CopyIcon';
+
+// These are receiving output destinations, not a guess at the original intent.
+const getReceivingAddresses = (transaction: ISysTransaction): string[] => {
+  const kind = normalizeSyscoinTransactionType(transaction.tokenType);
+  const isToken = isSyscoinTokenOperation(transaction);
+  if (
+    isToken &&
+    ![
+      'assetallocationmint',
+      'assetallocationsend',
+      'syscoinburntoallocation',
+      'assetallocationburntosyscoin',
+    ].includes(kind ?? '')
+  )
+    return []; // A NEVM burn's remaining UTXO change is not its recipient.
+
+  const positiveAtomic = (value: unknown) =>
+    (typeof value === 'string' ||
+      (typeof value === 'number' && Number.isSafeInteger(value))) &&
+    /^\d+$/.test(String(value)) &&
+    /[1-9]/.test(String(value));
+  const assetCredit = isToken && kind !== 'assetallocationburntosyscoin';
+  const addresses = new Set<string>();
+  for (const output of Array.isArray(transaction.vout)
+    ? transaction.vout
+    : []) {
+    if (
+      output?.isAddress === false ||
+      /^(?:0x)?6a/i.test(output?.hex ?? '') ||
+      (assetCredit && !positiveAtomic(output?.assetInfo?.assetGuid)) ||
+      !positiveAtomic(assetCredit ? output?.assetInfo?.value : output?.value) ||
+      !Array.isArray(output?.addresses)
+    )
+      continue;
+    for (const address of output.addresses)
+      if (
+        typeof address === 'string' &&
+        address.length > 0 &&
+        !/^OP_/i.test(address) &&
+        !/\s/.test(address)
+      )
+        addresses.add(address);
+  }
+  return [...addresses];
+};
 
 const selectFresherStatusTransaction = (
   accountTransaction: ISysTransaction,
@@ -295,11 +341,13 @@ export const SyscoinTransactionDetails = ({
     };
     formattedTransaction.push(vinFormattedValue);
 
-    const voutAddress = (txSource as any)?.vout?.[0]?.addresses || [];
+    const voutAddress = getReceivingAddresses(txSource);
     const voutFormattedValue = {
-      value: voutAddress.join(', '),
+      value: voutAddress.length
+        ? voutAddress.join(', ')
+        : t('settings.unavailable'),
       label: 'To',
-      canCopy: vinAddresses.length > 0,
+      canCopy: voutAddress.length > 0,
     };
     formattedTransaction.push(voutFormattedValue);
 
