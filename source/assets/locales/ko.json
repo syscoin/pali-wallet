@@ -256,7 +256,7 @@
     "transactionId": "거래 ID",
     "willBeGeneratedAfterSigning": "서명 후 생성됩니다",
     "networkFee": "네트워크 수수료",
-    "size": "크기",
+    "size": "서명 전 크기",
     "data": "데이터",
     "method": "방법",
     "hex": "Hex",

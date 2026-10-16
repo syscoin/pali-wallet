@@ -441,7 +441,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               </Typography.Text>
               <Typography.Text className="text-white text-xs">
                 {transaction.feeRate.toFixed(8)}{' '}
-                {activeNetwork.currency.toUpperCase()}/byte
+                {activeNetwork.currency.toUpperCase()}/vbyte
               </Typography.Text>
             </div>
           )}
@@ -1054,7 +1054,7 @@ const SyscoinTransactionDetailsFromPSBTComponent: React.FC<
               {decodedTx.size && (
                 <div className="flex justify-between items-center">
                   <Typography.Text className="text-brand-gray200 text-xs">
-                    Size:
+                    {t('send.size')}:
                   </Typography.Text>
                   <Typography.Text className="text-white text-xs">
                     {decodedTx.size} bytes

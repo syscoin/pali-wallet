@@ -256,7 +256,7 @@
     "transactionId": "取引ID",
     "willBeGeneratedAfterSigning": "署名後に生成されます",
     "networkFee": "ネットワーク手数料",
-    "size": "サイズ",
+    "size": "署名前のサイズ",
     "data": "データ",
     "method": "メソッド",
     "hex": "Hex",

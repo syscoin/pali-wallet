@@ -256,7 +256,7 @@
     "transactionId": "ID de Transaction",
     "willBeGeneratedAfterSigning": "Sera généré après signature",
     "networkFee": "Frais de Réseau",
-    "size": "Taille",
+    "size": "Taille avant signature",
     "data": "Données",
     "method": "Méthode",
     "hex": "Hex",

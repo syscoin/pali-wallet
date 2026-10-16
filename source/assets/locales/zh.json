@@ -256,7 +256,7 @@
     "transactionId": "交易ID",
     "willBeGeneratedAfterSigning": "签名后生成",
     "networkFee": "网络费用",
-    "size": "大小",
+    "size": "签名前的大小",
     "data": "数据",
     "method": "方法",
     "hex": "十六进制",

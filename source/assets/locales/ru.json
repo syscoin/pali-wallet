@@ -256,7 +256,7 @@
     "transactionId": "ID Транзакции",
     "willBeGeneratedAfterSigning": "Будет сгенерирован после подписания",
     "networkFee": "Сетевая Комиссия",
-    "size": "Размер",
+    "size": "Размер до подписания",
     "data": "Данные",
     "method": "Метод",
     "hex": "Hex",

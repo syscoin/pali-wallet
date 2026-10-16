@@ -111,6 +111,19 @@ test('offline native Send: edited fees survive Confirm, Cancel and Back', async 
         await feeInput.fill('0.00000002');
         await page.getByRole('button', { name: 'Next', exact: true }).click();
         firstFee = await readConfirmFee();
+        await page
+          .getByRole('button', { name: 'Advanced Details', exact: true })
+          .click();
+        const unsignedSize = page
+          .getByText('Size before signing:', { exact: true })
+          .first();
+        await expect(unsignedSize).toBeVisible();
+        await expect(
+          unsignedSize.locator('..').getByText(/^\d+ vbytes$/)
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Advanced Details', exact: true })
+          .click();
         expect(routes.deniedWrites).toEqual([]);
       }
     );

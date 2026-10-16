@@ -256,7 +256,7 @@
     "transactionId": "Transaction ID",
     "willBeGeneratedAfterSigning": "Will be generated after signing",
     "networkFee": "Network Fee",
-    "size": "Size",
+    "size": "Size before signing",
     "data": "Data",
     "method": "Method",
     "hex": "Hex",
