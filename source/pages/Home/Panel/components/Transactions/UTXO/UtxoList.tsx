@@ -35,7 +35,6 @@ import {
   getSyscoinOperationAmount,
   isSyscoinTokenOperation,
   getSyscoinNativeTransferAmount,
-  getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
@@ -202,14 +201,13 @@ const UtxoTransactionsListComponentBase = ({
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
   const isSentByUs = nativeIntent?.direction === 'sent';
-  const signChar = isSentByUs ? '-' : '+';
+  const signChar = isSentByUs ? '−' : '+';
   const signClass = isSentByUs ? 'text-warning-error' : 'text-brand-green';
   const isSptSentByUs = intent?.direction === 'sent';
-  const sptSignChar = isSptSentByUs ? '-' : '+';
+  const sptSignChar = isSptSentByUs ? '−' : '+';
   const sptSignClass = isSptSentByUs
     ? 'text-warning-error'
     : 'text-brand-green';
-  const nativeAccountChange = getSyscoinAccountChange(tx);
   if (nativeIntent) {
     const baseSymbol = activeNetwork?.currency
       ? String(activeNetwork.currency).toUpperCase()
@@ -319,19 +317,16 @@ const UtxoTransactionsListComponentBase = ({
             style={sptInfo.bgStyle}
           >
             <span className="text-xs">{sptInfo.icon}</span>
-            <span className="text-xs font-medium text-white">
+            <span className="text-[10px] font-medium text-white">
               {sptInfo.label}
             </span>
           </div>
         )}
         {sptAmountDisplay && (
           <div
-            className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
+            className="flex items-center gap-1 text-xs font-medium text-white mt-0.5 truncate max-w-[160px]"
             title={sptAmountDisplay}
           >
-            {intent?.scope === 'account' && intent.direction && (
-              <span className={`${sptSignClass}`}>{sptSignChar}</span>
-            )}
             {(sptAssetInfo?.image ||
               (sptAssetInfo?.symbol &&
                 getTokenLogo(
@@ -358,7 +353,12 @@ const UtxoTransactionsListComponentBase = ({
                 </span>
               </Tooltip>
             )}
-            <span className="truncate">{sptAmountDisplay}</span>
+            <span className="truncate">
+              {intent?.scope === 'account' && intent.direction && (
+                <span className={sptSignClass}>{sptSignChar}</span>
+              )}
+              {sptAmountDisplay}
+            </span>
           </div>
         )}
         {!sptAmountDisplay && !sysAmountDisplay && (
@@ -370,40 +370,33 @@ const UtxoTransactionsListComponentBase = ({
             )}
           </p>
         )}
-        {!tokenOperation && nativeIntent?.outputTotal && (
-          <p className="text-[10px] text-brand-gray300">
-            {t('send.selfTransferOutputTotal')}
-          </p>
-        )}
         {!sptAmountDisplay && sysAmountDisplay && (
           <div
-            className="flex items-center gap-1 text-[10px] text-brand-gray300 mt-0.5 truncate max-w-[160px]"
-            title={sysAmountDisplay}
+            className="flex items-center gap-1 text-xs font-medium text-white mt-0.5 truncate max-w-[160px]"
+            title={
+              nativeIntent?.outputTotal
+                ? `${t('send.selfTransferOutputTotal')}: ${sysAmountDisplay}`
+                : sysAmountDisplay
+            }
           >
-            {nativeIntent?.direction && (
-              <span className={`${signClass}`}>{signChar}</span>
+            <span className="truncate">
+              {nativeIntent?.direction && (
+                <span className={signClass}>{signChar}</span>
+              )}
+              {sysAmountDisplay}
+            </span>
+            {nativeIntent?.outputTotal && (
+              <Tooltip content={t('send.selfTransferOutputTotal')}>
+                <span
+                  role="img"
+                  aria-label={t('send.selfTransferOutputTotal')}
+                  className="shrink-0"
+                >
+                  <Icon name="info" className="w-3 h-3" />
+                </span>
+              </Tooltip>
             )}
-            <span className="truncate">{sysAmountDisplay}</span>
           </div>
-        )}
-        {nativeAccountChange !== null && (
-          <p
-            className="text-[10px] text-brand-gray300"
-            title={t('send.nativeBalanceChange')}
-          >
-            {t('send.nativeBalanceChange')}:{' '}
-            {nativeAccountChange !== '0' && !nativeAccountChange.startsWith('-')
-              ? '+'
-              : ''}
-            {formatSyscoinValue(nativeAccountChange)}{' '}
-            {String(activeNetwork.currency || '').toUpperCase()}
-          </p>
-        )}
-        {/^\d+$/.test(String(tx.fees ?? '')) && (
-          <p className="text-[10px] text-brand-gray300">
-            {t('send.fee')}: {formatSyscoinValue(tx.fees)}{' '}
-            {String(activeNetwork.currency || '').toUpperCase()}
-          </p>
         )}
       </div>
 

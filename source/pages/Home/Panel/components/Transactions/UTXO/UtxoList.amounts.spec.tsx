@@ -97,10 +97,11 @@ it('hydrates compact bridge operation value without treating native funding as a
   expect(screen.queryByText('29.5985 TSYS')).toBeNull();
   expect(screen.getByText('buttons.loading')).toBeTruthy();
   const amount = await screen.findByText('1.0000 SYSX');
-  expect(within(amount.parentElement!).queryByText('-')).toBeNull();
+  expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(
-    screen.getByText('send.nativeBalanceChange: -29.5985194 TSYS')
-  ).toBeTruthy();
+    screen.queryByText('send.nativeBalanceChange: -29.5985194 TSYS')
+  ).toBeNull();
+  expect(screen.queryByText(/^send\.fee:/)).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Details' }));
   expect(mockNavigate).toHaveBeenCalledWith('/home/details', {
@@ -122,10 +123,10 @@ it('hydrates the compact bridge burn amount and preserves its precision', async 
   expect(screen.getByText('Bridge to NEVM')).toBeTruthy();
   expect(screen.getByText('buttons.loading')).toBeTruthy();
   const amount = await screen.findByText('0.100000 SYSX');
-  expect(within(amount.parentElement!).queryByText('-')).toBeNull();
+  expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(
-    screen.getByText('send.nativeBalanceChange: -0.0000187 TSYS')
-  ).toBeTruthy();
+    screen.queryByText('send.nativeBalanceChange: -0.0000187 TSYS')
+  ).toBeNull();
   await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
   await act(async () => Promise.resolve());
   expect(screen.getByText('0.100000 SYSX')).toBeTruthy();
@@ -164,7 +165,7 @@ it('prefers actual full burn amount over a smaller account asset contribution', 
   expect(screen.queryByText('0.100000 SYSX')).toBeNull();
   expect(screen.getByText('buttons.loading')).toBeTruthy();
   const amount = await screen.findByText('2.0000 SYSX');
-  expect(within(amount.parentElement!).queryByText('-')).toBeNull();
+  expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(screen.queryByText('0.100000 SYSX')).toBeNull();
 });
 
@@ -179,12 +180,12 @@ it('keeps ordinary compact SPT transfer value without hydration', () => {
   );
   const amount = screen.getByText('0.100000 SYSX');
   expect(within(amount.parentElement!).queryByText('+')).toBeNull();
-  expect(within(amount.parentElement!).queryByText('-')).toBeNull();
+  expect(within(amount.parentElement!).queryByText('−')).toBeNull();
   expect(screen.getByText('send.confirmed')).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('shows an SPT receipt separately from native account funding', () => {
+it('keeps an SPT receipt compact without the native funding breakdown', () => {
   render(
     <UtxoTransactionsListComponent
       tx={{
@@ -210,10 +211,12 @@ it('shows an SPT receipt separately from native account funding', () => {
   );
   const amount = screen.getByText('0.100000 SYSX');
   expect(within(amount.parentElement!).getByText('+')).toBeTruthy();
+  expect(amount.textContent).toBe('+0.100000 SYSX');
   expect(screen.getByText('send.received')).toBeTruthy();
   expect(
-    screen.getByText('send.nativeBalanceChange: -0.0000187 TSYS')
-  ).toBeTruthy();
+    screen.queryByText('send.nativeBalanceChange: -0.0000187 TSYS')
+  ).toBeNull();
+  expect(screen.queryByText(/^send\.fee:/)).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -235,11 +238,12 @@ it('hydrates ordinary SPT metadata while preserving explicit account ownership, 
   });
   render(<UtxoTransactionsListComponent tx={tx} />);
   const amount = await screen.findByText('0.400000 OWNED');
-  expect(within(amount.parentElement!).getByText('-')).toBeTruthy();
+  expect(within(amount.parentElement!).getByText('−')).toBeTruthy();
+  expect(amount.textContent).toBe('−0.400000 OWNED');
   expect(screen.queryByText(/999/)).toBeNull();
 });
 
-it('keeps a zero account delta secondary without inventing a value from an unrelated output', async () => {
+it('does not invent a value from an unrelated output when the account delta is zero', async () => {
   mockEmitter.mockResolvedValueOnce(null);
   render(
     <UtxoTransactionsListComponent
@@ -252,7 +256,7 @@ it('keeps a zero account delta secondary without inventing a value from an unrel
       }}
     />
   );
-  expect(screen.getByText('send.nativeBalanceChange: 0 TSYS')).toBeTruthy();
+  expect(screen.queryByText('send.nativeBalanceChange: 0 TSYS')).toBeNull();
   await screen.findByText('settings.unavailable');
   expect(screen.queryByText('0.0000 TSYS')).toBeNull();
   expect(screen.queryByText('9.0000 TSYS')).toBeNull();
@@ -276,9 +280,9 @@ it('hydrates compact native self MAX to its actual output, not its fee', async (
   expect(screen.queryByText('0.00000226 TSYS')).toBeNull();
   expect(await screen.findByText('0.065473 TSYS')).toBeTruthy();
   expect(
-    screen.getByText('send.nativeBalanceChange: -0.00000226 TSYS')
-  ).toBeTruthy();
-  expect(screen.getByText('send.fee: 0.00000226 TSYS')).toBeTruthy();
+    screen.queryByText('send.nativeBalanceChange: -0.00000226 TSYS')
+  ).toBeNull();
+  expect(screen.queryByText('send.fee: 0.00000226 TSYS')).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
@@ -304,12 +308,12 @@ it('shows external native recipient total, not fee-inclusive change or the first
   );
   expect(screen.getByText('0.700000 TSYS')).toBeTruthy();
   expect(
-    screen.getByText('send.nativeBalanceChange: -0.70000226 TSYS')
-  ).toBeTruthy();
+    screen.queryByText('send.nativeBalanceChange: -0.70000226 TSYS')
+  ).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
-it('labels all-self multiple native outputs as a total', () => {
+it('qualifies a multi-output self total inline without another text row', () => {
   render(
     <UtxoTransactionsListComponent
       tx={
@@ -326,7 +330,13 @@ it('labels all-self multiple native outputs as a total', () => {
     />
   );
   expect(screen.getByText('1.0000 TSYS')).toBeTruthy();
-  expect(screen.getByText('send.selfTransferOutputTotal')).toBeTruthy();
+  expect(screen.queryByText('send.selfTransferOutputTotal')).toBeNull();
+  expect(
+    screen.getByTitle('send.selfTransferOutputTotal: 1.0000 TSYS')
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('img', { name: 'send.selfTransferOutputTotal' })
+  ).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
@@ -343,7 +353,7 @@ it('shows a known compact native receipt without a full read', () => {
     />
   );
   expect(screen.getByText('1.0000 TSYS')).toBeTruthy();
-  expect(screen.getByText('send.nativeBalanceChange: +1 TSYS')).toBeTruthy();
+  expect(screen.queryByText('send.nativeBalanceChange: +1 TSYS')).toBeNull();
   expect(screen.getByText('send.received')).toBeTruthy();
   expect(mockEmitter).not.toHaveBeenCalled();
 });

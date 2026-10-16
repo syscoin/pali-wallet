@@ -141,7 +141,7 @@ test('offline UTXO history: bridge value, native account change and pending deta
       await page.locator('#activity-btn').click();
     };
     await wallet.step(
-      'normal Activity shows bridge values separately from native funding',
+      'compact Activity keeps operation tags and transfer values without the Details breakdown',
       async () => {
         await wallet!.importSeedAndCreatePassword();
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
@@ -152,12 +152,6 @@ test('offline UTXO history: bridge value, native account change and pending deta
         ).toBeVisible();
         await expect(
           row(compactBridgeNativeOffset.txid).getByText('1.0000 SYSX')
-        ).toBeVisible();
-        await expect(
-          row(compactBridgeNativeOffset.txid).getByText(
-            'Native account balance change: -29.5985194 TSYS',
-            { exact: true }
-          )
         ).toBeVisible();
         await expect(
           row(compactBridgeNativeOffset.txid).getByText('29.5985 TSYS', {
@@ -173,15 +167,19 @@ test('offline UTXO history: bridge value, native account change and pending deta
         await expect(
           row(pending.txid).getByText('0.099998 TSYS', { exact: true })
         ).toBeVisible();
-        await expect(
-          row(pending.txid).getByText(
-            'Native account balance change: -0.00000226 TSYS',
-            { exact: true }
-          )
-        ).toBeVisible();
-        await expect(
-          row(pending.txid).getByText('Fee: 0.00000226 TSYS', { exact: true })
-        ).toBeVisible();
+        for (const txid of [
+          compactBridgeNativeOffset.txid,
+          compactBridgeWithAccountAsset.txid,
+          pending.txid,
+        ]) {
+          await expect(
+            row(txid).getByText(/^Native account balance change:/)
+          ).toHaveCount(0);
+          await expect(row(txid).getByText(/^Fee:/)).toHaveCount(0);
+          const bounds = await row(txid).boundingBox();
+          expect(bounds).not.toBeNull();
+          expect(bounds!.height).toBeLessThanOrEqual(90);
+        }
         expect(routes.deniedWrites).toEqual([]);
       }
     );
