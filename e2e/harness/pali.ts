@@ -206,8 +206,9 @@ export class PaliWallet {
   }
 
   async unlock() {
-    await this.page.locator('#password').fill(E2E_CONFIG.password);
-    await this.page.locator('#unlock-btn').click();
+    const login = this.page.locator('#login');
+    await login.locator('#password').fill(E2E_CONFIG.password);
+    await login.locator('#unlock-btn').click();
     await expect(this.page).toHaveURL(/#\/home/, { timeout: 60_000 });
   }
 
@@ -221,20 +222,40 @@ export class PaliWallet {
     const balance = this.page
       .locator('#home-balance, #home-balance-pending')
       .first();
-    const unlock = this.page.locator('#unlock-btn');
+    const login = this.page.locator('#login');
+    const password = login.locator('#password');
+    const unlock = login.locator('#unlock-btn');
+    const isIdleLockedForm = async () =>
+      new URL(this.page.url()).hash.split('?')[0] === '#/' &&
+      (await login.isVisible()) &&
+      (await password.isVisible()) &&
+      (await unlock.isVisible()) &&
+      (await unlock.isEnabled());
+    let readyToUnlock = false;
     // A rehydrating router can still show #/home before redirecting to Lock.
-    // Wait for an actual normal UI state rather than guessing from that URL.
+    // A completed unlock can also leave its old form visible briefly at Home.
+    // Authenticate only the real idle login form on its root route, never a
+    // stale button or an in-flight submit (other prompts reuse unlock-btn).
     // Pending is valid readiness when the fenced fixture denies the default
     // network; each journey still asserts its own exact balance afterward.
     await expect
       .poll(
-        async () => (await balance.isVisible()) || (await unlock.isVisible()),
+        async () => {
+          readyToUnlock = false;
+          if (
+            new URL(this.page.url()).hash.split('?')[0] === '#/home' &&
+            (await balance.isVisible())
+          )
+            return true;
+          readyToUnlock = await isIdleLockedForm();
+          return readyToUnlock;
+        },
         {
           timeout: 60_000,
         }
       )
       .toBe(true);
-    if (await unlock.isVisible()) {
+    if (readyToUnlock && (await isIdleLockedForm())) {
       await this.unlock();
     }
     await balance.waitFor({ state: 'visible', timeout: 60_000 });
